@@ -252,6 +252,37 @@ describe("MessageComposer async send behavior", () => {
     });
   });
 
+  it("keeps the visible draft when a successful send reports a newer draft", async () => {
+    const onClearReply = vi.fn();
+    const onSend = vi.fn().mockResolvedValue({ shouldClearComposer: false });
+
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        draftSessionKey="workspace-chat-a"
+        initialValue="newer draft"
+        replyQuote={{
+          id: "reply-a",
+          content: "quoted message",
+          sender_full_name: "Bob Reed",
+          sender_uuid: "user-b",
+          permalinkUrl: "/messages/reply-a",
+          quoteFormat: "workspace",
+        }}
+        onClearReply={onClearReply}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(expect.stringContaining("newer draft"), "", undefined);
+    });
+    expect(textbox).toHaveValue("newer draft");
+    expect(onClearReply).not.toHaveBeenCalled();
+  });
+
   it("prevents duplicate sends while previous async send is still pending", async () => {
     let resolveFirstSend: () => void = () => {
       throw new Error("Expected first send resolver to be assigned");

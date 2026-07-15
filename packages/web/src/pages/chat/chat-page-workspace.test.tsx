@@ -1562,6 +1562,251 @@ describe("ChatPage Workspace route", () => {
     ).toBe("newer draft");
   });
 
+  it("removes a sent reply draft after the composer clears its value and reply", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "",
+      replySession: {
+        activeTabId: "reply-tab-a",
+        tabs: [
+          {
+            id: "reply-tab-a",
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "sent reply",
+          },
+        ],
+      },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-a"),
+    );
+
+    const onSend = captured.composerProps?.onSend;
+    const onComposerValueChange = captured.composerProps?.onComposerValueChange;
+    const onClearReply = captured.composerProps?.onClearReply;
+    if (onSend == null || onComposerValueChange == null || onClearReply == null) {
+      throw new Error("Workspace composer handlers are missing");
+    }
+
+    await expect(onSend("sent reply", "")).resolves.toBeUndefined();
+    act(() => {
+      onComposerValueChange("");
+      onClearReply();
+    });
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a newer reply draft when an earlier send finishes", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "",
+      replySession: {
+        activeTabId: "reply-tab-a",
+        tabs: [
+          {
+            id: "reply-tab-a",
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "first reply",
+          },
+        ],
+      },
+    });
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-a"),
+    );
+
+    const onSend = captured.composerProps?.onSend;
+    const onComposerValueChange = captured.composerProps?.onComposerValueChange;
+    if (onSend == null || onComposerValueChange == null) {
+      throw new Error("Workspace composer handlers are missing");
+    }
+
+    const sendPromise = Promise.resolve(onSend("first reply", ""));
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      onComposerValueChange("newer reply");
+      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+    });
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content.replySession,
+    ).toMatchObject({
+      activeTabId: "reply-tab-a",
+      tabs: [{ id: "reply-tab-a", answer: "newer reply" }],
+    });
+  });
+
+  it("keeps a newly added reply tab when an earlier send finishes", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    seedSecondMessage();
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "",
+      replySession: {
+        activeTabId: "reply-tab-a",
+        tabs: [
+          {
+            id: "reply-tab-a",
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "first reply",
+          },
+        ],
+      },
+    });
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-a"),
+    );
+
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    const sendPromise = Promise.resolve(onSend("first reply", ""));
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(2),
+    );
+
+    act(() => {
+      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+    });
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content.replySession,
+    ).toMatchObject({
+      activeTabId: expect.any(String),
+      tabs: [
+        { id: "reply-tab-a", answer: "first reply" },
+        { messageUuid: SECOND_MESSAGE_UUID, answer: "" },
+      ],
+    });
+  });
+
+  it("clears reply state only in the active chat when editing after a route switch", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    const createReplyDraft = (tabId: string) => ({
+      text: "",
+      replySession: {
+        activeTabId: tabId,
+        tabs: [
+          {
+            id: tabId,
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: `${tabId} answer`,
+          },
+        ],
+      },
+    });
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(ownerKey, topicConversationId, createReplyDraft("topic-reply"));
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(ownerKey, streamConversationId, createReplyDraft("stream-reply"));
+    useWorkspaceMessageStore
+      .getState()
+      .replaceOrMergeConversationMessagesPage(streamConversationId, [
+        { ...createMessage(), isOwn: true },
+      ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("topic-reply"),
+    );
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("stream-reply"),
+    );
+
+    act(() => {
+      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
+    });
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      )?.content.replySession.activeTabId,
+    ).toBe("topic-reply");
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        streamConversationId,
+      ),
+    ).toBeNull();
+  });
+
   it("replaces the active Workspace reply quote while preserving its answer", async () => {
     seedSecondMessage();
     renderWorkspaceChatPageWithShellContexts(

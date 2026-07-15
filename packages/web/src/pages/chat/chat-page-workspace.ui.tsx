@@ -102,6 +102,7 @@ import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
 import type {
@@ -148,6 +149,14 @@ interface WorkspaceMediaOpenScope {
   ownerKey: string | null;
   runtimeGeneration: number | null;
   conversationId: MessengerConversationId | null;
+}
+
+interface WorkspaceComposerSendCleanup {
+  ownerKey: string;
+  conversationId: string;
+  snapshotId: string;
+  ignoresValueClear: boolean;
+  ignoresReplyClear: boolean;
 }
 
 function buildWorkspaceViewerItem(
@@ -330,7 +339,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
-  const suppressNextWorkspaceReplyClearRef = useRef(false);
+  const workspaceComposerSendCleanupRef = useRef<WorkspaceComposerSendCleanup | null>(null);
   const workspaceComposerDraftShadowRef = useRef<{
     scopeKey: string;
     content: WorkspaceComposerDraftContent;
@@ -843,7 +852,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     setPendingDeleteMessageUuid(null);
     setSelectedMessageUuids(new Set());
     setWorkspaceReplyTabFocusKeySuppressed(false);
-    suppressNextWorkspaceReplyClearRef.current = false;
+    workspaceComposerSendCleanupRef.current = null;
   }, [conversationId, ownerKey]);
 
   useEffect(() => {
@@ -1098,11 +1107,29 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(t("message.sendFailed"));
       }
       if (draftAtSend != null) {
-        // MessageComposer clears its visible value after this promise resolves.
-        // Do not let that callback erase content written while the request was in flight.
-        suppressNextWorkspaceReplyClearRef.current = true;
+        const currentDraft = selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          sendOwnerKey,
+          conversationId,
+        );
+        if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
+          return { shouldClearComposer: false } satisfies MessageComposerSendResult;
+        }
+        // MessageComposer clears its value and reply after this promise resolves.
+        // Both callbacks still close over the sent composer state. Only consume that
+        // cleanup when the sent draft is still the current reply session.
+        workspaceComposerSendCleanupRef.current = {
+          ownerKey: sendOwnerKey,
+          conversationId,
+          snapshotId: draftAtSend.snapshotId,
+          ignoresValueClear: true,
+          ignoresReplyClear: true,
+        };
         window.setTimeout(() => {
-          suppressNextWorkspaceReplyClearRef.current = false;
+          const pendingCleanup = workspaceComposerSendCleanupRef.current;
+          if (pendingCleanup?.snapshotId === draftAtSend.snapshotId) {
+            workspaceComposerSendCleanupRef.current = null;
+          }
         }, 0);
         useWorkspaceComposerDraftStore
           .getState()
@@ -1283,20 +1310,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [composerEditMessageUuid, runWorkspaceAction, runtimeContext],
   );
 
-  const handleEditMessage = useCallback((messageUuid: string) => {
-    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-    if (!message?.isOwn) {
-      setActionError(t("message.editUnavailable"));
-      return;
-    }
+  const handleEditMessage = useCallback(
+    (messageUuid: string) => {
+      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      if (!message?.isOwn) {
+        setActionError(t("message.editUnavailable"));
+        return;
+      }
 
-    setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
-    setComposerEditMessageUuid(message.uuid);
-    setComposerEditSession({
-      messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-      initialMarkdown: message.payload.content,
-    });
-  }, []);
+      setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
+      setComposerEditMessageUuid(message.uuid);
+      setComposerEditSession({
+        messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
+        initialMarkdown: message.payload.content,
+      });
+    },
+    [setWorkspaceReplySession],
+  );
 
   const handleRequestDeleteMessage = useCallback((messageUuid: string) => {
     const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
@@ -1420,13 +1450,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const handleClearReply = useCallback(() => {
-    if (suppressNextWorkspaceReplyClearRef.current) {
-      suppressNextWorkspaceReplyClearRef.current = false;
+    const pendingCleanup = workspaceComposerSendCleanupRef.current;
+    if (
+      pendingCleanup?.ownerKey === ownerKey &&
+      pendingCleanup.conversationId === conversationId &&
+      pendingCleanup.ignoresReplyClear
+    ) {
+      pendingCleanup.ignoresReplyClear = false;
+      if (!pendingCleanup.ignoresValueClear) {
+        workspaceComposerSendCleanupRef.current = null;
+      }
       return;
     }
     setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
     setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, [setWorkspaceReplySession]);
+  }, [conversationId, ownerKey, setWorkspaceReplySession]);
 
   const handleSelectWorkspaceReplyTab = useCallback(
     (tabId: string, source?: WorkspaceReplyTabSelectSource) => {
@@ -1454,6 +1492,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const handleWorkspaceComposerValueChange = useCallback(
     (value: string) => {
+      const pendingCleanup = workspaceComposerSendCleanupRef.current;
+      if (
+        value.length === 0 &&
+        pendingCleanup?.ownerKey === ownerKey &&
+        pendingCleanup.conversationId === conversationId &&
+        pendingCleanup.ignoresValueClear
+      ) {
+        pendingCleanup.ignoresValueClear = false;
+        if (!pendingCleanup.ignoresReplyClear) {
+          workspaceComposerSendCleanupRef.current = null;
+        }
+        return;
+      }
       updateWorkspaceComposerDraft((content) => {
         if (content.replySession.tabs.length === 0) {
           return { ...content, text: value };
@@ -1465,7 +1516,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         };
       });
     },
-    [updateWorkspaceComposerDraft],
+    [conversationId, ownerKey, updateWorkspaceComposerDraft],
   );
 
   const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {

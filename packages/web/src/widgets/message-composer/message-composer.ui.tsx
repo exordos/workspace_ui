@@ -79,6 +79,7 @@ import type {
   ComposerMode,
   MediaPickerTab,
   MessageComposerProps,
+  MessageComposerSendResult,
   ScheduledComposerMessage,
 } from "./message-composer.types";
 import type { EmojiClickData } from "emoji-picker-react";
@@ -796,8 +797,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     setSendInFlight(true);
 
+    let sendResult: MessageComposerSendResult | void;
     try {
-      await onSend?.(bodyToSend, subject, filesToSend);
+      sendResult = await onSend?.(bodyToSend, subject, filesToSend);
     } catch {
       return;
     } finally {
@@ -805,7 +807,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     }
     resetMentionState();
     resetWorkspaceReferenceState();
-    if (latestValueRef.current === valueToSend) {
+    const shouldClearComposer = sendResult?.shouldClearComposer !== false;
+    if (shouldClearComposer && latestValueRef.current === valueToSend) {
       setValue("");
     }
     if (latestFilesRef.current === filesSnapshot) {

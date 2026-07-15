@@ -6,6 +6,7 @@ import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-mes
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
@@ -20,7 +21,11 @@ export interface ChatPageComposerSectionProps {
   streamSlug: string | undefined;
   onExpandStreamTopics: () => void;
   uploadProgress: ComposerUploadProgressState | null;
-  onSend: (content: string, subjectOverride?: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    content: string,
+    subjectOverride?: string,
+    files?: File[],
+  ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;

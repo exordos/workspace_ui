@@ -51,6 +51,10 @@ export interface MessageComposerActionCapability {
   unsupportedText?: string;
 }
 
+export interface MessageComposerSendResult {
+  shouldClearComposer?: boolean;
+}
+
 // Capabilities keep the old composer layout while each backend controls action availability.
 // Unsupported Workspace actions stay visible through explicit placeholders without legacy API calls.
 export interface MessageComposerCapabilities {
@@ -62,7 +66,11 @@ export interface MessageComposerCapabilities {
 }
 
 export interface MessageComposerProps {
-  onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
+  onSend?: (
+    content: string,
+    subject?: string,
+    files?: File[],
+  ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;
