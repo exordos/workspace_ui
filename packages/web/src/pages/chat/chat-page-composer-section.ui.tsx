@@ -1,4 +1,5 @@
 import React from "react";
+import { WorkspaceReplyTabs } from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { MessageComposer } from "~/widgets/message-composer/message-composer.ui";
@@ -24,6 +25,12 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   activeTopic,
   replyQuote,
   onClearReply,
+  workspaceReplySession,
+  onSelectWorkspaceReplyTab,
+  onRemoveWorkspaceReplyTab,
+  outgoingBodyOverride,
+  allowEmptyActiveValueSend = false,
+  focusKey,
   draftInitialValue,
   onComposerValueChange,
   onEditLastMessage,
@@ -103,6 +110,13 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     activeStream,
   });
 
+  const showWorkspaceReplyTabs =
+    editSession == null &&
+    workspaceReplySession != null &&
+    workspaceReplySession.tabs.length > 1 &&
+    onSelectWorkspaceReplyTab != null &&
+    onRemoveWorkspaceReplyTab != null;
+
   return (
     <MessageComposer
       onSend={onSend}
@@ -119,6 +133,18 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       activeTopic={activeTopic ?? undefined}
       replyQuote={replyQuote}
       onClearReply={onClearReply}
+      leadingContent={
+        showWorkspaceReplyTabs ? (
+          <WorkspaceReplyTabs
+            session={workspaceReplySession}
+            onSelect={onSelectWorkspaceReplyTab}
+            onRemove={onRemoveWorkspaceReplyTab}
+          />
+        ) : null
+      }
+      outgoingBodyOverride={outgoingBodyOverride}
+      allowEmptyActiveValueSend={allowEmptyActiveValueSend}
+      focusKey={focusKey}
       initialValue={draftInitialValue}
       onValueChange={onComposerValueChange}
       onEditLastMessage={onEditLastMessage}

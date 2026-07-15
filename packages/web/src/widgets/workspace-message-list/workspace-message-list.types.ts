@@ -29,6 +29,7 @@ export interface WorkspaceMessageListActions {
   jitsiServerBaseUrl?: string | null;
   jitsiLocationName?: string | null;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
   onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;

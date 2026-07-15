@@ -2820,6 +2820,7 @@ describe("WorkspaceMessageList", () => {
 
   it("passes selected body text to Workspace reply and copy callbacks", async () => {
     const onReplyMessage = vi.fn();
+    const onAddReplyMessage = vi.fn();
     const onCopyMessageText = vi.fn();
     const { container } = render(
       <WorkspaceMessageList
@@ -2833,6 +2834,7 @@ describe("WorkspaceMessageList", () => {
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
           onReplyMessage,
+          onAddReplyMessage,
           onCopyMessageText,
         }}
       />,
@@ -2844,6 +2846,11 @@ describe("WorkspaceMessageList", () => {
     fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Reply" }));
     expect(onReplyMessage).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
+
+    selectMessageBodyText(container, "selected-callback-message", "selected phrase");
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add reply" }));
+    expect(onAddReplyMessage).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
 
     selectMessageBodyText(container, "selected-callback-message", "selected phrase");
     fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
@@ -2867,6 +2874,7 @@ describe("WorkspaceMessageList", () => {
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
           onReplyMessage: vi.fn(),
+          onAddReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
           onToggleMessageSelection: vi.fn(),
           onEditMessage: vi.fn(),
@@ -2889,6 +2897,7 @@ describe("WorkspaceMessageList", () => {
       ),
     ).toEqual([
       "Reply",
+      "Add reply",
       "Forward",
       "separator",
       "Copy text",
@@ -2901,6 +2910,7 @@ describe("WorkspaceMessageList", () => {
 
   it("calls Workspace menu callbacks with message uuid", async () => {
     const onReplyMessage = vi.fn();
+    const onAddReplyMessage = vi.fn();
     const onForwardMessage = vi.fn();
     const onOpenMessageInChat = vi.fn();
     const onToggleMessageSelection = vi.fn();
@@ -2923,6 +2933,7 @@ describe("WorkspaceMessageList", () => {
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
           onReplyMessage,
+          onAddReplyMessage,
           onForwardMessage,
           onOpenMessageInChat,
           onToggleMessageSelection,
@@ -2936,6 +2947,10 @@ describe("WorkspaceMessageList", () => {
     openWorkspaceMessageMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Reply" }));
     expect(onReplyMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add reply" }));
+    expect(onAddReplyMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
 
     openWorkspaceMessageMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Forward" }));

@@ -177,6 +177,56 @@ function seedComposerWorkspaceStore(): void {
 }
 
 describe("MessageComposer async send behavior", () => {
+  it("sends the parent-provided outgoing body instead of the active draft", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const outgoingBody = "Full Workspace reply A\n\nFull Workspace reply B";
+
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        initialValue="Active tab reply"
+        outgoingBodyOverride={outgoingBody}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(outgoingBody, "", undefined);
+    });
+  });
+
+  it("allows an empty active draft only when the external body has content", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        outgoingBodyOverride="Reply from another tab"
+        allowEmptyActiveValueSend
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("Reply from another tab", "", undefined);
+    });
+  });
+
+  it("does not send when the external body is empty even if empty active sends are allowed", () => {
+    const onSend = vi.fn();
+
+    renderWithProviders(
+      <MessageComposer onSend={onSend} outgoingBodyOverride="" allowEmptyActiveValueSend />,
+    );
+
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("keeps the composer draft until onSend resolves successfully", async () => {
     let resolveSend: () => void = () => {
       throw new Error("Expected send resolver to be assigned");
@@ -950,6 +1000,21 @@ describe("MessageComposer formatting shortcuts", () => {
 });
 
 describe("MessageComposer preview mode", () => {
+  it("renders the parent-provided full outgoing body", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        outgoingBodyOverride={"Reply from the first tab\n\nReply from the second tab"}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(within(preview).getByText("Reply from the first tab")).toBeInTheDocument();
+    expect(within(preview).getByText("Reply from the second tab")).toBeInTheDocument();
+  });
+
   it("hides preview tab when unsupported", () => {
     renderWithProviders(
       <MessageComposer
@@ -1589,6 +1654,47 @@ describe("MessageComposer reply quote", () => {
     expect(textbox).not.toHaveFocus();
 
     rerender(<MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />);
+
+    expect(textbox).not.toHaveFocus();
+  });
+
+  it("renders leading reply content inside the regular composer card", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        leadingContent={<div data-testid="workspace-reply-tabs">Reply tabs</div>}
+      />,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    expect(composer).toContainElement(screen.getByTestId("workspace-reply-tabs"));
+  });
+});
+
+describe("MessageComposer focus key", () => {
+  it("focuses the textarea when focusKey changes without reacting to draft updates", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} focusKey="reply-a" initialValue="answer A" />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.blur();
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} focusKey="reply-a" initialValue="answer B" />);
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} focusKey="reply-b" initialValue="answer B" />);
+    expect(textbox).toHaveFocus();
+  });
+
+  it("keeps the legacy composer path unchanged when focusKey is omitted", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} initialValue="answer A" />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.blur();
+
+    rerender(<MessageComposer onSend={vi.fn()} initialValue="answer B" />);
 
     expect(textbox).not.toHaveFocus();
   });

@@ -18,6 +18,7 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
+import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
@@ -369,6 +370,15 @@ function createSecondMessage(): MessengerMessage {
   };
 }
 
+function seedSecondMessage() {
+  useWorkspaceMessageStore
+    .getState()
+    .replaceOrMergeConversationMessagesPage(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      createMessage(),
+      createSecondMessage(),
+    ]);
+}
+
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -572,6 +582,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.firstUnreadUuid).toBe("55555555-5555-4555-8555-555555555555");
     expect(captured.messageListProps?.unreadCount).toBe(1);
     expect(captured.messageListProps?.onReplyMessage).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onAddReplyMessage).toBeUndefined();
     expect(captured.messageListProps?.onEditMessage).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onCopyMessageText).toEqual(expect.any(Function));
@@ -1151,9 +1162,9 @@ describe("ChatPage Workspace route", () => {
     );
 
     await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
-    await act(async () => {
-      await captured.composerProps?.onSend("hello", "", [file]);
-    });
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    await expect(onSend("hello", "", [file])).rejects.toThrow();
 
     await waitFor(() => {
       expect(captured.messageListProps?.outgoingMessages?.[0]).toEqual(
@@ -1184,8 +1195,10 @@ describe("ChatPage Workspace route", () => {
     );
 
     await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
     act(() => {
-      void captured.composerProps?.onSend("hello", "", [file]);
+      void Promise.resolve(onSend("hello", "", [file])).catch(() => undefined);
     });
 
     await waitFor(() => {
@@ -1215,7 +1228,7 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("opens Workspace reply mode as composer quote state without injecting quote into draft", async () => {
+  it("opens Workspace reply mode as a tab without injecting quote into the draft", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -1230,16 +1243,32 @@ describe("ChatPage Workspace route", () => {
     });
 
     await waitFor(() => {
-      expect(captured.composerProps?.replyQuote).toMatchObject({
-        id: "55555555-5555-4555-8555-555555555555",
-        content: "selected excerpt",
-        sender_full_name: "Bob Reed",
-        sender_uuid: USER_B_UUID,
-        permalinkUrl: null,
-        quoteFormat: "workspace",
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject({
+        activeTabId: expect.any(String),
+        tabs: [
+          {
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            selectedText: "selected excerpt",
+            answer: "",
+          },
+        ],
       });
     });
-    expect(captured.composerProps?.draftInitialValue).toBeUndefined();
+    expect(captured.messageListProps?.onReplyMessage).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onAddReplyMessage).toEqual(expect.any(Function));
+    expect(captured.composerProps?.replyQuote).toMatchObject({
+      id: captured.composerProps?.workspaceReplySession?.activeTabId,
+      content: "selected excerpt",
+      sender_full_name: "Bob Reed",
+      sender_uuid: USER_B_UUID,
+      quoteFormat: "workspace",
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe("");
+    expect(captured.composerProps?.focusKey).toBe(
+      captured.composerProps?.workspaceReplySession?.activeTabId,
+    );
 
     act(() => {
       captured.composerProps?.onClearReply();
@@ -1248,6 +1277,296 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => {
       expect(captured.composerProps?.replyQuote).toBeNull();
     });
+  });
+
+  it("replaces the active Workspace reply quote while preserving its answer", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID, "excerpt A");
+    });
+    const firstTabId = captured.composerProps?.workspaceReplySession?.activeTabId;
+    act(() => {
+      captured.composerProps?.onComposerValueChange("answer A");
+    });
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(SECOND_MESSAGE_UUID, "excerpt B");
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject({
+        activeTabId: firstTabId,
+        tabs: [
+          {
+            id: firstTabId,
+            messageUuid: SECOND_MESSAGE_UUID,
+            selectedText: "excerpt B",
+            answer: "answer A",
+          },
+        ],
+      });
+    });
+  });
+
+  it("adds a Workspace reply tab with an empty answer", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID, "excerpt A");
+      captured.composerProps?.onComposerValueChange?.("answer A");
+    });
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID, "excerpt B");
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(2);
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe(
+        captured.composerProps?.workspaceReplySession?.tabs[1]?.id,
+      );
+      expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.answer).toBe("answer A");
+      expect(captured.composerProps?.workspaceReplySession?.tabs[1]).toMatchObject({
+        messageUuid: SECOND_MESSAGE_UUID,
+        answer: "",
+      });
+    });
+  });
+
+  it("switches Workspace reply tabs and shows the selected answer", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+    act(() => {
+      captured.composerProps?.onComposerValueChange("answer A");
+    });
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+    act(() => {
+      captured.composerProps?.onComposerValueChange("answer B");
+    });
+    const firstTabId = captured.composerProps?.workspaceReplySession?.tabs[0]?.id;
+    const secondTabId = captured.composerProps?.workspaceReplySession?.tabs[1]?.id;
+
+    act(() => {
+      if (firstTabId != null) captured.composerProps?.onSelectWorkspaceReplyTab?.(firstTabId);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.draftInitialValue).toBe("answer A");
+      expect(captured.composerProps?.focusKey).toBe(firstTabId);
+    });
+
+    act(() => {
+      if (secondTabId != null) captured.composerProps?.onSelectWorkspaceReplyTab?.(secondTabId);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.draftInitialValue).toBe("answer B");
+      expect(captured.composerProps?.focusKey).toBe(secondTabId);
+    });
+  });
+
+  it("suppresses composer focus during keyboard tab navigation and restores it for pointer and reply actions", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.onAddReplyMessage).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+
+    const firstTabId = captured.composerProps?.workspaceReplySession?.tabs[0]?.id;
+    const secondTabId = captured.composerProps?.workspaceReplySession?.tabs[1]?.id;
+    if (firstTabId == null || secondTabId == null) {
+      throw new Error("Workspace reply tabs were not created");
+    }
+    const selectWorkspaceReplyTab = captured.composerProps?.onSelectWorkspaceReplyTab;
+    if (selectWorkspaceReplyTab == null) {
+      throw new Error("Workspace reply tab select handler is missing");
+    }
+
+    expect(captured.composerProps?.focusKey).toBe(secondTabId);
+
+    act(() => {
+      selectWorkspaceReplyTab(firstTabId, "keyboard");
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe(firstTabId);
+      expect(captured.composerProps?.focusKey).toBeNull();
+    });
+
+    act(() => {
+      selectWorkspaceReplyTab(secondTabId, "keyboard");
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe(secondTabId);
+      expect(captured.composerProps?.focusKey).toBeNull();
+    });
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe(secondTabId);
+      expect(captured.composerProps?.focusKey).toBe(secondTabId);
+    });
+
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      const activeTabId = captured.composerProps?.workspaceReplySession?.activeTabId;
+      expect(activeTabId).not.toBeNull();
+      expect(captured.composerProps?.focusKey).toBe(activeTabId);
+    });
+
+    act(() => {
+      selectWorkspaceReplyTab(firstTabId);
+    });
+    await waitFor(() => expect(captured.composerProps?.focusKey).toBe(firstTabId));
+  });
+
+  it("removes the last Workspace reply tab and closes the session", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+    const tabId = captured.composerProps?.workspaceReplySession?.activeTabId;
+    act(() => {
+      if (tabId != null) captured.composerProps?.onRemoveWorkspaceReplyTab?.(tabId);
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toEqual({
+        tabs: [],
+        activeTabId: null,
+      });
+      expect(captured.composerProps?.outgoingBodyOverride).toBeUndefined();
+    });
+  });
+
+  it("sends Workspace reply pairs in their current tab order", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+    act(() => {
+      captured.composerProps?.onComposerValueChange("answer A");
+    });
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+    act(() => {
+      captured.composerProps?.onComposerValueChange("answer B");
+    });
+    const outgoingBody = captured.composerProps?.outgoingBodyOverride;
+    expect(outgoingBody).toContain("answer A");
+    expect(outgoingBody).toContain("answer B");
+    expect(outgoingBody?.indexOf("answer A")).toBeLessThan(outgoingBody?.indexOf("answer B") ?? -1);
+    await act(async () => {
+      await captured.composerProps?.onSend?.(outgoingBody ?? "", "");
+    });
+
+    expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ markdown: outgoingBody }),
+    );
+  });
+
+  it("clears Workspace reply tabs after a successful send", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+      captured.composerProps?.onComposerValueChange?.("answer");
+    });
+    await act(async () => {
+      await captured.composerProps?.onSend?.(
+        captured.composerProps?.outgoingBodyOverride ?? "",
+        "",
+      );
+    });
+
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+  });
+
+  it("keeps Workspace reply tabs when sending fails", async () => {
+    captured.sendMessengerMessage.mockRejectedValueOnce(new Error("send failed"));
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+      captured.composerProps?.onComposerValueChange?.("answer");
+    });
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    await expect(onSend(captured.composerProps?.outgoingBodyOverride ?? "", "")).rejects.toThrow();
+
+    expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(1);
+    expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.answer).toBe("answer");
+  });
+
+  it("treats a false Workspace send as failed and keeps the active reply answer", async () => {
+    captured.sendMessengerMessage.mockResolvedValueOnce({
+      status: "skipped",
+      ownerKey: "owner-key",
+      reason: "stale-owner",
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+      captured.composerProps?.onComposerValueChange?.("answer");
+    });
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    await expect(onSend(captured.composerProps?.outgoingBodyOverride ?? "", "")).rejects.toThrow();
+
+    expect(captured.messageListProps?.outgoingMessages?.[0]).toEqual(
+      expect.objectContaining({ status: "failed" }),
+    );
+    expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.answer).toBe("answer");
   });
 
   it("opens Workspace forward store for one message with selected text", async () => {

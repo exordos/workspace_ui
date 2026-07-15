@@ -18,6 +18,7 @@ export interface WorkspaceMessageBubbleMenuProps {
   onSourceChange: (source: WorkspaceMessageBubbleMenuSource) => void;
   onOpenChange: (open: boolean) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;

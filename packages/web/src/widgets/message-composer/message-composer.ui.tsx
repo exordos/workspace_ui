@@ -279,6 +279,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   activeTopic,
   replyQuote,
   onClearReply,
+  leadingContent,
+  outgoingBodyOverride,
+  allowEmptyActiveValueSend = false,
+  focusKey,
   initialValue,
   onValueChange,
   onEditLastMessage,
@@ -396,6 +400,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const textareaId = useId();
   const prevDisabledRef = useRef(disabled);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
+  const prevFocusKeyRef = useRef(focusKey);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();
@@ -410,6 +415,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       textareaRef.current?.focus();
     }
   }, [effectiveReplyQuote, disabled, mode]);
+  useLayoutEffect(() => {
+    const previousFocusKey = prevFocusKeyRef.current;
+    prevFocusKeyRef.current = focusKey;
+    if (
+      focusKey != null &&
+      focusKey !== previousFocusKey &&
+      !disabled &&
+      !isEditing &&
+      mode === "write"
+    ) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled, focusKey, isEditing, mode]);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
@@ -454,9 +472,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [files]);
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
-    () => buildOutgoingMessageBody(value, effectiveReplyQuote),
-    [value, effectiveReplyQuote],
+    () =>
+      !isEditing && outgoingBodyOverride != null
+        ? outgoingBodyOverride
+        : buildOutgoingMessageBody(value, effectiveReplyQuote),
+    [effectiveReplyQuote, isEditing, outgoingBodyOverride, value],
   );
+  const canSendWithEmptyActiveValue =
+    allowEmptyActiveValueSend &&
+    outgoingBodyOverride != null &&
+    outgoingBodyOverride.trim().length > 0;
   const preview = useMessageComposerPreview({
     mode,
     outgoingBody,
@@ -759,7 +784,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
-    if ((!hasText && !hasFiles) || disabled || sendInFlight) return;
+    const hasSendableExternalBody = canSendWithEmptyActiveValue;
+    if ((!hasText && !hasSendableExternalBody && !hasFiles) || disabled || sendInFlight) return;
     const subject = activeTopic ?? "";
     const bodyToSend = outgoingBody;
     const valueToSend = value;
@@ -1227,6 +1253,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       onFocusCapture={handleComposerFocusCapture}
       onBlurCapture={handleComposerBlurCapture}
     >
+      {!isEditing ? leadingContent : null}
       <MessageComposerPreface
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}

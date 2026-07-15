@@ -1,5 +1,6 @@
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { WorkspaceReplySession } from "~/features/workspace-reply/workspace-reply.types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type {
   ComposerEditSession,
@@ -24,6 +25,12 @@ export interface ChatPageComposerSectionProps {
   activeTopic: string | null | undefined;
   replyQuote: ReplyQuote | null;
   onClearReply: () => void;
+  workspaceReplySession?: WorkspaceReplySession | null;
+  onSelectWorkspaceReplyTab?: (tabId: string) => void;
+  onRemoveWorkspaceReplyTab?: (tabId: string) => void;
+  outgoingBodyOverride?: string;
+  allowEmptyActiveValueSend?: boolean;
+  focusKey?: string | null;
   draftInitialValue: string | undefined;
   onComposerValueChange: (v: string) => void;
   onEditLastMessage: () => void;

@@ -175,6 +175,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onSourceChange,
   onOpenChange,
   onReplyMessage,
+  onAddReplyMessage,
   onForwardMessage,
   onOpenMessageInChat,
   onToggleMessageSelection,
@@ -259,6 +260,18 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         label: t("message.reply"),
         onSelect: () => {
           onReplyMessage(message.uuid, getSelectedText());
+          closeMenu();
+        },
+      });
+    }
+    if (onAddReplyMessage != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "add-reply",
+        icon: "reply",
+        label: t("message.addReply"),
+        onSelect: () => {
+          onAddReplyMessage(message.uuid, getSelectedText());
           closeMenu();
         },
       });
@@ -359,6 +372,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     isOwn,
     message.payload.content,
     message.uuid,
+    onAddReplyMessage,
     onCopyMessageText,
     onEditMessage,
     onForwardMessage,

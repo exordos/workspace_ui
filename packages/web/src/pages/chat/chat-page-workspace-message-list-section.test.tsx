@@ -172,6 +172,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
 
   it("forwards Workspace message menu actions to the Workspace list", () => {
     const onReplyMessage = vi.fn();
+    const onAddReplyMessage = vi.fn();
     const onEditMessage = vi.fn();
     const onRequestDeleteMessage = vi.fn();
     const onCopyMessageText = vi.fn();
@@ -204,6 +205,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onUnreadMessagesVisible={vi.fn()}
         onUnreadMessagesAtBottom={vi.fn()}
         onReplyMessage={onReplyMessage}
+        onAddReplyMessage={onAddReplyMessage}
         onEditMessage={onEditMessage}
         onRequestDeleteMessage={onRequestDeleteMessage}
         onCopyMessageText={onCopyMessageText}
@@ -220,6 +222,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     );
 
     expect(captured.workspaceMessageListProps?.actions?.onReplyMessage).toBe(onReplyMessage);
+    expect(captured.workspaceMessageListProps?.actions?.onAddReplyMessage).toBe(onAddReplyMessage);
     expect(captured.workspaceMessageListProps?.actions?.onEditMessage).toBe(onEditMessage);
     expect(captured.workspaceMessageListProps?.actions?.onRequestDeleteMessage).toBe(
       onRequestDeleteMessage,

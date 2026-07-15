@@ -357,6 +357,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             onSourceChange={handleMenuSourceChange}
             onOpenChange={handleMenuOpenChange}
             onReplyMessage={actions?.onReplyMessage}
+            onAddReplyMessage={actions?.onAddReplyMessage}
             onForwardMessage={actions?.onForwardMessage}
             onOpenMessageInChat={actions?.onOpenMessageInChat}
             onToggleMessageSelection={actions?.onToggleMessageSelection}

@@ -37,6 +37,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onUnreadMessagesVisible: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom: (messageUuids: MessengerUuid[]) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
   onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;

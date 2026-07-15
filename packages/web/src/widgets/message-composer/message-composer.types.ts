@@ -75,6 +75,16 @@ export interface MessageComposerProps {
   /** Reply quote (shown above the input, prepended to the body on send) */
   replyQuote?: ReplyQuote | null;
   onClearReply?: () => void;
+  /** Optional content rendered above the regular composer preface inside the same card. */
+  leadingContent?: ReactNode;
+  /**
+   * Fully assembled outgoing body supplied by the parent, for example for Workspace multi-reply.
+   */
+  outgoingBodyOverride?: string;
+  /** Allows sending with an empty active draft when the external outgoing body has content. */
+  allowEmptyActiveValueSend?: boolean;
+  /** Focus the textarea when this key changes, unless the composer is unavailable or editing. */
+  focusKey?: string | null;
   /** Pre-fill the composer (e.g. from a saved draft) */
   initialValue?: string;
   /** Called whenever the composer text changes (for draft persistence) */

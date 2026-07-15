@@ -206,6 +206,7 @@
     "fileUploadUnsupported": "File uploads are no longer available in this legacy chat path.",
     "views": "Views",
     "reply": "Reply",
+    "addReply": "Add reply",
     "edit": "Edit message",
     "editUnavailable": "This message can no longer be edited",
     "editSaving": "Saving edit…",
