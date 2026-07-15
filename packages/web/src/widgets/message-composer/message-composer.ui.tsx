@@ -60,6 +60,7 @@ import {
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
 import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
+import { buildScheduledComposerMessage } from "./message-composer-schedule.lib";
 import { wrapSelection } from "./message-composer-selection.lib";
 import {
   TOOLBAR_AI_ICON_SIZE,
@@ -703,18 +704,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         showUnsupportedAction(scheduledSendCapability);
         return;
       }
-      const hasText = value.trim().length > 0;
-      const hasFiles = files.length > 0;
-      if ((!hasText && !hasFiles) || disabled || onSend == null) return;
+      if (disabled || onSend == null) return;
 
       const subject = activeTopic ?? "";
-      const scheduledMessage: ScheduledComposerMessage = {
+      const scheduledMessage = buildScheduledComposerMessage({
         id: crypto.randomUUID(),
         content: outgoingBody,
         subject,
-        files: hasFiles ? [...files] : [],
+        value,
+        files,
+        canSendWithEmptyActiveValue,
         sendAt,
-      };
+      });
+      if (scheduledMessage == null) return;
 
       setScheduledMessages((prev) => [...prev, scheduledMessage]);
       setScheduleMenuOpen(false);
@@ -730,6 +732,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       scheduledSendCapability,
       scheduledSendSupported,
       showUnsupportedAction,
+      canSendWithEmptyActiveValue,
       value,
     ],
   );
@@ -823,7 +826,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       textarea.focus();
       textarea.setSelectionRange(0, 0);
     });
-    if (effectiveReplyQuote) {
+    if (shouldClearComposer && effectiveReplyQuote) {
       onClearReply?.();
     }
     setAiMenuOpen(false);
