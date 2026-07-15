@@ -70,6 +70,7 @@ function createStream(
   return {
     id: `stream:${STREAM_UUID}`,
     streamUuid: STREAM_UUID,
+    directUserUuid: null,
     title: "Engineering",
     audience: "channel",
     isPrivate: false,
@@ -181,20 +182,35 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
   });
 
-  it("shows contact info instead of members for a direct private chat", async () => {
-    renderWorkspaceSidebar([
-      createStream({
-        title: "Alice",
-        audience: "private",
-        isPrivate: true,
-        uiKind: "directPrivate",
-      }),
-    ]);
+  it("opens the selected contact profile from a direct private chat", async () => {
+    const openInfo = vi.fn();
+    const openWorkspaceUserProfile = vi.fn();
+    renderWorkspaceSidebar(
+      [
+        createStream({
+          title: "Alice",
+          audience: "private",
+          isPrivate: true,
+          uiKind: "directPrivate",
+          directUserUuid: "alice-uuid",
+        }),
+      ],
+      {
+        open: false,
+        setOpen: vi.fn(),
+        openInfo,
+        openWorkspaceUserProfile,
+      },
+    );
 
     fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
 
-    expect(await screen.findByRole("menuitem", { name: /contact info/i })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /contact info/i }));
+
+    expect(openWorkspaceUserProfile).toHaveBeenCalledWith("alice-uuid");
+    expect(openInfo).not.toHaveBeenCalled();
     expect(screen.queryByRole("menuitem", { name: /members/i })).not.toBeInTheDocument();
+    expectNoWorkspaceActionRequests();
   });
 
   it("opens the shared right panel from the stream members menu item without API actions", async () => {

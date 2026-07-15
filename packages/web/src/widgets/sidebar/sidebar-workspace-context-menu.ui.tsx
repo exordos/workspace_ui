@@ -289,6 +289,12 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
 
   const handleOpenMembers = useCallback((): void => {
     handleMenuOpenChange(false);
+    if (stream.uiKind === "directPrivate") {
+      if (stream.directUserUuid != null) {
+        rightDrawer?.openWorkspaceUserProfile?.(stream.directUserUuid);
+      }
+      return;
+    }
     // Меню потока не владеет member flow и не ходит в API: это только вход в
     // общую правую панель, где уже собраны список, добавление и отписка.
     if (rightDrawer?.openInfo != null) {
@@ -296,7 +302,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
       return;
     }
     rightDrawer?.setOpen(true);
-  }, [handleMenuOpenChange, rightDrawer]);
+  }, [handleMenuOpenChange, rightDrawer, stream.directUserUuid, stream.uiKind]);
 
   const handleSubmitCreateTopic = useCallback((): void => {
     const name = newTopicName.trim();

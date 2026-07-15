@@ -234,6 +234,7 @@ export interface MessengerSidebarTopicItem {
 export interface MessengerSidebarStreamItem {
   id: MessengerConversationId;
   streamUuid: MessengerUuid;
+  directUserUuid: MessengerUuid | null;
   title: string;
   audience: MessengerAudience;
   isPrivate: boolean;

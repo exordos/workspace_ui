@@ -245,6 +245,7 @@ function streamItemFromStream(input: {
   return {
     id: `stream:${input.stream.uuid}`,
     streamUuid: input.stream.uuid,
+    directUserUuid: input.stream.directUserUuid,
     title:
       uiKind === "directPrivate" && input.stream.directUserUuid != null
         ? selectUserDisplayName(directUser, input.stream.name)
@@ -303,6 +304,7 @@ function streamItemFromConversation(input: {
   return {
     id: input.conversation.id,
     streamUuid: input.conversation.streamUuid,
+    directUserUuid: input.conversation.directUserUuid ?? null,
     title:
       uiKind === "directPrivate" && input.conversation.directUserUuid != null
         ? selectUserDisplayName(directUser, input.conversation.title)
