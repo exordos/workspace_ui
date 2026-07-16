@@ -6,7 +6,10 @@ import {
   LOGIN_SERVER_FIELD,
   expectLoginOrganizationStep,
 } from "./fixtures";
-import { E2E_EMAIL, E2E_REALM } from "./mocks/zulip-default-responses";
+
+const E2E_EMAIL = "e2e@example.test";
+const E2E_ORGANIZATION_URL = "https://workspace.example.test";
+const LOGIN_EMAIL_FIELD = /email|логин/i;
 
 test.describe("Login page", () => {
   test("shows login form when no instances", async ({ guestPage }) => {
@@ -14,28 +17,22 @@ test.describe("Login page", () => {
     await expectLoginOrganizationStep(guestPage);
   });
 
-  test("has realm, email, and password fields across login steps", async ({
-    guestPage,
-    zulipApi: _zulipApi,
-  }) => {
+  test("has realm, email, and password fields across login steps", async ({ guestPage }) => {
     await guestPage.goto("/");
-    await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);
+    await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_ORGANIZATION_URL);
     await guestPage.getByRole("button", { name: LOGIN_NEXT_BUTTON }).click();
 
-    await expect(guestPage.getByLabel(/^email$/i)).toBeVisible();
-    await guestPage.getByLabel(/^email$/i).fill(E2E_EMAIL);
+    await expect(guestPage.getByLabel(LOGIN_EMAIL_FIELD)).toBeVisible();
+    await guestPage.getByLabel(LOGIN_EMAIL_FIELD).fill(E2E_EMAIL);
     await expect(guestPage.getByLabel(/^пароль$|^password$/i)).toBeVisible();
   });
 
-  test("login button is present after entering email", async ({
-    guestPage,
-    zulipApi: _zulipApi,
-  }) => {
+  test("login button is present after entering email", async ({ guestPage }) => {
     await guestPage.goto("/");
-    await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);
+    await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_ORGANIZATION_URL);
     await guestPage.getByRole("button", { name: LOGIN_NEXT_BUTTON }).click();
-    await expect(guestPage.getByLabel(/^email$/i)).toBeVisible();
-    await guestPage.getByLabel(/^email$/i).fill(E2E_EMAIL);
+    await expect(guestPage.getByLabel(LOGIN_EMAIL_FIELD)).toBeVisible();
+    await guestPage.getByLabel(LOGIN_EMAIL_FIELD).fill(E2E_EMAIL);
 
     const button = guestPage.getByRole("button", { name: LOGIN_BUTTON });
     await expect(button).toBeVisible();

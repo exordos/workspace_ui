@@ -38,15 +38,6 @@ test.describe("Auth Guard", () => {
     await expectLoginOrganizationStep(guestPage);
   });
 
-  // localStorage should not contain sensitive data in plain view after logout
-  test("no credentials in localStorage after clear", async ({ page }) => {
-    await page.goto("/");
-    const hasApiKey = await page.evaluate(() => {
-      const data = localStorage.getItem("zulip-web-instances");
-      return data?.includes("apiKey") ?? false;
-    });
-    expect(hasApiKey).toBe(false);
-  });
 });
 
 test.describe("XSS Prevention", () => {

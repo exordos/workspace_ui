@@ -3,14 +3,14 @@ import {
   hasLiveAuthCredentials,
   LIVE_EMAIL,
   LIVE_PASSWORD,
-  LIVE_REALM,
+  LIVE_ORGANIZATION_URL,
 } from "../helpers/live-auth-env";
 
 test.describe("Feed forward live smoke @live", () => {
   test("opens forward flow from feed and pre-fills destination composer", async ({ page, loginAs }) => {
-    test.skip(!hasLiveAuthCredentials(), "Requires TEST_USER_ZULIP_SERVER, TEST_USER_EMAIL, TEST_USER_PASSWORD");
+    test.skip(!hasLiveAuthCredentials(), "Requires TEST_USER_WORKSPACE_SERVER, TEST_USER_EMAIL, TEST_USER_PASSWORD");
 
-    await loginAs(LIVE_EMAIL!, LIVE_PASSWORD!, LIVE_REALM!);
+    await loginAs(LIVE_EMAIL!, LIVE_PASSWORD!, LIVE_ORGANIZATION_URL!);
     await page.goto("/feed");
 
     const firstFeedRow = page.locator("ul > li").first();

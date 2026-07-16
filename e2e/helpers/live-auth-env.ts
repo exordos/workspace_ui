@@ -47,10 +47,10 @@ export function resolveLiveAuthVar(key: string, fileEnv: LiveAuthEnv): string | 
 
 const FILE_ENV = loadLiveAuthEnvFromFile();
 
-export const LIVE_REALM = resolveLiveAuthVar("TEST_USER_ZULIP_SERVER", FILE_ENV);
+export const LIVE_ORGANIZATION_URL = resolveLiveAuthVar("TEST_USER_WORKSPACE_SERVER", FILE_ENV);
 export const LIVE_EMAIL = resolveLiveAuthVar("TEST_USER_EMAIL", FILE_ENV);
 export const LIVE_PASSWORD = resolveLiveAuthVar("TEST_USER_PASSWORD", FILE_ENV);
 
 export function hasLiveAuthCredentials(): boolean {
-  return Boolean(LIVE_REALM && LIVE_EMAIL && LIVE_PASSWORD);
+  return Boolean(LIVE_ORGANIZATION_URL && LIVE_EMAIL && LIVE_PASSWORD);
 }

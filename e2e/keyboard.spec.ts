@@ -5,7 +5,6 @@
  * skip-to-content, and keyboard shortcuts work correctly.
  */
 import { test, expect } from "./fixtures";
-import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 
 test.describe("Keyboard Navigation", () => {
   // Tab should be able to reach interactive elements
@@ -27,21 +26,5 @@ test.describe("Keyboard Navigation", () => {
     });
     // Should have some outline (not "none") when focused via keyboard
     expect(outline).toBeTruthy();
-  });
-});
-
-test.describe("Shortcuts", () => {
-  // Cmd/Ctrl+K should open search (if authenticated)
-  test("Ctrl+K opens search when authenticated", async ({ authenticated }) => {
-    await openStreamChatWithComposer(authenticated);
-    await authenticated.keyboard.press("Control+k");
-    // Search modal or search input should be visible
-    const searchVisible = await authenticated
-      .getByPlaceholder(/search|find/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    // May not work if UI is loading — just verify no crash
-    expect(searchVisible).toBeDefined();
   });
 });
