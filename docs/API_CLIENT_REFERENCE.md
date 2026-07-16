@@ -54,6 +54,71 @@ encoding.
 
 Also includes middleware pipeline: `messengerApi.get/post/patch/delete` with auth, logging, and retry middleware.
 
+### shared/api/messenger-upload.ts — File uploads
+
+**Import**: `import { uploadFile } from '~/shared/api/messenger-upload'`
+
+`uploadFile(file, options)` uploads bytes through
+`POST /api/workspace/v1/messenger/files/` and returns the canonical
+`urn:file`, `urn:image`, or `urn:video` value with filename, content type, and
+size metadata.
+
+Use `{ streamUuid }` for a normal chat attachment. To create a file available
+to any authenticated Workspace bearer token without stream membership, use the
+existing public ACL object:
+
+```typescript
+const urn = await uploadFile(file, {
+  acl: { mode: "public" },
+});
+```
+
+Public uploads omit `stream_uuid`; combining `acl.mode=public` with a stream
+UUID is rejected. This is authenticated Workspace-wide access, not anonymous
+access. The backend continues to persist one binary object plus its JSON
+sidecar, while clients persist only the returned URN.
+
+### shared/api/messenger-messages.ts — Sending messages
+
+**Import**: `import { sendMessage } from '~/shared/api/messenger-messages'`
+
+`sendMessage(params)` posts a native markdown message to
+`POST /api/workspace/v1/messenger/messages/` and returns the created message
+mapped to the UI `MockMessage` model.
+
+| Parameter          | Required | Purpose                                                                          |
+| ------------------ | -------- | -------------------------------------------------------------------------------- |
+| `messageUuid`      | no       | Client-generated message UUID. The helper generates one when omitted.            |
+| `streamUuid`       | yes      | Workspace stream UUID.                                                           |
+| `topicUuid`        | no       | Workspace topic UUID. When omitted, the backend uses the stream's default topic. |
+| `content`          | yes      | Non-empty markdown source.                                                       |
+| `stream`           | no       | Display-only stream name for the returned local message.                         |
+| `subject`          | no       | Display-only subject for the returned local message.                             |
+| `author_id`        | no       | Author identity used to construct the returned local message.                    |
+| `sender_id`        | no       | Numeric sender fallback used to construct the returned local message.            |
+| `sender_full_name` | no       | Sender display name used to construct the returned local message.                |
+
+The wire request contains only the canonical message fields:
+
+```json
+{
+  "uuid": "a93dca35-3061-4748-bda4-7f6f8c660ea5",
+  "stream_uuid": "75309057-419c-4b12-a7c1-3932429ec4a6",
+  "topic_uuid": "4ec0b996-b778-45f8-8ef4-ef863be0c047",
+  "payload": {
+    "kind": "markdown",
+    "content": "Hello, workspace"
+  }
+}
+```
+
+The UUID is the message idempotency key. Automatic transport retries within one
+`sendMessage` call reuse the same request body and UUID. If application code
+retries after the promise rejects, it must pass the original `messageUuid`;
+calling `sendMessage` again without it generates a new message UUID. Reusing a
+UUID with the same canonical message is idempotent, while reusing it for
+different message content or routing is rejected by the backend.
+
 ---
 
 ## shared/api/workspace-client.ts — Workspace API
@@ -77,9 +142,9 @@ select another origin, but the path layout is fixed.
 
 **Import**: `import { reportPresence } from '~/entities/user/api/user.api'`
 
-| Function                               | Endpoint                  | Params                                       | Returns |
-| -------------------------------------- | ------------------------- | -------------------------------------------- | ------- |
-| `reportPresence(status, newUserInput)` | `POST /users/me/presence` | `status` ("active"/"idle"), `new_user_input` | `void`  |
+| Function                 | Endpoint                                                  | Params                                        | Returns |
+| ------------------------ | --------------------------------------------------------- | --------------------------------------------- | ------- |
+| `reportPresence(status)` | `POST /users/{current_user_uuid}/actions/presence/invoke` | `status` (`active`, `idle`, `do_not_disturb`) | `void`  |
 
 > Core Workspace HTTP helpers live in `packages/web/src/shared/api/messenger-*.ts` and are consumed by entity/feature APIs.
 

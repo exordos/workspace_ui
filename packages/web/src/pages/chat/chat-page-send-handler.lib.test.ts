@@ -132,11 +132,11 @@ describe("executeChatPageSend", () => {
     expect(deps.setSendError).toHaveBeenCalledWith("message.sendFailed");
   });
 
-  it("moves an API-rejected submission to the failed outbox without restoring the composer", async () => {
+  it("moves an API-rejected submission to the failed outbox and rejects for composer restore", async () => {
     vi.mocked(sendMessage).mockRejectedValueOnce(new Error("mail unavailable"));
     const deps = createDeps();
 
-    await expect(executeChatPageSend(deps, "retry safely")).resolves.toBeUndefined();
+    await expect(executeChatPageSend(deps, "retry safely")).rejects.toThrow("mail unavailable");
 
     expect(deps.appendMessage).toHaveBeenNthCalledWith(
       1,

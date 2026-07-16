@@ -13,7 +13,12 @@ import { ensureMessengerApiReady } from "./messenger-pipeline.internal";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export interface WorkspaceFilePublicAcl {
+  mode: "public";
+}
+
 export interface UploadFileOptions {
+  acl?: WorkspaceFilePublicAcl;
   signal?: AbortSignal;
   streamUuid?: string;
 }
@@ -65,18 +70,21 @@ export function buildWorkspaceFileUrn(fileUuid: string, file: File): string {
 
 async function uploadWorkspaceFileMultipart(
   file: File,
-  streamUuid: string,
-  options?: UploadFileOptions,
+  options: UploadFileOptions,
 ): Promise<string> {
   const form = new FormData();
   form.append("file", file);
-  form.append("stream_uuid", streamUuid);
+  if (options.acl?.mode === "public") {
+    form.append("acl", JSON.stringify(options.acl));
+  } else {
+    form.append("stream_uuid", guard.streamUuid(options.streamUuid, "uploadFile.streamUuid"));
+  }
 
   const res = await messengerApi.postFormDataWithBase(
     getMessengerWorkspaceApiBaseForCurrentInstance(),
     "/files/",
     form,
-    options?.signal,
+    options.signal,
   );
   if (!res.ok) {
     throw new Error(
@@ -99,6 +107,9 @@ export async function uploadFile(file: File, options?: UploadFileOptions): Promi
     throw new Error(validation.error ?? "File validation failed");
   }
 
-  const streamUuid = guard.streamUuid(options?.streamUuid, "uploadFile.streamUuid");
-  return uploadWorkspaceFileMultipart(file, streamUuid, options);
+  const requestOptions = options ?? {};
+  if (requestOptions.acl?.mode === "public" && requestOptions.streamUuid != null) {
+    throw new Error("Public file upload must not include streamUuid");
+  }
+  return uploadWorkspaceFileMultipart(file, requestOptions);
 }

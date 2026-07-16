@@ -3,7 +3,13 @@ import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
+import {
+  executeChatPageSend,
+  type ChatPageSendHandlerDeps,
+} from "~/pages/chat/chat-page-send-handler.lib";
 import type * as MessengerMessagesApi from "~/shared/api/messenger-messages";
+import type * as MessengerUploadApi from "~/shared/api/messenger-upload";
+import type * as SharedConstants from "~/shared/config/constants";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser, testMessageId } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -19,13 +25,15 @@ const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
 const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
+const sendMessageMock = vi.hoisted(() => vi.fn());
+const uploadFileMock = vi.hoisted(() => vi.fn());
 
 function mentionUserUuid(id: number): string {
   return `00000000-0000-4000-8000-${id.toString().padStart(12, "0")}`;
 }
 
-vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
+vi.mock("~/shared/config/constants", async () => {
+  const actual = await vi.importActual<typeof SharedConstants>("~/shared/config/constants");
   return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
 });
 
@@ -51,9 +59,18 @@ vi.mock("~/shared/api/messenger-messages", async () => {
   );
   return {
     ...actual,
+    sendMessage: (...args: unknown[]) => sendMessageMock(...args),
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
     fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
     createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
+  };
+});
+
+vi.mock("~/shared/api/messenger-upload", async () => {
+  const actual = await vi.importActual<typeof MessengerUploadApi>("~/shared/api/messenger-upload");
+  return {
+    ...actual,
+    uploadFile: (...args: unknown[]) => uploadFileMock(...args),
   };
 });
 
@@ -124,6 +141,8 @@ afterEach(() => {
   emojiPickerMock.mockReset();
   fetchRealmEmojisMock.mockReset();
   fetchRealmEmojisMock.mockResolvedValue([]);
+  sendMessageMock.mockReset();
+  uploadFileMock.mockReset();
 });
 
 beforeEach(() => {
@@ -221,8 +240,66 @@ describe("MessageComposer async send behavior", () => {
     });
   });
 
+  it("restores text and files while retaining the failed bubble after a transport rejection", async () => {
+    const streamUuid = "22222222-2222-4222-8222-222222222222";
+    const optimisticMessageUuid = "11111111-1111-4111-8111-111111111111";
+    const appendMessage = vi.fn();
+    const deps: ChatPageSendHandlerDeps = {
+      currentUserId: "44444444-4444-4444-8444-444444444444",
+      isDmView: false,
+      activeDmUserIds: null,
+      activeStream: "Engineering",
+      activeStreamCanonicalName: "engineering",
+      activeStreamId: streamUuid,
+      activeStreamUuid: streamUuid,
+      activeTopic: "general",
+      activeTopicUuid: "55555555-5555-4555-8555-555555555555",
+      allocateOptimisticMessageId: () => optimisticMessageUuid,
+      appendMessage,
+      commitOutgoingMessage: vi.fn(),
+      clearReplyQuote: vi.fn(),
+      stopTyping: vi.fn(),
+      setSendError: vi.fn(),
+      setUploadProgress: vi.fn(),
+      setUploadAbortController: vi.fn(),
+      releaseUploadAbortController: vi.fn(),
+    };
+    uploadFileMock.mockResolvedValueOnce(
+      "urn:file:33333333-3333-4333-8333-333333333333?name=retry.txt",
+    );
+    sendMessageMock.mockRejectedValueOnce(new Error("mail unavailable"));
+
+    const onSend = (content: string, subject?: string, files?: File[]) =>
+      executeChatPageSend(deps, content, subject, files);
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const file = new File(["retry"], "retry.txt", { type: "text/plain" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Keep this draft" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(appendMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: optimisticMessageUuid,
+          delivery_status: "failed",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(textbox).toHaveValue("Keep this draft");
+      expect(screen.getByText("retry.txt")).toBeInTheDocument();
+    });
+  });
+
   it("does not overwrite text entered while a failed send was pending", async () => {
-    let rejectSend: (reason: Error) => void = () => {
+    let rejectSend: (reason?: unknown) => void = (_reason?: unknown) => {
       throw new Error("Expected send rejecter to be assigned");
     };
     const onSend = vi.fn().mockReturnValue(

@@ -443,15 +443,16 @@ UC-AUTH-04:
 
 ## 26. Files and Attachments
 
-| ID         | Use Case                             | Actor  | Status |
-| ---------- | ------------------------------------ | ------ | ------ |
-| UC-FILE-01 | Upload file via attach button        | User   | `[x]`  |
-| UC-FILE-02 | Drag-and-drop file into composer     | User   | `[x]`  |
-| UC-FILE-03 | Display preview of uploaded image    | System | `[x]`  |
-| UC-FILE-04 | Progress bar during upload           | System | `[x]`  |
-| UC-FILE-05 | Download attachment from message     | User   | `[x]`  |
-| UC-FILE-06 | Full-screen image/video viewer       | User   | `[x]`  |
-| UC-FILE-07 | TUS resumable upload for large files | System | `[x]`  |
+| ID         | Use Case                                                         | Actor  | Status |
+| ---------- | ---------------------------------------------------------------- | ------ | ------ |
+| UC-FILE-01 | Upload file via attach button                                    | User   | `[x]`  |
+| UC-FILE-02 | Drag-and-drop file into composer                                 | User   | `[x]`  |
+| UC-FILE-03 | Display preview of uploaded image                                | System | `[x]`  |
+| UC-FILE-04 | Progress bar during upload                                       | System | `[x]`  |
+| UC-FILE-05 | Download attachment from message                                 | User   | `[x]`  |
+| UC-FILE-06 | Full-screen image/video viewer                                   | User   | `[x]`  |
+| UC-FILE-07 | TUS resumable upload for large files                             | System | `[ ]`  |
+| UC-FILE-08 | Upload a public-ACL file for authenticated Workspace-wide access | User   | `[x]`  |
 
 ---
 

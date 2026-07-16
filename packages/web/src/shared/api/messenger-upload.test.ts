@@ -62,10 +62,39 @@ describe("uploadFile", () => {
     );
   });
 
+  it("uploads a public file using the canonical public ACL object", async () => {
+    mockMessengerApi.postFormDataWithBase.mockResolvedValue({
+      ok: true,
+      status: 201,
+      data: { uuid: FILE_UUID },
+      raw: { statusText: "Created" },
+    });
+    const file = new File(["public"], "public.txt", { type: "text/plain" });
+
+    const result = await uploadFile(file, { acl: { mode: "public" } });
+
+    expect(result).toBe(`urn:file:${FILE_UUID}?name=public.txt&content_type=text%2Fplain&size=6`);
+    const form = mockMessengerApi.postFormDataWithBase.mock.calls[0]?.[2] as FormData;
+    expect(form.get("stream_uuid")).toBeNull();
+    expect(form.get("acl")).toBe('{"mode":"public"}');
+  });
+
   it("throws when stream uuid is missing", async () => {
     const file = new File(["data"], "test.png", { type: "image/png" });
 
     await expect(uploadFile(file)).rejects.toThrow("Invalid streamUuid");
+    expect(mockMessengerApi.postFormDataWithBase).not.toHaveBeenCalled();
+  });
+
+  it("rejects public ACL combined with a stream UUID", async () => {
+    const file = new File(["data"], "test.png", { type: "image/png" });
+
+    await expect(
+      uploadFile(file, {
+        acl: { mode: "public" },
+        streamUuid: STREAM_UUID,
+      }),
+    ).rejects.toThrow("Public file upload must not include streamUuid");
     expect(mockMessengerApi.postFormDataWithBase).not.toHaveBeenCalled();
   });
 
