@@ -11,6 +11,29 @@ import {
 import { QUOTE_PREVIEW_MAX } from "./message-composer-constants.lib";
 import type { MessageComposerPrefaceProps } from "./message-composer.types";
 
+interface MessageComposerEditNoticeProps {
+  onCancelEdit?: () => void;
+}
+
+export const MessageComposerEditNotice: React.FC<MessageComposerEditNoticeProps> = React.memo(
+  ({ onCancelEdit }) => (
+    <div
+      className={chatBottomNoticeBarClassName({ gap: "3", round: "top" })}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="min-w-0 flex-1 text-sm text-text-primary">{t("message.edit")}</span>
+      <button
+        type="button"
+        onClick={() => onCancelEdit?.()}
+        className="rounded-lg px-3 py-1 text-sm text-text-muted hover:text-text-primary"
+      >
+        {t("common.cancel")}
+      </button>
+    </div>
+  ),
+);
+
 export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = React.memo(
   ({
     uploadProgress,
@@ -26,6 +49,8 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     replyQuote,
     onClearReply,
     isEditing = false,
+    showReplyWhileEditing = false,
+    hideEditNotice = false,
     onCancelEdit,
   }) => {
     const replyQuotePreview = useMemo(() => {
@@ -40,22 +65,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
 
     return (
       <>
-        {isEditing && (
-          <div
-            className={chatBottomNoticeBarClassName({ gap: "3", round: "top" })}
-            role="status"
-            aria-live="polite"
-          >
-            <span className="min-w-0 flex-1 text-sm text-text-primary">{t("message.edit")}</span>
-            <button
-              type="button"
-              onClick={() => onCancelEdit?.()}
-              className="rounded-lg px-3 py-1 text-sm text-text-muted hover:text-text-primary"
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
-        )}
+        {isEditing && !hideEditNotice && <MessageComposerEditNotice onCancelEdit={onCancelEdit} />}
 
         {!isEditing && uploadProgress != null && uploadProgress.total > 0 && (
           <div className="px-4 pb-1 pt-2">
@@ -176,7 +186,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {!isEditing && replyQuote && (
+        {(!isEditing || showReplyWhileEditing) && replyQuote && (
           <div className="bg-bg/50 flex items-start gap-2 border-b border-border-subtle px-4 py-2">
             <div className="min-w-0 flex-1">
               <p className="text-[11px] text-text-muted">

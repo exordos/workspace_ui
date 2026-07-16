@@ -1750,7 +1750,7 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("clears reply state only in the active chat when editing after a route switch", async () => {
+  it("keeps reply drafts in both chats when editing after a route switch", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     const streamConversationId = `stream:${STREAM_UUID}`;
@@ -1813,8 +1813,149 @@ describe("ChatPage Workspace route", () => {
         useWorkspaceComposerDraftStore.getState(),
         ownerKey,
         streamConversationId,
-      ),
-    ).toBeNull();
+      )?.content.replySession.activeTabId,
+    ).toBe("stream-reply");
+  });
+
+  it("restores reply tabs when editing an older own Workspace message", async () => {
+    const restoredMarkdown = [
+      `> [Alice](urn:user:${USER_UUID}) [wrote](urn:message:${MESSAGE_UUID}):`,
+      "> quoted A",
+      "",
+      "answer A",
+      "",
+      `> [Bob](urn:user:${USER_B_UUID}) [said](urn:message:${SECOND_MESSAGE_UUID}):`,
+      "> quoted B",
+      "",
+      "answer B",
+    ].join("\n");
+    useWorkspaceMessageStore
+      .getState()
+      .replaceOrMergeConversationMessagesPage(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+        {
+          ...createMessage(),
+          isOwn: true,
+          payload: { kind: "markdown", content: restoredMarkdown },
+        },
+      ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession).toMatchObject({
+        preserveWorkspaceReplyContext: true,
+        initialMarkdown: "answer A",
+      });
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toEqual([
+        expect.objectContaining({
+          messageUuid: MESSAGE_UUID,
+          quotedContent: "quoted A",
+          answer: "answer A",
+        }),
+        expect.objectContaining({
+          messageUuid: SECOND_MESSAGE_UUID,
+          quotedContent: "quoted B",
+          answer: "answer B",
+        }),
+      ]);
+    });
+
+    act(() => {
+      captured.composerProps?.onComposerValueChange("changed answer A");
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.outgoingBodyOverride).toContain("changed answer A");
+    });
+
+    const secondTabId = captured.composerProps?.workspaceReplySession?.tabs[1]?.id;
+    if (secondTabId == null) throw new Error("Second restored reply tab is missing");
+    act(() => {
+      captured.composerProps?.onSelectWorkspaceReplyTab?.(secondTabId);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession).toMatchObject({
+        preserveWorkspaceReplyContext: true,
+        initialMarkdown: "answer B",
+        sessionKey: `reply:${secondTabId}`,
+      });
+    });
+  });
+
+  it("restores the existing composer draft after cancelling restored reply editing", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const existingDraft = {
+      text: "",
+      replySession: {
+        activeTabId: "draft-tab",
+        tabs: [
+          {
+            id: "draft-tab",
+            messageUuid: SECOND_MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob",
+            quotedContent: "saved quote",
+            createdAt: "2026-07-16T10:00:00.000Z",
+            answer: "saved answer",
+          },
+        ],
+      },
+    };
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, existingDraft);
+    useWorkspaceMessageStore.getState().replaceOrMergeConversationMessagesPage(conversationId, [
+      {
+        ...createMessage(),
+        isOwn: true,
+        payload: {
+          kind: "markdown",
+          content: [
+            `> [Alice](urn:user:${USER_UUID}) [wrote](urn:message:${MESSAGE_UUID}):`,
+            "> old quote",
+            "",
+            "old answer",
+          ].join("\n"),
+        },
+      },
+    ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("draft-tab");
+    });
+
+    act(() => {
+      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession?.preserveWorkspaceReplyContext).toBe(true);
+    });
+
+    act(() => {
+      captured.composerProps?.onCancelEdit();
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession).toBeNull();
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject(
+        existingDraft.replySession,
+      );
+      expect(captured.composerProps?.draftInitialValue).toBe("saved answer");
+    });
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content,
+    ).toEqual(existingDraft);
   });
 
   it("replaces the active Workspace reply quote while preserving its answer", async () => {

@@ -62,6 +62,7 @@ import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-j
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
+import { restoreWorkspaceReplySessionFromMarkdown } from "~/features/workspace-reply/workspace-reply-restore.lib";
 import {
   addWorkspaceReplyTab,
   buildWorkspaceReplyMarkdown,
@@ -319,6 +320,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   >(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
+  const [restoredWorkspaceReplySession, setRestoredWorkspaceReplySession] =
+    useState<WorkspaceReplySession | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
   const [selectedMessageUuids, setSelectedMessageUuids] = useState<Set<string>>(() => new Set());
   const [hydratedComposerDraftScopeKey, setHydratedComposerDraftScopeKey] = useState<string | null>(
@@ -429,7 +432,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
       ? workspaceComposerDraftShadow.content
       : (workspaceComposerDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
-  const workspaceReplySession: WorkspaceReplySession = workspaceComposerContent.replySession;
+  const isRestoredWorkspaceReplyEdit = composerEditSession?.preserveWorkspaceReplyContext === true;
+  const workspaceReplySession: WorkspaceReplySession = isRestoredWorkspaceReplyEdit
+    ? (restoredWorkspaceReplySession ?? EMPTY_WORKSPACE_REPLY_SESSION)
+    : workspaceComposerContent.replySession;
   const workspaceComposerText = workspaceComposerContent.text;
   const setComposerDraftShadow = useCallback(
     (scopeKey: string, content: WorkspaceComposerDraftContent): void => {
@@ -1309,6 +1315,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             markdown,
           }),
         );
+        setRestoredWorkspaceReplySession(null);
         setComposerEditSession(null);
         setComposerEditMessageUuid(null);
       } catch (error) {
@@ -1320,6 +1327,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [composerEditMessageUuid, runWorkspaceAction, runtimeContext],
   );
 
+  const createWorkspaceReplyTabIdentity = useCallback(() => {
+    workspaceReplyTabSequenceRef.current += 1;
+    const sequence = workspaceReplyTabSequenceRef.current;
+    const now = Date.now();
+    return {
+      id: `workspace-reply-tab:${now}:${sequence}`,
+      createdAt: new Date(now).toISOString(),
+    };
+  }, []);
+
   const handleEditMessage = useCallback(
     (messageUuid: string) => {
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
@@ -1328,14 +1345,24 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         return;
       }
 
-      setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
+      const restoredReplySession = restoreWorkspaceReplySessionFromMarkdown(
+        message.payload.content,
+        () => createWorkspaceReplyTabIdentity(),
+      );
+      setRestoredWorkspaceReplySession(restoredReplySession?.session ?? null);
       setComposerEditMessageUuid(message.uuid);
       setComposerEditSession({
         messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-        initialMarkdown: message.payload.content,
+        initialMarkdown: restoredReplySession?.activeAnswer ?? message.payload.content,
+        ...(restoredReplySession == null
+          ? {}
+          : {
+              preserveWorkspaceReplyContext: true,
+              sessionKey: `reply:${restoredReplySession.session.activeTabId ?? ""}`,
+            }),
       });
     },
-    [setWorkspaceReplySession],
+    [createWorkspaceReplyTabIdentity],
   );
 
   const handleRequestDeleteMessage = useCallback((messageUuid: string) => {
@@ -1383,16 +1410,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     });
   }, [pendingDeleteMessageUuid, runWorkspaceAction, runtimeContext]);
 
-  const createWorkspaceReplyTabIdentity = useCallback(() => {
-    workspaceReplyTabSequenceRef.current += 1;
-    const sequence = workspaceReplyTabSequenceRef.current;
-    const now = Date.now();
-    return {
-      id: `workspace-reply-tab:${now}:${sequence}`,
-      createdAt: new Date(now).toISOString(),
-    };
-  }, []);
-
   const resolveWorkspaceReplyQuote = useCallback(
     (messageUuid: string, selectedText?: string): WorkspaceReplyQuote | null => {
       if (
@@ -1436,6 +1453,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
+      setRestoredWorkspaceReplySession(null);
       setWorkspaceReplyTabFocusKeySuppressed(false);
       setWorkspaceReplySession((current) =>
         replyToWorkspaceReply(current, quote, createWorkspaceReplyTabIdentity()),
@@ -1451,6 +1469,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
+      setRestoredWorkspaceReplySession(null);
       setWorkspaceReplyTabFocusKeySuppressed(false);
       setWorkspaceReplySession((current) =>
         addWorkspaceReplyTab(current, quote, createWorkspaceReplyTabIdentity()),
@@ -1460,6 +1479,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const handleClearReply = useCallback(() => {
+    if (isRestoredWorkspaceReplyEdit) {
+      setRestoredWorkspaceReplySession(null);
+      setWorkspaceReplyTabFocusKeySuppressed(false);
+      return;
+    }
     const pendingCleanup = workspaceComposerSendCleanupRef.current;
     if (
       pendingCleanup?.ownerKey === ownerKey &&
@@ -1474,34 +1498,59 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     }
     setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
     setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, [conversationId, ownerKey, setWorkspaceReplySession]);
+  }, [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, setWorkspaceReplySession]);
 
   const handleSelectWorkspaceReplyTab = useCallback(
     (tabId: string, source?: WorkspaceReplyTabSelectSource) => {
       setWorkspaceReplyTabFocusKeySuppressed(source === "keyboard");
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession((current) =>
+          current == null ? current : selectWorkspaceReplyTab(current, tabId),
+        );
+        return;
+      }
       setWorkspaceReplySession((current) => selectWorkspaceReplyTab(current, tabId));
     },
-    [setWorkspaceReplySession],
+    [isRestoredWorkspaceReplyEdit, setWorkspaceReplySession],
   );
 
   const handleRemoveWorkspaceReplyTab = useCallback(
     (tabId: string) => {
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession((current) =>
+          current == null ? current : removeWorkspaceReplyTab(current, tabId),
+        );
+        return;
+      }
       setWorkspaceReplySession((current) => removeWorkspaceReplyTab(current, tabId));
     },
-    [setWorkspaceReplySession],
+    [isRestoredWorkspaceReplyEdit, setWorkspaceReplySession],
   );
 
   const handleReorderWorkspaceReplyTab = useCallback(
     (tabId: string, destinationIndex: number) => {
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession((current) =>
+          current == null ? current : reorderWorkspaceReplyTab(current, tabId, destinationIndex),
+        );
+        return;
+      }
       setWorkspaceReplySession((current) =>
         reorderWorkspaceReplyTab(current, tabId, destinationIndex),
       );
     },
-    [setWorkspaceReplySession],
+    [isRestoredWorkspaceReplyEdit, setWorkspaceReplySession],
   );
 
   const handleWorkspaceComposerValueChange = useCallback(
     (value: string) => {
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession((current) => {
+          if (current == null || current.tabs.length === 0) return current;
+          return setWorkspaceReplyAnswer(current, value);
+        });
+        return;
+      }
       const pendingCleanup = workspaceComposerSendCleanupRef.current;
       if (
         value.length === 0 &&
@@ -1526,7 +1575,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         };
       });
     },
-    [conversationId, ownerKey, updateWorkspaceComposerDraft],
+    [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft],
   );
 
   const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
@@ -1968,6 +2017,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, [handleEditMessage, routeMessages]);
 
   const handleCancelEdit = useCallback(() => {
+    setRestoredWorkspaceReplySession(null);
     setComposerEditSession(null);
     setComposerEditMessageUuid(null);
   }, []);
@@ -2083,6 +2133,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const activeWorkspaceReplyTab = workspaceReplySession.tabs.find(
     (tab) => tab.id === workspaceReplySession.activeTabId,
   );
+  const effectiveComposerEditSession =
+    composerEditSession?.preserveWorkspaceReplyContext === true && activeWorkspaceReplyTab != null
+      ? {
+          ...composerEditSession,
+          initialMarkdown: activeWorkspaceReplyTab.answer,
+          sessionKey: `reply:${activeWorkspaceReplyTab.id}`,
+        }
+      : composerEditSession;
   const workspaceComposerDraftSessionKey =
     workspaceComposerDraftScopeKey == null
       ? null
@@ -2270,7 +2328,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
           onComposerValueChange={handleWorkspaceComposerValueChange}
           onEditLastMessage={handleEditLastMessage}
-          editSession={composerEditSession}
+          editSession={effectiveComposerEditSession}
           onSubmitEdit={handleSubmitEdit}
           onCancelEdit={handleCancelEdit}
           composerCapabilities={workspaceComposerCapabilities}

@@ -48,7 +48,7 @@ import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inse
 import { MessageComposerMediaPickerPopover } from "./message-composer-media-picker-popover.ui";
 import { useComposerMentions } from "./message-composer-mentions.hook";
 import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
-import { MessageComposerPreface } from "./message-composer-preface.ui";
+import { MessageComposerEditNotice, MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 import { useMessageComposerPreview } from "./message-composer-preview.hook";
 import {
@@ -399,7 +399,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const activeComposerSuggestionIndex = showWorkspaceReferences
     ? activeWorkspaceReferenceIndex
     : activeMentionIndex;
-  const effectiveReplyQuote = isEditing ? null : replyQuote;
+  const preservesWorkspaceReplyContext = editSession?.preserveWorkspaceReplyContext === true;
+  const effectiveReplyQuote = isEditing && !preservesWorkspaceReplyContext ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const textareaId = useId();
   const prevDisabledRef = useRef(disabled);
@@ -477,10 +478,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
     () =>
-      !isEditing && outgoingBodyOverride != null
+      (!isEditing || preservesWorkspaceReplyContext) && outgoingBodyOverride != null
         ? outgoingBodyOverride
         : buildOutgoingMessageBody(value, effectiveReplyQuote),
-    [effectiveReplyQuote, isEditing, outgoingBodyOverride, value],
+    [effectiveReplyQuote, isEditing, outgoingBodyOverride, preservesWorkspaceReplyContext, value],
   );
   const canSendWithEmptyActiveValue =
     allowEmptyActiveValueSend &&
@@ -779,9 +780,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     if (isEditing) {
       if (disabled || sendInFlight || editSession == null || onSubmitEdit == null) return;
       const trimmed = value.trim();
-      if (trimmed.length === 0) return;
+      const content = preservesWorkspaceReplyContext ? outgoingBody : trimmed;
+      if (content.length === 0) return;
       try {
-        await onSubmitEdit(editSession.messageId, trimmed);
+        await onSubmitEdit(editSession.messageId, content);
       } catch {
         return;
       }
@@ -1261,7 +1263,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       onFocusCapture={handleComposerFocusCapture}
       onBlurCapture={handleComposerBlurCapture}
     >
-      {!isEditing ? leadingContent : null}
+      {isEditing && preservesWorkspaceReplyContext ? (
+        <MessageComposerEditNotice onCancelEdit={onCancelEdit} />
+      ) : null}
+      {!isEditing || preservesWorkspaceReplyContext ? leadingContent : null}
       <MessageComposerPreface
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}
@@ -1276,6 +1281,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         replyQuote={effectiveReplyQuote}
         onClearReply={onClearReply}
         isEditing={isEditing}
+        showReplyWhileEditing={preservesWorkspaceReplyContext}
+        hideEditNotice={preservesWorkspaceReplyContext}
         onCancelEdit={onCancelEdit}
       />
 

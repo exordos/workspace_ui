@@ -113,7 +113,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   });
 
   const showWorkspaceReplyTabs =
-    editSession == null &&
+    (editSession == null || editSession.preserveWorkspaceReplyContext === true) &&
     workspaceReplySession != null &&
     workspaceReplySession.tabs.length > 1 &&
     onSelectWorkspaceReplyTab != null &&

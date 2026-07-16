@@ -1929,6 +1929,98 @@ describe("MessageComposer edit session", () => {
 
     expect(textbox).toHaveValue("draft before edit");
   });
+
+  it("edits a restored Workspace reply through the active tab body", async () => {
+    const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
+    const onValueChange = vi.fn();
+    const replyQuote = {
+      id: "reply-a",
+      content: "quoted message",
+      sender_full_name: "Alice",
+      sender_uuid: "11111111-1111-4111-8111-111111111111",
+      quoteFormat: "workspace" as const,
+      permalinkUrl: null,
+    };
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        onSubmitEdit={onSubmitEdit}
+        onValueChange={onValueChange}
+        replyQuote={replyQuote}
+        outgoingBodyOverride="full restored body A"
+        editSession={{
+          messageId: 42,
+          initialMarkdown: "answer A",
+          preserveWorkspaceReplyContext: true,
+          sessionKey: "reply-a",
+        }}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveValue("answer A");
+    expect(screen.getByText("Reply: Alice")).toBeInTheDocument();
+
+    fireEvent.change(textbox, { target: { value: "changed answer A" } });
+    expect(onValueChange).toHaveBeenLastCalledWith("changed answer A");
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    await waitFor(() => {
+      expect(onSubmitEdit).toHaveBeenCalledWith(42, "full restored body A");
+    });
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        onSubmitEdit={onSubmitEdit}
+        onValueChange={onValueChange}
+        replyQuote={replyQuote}
+        outgoingBodyOverride="full restored body B"
+        editSession={{
+          messageId: 42,
+          initialMarkdown: "answer B",
+          preserveWorkspaceReplyContext: true,
+          sessionKey: "reply-b",
+        }}
+      />,
+    );
+
+    expect(textbox).toHaveValue("answer B");
+  });
+
+  it("places the edit notice above restored reply tabs and quote", () => {
+    const replyQuote = {
+      id: "reply-a",
+      content: "quoted message",
+      sender_full_name: "Alice",
+      sender_uuid: "11111111-1111-4111-8111-111111111111",
+      quoteFormat: "workspace" as const,
+      permalinkUrl: null,
+    };
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        replyQuote={replyQuote}
+        leadingContent={<div data-testid="reply-tabs">Reply tabs</div>}
+        outgoingBodyOverride="full restored body"
+        editSession={{
+          messageId: 42,
+          initialMarkdown: "answer",
+          preserveWorkspaceReplyContext: true,
+          sessionKey: "reply-a",
+        }}
+      />,
+    );
+
+    const editNotice = screen.getByText("Edit message");
+    const replyTabs = screen.getByTestId("reply-tabs");
+    const replyQuoteLabel = screen.getByText("Reply: Alice");
+    expect(editNotice.compareDocumentPosition(replyTabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      replyTabs.compareDocumentPosition(replyQuoteLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
 });
 
 describe("MessageComposer send shortcuts", () => {

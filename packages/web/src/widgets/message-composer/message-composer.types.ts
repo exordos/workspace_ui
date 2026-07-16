@@ -42,6 +42,10 @@ export interface ScheduledComposerMessage {
 export interface ComposerEditSession {
   messageId: number;
   initialMarkdown: string;
+  /** Keeps Workspace reply controls visible while editing a restored reply message. */
+  preserveWorkspaceReplyContext?: boolean;
+  /** Changes when the active restored reply tab changes. */
+  sessionKey?: string;
 }
 
 export type MessageComposerActionMode = "enabled" | "unsupported";
@@ -160,5 +164,7 @@ export interface MessageComposerPrefaceProps {
   replyQuote: ReplyQuote | null | undefined;
   onClearReply?: () => void;
   isEditing?: boolean;
+  showReplyWhileEditing?: boolean;
+  hideEditNotice?: boolean;
   onCancelEdit?: () => void;
 }
