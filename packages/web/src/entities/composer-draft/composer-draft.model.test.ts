@@ -118,6 +118,84 @@ describe("workspace composer drafts", () => {
     });
   });
 
+  it("hydrates malformed persisted content as an empty draft", async () => {
+    await writeWorkspaceComposerDraft<unknown>(OWNER, CONVERSATION, {
+      snapshotId: "snapshot-a",
+      updatedAt: 42,
+      content: {
+        text: 42,
+        replySession: {
+          activeTabId: {},
+          tabs: "not-an-array",
+        },
+      },
+    });
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      content: {
+        text: "",
+        replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+      },
+    });
+  });
+
+  it("drops malformed reply tabs while preserving valid persisted tabs", async () => {
+    await writeWorkspaceComposerDraft<unknown>(OWNER, CONVERSATION, {
+      snapshotId: "snapshot-a",
+      updatedAt: 42,
+      content: {
+        text: "Черновик",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            null,
+            {
+              id: "tab-invalid",
+              messageUuid: 42,
+              senderUuid: "user-invalid",
+              senderName: "Некорректный",
+              quotedContent: "Текст",
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: "Ответ",
+            },
+            {
+              id: " tab-a ",
+              messageUuid: "message-a",
+              senderUuid: "user-a",
+              senderName: "Алексей",
+              quotedContent: 42,
+              selectedText: null,
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: null,
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      content: {
+        text: "Черновик",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            {
+              id: "tab-a",
+              messageUuid: "message-a",
+              quotedContent: "",
+              selectedText: undefined,
+              answer: "",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("does not let a late hydration overwrite local input", async () => {
     await writeWorkspaceComposerDraft(OWNER, CONVERSATION, {
       snapshotId: "persisted-snapshot",

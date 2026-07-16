@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -83,6 +83,10 @@ vi.mock("~/shared/lib/webview", () => ({
   onAuthFromNative: () => vi.fn(),
   onNativeMessage: () => vi.fn(),
 }));
+
+function LocationProbe() {
+  return <span data-testid="location-path">{useLocation().pathname}</span>;
+}
 
 describe("App default routing", () => {
   afterEach(() => {
@@ -231,6 +235,26 @@ describe("App default routing", () => {
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
     await waitFor(() => {
       expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+    });
+  });
+
+  it("redirects an unavailable workspace project route to the matched session project", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(
+      <>
+        <App />
+        <LocationProbe />
+      </>,
+      {
+        route: "/org/zulip.example.com/project/project-b/stream/stream-uuid",
+      },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-path")).toHaveTextContent(
+        "/org/zulip.example.com/project/project-a/inbox",
+      );
     });
   });
 

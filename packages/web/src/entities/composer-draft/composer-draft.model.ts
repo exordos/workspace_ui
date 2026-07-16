@@ -208,10 +208,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const localMutationVersion = localMutationVersions.get(key) ?? 0;
       const requestVersion = (hydrateRequestVersions.get(key) ?? 0) + 1;
       hydrateRequestVersions.set(key, requestVersion);
-      const row = await readWorkspaceComposerDraft<WorkspaceComposerDraftContent>(
-        ownerKey,
-        conversationId,
-      );
+      const row = await readWorkspaceComposerDraft<unknown>(ownerKey, conversationId);
 
       if (
         ownerGeneration !== currentOwnerGeneration(ownerKey) ||

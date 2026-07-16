@@ -653,13 +653,19 @@ function waitForNotificationShowResult(
       appendLogsLine(`[notifications] failed tag=${tag ?? "none"} error=${String(error)}`);
       finish(false);
     };
+    const onClose = (): void => {
+      appendLogsLine(`[notifications] closed tag=${tag ?? "none"}`);
+      finish(false);
+    };
     cleanup = () => {
       notification.off("show", onShow);
       notification.off("failed", onFailed);
+      notification.off("close", onClose);
     };
 
     notification.once("show", onShow);
     notification.once("failed", onFailed);
+    notification.once("close", onClose);
   });
 }
 

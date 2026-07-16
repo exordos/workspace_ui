@@ -182,6 +182,12 @@ const App: React.FC = () => {
     if (matchedSession.accountId !== currentAccountId) {
       setCurrentAccountId(matchedSession.accountId);
     }
+    if (workspaceRoute != null && matchedSession.projectId !== workspaceRoute.projectId) {
+      void navigate(
+        workspaceMessengerRootRoute(matchedSession.organizationId, matchedSession.projectId),
+        { replace: true },
+      );
+    }
   }, [
     hasSessions,
     currentOrgRouteId,

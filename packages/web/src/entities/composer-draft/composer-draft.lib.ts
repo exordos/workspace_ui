@@ -16,19 +16,31 @@ export const EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT: WorkspaceComposerDraftConte
 
 let nextSnapshotOrdinal = 1;
 
-function normalizeOptionalText(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized == null || normalized.length === 0 ? undefined : normalized;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeReplyTab(
-  tab: WorkspaceComposerDraftReplyTab,
-): WorkspaceComposerDraftReplyTab | null {
-  const id = tab.id.trim();
-  const messageUuid = tab.messageUuid.trim();
-  const senderUuid = tab.senderUuid.trim();
-  const senderName = tab.senderName.trim();
-  const createdAt = tab.createdAt.trim();
+function normalizeRequiredText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | undefined {
+  const normalized = normalizeRequiredText(value);
+  return normalized.length === 0 ? undefined : normalized;
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeReplyTab(tab: unknown): WorkspaceComposerDraftReplyTab | null {
+  if (!isRecord(tab)) return null;
+
+  const id = normalizeRequiredText(tab.id);
+  const messageUuid = normalizeRequiredText(tab.messageUuid);
+  const senderUuid = normalizeRequiredText(tab.senderUuid);
+  const senderName = normalizeRequiredText(tab.senderName);
+  const createdAt = normalizeRequiredText(tab.createdAt);
   if (
     id.length === 0 ||
     messageUuid.length === 0 ||
@@ -44,16 +56,20 @@ function normalizeReplyTab(
     messageUuid,
     senderUuid,
     senderName,
-    quotedContent: tab.quotedContent.replace(/\r\n?/g, "\n"),
+    quotedContent: normalizeText(tab.quotedContent).replace(/\r\n?/g, "\n"),
     selectedText: normalizeOptionalText(tab.selectedText),
     createdAt,
-    answer: tab.answer,
+    answer: normalizeText(tab.answer),
   };
 }
 
 export function normalizeWorkspaceComposerDraftReplySession(
-  session: WorkspaceComposerDraftReplySession,
+  session: unknown,
 ): WorkspaceComposerDraftReplySession {
+  if (!isRecord(session) || !Array.isArray(session.tabs)) {
+    return EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION;
+  }
+
   const tabs: WorkspaceComposerDraftReplyTab[] = [];
   const tabIds = new Set<string>();
   for (const tab of session.tabs) {
@@ -64,17 +80,20 @@ export function normalizeWorkspaceComposerDraftReplySession(
   }
   if (tabs.length === 0) return EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION;
 
-  const activeTabId = tabs.some((tab) => tab.id === session.activeTabId)
-    ? session.activeTabId
-    : (tabs[0]?.id ?? null);
+  const activeTabId =
+    typeof session.activeTabId === "string" && tabs.some((tab) => tab.id === session.activeTabId)
+      ? session.activeTabId
+      : (tabs[0]?.id ?? null);
   return { tabs, activeTabId };
 }
 
 export function normalizeWorkspaceComposerDraftContent(
-  content: WorkspaceComposerDraftContent,
+  content: unknown,
 ): WorkspaceComposerDraftContent {
+  if (!isRecord(content)) return EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT;
+
   return {
-    text: content.text,
+    text: normalizeText(content.text),
     replySession: normalizeWorkspaceComposerDraftReplySession(content.replySession),
   };
 }
