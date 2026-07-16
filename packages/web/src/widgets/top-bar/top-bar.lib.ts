@@ -70,11 +70,20 @@ export function resolveTopBarSectionButtonClassName(isActive: boolean, available
 }
 
 export function getTopBarSectionNavItems(options: {
+  messengerOnly: boolean;
   showCallsNav: boolean;
   showServicesNav: boolean;
 }): TopBarSectionNavItem[] {
+  const chat: TopBarSectionNavItem = {
+    id: "chat",
+    icon: "chatBubble",
+    label: t("nav.chatsAndChannels"),
+    available: true,
+  };
+  if (options.messengerOnly) return [chat];
+
   const items: TopBarSectionNavItem[] = [
-    { id: "chat", icon: "chatBubble", label: t("nav.chatsAndChannels"), available: true },
+    chat,
     { id: "calendar", icon: "calendar", label: t("nav.calendar"), available: true },
     { id: "mail", icon: "mail", label: t("nav.mail"), available: true },
   ];

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
+import { loadFoldersSnapshotRow } from "~/shared/lib/folders-snapshot-db";
 import { loadFolderSyncSnapshot } from "./folder-sync.api";
 import { useFolderSyncStore } from "./folder-sync.model";
 
@@ -32,6 +33,7 @@ vi.mock("~/shared/api/workspace-client", () => ({
       uuid: string;
       title: string;
       background_color_value: number;
+      unread_count?: number;
       system_type: "created" | "all";
     }[],
   ) =>
@@ -39,6 +41,7 @@ vi.mock("~/shared/api/workspace-client", () => ({
       id: folder.uuid,
       label: folder.title,
       backgroundColor: folder.background_color_value,
+      badge: (folder.unread_count ?? 0) > 0 ? folder.unread_count : undefined,
       systemType: folder.system_type,
     })),
 }));
@@ -57,17 +60,19 @@ function makeFolderSnapshot(options: {
   folderId?: string;
   selectedItemsOk?: boolean;
   selectedChatId?: string;
+  unreadCount?: number;
 }) {
   const folderId = options.folderId ?? "folder-1";
   const selectedItemsOk = options.selectedItemsOk ?? true;
   const selectedChatId = options.selectedChatId ?? "dm:42";
+  const unreadCount = options.unreadCount ?? 0;
   return {
     folders: [
       {
         uuid: folderId,
         title: "All",
         background_color_value: 0,
-        unread_count: 0,
+        unread_count: unreadCount,
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
         system_type: "created" as const,
@@ -108,6 +113,7 @@ describe("folder-sync model orchestration", () => {
   beforeEach(() => {
     useFolderSyncStore.getState().clear();
     vi.clearAllMocks();
+    vi.mocked(loadFoldersSnapshotRow).mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -118,6 +124,168 @@ describe("folder-sync model orchestration", () => {
     useFolderSyncStore.setState({ selectedFolderId: "custom-folder" });
     useFolderSyncStore.getState().clear();
     expect(useFolderSyncStore.getState().selectedFolderId).toBe("");
+  });
+
+  it("refreshes a complete reload cache from the server with membership and unread state", async () => {
+    const folderId = "folder-acceptance";
+    const cachedItem = {
+      uuid: "item-stale",
+      chatId: "stream:stale-stream:general",
+      folderUuid: folderId,
+      orderIndex: 0,
+      pinnedAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    vi.mocked(loadFoldersSnapshotRow).mockResolvedValue({
+      instanceId: "inst-a",
+      version: 2,
+      folders: [
+        {
+          id: folderId,
+          label: "CASSI Acceptance",
+          backgroundColor: 2,
+          systemType: "created",
+        },
+      ],
+      folderItemsEntries: [[folderId, [cachedItem]]],
+    });
+    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue(
+      makeFolderSnapshot({
+        folderId,
+        selectedChatId: "stream:e2e-stream:general",
+        unreadCount: 1,
+      }),
+    );
+
+    await useFolderSyncStore.getState().bootstrap({
+      instanceId: "inst-a",
+      showSystemFolders: true,
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+    });
+
+    expect(loadFolderSyncSnapshot).toHaveBeenCalledWith(
+      "inst-a",
+      expect.objectContaining({ force: true }),
+    );
+    const state = useFolderSyncStore.getState();
+    expect(state.folders).toEqual([
+      expect.objectContaining({
+        id: folderId,
+        badge: 1,
+      }),
+    ]);
+    expect(state.folderItemsByFolderId.get(folderId)?.map((item) => item.chatId)).toEqual([
+      "stream:e2e-stream:general",
+    ]);
+    expect(state.selectedFolderChatIds?.has("stream:e2e-stream:general")).toBe(true);
+  });
+
+  it("coalesces a same-instance lifecycle bootstrap before stale cache can overwrite server state", async () => {
+    const folderId = "folder-acceptance";
+    const staleCache = {
+      instanceId: "inst-a",
+      version: 2 as const,
+      folders: [
+        {
+          id: ALL_FOLDER_UUID,
+          label: "All",
+          backgroundColor: 0,
+          systemType: "all" as const,
+        },
+      ],
+      folderItemsEntries: [[ALL_FOLDER_UUID, []]] as [string, []][],
+    };
+    const secondCacheRead = deferred<Awaited<ReturnType<typeof loadFoldersSnapshotRow>>>();
+    vi.mocked(loadFoldersSnapshotRow)
+      .mockResolvedValueOnce(staleCache)
+      .mockReturnValueOnce(secondCacheRead.promise);
+
+    const serverSnapshot = deferred<ReturnType<typeof makeFolderSnapshot>>();
+    vi.mocked(loadFolderSyncSnapshot).mockReturnValue(serverSnapshot.promise);
+    const options = {
+      instanceId: "inst-a",
+      showSystemFolders: true,
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+    };
+
+    const loadingBootstrap = useFolderSyncStore.getState().bootstrap(options);
+    await vi.waitFor(() => {
+      expect(loadFolderSyncSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    // Layout runs the same bootstrap again when user status changes loading -> ready.
+    const readyBootstrap = useFolderSyncStore.getState().bootstrap(options);
+
+    serverSnapshot.resolve(
+      makeFolderSnapshot({
+        folderId,
+        selectedChatId: "stream:e2e-stream:general",
+        unreadCount: 1,
+      }),
+    );
+    secondCacheRead.resolve(staleCache);
+    await Promise.all([loadingBootstrap, readyBootstrap]);
+
+    expect(loadFoldersSnapshotRow).toHaveBeenCalledTimes(1);
+    expect(loadFolderSyncSnapshot).toHaveBeenCalledTimes(1);
+    const state = useFolderSyncStore.getState();
+    expect(state.folders.some((folder) => folder.id === folderId && folder.badge === 1)).toBe(true);
+    expect(state.folderItemsByFolderId.get(folderId)?.map((item) => item.chatId)).toEqual([
+      "stream:e2e-stream:general",
+    ]);
+  });
+
+  it("does not let an older delayed cache bootstrap replace a newer instance", async () => {
+    const cacheA = deferred<Awaited<ReturnType<typeof loadFoldersSnapshotRow>>>();
+    const cacheB = deferred<Awaited<ReturnType<typeof loadFoldersSnapshotRow>>>();
+    vi.mocked(loadFoldersSnapshotRow).mockImplementation((instanceId) =>
+      instanceId === "inst-a" ? cacheA.promise : cacheB.promise,
+    );
+    vi.mocked(loadFolderSyncSnapshot).mockImplementation((instanceId: string) =>
+      Promise.resolve(
+        makeFolderSnapshot({
+          folderId: instanceId === "inst-a" ? "folder-a" : "folder-b",
+          selectedChatId: instanceId === "inst-a" ? "dm:a" : "dm:b",
+        }),
+      ),
+    );
+
+    const bootstrapA = useFolderSyncStore.getState().bootstrap({
+      instanceId: "inst-a",
+      showSystemFolders: true,
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+    });
+    const bootstrapB = useFolderSyncStore.getState().bootstrap({
+      instanceId: "inst-b",
+      showSystemFolders: true,
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+    });
+
+    cacheB.resolve({
+      instanceId: "inst-b",
+      version: 2,
+      folders: [
+        { id: "folder-b-cache", label: "B cache", backgroundColor: 1, systemType: "created" },
+      ],
+      folderItemsEntries: [["folder-b-cache", []]],
+    });
+    await bootstrapB;
+
+    cacheA.resolve({
+      instanceId: "inst-a",
+      version: 2,
+      folders: [
+        { id: "folder-a-cache", label: "A cache", backgroundColor: 1, systemType: "created" },
+      ],
+      folderItemsEntries: [["folder-a-cache", []]],
+    });
+    await bootstrapA;
+
+    const state = useFolderSyncStore.getState();
+    expect(state.instanceId).toBe("inst-b");
+    expect(state.folders.some((folder) => folder.id === "folder-b")).toBe(true);
+    expect(state.folders.some((folder) => folder.id === "folder-a")).toBe(false);
   });
 
   it("uses the server folder list as authoritative when refresh returns no folders", async () => {
@@ -455,6 +623,38 @@ describe("refreshFolderItemsCache", () => {
     expect(state.selectedFolderChatIds?.has("dm:99")).toBe(true);
   });
 
+  it("refreshes the rail unread badge from the authoritative folder aggregate", async () => {
+    const folderId = "folder-work";
+    getFoldersMock.mockResolvedValue([
+      {
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 2,
+        unread_count: 4,
+        system_type: "created",
+        folder_items: [],
+      },
+    ]);
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      folders: [
+        {
+          id: folderId,
+          label: "Work",
+          backgroundColor: 2,
+          badge: undefined,
+          systemType: "created",
+        },
+      ],
+    });
+
+    await useFolderSyncStore.getState().refreshFolderItemsCache(folderId);
+
+    expect(useFolderSyncStore.getState().folders[0]?.badge).toBe(4);
+  });
+
   it("does not call API when instanceId is null", async () => {
     await useFolderSyncStore.getState().refreshFolderItemsCache("any");
     expect(getFoldersMock).not.toHaveBeenCalled();
@@ -660,7 +860,7 @@ describe("folder assignment orchestration", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_count: 0,
+        unread_count: 3,
         system_type: "created",
         folder_items: [
           {
@@ -685,6 +885,7 @@ describe("folder assignment orchestration", () => {
     expect(useFolderSyncStore.getState().folderItemsByFolderId.get(folderId)?.[0]?.uuid).toBe(
       "item-real",
     );
+    expect(useFolderSyncStore.getState().folders[0]?.badge).toBe(3);
   });
 
   it("toggleAssignment(remove) removes item optimistically and keeps server state on reconcile", async () => {
@@ -1050,7 +1251,7 @@ describe("syncDerived", () => {
     expect(folders.find((f) => f.id === PERSONAL_FOLDER_UUID)?.badge).toBe(4);
   });
 
-  it("applies realtime folder snapshot and rereads selected folder items from server", async () => {
+  it("applies the authoritative realtime folder snapshot without rereading it", () => {
     const streamUuid = "00000000-0000-4000-8000-000000000099";
     const chatId = `stream:${streamUuid}:general`;
     const eventItem = {
@@ -1063,13 +1264,6 @@ describe("syncDerived", () => {
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z",
     };
-    const serverItem = {
-      ...eventItem,
-      uuid: "item-stream-99-server",
-      updatedAt: "2026-01-01T00:01:00Z",
-    };
-    const serverRefresh = deferred<WorkspaceFolder[]>();
-    getFoldersMock.mockImplementationOnce(() => serverRefresh.promise);
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       labels,
@@ -1084,11 +1278,13 @@ describe("syncDerived", () => {
       uuid: ALL_FOLDER_UUID,
       title: "All",
       background_color_value: 0,
+      unread_count: 6,
       system_type: "all",
       folder_items: [eventItem],
     } as unknown as WorkspaceFolder);
 
-    expect(getFoldersMock).toHaveBeenCalledTimes(1);
+    expect(getFoldersMock).not.toHaveBeenCalled();
+    expect(useFolderSyncStore.getState().folders[0]?.badge).toBe(6);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has(chatId)).toBe(true);
 
     useFolderSyncStore.getState().syncSidebarProjection({
@@ -1119,20 +1315,8 @@ describe("syncDerived", () => {
       },
     ]);
 
-    serverRefresh.resolve([
-      {
-        uuid: ALL_FOLDER_UUID,
-        title: "All",
-        background_color_value: 0,
-        system_type: "all",
-        folder_items: [serverItem],
-      } as unknown as WorkspaceFolder,
-    ]);
-    await serverRefresh.promise;
-    await Promise.resolve();
-
     expect(useFolderSyncStore.getState().folderItemsByFolderId.get(ALL_FOLDER_UUID)).toEqual([
-      serverItem,
+      eventItem,
     ]);
   });
 

@@ -65,6 +65,7 @@ function buildCtx(
     },
     currentChat: {
       context: null,
+      messages: [],
       hasNewerMessages: false,
       appendMessage: noop,
       updateMessageFlags: noop,
@@ -1607,6 +1608,107 @@ describe("dispatchMessengerEvent", () => {
       const messages = useCurrentChatMessagesStore.getState().messages;
       expect(messages.find((m) => m.id === testMessageId(10))?.flags).toContain("read");
       expect(messages.find((m) => m.id === testMessageId(11))?.flags).toContain("read");
+    });
+
+    it("clears open topic and stream badges from confirmed read ids and refreshes folders", () => {
+      const streamUuid = "00000000-0000-4000-8000-000000000005";
+      const topicUuid = "00000000-0000-4000-8000-000000000007";
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamUuid, name: "general", unreadCount: 2 }]);
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid, [
+          { streamUuid, topicUuid, name: "topic1", unreadCount: 2 },
+        ]);
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: streamUuid,
+        streamName: "general",
+        topic: "topic1",
+        topicUuid,
+        streamWideView: false,
+      });
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg(10, {
+          stream_uuid: streamUuid,
+          topic_uuid: topicUuid,
+          subject: "topic1",
+          read: false,
+        }),
+        mockMsg(11, {
+          stream_uuid: streamUuid,
+          topic_uuid: topicUuid,
+          subject: "topic1",
+          read: false,
+        }),
+      ]);
+      const refresh = vi.fn().mockResolvedValue(undefined);
+      const ctx = buildIntegrationCtx();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+        refresh,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 1022,
+          type: "message",
+          kind: "messages.read",
+          message_uuids: [testMessageId(10), testMessageId(11)],
+        },
+        ctx,
+      );
+
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid);
+      expect(stream?.unreadCount).toBe(0);
+      expect(stream?.topics.get("topic1")?.unreadCount).toBe(0);
+      expect(refresh).toHaveBeenCalledWith("mutation");
+    });
+
+    it("does not decrement unread metadata twice for a duplicate read event", () => {
+      const streamUuid = "00000000-0000-4000-8000-000000000005";
+      const topicUuid = "00000000-0000-4000-8000-000000000007";
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamUuid, name: "general", unreadCount: 2 }]);
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid, [
+          { streamUuid, topicUuid, name: "topic1", unreadCount: 2 },
+        ]);
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: streamUuid,
+        streamName: "general",
+        topic: "topic1",
+        topicUuid,
+        streamWideView: false,
+      });
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg(10, {
+          stream_uuid: streamUuid,
+          topic_uuid: topicUuid,
+          subject: "topic1",
+          read: false,
+        }),
+      ]);
+      const ctx = buildIntegrationCtx();
+      const event = {
+        id: 1023,
+        type: "message" as const,
+        kind: "messages.read",
+        message_uuids: [testMessageId(10)],
+      };
+
+      dispatchMessengerEvent(event, ctx);
+      dispatchMessengerEvent({ ...event, id: 1024 }, buildIntegrationCtx());
+
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid);
+      expect(stream?.unreadCount).toBe(1);
+      expect(stream?.topics.get("topic1")?.unreadCount).toBe(1);
     });
 
     it("marks inbox stale after read:add without locally removing entries", () => {

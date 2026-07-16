@@ -15,6 +15,9 @@ const attachEventLoopLifecycleMock = vi.hoisted(() => vi.fn(() => vi.fn()));
 const isOnlineMock = vi.hoisted(() => vi.fn(() => true));
 const onStatusChangeMock = vi.hoisted(() => vi.fn(() => vi.fn()));
 const recordDiagnosticRealtimeEventMock = vi.hoisted(() => vi.fn());
+const resolveUserUuidFromAccessTokenMock = vi.hoisted(() =>
+  vi.fn(() => "00000000-0000-4000-8000-000000000001"),
+);
 
 vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: getCurrentInstanceMock,
@@ -33,6 +36,10 @@ vi.mock("~/shared/lib/network", () => ({
 
 vi.mock("~/shared/lib/diagnostics-realtime.lib", () => ({
   recordDiagnosticRealtimeEvent: recordDiagnosticRealtimeEventMock,
+}));
+
+vi.mock("~/shared/lib/access-token-claims.lib", () => ({
+  resolveUserUuidFromAccessToken: resolveUserUuidFromAccessTokenMock,
 }));
 
 vi.mock("~/shared/lib/logger", () => ({
@@ -108,6 +115,26 @@ function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown 
       is_own: isOwn,
       created_at: "2026-06-24T10:20:30Z",
       reactions: {},
+    },
+  };
+}
+
+function fileWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    schema_version: 1,
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    object_type: "file",
+    action: "created",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
+    payload: {
+      kind: "file.created",
+      uuid: "00000000-0000-4000-8000-000000000601",
+      stream_uuid: STREAM_UUID,
+      hash: "a".repeat(64),
     },
   };
 }
@@ -290,15 +317,27 @@ function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
   };
 }
 
-function apiResponse(data: unknown): unknown {
+function apiResponse(data: unknown, status = 200): unknown {
   return {
-    ok: true,
-    status: 200,
+    ok: status >= 200 && status < 300,
+    status,
     data,
     headers: new Headers(),
     raw: new Response(),
     durationMs: 1,
   };
+}
+
+function mockActiveApiEvents(...eventResponses: unknown[]): void {
+  let eventIndex = 0;
+  messengerApiMock.getWithBase.mockImplementation((_base, path) => {
+    if (path === "/epoch/") {
+      return Promise.resolve(apiResponse({ epoch_generation: "91", epoch_version: 37 }));
+    }
+    const response = eventResponses[Math.min(eventIndex, eventResponses.length - 1)];
+    eventIndex += 1;
+    return Promise.resolve(response ?? apiResponse([]));
+  });
 }
 
 describe("Workspace realtime event normalization", () => {
@@ -367,6 +406,19 @@ describe("Workspace realtime event normalization", () => {
         source_name: "zulip",
         source: { kind: "zulip", message_id: 1042 },
       },
+    });
+  });
+
+  it("preserves the recipient-specific mentioned flag on realtime messages", () => {
+    const event = workspaceEvent(13) as {
+      payload: { mentioned?: boolean };
+    };
+    event.payload.mentioned = true;
+
+    const normalized = normalizeWorkspaceEventModel(event);
+
+    expect(normalized?.event).toMatchObject({
+      message: { flags: expect.arrayContaining(["mentioned"]) },
     });
   });
 
@@ -1075,12 +1127,23 @@ describe("Workspace realtime event normalization", () => {
 });
 
 describe("startMessengerEventLoop", () => {
+  const accountCursorKey =
+    "workspace-realtime:last-epoch:v1:https%3A%2F%2Fworkspace.example.test%7Cinst-1%7C00000000-0000-4000-8000-000000000001";
+  const accountGenerationKey = `${accountCursorKey}:generation`;
+
   beforeEach(() => {
     vi.useFakeTimers();
     FakeWebSocket.instances.length = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
+    resolveUserUuidFromAccessTokenMock.mockReset();
+    resolveUserUuidFromAccessTokenMock.mockReturnValue(USER_UUID);
     localStorage.removeItem("workspace-realtime:last-epoch:v1:inst-1");
     localStorage.removeItem("workspace-realtime:last-epoch:v1:inst-bg");
+    localStorage.removeItem(accountCursorKey);
+    localStorage.removeItem(accountGenerationKey);
+    localStorage.removeItem(
+      "workspace-realtime:last-epoch:v1:https%3A%2F%2Fgateway.example.test%7Cadmin",
+    );
     messengerApiMock.getWithBase.mockReset();
     getCurrentInstanceMock.mockReturnValue({
       id: "inst-1",
@@ -1090,7 +1153,13 @@ describe("startMessengerEventLoop", () => {
       iamAccessToken: "access-token",
     });
     getWorkspaceCommonApiBaseForCurrentInstanceMock.mockReturnValue("/api/workspace/v1");
-    messengerApiMock.getWithBase.mockResolvedValue(apiResponse([workspaceEvent(12)]));
+    messengerApiMock.getWithBase.mockImplementation((_base, path) =>
+      Promise.resolve(
+        path === "/epoch/"
+          ? apiResponse({ epoch_generation: "91", epoch_version: 12 })
+          : apiResponse([workspaceEvent(12)]),
+      ),
+    );
     attachEventLoopLifecycleMock.mockClear();
     recordDiagnosticRealtimeEventMock.mockClear();
   });
@@ -1100,7 +1169,7 @@ describe("startMessengerEventLoop", () => {
     vi.useRealTimers();
   });
 
-  it("runs REST catch-up, opens WS with bearer subprotocol, handles flat live events, and stores cursor", async () => {
+  it("keeps notifications gated through REST and websocket catch-up until ready", async () => {
     const controller = new AbortController();
     const onEvent = vi.fn();
     const onQueueReady = vi.fn();
@@ -1122,23 +1191,190 @@ describe("startMessengerEventLoop", () => {
     );
     expect(onEvent).toHaveBeenCalledWith(
       expect.objectContaining({ epoch_version: 12, object_type: "message" }),
+      { source: "catchup", notificationsAllowed: false },
     );
 
     const ws = FakeWebSocket.instances[0]!;
     expect(ws.url).toBe(
-      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=12",
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=12&epoch_generation=91",
     );
     expect(ws.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
-    expect(onQueueReady).toHaveBeenCalledTimes(1);
+    expect(onQueueReady).not.toHaveBeenCalled();
 
     ws.emit(workspaceEvent(13));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
 
     expect(onEvent).toHaveBeenCalledWith(
       expect.objectContaining({ epoch_version: 13, object_type: "message" }),
+      { source: "realtime", notificationsAllowed: false },
+    );
+    expect(onQueueReady).not.toHaveBeenCalled();
+
+    ws.emit({ type: "ready", epoch_generation: 1, epoch_version: 13 });
+    await vi.waitFor(() => expect(onQueueReady).toHaveBeenCalledTimes(1));
+
+    ws.emit(workspaceEvent(14));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(3));
+    expect(onEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ epoch_version: 14, object_type: "message" }),
+      { source: "realtime", notificationsAllowed: true },
     );
     expect(ws.send).not.toHaveBeenCalled();
-    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("13");
+    expect(localStorage.getItem(accountCursorKey)).toBe("14");
     expect(recordDiagnosticRealtimeEventMock).toHaveBeenCalledWith("message");
+
+    controller.abort();
+  });
+
+  it("commits the epoch only after async entity persistence finishes", async () => {
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    let finishPersist!: () => void;
+    const persist = new Promise<void>((resolve) => {
+      finishPersist = resolve;
+    });
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: () => persist,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.emit(workspaceEvent(13));
+    await Promise.resolve();
+    expect(localStorage.getItem(accountCursorKey)).toBeNull();
+
+    finishPersist();
+    await vi.waitFor(() => expect(localStorage.getItem(accountCursorKey)).toBe("13"));
+
+    controller.abort();
+  });
+
+  it("delivers raw file events and commits their epoch only after cache persistence", async () => {
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    let finishPersist!: () => void;
+    const persist = new Promise<void>((resolve) => {
+      finishPersist = resolve;
+    });
+    const onEvent = vi.fn(() => persist);
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent,
+    });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.emit(fileWorkspaceEvent(15));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ object_type: "file", epoch_version: 15 }),
+      { source: "realtime", notificationsAllowed: false },
+    );
+    expect(localStorage.getItem(accountCursorKey)).toBeNull();
+
+    finishPersist();
+    await vi.waitFor(() => expect(localStorage.getItem(accountCursorKey)).toBe("15"));
+    controller.abort();
+  });
+
+  it("reconnects an ordinary closed websocket without declaring the entity cache stale", async () => {
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    const onCursorExpired = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onCursorExpired,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.close(1006, "network interrupted");
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(1));
+    expect(onCursorExpired).not.toHaveBeenCalled();
+
+    controller.abort();
+  });
+
+  it("declares the cache stale only when catch-up says the saved epoch is gone", async () => {
+    localStorage.setItem(accountCursorKey, "37");
+    localStorage.setItem(accountGenerationKey, "90");
+    mockActiveApiEvents(apiResponse([], 410), apiResponse([]));
+    const controller = new AbortController();
+    const onCursorExpired = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onCursorExpired,
+    });
+
+    await vi.waitFor(() => expect(onCursorExpired).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem(accountCursorKey)).toBe("0");
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(messengerApiMock.getWithBase).toHaveBeenLastCalledWith(
+      "/api/workspace/v1",
+      "/events/",
+      { "epoch_version>": "0", page_limit: "500" },
+      controller.signal,
+    );
+    expect(localStorage.getItem(accountGenerationKey)).toBeNull();
+
+    controller.abort();
+  });
+
+  it("declares the cache stale for websocket close 4410", async () => {
+    localStorage.setItem(accountCursorKey, "37");
+    localStorage.setItem(accountGenerationKey, "91");
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    const onCursorExpired = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onCursorExpired,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.close(4410, "events cursor expired");
+    await vi.waitFor(() => expect(onCursorExpired).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem(accountCursorKey)).toBe("0");
+    expect(localStorage.getItem(accountGenerationKey)).toBeNull();
+
+    controller.abort();
+  });
+
+  it("does not advance or invalidate the cache for an unsupported catch-up event", async () => {
+    localStorage.setItem(accountCursorKey, "12");
+    localStorage.setItem(accountGenerationKey, "91");
+    mockActiveApiEvents(
+      apiResponse([{ epoch_version: 13, payload: { kind: "future.entity.changed" } }]),
+    );
+    const controller = new AbortController();
+    const onCursorExpired = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onCursorExpired,
+    });
+
+    await vi.waitFor(() => expect(messengerApiMock.getWithBase).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(localStorage.getItem(accountCursorKey)).toBe("12");
+    expect(onCursorExpired).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(0);
 
     controller.abort();
   });
@@ -1175,7 +1411,7 @@ describe("startMessengerEventLoop", () => {
 
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(ws.send).not.toHaveBeenCalled();
-    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("12");
+    expect(localStorage.getItem(accountCursorKey)).toBe("12");
 
     controller.abort();
   });
@@ -1198,7 +1434,7 @@ describe("startMessengerEventLoop", () => {
     ws.emit({ type: "ack", epoch_version: 12 });
 
     expect(ws.send).not.toHaveBeenCalled();
-    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("12");
+    expect(localStorage.getItem(accountCursorKey)).toBe("12");
 
     controller.abort();
   });
@@ -1210,12 +1446,98 @@ describe("startMessengerEventLoop", () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
+  it("starts from the saved instance scope without a client-side IAM project claim", async () => {
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(FakeWebSocket.instances[0]!.url).toBe(
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=0",
+    );
+    FakeWebSocket.instances[0]!.emit(workspaceEvent(13));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ epoch_version: 13, object_type: "message" }),
+      { source: "realtime", notificationsAllowed: false },
+    );
+    expect(localStorage.getItem(accountCursorKey)).toBe("13");
+
+    controller.abort();
+  });
+
+  it("ignores a legacy instance cursor and starts the stable account cursor cold", async () => {
+    localStorage.setItem("workspace-realtime:last-epoch:v1:inst-old", "37");
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+
+    startMessengerEventLoop({
+      instanceId: "inst-old",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(messengerApiMock.getWithBase).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspace/v1",
+      "/events/",
+      { "epoch_version>": "0", page_limit: "500" },
+      controller.signal,
+    );
+    expect(FakeWebSocket.instances[0]!.url).toBe(
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=0",
+    );
+    expect(localStorage.getItem(accountCursorKey)).toBeNull();
+
+    controller.abort();
+  });
+
+  it("invalidates a non-zero stable cursor that has no saved generation", async () => {
+    localStorage.setItem(accountCursorKey, "37");
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    const onCursorExpired = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onCursorExpired,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(onCursorExpired).toHaveBeenCalledTimes(1);
+    expect(messengerApiMock.getWithBase).toHaveBeenCalledWith(
+      "/api/workspace/v1",
+      "/events/",
+      { "epoch_version>": "0", page_limit: "500" },
+      controller.signal,
+    );
+    expect(FakeWebSocket.instances[0]!.url).toBe(
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=0",
+    );
+    expect(localStorage.getItem(accountCursorKey)).toBe("0");
+
+    controller.abort();
+  });
+
   it("starts the credential-based background transport", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetchMock = vi.fn((input: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            input.endsWith("/epoch/") ? { epoch_generation: "91", epoch_version: 0 } : [],
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();
@@ -1245,11 +1567,15 @@ describe("startMessengerEventLoop", () => {
   });
 
   it("uses saved workspace org origin for credential-based background transport", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetchMock = vi.fn((input: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            input.endsWith("/epoch/") ? { epoch_generation: "91", epoch_version: 0 } : [],
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();

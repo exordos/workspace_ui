@@ -2,9 +2,8 @@
  * Workspace file uploads.
  */
 import { t } from "~/i18n/i18n";
-import { MESSENGER_WORKSPACE_API_PATH } from "~/shared/config/workspace-api-layout";
 import { guard } from "~/shared/lib/guards";
-import { validateFileUpload } from "~/shared/lib/validation";
+import { sanitizeFilename, validateFileUpload } from "~/shared/lib/validation";
 import {
   getCurrentInstance,
   getMessengerWorkspaceApiBaseForCurrentInstance,
@@ -42,12 +41,26 @@ function readUploadErrorMessage(data: unknown): string | null {
   return typeof message === "string" && message.trim() !== "" ? message : null;
 }
 
-export function buildWorkspaceFileDownloadUri(fileUuid: string): string {
+export function buildWorkspaceFileUrn(fileUuid: string, file: File): string {
   const normalized = fileUuid.trim().toLowerCase();
   if (!UUID_RE.test(normalized)) {
     throw new Error("Invalid uploaded file UUID");
   }
-  return `${MESSENGER_WORKSPACE_API_PATH}/files/${normalized}/actions/download`;
+  const contentType = file.type.trim().toLowerCase();
+  const kind = contentType.startsWith("image/")
+    ? "image"
+    : contentType.startsWith("video/")
+      ? "video"
+      : "file";
+  const metadata = new URLSearchParams();
+  metadata.set("name", sanitizeFilename(file.name) || "file");
+  if (contentType !== "") {
+    metadata.set("content_type", contentType);
+  }
+  if (file.size > 0) {
+    metadata.set("size", String(file.size));
+  }
+  return `urn:${kind}:${normalized}?${metadata.toString()}`;
 }
 
 async function uploadWorkspaceFileMultipart(
@@ -71,10 +84,10 @@ async function uploadWorkspaceFileMultipart(
     );
   }
 
-  return buildWorkspaceFileDownloadUri(readWorkspaceFileUploadResponse(res.data).uuid);
+  return buildWorkspaceFileUrn(readWorkspaceFileUploadResponse(res.data).uuid, file);
 }
 
-/** Uploads a file to the active Workspace stream and returns its download action URI. */
+/** Uploads a file and returns its canonical Workspace URN for message persistence. */
 export async function uploadFile(file: File, options?: UploadFileOptions): Promise<string> {
   ensureMessengerApiReady();
   const instance = getCurrentInstance();

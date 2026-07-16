@@ -1,6 +1,10 @@
 # Component Catalog
 
-Catalog of React components organized by FSD layer. See [PROJECT_FACTS.md](PROJECT_FACTS.md) for current slice counts (14 pages, 22 features, 9 widgets).
+Catalog of React components organized by FSD layer. See [PROJECT_FACTS.md](PROJECT_FACTS.md) for current slice counts (14 pages, 30 features, 11 widgets).
+
+> The catalog inventories source components. The current production build is
+> Messenger-only (`VITE_MESSENGER_ONLY=true`), so Mail and Calendar entries are
+> dormant source slices rather than available routes.
 
 ---
 

@@ -25,6 +25,7 @@ import {
 } from "~/shared/lib/webview";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
+import { MessengerOnlyRoute } from "./app-messenger-only-route.ui";
 
 const ChatPage = React.lazy(() =>
   import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
@@ -158,10 +159,38 @@ export const WebViewShell: React.FC = () => {
               <Route path="/stream/:streamSlug" element={<ChatPage />} />
               <Route path="/stream/:streamSlug/topic/:topicName" element={<ChatPage />} />
               <Route path="/activity/:filter" element={<ActivityPage />} />
-              <Route path="/calendar" element={<CalendarPage />} />
-              <Route path="/mail" element={<MailPage />} />
-              <Route path="/call" element={<CallsPage />} />
-              <Route path="/calls" element={<CallsPage />} />
+              <Route
+                path="/calendar"
+                element={
+                  <MessengerOnlyRoute>
+                    <CalendarPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/mail"
+                element={
+                  <MessengerOnlyRoute>
+                    <MailPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/call"
+                element={
+                  <MessengerOnlyRoute>
+                    <CallsPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/calls"
+                element={
+                  <MessengerOnlyRoute>
+                    <CallsPage />
+                  </MessengerOnlyRoute>
+                }
+              />
               <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
               <Route path="/settings/logs" element={diagnosticsRouteElement} />
               <Route path="/settings/build" element={<UpdatePage />} />
@@ -170,8 +199,22 @@ export const WebViewShell: React.FC = () => {
                 element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
               />
               <Route path="/logs" element={diagnosticsRouteElement} />
-              <Route path="/services" element={<ServicesPage />} />
-              <Route path="/all-services" element={<ServicesPage />} />
+              <Route
+                path="/services"
+                element={
+                  <MessengerOnlyRoute>
+                    <ServicesPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/all-services"
+                element={
+                  <MessengerOnlyRoute>
+                    <ServicesPage />
+                  </MessengerOnlyRoute>
+                }
+              />
               <Route path="/inbox" element={<InboxPage />} />
               <Route path="/feed" element={<FeedPage />} />
               <Route path="/updates" element={<UpdatePage />} />
@@ -182,10 +225,38 @@ export const WebViewShell: React.FC = () => {
                 element={<ChatPage />}
               />
               <Route path="/org/:orgId/activity/:filter" element={<ActivityPage />} />
-              <Route path="/org/:orgId/calendar" element={<CalendarPage />} />
-              <Route path="/org/:orgId/mail" element={<MailPage />} />
-              <Route path="/org/:orgId/call" element={<CallsPage />} />
-              <Route path="/org/:orgId/calls" element={<CallsPage />} />
+              <Route
+                path="/org/:orgId/calendar"
+                element={
+                  <MessengerOnlyRoute>
+                    <CalendarPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/org/:orgId/mail"
+                element={
+                  <MessengerOnlyRoute>
+                    <MailPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/org/:orgId/call"
+                element={
+                  <MessengerOnlyRoute>
+                    <CallsPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/org/:orgId/calls"
+                element={
+                  <MessengerOnlyRoute>
+                    <CallsPage />
+                  </MessengerOnlyRoute>
+                }
+              />
               <Route
                 path="/org/:orgId/settings/personal-info"
                 element={<SettingsPersonalInfoPage />}
@@ -197,8 +268,22 @@ export const WebViewShell: React.FC = () => {
                 element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
               />
               <Route path="/org/:orgId/logs" element={diagnosticsRouteElement} />
-              <Route path="/org/:orgId/services" element={<ServicesPage />} />
-              <Route path="/org/:orgId/all-services" element={<ServicesPage />} />
+              <Route
+                path="/org/:orgId/services"
+                element={
+                  <MessengerOnlyRoute>
+                    <ServicesPage />
+                  </MessengerOnlyRoute>
+                }
+              />
+              <Route
+                path="/org/:orgId/all-services"
+                element={
+                  <MessengerOnlyRoute>
+                    <ServicesPage />
+                  </MessengerOnlyRoute>
+                }
+              />
               <Route path="/org/:orgId/inbox" element={<InboxPage />} />
               <Route path="/org/:orgId/feed" element={<FeedPage />} />
               <Route path="/org/:orgId/updates" element={<UpdatePage />} />

@@ -7,6 +7,7 @@ import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   AUTH_MEDIA_SRC_DATA_ATTR,
 } from "~/shared/lib/protected-message-media";
+import { isIamUserUuid, type UserId } from "~/shared/lib/user-id.lib";
 import {
   deriveAttachmentFileName,
   downloadWorkspaceFileAttachment,
@@ -26,7 +27,7 @@ import type {
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
 export interface MessageBubbleMentionPopoverState {
-  userId: number;
+  userId: UserId;
   anchorRect: DOMRect;
   fallbackName: string;
 }
@@ -179,14 +180,18 @@ function handleMentionBodyClick(
   if (mentionSpan.classList.contains("user-group-mention")) {
     return false;
   }
-  const raw = mentionSpan.getAttribute("data-user-id");
+  const raw =
+    mentionSpan.getAttribute("data-user-uuid") ?? mentionSpan.getAttribute("data-user-id");
   if (raw === "*" || raw == null || raw.trim() === "") {
     return false;
   }
-  const id = Number(raw);
-  if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) {
-    return false;
-  }
+  const numericId = Number(raw);
+  const id: UserId = isIamUserUuid(raw)
+    ? raw.toLowerCase()
+    : Number.isFinite(numericId) && Number.isInteger(numericId) && numericId > 0
+      ? numericId
+      : 0;
+  if (id === 0) return false;
   event.preventDefault();
   event.stopPropagation();
   deps.onMentionPopoverOpen({
@@ -285,7 +290,9 @@ export function handleMessageBodyClick(
     return;
   }
 
-  const mentionSpan = hit.closest("span.user-mention[data-user-id]");
+  const mentionSpan = hit.closest(
+    "span.user-mention[data-user-uuid], span.user-mention[data-user-id]",
+  );
   if (mentionSpan != null && handleMentionBodyClick(event, mentionSpan, deps)) {
     return;
   }

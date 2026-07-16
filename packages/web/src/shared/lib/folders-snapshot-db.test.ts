@@ -43,6 +43,36 @@ describe("folders-snapshot-db", () => {
     expect(row?.folders).toEqual(folders);
   });
 
+  it("persists complete folder item snapshots for cache-only bootstrap", async () => {
+    await openMessageCacheDb();
+    const folderItemsEntries = [
+      [
+        "f1",
+        [
+          {
+            uuid: "item-1",
+            chatId: "stream:stream-1:general",
+            folderUuid: "f1",
+            orderIndex: 0,
+            pinnedAt: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      ],
+    ] as const;
+    await persistFoldersSnapshotRow({
+      instanceId: INSTANCE,
+      folders: [{ id: "f1", label: "One", backgroundColor: 1, systemType: "created" }],
+      folderItemsEntries: folderItemsEntries.map(([folderId, items]) => [folderId, [...items]]),
+      version: 2,
+    });
+
+    const row = await loadFoldersSnapshotRow(INSTANCE);
+    expect(row?.version).toBe(2);
+    expect(row?.folderItemsEntries).toEqual(folderItemsEntries);
+  });
+
   it("delete removes row", async () => {
     await openMessageCacheDb();
     await persistFoldersSnapshotRow({

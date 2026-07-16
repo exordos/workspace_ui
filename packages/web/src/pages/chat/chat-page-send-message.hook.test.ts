@@ -126,13 +126,14 @@ describe("useChatPageSendMessage", () => {
     expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        messageUuid: testMessageId(-3),
         streamUuid: "22222222-2222-4222-8222-222222222222",
         content: "retry me",
       }),
     );
     await waitFor(() => {
       expect(params.commitOutgoingMessage).toHaveBeenCalledWith(
-        expect.any(String),
+        testMessageId(-3),
         expect.objectContaining({ id: testMessageId(99) }),
       );
     });
@@ -166,14 +167,13 @@ describe("useChatPageSendMessage", () => {
         expect.objectContaining({
           stream: "engineering",
           streamUuid: "33333333-3333-4333-8333-333333333333",
-          messageUuid: expect.any(String),
+          messageUuid: testMessageId(-3),
           subject: "general",
         }),
       );
       expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
-      expect(params.removeMessage).toHaveBeenCalledWith(expect.any(String));
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: expect.any(String), delivery_status: "failed" }),
+        expect.objectContaining({ id: testMessageId(-3), delivery_status: "failed" }),
       );
     });
   });
@@ -189,10 +189,9 @@ describe("useChatPageSendMessage", () => {
 
     await waitFor(() => {
       expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
-      expect(params.removeMessage).toHaveBeenCalledWith(expect.any(String));
       expect(params.setSendError).toHaveBeenCalledWith("network");
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: expect.any(String), delivery_status: "failed" }),
+        expect.objectContaining({ id: testMessageId(-3), delivery_status: "failed" }),
       );
     });
   });

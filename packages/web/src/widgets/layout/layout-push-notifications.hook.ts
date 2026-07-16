@@ -52,7 +52,8 @@ function handleForegroundPush(payload: PushMessagePayload): void {
 
   const message = payload.message;
   const messageId = message.id;
-  if (messageId != null && wasRecentlyNotified(messageId)) {
+  const instanceId = resolvePushNotificationInstanceId(payload);
+  if (messageId != null && wasRecentlyNotified(messageId, instanceId)) {
     return;
   }
 
@@ -99,14 +100,12 @@ function handleForegroundPush(payload: PushMessagePayload): void {
   if (!decision.notify) return;
 
   if (messageId != null) {
-    registerNotifiedMessageId(messageId);
+    registerNotifiedMessageId(messageId, instanceId);
   }
 
   const title = message.sender_full_name ?? "New message";
   const body = (message.content ?? "").slice(0, 100);
   const playSound = decision.playSound && resolvedPreset !== "none";
-  const instanceId = resolvePushNotificationInstanceId(payload);
-
   void notificationService
     .show({
       title,

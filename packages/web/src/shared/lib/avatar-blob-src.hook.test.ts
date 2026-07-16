@@ -35,7 +35,7 @@ describe("useAvatarBlobSrc", () => {
     getAvatarBlobCacheRow.mockResolvedValue(null);
   });
 
-  it("does not call fetchAvatarBlob when shouldNetworkFetchAvatarBlob is false", async () => {
+  it("does not call fetchAvatarBlob when shouldNetworkFetchAvatarBlob is false", () => {
     shouldNetworkFetchAvatarBlob.mockReturnValue(false);
     getAvatarBlobCacheRow.mockResolvedValue(null);
 
@@ -43,10 +43,7 @@ describe("useAvatarBlobSrc", () => {
       useAvatarBlobSrc("https://z.example.com/avatar/42.png?_av=1"),
     );
 
-    await waitFor(() => {
-      expect(getAvatarBlobCacheRow).toHaveBeenCalled();
-    });
-
+    expect(getAvatarBlobCacheRow).not.toHaveBeenCalled();
     expect(fetchAvatarBlob).not.toHaveBeenCalled();
     expect(result.current).toBe("https://z.example.com/avatar/42.png?_av=1");
   });
@@ -62,5 +59,22 @@ describe("useAvatarBlobSrc", () => {
     await waitFor(() => {
       expect(fetchAvatarBlob).toHaveBeenCalledWith("https://z.example.com/avatar/42.png?_av=1");
     });
+  });
+
+  it("still fetches a protected avatar when persistent cache is disabled", async () => {
+    persistAvatarBlobsToIndexedDb.mockReturnValue(false);
+    const blob = new Blob(["x"], { type: "image/png" });
+    fetchAvatarBlob.mockResolvedValue(blob);
+
+    const { result } = renderHook(() =>
+      useAvatarBlobSrc("https://z.example.com/avatar/42.png?_av=1"),
+    );
+
+    expect(result.current).toBeUndefined();
+    await waitFor(() => {
+      expect(fetchAvatarBlob).toHaveBeenCalledWith("https://z.example.com/avatar/42.png?_av=1");
+      expect(result.current).toMatch(/^blob:/);
+    });
+    expect(getAvatarBlobCacheRow).not.toHaveBeenCalled();
   });
 });

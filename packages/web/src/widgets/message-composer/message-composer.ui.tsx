@@ -12,6 +12,7 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
+import { buildWorkspaceUserMentionMarkdown } from "~/shared/lib/workspace-user-mention.lib";
 import { Icon } from "~/shared/ui/icon";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import {
@@ -348,7 +349,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     (user: MentionSuggestion) => {
       const before = value.slice(0, mentionStartPos);
       const after = value.slice(textareaRef.current?.selectionStart ?? value.length);
-      const mention = `@**${user.fullName}** `;
+      const mention = `${buildWorkspaceUserMentionMarkdown(user.fullName, String(user.userId))} `;
       const next = before + mention + after;
       setValue(next);
       hideMentionDropdown();
@@ -447,6 +448,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     const hasFiles = files.length > 0;
     if ((!hasText && !hasFiles) || disabled) return;
     const subject = activeTopic ?? "";
+    const draftToSend = value;
     const bodyToSend = outgoingBody;
     const filesToSend = hasFiles ? [...files] : undefined;
     setValue("");
@@ -465,6 +467,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     try {
       await onSend?.(bodyToSend, subject, filesToSend);
     } catch {
+      // Preserve input across transient send failures without overwriting
+      // anything the user typed or attached while this request was pending.
+      setValue((current) => (current.length === 0 ? draftToSend : current));
+      setFiles((current) => (current.length === 0 && filesToSend != null ? filesToSend : current));
       return;
     }
     if (effectiveReplyQuote) {

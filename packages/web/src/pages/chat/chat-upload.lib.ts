@@ -25,6 +25,8 @@ const MAGIC_BYTE_VALIDATED_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
+const INLINE_MEDIA_URN_RE = /^urn:(?:image|video):/i;
+
 function normalizeImageMime(mime: string): string {
   const normalized = mime.trim().toLowerCase();
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
@@ -97,7 +99,8 @@ export async function uploadComposerFiles(
     const hasRequestOptions = requestOptions.signal != null || requestOptions.streamUuid != null;
     const uri = hasRequestOptions ? await uploadFile(file, requestOptions) : await uploadFile(file);
     const safeName = sanitizeFilename(file.name) || "file";
-    links.push(`[${safeName}](${uri})`);
+    const mediaPrefix = INLINE_MEDIA_URN_RE.test(uri) ? "!" : "";
+    links.push(`${mediaPrefix}[${safeName}](${uri})`);
 
     const nextFileName = i + 1 < files.length ? files[i + 1]!.name : null;
     options.onProgress?.({

@@ -121,7 +121,7 @@ export function createDmMessage(overrides: MessageOverrides & { to?: number[] } 
 // ---------------------------------------------------------------------------
 
 interface UserOverrides {
-  user_id?: number;
+  user_id?: UserId;
   full_name?: string;
   email?: string;
   avatar_url?: string | null;

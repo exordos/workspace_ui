@@ -37,6 +37,7 @@ import {
   buildDmMetadataUpsertPatch,
   buildSetFromMessagesBootstrapState,
   clearBootstrapErrorPatch,
+  mergeCachedStreamPreviewsIntoAuthoritativeMetadata,
   type ChatListDmBootstrapDisplayContext,
   type ChatListHydrateFromSnapshotState,
   type SetFromMessagesBootstrapState,
@@ -450,7 +451,19 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     hydrateFromIndexedDbSnapshot(snapshot: ChatListSnapshotSerialized) {
       invalidatePreviewResolveLifecycle();
+      const previousState = get();
       const hydrateState = buildChatListHydrateFromSnapshotState(snapshot, get().currentUserId);
+      const nextHydrateState = previousState.streamMetadataHydrated
+        ? {
+            ...hydrateState,
+            streamsMap: mergeCachedStreamPreviewsIntoAuthoritativeMetadata(
+              hydrateState.streamsMap,
+              previousState.streamsMap,
+            ),
+            sidebarDataHydrated: previousState.streamsMap.size > 0 || hydrateState.dmsMap.size > 0,
+            streamMetadataHydrated: true as const,
+          }
+        : hydrateState;
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
       _cachedStreamsMentionIdsRef = null;
@@ -459,15 +472,16 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       _cachedDmsMapRef = null;
       _cachedDmsMentionIdsRef = null;
       _cachedDmsLocationsRef = null;
-      patchSet(hydrateState, { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true });
+      patchSet(nextHydrateState, { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true });
       logChatListFlow("store: hydrateFromIndexedDbSnapshot", {
-        streamsMapSize: hydrateState.streamsMap.size,
-        dmsMapSize: hydrateState.dmsMap.size,
-        messageIdToLocationSize: hydrateState.messageIdToLocation.size,
+        streamsMapSize: nextHydrateState.streamsMap.size,
+        dmsMapSize: nextHydrateState.dmsMap.size,
+        messageIdToLocationSize: nextHydrateState.messageIdToLocation.size,
         lastMessageId: snapshot.lastMessageId,
-        currentUserId: hydrateState.currentUserId,
+        currentUserId: nextHydrateState.currentUserId,
+        preservedAuthoritativeStreamMetadata: previousState.streamMetadataHydrated,
       });
-      persistRecentDmPartnersFromMap(hydrateState.dmsMap);
+      persistRecentDmPartnersFromMap(nextHydrateState.dmsMap);
     },
 
     addMessage(message) {

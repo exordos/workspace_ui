@@ -6,18 +6,29 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { publishExternalAccountUpdated } from "~/features/external-accounts/external-account-realtime.lib";
-import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import {
+  persistCurrentFolderSnapshot,
+  useFolderSyncStore,
+} from "~/features/folder-sync/folder-sync.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
-import { adaptWorkspaceEventForMessenger } from "~/shared/lib/event-loop";
+import {
+  adaptWorkspaceEventForMessenger,
+  type MessengerEventDeliveryContext,
+} from "~/shared/lib/event-loop";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { notificationService } from "~/shared/lib/notifications";
+import {
+  applyWorkspaceFileCacheEvent,
+  resolveCurrentWorkspaceFileCacheScope,
+} from "~/shared/lib/workspace-file-blob-cache";
 import type { WorkspaceEvent } from "~/shared/types/workspace-event";
+import { persistWorkspaceEntityEventToCache } from "./layout-messenger-entities-event-cache.lib";
 import { handleCanonicalGroupwareEvent } from "./layout-messenger-event-dispatch-groupware.lib";
 import {
   buildLayoutNotificationsActions,
@@ -63,14 +74,27 @@ export interface LayoutMessengerEventLoopOnEventOptions {
 
 export function createLayoutMessengerEventLoopOnEventHandler(
   options: LayoutMessengerEventLoopOnEventOptions,
-): (event: WorkspaceEvent) => void {
-  return (event) => handleLayoutMessengerEventLoopQueueEvent(event, options);
+): (event: WorkspaceEvent, delivery?: MessengerEventDeliveryContext) => Promise<void> {
+  return async (event, delivery) => {
+    await handleLayoutMessengerEventLoopQueueEvent(event, options, delivery);
+    const fileCacheScope = resolveCurrentWorkspaceFileCacheScope();
+    await Promise.all([
+      persistWorkspaceEntityEventToCache(event),
+      fileCacheScope == null
+        ? Promise.resolve()
+        : applyWorkspaceFileCacheEvent(fileCacheScope, event),
+      event.object_type === "folder" || event.object_type === "folder_item"
+        ? persistCurrentFolderSnapshot()
+        : Promise.resolve(),
+    ]);
+  };
 }
 
 export function handleLayoutMessengerEventLoopQueueEvent(
   event: WorkspaceEvent,
   options: LayoutMessengerEventLoopOnEventOptions,
-): void {
+  delivery?: MessengerEventDeliveryContext,
+): Promise<void> {
   if (
     event.object_type === "mail_folder" ||
     event.object_type === "mail_message" ||
@@ -78,14 +102,14 @@ export function handleLayoutMessengerEventLoopQueueEvent(
     event.object_type === "calendar_event"
   ) {
     handleCanonicalGroupwareEvent(event);
-    return;
+    return Promise.resolve();
   }
   if (event.object_type === "external_account") {
     publishExternalAccountUpdated(event.payload);
-    return;
+    return Promise.resolve();
   }
   const adapted = adaptWorkspaceEventForMessenger(event);
-  if (adapted?.event == null) return;
+  if (adapted?.event == null) return Promise.resolve();
   const chatList = useChatListStore.getState();
   const currentChat = useCurrentChatMessagesStore.getState();
   const users = useUsersStore.getState();
@@ -96,7 +120,8 @@ export function handleLayoutMessengerEventLoopQueueEvent(
   const jitsiCall = useJitsiCallStore.getState();
   const folderSync = useFolderSyncStore.getState();
 
-  dispatchMessengerEvent(adapted.event, {
+  return dispatchMessengerEvent(adapted.event, {
+    notificationsEnabled: delivery?.notificationsAllowed ?? true,
     currentInstanceId: options.currentInstanceId,
     chatList,
     currentChat,

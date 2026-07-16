@@ -1,6 +1,10 @@
 import { appendDevWorkspaceApiProxyHeaders } from "~/shared/api/client";
 import { MESSENGER_WORKSPACE_API_PATH } from "~/shared/config/workspace-api-layout";
 import { sanitizeFilename } from "~/shared/lib/validation";
+import {
+  fetchWorkspaceFileBlobFromApi,
+  resolveCurrentWorkspaceFileCacheScope,
+} from "~/shared/lib/workspace-file-blob-cache";
 
 const WORKSPACE_FILE_DOWNLOAD_PREFIX = `${MESSENGER_WORKSPACE_API_PATH}/files/`;
 const WORKSPACE_FILE_DOWNLOAD_SUFFIX = "/actions/download";
@@ -122,13 +126,23 @@ export async function downloadWorkspaceFileAttachment(
     return false;
   }
 
-  const response = await fetchImpl(normalizedPath, {
-    headers: appendDevWorkspaceApiProxyHeaders(normalizedPath, authHeaders),
-    credentials,
-  });
-  if (!response.ok) return false;
-
-  const blob = await readResponseBlob(response, onProgress);
+  const cacheScope = resolveCurrentWorkspaceFileCacheScope();
+  const blob =
+    cacheScope == null
+      ? await (async () => {
+          const response = await fetchImpl(normalizedPath, {
+            headers: appendDevWorkspaceApiProxyHeaders(normalizedPath, authHeaders),
+            credentials,
+          });
+          if (!response.ok) return null;
+          return await readResponseBlob(response, onProgress);
+        })()
+      : await fetchWorkspaceFileBlobFromApi(normalizedPath, {
+          headers: authHeaders,
+          fetchImpl,
+          readBinary: async (response) => await readResponseBlob(response, onProgress),
+        });
+  if (blob == null) return false;
   triggerBrowserDownload(blob, deriveAttachmentFileName(fileName));
   return true;
 }

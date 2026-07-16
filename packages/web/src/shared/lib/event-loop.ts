@@ -13,6 +13,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { WORKSPACE_GATEWAY_V1_PATH } from "~/shared/config/workspace-api-layout";
+import { resolveUserUuidFromAccessToken } from "~/shared/lib/access-token-claims.lib";
 import { recordDiagnosticRealtimeEvent } from "~/shared/lib/diagnostics-realtime.lib";
 import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
 import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
@@ -26,7 +27,9 @@ const log = createLogger("realtime");
 const WORKSPACE_EVENTS_PROTOCOL = "workspace.events.v1";
 const WORKSPACE_REALTIME_WS_PATH = "/api/workspace/v1/events/ws";
 const WORKSPACE_EVENTS_PATH = "/events/";
+const WORKSPACE_EPOCH_PATH = "/epoch/";
 const REALTIME_STORAGE_PREFIX = "workspace-realtime:last-epoch:v1:";
+const REALTIME_GENERATION_SUFFIX = ":generation";
 const CATCH_UP_PAGE_LIMIT = 500;
 const MAX_CATCH_UP_PAGES = 20;
 const MIN_RECONNECT_BACKOFF_MS = 1_000;
@@ -34,6 +37,7 @@ const MAX_RECONNECT_BACKOFF_MS = 30_000;
 const CLIENT_RECONNECT_CLOSE_CODE = 4000;
 const CLIENT_OFFLINE_CLOSE_CODE = 4001;
 const AUTH_CLOSE_CODES = new Set([4401, 4403]);
+const EVENTS_CURSOR_EXPIRED_CLOSE_CODE = 4410;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORKSPACE_EVENT_OBJECT_TYPES = new Set<WorkspaceEventObjectType>([
   "message",
@@ -44,6 +48,7 @@ const WORKSPACE_EVENT_OBJECT_TYPES = new Set<WorkspaceEventObjectType>([
   "user",
   "folder",
   "folder_item",
+  "file",
   "external_account",
   "mail_folder",
   "mail_message",
@@ -53,13 +58,21 @@ const WORKSPACE_EVENT_OBJECT_TYPES = new Set<WorkspaceEventObjectType>([
 
 export interface StartMessengerEventLoopOptions {
   enabled?: boolean;
-  onEvent: (event: WorkspaceEvent) => void;
+  onEvent: (event: WorkspaceEvent, delivery: MessengerEventDeliveryContext) => void | Promise<void>;
   onBadQueue?: () => void;
+  /** Sole full-cache invalidation signal: REST 410 or websocket close 4410. */
+  onCursorExpired?: () => void | Promise<void>;
   onQueueReady?: () => void;
   onTabStaleResume?: (hiddenDurationMs: number) => void;
   instanceId?: string;
   signal?: AbortSignal;
   eventTypes?: string[];
+}
+
+export interface MessengerEventDeliveryContext {
+  source: "catchup" | "realtime";
+  /** False only while replaying history before the first successful websocket ready. */
+  notificationsAllowed: boolean;
 }
 
 export interface StartMessengerEventLoopForCredentialsOptions extends StartMessengerEventLoopOptions {
@@ -75,7 +88,9 @@ interface RuntimeConfig {
 }
 
 interface LoopState {
+  epochGeneration: string | null;
   forceImmediateReconnect: boolean;
+  hasCompletedInitialReady: boolean;
   lastEpochVersion: number;
   socket: WebSocket | null;
   storageKey: string;
@@ -113,6 +128,13 @@ class RealtimeHttpError extends Error {
   ) {
     super(message);
     this.name = "RealtimeHttpError";
+  }
+}
+
+class UnsupportedRealtimeEventError extends Error {
+  constructor(epochVersion: number, reason: string | undefined) {
+    super(`Unsupported realtime event at epoch ${epochVersion}: ${reason ?? "unknown"}`);
+    this.name = "UnsupportedRealtimeEventError";
   }
 }
 
@@ -232,6 +254,37 @@ function buildStorageKey(identity: string): string {
   return `${REALTIME_STORAGE_PREFIX}${encodeURIComponent(identity)}`;
 }
 
+function buildAccountStorageIdentity(origin: string, scopeId: string, userUuid: string): string {
+  return `${origin.trim().replace(/\/+$/, "").toLowerCase()}|${scopeId}|${userUuid}`;
+}
+
+function resolveRealtimeAccountScope(instanceId: string | undefined, userUuid: string): string {
+  // IAM project scope is authoritative on server introspection and is not guaranteed
+  // to be embedded in the access token. The saved Workspace instance keeps cursors
+  // isolated without duplicating server-owned authorization context in the browser.
+  return readString(instanceId) ?? userUuid;
+}
+
+function readEpochGeneration(storageKey: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return readString(window.localStorage.getItem(`${storageKey}${REALTIME_GENERATION_SUFFIX}`));
+  } catch {
+    return null;
+  }
+}
+
+function writeEpochGeneration(storageKey: string, generation: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `${storageKey}${REALTIME_GENERATION_SUFFIX}`;
+    if (generation == null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, generation);
+  } catch {
+    /* best-effort cursor persistence */
+  }
+}
+
 function readLastEpochVersion(storageKey: string): number {
   if (typeof window === "undefined") {
     return 0;
@@ -252,6 +305,17 @@ function writeLastEpochVersion(storageKey: string, epochVersion: number): void {
   } catch {
     /* best-effort cursor persistence */
   }
+}
+
+function readRuntimeLastEpochVersion(runtime: RuntimeConfig): number {
+  return readLastEpochVersion(runtime.storageKey);
+}
+
+function resetRuntimeLastEpochVersion(runtime: RuntimeConfig, state: LoopState): void {
+  state.epochGeneration = null;
+  state.lastEpochVersion = 0;
+  writeLastEpochVersion(runtime.storageKey, 0);
+  writeEpochGeneration(runtime.storageKey, null);
 }
 
 function resolveHttpBaseUrl(baseUrl: string): string {
@@ -280,11 +344,18 @@ function buildResolvedHttpUrl(
   return url.toString();
 }
 
-function buildRealtimeWebSocketUrl(messengerApiBaseUrl: string, lastEpochVersion: number): string {
+function buildRealtimeWebSocketUrl(
+  messengerApiBaseUrl: string,
+  lastEpochVersion: number,
+  epochGeneration: string | null,
+): string {
   const baseUrl = new URL(resolveHttpBaseUrl(messengerApiBaseUrl));
   const url = new URL(WORKSPACE_REALTIME_WS_PATH, `${baseUrl.origin}/`);
   url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("last_epoch_version", String(lastEpochVersion));
+  if (lastEpochVersion > 0 && epochGeneration != null) {
+    url.searchParams.set("epoch_generation", epochGeneration);
+  }
   return url.toString();
 }
 
@@ -292,11 +363,12 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
   if (hasCredentials(options)) {
     const accessToken = options.credentials.accessToken.trim();
     const origin = resolveIamApiOrigin(options.credentials).replace(/\/+$/, "");
-    if (accessToken.length === 0 || origin.length === 0) {
+    const userUuid = resolveUserUuidFromAccessToken(accessToken);
+    if (accessToken.length === 0 || origin.length === 0 || userUuid == null) {
       return null;
     }
-    const identity =
-      options.instanceId ?? `${options.credentials.realm}|${options.credentials.login}`;
+    const accountScope = resolveRealtimeAccountScope(options.instanceId, userUuid);
+    const identity = buildAccountStorageIdentity(origin, accountScope, userUuid);
     return {
       accessToken,
       fetchMode: "direct",
@@ -314,9 +386,12 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
   if (accessToken.length === 0) {
     return null;
   }
-  const identity = options.instanceId ?? instance.id ?? `${instance.realm}|${instance.login}`;
   const websocketOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
   const messengerApiBaseUrl = getWorkspaceCommonApiBaseForCurrentInstance();
+  const userUuid = resolveUserUuidFromAccessToken(accessToken);
+  if (userUuid == null) return null;
+  const accountScope = resolveRealtimeAccountScope(options.instanceId ?? instance.id, userUuid);
+  const identity = buildAccountStorageIdentity(websocketOrigin, accountScope, userUuid);
   return {
     accessToken,
     fetchMode: "active-client",
@@ -348,12 +423,16 @@ function extractEventRows(data: unknown): unknown[] {
 async function fetchCatchUpBatch(
   runtime: RuntimeConfig,
   afterEpochVersion: number,
+  epochGeneration: string | null,
   signal: AbortSignal | undefined,
 ): Promise<unknown[]> {
-  const params = {
+  const params: Record<string, string> = {
     "epoch_version>": String(afterEpochVersion),
     page_limit: String(CATCH_UP_PAGE_LIMIT),
   };
+  if (afterEpochVersion > 0 && epochGeneration != null) {
+    params.epoch_generation = epochGeneration;
+  }
 
   if (runtime.fetchMode === "active-client") {
     const res = await messengerApi.getWithBase(
@@ -391,6 +470,56 @@ async function fetchCatchUpBatch(
   }
 }
 
+interface ServerEpochCursor {
+  epochGeneration: string;
+  epochVersion: number;
+}
+
+function parseServerEpochCursor(data: unknown): ServerEpochCursor | null {
+  if (!isRecord(data)) return null;
+  const epochGeneration = readString(data.epoch_generation);
+  const epochVersion = normalizeEpochVersion(data.epoch_version ?? data.current_epoch_version);
+  return epochGeneration == null || epochVersion == null ? null : { epochGeneration, epochVersion };
+}
+
+async function fetchServerEpochCursor(
+  runtime: RuntimeConfig,
+  signal: AbortSignal | undefined,
+): Promise<ServerEpochCursor> {
+  let status: number;
+  let data: unknown;
+  if (runtime.fetchMode === "active-client") {
+    const res = await messengerApi.getWithBase(
+      runtime.messengerApiBaseUrl,
+      WORKSPACE_EPOCH_PATH,
+      undefined,
+      signal,
+    );
+    status = res.status;
+    data = res.data;
+  } else {
+    const res = await fetch(
+      buildResolvedHttpUrl(runtime.messengerApiBaseUrl, WORKSPACE_EPOCH_PATH),
+      {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Authorization: `Bearer ${runtime.accessToken}` },
+        signal,
+      },
+    );
+    status = res.status;
+    data = res.ok ? await res.json().catch(() => null) : null;
+  }
+  if (status === 401 || status === 403) {
+    throw new RealtimeAuthStopError(`Realtime epoch unauthorized (${status})`);
+  }
+  const cursor = parseServerEpochCursor(data);
+  if (status < 200 || status >= 300 || cursor == null) {
+    throw new RealtimeHttpError(status, `Realtime epoch fetch failed (${status})`);
+  }
+  return cursor;
+}
+
 function messageFromWorkspaceEventPayload(
   payload: Record<string, unknown>,
   currentUserUuid: string | null,
@@ -409,6 +538,7 @@ function messageFromWorkspaceEventPayload(
   const topicUuid = normalizeUuid(payload.topic_uuid);
   const isOwn = readBoolean(payload.is_own, userUuidsEqual(authorUuid, currentUserUuid));
   const read = readBoolean(payload.read, isOwn);
+  const mentioned = readBoolean(payload.mentioned, false);
   const sourceName = readMessengerSourceName(payload.source_name);
   const source = readMessengerSource(payload.source);
   const providerDelivery = parseProviderDeliveryMeta(payload);
@@ -431,7 +561,7 @@ function messageFromWorkspaceEventPayload(
     stream_uuid: streamUuid,
     ...(sourceName != null ? { source_name: sourceName } : {}),
     ...(source != null ? { source } : {}),
-    flags: read ? ["read"] : [],
+    flags: [...(read ? ["read"] : []), ...(mentioned ? ["mentioned"] : [])],
     reactions: readMessageReactions(payload.reactions),
     ...(providerDelivery != null ? providerDelivery : {}),
   };
@@ -960,13 +1090,15 @@ function shouldDeliverEvent(
 function advanceStoredEpoch(state: LoopState, epochVersion: number): void {
   state.lastEpochVersion = Math.max(state.lastEpochVersion, epochVersion);
   writeLastEpochVersion(state.storageKey, state.lastEpochVersion);
+  writeEpochGeneration(state.storageKey, state.epochGeneration);
 }
 
-function processNormalizedEvent(
+async function processNormalizedEvent(
   normalized: NormalizedWorkspaceRealtimeEvent,
   options: StartMessengerEventLoopOptions,
   state: LoopState,
-): boolean {
+  delivery: MessengerEventDeliveryContext,
+): Promise<boolean> {
   if (normalized.epochVersion <= state.lastEpochVersion) {
     return false;
   }
@@ -976,8 +1108,7 @@ function processNormalizedEvent(
       epochVersion: normalized.epochVersion,
       reason: normalized.skipReason,
     });
-    advanceStoredEpoch(state, normalized.epochVersion);
-    return true;
+    throw new UnsupportedRealtimeEventError(normalized.epochVersion, normalized.skipReason);
   }
 
   if (!shouldDeliverEvent(options, normalized.event)) {
@@ -991,7 +1122,7 @@ function processNormalizedEvent(
 
   recordDiagnosticRealtimeEvent(normalized.event.object_type);
   logEvent(normalized.event.payload.kind, { epochVersion: normalized.epochVersion });
-  options.onEvent(normalized.event);
+  await options.onEvent(normalized.event, delivery);
   advanceStoredEpoch(state, normalized.epochVersion);
   return true;
 }
@@ -1002,7 +1133,12 @@ async function runCatchUp(
   state: LoopState,
 ): Promise<void> {
   for (let page = 0; page < MAX_CATCH_UP_PAGES; page += 1) {
-    const rows = await fetchCatchUpBatch(runtime, state.lastEpochVersion, options.signal);
+    const rows = await fetchCatchUpBatch(
+      runtime,
+      state.lastEpochVersion,
+      state.epochGeneration,
+      options.signal,
+    );
     if (rows.length === 0) {
       return;
     }
@@ -1014,7 +1150,11 @@ async function runCatchUp(
 
     let advanced = false;
     for (const normalized of normalizedRows) {
-      advanced = processNormalizedEvent(normalized, options, state) || advanced;
+      advanced =
+        (await processNormalizedEvent(normalized, options, state, {
+          source: "catchup",
+          notificationsAllowed: state.hasCompletedInitialReady,
+        })) || advanced;
     }
 
     if (rows.length < CATCH_UP_PAGE_LIMIT || !advanced) {
@@ -1055,10 +1195,15 @@ function openRealtimeSocket(
   }
 
   return new Promise((resolve, reject) => {
-    const url = buildRealtimeWebSocketUrl(runtime.websocketApiBaseUrl, state.lastEpochVersion);
+    const url = buildRealtimeWebSocketUrl(
+      runtime.websocketApiBaseUrl,
+      state.lastEpochVersion,
+      state.epochGeneration,
+    );
     let socket: WebSocket;
     let queueReadySent = false;
     let settled = false;
+    let deliveryQueue = Promise.resolve();
 
     const cleanup = () => {
       signal?.removeEventListener("abort", onAbort);
@@ -1110,12 +1255,28 @@ function openRealtimeSocket(
 
     socket.onopen = () => {
       log.info("Realtime websocket connected", { url: WORKSPACE_REALTIME_WS_PATH });
-      markQueueReady();
     };
 
     socket.onmessage = (messageEvent: MessageEvent) => {
       const frame = parseJsonFrame(messageEvent.data);
       if (frame == null) {
+        return;
+      }
+      if (readString(frame.type) === "ready") {
+        void deliveryQueue.then(() => {
+          const readyGeneration = readString(frame.epoch_generation);
+          const readyVersion = normalizeEpochVersion(frame.epoch_version);
+          if (readyGeneration != null) {
+            state.epochGeneration = readyGeneration;
+          }
+          if (readyVersion != null) {
+            advanceStoredEpoch(state, readyVersion);
+          } else {
+            writeEpochGeneration(state.storageKey, state.epochGeneration);
+          }
+          state.hasCompletedInitialReady = true;
+          markQueueReady();
+        });
         return;
       }
       const normalized = parseCanonicalWorkspaceEvent(frame);
@@ -1125,20 +1286,26 @@ function openRealtimeSocket(
         });
         return;
       }
-      try {
-        processNormalizedEvent(normalized, options, state);
-      } catch (error) {
-        log.error("Realtime event handler failed", {
-          error: error instanceof Error ? error.message : String(error),
-          epochVersion: normalized.epochVersion,
+      deliveryQueue = deliveryQueue
+        .then(() =>
+          processNormalizedEvent(normalized, options, state, {
+            source: "realtime",
+            notificationsAllowed: state.hasCompletedInitialReady,
+          }),
+        )
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          log.error("Realtime event handler failed", {
+            error: error instanceof Error ? error.message : String(error),
+            epochVersion: normalized.epochVersion,
+          });
+          try {
+            socket.close(1011, "event handler failed");
+          } catch {
+            /* close is best-effort */
+          }
+          finish({ code: 1011, reason: "event handler failed", wasClean: false });
         });
-        try {
-          socket.close(1011, "event handler failed");
-        } catch {
-          /* close is best-effort */
-        }
-        finish({ code: 1011, reason: "event handler failed", wasClean: false });
-      }
     };
 
     socket.onerror = () => {
@@ -1155,7 +1322,9 @@ function openRealtimeSocket(
         fail(new RealtimeAuthStopError(`Realtime websocket unauthorized (${event.code})`));
         return;
       }
-      finish({ code: event.code, reason: event.reason, wasClean: event.wasClean });
+      void deliveryQueue.finally(() => {
+        finish({ code: event.code, reason: event.reason, wasClean: event.wasClean });
+      });
     };
   });
 }
@@ -1170,7 +1339,11 @@ async function runRealtimeConnectionPass(
   await runCatchUp(runtime, options, state);
   const socketRuntime = resolveRuntimeConfig(options) ?? runtime;
   const closeInfo = await openRealtimeSocket(socketRuntime, options, state);
-  options.onBadQueue?.();
+  if (closeInfo.code === EVENTS_CURSOR_EXPIRED_CLOSE_CODE) {
+    resetRuntimeLastEpochVersion(runtime, state);
+    await options.onCursorExpired?.();
+    return "immediate";
+  }
 
   const reconnectNow =
     state.forceImmediateReconnect || closeInfo.code === CLIENT_RECONNECT_CLOSE_CODE;
@@ -1178,16 +1351,102 @@ async function runRealtimeConnectionPass(
   return reconnectNow ? "immediate" : "backoff";
 }
 
-function shouldStopRealtimeLoopAfterError(
-  error: unknown,
-  options: StartMessengerEventLoopOptions,
-): boolean {
+function shouldStopRealtimeLoopAfterError(error: unknown): boolean {
   if (error instanceof RealtimeAuthStopError) {
     log.warn("Realtime transport stopped for auth", { error: error.message });
-    options.onBadQueue?.();
     return true;
   }
   return isAbortError(error);
+}
+
+async function initializeLoopState(
+  runtime: RuntimeConfig,
+  options: StartMessengerEventLoopOptions,
+): Promise<LoopState> {
+  const serverCursor = await fetchServerEpochCursor(runtime, options.signal);
+  let storedVersion = readRuntimeLastEpochVersion(runtime);
+  let storedGeneration = readEpochGeneration(runtime.storageKey);
+  if (storedVersion > 0 && storedGeneration == null) {
+    writeLastEpochVersion(runtime.storageKey, 0);
+    storedVersion = 0;
+    await options.onCursorExpired?.();
+  }
+  storedGeneration ??= serverCursor.epochGeneration;
+  return {
+    epochGeneration: storedGeneration,
+    forceImmediateReconnect: false,
+    hasCompletedInitialReady: false,
+    lastEpochVersion: storedVersion,
+    socket: null,
+    storageKey: runtime.storageKey,
+  };
+}
+
+function syncLoopStateWithRuntime(state: LoopState, runtime: RuntimeConfig): void {
+  state.storageKey = runtime.storageKey;
+  state.lastEpochVersion = Math.max(state.lastEpochVersion, readRuntimeLastEpochVersion(runtime));
+  state.epochGeneration ??= readEpochGeneration(runtime.storageKey);
+}
+
+async function recoverFromRealtimePassError(
+  error: unknown,
+  runtime: RuntimeConfig,
+  options: StartMessengerEventLoopOptions,
+  state: LoopState,
+  reconnectAttempt: number,
+): Promise<number | null> {
+  if (shouldStopRealtimeLoopAfterError(error)) return null;
+  if (error instanceof RealtimeHttpError && error.status === 410) {
+    resetRuntimeLastEpochVersion(runtime, state);
+    await options.onCursorExpired?.();
+    return 0;
+  }
+  const nextAttempt = reconnectAttempt + 1;
+  log.warn("Realtime transport reconnect scheduled", {
+    attempt: nextAttempt,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  await sleepWithAbort(getReconnectBackoffMs(nextAttempt), options.signal);
+  return nextAttempt;
+}
+
+async function runRealtimePassLoop(
+  options: StartMessengerEventLoopOptions,
+  state: LoopState,
+): Promise<void> {
+  let reconnectAttempt = 0;
+  while (!options.signal?.aborted) {
+    await waitUntilOnlineWithAbort(options.signal);
+    const runtime = resolveRuntimeConfig(options);
+    if (runtime == null) {
+      log.warn("Realtime transport paused without IAM credentials");
+      return;
+    }
+    syncLoopStateWithRuntime(state, runtime);
+    try {
+      const passResult = await runRealtimeConnectionPass(runtime, options, state);
+      if (options.signal?.aborted) return;
+      reconnectAttempt = passResult === "immediate" ? 0 : reconnectAttempt + 1;
+      if (passResult === "backoff") {
+        await sleepWithAbort(getReconnectBackoffMs(reconnectAttempt), options.signal);
+      }
+    } catch (error) {
+      const nextAttempt = await recoverFromRealtimePassError(
+        error,
+        runtime,
+        options,
+        state,
+        reconnectAttempt,
+      );
+      if (nextAttempt == null) return;
+      reconnectAttempt = nextAttempt;
+    }
+  }
+}
+
+function closeLoopSocket(state: LoopState): void {
+  const socket = state.socket;
+  if (socket != null && socket.readyState < 2) socket.close(1000, "stopped");
 }
 
 async function runWorkspaceRealtimeLoop(options: StartMessengerEventLoopOptions): Promise<void> {
@@ -1197,12 +1456,7 @@ async function runWorkspaceRealtimeLoop(options: StartMessengerEventLoopOptions)
     return;
   }
 
-  const state: LoopState = {
-    forceImmediateReconnect: false,
-    lastEpochVersion: readLastEpochVersion(initialRuntime.storageKey),
-    socket: null,
-    storageKey: initialRuntime.storageKey,
-  };
+  const state = await initializeLoopState(initialRuntime, options);
 
   const closeForReconnect = (code: number, reason: string) => {
     state.forceImmediateReconnect = true;
@@ -1227,50 +1481,11 @@ async function runWorkspaceRealtimeLoop(options: StartMessengerEventLoopOptions)
     onOffline: () => closeForReconnect(CLIENT_OFFLINE_CLOSE_CODE, "network offline"),
   });
 
-  let reconnectAttempt = 0;
   try {
-    while (!options.signal?.aborted) {
-      await waitUntilOnlineWithAbort(options.signal);
-      const runtime = resolveRuntimeConfig(options);
-      if (runtime == null) {
-        log.warn("Realtime transport paused without IAM credentials");
-        return;
-      }
-
-      state.storageKey = runtime.storageKey;
-      state.lastEpochVersion = Math.max(
-        state.lastEpochVersion,
-        readLastEpochVersion(runtime.storageKey),
-      );
-
-      try {
-        const passResult = await runRealtimeConnectionPass(runtime, options, state);
-        if (options.signal?.aborted) {
-          return;
-        }
-        reconnectAttempt = passResult === "immediate" ? 0 : reconnectAttempt + 1;
-        if (passResult === "backoff") {
-          await sleepWithAbort(getReconnectBackoffMs(reconnectAttempt), options.signal);
-        }
-      } catch (error) {
-        if (shouldStopRealtimeLoopAfterError(error, options)) {
-          return;
-        }
-        reconnectAttempt += 1;
-        log.warn("Realtime transport reconnect scheduled", {
-          attempt: reconnectAttempt,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        options.onBadQueue?.();
-        await sleepWithAbort(getReconnectBackoffMs(reconnectAttempt), options.signal);
-      }
-    }
+    await runRealtimePassLoop(options, state);
   } finally {
     teardownLifecycle();
-    const socket = state.socket;
-    if (socket != null && socket.readyState < 2) {
-      socket.close(1000, "stopped");
-    }
+    closeLoopSocket(state);
   }
 }
 

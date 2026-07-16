@@ -205,6 +205,12 @@ export const env = {
   AVATAR_PERSIST_INDEXEDDB: avatarPersistIndexedDb,
 
   /**
+   * When true, expose only Messenger navigation and routes.
+   * Build-time — `VITE_MESSENGER_ONLY=true` (default: full Workspace UI).
+   */
+  MESSENGER_ONLY: parseBooleanEnvFlag(optional("VITE_MESSENGER_ONLY", "false"), false),
+
+  /**
    * When true, top bar shows the Calls section shortcut.
    * Build-time — `VITE_TOP_BAR_CALLS_NAV=true` (default: hidden).
    */

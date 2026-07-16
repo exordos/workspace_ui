@@ -1,4 +1,5 @@
 import { act, render, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -14,6 +15,7 @@ import { useUserProfileStore } from "~/features/user-profile/user-profile.model"
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { createMessage } from "~/test/factories";
+import { resetLayoutMessengerBootstrapCacheForTests } from "./layout-messenger-bootstrap-cache.lib";
 import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
@@ -21,8 +23,12 @@ const startMessengerEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchMyStreamsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchStreamTopicsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchStreamBindingsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const getCurrentUserMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ user_id: "00000000-0000-0000-0000-000000000000" })),
+);
+const getCurrentUserIdFromAccessTokenMock = vi.hoisted(() =>
+  vi.fn<() => string | null>(() => "00000000-0000-0000-0000-000000000000"),
 );
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ messages: [], foundOldest: true })),
@@ -60,10 +66,12 @@ vi.mock("~/shared/api/messenger-sidebar-preview.lib", () => ({
 vi.mock("~/shared/api/messenger-streams", () => ({
   fetchMyStreams: fetchMyStreamsMock,
   fetchStreamTopics: fetchStreamTopicsMock,
+  fetchStreamBindings: fetchStreamBindingsMock,
 }));
 
 vi.mock("~/shared/api/messenger-users", () => ({
   fetchUsers: fetchUsersMock,
+  getCurrentUserIdFromAccessToken: getCurrentUserIdFromAccessTokenMock,
   getCurrentUser: getCurrentUserMock,
 }));
 
@@ -136,6 +144,9 @@ function Harness({
 
 describe("useLayoutMessengerEventLoop", () => {
   beforeEach(() => {
+    resetLayoutMessengerBootstrapCacheForTests();
+    getCurrentUserIdFromAccessTokenMock.mockReset();
+    getCurrentUserIdFromAccessTokenMock.mockReturnValue("00000000-0000-0000-0000-000000000000");
     hydrateDmSidebarPreviewsMock.mockClear();
     loadDmIndexEntriesMock.mockReset();
     loadDmIndexEntriesMock.mockReturnValue([]);
@@ -201,6 +212,23 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(firstCallArg?.enabled).toBe(true);
     expect(firstCallArg?.fetchEventTypes).toBeUndefined();
     expect(firstCallArg?.onQueueRegistered).toBeUndefined();
+  });
+
+  it("coalesces StrictMode bootstrap reads into one users, streams, and topics request", async () => {
+    render(
+      <StrictMode>
+        <Harness currentInstanceId="inst-1" />
+      </StrictMode>,
+    );
+
+    await waitFor(() => {
+      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(fetchUsersMock).toHaveBeenCalledTimes(1);
+    expect(fetchMyStreamsMock).toHaveBeenCalledTimes(1);
+    expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(1);
+    expect(fetchStreamBindingsMock).toHaveBeenCalledTimes(1);
   });
 
   it("marks stream metadata as hydrated after bootstrap subscriptions success, even if empty", async () => {
@@ -271,6 +299,7 @@ describe("useLayoutMessengerEventLoop", () => {
   });
 
   it("does not resolve current user from directory when token user lookup fails", async () => {
+    getCurrentUserIdFromAccessTokenMock.mockReturnValueOnce(null);
     getCurrentUserMock.mockResolvedValueOnce(null as unknown as { user_id: string });
     fetchUsersMock.mockResolvedValueOnce([
       {
@@ -313,7 +342,7 @@ describe("useLayoutMessengerEventLoop", () => {
     });
   });
 
-  it("does not let a superseded bootstrap run set blocked after ready", async () => {
+  it("does not let an unmounted bootstrap run set blocked", async () => {
     const props = createHarnessProps();
     let resolveUsers!: (members: never[]) => void;
     fetchUsersMock.mockImplementationOnce(
@@ -326,9 +355,7 @@ describe("useLayoutMessengerEventLoop", () => {
 
     const { unmount } = render(<Harness currentInstanceId="inst-1" props={props} />);
 
-    await waitFor(() => {
-      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("ready");
-    });
+    await waitFor(() => expect(props.setCurrentUserStatus).toHaveBeenCalledWith("loading"));
 
     unmount();
     resolveUsers([]);
@@ -339,6 +366,7 @@ describe("useLayoutMessengerEventLoop", () => {
     });
 
     expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
+    expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("ready");
   });
 
   it("clears messenger shell state when active instance becomes null", async () => {

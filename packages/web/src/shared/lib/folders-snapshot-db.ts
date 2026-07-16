@@ -1,17 +1,18 @@
 /**
  * Persists folder rail list per organization instance in IndexedDB (hydrate + write-through).
  */
-import type { WorkspaceFolderForRail } from "~/shared/api/workspace-client";
+import type { FolderItemForClient, WorkspaceFolderForRail } from "~/shared/api/workspace-client";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
 
-export type FoldersSnapshotRowVersion = 1;
+export type FoldersSnapshotRowVersion = 1 | 2;
 
 export interface FoldersSnapshotRow {
   instanceId: string;
   version: FoldersSnapshotRowVersion;
   folders: WorkspaceFolderForRail[];
+  folderItemsEntries?: [string, FolderItemForClient[]][];
 }
 
 function idbError(reason: unknown): Error {
@@ -27,9 +28,8 @@ export async function persistFoldersSnapshotRow(row: FoldersSnapshotRow): Promis
       tx.onerror = () => reject(idbError(tx.error));
       tx.oncomplete = () => resolve();
       tx.objectStore(STORE_FOLDERS_SNAPSHOT).put({
-        instanceId: row.instanceId,
-        version: 1,
-        folders: row.folders,
+        ...row,
+        version: row.folderItemsEntries == null ? 1 : 2,
       });
     });
   } catch {

@@ -3,7 +3,7 @@
 The Workspace UI frontend is built using [Feature-Sliced Design](https://feature-sliced.design).
 Stack: React 19, TypeScript 5.9, Vite 8, Zustand, Tailwind CSS, Radix UI, react-router-dom 7.
 
-> **Canonical counts and paths:** see [PROJECT_FACTS.md](PROJECT_FACTS.md) (17 entities, 22 features, 14 pages, 9 widgets).
+> **Canonical counts and paths:** see [PROJECT_FACTS.md](PROJECT_FACTS.md) (19 entities, 30 features, 14 pages, 11 widgets).
 
 ## Layers
 
@@ -167,28 +167,28 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 ┌────────────┐    ┌──────────────────┐    ┌──────────────────────────┐
 │ React      │───►│ shared/api and   │───►│ /api/workspace/v1        │
 │ components │    │ @workspace/api   │    │   /messenger             │
-│            │    │ IAM Bearer token │    │   /mail                  │
-│ stores     │    │ project:default  │    │   /calendar              │
-│            │◄───│ common event loop│◄───│   /events/ws             │
+│            │    │ IAM Bearer token │    │   /events                │
+│ stores     │    │ project:default  │    │   /events/ws             │
+│            │◄───│ common event loop│◄───│                          │
 └────────────┘    └──────────────────┘    └──────────────────────────┘
 ```
 
 Key points:
 
-- IAM authorization state supplies one bearer token for all Workspace domains;
-  passwords and API keys are not stored in the instance model.
+- IAM authorization state supplies one bearer token for Workspace; passwords
+  and API keys are not stored in the instance model.
 - `shared/api/client.ts` — low-level messenger helpers plus the common IAM,
   logging, and retry middleware pipeline.
-- `shared/api/workspace-client.ts` and `@workspace/api` — common, mail,
-  calendar, and messenger API operations.
+- `shared/api/workspace-client.ts` and `@workspace/api` — common and Messenger
+  API operations from the checked-in contract.
 - Workspace UI calls only the IAM-authenticated `/api/workspace/v1` contract.
-  Provider registration sync, blobs, and commands belong to the trusted
-  provider-daemon boundary and must not be imported or called by UI slices.
+  Mail, Calendar, and provider-service endpoints are not part of the current
+  backend contract.
 - `entities/*/api.ts` — entity-level API functions, uses helpers from `shared/api/`.
 - `features/ai-reply/ai-reply.api.ts` — AI provider factory (mock + HTTP).
 - The common real-time event loop connects only to
-  `/api/workspace/v1/events/ws`, resumes by epoch, and dispatches messenger,
-  mail, and calendar events through layout dispatch libraries.
+  `/api/workspace/v1/events/ws`, resumes by epoch generation/version, and
+  dispatches Messenger events through layout dispatch libraries.
 
 ---
 
@@ -367,7 +367,9 @@ import { JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 ## Future Work
 
 - **New entities/pages/features** as product scope expands — follow slice templates in this doc and [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).
-- **IndexedDB message cache** — deferred; see [ADR-010](adr/010-indexeddb-subsystem.md).
+- **Cache-first Messenger projection** — implemented incrementally in the
+  versioned IndexedDB `message-cache` database; see
+  [ADR-010](adr/010-indexeddb-subsystem.md).
 
 > Completed since initial migration: `activity/`, `download/`, `user-group/`, `folder-sync/`, `settings`/`logs`/`update` pages, and related features — see [PROJECT_FACTS.md](PROJECT_FACTS.md).
 

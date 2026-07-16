@@ -9,8 +9,9 @@ export async function seedAuthStorage(page: Page, apiKey?: string): Promise<stri
       const instance = {
         id: instanceId,
         realm,
-        login,
-        apiKey: resolvedApiKey,
+        login: email,
+        authType: "iam",
+        iamAccessToken: resolvedApiKey,
       };
       localStorage.setItem("messenger-web-instances", JSON.stringify([instance]));
       localStorage.setItem("messenger-web-current-instance", instanceId);

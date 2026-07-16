@@ -251,6 +251,23 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries topic metadata when the stream row was not ready for the first response", async () => {
+    fetchStreamTopicsMock.mockResolvedValue([topicRow("alpha", TOPIC_ALPHA_UUID)]);
+
+    await requestStreamSidebarTopicListHydrate(STREAM_UUID);
+    expect(useChatListStore.getState().streamsMap.has(STREAM_UUID)).toBe(false);
+
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    await requestStreamSidebarTopicListHydrate(STREAM_UUID);
+
+    expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(2);
+    expect(
+      useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.get("alpha")?.topicUuid,
+    ).toBe(TOPIC_ALPHA_UUID);
+  });
+
   it("inserts server default topic shell and hydrates preview by topic uuid", async () => {
     useChatListStore
       .getState()

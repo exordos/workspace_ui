@@ -16,8 +16,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type { StreamNotificationMode } from "~/features/mute-chat/notification-level.lib";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { t } from "~/i18n/i18n";
-import { fetchMyStreams, fetchStreamTopics } from "~/shared/api/messenger-streams";
-import { fetchUsers, getCurrentUser } from "~/shared/api/messenger-users";
+import { getCurrentUser } from "~/shared/api/messenger-users";
 import type { WorkspaceRawMessage, MessengerUserMember } from "~/shared/api/messenger.types";
 import {
   cancelScheduledReconnect,
@@ -33,12 +32,13 @@ import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import {
   applyChatListBootstrapResult,
   type ApplyChatListBootstrapResultOptions,
 } from "./layout-chat-list-bootstrap-apply.lib";
+import { loadLayoutMessengerBootstrapEntities } from "./layout-messenger-bootstrap-cache.lib";
+import { clearMessengerCachesForExpiredCursor } from "./layout-messenger-cache-invalidation.lib";
 import {
   createCurrentUserReconnectRunner,
   createManualReconnectBootstrapHandler,
@@ -90,6 +90,13 @@ function assignRefreshStaleCallback(
   if (ref) {
     ref.current = callback;
   }
+}
+
+function createExpiredCursorHandler(instanceId: string): () => Promise<void> {
+  return async () => {
+    await clearMessengerCachesForExpiredCursor(instanceId);
+    window.location.reload();
+  };
 }
 
 function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): void {
@@ -265,19 +272,6 @@ export function useLayoutMessengerEventLoop(options: {
             })
           : Promise.resolve();
 
-      const pUsersDir = shouldHydrateMuteFromCache
-        ? loadUsersDirectoryRow(currentInstanceId)
-            .then((row) => {
-              if (cancelled) return;
-              if (row?.members?.length) {
-                useUsersStore.getState().mergeUsers(row.members);
-              }
-            })
-            .catch(() => {
-              // best-effort cache; fetchUsers still hydrates the directory.
-            })
-        : Promise.resolve();
-
       const bootstrapApplyOptions = {
         currentInstanceId,
         setFromMessages: setFromMessagesRef.current,
@@ -365,33 +359,28 @@ export function useLayoutMessengerEventLoop(options: {
         }),
       );
 
-      const pUsers = fetchUsers();
-      const pMyStreams = fetchMyStreams();
-      const pStreamTopics = fetchStreamTopics();
+      const pEntities = loadLayoutMessengerBootstrapEntities(currentInstanceId);
       const pStreamPreviews = loadBootstrapMessagesRef.current(
         bootstrapAbort.signal,
         isBootstrapStale,
       );
-      const pCurrentUserId = attemptResolveCurrentUser();
 
       try {
-        const bootstrapCore = await Promise.all([
-          pMuteHydrate,
-          pUsersDir,
-          pUsers,
-          pMyStreams,
-          pStreamTopics,
-          pCurrentUserId,
-        ]);
+        const bootstrapCore = await Promise.all([pMuteHydrate, pEntities]);
         if (cancelled) return;
-        const members = bootstrapCore[2];
-        const myStreams = bootstrapCore[3];
-        const streamTopics = bootstrapCore[4];
-        const resolvedCurrentUserId = bootstrapCore[5];
+        const entities = bootstrapCore[1];
+        const members = entities.users;
+        const myStreams = entities.streams;
+        const streamTopics = entities.topics;
+        const resolvedCurrentUserId = entities.currentUserId;
         const apiMembers: MessengerUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
 
-        if (resolvedCurrentUserId == null) {
+        if (resolvedCurrentUserId != null) {
+          setCurrentUserIdRef.current(resolvedCurrentUserId);
+          setBootstrapStatus("ready");
+          reportSuccess();
+        } else {
           finalizeBootstrapAuth(null);
         }
 
@@ -503,8 +492,7 @@ export function useLayoutMessengerEventLoop(options: {
             enabled: true,
             signal: loopAbort.signal,
             instanceId: currentInstanceId ?? undefined,
-            onTabStaleResume: refreshStaleData,
-            onBadQueue: refreshStaleData,
+            onCursorExpired: createExpiredCursorHandler(currentInstanceId),
             onEvent: onEventHandler,
           });
         };

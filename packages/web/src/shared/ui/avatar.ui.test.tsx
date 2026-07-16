@@ -77,18 +77,20 @@ describe("Avatar IndexedDB cache", () => {
     });
   });
 
-  it("skips cache when persist flag is off", async () => {
+  it("fetches the protected image without persisting it when cache is off", async () => {
     persistAvatarBlobsToIndexedDb.mockReturnValue(false);
     getAvatarBlobCacheRow.mockResolvedValue(null);
+    const blob = new Blob(["fresh"], { type: "image/png" });
+    fetchAvatarBlob.mockResolvedValue(blob);
 
     const { container } = render(<Avatar src="https://z.example.com/avatar/3.png">C</Avatar>);
 
+    expect(container.querySelector("img")).toBeNull();
     await waitFor(() => {
-      expect(container.querySelector("img")?.getAttribute("src")).toBe(
-        "https://z.example.com/avatar/3.png",
-      );
+      expect(container.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/);
     });
     expect(getAvatarBlobCacheRow).not.toHaveBeenCalled();
-    expect(fetchAvatarBlob).not.toHaveBeenCalled();
+    expect(putAvatarBlobCacheRow).not.toHaveBeenCalled();
+    expect(fetchAvatarBlob).toHaveBeenCalledWith("https://z.example.com/avatar/3.png");
   });
 });

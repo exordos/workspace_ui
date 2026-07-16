@@ -43,6 +43,7 @@ describe("env", () => {
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
     expect(env).toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
+    expect(env).toHaveProperty("MESSENGER_ONLY");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
     expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
   });
@@ -53,6 +54,7 @@ describe("env", () => {
     expect(typeof env.DEV).toBe("boolean");
     expect(typeof env.PROD).toBe("boolean");
     expect(typeof env.USER_UPLOADS_PREFIX_ON_REALM).toBe("boolean");
+    expect(typeof env.MESSENGER_ONLY).toBe("boolean");
   });
 
   // MODE is "development", "production", or "test"
@@ -137,6 +139,18 @@ describe("env", () => {
     const { env: envBoth } = await import("./env");
     expect(envBoth.TOP_BAR_CALLS_NAV).toBe(true);
     expect(envBoth.TOP_BAR_SERVICES_NAV).toBe(true);
+  });
+
+  it("MESSENGER_ONLY respects boolean VITE_MESSENGER_ONLY values", async () => {
+    vi.stubEnv("VITE_MESSENGER_ONLY", "true");
+    vi.resetModules();
+    const { env: enabledEnv } = await import("./env");
+    expect(enabledEnv.MESSENGER_ONLY).toBe(true);
+
+    vi.stubEnv("VITE_MESSENGER_ONLY", "0");
+    vi.resetModules();
+    const { env: disabledEnv } = await import("./env");
+    expect(disabledEnv.MESSENGER_ONLY).toBe(false);
   });
 });
 

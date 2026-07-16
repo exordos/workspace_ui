@@ -5,7 +5,10 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
-import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
+import {
+  registerNotifiedMessageId,
+  wasRecentlyNotified,
+} from "~/shared/lib/notification-dedup.lib";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
 import { buildRouteFromMessage } from "~/shared/lib/push-click";
@@ -45,7 +48,7 @@ export function deliverDesktopNotificationForMessage(
   currentUserId: UserId | null,
   currentInstanceId: string | null,
 ): void {
-  registerNotifiedMessageId(raw.id);
+  registerNotifiedMessageId(raw.id, currentInstanceId);
 
   const contentPreview = plainTextPreviewFromMessageBody(raw.content ?? "").slice(0, 100);
   const clickRoute =
@@ -97,6 +100,9 @@ export function maybeNotifyNewMessage(
   isForCurrentChat: boolean,
   isFromSelf: boolean,
 ): void {
+  if (ctx.notificationsEnabled === false) return;
+  if (wasRecentlyNotified(raw.id, ctx.currentInstanceId)) return;
+
   const { isMuted, isTopicFollowed } = resolveStreamMessageMuteState(raw, ctx.mute);
   const serverSettings = useNotificationSettingsStore.getState().settings;
   const localSound = useSettingsStore.getState().notificationSound;

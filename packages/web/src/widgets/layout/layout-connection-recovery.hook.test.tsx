@@ -6,7 +6,6 @@ const onTabResumeMock = vi.fn();
 const onVisibilityChangeMock = vi.fn();
 const onReconnectMock = vi.fn();
 const requestReconnectMock = vi.fn();
-const scheduleReconnectMock = vi.fn();
 
 vi.mock("~/shared/lib/visibility", () => ({
   onTabResume: (...args: unknown[]) => onTabResumeMock(...args),
@@ -21,10 +20,6 @@ vi.mock("~/shared/lib/connection-health", () => ({
   requestReconnect: (...args: unknown[]) => requestReconnectMock(...args),
   getConnectionHealthSnapshot: () => ({ phase: "ready", failureReason: null }),
   subscribeConnectionHealth: () => () => {},
-}));
-
-vi.mock("./layout-reconnect-coordinator.lib", () => ({
-  scheduleLayoutReconnectRefresh: (...args: unknown[]) => scheduleReconnectMock(...args),
 }));
 
 function Harness({
@@ -57,11 +52,10 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="idle" />);
 
     resumeCb?.(60_000);
-    expect(scheduleReconnectMock).not.toHaveBeenCalled();
     expect(requestReconnectMock).not.toHaveBeenCalled();
   });
 
-  it("schedules light refresh on tab resume after bootstrap settled", () => {
+  it("requests realtime recovery on tab resume after degraded bootstrap", () => {
     let resumeCb: ((hiddenDurationMs: number) => void) | undefined;
     onTabResumeMock.mockImplementation((cb: (hiddenDurationMs: number) => void) => {
       resumeCb = cb;
@@ -73,14 +67,10 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="degraded" />);
 
     resumeCb?.(60_000);
-    expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({ instanceId: "inst-1" }),
-      "light",
-    );
     expect(requestReconnectMock).toHaveBeenCalled();
   });
 
-  it("schedules full refresh on network reconnect", () => {
+  it("does not duplicate realtime recovery with a full data refresh when already ready", () => {
     let reconnectCb: (() => void) | undefined;
     onTabResumeMock.mockReturnValue(vi.fn());
     onVisibilityChangeMock.mockReturnValue(vi.fn());
@@ -92,9 +82,6 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="ready" />);
 
     reconnectCb?.();
-    expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({ instanceId: "inst-1" }),
-      "full",
-    );
+    expect(requestReconnectMock).not.toHaveBeenCalled();
   });
 });

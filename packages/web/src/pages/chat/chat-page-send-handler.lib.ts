@@ -123,7 +123,6 @@ async function sendOutgoingMessageWithOptimisticUi(options: {
     deps.appendMessage(markOutgoingMessageFailed(optimisticMessage));
     const message = err instanceof Error ? err.message : t("message.sendFailed");
     deps.setSendError(message);
-    throw err instanceof Error ? err : new Error(t("message.sendFailed"));
   } finally {
     deps.setUploadProgress(null);
   }

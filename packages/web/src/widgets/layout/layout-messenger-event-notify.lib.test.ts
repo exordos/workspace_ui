@@ -3,6 +3,10 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { DEFAULT_MESSENGER_NOTIFICATION_SETTINGS } from "~/shared/lib/messenger-notification-settings.lib";
+import {
+  clearNotifiedMessageIds,
+  registerNotifiedMessageId,
+} from "~/shared/lib/notification-dedup.lib";
 import { testMessageId } from "~/test/factories";
 import {
   deliverDesktopNotificationForMessage,
@@ -112,6 +116,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useMuteStore.getState().clear();
   useNotificationSettingsStore.getState().clear();
+  clearNotifiedMessageIds();
   clearNotificationAggregateRegistry();
 });
 
@@ -194,6 +199,36 @@ describe("deliverDesktopNotificationForMessage", () => {
 });
 
 describe("maybeNotifyNewMessage", () => {
+  it("suppresses OS notification, sound, and attention while initial history is replayed", () => {
+    setMuteSnapshot({
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
+    });
+    const notifications = createNotifications();
+    const ctx = createContext(notifications);
+    ctx.notificationsEnabled = false;
+
+    maybeNotifyNewMessage(ctx, createRawMessage(), 7, false, false);
+
+    expect(notifications.show).not.toHaveBeenCalled();
+    expect(notifications.playSound).not.toHaveBeenCalled();
+    expect(notifications.requestAttentionIfNotFocused).not.toHaveBeenCalled();
+  });
+
+  it("suppresses realtime delivery after the same message was notified by push", () => {
+    setMuteSnapshot({
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
+    });
+    const notifications = createNotifications();
+    const message = createRawMessage();
+    registerNotifiedMessageId(message.id, "inst-1");
+
+    maybeNotifyNewMessage(createContext(notifications), message, 7, false, false);
+
+    expect(notifications.show).not.toHaveBeenCalled();
+    expect(notifications.playSound).not.toHaveBeenCalled();
+    expect(notifications.requestAttentionIfNotFocused).not.toHaveBeenCalled();
+  });
+
   it("suppresses a normal stream message in a muted channel", () => {
     setMuteSnapshot({ streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }] });
     const notifications = createNotifications();

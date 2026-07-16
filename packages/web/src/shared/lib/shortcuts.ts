@@ -16,6 +16,7 @@
 
 import { useEffect, useRef } from "react";
 import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
+import { env } from "./env";
 import { dispatchShortcutKeyDown, type ShortcutActiveHandler } from "./shortcuts-keydown.lib";
 
 // ---------------------------------------------------------------------------
@@ -215,9 +216,14 @@ export function useShortcuts(
 // Utils
 // ---------------------------------------------------------------------------
 
-export function getShortcutsByCategory(): Map<string, ShortcutDef[]> {
+export function getShortcutsByCategory(
+  messengerOnly = env.MESSENGER_ONLY,
+): Map<string, ShortcutDef[]> {
   const map = new Map<string, ShortcutDef[]>();
   for (const s of SHORTCUTS) {
+    if (messengerOnly && (s.key === "mod+2" || s.key === "mod+3" || s.key === "mod+4")) {
+      continue;
+    }
     const existing = map.get(s.category) ?? [];
     existing.push(s);
     map.set(s.category, existing);

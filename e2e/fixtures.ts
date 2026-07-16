@@ -12,7 +12,6 @@
 
 import { test as base, expect as baseExpect, type Page } from "@playwright/test";
 import { clearAppStorage } from "./helpers/clear-app-storage";
-import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
 import { MessengerApiMock } from "./helpers/messenger-api-mock";
 import { seedAuthStorage } from "./helpers/seed-auth";

@@ -174,6 +174,94 @@ export function mergeBootstrapStreamsWithPreviousMetadata(
   return next;
 }
 
+function findCachedTopicForAuthoritativeTopic(
+  cachedTopics: Map<string, StreamTopicEntryInternal>,
+  authoritativeTopic: StreamTopicEntryInternal,
+): [string, StreamTopicEntryInternal] | null {
+  const topicUuid = authoritativeTopic.topicUuid?.trim().toLowerCase();
+  if (topicUuid != null && topicUuid.length > 0) {
+    for (const [key, cachedTopic] of cachedTopics) {
+      if (cachedTopic.topicUuid?.trim().toLowerCase() === topicUuid) {
+        return [key, cachedTopic];
+      }
+    }
+  }
+  const bySubject = cachedTopics.get(authoritativeTopic.subject);
+  if (
+    bySubject == null ||
+    (topicUuid != null &&
+      topicUuid.length > 0 &&
+      bySubject.topicUuid != null &&
+      bySubject.topicUuid.trim().toLowerCase() !== topicUuid)
+  ) {
+    return null;
+  }
+  return [authoritativeTopic.subject, bySubject];
+}
+
+function mergeCachedTopicPreviewIntoAuthoritativeTopic(
+  cachedTopic: StreamTopicEntryInternal,
+  authoritativeTopic: StreamTopicEntryInternal,
+): StreamTopicEntryInternal {
+  if (cachedTopic.ts < authoritativeTopic.ts) {
+    return authoritativeTopic;
+  }
+  return {
+    ...authoritativeTopic,
+    lastMessage: cachedTopic.lastMessage,
+    lastMessageSenderName: cachedTopic.lastMessageSenderName,
+    time: cachedTopic.time,
+    ts: cachedTopic.ts,
+    ...(cachedTopic.lastMessageId != null ? { lastMessageId: cachedTopic.lastMessageId } : {}),
+  };
+}
+
+/**
+ * Keeps the authoritative stream/topic set when a slower IndexedDB read settles after the
+ * gateway bootstrap, while restoring cached message previews for matching entities.
+ */
+export function mergeCachedStreamPreviewsIntoAuthoritativeMetadata(
+  cachedStreamsMap: Map<string, StreamEntryInternal>,
+  authoritativeStreamsMap: Map<string, StreamEntryInternal>,
+): Map<string, StreamEntryInternal> {
+  const nextStreams = new Map<string, StreamEntryInternal>();
+  for (const [streamUuid, authoritativeStream] of authoritativeStreamsMap) {
+    const cachedStream = cachedStreamsMap.get(streamUuid);
+    if (cachedStream == null) {
+      nextStreams.set(streamUuid, authoritativeStream);
+      continue;
+    }
+
+    const nextTopics = new Map(authoritativeStream.topics);
+    for (const [authoritativeKey, authoritativeTopic] of authoritativeStream.topics) {
+      const cachedMatch = findCachedTopicForAuthoritativeTopic(
+        cachedStream.topics,
+        authoritativeTopic,
+      );
+      if (cachedMatch == null) continue;
+      const [, cachedTopic] = cachedMatch;
+      nextTopics.set(
+        authoritativeKey,
+        mergeCachedTopicPreviewIntoAuthoritativeTopic(cachedTopic, authoritativeTopic),
+      );
+    }
+
+    nextStreams.set(streamUuid, {
+      ...authoritativeStream,
+      ...(cachedStream.ts >= authoritativeStream.ts
+        ? {
+            lastMessage: cachedStream.lastMessage,
+            lastMessageSenderName: cachedStream.lastMessageSenderName,
+            time: cachedStream.time,
+            ts: cachedStream.ts,
+          }
+        : {}),
+      topics: nextTopics,
+    });
+  }
+  return nextStreams;
+}
+
 /** Normalizes DM participant ids; injects current user for metadata-only 1:1 rows. */
 export function normalizeDmUserIds(
   userIds: readonly UserId[],

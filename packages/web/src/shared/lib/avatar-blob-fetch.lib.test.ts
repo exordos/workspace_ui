@@ -14,7 +14,12 @@ vi.mock("~/shared/lib/auth-guard", () => ({
 }));
 
 vi.mock("~/shared/api/client", () => ({
+  getCurrentInstance: () => null,
   appendDevRealmMediaProxyHeaders: (
+    _url: string,
+    headers: Record<string, string>,
+  ): Record<string, string> => headers,
+  appendDevWorkspaceApiProxyHeaders: (
     _url: string,
     headers: Record<string, string>,
   ): Record<string, string> => headers,
@@ -125,6 +130,27 @@ describe("fetchAvatarBlob", () => {
         headers: { Authorization: "Bearer test" },
       }),
     );
+  });
+
+  it("downloads a public Workspace avatar through the authenticated file route", async () => {
+    mockEnv.DEV = false;
+    mockEnv.MODE = "production";
+    vi.stubGlobal("window", { location: { origin: "https://workspace.example.com" } });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["avatar"], { type: "image/jpeg" })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const downloadPath =
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const blob = await fetchAvatarBlob(`https://workspace.example.com${downloadPath}`);
+
+    expect(blob?.type).toBe("image/jpeg");
+    expect(fetchMock).toHaveBeenCalledWith(downloadPath, {
+      credentials: "include",
+      headers: { Authorization: "Bearer test" },
+    });
   });
 
   it("returns null when response is not ok", async () => {

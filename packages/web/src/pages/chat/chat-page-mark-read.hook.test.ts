@@ -1,5 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { applyOpenChatMarkAllAsRead } from "./chat-mark-all-read.lib";
@@ -31,6 +34,7 @@ const STREAM_ID = "00000000-0000-4000-8000-000000000012";
 const TOPIC_UUID = "00000000-0000-4000-8000-000000000099";
 const TOPIC = "general";
 const MESSAGE_ID = "00000000-0000-4000-8000-000000000501";
+const originalFolderRefresh = useFolderSyncStore.getState().refresh;
 
 function message(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -68,6 +72,9 @@ function defaultParams(
 
 describe("useChatPageMarkRead", () => {
   beforeEach(() => {
+    useChatListStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setMessages([]);
+    useFolderSyncStore.getState().clear();
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
@@ -81,11 +88,26 @@ describe("useChatPageMarkRead", () => {
   });
 
   afterEach(() => {
+    useChatListStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setMessages([]);
+    useFolderSyncStore.setState({ refresh: originalFolderRefresh });
+    useFolderSyncStore.getState().clear();
     vi.restoreAllMocks();
   });
 
   it("requests visible unread messages and applies API-confirmed read ids", async () => {
     const updateMessageFlagsInStore = vi.fn();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useFolderSyncStore.setState({ refresh });
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_ID, name: "general", unreadCount: 1 }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(STREAM_ID, [
+        { streamUuid: STREAM_ID, topicUuid: TOPIC_UUID, name: TOPIC, unreadCount: 1 },
+      ]);
+    useCurrentChatMessagesStore.getState().setMessages([message()]);
     vi.mocked(markMessagesAsRead).mockResolvedValue([MESSAGE_ID]);
     const { result } = renderHook(() =>
       useChatPageMarkRead(
@@ -106,7 +128,68 @@ describe("useChatPageMarkRead", () => {
     await waitFor(() => {
       expect(updateMessageFlagsInStore).toHaveBeenCalledWith([MESSAGE_ID], "read", "add");
     });
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_ID);
+    expect(stream?.unreadCount).toBe(0);
+    expect(stream?.topics.get(TOPIC)?.unreadCount).toBe(0);
+    expect(refresh).toHaveBeenCalledWith("mutation");
     expect(applyOpenChatMarkAllAsRead).not.toHaveBeenCalled();
+  });
+
+  it("does not decrement unread metadata twice when realtime wins the API response race", async () => {
+    let resolveRead: ((ids: string[]) => void) | null = null;
+    vi.mocked(markMessagesAsRead).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_ID, name: "general", unreadCount: 2 }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(STREAM_ID, [
+        { streamUuid: STREAM_ID, topicUuid: TOPIC_UUID, name: TOPIC, unreadCount: 2 },
+      ]);
+    useCurrentChatMessagesStore.getState().setMessages([message()]);
+    const updateMessageFlagsInStore = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(
+        defaultParams({
+          messages: [message()],
+          updateMessageFlagsInStore,
+        }),
+      ),
+    );
+
+    act(() => {
+      result.current.handleUnreadMessagesVisible([MESSAGE_ID]);
+    });
+    await waitFor(() => {
+      expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+    });
+
+    // Realtime confirmation applies first, including the local unread metadata delta.
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_ID, name: "general", unreadCount: 1 }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(STREAM_ID, [
+        { streamUuid: STREAM_ID, topicUuid: TOPIC_UUID, name: TOPIC, unreadCount: 1 },
+      ]);
+    useCurrentChatMessagesStore.getState().setMessages([message({ read: true })]);
+
+    act(() => {
+      resolveRead?.([MESSAGE_ID]);
+    });
+
+    await waitFor(() => {
+      expect(updateMessageFlagsInStore).toHaveBeenCalledWith([MESSAGE_ID], "read", "add");
+    });
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_ID);
+    expect(stream?.unreadCount).toBe(1);
+    expect(stream?.topics.get(TOPIC)?.unreadCount).toBe(1);
   });
 
   it("does not request visible unread messages when the window is inactive", () => {

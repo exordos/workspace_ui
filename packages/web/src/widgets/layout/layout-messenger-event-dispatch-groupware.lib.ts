@@ -1,6 +1,7 @@
 /** Applies common Workspace websocket events to the local mail/calendar stores. */
 import { useCalendarStore } from "~/entities/calendar/calendar.model";
 import { useMailStore } from "~/entities/mail/mail.model";
+import { env } from "~/shared/lib/env";
 import type { WorkspaceEvent } from "~/shared/types/workspace-event";
 
 function refreshMail(): void {
@@ -20,12 +21,17 @@ function refreshCalendar(): void {
 }
 
 /** A missed epoch can affect either groupware domain, so rebuild both visible projections. */
-export function refreshGroupwareAfterEventGap(): void {
+export function refreshGroupwareAfterEventGap(messengerOnly = env.MESSENGER_ONLY): void {
+  if (messengerOnly) return;
   refreshMail();
   refreshCalendar();
 }
 
-export function handleCanonicalGroupwareEvent(event: WorkspaceEvent): void {
+export function handleCanonicalGroupwareEvent(
+  event: WorkspaceEvent,
+  messengerOnly = env.MESSENGER_ONLY,
+): void {
+  if (messengerOnly) return;
   if (event.object_type === "mail_folder" || event.object_type === "mail_message") {
     const mail = useMailStore.getState();
     if (mail.applyWorkspaceEvent(event)) return;

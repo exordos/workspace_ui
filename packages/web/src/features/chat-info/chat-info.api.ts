@@ -1,5 +1,11 @@
 import { fetchStreamMemberBindings, fetchStreams } from "~/shared/api/messenger-streams";
 import type { MockStream, WorkspaceStreamRole } from "~/shared/api/messenger.types";
+import { resolveCurrentMessengerCacheAccountScope } from "~/shared/lib/messenger-cache-scope.lib";
+import {
+  buildMessengerEntitiesCacheKey,
+  loadMessengerEntitiesSnapshotByAccount,
+  loadMessengerEntitiesSnapshotRow,
+} from "~/shared/lib/messenger-entities-snapshot-db";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 
@@ -36,6 +42,17 @@ function isEntryFresh<T>(entry: CacheEntry<T> | undefined, now: number): entry i
   return entry != null && entry.expiresAt > now;
 }
 
+async function loadPersistentEntitiesSnapshot() {
+  const scope = resolveCurrentMessengerCacheAccountScope();
+  if (scope == null) return null;
+  if (scope.projectIdFromToken != null) {
+    return loadMessengerEntitiesSnapshotRow(
+      buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectIdFromToken),
+    );
+  }
+  return loadMessengerEntitiesSnapshotByAccount(scope.accountScope);
+}
+
 export async function loadStreamMembers(
   instanceId: string,
   streamUuid: string,
@@ -61,6 +78,23 @@ export async function loadStreamMembersSnapshot(
         rolesByUserId: { ...cached.value.rolesByUserId },
         bindingUuidsByUserId: { ...cached.value.bindingUuidsByUserId },
       };
+    }
+    const persisted = await loadPersistentEntitiesSnapshot();
+    if (persisted != null) {
+      const bindings = persisted.bindings.filter(
+        (binding) => binding.stream_uuid === normalizeStreamUuid(streamUuid),
+      );
+      const value: StreamMembersSnapshot = {
+        memberIds: bindings.map((binding) => binding.user_uuid),
+        rolesByUserId: Object.fromEntries(
+          bindings.map((binding) => [userIdStorageKey(binding.user_uuid), binding.role]),
+        ),
+        bindingUuidsByUserId: Object.fromEntries(
+          bindings.map((binding) => [userIdStorageKey(binding.user_uuid), binding.uuid]),
+        ),
+      };
+      streamMembersCache.set(key, { value, expiresAt: Number.POSITIVE_INFINITY });
+      return value;
     }
   }
 
@@ -111,6 +145,28 @@ export async function loadStreamsSnapshot(
     const cached = streamsSnapshotCache.get(instanceId);
     if (isEntryFresh(cached, now)) {
       return [...cached.value];
+    }
+    const persisted = await loadPersistentEntitiesSnapshot();
+    if (persisted != null) {
+      const streams = persisted.streams
+        .filter((stream) => !stream.private)
+        .map((stream) => ({
+          stream_uuid: stream.stream_uuid,
+          default_topic_uuid: stream.default_topic_uuid,
+          name: stream.name,
+          description: stream.description,
+          is_announcement_only: stream.announce,
+          invite_only: stream.invite_only,
+          ...(stream.owner != null ? { owner: stream.owner } : {}),
+          ...(stream.source_name != null ? { source_name: stream.source_name } : {}),
+          ...(stream.source != null ? { source: stream.source } : {}),
+          ...(stream.color != null ? { color: stream.color } : {}),
+        }));
+      streamsSnapshotCache.set(instanceId, {
+        value: streams,
+        expiresAt: Number.POSITIVE_INFINITY,
+      });
+      return streams;
     }
   }
 

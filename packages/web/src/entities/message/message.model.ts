@@ -25,7 +25,7 @@ import {
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
-import type { MessageId } from "~/shared/lib/message-id.lib";
+import { compareMessageTimeline, type MessageId } from "~/shared/lib/message-id.lib";
 import { filterMessageLinkPreviewsForMarkdown } from "~/shared/lib/message-link-preview-filter.lib";
 import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
@@ -83,6 +83,71 @@ function hydratedMessagesMatchContext(
     topic: next.topic,
   });
   return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
+}
+
+interface InitialLoadMessageReconciliation {
+  observedById: Map<MessageId, MockMessage>;
+  preservedById: Map<MessageId, MockMessage>;
+  removedIds: Set<MessageId>;
+}
+
+function createInitialLoadMessageReconciliation(
+  messages: readonly MockMessage[],
+): InitialLoadMessageReconciliation {
+  return {
+    observedById: new Map(messages.map((message) => [message.id, message])),
+    preservedById: new Map(),
+    removedIds: new Set(),
+  };
+}
+
+function captureConcurrentInitialLoadChanges(
+  reconciliation: InitialLoadMessageReconciliation,
+  currentMessages: readonly MockMessage[],
+): void {
+  const currentById = new Map(currentMessages.map((message) => [message.id, message]));
+
+  for (const messageId of reconciliation.observedById.keys()) {
+    if (!currentById.has(messageId)) {
+      reconciliation.removedIds.add(messageId);
+      reconciliation.preservedById.delete(messageId);
+    }
+  }
+
+  for (const message of currentMessages) {
+    if (reconciliation.observedById.get(message.id) === message) continue;
+    reconciliation.preservedById.set(message.id, message);
+    reconciliation.removedIds.delete(message.id);
+  }
+}
+
+function reconcileInitialLoadMessages(options: {
+  reconciliation: InitialLoadMessageReconciliation;
+  incomingMessages: readonly MockMessage[];
+  currentMessages: readonly MockMessage[];
+  context: CurrentChatContext;
+  currentUserId: UserId | null;
+}): MockMessage[] {
+  const { reconciliation, incomingMessages, currentMessages, context, currentUserId } = options;
+  captureConcurrentInitialLoadChanges(reconciliation, currentMessages);
+
+  const mergedById = new Map<MessageId, MockMessage>();
+  for (const message of incomingMessages) {
+    if (!reconciliation.removedIds.has(message.id)) {
+      mergedById.set(message.id, message);
+    }
+  }
+  for (const message of reconciliation.preservedById.values()) {
+    if (!hydratedMessagesMatchContext([message], context, currentUserId)) continue;
+    mergedById.set(
+      message.id,
+      mergeMessagePreservingLinkPreview(message, mergedById.get(message.id)),
+    );
+  }
+
+  const reconciled = Array.from(mergedById.values()).sort(compareMessageTimeline);
+  reconciliation.observedById = new Map(reconciled.map((message) => [message.id, message]));
+  return reconciled;
 }
 
 // Stale initial-load responses must not mutate store state after a newer chat is selected.
@@ -838,6 +903,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     initialLoadAbortController = currentController;
     const cleanupExternalAbort = bindExternalAbortSignal(currentController, signal);
     const effectiveSignal = currentController.signal;
+    const reconciliation = createInitialLoadMessageReconciliation(get().messages);
 
     logMessageFlow("store:loadInitial start", {
       context: summarizeChatContextForLog(context),
@@ -860,24 +926,33 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
             return;
           }
-          mergeUsersFromMessages(messages);
+          const snapshotBeforeCacheApply = get();
+          const reconciledMessages = reconcileInitialLoadMessages({
+            reconciliation,
+            incomingMessages: messages,
+            currentMessages: snapshotBeforeCacheApply.messages,
+            context,
+            currentUserId,
+          });
+          mergeUsersFromMessages(reconciledMessages);
           const appliedHasNewerMessages = false;
           logMessageFlow("store:loadInitial idb hydrate before api", {
             chatKey: chatKeyFromContext(context),
             cachedCount: messages.length,
+            reconciledCount: reconciledMessages.length,
             cacheHasNewerMessages: hasNewerMessages,
             appliedHasNewerMessages,
           });
           set({
-            messages,
-            pendingOutgoingEchoKeys: [],
+            messages: reconciledMessages,
+            pendingOutgoingEchoKeys: snapshotBeforeCacheApply.pendingOutgoingEchoKeys,
             hasOlderMessages,
             hasNewerMessages: appliedHasNewerMessages,
           });
           onCacheHydrated?.();
           if (context.type === "dm") {
             onDmMessagesApplied?.({
-              messages,
+              messages: reconciledMessages,
               context,
               hasNewerMessages,
               focusedMessageId,
@@ -886,7 +961,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           }
           if (context.type === "stream") {
             onStreamMessagesApplied?.({
-              messages,
+              messages: reconciledMessages,
               context: { type: "stream", streamId: context.streamId },
               hasNewerMessages,
               focusedMessageId,
@@ -928,6 +1003,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     const snapshotBeforeApiApply = get();
     mergeUsersFromMessages(loadResult.messages);
+    const reconciledMessages = reconcileInitialLoadMessages({
+      reconciliation,
+      incomingMessages: loadResult.messages,
+      currentMessages: snapshotBeforeApiApply.messages,
+      context: loadResult.nextContext,
+      currentUserId,
+    });
 
     const preserveHydratedOnEmptyApi =
       loadResult.messages.length === 0 &&
@@ -946,7 +1028,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       set({
         context: loadResult.nextContext,
         messages: snapshotBeforeApiApply.messages,
-        pendingOutgoingEchoKeys: [],
+        pendingOutgoingEchoKeys: snapshotBeforeApiApply.pendingOutgoingEchoKeys,
         hasOlderMessages: snapshotBeforeApiApply.hasOlderMessages,
         hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
         boundaryLoadFailed: snapshotBeforeApiApply.boundaryLoadFailed,
@@ -981,21 +1063,21 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     set({
       context: loadResult.nextContext,
-      messages: loadResult.messages,
-      pendingOutgoingEchoKeys: [],
+      messages: reconciledMessages,
+      pendingOutgoingEchoKeys: snapshotBeforeApiApply.pendingOutgoingEchoKeys,
       hasOlderMessages: loadResult.hasOlderMessages,
       hasNewerMessages: loadResult.hasNewerMessages,
       boundaryLoadFailed: false,
     });
     logMessageFlow("store:loadInitial done", {
       mode: loadResult.mode,
-      count: loadResult.messages.length,
+      count: reconciledMessages.length,
       hasOlder: loadResult.hasOlderMessages,
       hasNewer: loadResult.hasNewerMessages,
     });
     if (loadResult.nextContext.type === "dm") {
       onDmMessagesApplied?.({
-        messages: loadResult.messages,
+        messages: reconciledMessages,
         context: loadResult.nextContext,
         hasNewerMessages: loadResult.hasNewerMessages,
         focusedMessageId,
@@ -1004,7 +1086,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     }
     if (loadResult.nextContext.type === "stream") {
       onStreamMessagesApplied?.({
-        messages: loadResult.messages,
+        messages: reconciledMessages,
         context: { type: "stream", streamId: loadResult.nextContext.streamId },
         hasNewerMessages: loadResult.hasNewerMessages,
         focusedMessageId,

@@ -17,6 +17,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   activeStream,
   activeTopicUuid,
   activeTopic,
+  topicNamesByUuid,
   messages,
   currentUserId,
   callbacks,
@@ -121,6 +122,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
       ) : null}
       <MessageList
         messages={messages}
+        topicNamesByUuid={topicNamesByUuid}
         currentUserId={currentUserId}
         scrollToBottomKey={scrollToBottomKey}
         callbacks={callbacks}

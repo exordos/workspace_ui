@@ -150,7 +150,7 @@ export function useChatPageSendMessage(
       };
 
       if (isDmView && activeStreamUuid != null) {
-        const optimisticMessageId = createMessageId();
+        const optimisticMessageId = msg.id;
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
           senderId: currentUserId,
@@ -194,7 +194,7 @@ export function useChatPageSendMessage(
           return;
         }
         const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
-        const optimisticMessageId = createMessageId();
+        const optimisticMessageId = msg.id;
         const retryTopicUuid = msg.topic_uuid ?? activeTopicUuid ?? null;
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,

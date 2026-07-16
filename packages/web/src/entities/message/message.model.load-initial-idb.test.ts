@@ -274,6 +274,84 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
   });
 
+  it("preserves a realtime message appended while the network refresh is in flight", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: STREAM_UUID_5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    const cached = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000100",
+        content: "<p>stale cache row</p>",
+      }),
+    ];
+    const apiMessage = mockMsg({
+      id: "00000000-0000-4000-8000-000000000200",
+      content: "<p>api snapshot</p>",
+      timestamp: 2000,
+    });
+    const realtimeMessage = mockMsg({
+      id: "00000000-0000-4000-8000-000000000201",
+      content: "<p>realtime</p>",
+      timestamp: 2001,
+    });
+    const deferred = Promise.withResolvers<MessagesPageResult>();
+    mockGetChatMessagesAscending.mockResolvedValue(cached);
+    mockFetchChatMessagesPage.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.getState().setContext(ctx);
+    const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    await vi.waitFor(() => {
+      expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
+    });
+    useCurrentChatMessagesStore.getState().appendMessage(realtimeMessage);
+    deferred.resolve(pageOf([apiMessage]));
+    await loadPromise;
+
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual([apiMessage, realtimeMessage]);
+  });
+
+  it("deduplicates a realtime message that is also present in the network snapshot", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: STREAM_UUID_5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    const messageId = "00000000-0000-4000-8000-000000000201";
+    const realtimeMessage = mockMsg({
+      id: messageId,
+      content: "<p>realtime</p>",
+      timestamp: 2001,
+    });
+    const deferred = Promise.withResolvers<MessagesPageResult>();
+    mockGetChatMessagesAscending.mockResolvedValue([]);
+    mockFetchChatMessagesPage.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.getState().setContext(ctx);
+    const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    await vi.waitFor(() => {
+      expect(mockFetchChatMessagesPage).toHaveBeenCalled();
+    });
+    useCurrentChatMessagesStore.getState().appendMessage(realtimeMessage);
+    deferred.resolve(pageOf([{ ...realtimeMessage, content: "<p>api snapshot</p>" }]));
+    await loadPromise;
+
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual([realtimeMessage]);
+  });
+
   it("with empty IDB cache loads the newest stream window", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",

@@ -20,6 +20,10 @@ const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
+function mentionUserUuid(id: number): string {
+  return `00000000-0000-4000-8000-${id.toString().padStart(12, "0")}`;
+}
+
 vi.mock("~/shared/config/constants", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/config/constants")>();
   return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
@@ -197,10 +201,11 @@ describe("MessageComposer async send behavior", () => {
     });
   });
 
-  it("leaves the composer empty when async onSend rejects", async () => {
+  it("restores submitted text when async onSend rejects", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("send failed"));
+    const onValueChange = vi.fn();
 
-    renderWithProviders(<MessageComposer onSend={onSend} />);
+    renderWithProviders(<MessageComposer onSend={onSend} onValueChange={onValueChange} />);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "Draft text" } });
@@ -210,7 +215,37 @@ describe("MessageComposer async send behavior", () => {
       expect(onSend).toHaveBeenCalledWith("Draft text", "", undefined);
     });
 
-    expect(textbox).toHaveValue("");
+    await waitFor(() => {
+      expect(textbox).toHaveValue("Draft text");
+      expect(onValueChange).toHaveBeenLastCalledWith("Draft text");
+    });
+  });
+
+  it("does not overwrite text entered while a failed send was pending", async () => {
+    let rejectSend: (reason: Error) => void = () => {
+      throw new Error("Expected send rejecter to be assigned");
+    };
+    const onSend = vi.fn().mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+    );
+
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Failed message" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(textbox).toHaveValue("");
+    });
+    fireEvent.change(textbox, { target: { value: "New draft" } });
+    rejectSend(new Error("send failed"));
+
+    await waitFor(() => {
+      expect(textbox).toHaveValue("New draft");
+    });
   });
 
   it("restores textarea focus when parent re-enables composer after async send", async () => {
@@ -382,11 +417,13 @@ describe("MessageComposer saved snippets", () => {
 
 describe("MessageComposer mention suggestions", () => {
   it("opens mention popup for a standalone @ after supported delimiters", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(1001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -414,11 +451,13 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("does not open mention popup when @ is inside a word or email", () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(1001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -431,12 +470,18 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("uses mention store state and inserts the first suggestion on Enter", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 1002, full_name: "Bob Smith", email: "bob@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(1001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+      createUser({
+        user_id: mentionUserUuid(1002),
+        full_name: "Bob Smith",
+        email: "bob@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -451,18 +496,24 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("@**Alice Johnson** ");
+    expect(textbox).toHaveValue(`[Alice Johnson](urn:user:${mentionUserUuid(1001)}) `);
     expect(useMentionSuggestStore.getState().visible).toBe(false);
     expect(useMentionSuggestStore.getState().query).toBe("");
   });
 
   it("supports arrow navigation before selecting a mention", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(2001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+      createUser({
+        user_id: mentionUserUuid(2002),
+        full_name: "Alex Roe",
+        email: "alex@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -477,15 +528,17 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("@**Alex Roe** ");
+    expect(textbox).toHaveValue(`[Alex Roe](urn:user:${mentionUserUuid(2002)}) `);
   });
 
   it("shows no-results popup when mention query has no matches", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(3001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -496,12 +549,18 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("updates mention suggestions as the query changes", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(2001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+      createUser({
+        user_id: mentionUserUuid(2002),
+        full_name: "Alex Roe",
+        email: "alex@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -521,11 +580,13 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("renders a compact, scrollable mention dropdown", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(3001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -549,13 +610,13 @@ describe("MessageComposer mention suggestions", () => {
     const now = Math.floor(Date.now() / 1000);
     useUsersStore.getState().mergeUsers([
       createUser({
-        user_id: 5001,
+        user_id: mentionUserUuid(5001),
         full_name: "Alice Johnson",
         email: "alice@example.com",
         presence: { status: "active", timestamp: now },
       }),
       createUser({
-        user_id: 5002,
+        user_id: mentionUserUuid(5002),
         full_name: "Alex Roe",
         email: "alex@example.com",
         presence: { status: "idle", timestamp: now },
@@ -581,7 +642,11 @@ describe("MessageComposer mention suggestions", () => {
       },
     ]);
     useUsersStore.getState().mergeUser({
-      ...createUser({ user_id: 5003, full_name: "Scam User", email: "scam@example.com" }),
+      ...createUser({
+        user_id: mentionUserUuid(5003),
+        full_name: "Scam User",
+        email: "scam@example.com",
+      }),
       status: {
         text: "",
         away: false,
@@ -604,11 +669,13 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("sends message on Enter when mention popup is open with no suggestions", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(3001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -626,12 +693,18 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("does not wrap mention navigation at the list boundaries", async () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 4001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 4002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().mergeUsers([
+      createUser({
+        user_id: mentionUserUuid(4001),
+        full_name: "Alice Johnson",
+        email: "alice@example.com",
+      }),
+      createUser({
+        user_id: mentionUserUuid(4002),
+        full_name: "Alex Roe",
+        email: "alex@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -645,7 +718,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue("@**Alex Roe** ");
+    expect(textbox).toHaveValue(`[Alex Roe](urn:user:${mentionUserUuid(4002)}) `);
   });
 });
 
@@ -912,6 +985,27 @@ describe("MessageComposer file attachments", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("message with file", "", [file]);
+    });
+  });
+
+  it("restores attached files when sending fails", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("send failed"));
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const file = new File(["hello"], "retry-spec.txt", { type: "text/plain" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with failed file" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with failed file", "", [file]);
+      expect(textbox).toHaveValue("message with failed file");
+      expect(screen.getByText("retry-spec.txt")).toBeInTheDocument();
     });
   });
 

@@ -7,6 +7,11 @@ import {
   updateOwnStatus as updateOwnStatusFromUsersApi,
 } from "~/entities/user/api/user.api";
 import type { OwnStatusMutationResult } from "~/entities/user/api/user.api.types";
+import {
+  getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
+  removeOwnAvatar as removeOwnAvatarFromApi,
+  uploadOwnAvatar as uploadOwnAvatarFromApi,
+} from "~/shared/api/messenger-avatar-settings";
 import { fetchUser } from "~/shared/api/messenger-users";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
@@ -20,7 +25,6 @@ import type {
 } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
-const MAX_AVATAR_FILE_SIZE_MIB = 25;
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -93,24 +97,13 @@ export async function updateOwnStatus(
 }
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
-  return {
-    maxAvatarFileSizeMib: MAX_AVATAR_FILE_SIZE_MIB,
-    avatarChangesDisabled: true,
-  };
+  return getOwnAvatarCapabilitiesFromApi();
 }
 
-export function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
-  return Promise.resolve({
-    ok: false,
-    kind: "unsupported",
-    message: "Avatar changes are not supported by the current backend",
-  });
+export function uploadOwnAvatar(file: File): Promise<OwnAvatarMutationResult> {
+  return uploadOwnAvatarFromApi(file);
 }
 
 export function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
-  return Promise.resolve({
-    ok: false,
-    kind: "unsupported",
-    message: "Avatar changes are not supported by the current backend",
-  });
+  return removeOwnAvatarFromApi();
 }

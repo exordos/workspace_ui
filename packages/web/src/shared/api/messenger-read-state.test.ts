@@ -343,7 +343,7 @@ describe("setTopicResolvedState", () => {
     );
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/workspace/v1/messenger",
-      `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+      `/stream_topics/${TOPIC_UUID}/toggle_done/`,
       {},
     );
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe("setTopicResolvedState", () => {
     ).resolves.toEqual(responseTopic);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/workspace/v1/messenger",
-      `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+      `/stream_topics/${TOPIC_UUID}/toggle_done/`,
       {},
     );
   });

@@ -15,6 +15,7 @@ export interface ChatPageMessageListSectionProps {
   activeStream: string | null | undefined;
   activeTopicUuid: string | null | undefined;
   activeTopic: string | null | undefined;
+  topicNamesByUuid?: ReadonlyMap<string, string>;
   messages: MockMessage[];
   currentUserId: UserId | undefined;
   callbacks: MessageListCallbacks;

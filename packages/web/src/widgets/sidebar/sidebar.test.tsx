@@ -748,6 +748,8 @@ describe("Sidebar", () => {
       />,
     );
 
+    expect(screen.getByText("incident").parentElement).toHaveClass("font-semibold");
+
     fireEvent.contextMenu(screen.getByText("incident"));
     const markAsReadItem = await screen.findByRole("menuitem", { name: /mark as read/i });
     fireEvent.click(markAsReadItem);

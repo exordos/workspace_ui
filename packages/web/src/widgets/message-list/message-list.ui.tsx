@@ -103,6 +103,7 @@ function collectMessageIdsInOrder(
 
 export const MessageListInner: React.FC<MessageListProps> = ({
   messages,
+  topicNamesByUuid,
   currentUserId,
   scrollToBottomKey,
   callbacks,
@@ -121,6 +122,22 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   showLoadingOverlay = false,
   showTopicInSenderName = true,
 }) => {
+  const displayMessages = useMemo(() => {
+    if (topicNamesByUuid == null || topicNamesByUuid.size === 0) {
+      return messages;
+    }
+    let changed = false;
+    const resolved = messages.map((message) => {
+      const topicUuid = message.topic_uuid?.trim().toLowerCase();
+      const topicName = topicUuid != null ? topicNamesByUuid.get(topicUuid) : undefined;
+      if (topicName == null || topicName === message.subject) {
+        return message;
+      }
+      changed = true;
+      return { ...message, subject: topicName };
+    });
+    return changed ? resolved : messages;
+  }, [messages, topicNamesByUuid]);
   const bubbleCallbacks: MessageBubbleCallbacks | undefined = useMemo(
     () =>
       callbacks
@@ -1224,7 +1241,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       result.push({ dateKey: currentKey, senderGroups: getSenderGroups(currentItems) });
       currentItems = [];
     };
-    for (const msg of messages) {
+    for (const msg of displayMessages) {
       const dateKey = getDateKey(msg.timestamp);
       if (dateKey !== currentKey) {
         flushDay();
@@ -1236,7 +1253,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     }
     flushDay();
     return result;
-  }, [messages]);
+  }, [displayMessages]);
   const mediaGallery = useMemo(() => buildMessageMediaGallery(messages), [messages]);
 
   let lastStreamTopicKey: string | undefined;
@@ -1270,7 +1287,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
               const topicKey = normalizeStreamTopicForMessageCache(
                 first.topic_uuid ?? first.subject ?? "",
               );
-              const topicDisplay = resolveTopicDisplayInfo(topicKey);
+              const topicDisplay = resolveTopicDisplayInfo(first.subject ?? topicKey);
               const showTopicSeparator =
                 isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
               if (isStream) {

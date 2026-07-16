@@ -367,7 +367,10 @@ describe("fetchActivityMessages", () => {
       nativeActivityMessagesPage([
         nativeActivityMessageRow({
           uuid: "00000000-0000-4000-8000-000000000001",
-          payload: { kind: "markdown", content: `hello <@${currentUserUuid}>` },
+          payload: {
+            kind: "markdown",
+            content: `hello [Current User](urn:user:${currentUserUuid})`,
+          },
         }),
         nativeActivityMessageRow({
           uuid: "00000000-0000-4000-8000-000000000002",

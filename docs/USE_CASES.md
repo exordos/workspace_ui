@@ -2,6 +2,10 @@
 
 > Complete registry of user scenarios.
 > Status: `[x]` implemented, `[~]` partial, `[ ]` planned.
+>
+> Current deployment scope is Messenger-only (`VITE_MESSENGER_ONLY=true`).
+> Mail and Calendar navigation retained in the source inventory is not exposed
+> and is not a supported backend scenario in this release.
 
 ---
 

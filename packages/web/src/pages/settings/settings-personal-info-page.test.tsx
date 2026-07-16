@@ -45,12 +45,12 @@ vi.mock("~/shared/lib/avatar", async (importOriginal) => {
 });
 
 vi.mock("~/features/external-accounts/zulip-external-account.ui", () => ({
-  ZulipExternalAccountCard: () => "Zulip external account card",
+  ZulipExternalAccountCard: () => <div data-testid="zulip-external-account-card" />,
 }));
 
 vi.mock("~/features/external-accounts/groupware-external-accounts.ui", () => ({
-  MailExternalAccountCard: () => "Mail external account card",
-  CalendarExternalAccountCard: () => "Calendar external account card",
+  MailExternalAccountCard: () => <div data-testid="mail-external-account-card" />,
+  CalendarExternalAccountCard: () => <div data-testid="calendar-external-account-card" />,
 }));
 
 function createPngFile(name = "avatar.png"): File {
@@ -188,6 +188,22 @@ describe("SettingsPersonalInfoPage", () => {
     expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("does not mount external account cards in messenger-only mode", () => {
+    renderWithProviders(<SettingsPersonalInfoPage messengerOnly />);
+
+    expect(screen.queryByTestId("zulip-external-account-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("mail-external-account-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-external-account-card")).not.toBeInTheDocument();
+  });
+
+  it("keeps external account cards available in full Workspace mode", () => {
+    renderWithProviders(<SettingsPersonalInfoPage messengerOnly={false} />);
+
+    expect(screen.getByTestId("zulip-external-account-card")).toBeInTheDocument();
+    expect(screen.getByTestId("mail-external-account-card")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-external-account-card")).toBeInTheDocument();
+  });
+
   it("copies profile link using current instance realm", async () => {
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -301,11 +317,7 @@ describe("SettingsPersonalInfoPage", () => {
         timezone: "Europe/Moscow",
       });
     });
-    expect(updateOwnStatusMock).toHaveBeenCalledWith({
-      text: "",
-      emojiName: undefined,
-      away: false,
-    });
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getAllByText("Alice Updated").length).toBeGreaterThan(0);
     });
@@ -526,7 +538,7 @@ describe("SettingsPersonalInfoPage", () => {
     expect(screen.getByText("Europe/Moscow")).toBeInTheDocument();
   });
 
-  it("shows timezone validation error for invalid value and does not save", async () => {
+  it("validates an invalid timezone when the timezone was actually edited", async () => {
     useChatListStore.setState({ currentUserId: 42 });
     useUsersStore.getState().mergeUser({
       user_id: 42,
@@ -578,6 +590,9 @@ describe("SettingsPersonalInfoPage", () => {
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
     fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: /^timezone$/i }), {
+      target: { value: "Europe/Berlin" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
@@ -772,7 +787,7 @@ describe("SettingsPersonalInfoPage", () => {
     expect(avatarImage?.getAttribute("src")).toContain("https://chat.example.com/avatar/old.png");
   });
 
-  it("applies pending avatar upload on save before profile/status", async () => {
+  it("uploads an avatar without validating or saving an untouched empty timezone", async () => {
     useChatListStore.setState({ currentUserId: 42 });
     useUsersStore.getState().mergeUser({
       user_id: 42,
@@ -786,7 +801,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
-      timezone: "Europe/Moscow",
+      timezone: "",
     });
     let resolveUpload: ((value: { ok: true; avatarUrl: string }) => void) | undefined;
     uploadOwnAvatarMock.mockImplementation(
@@ -824,24 +839,12 @@ describe("SettingsPersonalInfoPage", () => {
     await waitFor(() => {
       expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
     });
-    await waitFor(() => {
-      expect(updateOwnProfileMock).toHaveBeenCalledWith({
-        fullName: "Alice Doe",
-        timezone: "Europe/Moscow",
-      });
-      expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        text: "",
-        emojiName: undefined,
-        away: false,
-      });
-    });
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/timezone is required/i)).not.toBeInTheDocument();
     expect(bumpAvatarVersionMock).toHaveBeenCalledTimes(1);
-    const uploadCallOrder = uploadOwnAvatarMock.mock.invocationCallOrder[0];
-    const profileCallOrder = updateOwnProfileMock.mock.invocationCallOrder[0];
-    expect(uploadCallOrder).toBeDefined();
-    expect(profileCallOrder).toBeDefined();
-    expect(uploadCallOrder!).toBeLessThan(profileCallOrder!);
     expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/new.png");
+    expect(screen.getByRole("button", { name: /edit profile/i })).toBeInTheDocument();
   });
 
   it("applies pending avatar remove on save", async () => {
@@ -958,6 +961,9 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.change(fileInput!, { target: { files: [file] } });
     await waitFor(() => {
       expect(createObjectURLMock).toHaveBeenCalledWith(file);
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: /^timezone$/i }), {
+      target: { value: "Europe/Berlin" },
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 

@@ -1,6 +1,7 @@
 /**
  * Workspace realtime handlers: subscriptions, streams, user_topic.
  */
+import { refreshFolderUnreadAggregates } from "~/entities/unread-sync/confirmed-read-metadata.lib";
 import type {
   MessengerEvent,
   MessengerGroupSettingValue,
@@ -471,6 +472,9 @@ export function handleStream(
   if (row.notificationMode != null) {
     ctx.mute.setStreamNotificationMode(row.streamUuid, row.notificationMode);
   }
+  if (event.kind === "stream.read") {
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  }
   if (event.kind !== "stream.updated") return;
   ctx.chatInfo?.applyStreamMetadataUpdate({
     instanceId: ctx.currentInstanceId,
@@ -572,6 +576,9 @@ export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDisp
       ...(row.source != null ? { source: row.source } : {}),
     },
   ]);
+  if (event.kind === "topic.read") {
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  }
 }
 
 export function handleStreamBinding(

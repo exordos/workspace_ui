@@ -38,6 +38,15 @@ export async function getCurrentUser(): Promise<WorkspaceCurrentUser | null> {
   };
 }
 
+/** Resolves the authenticated IAM principal without an extra user request. */
+export function getCurrentUserIdFromAccessToken(): UserId | null {
+  const instance = getCurrentInstance();
+  if (instance == null) {
+    return null;
+  }
+  return resolveUserUuidFromAccessToken(resolveIamAccessToken(instance));
+}
+
 /** Fetches the full user list for populating usersStore. */
 export async function fetchUsers(): Promise<MessengerUserMember[]> {
   try {

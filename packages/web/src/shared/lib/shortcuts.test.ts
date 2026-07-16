@@ -233,6 +233,17 @@ describe("getShortcutsByCategory", () => {
       }
     }
   });
+
+  it("omits unavailable product shortcuts in messenger-only mode", () => {
+    const navigationKeys = (getShortcutsByCategory(true).get("Navigation") ?? []).map(
+      (shortcut) => shortcut.key,
+    );
+    expect(navigationKeys).not.toContain("mod+2");
+    expect(navigationKeys).not.toContain("mod+3");
+    expect(navigationKeys).not.toContain("mod+4");
+    expect(navigationKeys).toContain("mod+1");
+    expect(navigationKeys).toContain("mod+shift+a");
+  });
 });
 
 // matchesEvent + handler registry — tested via useShortcut hook + window keydown dispatch

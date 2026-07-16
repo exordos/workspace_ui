@@ -39,7 +39,7 @@ const ME_MESSAGES_MAX_PAGES = 100;
 
 const ME_MESSAGES_PATH = "/messages/";
 
-export type MeMessagesSortKey = "created_at" | "updated_at" | "last_synced_at" | "uuid";
+export type MeMessagesSortKey = "created_at";
 export type MeMessagesSortDir = "asc" | "desc";
 
 export interface FetchMyMessagesOptions {

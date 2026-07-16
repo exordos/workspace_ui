@@ -1,3 +1,4 @@
+import { env } from "~/shared/lib/env";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 
@@ -16,9 +17,16 @@ export function resolveGlobalNavigationRoute(
   key: GlobalNavigationShortcutKey,
   defaultStream: string,
   instanceId?: string | null,
+  messengerOnly = env.MESSENGER_ONLY,
 ): string {
   if (key === "mod+1") {
     return withCurrentOrgRoute(resolveMessengerNavigationPath(instanceId ?? null, defaultStream));
+  }
+  if (key === "mod+shift+a") {
+    return withCurrentOrgRoute("/activity/starred");
+  }
+  if (messengerOnly) {
+    return withCurrentOrgRoute("/inbox");
   }
   if (key === "mod+2") {
     return withCurrentOrgRoute("/calendar");
@@ -26,21 +34,19 @@ export function resolveGlobalNavigationRoute(
   if (key === "mod+3") {
     return withCurrentOrgRoute("/mail");
   }
-  if (key === "mod+shift+a") {
-    return withCurrentOrgRoute("/activity/starred");
-  }
   return withCurrentOrgRoute("/calls");
 }
 
 export function resolveGlobalShortcutAction(
   key: GlobalShortcutKey,
   defaultStream: string,
+  messengerOnly = env.MESSENGER_ONLY,
 ): GlobalShortcutAction {
   if (key === "mod+shift+t") {
     return { type: "toggle-theme" };
   }
   return {
     type: "navigate",
-    route: resolveGlobalNavigationRoute(key, defaultStream),
+    route: resolveGlobalNavigationRoute(key, defaultStream, null, messengerOnly),
   };
 }

@@ -14,15 +14,18 @@ import {
   shouldBypassAvatarBlobCache,
 } from "~/shared/lib/avatar-blob-cache.lib";
 import { fetchAvatarBlob, shouldNetworkFetchAvatarBlob } from "~/shared/lib/avatar-blob-fetch.lib";
+import { useWorkspaceFileCacheInvalidationVersion } from "~/shared/lib/workspace-file-cache-invalidation.hook";
 
 /**
  * Resolves avatar `src` via IndexedDB blob cache when enabled; falls back to HTTPS URL.
  */
 export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string | undefined {
   const instanceId = useInstancesStore((s) => s.currentInstanceId);
+  const fileCacheInvalidationVersion = useWorkspaceFileCacheInvalidationVersion(resolvedSrc);
   const [displaySrc, setDisplaySrc] = useState<string | undefined>(() => {
     const s = resolvedSrc?.trim();
-    return s && s.length > 0 ? s : undefined;
+    if (!s || s.length === 0) return undefined;
+    return shouldNetworkFetchAvatarBlob(s) ? undefined : s;
   });
 
   useEffect(() => {
@@ -32,24 +35,20 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
       return;
     }
 
-    if (
-      !persistAvatarBlobsToIndexedDb() ||
-      shouldBypassAvatarBlobCache(trimmed) ||
-      instanceId == null
-    ) {
+    if (shouldBypassAvatarBlobCache(trimmed) || !shouldNetworkFetchAvatarBlob(trimmed)) {
       setDisplaySrc(trimmed);
       return;
     }
 
+    const persistBlob = persistAvatarBlobsToIndexedDb() && instanceId != null;
     const cacheKey = buildAvatarBlobCacheKey(trimmed);
-    if (cacheKey == null) {
-      setDisplaySrc(trimmed);
-      return;
-    }
 
     let cancelled = false;
     let objectUrl: string | null = null;
-    setDisplaySrc(trimmed);
+    // A protected same-origin endpoint needs an Authorization header, which a
+    // plain <img src> cannot provide. Keep it out of the DOM until the
+    // authenticated fetch below has produced a blob URL.
+    setDisplaySrc(undefined);
 
     const applyBlobUrl = (blob: Blob) => {
       if (cancelled) return;
@@ -59,24 +58,22 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
 
     void (async () => {
       const currentVersion = getAvatarVersion();
-      const cached = await getAvatarBlobCacheRow(instanceId, cacheKey);
-      if (cancelled) return;
+      if (persistBlob && cacheKey != null) {
+        const cached = await getAvatarBlobCacheRow(instanceId, cacheKey);
+        if (cancelled) return;
 
-      if (cached != null && isAvatarBlobCacheVersionValid(cached.avatarVersion, currentVersion)) {
-        const now = Date.now();
-        void touchAvatarBlobCacheRow(instanceId, cacheKey, now);
-        applyBlobUrl(cached.blob);
-        return;
-      }
-
-      if (!shouldNetworkFetchAvatarBlob(trimmed)) {
-        return;
+        if (cached != null && isAvatarBlobCacheVersionValid(cached.avatarVersion, currentVersion)) {
+          const now = Date.now();
+          void touchAvatarBlobCacheRow(instanceId, cacheKey, now);
+          applyBlobUrl(cached.blob);
+          return;
+        }
       }
 
       const blob = await fetchAvatarBlob(trimmed);
       if (cancelled || blob == null) return;
 
-      if (isAvatarBlobCacheEntrySizeAllowed(blob.size)) {
+      if (persistBlob && cacheKey != null && isAvatarBlobCacheEntrySizeAllowed(blob.size)) {
         const now = Date.now();
         void putAvatarBlobCacheRow({
           instanceId,
@@ -99,7 +96,7 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [instanceId, resolvedSrc]);
+  }, [fileCacheInvalidationVersion, instanceId, resolvedSrc]);
 
   return displaySrc;
 }

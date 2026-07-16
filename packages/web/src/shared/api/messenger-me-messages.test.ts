@@ -185,7 +185,7 @@ describe("fetchMyMessagesPage", () => {
       streamUuid: STREAM_UUID,
       limit: 25,
       marker: "cursor-1",
-      sortKey: "updated_at",
+      sortKey: "created_at",
       sortDir: "desc",
     });
 
@@ -194,7 +194,7 @@ describe("fetchMyMessagesPage", () => {
       "/messages/",
       {
         page_limit: "25",
-        sort_key: "updated_at",
+        sort_key: "created_at",
         sort_dir: "desc",
         stream_uuid: STREAM_UUID,
         page_marker: "cursor-1",

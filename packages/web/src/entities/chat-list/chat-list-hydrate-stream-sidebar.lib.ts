@@ -259,6 +259,9 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
       if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
         return;
       }
+      if (!useChatListStore.getState().streamsMap.has(normalizedStreamId)) {
+        return;
+      }
       useChatListStore.getState().upsertStreamTopicShells(
         normalizedStreamId,
         topics.map((topic) => ({

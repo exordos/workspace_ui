@@ -117,4 +117,23 @@ describe("handleCanonicalGroupwareEvent", () => {
     expect(loadFolders).toHaveBeenCalledOnce();
     expect(loadCalendars).toHaveBeenCalledOnce();
   });
+
+  it("does not touch groupware stores in messenger-only mode", async () => {
+    const mail = useMailStore.getState();
+    const calendar = useCalendarStore.getState();
+    const applyMail = vi.spyOn(mail, "applyWorkspaceEvent");
+    const loadFolders = vi.spyOn(mail, "loadFolders");
+    const applyCalendar = vi.spyOn(calendar, "applyWorkspaceEvent");
+    const loadCalendars = vi.spyOn(calendar, "loadCalendars");
+
+    handleCanonicalGroupwareEvent(mailEvent, true);
+    handleCanonicalGroupwareEvent(calendarEvent, true);
+    refreshGroupwareAfterEventGap(true);
+    await Promise.resolve();
+
+    expect(applyMail).not.toHaveBeenCalled();
+    expect(loadFolders).not.toHaveBeenCalled();
+    expect(applyCalendar).not.toHaveBeenCalled();
+    expect(loadCalendars).not.toHaveBeenCalled();
+  });
 });

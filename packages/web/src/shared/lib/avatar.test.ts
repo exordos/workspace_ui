@@ -65,10 +65,9 @@ describe("resolveAvatarUrl", () => {
 
   it("resolves Workspace image avatar URNs to file download URLs", () => {
     const url = resolveAvatarUrl("urn:image:33333333-3333-4333-8333-333333333333", REALM);
-    expect(url).toContain(
+    expect(url).toBe(
       "https://chat.example.com/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
     );
-    expect(url).toContain("_av=");
   });
 
   it("returns undefined for invalid Workspace avatar URNs", () => {
@@ -128,6 +127,15 @@ describe("bumpAvatarVersion", () => {
     bumpAvatarVersion();
     const url2 = resolveAvatarUrl("/avatar/1.png", "https://z.example.com")!;
     expect(url1).not.toBe(url2);
+  });
+
+  it("keeps immutable Workspace image avatar URLs stable across version bumps", () => {
+    const urn = "urn:image:33333333-3333-4333-8333-333333333333";
+    const url1 = resolveAvatarUrl(urn, "https://z.example.com")!;
+    bumpAvatarVersion();
+    const url2 = resolveAvatarUrl(urn, "https://z.example.com")!;
+    expect(url2).toBe(url1);
+    expect(url2).not.toContain("?");
   });
 });
 

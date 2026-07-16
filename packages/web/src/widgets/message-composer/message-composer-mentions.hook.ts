@@ -3,6 +3,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import { isIamUserUuid } from "~/shared/lib/user-id.lib";
 
 export function useComposerMentions() {
   const mentionQuery = useMentionSuggestStore((s) => s.query);
@@ -19,12 +20,14 @@ export function useComposerMentions() {
   const allUsers = useUsersStore((s) => s.users);
   const mentionUsers: MentionSuggestion[] = useMemo(
     () =>
-      Array.from(allUsers.values()).map((u) => ({
-        userId: u.user_id,
-        fullName: u.full_name,
-        email: u.email ?? "",
-        avatarUrl: u.avatar_url ?? undefined,
-      })),
+      Array.from(allUsers.values())
+        .filter((u) => isIamUserUuid(u.user_id))
+        .map((u) => ({
+          userId: u.user_id,
+          fullName: u.full_name,
+          email: u.email ?? "",
+          avatarUrl: u.avatar_url ?? undefined,
+        })),
     [allUsers],
   );
 

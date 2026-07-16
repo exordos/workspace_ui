@@ -43,7 +43,12 @@ function resolveWorkspaceImageAvatarUrn(
   if (!value.toLowerCase().startsWith(WORKSPACE_IMAGE_AVATAR_PREFIX)) return undefined;
   const fileUuid = value.slice(WORKSPACE_IMAGE_AVATAR_PREFIX.length).trim().toLowerCase();
   if (!UUID_RE.test(fileUuid)) return undefined;
-  return resolveAvatarUrl(buildWorkspaceFileDownloadPath(fileUuid), realmBaseUrl);
+  if (!realmBaseUrl) return undefined;
+
+  // Each upload gets a new immutable file UUID, so the download path itself is
+  // the cache-buster and must stay within the strict Workspace file API contract.
+  const base = realmBaseUrl.replace(/\/+$/, "");
+  return `${base}${buildWorkspaceFileDownloadPath(fileUuid)}`;
 }
 
 function resolveWorkspaceUrlAvatarUrn(value: string): string | undefined {

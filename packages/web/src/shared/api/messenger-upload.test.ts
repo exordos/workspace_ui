@@ -4,16 +4,16 @@
 import "./messenger.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
-import { buildWorkspaceFileDownloadUri, uploadFile } from "./messenger-upload";
+import { buildWorkspaceFileUrn, uploadFile } from "./messenger-upload";
 import { getMockMessengerApi } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 const FILE_UUID = "33333333-3333-4333-8333-333333333333";
-const FILE_DOWNLOAD_URI = `/api/workspace/v1/messenger/files/${FILE_UUID}/actions/download`;
+const IMAGE_FILE_URN = `urn:image:${FILE_UUID}?name=test.png&content_type=image%2Fpng&size=4`;
 
 describe("uploadFile", () => {
-  it("uploads file to workspace files endpoint and returns download action URI", async () => {
+  it("uploads file and returns a canonical Workspace URN with metadata", async () => {
     mockMessengerApi.postFormDataWithBase.mockResolvedValue({
       ok: true,
       status: 201,
@@ -24,7 +24,7 @@ describe("uploadFile", () => {
 
     const result = await uploadFile(file, { streamUuid: STREAM_UUID });
 
-    expect(result).toBe(FILE_DOWNLOAD_URI);
+    expect(result).toBe(IMAGE_FILE_URN);
     expect(mockMessengerApi.postFormDataWithBase).toHaveBeenCalledWith(
       "/api/workspace/v1/messenger",
       "/files/",
@@ -51,7 +51,9 @@ describe("uploadFile", () => {
       signal: controller.signal,
     });
 
-    expect(result).toBe(FILE_DOWNLOAD_URI);
+    expect(result).toBe(
+      `urn:file:${FILE_UUID}?name=cancellable.txt&content_type=text%2Fplain&size=4`,
+    );
     expect(mockMessengerApi.postFormDataWithBase).toHaveBeenCalledWith(
       "/api/workspace/v1/messenger",
       "/files/",
@@ -121,12 +123,25 @@ describe("uploadFile", () => {
   });
 });
 
-describe("buildWorkspaceFileDownloadUri", () => {
-  it("builds workspace file download action URI", () => {
-    expect(buildWorkspaceFileDownloadUri(FILE_UUID.toUpperCase())).toBe(FILE_DOWNLOAD_URI);
+describe("buildWorkspaceFileUrn", () => {
+  it("builds canonical file, image, and video URNs", () => {
+    expect(
+      buildWorkspaceFileUrn(
+        FILE_UUID.toUpperCase(),
+        new File(["data"], "report Q3.txt", { type: "text/plain" }),
+      ),
+    ).toBe(`urn:file:${FILE_UUID}?name=report+Q3.txt&content_type=text%2Fplain&size=4`);
+    expect(
+      buildWorkspaceFileUrn(FILE_UUID, new File(["data"], "photo.png", { type: "image/png" })),
+    ).toMatch(/^urn:image:/);
+    expect(
+      buildWorkspaceFileUrn(FILE_UUID, new File(["data"], "clip.mp4", { type: "video/mp4" })),
+    ).toMatch(/^urn:video:/);
   });
 
   it("rejects invalid file uuid", () => {
-    expect(() => buildWorkspaceFileDownloadUri("not-a-uuid")).toThrow("Invalid uploaded file UUID");
+    expect(() => buildWorkspaceFileUrn("not-a-uuid", new File(["data"], "file.txt"))).toThrow(
+      "Invalid uploaded file UUID",
+    );
   });
 });

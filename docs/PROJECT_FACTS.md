@@ -2,7 +2,14 @@
 
 Single source of truth for volatile counts, paths, and workflow. Other docs should link here instead of duplicating.
 
-**Last verified:** 2026-07-15 (branch `cassi/workspace-mail-calendar-ui`).
+**Last verified:** 2026-07-16 (branch `cassi/workspace-messenger-platform`).
+
+## Current product surface
+
+The deployed Workspace build is Messenger-only and sets
+`VITE_MESSENGER_ONLY=true`. Mail and Calendar slices remain in the source tree
+for future integrations, so the inventory below includes them, but they are not
+current routes or supported backend APIs.
 
 ## Monorepo packages
 
@@ -44,8 +51,8 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 | HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                                   |
 | Messenger API modules    | `packages/web/src/shared/api/messenger-*.ts`                              |
 | Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                         |
-| Mail API and store       | `packages/web/src/entities/mail/`                                         |
-| Calendar API and store   | `packages/web/src/entities/calendar/`                                     |
+| Dormant Mail source      | `packages/web/src/entities/mail/`                                         |
+| Dormant Calendar source  | `packages/web/src/entities/calendar/`                                     |
 | White-label config       | `packages/web/src/shared/lib/brand.ts`                                    |
 | User API (split)         | `packages/web/src/entities/user/api/`                                     |
 
@@ -68,9 +75,9 @@ import { workspaceApi } from "~/shared/api/workspace-api";
 
 | Metric               |                                        Value |
 | -------------------- | -------------------------------------------: |
-| Unit/component tests | 3800+ (`it`/`test` blocks in `packages/web`) |
-| Test files           |                                         ~384 |
-| E2E specs            |                      15 (`e2e/**/*.spec.ts`) |
+| Unit/component tests | 4500+ (`it`/`test` blocks in `packages/web`) |
+| Test files           |                                          476 |
+| E2E specs            |                      21 (`e2e/**/*.spec.ts`) |
 
 ## Documentation
 

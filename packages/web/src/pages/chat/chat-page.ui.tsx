@@ -82,6 +82,7 @@ import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook
 import { useChatPageReaction } from "./chat-page-reaction.hook";
 import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
 import { useChatRouteContext } from "./chat-page-route-context.hook";
+import { useChatPageRouteMetadataHydrate } from "./chat-page-route-metadata.hook";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
@@ -141,6 +142,7 @@ export const ChatPage: React.FC = () => {
   const activeDmUserIds = isDmView ? dmRecipientIds : null;
   const activeStreamId = resolvedStreamId;
   const activeStreamEntry = activeStreamId != null ? streamsMap.get(activeStreamId) : undefined;
+  useChatPageRouteMetadataHydrate(activeStreamEntry != null ? activeStreamId : null);
   const isPrivateStreamView = !isDmView && activeStreamEntry?.private === true;
   const activeStreamCanonicalName = useMemo(
     () =>
@@ -157,6 +159,17 @@ export const ChatPage: React.FC = () => {
     }
     return activeStreamId != null ? (activeStreamEntry?.streamUuid ?? activeStreamId) : null;
   }, [activeStreamEntry?.streamUuid, activeStreamId, dmChat?.streamUuid, isDmView]);
+  const topicNamesByUuid = useMemo(() => {
+    if (activeStreamEntry == null) return undefined;
+    const names = new Map<string, string>();
+    for (const topic of activeStreamEntry.topics.values()) {
+      const topicUuid = topic.topicUuid?.trim().toLowerCase();
+      if (topicUuid != null && topicUuid.length > 0) {
+        names.set(topicUuid, topic.subject);
+      }
+    }
+    return names.size > 0 ? names : undefined;
+  }, [activeStreamEntry]);
   const effectiveActiveTopicUuid = useMemo(() => {
     if (activeTopicUuid != null) {
       return activeTopicUuid;
@@ -1138,6 +1151,7 @@ export const ChatPage: React.FC = () => {
           activeStream={activeStream}
           activeTopicUuid={effectiveActiveTopicUuid}
           activeTopic={activeTopic}
+          topicNamesByUuid={topicNamesByUuid}
           messages={messages}
           currentUserId={currentUserId ?? undefined}
           callbacks={messageCallbacks}

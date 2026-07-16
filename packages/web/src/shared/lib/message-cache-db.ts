@@ -15,7 +15,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 10;
+const DB_VERSION = 13;
 
 /** IndexedDB database name for message/chat bootstrap cache (tests, cold-start wipe). */
 export const MESSAGE_CACHE_DB_NAME = DB_NAME;
@@ -117,6 +117,25 @@ export async function deleteMessageCacheDatabase(): Promise<void> {
       globalThis.setTimeout(() => finishOk(), IDB_DELETE_BLOCKED_TIMEOUT_MS);
     };
   });
+}
+
+/** Removes message bodies and per-chat metadata for one legacy instance partition. */
+export async function deleteMessageCacheForInstance(instanceId: string): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+  try {
+    const db = await openMessageCacheDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([STORE_MESSAGES, STORE_CHAT_META], "readwrite");
+      tx.onerror = () => reject(idbError(tx.error));
+      tx.oncomplete = () => resolve();
+      const prefix = `${instanceId}:`;
+      const range = IDBKeyRange.bound(prefix, `${prefix}\uffff`);
+      tx.objectStore(STORE_MESSAGES).delete(range);
+      tx.objectStore(STORE_CHAT_META).delete(range);
+    });
+  } catch {
+    // Best-effort account-cache invalidation.
+  }
 }
 
 function rowId(instanceId: string, messageId: MessageId): string {

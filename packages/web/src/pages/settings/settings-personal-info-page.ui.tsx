@@ -24,6 +24,7 @@ import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
+import { env } from "~/shared/lib/env";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
@@ -77,7 +78,39 @@ function buildProfileStatusLabel(status: UserStatus | null | undefined): string 
   return status?.away ? t("presence.away") : t("presence.online");
 }
 
-export const SettingsPersonalInfoPage: React.FC = () => {
+interface SaveChangedProfileFieldsParams {
+  profileChanged: boolean;
+  statusChanged: boolean;
+  fullName: string;
+  timezone: string;
+  statusText: string;
+  statusAway: boolean;
+  ownStatus: UserStatus | null;
+}
+
+function saveChangedProfileFields(params: SaveChangedProfileFieldsParams) {
+  const profileUpdatePromise = params.profileChanged
+    ? updateOwnProfile({ fullName: params.fullName, timezone: params.timezone })
+    : Promise.resolve({ ok: true as const });
+  const statusUpdatePromise = params.statusChanged
+    ? updateOwnStatus({
+        text: params.statusText,
+        emojiName: params.ownStatus?.emojiName,
+        emojiCode: params.ownStatus?.emojiCode,
+        reactionType: params.ownStatus?.reactionType,
+        away: params.statusAway,
+      })
+    : Promise.resolve({ ok: true as const, status: params.ownStatus });
+  return Promise.all([profileUpdatePromise, statusUpdatePromise]);
+}
+
+interface SettingsPersonalInfoPageProps {
+  messengerOnly?: boolean;
+}
+
+export const SettingsPersonalInfoPage: React.FC<SettingsPersonalInfoPageProps> = ({
+  messengerOnly = env.MESSENGER_ONLY,
+}) => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
   const [copied, setCopied] = useState(false);
@@ -275,26 +308,39 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     const trimmedFullName = editableFullName.trim();
     const trimmedStatusText = editableStatusText.trim();
     const trimmedTimezone = editableTimezone.trim();
-    if (trimmedFullName.length === 0) {
+    const initialFullName = fullName === "-" ? "" : fullName.trim();
+    const initialStatusText = ownStatus?.text?.trim() ?? "";
+    const initialTimezone = profile?.timezone?.trim() ?? "";
+    const fullNameChanged = trimmedFullName !== initialFullName;
+    const statusChanged =
+      trimmedStatusText !== initialStatusText || editableStatusAway !== (ownStatus?.away ?? false);
+    const timezoneChanged = trimmedTimezone !== initialTimezone;
+    const profileChanged = fullNameChanged || timezoneChanged;
+
+    if (fullNameChanged && trimmedFullName.length === 0) {
       setProfileSaveError(t("settings.fullNameRequired"));
       return;
     }
-    const canonicalTimezone = canonicalizeTimezone(trimmedTimezone);
-    if (trimmedTimezone.length === 0) {
-      setTimezoneDraftError(t("settings.timezoneRequired"));
-      return;
-    }
-    if (canonicalTimezone == null) {
-      setTimezoneDraftError(t("settings.timezoneInvalid"));
-      return;
-    }
-    if (
-      supportedTimezoneSet.size > 0 &&
-      !supportedTimezoneSet.has(canonicalTimezone) &&
-      !supportedTimezoneSet.has(trimmedTimezone)
-    ) {
-      setTimezoneDraftError(t("settings.timezoneInvalid"));
-      return;
+    let canonicalTimezone = initialTimezone;
+    if (timezoneChanged) {
+      if (trimmedTimezone.length === 0) {
+        setTimezoneDraftError(t("settings.timezoneRequired"));
+        return;
+      }
+      const nextCanonicalTimezone = canonicalizeTimezone(trimmedTimezone);
+      if (nextCanonicalTimezone == null) {
+        setTimezoneDraftError(t("settings.timezoneInvalid"));
+        return;
+      }
+      if (
+        supportedTimezoneSet.size > 0 &&
+        !supportedTimezoneSet.has(nextCanonicalTimezone) &&
+        !supportedTimezoneSet.has(trimmedTimezone)
+      ) {
+        setTimezoneDraftError(t("settings.timezoneInvalid"));
+        return;
+      }
+      canonicalTimezone = nextCanonicalTimezone;
     }
 
     setIsSavingProfile(true);
@@ -367,16 +413,15 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
       }
 
-      const [profileUpdated, statusResult] = await Promise.all([
-        updateOwnProfile({ fullName: trimmedFullName, timezone: canonicalTimezone }),
-        updateOwnStatus({
-          text: trimmedStatusText,
-          emojiName: ownStatus?.emojiName,
-          emojiCode: ownStatus?.emojiCode,
-          reactionType: ownStatus?.reactionType,
-          away: editableStatusAway,
-        }),
-      ]);
+      const [profileUpdated, statusResult] = await saveChangedProfileFields({
+        profileChanged,
+        statusChanged,
+        fullName: trimmedFullName,
+        timezone: canonicalTimezone,
+        statusText: trimmedStatusText,
+        statusAway: editableStatusAway,
+        ownStatus,
+      });
 
       if (!profileUpdated.ok) {
         if (profileUpdated.kind === "unsupported") {
@@ -401,13 +446,19 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         return;
       }
 
-      setProfile((prev) =>
-        prev ? { ...prev, fullName: trimmedFullName, timezone: canonicalTimezone } : prev,
-      );
-      const fetchedAt = Date.now();
-      setOwnStatus(statusResult.status);
-      applyUserStatusSnapshot(currentUserId, statusResult.status, fetchedAt);
-      mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
+      if (profileChanged) {
+        setProfile((prev) =>
+          prev ? { ...prev, fullName: trimmedFullName, timezone: canonicalTimezone } : prev,
+        );
+      }
+      if (statusChanged) {
+        const fetchedAt = Date.now();
+        setOwnStatus(statusResult.status);
+        applyUserStatusSnapshot(currentUserId, statusResult.status, fetchedAt);
+      }
+      if (fullNameChanged) {
+        mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
+      }
       setIsEditing(false);
       setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
       setAvatarDraftError(null);
@@ -425,12 +476,11 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     editableStatusAway,
     editableStatusText,
     editableTimezone,
+    fullName,
     isSavingProfile,
     mapAvatarErrorMessage,
     mergeUser,
-    ownStatus?.emojiCode,
-    ownStatus?.emojiName,
-    ownStatus?.reactionType,
+    ownStatus,
     pendingAvatarAction,
     profile?.timezone,
     supportedTimezoneSet,
@@ -552,9 +602,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-        <ZulipExternalAccountCard />
-        <MailExternalAccountCard />
-        <CalendarExternalAccountCard />
+        {!messengerOnly && (
+          <>
+            <ZulipExternalAccountCard />
+            <MailExternalAccountCard />
+            <CalendarExternalAccountCard />
+          </>
+        )}
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
           <header className="border-b border-border-subtle pb-3">
             <h2 className="mb-3 text-sm font-semibold text-text-primary">

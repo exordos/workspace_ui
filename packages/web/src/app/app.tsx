@@ -6,6 +6,7 @@ import { t } from "~/i18n/i18n";
 import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
 import { getElectronAPI } from "~/shared/lib/electron";
+import { env } from "~/shared/lib/env";
 import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
 import { useSwipe } from "~/shared/lib/gestures";
 import { useNavigationHistory, initMouseNavigation } from "~/shared/lib/navigation-history";
@@ -120,9 +121,18 @@ const App: React.FC = () => {
   useShortcut("alt+arrowleft", goBack, { context: "global" });
   useShortcut("alt+arrowright", goForward, { context: "global" });
   useShortcut("mod+1", navigateToMessenger, { context: "global", enabled: hasInstances });
-  useShortcut("mod+2", navigateToCalendar, { context: "global", enabled: hasInstances });
-  useShortcut("mod+3", navigateToMail, { context: "global", enabled: hasInstances });
-  useShortcut("mod+4", navigateToCalls, { context: "global", enabled: hasInstances });
+  useShortcut("mod+2", navigateToCalendar, {
+    context: "global",
+    enabled: hasInstances && !env.MESSENGER_ONLY,
+  });
+  useShortcut("mod+3", navigateToMail, {
+    context: "global",
+    enabled: hasInstances && !env.MESSENGER_ONLY,
+  });
+  useShortcut("mod+4", navigateToCalls, {
+    context: "global",
+    enabled: hasInstances && !env.MESSENGER_ONLY,
+  });
   useShortcut("mod+shift+a", navigateToActivity, { context: "global", enabled: hasInstances });
   useShortcut("mod+shift+t", toggleThemeShortcut, { context: "global", enabled: hasInstances });
   useShortcut("mod+/", toggleShortcutsHelp, { context: "global", enabled: hasInstances });

@@ -9,6 +9,11 @@ import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { buildAvatarBlobCacheKey } from "~/shared/lib/avatar-blob-cache.lib";
 import { env } from "~/shared/lib/env";
+import {
+  fetchWorkspaceFileBlobFromApi,
+  resolveCurrentWorkspaceFileCacheScope,
+  workspaceFileUuidFromDownloadUrl,
+} from "~/shared/lib/workspace-file-blob-cache";
 
 /** Path + query for fetch (strips `_av`), relative in dev for same-origin proxy. */
 export function buildAvatarFetchUrl(resolvedUrl: string): string {
@@ -64,6 +69,12 @@ export async function fetchAvatarBlob(resolvedUrl: string): Promise<Blob | null>
 
   const fetchUrl = buildAvatarFetchUrl(trimmed);
   const headers = buildAuthHeader();
+  if (
+    workspaceFileUuidFromDownloadUrl(fetchUrl) != null &&
+    resolveCurrentWorkspaceFileCacheScope() != null
+  ) {
+    return await fetchWorkspaceFileBlobFromApi(fetchUrl, { headers });
+  }
   const withDevProxy = appendDevRealmMediaProxyHeaders(fetchUrl, headers);
 
   try {

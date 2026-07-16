@@ -64,6 +64,7 @@ export interface LayoutChatListActions {
 
 export interface LayoutCurrentChatActions {
   context: CurrentChatContext | null;
+  messages?: readonly MockMessage[];
   hasNewerMessages: boolean;
   appendMessage: (message: MockMessage) => void;
   updateMessageFlags: (messageIds: MessageId[], flag: string, op: LayoutMessageFlagOp) => void;
@@ -173,6 +174,7 @@ export interface LayoutFolderSyncActions {
   applyRealtimeFolderSnapshot: (folder: WorkspaceFolder) => void;
   applyRealtimeFolderDeleted: (folderId: string) => void;
   applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
+  refresh?: (reason: "mutation") => Promise<void> | void;
 }
 
 export interface LayoutChatInfoActions {
@@ -185,6 +187,8 @@ export interface LayoutChatInfoActions {
 }
 
 export interface LayoutMessengerEventDispatchContext {
+  /** Suppresses user-visible side effects while initial history is replayed. */
+  notificationsEnabled?: boolean;
   currentInstanceId: string | null;
   chatList: LayoutChatListActions;
   currentChat: LayoutCurrentChatActions;

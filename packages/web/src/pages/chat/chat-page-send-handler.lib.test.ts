@@ -33,7 +33,7 @@ vi.mock("~/i18n/i18n", () => ({
 const optimisticMessageUuid = "11111111-1111-4111-8111-111111111111";
 const activeStreamUuid = "22222222-2222-4222-8222-222222222222";
 const uploadedFileUri =
-  "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
+  "urn:file:33333333-3333-4333-8333-333333333333?name=report.txt&content_type=text%2Fplain&size=6";
 
 function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageSendHandlerDeps & {
   appendMessage: ReturnType<typeof vi.fn>;
@@ -130,6 +130,29 @@ describe("executeChatPageSend", () => {
     expect(sendMessage).not.toHaveBeenCalled();
     expect(uploadFile).not.toHaveBeenCalled();
     expect(deps.setSendError).toHaveBeenCalledWith("message.sendFailed");
+  });
+
+  it("moves an API-rejected submission to the failed outbox without restoring the composer", async () => {
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("mail unavailable"));
+    const deps = createDeps();
+
+    await expect(executeChatPageSend(deps, "retry safely")).resolves.toBeUndefined();
+
+    expect(deps.appendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: optimisticMessageUuid,
+        delivery_status: "pending",
+      }),
+    );
+    expect(deps.appendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: optimisticMessageUuid,
+        delivery_status: "failed",
+      }),
+    );
+    expect(deps.setSendError).toHaveBeenCalledWith("mail unavailable");
   });
 
   it("uploads stream files with active stream uuid before sending message", async () => {

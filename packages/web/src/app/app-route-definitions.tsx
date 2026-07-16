@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, useParams } from "react-router-do
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { withCurrentOrgRoute, withOrgRoutePrefix } from "~/shared/lib/org-route";
 import { Layout } from "~/widgets/layout/layout.ui";
+import { MessengerOnlyRoute } from "./app-messenger-only-route.ui";
 import { WebViewShell } from "./webview-shell";
 
 const LoginPage = React.lazy(() =>
@@ -104,10 +105,38 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         />
         <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         <Route path="/activity/:filter" element={<ActivityPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/mail" element={<MailPage />} />
-        <Route path="/call" element={<CallsPage />} />
-        <Route path="/calls" element={<CallsPage />} />
+        <Route
+          path="/calendar"
+          element={
+            <MessengerOnlyRoute>
+              <CalendarPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="/mail"
+          element={
+            <MessengerOnlyRoute>
+              <MailPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="/call"
+          element={
+            <MessengerOnlyRoute>
+              <CallsPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="/calls"
+          element={
+            <MessengerOnlyRoute>
+              <CallsPage />
+            </MessengerOnlyRoute>
+          }
+        />
         <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="/settings/logs" element={diagnosticsRouteElement} />
         <Route path="/settings/build" element={<UpdatePage />} />
@@ -116,8 +145,22 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
         <Route path="/logs" element={diagnosticsRouteElement} />
-        <Route path="/services" element={<ServicesPage />} />
-        <Route path="/all-services" element={<ServicesPage />} />
+        <Route
+          path="/services"
+          element={
+            <MessengerOnlyRoute>
+              <ServicesPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="/all-services"
+          element={
+            <MessengerOnlyRoute>
+              <ServicesPage />
+            </MessengerOnlyRoute>
+          }
+        />
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/feed" element={<FeedPage />} />
         <Route path="/updates" element={<UpdatePage />} />
@@ -130,10 +173,38 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         />
         <Route path="message/:messageId" element={<MessageRedirectPage />} />
         <Route path="activity/:filter" element={<ActivityPage />} />
-        <Route path="calendar" element={<CalendarPage />} />
-        <Route path="mail" element={<MailPage />} />
-        <Route path="call" element={<CallsPage />} />
-        <Route path="calls" element={<CallsPage />} />
+        <Route
+          path="calendar"
+          element={
+            <MessengerOnlyRoute>
+              <CalendarPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="mail"
+          element={
+            <MessengerOnlyRoute>
+              <MailPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="call"
+          element={
+            <MessengerOnlyRoute>
+              <CallsPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="calls"
+          element={
+            <MessengerOnlyRoute>
+              <CallsPage />
+            </MessengerOnlyRoute>
+          }
+        />
         <Route path="settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="settings/logs" element={diagnosticsRouteElement} />
         <Route path="settings/build" element={<UpdatePage />} />
@@ -142,8 +213,22 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
         <Route path="logs" element={diagnosticsRouteElement} />
-        <Route path="services" element={<ServicesPage />} />
-        <Route path="all-services" element={<ServicesPage />} />
+        <Route
+          path="services"
+          element={
+            <MessengerOnlyRoute>
+              <ServicesPage />
+            </MessengerOnlyRoute>
+          }
+        />
+        <Route
+          path="all-services"
+          element={
+            <MessengerOnlyRoute>
+              <ServicesPage />
+            </MessengerOnlyRoute>
+          }
+        />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="feed" element={<FeedPage />} />
         <Route path="updates" element={<UpdatePage />} />

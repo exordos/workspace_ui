@@ -20,7 +20,7 @@ export interface WorkspaceClient {
     retrieve: (params: {
       page_limit?: number;
       page_marker?: string;
-      sort_key?: string;
+      sort_key?: "created_at";
       sort_dir?: "asc" | "desc";
       stream_uuid?: string;
       topic_uuid?: string;
@@ -46,7 +46,7 @@ let clientCache: { instanceId: string; promise: Promise<WorkspaceClient> } | nul
 export function buildMessagesQueryParams(params: {
   page_limit?: number;
   page_marker?: string;
-  sort_key?: string;
+  sort_key?: "created_at";
   sort_dir?: "asc" | "desc";
   stream_uuid?: string;
   topic_uuid?: string;

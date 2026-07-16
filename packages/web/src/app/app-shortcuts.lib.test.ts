@@ -53,4 +53,19 @@ describe("app-shortcuts", () => {
   it("maps theme shortcut to non-navigation action", () => {
     expect(resolveGlobalShortcutAction("mod+shift+t", "general")).toEqual({ type: "toggle-theme" });
   });
+
+  it("redirects unavailable product shortcuts to inbox in messenger-only mode", () => {
+    setCurrentOrgRouteIdResolver(() => "chat.example.com");
+    for (const key of ["mod+2", "mod+3", "mod+4"] as const) {
+      expect(resolveGlobalNavigationRoute(key, "general", null, true)).toBe(
+        "/org/chat.example.com/inbox",
+      );
+    }
+    expect(resolveGlobalNavigationRoute("mod+1", "general", null, true)).toBe(
+      "/org/chat.example.com/stream/general",
+    );
+    expect(resolveGlobalNavigationRoute("mod+shift+a", "general", null, true)).toBe(
+      "/org/chat.example.com/activity/starred",
+    );
+  });
 });

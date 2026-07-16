@@ -41,3 +41,14 @@ export function resolveUserUuidFromAccessToken(accessToken: string): string | nu
   }
   return null;
 }
+
+export function resolveProjectUuidFromAccessToken(accessToken: string): string | null {
+  const payload = decodeJwtPayload(accessToken);
+  for (const key of ["project_id", "project_uuid"]) {
+    const candidate = payload?.[key];
+    if (typeof candidate !== "string") continue;
+    const normalized = candidate.trim().toLowerCase();
+    if (isIamUserUuid(normalized)) return normalized;
+  }
+  return null;
+}

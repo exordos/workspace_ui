@@ -52,19 +52,54 @@ const ASSIGNMENT_RECONCILE_RETRY_DELAYS_MS = [0, 120, 360] as const;
 // Reconcile outcome: server confirmed and matched item UUID, if any.
 interface AssignmentReconcileOutcome {
   ok: boolean;
+  folder: WorkspaceFolder | null;
   items: FolderItemForClient[] | null;
   matchedItemUuid: string | null;
 }
 
 // Load rail folder cache from IndexedDB for a flicker-free cold start.
-async function loadFolderRailCache(instanceId: string): Promise<WorkspaceFolderForRail[]> {
+async function loadFolderRailCache(instanceId: string): Promise<{
+  folders: WorkspaceFolderForRail[];
+  folderItemsByFolderId: Map<string, FolderItemForClient[]>;
+}> {
   const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
-  return row?.folders ?? [];
+  return {
+    folders: row?.folders ?? [],
+    folderItemsByFolderId: new Map(row?.folderItemsEntries ?? []),
+  };
 }
 
 // Persist current folder snapshot to IndexedDB asynchronously.
-function schedulePersistFolders(instanceId: string, folders: WorkspaceFolderForRail[]): void {
-  void persistFoldersSnapshotRow({ instanceId, folders, version: 1 });
+function schedulePersistFolders(
+  instanceId: string,
+  folders: WorkspaceFolderForRail[],
+  folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]> = useFolderSyncStore.getState()
+    .folderItemsByFolderId,
+): void {
+  void persistFoldersSnapshotRow({
+    instanceId,
+    folders,
+    version: 2,
+    folderItemsEntries: Array.from(folderItemsByFolderId, ([folderId, items]) => [
+      folderId,
+      [...items],
+    ]),
+  });
+}
+
+/** Persistence barrier used before the realtime epoch cursor is committed. */
+export async function persistCurrentFolderSnapshot(): Promise<void> {
+  const state = useFolderSyncStore.getState();
+  if (state.instanceId == null) return;
+  await persistFoldersSnapshotRow({
+    instanceId: state.instanceId,
+    folders: state.folders,
+    version: 2,
+    folderItemsEntries: Array.from(state.folderItemsByFolderId, ([folderId, items]) => [
+      folderId,
+      [...items],
+    ]),
+  });
 }
 
 // Compact log label for selected-folder state.
@@ -76,6 +111,15 @@ function describeFolderChatIds(value: Set<string> | null): "null" | "empty" | `s
     return "empty";
   }
   return `size:${value.size}`;
+}
+
+function resolveCachedSelectedFolderChatIds(
+  isInstanceChanged: boolean,
+  cachedItems: FolderItemForClient[] | undefined,
+  current: Set<string> | null,
+): Set<string> | null {
+  if (!isInstanceChanged) return current;
+  return cachedItems == null ? new Set<string>() : toChatIdSet(cachedItems);
 }
 
 // Assignable folders from Workspace API (exclude system `all` and empty uuid).
@@ -183,6 +227,25 @@ function filterStaleFolderIdsByFolders(
   return next;
 }
 
+// Replace one rail row with the authoritative folder aggregate returned by the API.
+function replaceWorkspaceFolderInRail(
+  folders: readonly WorkspaceFolderForRail[],
+  folder: WorkspaceFolder | null,
+): WorkspaceFolderForRail[] {
+  if (folder == null) {
+    return [...folders];
+  }
+  const railFolder = mapWorkspaceFoldersToRail([folder])[0];
+  if (railFolder == null || railFolder.id.trim().length === 0) {
+    return [...folders];
+  }
+  const existingIndex = folders.findIndex((entry) => entry.id === railFolder.id);
+  if (existingIndex < 0) {
+    return [...folders, railFolder];
+  }
+  return folders.map((entry, index) => (index === existingIndex ? railFolder : entry));
+}
+
 // Non-blocking delay between reconcile attempts.
 async function waitForDelay(ms: number): Promise<void> {
   if (ms <= 0) return;
@@ -201,20 +264,18 @@ async function reconcileFolderAssignment(
     await waitForDelay(delay);
     try {
       const folders = await getFolders();
-      const items = (() => {
-        const folder = folders.find((f) => f.uuid === folderUuid);
-        return folder ? mapWorkspaceFolderItems(folder) : [];
-      })();
+      const folder = folders.find((f) => f.uuid === folderUuid) ?? null;
+      const items = folder ? mapWorkspaceFolderItems(folder) : [];
       const matchedItemUuid = resolveFolderItemUuid(items, chatId);
       const exists = matchedItemUuid != null;
       if (exists === shouldExist) {
-        return { ok: true, items, matchedItemUuid };
+        return { ok: true, folder, items, matchedItemUuid };
       }
     } catch {
       // best-effort retries
     }
   }
-  return { ok: false, items: null, matchedItemUuid: null };
+  return { ok: false, folder: null, items: null, matchedItemUuid: null };
 }
 
 interface FolderSyncBootstrapOptions {
@@ -360,7 +421,7 @@ function applyFolderSyncRefreshSnapshot(
     snapshot,
     latestState,
   );
-  schedulePersistFolders(instanceId, foldersWithSystemDefaults);
+  schedulePersistFolders(instanceId, foldersWithSystemDefaults, nextFolderItemsByFolderId);
 
   const selectedFolderId =
     resolveSelectedFolderId(foldersWithSystemDefaults, latestState.selectedFolderId) ??
@@ -449,7 +510,11 @@ async function runFolderSyncRefreshAttempt(
           phaseState.labels,
           phaseState.showSystemFolders,
         );
-        schedulePersistFolders(instanceId, foldersWithSystemDefaults);
+        schedulePersistFolders(
+          instanceId,
+          foldersWithSystemDefaults,
+          phaseState.folderItemsByFolderId,
+        );
 
         const selectedFolderId =
           resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
@@ -526,7 +591,90 @@ async function runFolderSyncRefreshAttempt(
 export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
   // Prevent two concurrent refreshes for the same instanceId.
   const inFlightRefreshByInstance = new Map<string, Promise<void>>();
+  const inFlightBootstrapByInstance = new Map<string, Promise<void>>();
   const inFlightAssignmentByFolder = new Map<string, Promise<ToggleAssignmentResult>>();
+  // Reject an IndexedDB result from an older bootstrap after a reload or instance switch.
+  let bootstrapGeneration = 0;
+
+  const runBootstrap = async ({
+    instanceId,
+    showSystemFolders,
+    labels,
+  }: FolderSyncBootstrapOptions): Promise<void> => {
+    const generation = ++bootstrapGeneration;
+    logStoreAction("folderSync", "bootstrap", { instanceId });
+    const previousInstanceId = get().instanceId;
+    const isInstanceChanged = previousInstanceId !== instanceId;
+    logFolderFlow("bootstrap:start", { instanceId, isInstanceChanged });
+    // Hydrate from IndexedDB first to avoid UI flicker.
+    const folderCache = await loadFolderRailCache(instanceId);
+    if (generation !== bootstrapGeneration) {
+      logFolderFlow("bootstrap:idb cache ignored (stale generation)", {
+        instanceId,
+        generation,
+      });
+      return;
+    }
+    const railFromCache = folderCache.folders;
+    logFolderFlow("bootstrap:idb cache read", {
+      instanceId,
+      railCount: railFromCache.length,
+    });
+    const cachedFolders = [...railFromCache];
+    const currentSelected = isInstanceChanged ? DEFAULT_SELECTED_FOLDER_ID : get().selectedFolderId;
+    const resolvedSelectedFolderId =
+      resolveSelectedFolderId(cachedFolders, currentSelected) ?? currentSelected;
+
+    set((state) => {
+      const shouldUseSelectedFolderItems = shouldLoadFolderItemsForSelection(
+        cachedFolders,
+        resolvedSelectedFolderId,
+      );
+      let selectedFolderChatIds: Set<string> | null = null;
+      if (shouldUseSelectedFolderItems) {
+        const cachedItems = folderCache.folderItemsByFolderId.get(resolvedSelectedFolderId);
+        selectedFolderChatIds = resolveCachedSelectedFolderChatIds(
+          isInstanceChanged,
+          cachedItems,
+          state.selectedFolderChatIds,
+        );
+      }
+      return {
+        instanceId,
+        showSystemFolders,
+        labels,
+        folders: cachedFolders,
+        selectedFolderId: resolvedSelectedFolderId,
+        selectedFolderChatIds,
+        error: null,
+        loading: state.loading && !isInstanceChanged,
+        // On instance switch clear items cache; otherwise reuse current map.
+        folderItemsByFolderId: isInstanceChanged
+          ? folderCache.folderItemsByFolderId
+          : state.folderItemsByFolderId,
+        allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
+        staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
+      };
+    });
+    if (isInstanceChanged) {
+      usePinStore.getState().clear();
+    }
+
+    const afterBootstrap = get();
+    folderSyncLog.debug("bootstrap:cacheApplied", {
+      instanceId,
+      folderCount: afterBootstrap.folders.length,
+      selectedFolderId: afterBootstrap.selectedFolderId,
+      folderChatIds: describeFolderChatIds(afterBootstrap.selectedFolderChatIds),
+      shouldLoadItems: shouldLoadFolderItemsForSelection(cachedFolders, resolvedSelectedFolderId),
+    });
+
+    // IndexedDB is only a fast first paint. Always reconcile the complete folder aggregate,
+    // membership, and unread counters with one authoritative server snapshot on reload.
+    logFolderFlow("bootstrap:await refresh(api)", { instanceId, reason: "bootstrap" });
+    await get().refresh("bootstrap");
+    logFolderFlow("bootstrap:refresh finished", { instanceId });
+  };
 
   return {
     folders: [],
@@ -543,67 +691,24 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     allFolderApiUuid: null,
     staleFolderIds: new Set(),
 
-    async bootstrap({ instanceId, showSystemFolders, labels }) {
-      logStoreAction("folderSync", "bootstrap", { instanceId });
-      const previousInstanceId = get().instanceId;
-      const isInstanceChanged = previousInstanceId !== instanceId;
-      logFolderFlow("bootstrap:start", { instanceId, isInstanceChanged });
-      // Hydrate from IndexedDB first to avoid UI flicker.
-      const railFromCache = await loadFolderRailCache(instanceId);
-      logFolderFlow("bootstrap:idb cache read", {
-        instanceId,
-        railCount: railFromCache.length,
-      });
-      const cachedFolders = [...railFromCache];
-      const currentSelected = isInstanceChanged
-        ? DEFAULT_SELECTED_FOLDER_ID
-        : get().selectedFolderId;
-      const resolvedSelectedFolderId =
-        resolveSelectedFolderId(cachedFolders, currentSelected) ?? currentSelected;
-
-      set((state) => {
-        const shouldUseSelectedFolderItems = shouldLoadFolderItemsForSelection(
-          cachedFolders,
-          resolvedSelectedFolderId,
-        );
-        let selectedFolderChatIds: Set<string> | null = null;
-        if (shouldUseSelectedFolderItems) {
-          selectedFolderChatIds = isInstanceChanged
-            ? new Set<string>()
-            : state.selectedFolderChatIds;
-        }
-        return {
-          instanceId,
-          showSystemFolders,
-          labels,
-          folders: cachedFolders,
-          selectedFolderId: resolvedSelectedFolderId,
-          selectedFolderChatIds,
-          error: null,
-          loading: state.loading && !isInstanceChanged,
-          // On instance switch clear items cache; otherwise reuse current map.
-          folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
-          allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
-          staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
-        };
-      });
-      if (isInstanceChanged) {
-        usePinStore.getState().clear();
+    bootstrap(options) {
+      const existing = inFlightBootstrapByInstance.get(options.instanceId);
+      if (existing != null) {
+        logFolderFlow("bootstrap:coalesced (await in-flight)", {
+          instanceId: options.instanceId,
+        });
+        return existing;
       }
 
-      const afterBootstrap = get();
-      folderSyncLog.debug("bootstrap:cacheApplied", {
-        instanceId,
-        folderCount: afterBootstrap.folders.length,
-        selectedFolderId: afterBootstrap.selectedFolderId,
-        folderChatIds: describeFolderChatIds(afterBootstrap.selectedFolderChatIds),
-        shouldLoadItems: shouldLoadFolderItemsForSelection(cachedFolders, resolvedSelectedFolderId),
-      });
-
-      logFolderFlow("bootstrap:await refresh(api)", { instanceId, reason: "bootstrap" });
-      // After cache hydrate always run network refresh for authoritative data.
-      await get().refresh("bootstrap");
-      logFolderFlow("bootstrap:refresh finished", { instanceId });
+      const bootstrapPromise = runBootstrap(options);
+      inFlightBootstrapByInstance.set(options.instanceId, bootstrapPromise);
+      const release = (): void => {
+        if (inFlightBootstrapByInstance.get(options.instanceId) === bootstrapPromise) {
+          inFlightBootstrapByInstance.delete(options.instanceId);
+        }
+      };
+      void bootstrapPromise.then(release, release);
+      return bootstrapPromise;
     },
 
     async selectFolder(folderId) {
@@ -708,6 +813,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         const folder = folders.find((f) => f.uuid === apiUuid);
         const items = folder ? mapWorkspaceFolderItems(folder) : [];
         set((state) => {
+          const nextFolders = replaceWorkspaceFolderInRail(state.folders, folder ?? null);
           const nextMap = new Map(state.folderItemsByFolderId);
           nextMap.set(apiUuid, items);
           if (apiUuid !== trimmed) {
@@ -719,8 +825,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           }
           const shouldPatchSelection =
             (state.selectedFolderId === trimmed || state.selectedFolderId === apiUuid) &&
-            shouldLoadFolderItemsForSelection(state.folders, state.selectedFolderId);
+            shouldLoadFolderItemsForSelection(nextFolders, state.selectedFolderId);
+          schedulePersistFolders(instanceId, nextFolders, nextMap);
           return {
+            folders: nextFolders,
             folderItemsByFolderId: nextMap,
             staleFolderIds: nextStaleFolderIds,
             ...(shouldPatchSelection ? { selectedFolderChatIds: toChatIdSet(items) } : {}),
@@ -951,13 +1059,19 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         }
 
         set((state) => {
+          const nextFolders = replaceWorkspaceFolderInRail(state.folders, reconcile.folder);
           const nextMap = new Map(state.folderItemsByFolderId);
           nextMap.set(folderUuid, reconcile.items ?? []);
           const nextStaleFolderIds = unmarkFolderAsStale(state.staleFolderIds, folderUuid);
           const shouldPatchSelection =
             state.selectedFolderId === folderUuid &&
-            shouldLoadFolderItemsForSelection(state.folders, folderUuid);
+            shouldLoadFolderItemsForSelection(nextFolders, folderUuid);
+          const instanceId = state.instanceId;
+          if (instanceId != null) {
+            schedulePersistFolders(instanceId, nextFolders, nextMap);
+          }
           return {
+            folders: nextFolders,
             folderItemsByFolderId: nextMap,
             staleFolderIds: nextStaleFolderIds,
             ...(shouldPatchSelection
@@ -1022,7 +1136,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         if (!nextMap.has(id)) {
           nextMap.set(id, []);
         }
-        schedulePersistFolders(instanceId, nextFolders);
+        schedulePersistFolders(instanceId, nextFolders, nextMap);
         return {
           folders: nextFolders,
           folderItemsByFolderId: nextMap,
@@ -1072,7 +1186,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               : new Set<string>();
         }
 
-        schedulePersistFolders(instanceId, nextFolders);
+        schedulePersistFolders(instanceId, nextFolders, nextMap);
 
         return {
           folders: nextFolders,
@@ -1112,7 +1226,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         const selectedFolderChatIds =
           state.selectedFolderId === folderId ? toChatIdSet(items) : state.selectedFolderChatIds;
 
-        schedulePersistFolders(instanceId, nextFolders);
+        schedulePersistFolders(instanceId, nextFolders, nextMap);
 
         return {
           folders: nextFolders,
@@ -1122,7 +1236,6 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           ...(railFolder.systemType === "all" ? { allFolderApiUuid: folderId } : {}),
         };
       });
-      void get().refreshFolderItemsCache(folderId);
     },
 
     applyRealtimeFolderDeleted(folderId) {
@@ -1153,6 +1266,11 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         }
 
         if (!changed) return {};
+
+        const instanceId = state.instanceId;
+        if (instanceId != null) {
+          schedulePersistFolders(instanceId, state.folders, nextMap);
+        }
 
         return {
           folderItemsByFolderId: nextMap,
@@ -1218,6 +1336,8 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
 
     clear() {
       logStoreAction("folderSync", "clear", {});
+      bootstrapGeneration += 1;
+      inFlightBootstrapByInstance.clear();
       inFlightRefreshByInstance.clear();
       inFlightAssignmentByFolder.clear();
       usePinStore.getState().clear();

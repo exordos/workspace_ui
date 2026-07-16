@@ -212,6 +212,30 @@ describe("MessageList focused message behavior", () => {
     vi.useRealTimers();
   });
 
+  it("resolves stream-wide topic UUIDs to topic names in separators and message headers", () => {
+    const bugsUuid = "33333333-3333-4333-8333-333333333333";
+    const supportUuid = "44444444-4444-4444-8444-444444444444";
+    render(
+      <MessageList
+        messages={[
+          msg(1, { topic_uuid: bugsUuid, subject: bugsUuid }),
+          msg(2, { topic_uuid: supportUuid, subject: supportUuid, sender_id: 43 }),
+        ]}
+        topicNamesByUuid={
+          new Map([
+            [bugsUuid, "bugs"],
+            [supportUuid, "support"],
+          ])
+        }
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "support" })).toBeInTheDocument();
+    expect(screen.getAllByText("bugs").length).toBeGreaterThan(0);
+    expect(screen.queryByText(bugsUuid)).not.toBeInTheDocument();
+    expect(screen.queryByText(supportUuid)).not.toBeInTheDocument();
+  });
+
   it("shows the system general-chat separator in italic for empty-topic messages", () => {
     render(
       <MessageList
@@ -319,6 +343,38 @@ describe("MessageList focused message behavior", () => {
     fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
     expect(onOpenDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("renders and opens a user mention card from the canonical user URN", async () => {
+    const bobUuid = "99999999-9999-4999-8999-999999999999";
+    const onOpenDirectMessage = vi.fn();
+    useUsersStore.getState().mergeUser(
+      createUser({
+        user_id: bobUuid,
+        full_name: "Bob",
+      }),
+    );
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: `Hi [Bob](urn:user:${bobUuid})`,
+          }),
+        ]}
+        currentUserId="77777777-7777-4777-8777-777777777777"
+        callbacks={{ onOpenDirectMessage }}
+      />,
+    );
+
+    const mention = screen.getByText("@Bob");
+    expect(mention).toHaveClass("user-mention");
+    expect(mention).toHaveAttribute("data-user-uuid", bobUuid);
+    fireEvent.click(mention);
+
+    expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
+    expect(onOpenDirectMessage).toHaveBeenCalledWith(bobUuid);
   });
 
   it("loads realm custom emojis once when markdown shortcode is present", async () => {

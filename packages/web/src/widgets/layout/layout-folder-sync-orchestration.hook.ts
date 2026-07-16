@@ -89,6 +89,7 @@ export function useLayoutFolderSyncOrchestration(
     showSystemFolders,
     labels: getFolderSyncLabelsFromI18n(),
   });
+  const bootstrapRequestedInstanceRef = useRef<string | null>(null);
 
   useEffect(() => {
     folderSyncConfigRef.current = {
@@ -131,6 +132,10 @@ export function useLayoutFolderSyncOrchestration(
 
   useEffect(() => {
     if (currentInstanceId == null) {
+      bootstrapRequestedInstanceRef.current = null;
+      return;
+    }
+    if (bootstrapRequestedInstanceRef.current === currentInstanceId) {
       return;
     }
     if (
@@ -143,11 +148,24 @@ export function useLayoutFolderSyncOrchestration(
       return;
     }
     const { showSystemFolders: showSys, labels } = folderSyncConfigRef.current;
+    bootstrapRequestedInstanceRef.current = currentInstanceId;
     void bootstrapFolderSync({
       instanceId: currentInstanceId,
       showSystemFolders: showSys,
       labels,
-    });
+    }).then(
+      () => {
+        if (bootstrapRequestedInstanceRef.current === currentInstanceId) {
+          bootstrapRequestedInstanceRef.current = null;
+        }
+      },
+      () => {
+        if (bootstrapRequestedInstanceRef.current === currentInstanceId) {
+          bootstrapRequestedInstanceRef.current = null;
+        }
+        layoutFolderSyncLog.warn("bootstrapEffect:failed", { currentInstanceId });
+      },
+    );
   }, [currentInstanceId, currentUserStatus, bootstrapFolderSync]);
 
   useEffect(() => {

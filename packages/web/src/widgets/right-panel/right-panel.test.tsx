@@ -28,6 +28,7 @@ import { resetToastStateForTests, useToastStore } from "~/shared/lib/toast/toast
 import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelUserProfileHeader } from "./right-panel-user-profile-header.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const fetchVersionCatalogMock = vi.hoisted(() => vi.fn());
@@ -740,6 +741,28 @@ describe("RightPanel truthfulness", () => {
     );
 
     expect(screen.getByText("Zulip external account card")).toBeInTheDocument();
+  });
+
+  it("does not mount external account controls in a messenger-only right-panel profile", () => {
+    renderWithProviders(
+      <RightPanelUserProfileHeader
+        user={{ name: "Admin User", userId: 42 }}
+        showBackToChatInfo={false}
+        onBackFromNestedProfile={vi.fn()}
+        avatarSrc={undefined}
+        isOwnProfile
+        status={null}
+        statusLabel={undefined}
+        contactRows={[]}
+        directMessageUserId={42}
+        showProfileCallButton={false}
+        onProfileDmCall={vi.fn()}
+        onAvatarAction={vi.fn()}
+        messengerOnly
+      />,
+    );
+
+    expect(screen.queryByText("Zulip external account card")).not.toBeInTheDocument();
   });
 
   it("copies email and user id from profile contact rows", async () => {

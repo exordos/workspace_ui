@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { uploadComposerFiles } from "./chat-upload.lib";
 
 const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
-const FILE_A_URI =
-  "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
-const FILE_B_URI =
-  "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download";
+const FILE_A_URI = "urn:file:33333333-3333-4333-8333-333333333333?name=report.txt";
+const FILE_B_URI = "urn:image:44444444-4444-4444-8444-444444444444?name=image.png";
 
 describe("uploadComposerFiles", () => {
   it("uploads valid files and returns markdown links with sanitized filenames", async () => {
@@ -23,7 +21,7 @@ describe("uploadComposerFiles", () => {
 
     expect(links).toEqual([
       `[quarterly____report_.txt](${FILE_A_URI})`,
-      `[image.png](${FILE_B_URI})`,
+      `![image.png](${FILE_B_URI})`,
     ]);
     expect(uploadFile).toHaveBeenCalledTimes(2);
     expect(uploadFile).toHaveBeenNthCalledWith(1, files[0], { streamUuid: STREAM_UUID });

@@ -35,95 +35,96 @@ function runDispatchHandler(label: string, handler: () => void): void {
 export function dispatchMessengerEvent(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
-): void {
-  applyMessageCacheIndexedDb(event, ctx);
+): Promise<void> {
+  const cacheWrite = applyMessageCacheIndexedDb(event, ctx);
 
   if (event.type === "message") {
     if (event.kind === "messages.read") {
       runDispatchHandler("dispatch:messages.read", () => handleMessagesRead(event, ctx));
-      return;
+      return cacheWrite;
     }
     if (event.message) {
       if (event.kind === "message.updated") {
         runDispatchHandler("dispatch:message.updated", () => handleMessageUpdated(event, ctx));
-        return;
+        return cacheWrite;
       }
       if (event.kind === "message.read") {
         runDispatchHandler("dispatch:message.read", () => handleMessageUpdated(event, ctx));
-        return;
+        return cacheWrite;
       }
       if (event.kind === "message.deleted") {
         runDispatchHandler("dispatch:message.deleted", () => handleDeleteMessage(event, ctx));
-        return;
+        return cacheWrite;
       }
       runDispatchHandler("dispatch:message", () => handleIncomingMessage(event, ctx));
-      return;
+      return cacheWrite;
     }
   }
 
   if (event.type === "update_message_flags") {
     runDispatchHandler("dispatch:update_message_flags", () => handleUpdateMessageFlags(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "delete_message") {
     runDispatchHandler("dispatch:delete_message", () => handleDeleteMessage(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "typing") {
     runDispatchHandler("dispatch:typing", () => handleTyping(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "update_message") {
     runDispatchHandler("dispatch:update_message", () => handleUpdateMessage(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "subscription") {
     runDispatchHandler("dispatch:subscription", () => handleSubscription(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "stream") {
     runDispatchHandler("dispatch:stream", () => handleStream(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "stream_binding") {
     runDispatchHandler("dispatch:stream_binding", () => handleStreamBinding(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "topic") {
     runDispatchHandler("dispatch:topic", () => handleTopic(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "folder") {
     runDispatchHandler("dispatch:folder", () => handleFolder(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "folder_item") {
     runDispatchHandler("dispatch:folder_item", () => handleFolderItem(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "user_settings") {
     runDispatchHandler("dispatch:user_settings", () => handleUserSettings(event));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "user") {
     runDispatchHandler("dispatch:user", () => handleUserUpdated(event, ctx));
-    return;
+    return cacheWrite;
   }
 
   if (event.type === "realm") {
     runDispatchHandler("dispatch:realm", () => handleRealm(event));
   }
+  return cacheWrite;
 }
 
 export function buildLayoutNotificationsActions(options: {

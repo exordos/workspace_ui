@@ -11,6 +11,7 @@ export type WorkspaceEventObjectType =
   | "user"
   | "folder"
   | "folder_item"
+  | "file"
   | "external_account"
   | "mail_folder"
   | "mail_message"

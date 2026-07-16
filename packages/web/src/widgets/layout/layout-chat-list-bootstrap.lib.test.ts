@@ -37,7 +37,7 @@ describe("runChatListBootstrap", () => {
     expect(hydrateSpy).not.toHaveBeenCalled();
   });
 
-  it("reconnect kind does not hydrate from IndexedDB", async () => {
+  it("uses a cold IndexedDB snapshot without refetching the full message preview", async () => {
     const hydrateSpy = vi.spyOn(useChatListStore.getState(), "hydrateFromIndexedDbSnapshot");
     vi.spyOn(chatListSnapshotDb, "loadChatListSnapshotRow").mockResolvedValue({
       instanceId: "test-instance",
@@ -50,13 +50,73 @@ describe("runChatListBootstrap", () => {
       messageIdToLocationEntries: [],
       updatedAt: 0,
     });
-    const deltaSpy = vi
-      .spyOn(messengerSidebarPreview, "fetchMessagesAfterAnchor")
-      .mockResolvedValue([]);
+    const deltaSpy = vi.spyOn(messengerSidebarPreview, "fetchMessagesAfterAnchor");
+    const recentSpy = vi.spyOn(
+      messengerSidebarPreview,
+      "fetchRecentStreamMessagesForSidebarPreview",
+    );
 
-    await runChatListBootstrap("test-instance", { kind: "reconnect" });
+    const result = await runChatListBootstrap("test-instance", { kind: "cold" });
 
-    expect(hydrateSpy).not.toHaveBeenCalled();
-    expect(deltaSpy).toHaveBeenCalled();
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      mode: "none",
+      latestMessageIdHint: "00000000-0000-4000-8000-000000000100",
+    });
+    expect(deltaSpy).not.toHaveBeenCalled();
+    expect(recentSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late IndexedDB snapshot erase authoritative stream metadata", async () => {
+    let resolveSnapshot:
+      | ((value: Awaited<ReturnType<typeof chatListSnapshotDb.loadChatListSnapshotRow>>) => void)
+      | undefined;
+    vi.spyOn(chatListSnapshotDb, "loadChatListSnapshotRow").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+
+    const bootstrapPromise = runChatListBootstrap("test-instance", { kind: "cold" });
+    const streamUuid = "00000000-0000-4000-8000-000000000005";
+    const topicUuid = "00000000-0000-4000-8000-000000000501";
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamUuid, name: "engineering" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(streamUuid, [{ streamUuid, topicUuid, name: "General" }]);
+    useChatListStore.getState().setStreamMetadataHydrated(true);
+
+    resolveSnapshot?.({
+      instanceId: "test-instance",
+      version: 1,
+      currentUserId: 1,
+      lastMessageId: null,
+      oldestMessageId: null,
+      streamsEntries: [],
+      dmsEntries: [],
+      messageIdToLocationEntries: [],
+      updatedAt: 0,
+    });
+    await bootstrapPromise;
+
+    const state = useChatListStore.getState();
+    expect(state.streamMetadataHydrated).toBe(true);
+    expect(state.streamsMap.get(streamUuid)?.name).toBe("engineering");
+    expect(state.streamsMap.get(streamUuid)?.topics.get("General")?.topicUuid).toBe(topicUuid);
+  });
+
+  it("does not refetch message previews for an ordinary reconnect", async () => {
+    const deltaSpy = vi.spyOn(messengerSidebarPreview, "fetchMessagesAfterAnchor");
+    const recentSpy = vi.spyOn(
+      messengerSidebarPreview,
+      "fetchRecentStreamMessagesForSidebarPreview",
+    );
+
+    const result = await runChatListBootstrap("test-instance", { kind: "reconnect" });
+
+    expect(result).toEqual({ mode: "none", latestMessageIdHint: null });
+    expect(deltaSpy).not.toHaveBeenCalled();
+    expect(recentSpy).not.toHaveBeenCalled();
   });
 });

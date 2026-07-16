@@ -187,7 +187,7 @@ function nativeMessageMentionsCurrentUser(
   if (needle.length === 0) {
     return false;
   }
-  const mentionPattern = new RegExp(`(?:<@|@)${escapeRegExp(needle)}(?:>|\\b)`, "i");
+  const mentionPattern = new RegExp(`\\]\\(urn:user:${escapeRegExp(needle)}\\)`, "i");
   return mentionPattern.test(message.payload.content);
 }
 

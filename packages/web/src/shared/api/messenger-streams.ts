@@ -278,7 +278,7 @@ function extractMeStreamItems(data: unknown): unknown[] {
   return [];
 }
 
-function parseMeStream(row: unknown): MessengerMeStream | null {
+export function parseMeStream(row: unknown): MessengerMeStream | null {
   if (!isRecord(row)) {
     return null;
   }
@@ -373,7 +373,7 @@ function readWorkspaceStreamRole(value: unknown): WorkspaceStreamRole | null {
     : null;
 }
 
-function parseStreamBinding(row: unknown): WorkspaceStreamBinding | null {
+export function parseStreamBinding(row: unknown): WorkspaceStreamBinding | null {
   if (!isRecord(row)) {
     return null;
   }
@@ -391,7 +391,7 @@ function parseStreamBinding(row: unknown): WorkspaceStreamBinding | null {
   };
 }
 
-async function fetchStreamBindings(): Promise<WorkspaceStreamBinding[]> {
+export async function fetchStreamBindings(): Promise<WorkspaceStreamBinding[]> {
   const response = await messengerApi.getWithBase(
     getMessengerWorkspaceApiBaseForCurrentInstance(),
     "/stream_bindings/",
@@ -489,7 +489,7 @@ function extractStreamTopicItems(data: unknown): unknown[] {
   return [];
 }
 
-function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
+export function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
   if (!isRecord(row)) {
     return null;
   }
@@ -647,7 +647,7 @@ export async function toggleStreamTopicDone(topicUuid: string): Promise<UpdateSt
   try {
     const response = await messengerApi.postJsonWithBase(
       getMessengerWorkspaceApiBaseForCurrentInstance(),
-      `/stream_topics/${normalizedTopicUuid}/actions/toggle_done/invoke`,
+      `/stream_topics/${normalizedTopicUuid}/toggle_done/`,
       {},
     );
     if (!response.ok) {

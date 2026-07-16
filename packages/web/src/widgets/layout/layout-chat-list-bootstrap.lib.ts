@@ -19,7 +19,7 @@ import {
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
+import { getInMemoryLatestMessageId } from "./layout-chat-list-latest-message-id.lib";
 
 /** Stream preview batch size (metadata-first bootstrap). */
 export function getStreamPreviewBatchLimit(): number {
@@ -108,23 +108,27 @@ export async function runChatListBootstrap(
 
   logChatListFlow("bootstrap: runChatListBootstrap (start)", { instanceId, kind });
 
+  // Realtime REST catch-up owns reconnect gaps. Re-reading snapshots or messages here duplicates
+  // the same work and can regress state behind an already committed event cursor.
+  if (kind === "reconnect") {
+    return { mode: "none", latestMessageIdHint: getInMemoryLatestMessageId() };
+  }
+
   const snap = await loadChatListSnapshotRow(instanceId);
   if (isBootstrapSuperseded(options)) {
     logChatListFlow("bootstrap: superseded after IDB read (no hydrate/clear)", { instanceId });
     return { mode: "none", latestMessageIdHint: null };
   }
 
-  if (kind === "cold") {
-    if (snap) {
-      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snap);
-    } else {
-      useChatListStore.getState().clear();
-      logChatListFlow("bootstrap: no IDB snapshot, store cleared", { instanceId });
-    }
+  if (snap) {
+    useChatListStore.getState().hydrateFromIndexedDbSnapshot(snap);
+    return { mode: "none", latestMessageIdHint: snap.lastMessageId ?? null };
+  } else {
+    useChatListStore.getState().clear();
+    logChatListFlow("bootstrap: no IDB snapshot, store cleared", { instanceId });
   }
 
-  const idbHint = snap?.lastMessageId ?? null;
-  const hint = kind === "reconnect" ? maxMessageId(idbHint, getInMemoryLatestMessageId()) : idbHint;
+  const hint: MessageId | null = null;
 
   const streamMessages = await fetchStreamPreviewMessageBatch(hint, options);
   if (isBootstrapSuperseded(options)) {

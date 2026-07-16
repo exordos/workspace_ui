@@ -46,6 +46,8 @@ interface ImportMetaEnv {
   readonly VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB?: string;
   /** Persist avatar blobs to IndexedDB. Optional; default on. */
   readonly VITE_AVATAR_PERSIST_INDEXEDDB?: string;
+  /** Build only the Messenger product surface; hides and gates Calendar, Mail, Calls, and Services. */
+  readonly VITE_MESSENGER_ONLY?: string;
   /** Top bar: show Calls nav. */
   readonly VITE_TOP_BAR_CALLS_NAV?: string;
   /** Top bar: show Services nav. */

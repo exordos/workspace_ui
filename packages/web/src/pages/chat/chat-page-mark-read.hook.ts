@@ -5,6 +5,13 @@
  * explicit server confirmation: `messages.read` events or the returned read message.
  */
 import { useCallback, useRef } from "react";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  applyConfirmedReadMetadataDelta,
+  refreshFolderUnreadAggregates,
+} from "~/entities/unread-sync/confirmed-read-metadata.lib";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
@@ -128,6 +135,12 @@ export function useChatPageMarkRead({
           .then((confirmedIds) => {
             const ids = Array.isArray(confirmedIds) ? confirmedIds : [];
             if (ids.length > 0) {
+              applyConfirmedReadMetadataDelta(
+                useChatListStore.getState(),
+                useCurrentChatMessagesStore.getState().messages,
+                ids,
+              );
+              refreshFolderUnreadAggregates(useFolderSyncStore.getState().refresh);
               updateMessageFlagsInStore(ids, "read", "add");
             }
           })

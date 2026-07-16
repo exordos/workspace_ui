@@ -7,6 +7,11 @@ import { create } from "zustand";
 import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
+import {
+  clearWorkspaceFileCacheForInstance,
+  clearWorkspaceFileCachePartition,
+  resolveWorkspaceFileCacheScopeForInstance,
+} from "~/shared/lib/workspace-file-blob-cache";
 
 const INSTANCES_STORAGE_KEY = "messenger-web-instances";
 const CURRENT_INSTANCE_KEY = "messenger-web-current-instance";
@@ -295,7 +300,10 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   },
 
   removeInstance: (id) => {
-    const removedRealm = get().instances.find((i) => i.id === id)?.realm;
+    const removedInstance = get().instances.find((i) => i.id === id);
+    const removedRealm = removedInstance?.realm;
+    const removedFileCacheScope =
+      removedInstance == null ? null : resolveWorkspaceFileCacheScopeForInstance(removedInstance);
     set((state) => {
       const removedWasCurrent = state.currentInstanceId === id;
       const instances = state.instances.filter((i) => i.id !== id);
@@ -323,6 +331,9 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     });
     logStoreAction("instances", "removeInstance", { instanceId: id });
     void clearAvatarBlobCacheForInstance(id);
+    void (removedFileCacheScope == null
+      ? clearWorkspaceFileCacheForInstance(id)
+      : clearWorkspaceFileCachePartition(removedFileCacheScope));
     logAction("instance_removed", {
       instanceId: id,
       ...(removedRealm ? { realmHost: realmHostFromRealm(removedRealm) } : {}),

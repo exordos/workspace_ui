@@ -56,23 +56,48 @@ describe("getSectionFromPathname", () => {
 
 describe("getTopBarSectionNavItems", () => {
   it("omits calls and services when both flags are off", () => {
-    const items = getTopBarSectionNavItems({ showCallsNav: false, showServicesNav: false });
+    const items = getTopBarSectionNavItems({
+      messengerOnly: false,
+      showCallsNav: false,
+      showServicesNav: false,
+    });
     expect(items.map((i) => i.id)).toEqual(["chat", "calendar", "mail"]);
   });
 
   it("includes only calls when showCallsNav is on", () => {
-    const items = getTopBarSectionNavItems({ showCallsNav: true, showServicesNav: false });
+    const items = getTopBarSectionNavItems({
+      messengerOnly: false,
+      showCallsNav: true,
+      showServicesNav: false,
+    });
     expect(items.map((i) => i.id)).toEqual(["chat", "calendar", "mail", "calls"]);
   });
 
   it("includes only services when showServicesNav is on", () => {
-    const items = getTopBarSectionNavItems({ showCallsNav: false, showServicesNav: true });
+    const items = getTopBarSectionNavItems({
+      messengerOnly: false,
+      showCallsNav: false,
+      showServicesNav: true,
+    });
     expect(items.map((i) => i.id)).toEqual(["chat", "calendar", "mail", "services"]);
   });
 
   it("includes calls and services when both flags are on", () => {
-    const items = getTopBarSectionNavItems({ showCallsNav: true, showServicesNav: true });
+    const items = getTopBarSectionNavItems({
+      messengerOnly: false,
+      showCallsNav: true,
+      showServicesNav: true,
+    });
     expect(items.map((i) => i.id)).toEqual(["chat", "calendar", "mail", "calls", "services"]);
+  });
+
+  it("shows only Messenger when messenger-only mode is on", () => {
+    const items = getTopBarSectionNavItems({
+      messengerOnly: true,
+      showCallsNav: true,
+      showServicesNav: true,
+    });
+    expect(items.map((i) => i.id)).toEqual(["chat"]);
   });
 });
 

@@ -39,6 +39,7 @@ export const TopBar: React.FC = () => {
   const sections = useMemo(
     () =>
       getTopBarSectionNavItems({
+        messengerOnly: env.MESSENGER_ONLY,
         showCallsNav: env.TOP_BAR_CALLS_NAV,
         showServicesNav: env.TOP_BAR_SERVICES_NAV,
       }),

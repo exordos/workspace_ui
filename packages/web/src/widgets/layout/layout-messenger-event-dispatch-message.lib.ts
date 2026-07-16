@@ -4,6 +4,10 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  applyConfirmedReadMetadataDelta,
+  refreshFolderUnreadAggregates,
+} from "~/entities/unread-sync/confirmed-read-metadata.lib";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { getCurrentInstance } from "~/shared/api/client";
 import { rawMessageToMockMessage } from "~/shared/api/messenger-messages";
@@ -40,10 +44,10 @@ import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-eve
 export function applyMessageCacheIndexedDb(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
-): void {
+): Promise<void> {
   const instance = getCurrentInstance();
-  if (!instance?.id || !isChatMessagesPersistToIndexedDbEnabled()) return;
-  void applyMessengerEventToMessageIndexedDb({
+  if (!instance?.id || !isChatMessagesPersistToIndexedDbEnabled()) return Promise.resolve();
+  return applyMessengerEventToMessageIndexedDb({
     instanceId: instance.id,
     currentUserId: ctx.chatList.currentUserId,
     event,
@@ -99,7 +103,7 @@ export function handleIncomingMessage(
   const incomingInvite = resolveIncomingDmCallInvite(raw, currentUserId, {
     serverBaseUrl: jitsiMeetBaseUrl,
   });
-  if (incomingInvite != null) {
+  if (incomingInvite != null && ctx.notificationsEnabled !== false) {
     jitsiCall.ingestIncomingInvite(incomingInvite);
   }
 }
@@ -146,6 +150,8 @@ export function handleMessageUpdated(
   activity.markStarredSummaryStale();
   inbox.markStale();
   if (raw.read === true) {
+    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], [messageId]);
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
     closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
   }
 
@@ -185,6 +191,8 @@ export function handleMessagesRead(
   });
 
   closeReadMessageNotifications(notifications, parsed.messageIds, ctx.currentInstanceId);
+  applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], parsed.messageIds);
+  refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
   currentChat.updateMessageFlags(parsed.messageIds, "read", "add");
 }
 
@@ -197,8 +205,10 @@ function applyMarkAllReadFromQueueEvent(
 
   const loadedIds = collectLoadedMessageIds(useCurrentChatMessagesStore.getState().messages);
   if (loadedIds.length > 0) {
+    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], loadedIds);
     currentChat.updateMessageFlags(loadedIds, "read", "add");
   }
+  refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
 
   const indexedIds = [...chatListStore.messageIdToLocation.keys()];
   closeAllActiveMessageNotifications(notifications, ctx.currentInstanceId);
@@ -252,11 +262,14 @@ export function handleUpdateMessageFlags(
   if (op === "add") {
     inbox.markStale();
     closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
+    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], messageIds);
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
     currentChat.updateMessageFlags(messageIds, "read", "add");
     return;
   }
 
   inbox.markStale();
+  refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
 
   logSidebarUnreadFlow("event:update_message_flags:read:remove", {
     ...summarizeMessageIdsForFlowDebug(messageIds),

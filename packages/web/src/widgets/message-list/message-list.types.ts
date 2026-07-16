@@ -46,6 +46,8 @@ export interface MessageListSenderGroupProps {
 
 export interface MessageListProps {
   messages: MockMessage[];
+  /** Current stream topic display names keyed by lowercase topic UUID. */
+  topicNamesByUuid?: ReadonlyMap<string, string>;
   currentUserId?: UserId;
   /** Changes when chat/topic/DM changes; resets list-local scroll/read bookkeeping. */
   scrollToBottomKey?: string;

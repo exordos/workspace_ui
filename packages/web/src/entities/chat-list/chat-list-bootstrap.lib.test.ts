@@ -13,6 +13,7 @@ import {
   buildSetFromMessagesBootstrapState,
   clearBootstrapErrorPatch,
   mergeBootstrapStreamsWithPreviousMetadata,
+  mergeCachedStreamPreviewsIntoAuthoritativeMetadata,
   mergeStreamAccessMetadata,
   normalizeDmUserIds,
   type ChatListDmBootstrapDisplayContext,
@@ -155,6 +156,158 @@ describe("mergeBootstrapStreamsWithPreviousMetadata", () => {
     ).streamsMap;
     const merged = mergeBootstrapStreamsWithPreviousMetadata(rebuilt, previous);
     expect(merged.get(STREAM_UUID)?.isArchived).toBe(true);
+  });
+});
+
+describe("mergeCachedStreamPreviewsIntoAuthoritativeMetadata", () => {
+  it("keeps the authoritative entity set and restores cached previews by topic uuid", () => {
+    const topicUuid = "33333333-3333-4333-8333-333333333333";
+    const cached = new Map<string, StreamEntryInternal>([
+      [
+        STREAM_UUID,
+        {
+          streamUuid: STREAM_UUID,
+          name: "stale stream name",
+          lastMessage: "cached stream preview",
+          lastMessageSenderName: "Alice",
+          time: "1m",
+          ts: 100,
+          unreadCount: 99,
+          topics: new Map([
+            [
+              "old topic name",
+              {
+                topicUuid,
+                subject: "old topic name",
+                lastMessage: "cached topic preview",
+                lastMessageSenderName: "Bob",
+                time: "2m",
+                ts: 90,
+                unreadCount: 99,
+                lastMessageId: MESSAGE_ID_1,
+              },
+            ],
+          ]),
+        },
+      ],
+      [
+        OTHER_STREAM_UUID,
+        {
+          streamUuid: OTHER_STREAM_UUID,
+          name: "stale subscription",
+          lastMessage: "must disappear",
+          time: "3m",
+          ts: 80,
+          topics: new Map(),
+        },
+      ],
+    ]);
+    const authoritative = new Map<string, StreamEntryInternal>([
+      [
+        STREAM_UUID,
+        {
+          streamUuid: STREAM_UUID,
+          name: "engineering",
+          lastMessage: "",
+          time: "",
+          ts: 0,
+          unreadCount: 3,
+          topics: new Map([
+            [
+              "General",
+              {
+                topicUuid,
+                subject: "General",
+                lastMessage: "",
+                time: "",
+                ts: 0,
+                unreadCount: 2,
+                color: 0x123456,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+
+    const merged = mergeCachedStreamPreviewsIntoAuthoritativeMetadata(cached, authoritative);
+
+    expect(Array.from(merged.keys())).toEqual([STREAM_UUID]);
+    expect(merged.get(STREAM_UUID)).toEqual(
+      expect.objectContaining({
+        name: "engineering",
+        lastMessage: "cached stream preview",
+        unreadCount: 3,
+      }),
+    );
+    expect(merged.get(STREAM_UUID)?.topics.has("old topic name")).toBe(false);
+    expect(merged.get(STREAM_UUID)?.topics.get("General")).toEqual(
+      expect.objectContaining({
+        subject: "General",
+        lastMessage: "cached topic preview",
+        unreadCount: 2,
+        color: 0x123456,
+        lastMessageId: MESSAGE_ID_1,
+      }),
+    );
+  });
+
+  it("does not replace newer in-memory previews with an older snapshot", () => {
+    const cached = new Map<string, StreamEntryInternal>([
+      [
+        STREAM_UUID,
+        {
+          streamUuid: STREAM_UUID,
+          name: "engineering",
+          lastMessage: "old cached preview",
+          time: "2m",
+          ts: 100,
+          topics: new Map([
+            [
+              "General",
+              {
+                subject: "General",
+                lastMessage: "old cached topic preview",
+                time: "2m",
+                ts: 100,
+                unreadCount: 0,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+    const authoritative = new Map<string, StreamEntryInternal>([
+      [
+        STREAM_UUID,
+        {
+          streamUuid: STREAM_UUID,
+          name: "engineering",
+          lastMessage: "new realtime preview",
+          time: "now",
+          ts: 200,
+          topics: new Map([
+            [
+              "General",
+              {
+                subject: "General",
+                lastMessage: "new realtime topic preview",
+                time: "now",
+                ts: 200,
+                unreadCount: 0,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+
+    const merged = mergeCachedStreamPreviewsIntoAuthoritativeMetadata(cached, authoritative);
+
+    expect(merged.get(STREAM_UUID)?.lastMessage).toBe("new realtime preview");
+    expect(merged.get(STREAM_UUID)?.topics.get("General")?.lastMessage).toBe(
+      "new realtime topic preview",
+    );
   });
 });
 

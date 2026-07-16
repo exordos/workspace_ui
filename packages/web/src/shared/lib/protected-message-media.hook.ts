@@ -12,6 +12,7 @@ import {
   isProtectedMessageMediaUrl,
   protectMessageMediaElementsInContainer,
 } from "~/shared/lib/protected-message-media";
+import { useWorkspaceFileCacheInvalidationVersion } from "~/shared/lib/workspace-file-cache-invalidation.hook";
 
 const PROTECTED_MEDIA_IO_ROOT_MARGIN = "200px 0px";
 
@@ -168,6 +169,7 @@ function useProtectedMediaLoader(
   html: string,
   options?: UseProtectedMessageHtmlOptions,
 ): void {
+  const fileCacheInvalidationVersion = useWorkspaceFileCacheInvalidationVersion();
   useEffect(() => {
     const container = containerRef.current;
     if (container == null) return;
@@ -255,7 +257,7 @@ function useProtectedMediaLoader(
         URL.revokeObjectURL(url);
       }
     };
-  }, [containerRef, html, options?.deferRootSelector]);
+  }, [containerRef, fileCacheInvalidationVersion, html, options?.deferRootSelector]);
 }
 
 function resolveProtectedMediaInitialDisplayUrl(
@@ -273,6 +275,7 @@ export function useProtectedMediaDisplayUrl(
   url: string,
   mediaType: "image" | "video",
 ): string | undefined {
+  const fileCacheInvalidationVersion = useWorkspaceFileCacheInvalidationVersion(url);
   const initialValue = resolveProtectedMediaInitialDisplayUrl(url, mediaType);
   const [displayUrl, setDisplayUrl] = useState<string | undefined>(initialValue);
 
@@ -304,7 +307,7 @@ export function useProtectedMediaDisplayUrl(
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [mediaType, url]);
+  }, [fileCacheInvalidationVersion, mediaType, url]);
 
   return displayUrl;
 }

@@ -1,8 +1,12 @@
 # Workspace UI
 
-Open-source Workspace client for messenger, mail, and calendar. The UI talks to
-one IAM-authenticated Workspace backend and receives all domain updates through
-one durable REST/WebSocket event contract.
+Open-source Workspace client. The current Workspace deployment is
+Messenger-only: builds set `VITE_MESSENGER_ONLY=true`, so Mail and Calendar
+navigation, routes, background work, and event reducers are not exposed. The
+source tree keeps those domain slices for future protocol-based integrations.
+
+The UI talks to one IAM-authenticated Workspace backend and receives Messenger
+updates through one durable REST/WebSocket event contract.
 
 Single React codebase, multiple targets:
 
@@ -18,7 +22,7 @@ Single React codebase, multiple targets:
 - Zustand domain stores + API middleware pipeline
 - Tailwind design tokens (dark/light + multiple palettes)
 - i18n (English + Russian)
-- 3800+ tests (Vitest + Testing Library + MSW + Playwright)
+- 4500+ tests (Vitest + Testing Library + MSW + Playwright)
 - Security-focused defaults: CSP, sanitization, guarded APIs, secret checks in hooks
 
 ## Requirements
@@ -71,8 +75,15 @@ Core flow:
 1. `main.tsx` mounts the app shell and routes
 2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` run REST epoch catch-up and the common `/api/workspace/v1/events/ws` stream
 3. `shared/api/client.ts` handles auth/logging/retry middleware
-4. Messenger, Mail, and Calendar entity stores (`entities/*`) provide domain state
-5. UI subscribes through minimal selectors
+4. IndexedDB snapshots render Messenger entities, messages, and protected files
+   cache-first; API and realtime events refresh only affected records
+5. A server-expired event cursor (HTTP `410` or WebSocket close `4410`) clears
+   the account-scoped cache before a full resync
+6. Zustand entity stores provide live UI state through minimal selectors
+
+Historical catch-up never produces desktop notifications. Notifications become
+eligible only after the first realtime `ready` frame confirms that initial
+synchronization has completed.
 
 ## Repository Structure
 

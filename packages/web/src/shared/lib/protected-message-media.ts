@@ -44,6 +44,11 @@ import {
   isUserUploadsPath,
   isWorkspaceFileDownloadPath,
 } from "~/shared/lib/user-uploads-url.lib";
+import {
+  fetchWorkspaceFileBlobFromApi,
+  resolveCurrentWorkspaceFileCacheScope,
+  workspaceFileUuidFromDownloadUrl,
+} from "~/shared/lib/workspace-file-blob-cache";
 import { parseWorkspaceFileUrn, type WorkspaceFileUrn } from "~/shared/lib/workspace-file-urn.lib";
 
 export { collapseDuplicateWorkspaceV1InUrl };
@@ -525,6 +530,13 @@ export async function fetchProtectedUploadBlob(
 ): Promise<Blob | null> {
   if (!isProtectedMessageMediaUrl(rawValue)) {
     return null;
+  }
+
+  if (
+    workspaceFileUuidFromDownloadUrl(rawValue) != null &&
+    resolveCurrentWorkspaceFileCacheScope() != null
+  ) {
+    return await fetchWorkspaceFileBlobFromApi(rawValue, { headers });
   }
 
   const fetchUrl = buildProtectedUploadFetchUrl(rawValue);

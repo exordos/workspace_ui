@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Workspace v1 API
  * IAM-authenticated Workspace API
- * OpenAPI spec version: 0.1.1.dev122+gce36951ac.d20260714
+ * OpenAPI spec version: 0.1.1.dev124+g7f83c02b3.d20260715
  */
 import { customInstance } from '../workspace-api-mutator';
 
@@ -61,548 +61,14 @@ export interface Error {
   json: ErrorJson;
 }
 
-export type CalendarCreateSourceName = typeof CalendarCreateSourceName[keyof typeof CalendarCreateSourceName];
+export type WorkspaceEventFilterObjectType = typeof WorkspaceEventFilterObjectType[keyof typeof WorkspaceEventFilterObjectType];
 
 
-export const CalendarCreateSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarCreateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarCreateSyncStatus = typeof CalendarCreateSyncStatus[keyof typeof CalendarCreateSyncStatus];
-
-
-export const CalendarCreateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarCreate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 32
-     * @nullable
-     */
-  color?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  ctag?: string | null;
-  source_name?: CalendarCreateSourceName;
-  source?: CalendarCreateSource;
-  sync_status?: CalendarCreateSyncStatus;
-  deleted?: boolean;
-}
-
-export type CalendarFilterSourceName = typeof CalendarFilterSourceName[keyof typeof CalendarFilterSourceName];
-
-
-export const CalendarFilterSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarFilterSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarFilterSyncStatus = typeof CalendarFilterSyncStatus[keyof typeof CalendarFilterSyncStatus];
-
-
-export const CalendarFilterSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarFilter {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 32
-     * @nullable
-     */
-  color?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  ctag?: string | null;
-  source_name?: CalendarFilterSourceName;
-  source?: CalendarFilterSource;
-  sync_status?: CalendarFilterSyncStatus;
-  deleted?: boolean;
-}
-
-export type CalendarGetSourceName = typeof CalendarGetSourceName[keyof typeof CalendarGetSourceName];
-
-
-export const CalendarGetSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarGetSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarGetSyncStatus = typeof CalendarGetSyncStatus[keyof typeof CalendarGetSyncStatus];
-
-
-export const CalendarGetSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarGet {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 32
-     * @nullable
-     */
-  color?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  ctag?: string | null;
-  source_name?: CalendarGetSourceName;
-  source?: CalendarGetSource;
-  sync_status?: CalendarGetSyncStatus;
-  deleted?: boolean;
-}
-
-export type CalendarUpdateSourceName = typeof CalendarUpdateSourceName[keyof typeof CalendarUpdateSourceName];
-
-
-export const CalendarUpdateSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarUpdateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarUpdateSyncStatus = typeof CalendarUpdateSyncStatus[keyof typeof CalendarUpdateSyncStatus];
-
-
-export const CalendarUpdateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarUpdate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 32
-     * @nullable
-     */
-  color?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  ctag?: string | null;
-  source_name?: CalendarUpdateSourceName;
-  source?: CalendarUpdateSource;
-  sync_status?: CalendarUpdateSyncStatus;
-  deleted?: boolean;
-}
-
-/**
- * @nullable
- */
-export type CalendarEventCreateRecurrence = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]} | null;
-
-export type CalendarEventCreateSourceName = typeof CalendarEventCreateSourceName[keyof typeof CalendarEventCreateSourceName];
-
-
-export const CalendarEventCreateSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarEventCreateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarEventCreateSyncStatus = typeof CalendarEventCreateSyncStatus[keyof typeof CalendarEventCreateSyncStatus];
-
-
-export const CalendarEventCreateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarEventCreate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  calendar_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  uid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  summary?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  description?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  location?: string | null;
-  starts_at: string;
-  ends_at: string;
-  all_day?: boolean;
-  /** @nullable */
-  recurrence?: CalendarEventCreateRecurrence;
-  attendees?: string[];
-  alarms?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 1024
-     * @nullable
-     */
-  recurrence_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  ics?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  etag?: string | null;
-  source_name?: CalendarEventCreateSourceName;
-  source?: CalendarEventCreateSource;
-  sync_status?: CalendarEventCreateSyncStatus;
-  deleted?: boolean;
-}
-
-/**
- * @nullable
- */
-export type CalendarEventFilterRecurrence = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]} | null;
-
-export type CalendarEventFilterSourceName = typeof CalendarEventFilterSourceName[keyof typeof CalendarEventFilterSourceName];
-
-
-export const CalendarEventFilterSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarEventFilterSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarEventFilterSyncStatus = typeof CalendarEventFilterSyncStatus[keyof typeof CalendarEventFilterSyncStatus];
-
-
-export const CalendarEventFilterSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarEventFilter {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  calendar_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  uid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  summary?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  description?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  location?: string | null;
-  starts_at: string;
-  ends_at: string;
-  all_day?: boolean;
-  /** @nullable */
-  recurrence?: CalendarEventFilterRecurrence;
-  attendees?: string[];
-  alarms?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 1024
-     * @nullable
-     */
-  recurrence_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  ics?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  etag?: string | null;
-  source_name?: CalendarEventFilterSourceName;
-  source?: CalendarEventFilterSource;
-  sync_status?: CalendarEventFilterSyncStatus;
-  deleted?: boolean;
-}
-
-/**
- * @nullable
- */
-export type CalendarEventGetRecurrence = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]} | null;
-
-export type CalendarEventGetSourceName = typeof CalendarEventGetSourceName[keyof typeof CalendarEventGetSourceName];
-
-
-export const CalendarEventGetSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarEventGetSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarEventGetSyncStatus = typeof CalendarEventGetSyncStatus[keyof typeof CalendarEventGetSyncStatus];
-
-
-export const CalendarEventGetSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarEventGet {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  calendar_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  uid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  summary?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  description?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  location?: string | null;
-  starts_at: string;
-  ends_at: string;
-  all_day?: boolean;
-  /** @nullable */
-  recurrence?: CalendarEventGetRecurrence;
-  attendees?: string[];
-  alarms?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 1024
-     * @nullable
-     */
-  recurrence_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  ics?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  etag?: string | null;
-  source_name?: CalendarEventGetSourceName;
-  source?: CalendarEventGetSource;
-  sync_status?: CalendarEventGetSyncStatus;
-  deleted?: boolean;
-}
-
-/**
- * @nullable
- */
-export type CalendarEventUpdateRecurrence = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]} | null;
-
-export type CalendarEventUpdateSourceName = typeof CalendarEventUpdateSourceName[keyof typeof CalendarEventUpdateSourceName];
-
-
-export const CalendarEventUpdateSourceName = {
-  caldav: 'caldav',
-  native: 'native',
-} as const;
-
-export type CalendarEventUpdateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type CalendarEventUpdateSyncStatus = typeof CalendarEventUpdateSyncStatus[keyof typeof CalendarEventUpdateSyncStatus];
-
-
-export const CalendarEventUpdateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface CalendarEventUpdate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  calendar_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  uid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  summary?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  description?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  location?: string | null;
-  starts_at: string;
-  ends_at: string;
-  all_day?: boolean;
-  /** @nullable */
-  recurrence?: CalendarEventUpdateRecurrence;
-  attendees?: string[];
-  alarms?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 1024
-     * @nullable
-     */
-  recurrence_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  ics?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 512
-     * @nullable
-     */
-  etag?: string | null;
-  source_name?: CalendarEventUpdateSourceName;
-  source?: CalendarEventUpdateSource;
-  sync_status?: CalendarEventUpdateSyncStatus;
-  deleted?: boolean;
-}
-
-export type WorkspaceVisibleEventFilterObjectType = typeof WorkspaceVisibleEventFilterObjectType[keyof typeof WorkspaceVisibleEventFilterObjectType];
-
-
-export const WorkspaceVisibleEventFilterObjectType = {
+export const WorkspaceEventFilterObjectType = {
   calendar: 'calendar',
   calendar_event: 'calendar_event',
+  external_account: 'external_account',
+  file: 'file',
   folder: 'folder',
   folder_item: 'folder_item',
   mail_folder: 'mail_folder',
@@ -615,19 +81,19 @@ export const WorkspaceVisibleEventFilterObjectType = {
   user: 'user',
 } as const;
 
-export type WorkspaceVisibleEventFilterAction = typeof WorkspaceVisibleEventFilterAction[keyof typeof WorkspaceVisibleEventFilterAction];
+export type WorkspaceEventFilterAction = typeof WorkspaceEventFilterAction[keyof typeof WorkspaceEventFilterAction];
 
 
-export const WorkspaceVisibleEventFilterAction = {
+export const WorkspaceEventFilterAction = {
   created: 'created',
   deleted: 'deleted',
   read: 'read',
   updated: 'updated',
 } as const;
 
-export type WorkspaceVisibleEventFilterPayload = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
+export type WorkspaceEventFilterPayload = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
 
-export interface WorkspaceVisibleEventFilter {
+export interface WorkspaceEventFilter {
   readonly uuid?: string;
   user_uuid: string;
   readonly project_id: string;
@@ -643,1587 +109,9 @@ export interface WorkspaceVisibleEventFilter {
      * @maximum 9223372036854776000
      */
   epoch_version?: number;
-  object_type: WorkspaceVisibleEventFilterObjectType;
-  action: WorkspaceVisibleEventFilterAction;
-  payload: WorkspaceVisibleEventFilterPayload;
-}
-
-export type ExternalAccountCreateAccountType = typeof ExternalAccountCreateAccountType[keyof typeof ExternalAccountCreateAccountType];
-
-
-export const ExternalAccountCreateAccountType = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
-
-export type ExternalAccountCreateStatus = typeof ExternalAccountCreateStatus[keyof typeof ExternalAccountCreateStatus];
-
-
-export const ExternalAccountCreateStatus = {
-  active: 'active',
-  new: 'new',
-} as const;
-
-export type ExternalAccountCreateAccessStatus = typeof ExternalAccountCreateAccessStatus[keyof typeof ExternalAccountCreateAccessStatus];
-
-
-export const ExternalAccountCreateAccessStatus = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type ExternalAccountCreateAccountSettings = {
-  kind?: 'zulip';
-  /** @nullable */
-  credentials?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  login?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  token?: string;
-} | null;
-  /** @nullable */
-  user_info?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  email?: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  user_id?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  avatar_version?: number;
-  is_admin?: boolean;
-  is_owner?: boolean;
-  is_guest?: boolean;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  role?: number;
-  is_bot?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  full_name?: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     * @nullable
-     */
-  timezone?: string | null;
-  is_active?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 64
-     */
-  date_joined?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     * @nullable
-     */
-  delivery_email?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  avatar_url?: string | null;
-} | null;
-} | {
-  kind?: 'iam';
-  credentials?: {
-  kind?: 'iam';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  access_token?: string;
-};
-} | {
-  kind?: 'mail';
-  /** @nullable */
-  credentials?: {
-  kind?: 'mail';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-  /**
-     * @minLength 5
-     * @maxLength 254
-     */
-  email?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  imap_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  imap_port?: number;
-  imap_security?: 'plain' | 'starttls' | 'tls';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  smtp_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  smtp_port?: number;
-  smtp_security?: 'plain' | 'starttls' | 'tls';
-} | {
-  kind?: 'calendar';
-  /** @nullable */
-  credentials?: {
-  kind?: 'calendar';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-};
-
-export interface ExternalAccountCreate {
-  readonly uuid?: string;
-  readonly project_id: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  user_uuid: string;
-  /** @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$ */
-  server_url: string;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  source_scope?: string | null;
-  account_type?: ExternalAccountCreateAccountType;
-  status?: ExternalAccountCreateStatus;
-  access_status?: ExternalAccountCreateAccessStatus;
-  /** @nullable */
-  access_checked_at?: string | null;
-  /** @nullable */
-  access_confirmed_at?: string | null;
-  access_next_check_at?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     * @nullable
-     */
-  access_last_error?: string | null;
-  account_settings: ExternalAccountCreateAccountSettings;
-}
-
-export type ExternalAccountFilterAccountType = typeof ExternalAccountFilterAccountType[keyof typeof ExternalAccountFilterAccountType];
-
-
-export const ExternalAccountFilterAccountType = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
-
-export type ExternalAccountFilterStatus = typeof ExternalAccountFilterStatus[keyof typeof ExternalAccountFilterStatus];
-
-
-export const ExternalAccountFilterStatus = {
-  active: 'active',
-  new: 'new',
-} as const;
-
-export type ExternalAccountFilterAccessStatus = typeof ExternalAccountFilterAccessStatus[keyof typeof ExternalAccountFilterAccessStatus];
-
-
-export const ExternalAccountFilterAccessStatus = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type ExternalAccountFilterAccountSettings = {
-  kind?: 'zulip';
-  /** @nullable */
-  credentials?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  login?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  token?: string;
-} | null;
-  /** @nullable */
-  user_info?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  email?: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  user_id?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  avatar_version?: number;
-  is_admin?: boolean;
-  is_owner?: boolean;
-  is_guest?: boolean;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  role?: number;
-  is_bot?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  full_name?: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     * @nullable
-     */
-  timezone?: string | null;
-  is_active?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 64
-     */
-  date_joined?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     * @nullable
-     */
-  delivery_email?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  avatar_url?: string | null;
-} | null;
-} | {
-  kind?: 'iam';
-  credentials?: {
-  kind?: 'iam';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  access_token?: string;
-};
-} | {
-  kind?: 'mail';
-  /** @nullable */
-  credentials?: {
-  kind?: 'mail';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-  /**
-     * @minLength 5
-     * @maxLength 254
-     */
-  email?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  imap_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  imap_port?: number;
-  imap_security?: 'plain' | 'starttls' | 'tls';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  smtp_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  smtp_port?: number;
-  smtp_security?: 'plain' | 'starttls' | 'tls';
-} | {
-  kind?: 'calendar';
-  /** @nullable */
-  credentials?: {
-  kind?: 'calendar';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-};
-
-export interface ExternalAccountFilter {
-  readonly uuid?: string;
-  readonly project_id: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  user_uuid: string;
-  /** @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$ */
-  server_url: string;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  source_scope?: string | null;
-  account_type?: ExternalAccountFilterAccountType;
-  status?: ExternalAccountFilterStatus;
-  access_status?: ExternalAccountFilterAccessStatus;
-  /** @nullable */
-  access_checked_at?: string | null;
-  /** @nullable */
-  access_confirmed_at?: string | null;
-  access_next_check_at?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     * @nullable
-     */
-  access_last_error?: string | null;
-  account_settings: ExternalAccountFilterAccountSettings;
-}
-
-export type ExternalAccountGetAccountType = typeof ExternalAccountGetAccountType[keyof typeof ExternalAccountGetAccountType];
-
-
-export const ExternalAccountGetAccountType = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
-
-export type ExternalAccountGetStatus = typeof ExternalAccountGetStatus[keyof typeof ExternalAccountGetStatus];
-
-
-export const ExternalAccountGetStatus = {
-  active: 'active',
-  new: 'new',
-} as const;
-
-export type ExternalAccountGetAccessStatus = typeof ExternalAccountGetAccessStatus[keyof typeof ExternalAccountGetAccessStatus];
-
-
-export const ExternalAccountGetAccessStatus = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type ExternalAccountGetAccountSettings = {
-  kind?: 'zulip';
-  /** @nullable */
-  credentials?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  login?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  token?: string;
-} | null;
-  /** @nullable */
-  user_info?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  email?: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  user_id?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  avatar_version?: number;
-  is_admin?: boolean;
-  is_owner?: boolean;
-  is_guest?: boolean;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  role?: number;
-  is_bot?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  full_name?: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     * @nullable
-     */
-  timezone?: string | null;
-  is_active?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 64
-     */
-  date_joined?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     * @nullable
-     */
-  delivery_email?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  avatar_url?: string | null;
-} | null;
-} | {
-  kind?: 'iam';
-  credentials?: {
-  kind?: 'iam';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  access_token?: string;
-};
-} | {
-  kind?: 'mail';
-  /** @nullable */
-  credentials?: {
-  kind?: 'mail';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-  /**
-     * @minLength 5
-     * @maxLength 254
-     */
-  email?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  imap_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  imap_port?: number;
-  imap_security?: 'plain' | 'starttls' | 'tls';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  smtp_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  smtp_port?: number;
-  smtp_security?: 'plain' | 'starttls' | 'tls';
-} | {
-  kind?: 'calendar';
-  /** @nullable */
-  credentials?: {
-  kind?: 'calendar';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-};
-
-export interface ExternalAccountGet {
-  readonly uuid?: string;
-  readonly project_id: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  user_uuid: string;
-  /** @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$ */
-  server_url: string;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  source_scope?: string | null;
-  account_type?: ExternalAccountGetAccountType;
-  status?: ExternalAccountGetStatus;
-  access_status?: ExternalAccountGetAccessStatus;
-  /** @nullable */
-  access_checked_at?: string | null;
-  /** @nullable */
-  access_confirmed_at?: string | null;
-  access_next_check_at?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     * @nullable
-     */
-  access_last_error?: string | null;
-  account_settings: ExternalAccountGetAccountSettings;
-}
-
-export type ExternalAccountUpdateAccountType = typeof ExternalAccountUpdateAccountType[keyof typeof ExternalAccountUpdateAccountType];
-
-
-export const ExternalAccountUpdateAccountType = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
-
-export type ExternalAccountUpdateStatus = typeof ExternalAccountUpdateStatus[keyof typeof ExternalAccountUpdateStatus];
-
-
-export const ExternalAccountUpdateStatus = {
-  active: 'active',
-  new: 'new',
-} as const;
-
-export type ExternalAccountUpdateAccessStatus = typeof ExternalAccountUpdateAccessStatus[keyof typeof ExternalAccountUpdateAccessStatus];
-
-
-export const ExternalAccountUpdateAccessStatus = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type ExternalAccountUpdateAccountSettings = {
-  kind?: 'zulip';
-  /** @nullable */
-  credentials?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  login?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  token?: string;
-} | null;
-  /** @nullable */
-  user_info?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  email?: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  user_id?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  avatar_version?: number;
-  is_admin?: boolean;
-  is_owner?: boolean;
-  is_guest?: boolean;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  role?: number;
-  is_bot?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  full_name?: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     * @nullable
-     */
-  timezone?: string | null;
-  is_active?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 64
-     */
-  date_joined?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     * @nullable
-     */
-  delivery_email?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  avatar_url?: string | null;
-} | null;
-} | {
-  kind?: 'iam';
-  credentials?: {
-  kind?: 'iam';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  access_token?: string;
-};
-} | {
-  kind?: 'mail';
-  /** @nullable */
-  credentials?: {
-  kind?: 'mail';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-  /**
-     * @minLength 5
-     * @maxLength 254
-     */
-  email?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  imap_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  imap_port?: number;
-  imap_security?: 'plain' | 'starttls' | 'tls';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  smtp_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  smtp_port?: number;
-  smtp_security?: 'plain' | 'starttls' | 'tls';
-} | {
-  kind?: 'calendar';
-  /** @nullable */
-  credentials?: {
-  kind?: 'calendar';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-};
-
-export interface ExternalAccountUpdate {
-  readonly uuid?: string;
-  readonly project_id: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  user_uuid: string;
-  /** @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$ */
-  server_url: string;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  source_scope?: string | null;
-  account_type?: ExternalAccountUpdateAccountType;
-  status?: ExternalAccountUpdateStatus;
-  access_status?: ExternalAccountUpdateAccessStatus;
-  /** @nullable */
-  access_checked_at?: string | null;
-  /** @nullable */
-  access_confirmed_at?: string | null;
-  access_next_check_at?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     * @nullable
-     */
-  access_last_error?: string | null;
-  account_settings: ExternalAccountUpdateAccountSettings;
-}
-
-export type MailAttachmentCreateStorageType = typeof MailAttachmentCreateStorageType[keyof typeof MailAttachmentCreateStorageType];
-
-
-export const MailAttachmentCreateStorageType = {
-  file: 'file',
-  s3: 's3',
-} as const;
-
-export interface MailAttachmentCreate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  name: string;
-  message_uuid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  content_id?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  content_type: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  size_bytes: number;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  hash: string;
-  storage_type?: MailAttachmentCreateStorageType;
-}
-
-export type MailAttachmentFilterStorageType = typeof MailAttachmentFilterStorageType[keyof typeof MailAttachmentFilterStorageType];
-
-
-export const MailAttachmentFilterStorageType = {
-  file: 'file',
-  s3: 's3',
-} as const;
-
-export interface MailAttachmentFilter {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  name: string;
-  message_uuid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  content_id?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  content_type: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  size_bytes: number;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  hash: string;
-  storage_type?: MailAttachmentFilterStorageType;
-}
-
-export type MailAttachmentGetStorageType = typeof MailAttachmentGetStorageType[keyof typeof MailAttachmentGetStorageType];
-
-
-export const MailAttachmentGetStorageType = {
-  file: 'file',
-  s3: 's3',
-} as const;
-
-export interface MailAttachmentGet {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  name: string;
-  message_uuid: string;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  content_id?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  content_type: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  size_bytes: number;
-  /**
-     * @minLength 1
-     * @maxLength 255
-     */
-  hash: string;
-  storage_type?: MailAttachmentGetStorageType;
-}
-
-export type MailFolderCreateSourceName = typeof MailFolderCreateSourceName[keyof typeof MailFolderCreateSourceName];
-
-
-export const MailFolderCreateSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailFolderCreateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailFolderCreateSyncStatus = typeof MailFolderCreateSyncStatus[keyof typeof MailFolderCreateSyncStatus];
-
-
-export const MailFolderCreateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailFolderCreate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  path: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /**
-     * @minLength 1
-     * @maxLength 8
-     */
-  delimiter?: string;
-  /**
-     * @minLength 0
-     * @maxLength 64
-     * @nullable
-     */
-  special_use?: string | null;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  unread_count?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  total_count?: number;
-  source_name?: MailFolderCreateSourceName;
-  source?: MailFolderCreateSource;
-  sync_status?: MailFolderCreateSyncStatus;
-  deleted?: boolean;
-}
-
-export type MailFolderFilterSourceName = typeof MailFolderFilterSourceName[keyof typeof MailFolderFilterSourceName];
-
-
-export const MailFolderFilterSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailFolderFilterSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailFolderFilterSyncStatus = typeof MailFolderFilterSyncStatus[keyof typeof MailFolderFilterSyncStatus];
-
-
-export const MailFolderFilterSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailFolderFilter {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  path: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /**
-     * @minLength 1
-     * @maxLength 8
-     */
-  delimiter?: string;
-  /**
-     * @minLength 0
-     * @maxLength 64
-     * @nullable
-     */
-  special_use?: string | null;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  unread_count?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  total_count?: number;
-  source_name?: MailFolderFilterSourceName;
-  source?: MailFolderFilterSource;
-  sync_status?: MailFolderFilterSyncStatus;
-  deleted?: boolean;
-}
-
-export type MailFolderGetSourceName = typeof MailFolderGetSourceName[keyof typeof MailFolderGetSourceName];
-
-
-export const MailFolderGetSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailFolderGetSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailFolderGetSyncStatus = typeof MailFolderGetSyncStatus[keyof typeof MailFolderGetSyncStatus];
-
-
-export const MailFolderGetSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailFolderGet {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  path: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /**
-     * @minLength 1
-     * @maxLength 8
-     */
-  delimiter?: string;
-  /**
-     * @minLength 0
-     * @maxLength 64
-     * @nullable
-     */
-  special_use?: string | null;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  unread_count?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  total_count?: number;
-  source_name?: MailFolderGetSourceName;
-  source?: MailFolderGetSource;
-  sync_status?: MailFolderGetSyncStatus;
-  deleted?: boolean;
-}
-
-export type MailFolderUpdateSourceName = typeof MailFolderUpdateSourceName[keyof typeof MailFolderUpdateSourceName];
-
-
-export const MailFolderUpdateSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailFolderUpdateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailFolderUpdateSyncStatus = typeof MailFolderUpdateSyncStatus[keyof typeof MailFolderUpdateSyncStatus];
-
-
-export const MailFolderUpdateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailFolderUpdate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  path: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  name: string;
-  /**
-     * @minLength 1
-     * @maxLength 8
-     */
-  delimiter?: string;
-  /**
-     * @minLength 0
-     * @maxLength 64
-     * @nullable
-     */
-  special_use?: string | null;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  unread_count?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  total_count?: number;
-  source_name?: MailFolderUpdateSourceName;
-  source?: MailFolderUpdateSource;
-  sync_status?: MailFolderUpdateSyncStatus;
-  deleted?: boolean;
-}
-
-export type MailMessageCreateSourceName = typeof MailMessageCreateSourceName[keyof typeof MailMessageCreateSourceName];
-
-
-export const MailMessageCreateSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailMessageCreateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailMessageCreateSyncStatus = typeof MailMessageCreateSyncStatus[keyof typeof MailMessageCreateSyncStatus];
-
-
-export const MailMessageCreateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailMessageCreate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  folder_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minimum 1
-     * @maximum 9223372036854776000
-     * @nullable
-     */
-  external_uid?: number | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  from_address?: string;
-  to_addresses?: string[];
-  cc_addresses?: string[];
-  bcc_addresses?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  reply_to?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  subject?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     */
-  snippet?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_html?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_text?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  message_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  references?: string | null;
-  sent_at?: string;
-  seen?: boolean;
-  flagged?: boolean;
-  draft?: boolean;
-  deleted?: boolean;
-  source_name?: MailMessageCreateSourceName;
-  source?: MailMessageCreateSource;
-  sync_status?: MailMessageCreateSyncStatus;
-}
-
-export type MailMessageFilterSourceName = typeof MailMessageFilterSourceName[keyof typeof MailMessageFilterSourceName];
-
-
-export const MailMessageFilterSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailMessageFilterSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailMessageFilterSyncStatus = typeof MailMessageFilterSyncStatus[keyof typeof MailMessageFilterSyncStatus];
-
-
-export const MailMessageFilterSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailMessageFilter {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  folder_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minimum 1
-     * @maximum 9223372036854776000
-     * @nullable
-     */
-  external_uid?: number | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  from_address?: string;
-  to_addresses?: string[];
-  cc_addresses?: string[];
-  bcc_addresses?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  reply_to?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  subject?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     */
-  snippet?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_html?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_text?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  message_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  references?: string | null;
-  sent_at?: string;
-  seen?: boolean;
-  flagged?: boolean;
-  draft?: boolean;
-  deleted?: boolean;
-  source_name?: MailMessageFilterSourceName;
-  source?: MailMessageFilterSource;
-  sync_status?: MailMessageFilterSyncStatus;
-}
-
-export type MailMessageGetSourceName = typeof MailMessageGetSourceName[keyof typeof MailMessageGetSourceName];
-
-
-export const MailMessageGetSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailMessageGetSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailMessageGetSyncStatus = typeof MailMessageGetSyncStatus[keyof typeof MailMessageGetSyncStatus];
-
-
-export const MailMessageGetSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailMessageGet {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  folder_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minimum 1
-     * @maximum 9223372036854776000
-     * @nullable
-     */
-  external_uid?: number | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  from_address?: string;
-  to_addresses?: string[];
-  cc_addresses?: string[];
-  bcc_addresses?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  reply_to?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  subject?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     */
-  snippet?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_html?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_text?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  message_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  references?: string | null;
-  sent_at?: string;
-  seen?: boolean;
-  flagged?: boolean;
-  draft?: boolean;
-  deleted?: boolean;
-  source_name?: MailMessageGetSourceName;
-  source?: MailMessageGetSource;
-  sync_status?: MailMessageGetSyncStatus;
-}
-
-export type MailMessageUpdateSourceName = typeof MailMessageUpdateSourceName[keyof typeof MailMessageUpdateSourceName];
-
-
-export const MailMessageUpdateSourceName = {
-  imap: 'imap',
-  native: 'native',
-} as const;
-
-export type MailMessageUpdateSource = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
-
-export type MailMessageUpdateSyncStatus = typeof MailMessageUpdateSyncStatus[keyof typeof MailMessageUpdateSyncStatus];
-
-
-export const MailMessageUpdateSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export interface MailMessageUpdate {
-  readonly uuid?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  folder_uuid: string;
-  /** @nullable */
-  external_user_uuid?: string | null;
-  /**
-     * @minimum 1
-     * @maximum 9223372036854776000
-     * @nullable
-     */
-  external_uid?: number | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  from_address?: string;
-  to_addresses?: string[];
-  cc_addresses?: string[];
-  bcc_addresses?: string[];
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  reply_to?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     */
-  subject?: string;
-  /**
-     * @minLength 0
-     * @maxLength 4096
-     */
-  snippet?: string;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_html?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  body_text?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 2048
-     * @nullable
-     */
-  message_id?: string | null;
-  /**
-     * @minLength 0
-     * @maxLength 9223372036854776000
-     * @nullable
-     */
-  references?: string | null;
-  sent_at?: string;
-  seen?: boolean;
-  flagged?: boolean;
-  draft?: boolean;
-  deleted?: boolean;
-  source_name?: MailMessageUpdateSourceName;
-  source?: MailMessageUpdateSource;
-  sync_status?: MailMessageUpdateSyncStatus;
+  object_type: WorkspaceEventFilterObjectType;
+  action: WorkspaceEventFilterAction;
+  payload: WorkspaceEventFilterPayload;
 }
 
 export type WorkspaceFileCreateStorageType = typeof WorkspaceFileCreateStorageType[keyof typeof WorkspaceFileCreateStorageType];
@@ -2249,7 +137,12 @@ export interface WorkspaceFileCreate {
   readonly created_at?: string;
   readonly updated_at?: string;
   user_uuid: string;
-  stream_uuid: string;
+  /** @nullable */
+  stream_uuid?: string | null;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
   /**
      * @minLength 1
      * @maxLength 255
@@ -2291,7 +184,12 @@ export interface WorkspaceFileFilter {
   readonly created_at?: string;
   readonly updated_at?: string;
   user_uuid: string;
-  stream_uuid: string;
+  /** @nullable */
+  stream_uuid?: string | null;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
   /**
      * @minLength 1
      * @maxLength 255
@@ -2333,7 +231,12 @@ export interface WorkspaceFileGet {
   readonly created_at?: string;
   readonly updated_at?: string;
   user_uuid: string;
-  stream_uuid: string;
+  /** @nullable */
+  stream_uuid?: string | null;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
   /**
      * @minLength 1
      * @maxLength 255
@@ -2375,7 +278,12 @@ export interface WorkspaceFileUpdate {
   readonly created_at?: string;
   readonly updated_at?: string;
   user_uuid: string;
-  stream_uuid: string;
+  /** @nullable */
+  stream_uuid?: string | null;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
   /**
      * @minLength 1
      * @maxLength 255
@@ -2637,11 +545,43 @@ export interface UserFolderUpdate {
   folder_items?: string[];
 }
 
+/**
+ * @nullable
+ */
+export type WorkspaceMessageReactionsCreateDeliveryStatus = typeof WorkspaceMessageReactionsCreateDeliveryStatus[keyof typeof WorkspaceMessageReactionsCreateDeliveryStatus] | null;
+
+
+export const WorkspaceMessageReactionsCreateDeliveryStatus = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
+
 export interface WorkspaceMessageReactionsCreate {
   readonly uuid?: string;
   readonly project_id: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
+  /** @nullable */
+  delivery_status?: WorkspaceMessageReactionsCreateDeliveryStatus;
+  /**
+     * @minLength 0
+     * @maxLength 9223372036854776000
+     * @nullable
+     */
+  delivery_error?: string | null;
+  /** @nullable */
+  delivery_updated_at?: string | null;
   message_uuid: string;
   user_uuid: string;
   /**
@@ -2650,12 +590,44 @@ export interface WorkspaceMessageReactionsCreate {
      */
   emoji_name: string;
 }
+
+/**
+ * @nullable
+ */
+export type WorkspaceMessageReactionsFilterDeliveryStatus = typeof WorkspaceMessageReactionsFilterDeliveryStatus[keyof typeof WorkspaceMessageReactionsFilterDeliveryStatus] | null;
+
+
+export const WorkspaceMessageReactionsFilterDeliveryStatus = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
 
 export interface WorkspaceMessageReactionsFilter {
   readonly uuid?: string;
   readonly project_id: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
+  /** @nullable */
+  delivery_status?: WorkspaceMessageReactionsFilterDeliveryStatus;
+  /**
+     * @minLength 0
+     * @maxLength 9223372036854776000
+     * @nullable
+     */
+  delivery_error?: string | null;
+  /** @nullable */
+  delivery_updated_at?: string | null;
   message_uuid: string;
   user_uuid: string;
   /**
@@ -2664,12 +636,44 @@ export interface WorkspaceMessageReactionsFilter {
      */
   emoji_name: string;
 }
+
+/**
+ * @nullable
+ */
+export type WorkspaceMessageReactionsGetDeliveryStatus = typeof WorkspaceMessageReactionsGetDeliveryStatus[keyof typeof WorkspaceMessageReactionsGetDeliveryStatus] | null;
+
+
+export const WorkspaceMessageReactionsGetDeliveryStatus = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
 
 export interface WorkspaceMessageReactionsGet {
   readonly uuid?: string;
   readonly project_id: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
+  /** @nullable */
+  delivery_status?: WorkspaceMessageReactionsGetDeliveryStatus;
+  /**
+     * @minLength 0
+     * @maxLength 9223372036854776000
+     * @nullable
+     */
+  delivery_error?: string | null;
+  /** @nullable */
+  delivery_updated_at?: string | null;
   message_uuid: string;
   user_uuid: string;
   /**
@@ -2679,11 +683,43 @@ export interface WorkspaceMessageReactionsGet {
   emoji_name: string;
 }
 
+/**
+ * @nullable
+ */
+export type WorkspaceMessageReactionsUpdateDeliveryStatus = typeof WorkspaceMessageReactionsUpdateDeliveryStatus[keyof typeof WorkspaceMessageReactionsUpdateDeliveryStatus] | null;
+
+
+export const WorkspaceMessageReactionsUpdateDeliveryStatus = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
+
 export interface WorkspaceMessageReactionsUpdate {
   readonly uuid?: string;
   readonly project_id: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
+  /** @nullable */
+  delivery_status?: WorkspaceMessageReactionsUpdateDeliveryStatus;
+  /**
+     * @minLength 0
+     * @maxLength 9223372036854776000
+     * @nullable
+     */
+  delivery_error?: string | null;
+  /** @nullable */
+  delivery_updated_at?: string | null;
   message_uuid: string;
   user_uuid: string;
   /**
@@ -2757,6 +793,7 @@ export interface WorkspaceUserMessageCreate {
   pinned?: boolean;
   starred?: boolean;
   is_own?: boolean;
+  readonly mentioned?: boolean;
   reactions?: WorkspaceUserMessageCreateReactions;
 }
 
@@ -2824,6 +861,7 @@ export interface WorkspaceUserMessageFilter {
   pinned?: boolean;
   starred?: boolean;
   is_own?: boolean;
+  readonly mentioned?: boolean;
   reactions?: WorkspaceUserMessageFilterReactions;
 }
 
@@ -2891,6 +929,7 @@ export interface WorkspaceUserMessageGet {
   pinned?: boolean;
   starred?: boolean;
   is_own?: boolean;
+  readonly mentioned?: boolean;
   reactions?: WorkspaceUserMessageGetReactions;
 }
 
@@ -2958,6 +997,7 @@ export interface WorkspaceUserMessageUpdate {
   pinned?: boolean;
   starred?: boolean;
   is_own?: boolean;
+  readonly mentioned?: boolean;
   reactions?: WorkspaceUserMessageUpdateReactions;
 }
 
@@ -3837,6 +1877,16 @@ export interface WorkspaceUserFilter {
   readonly uuid?: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
   /**
      * @minLength 1
      * @maxLength 128
@@ -3904,6 +1954,16 @@ export interface WorkspaceUserGet {
   readonly uuid?: string;
   readonly created_at?: string;
   readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
   /**
      * @minLength 1
      * @maxLength 128
@@ -3911,6 +1971,83 @@ export interface WorkspaceUserGet {
   username: string;
   source?: WorkspaceUserGetSource;
   status?: WorkspaceUserGetStatus;
+  /**
+     * @minLength 0
+     * @maxLength 64
+     * @nullable
+     */
+  status_emoji?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 256
+     * @nullable
+     */
+  status_text?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 128
+     * @nullable
+     */
+  first_name?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 128
+     * @nullable
+     */
+  last_name?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 256
+     * @nullable
+     */
+  email?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 2048
+     */
+  avatar: string;
+  last_ping_at?: string;
+}
+
+export type WorkspaceUserAvatarUploadSource = typeof WorkspaceUserAvatarUploadSource[keyof typeof WorkspaceUserAvatarUploadSource];
+
+
+export const WorkspaceUserAvatarUploadSource = {
+  iam: 'iam',
+  zulip: 'zulip',
+} as const;
+
+export type WorkspaceUserAvatarUploadStatus = typeof WorkspaceUserAvatarUploadStatus[keyof typeof WorkspaceUserAvatarUploadStatus];
+
+
+export const WorkspaceUserAvatarUploadStatus = {
+  active: 'active',
+  do_not_disturb: 'do_not_disturb',
+  idle: 'idle',
+  offline: 'offline',
+} as const;
+
+export interface WorkspaceUserAvatarUpload {
+  readonly uuid?: string;
+  readonly created_at?: string;
+  readonly updated_at?: string;
+  /** @nullable */
+  provider_uuid?: string | null;
+  /** @nullable */
+  external_account_uuid?: string | null;
+  /**
+     * @minLength 0
+     * @maxLength 2048
+     * @nullable
+     */
+  provider_external_id?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  username: string;
+  source?: WorkspaceUserAvatarUploadSource;
+  status?: WorkspaceUserAvatarUploadStatus;
   /**
      * @minLength 0
      * @maxLength 64
@@ -3960,79 +2097,6 @@ export type CreatedAtParameter = string;
 
 export type UpdatedAtParameter = string;
 
-export type NameParameter = string;
-
-export type UserUuidParameter = string;
-
-export type ExternalUserUuidParameter = string | null;
-
-export type ColorParameter = number;
-
-export type CtagParameter = string | null;
-
-export type SourceNameParameter = typeof SourceNameParameter[keyof typeof SourceNameParameter];
-
-
-export const SourceNameParameter = {
-  native: 'native',
-  zulip: 'zulip',
-} as const;
-
-export type SourceParameter = typeof SourceParameter[keyof typeof SourceParameter];
-
-
-export const SourceParameter = {
-  iam: 'iam',
-  zulip: 'zulip',
-} as const;
-
-export type SyncTokenParameter = string | null;
-
-export type SyncStatusParameter = typeof SyncStatusParameter[keyof typeof SyncStatusParameter];
-
-
-export const SyncStatusParameter = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export type SyncErrorParameter = string | null;
-
-export type DeletedParameter = boolean;
-
-export type CalendarUuidParameter = string;
-
-export type UidParameter = string;
-
-export type SummaryParameter = string;
-
-export type DescriptionParameter = string;
-
-export type LocationParameter = string | null;
-
-export type StartsAtParameter = string;
-
-export type EndsAtParameter = string;
-
-export type AllDayParameter = boolean;
-
-/**
- * @nullable
- */
-export type RecurrenceParameter = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]} | null;
-
-export type AttendeesParameter = string[];
-
-export type AlarmsParameter = string[];
-
-export type RecurrenceIdParameter = string | null;
-
-export type IcsParameter = string | null;
-
-export type EtagParameter = string | null;
-
 export type SchemaVersionParameter = number;
 
 export type EpochVersionParameter = number;
@@ -4043,6 +2107,8 @@ export type ObjectTypeParameter = typeof ObjectTypeParameter[keyof typeof Object
 export const ObjectTypeParameter = {
   calendar: 'calendar',
   calendar_event: 'calendar_event',
+  external_account: 'external_account',
+  file: 'file',
   folder: 'folder',
   folder_item: 'folder_item',
   mail_folder: 'mail_folder',
@@ -4074,201 +2140,17 @@ export type PayloadParameter = {
   content?: string;
 };
 
-export type ServerUrlParameter = string;
+export type NameParameter = string;
 
-export type SourceScopeParameter = string | null;
+export type DescriptionParameter = string;
 
-export type AccountTypeParameter = typeof AccountTypeParameter[keyof typeof AccountTypeParameter];
+export type UserUuidParameter = string;
 
+export type StreamUuidParameter = string;
 
-export const AccountTypeParameter = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
+export type ProviderUuidParameter = string | null;
 
-export type StatusParameter = typeof StatusParameter[keyof typeof StatusParameter];
-
-
-export const StatusParameter = {
-  active: 'active',
-  do_not_disturb: 'do_not_disturb',
-  idle: 'idle',
-  offline: 'offline',
-} as const;
-
-export type AccessStatusParameter = typeof AccessStatusParameter[keyof typeof AccessStatusParameter];
-
-
-export const AccessStatusParameter = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type AccessCheckedAtParameter = string | null;
-
-export type AccessConfirmedAtParameter = string | null;
-
-export type AccessNextCheckAtParameter = string;
-
-export type AccessLastErrorParameter = string | null;
-
-export type AccountSettingsParameter = {
-  kind?: 'zulip';
-  /** @nullable */
-  credentials?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  login?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  token?: string;
-} | null;
-  /** @nullable */
-  user_info?: {
-  kind?: 'zulip';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  email?: string;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  user_id?: number;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  avatar_version?: number;
-  is_admin?: boolean;
-  is_owner?: boolean;
-  is_guest?: boolean;
-  /**
-     * @minimum 0
-     * @maximum 9223372036854776000
-     */
-  role?: number;
-  is_bot?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  full_name?: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     * @nullable
-     */
-  timezone?: string | null;
-  is_active?: boolean;
-  /**
-     * @minLength 1
-     * @maxLength 64
-     */
-  date_joined?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     * @nullable
-     */
-  delivery_email?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 2048
-     * @nullable
-     */
-  avatar_url?: string | null;
-} | null;
-} | {
-  kind?: 'iam';
-  credentials?: {
-  kind?: 'iam';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  access_token?: string;
-};
-} | {
-  kind?: 'mail';
-  /** @nullable */
-  credentials?: {
-  kind?: 'mail';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-  /**
-     * @minLength 5
-     * @maxLength 254
-     */
-  email?: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  imap_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  imap_port?: number;
-  imap_security?: 'plain' | 'starttls' | 'tls';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  smtp_host?: string;
-  /**
-     * @minimum 1
-     * @maximum 65535
-     */
-  smtp_port?: number;
-  smtp_security?: 'plain' | 'starttls' | 'tls';
-} | {
-  kind?: 'calendar';
-  /** @nullable */
-  credentials?: {
-  kind?: 'calendar';
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  username?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4096
-     */
-  password?: string;
-} | null;
-};
-
-export type MessageUuidParameter = string;
-
-export type ContentIdParameter = string | null;
+export type ExternalAccountUuidParameter = string | null;
 
 export type ContentTypeParameter = string;
 
@@ -4288,53 +2170,7 @@ export type StorageIdParameter = string;
 
 export type StorageObjectIdParameter = string;
 
-export type PathParameter = string;
-
-export type DelimiterParameter = string;
-
-export type SpecialUseParameter = string | null;
-
-export type UnreadCountParameter = number;
-
-export type TotalCountParameter = number;
-
-export type SyncCursorParameter = string | null;
-
 export type FolderUuidParameter = string;
-
-export type ExternalUidParameter = number | null;
-
-export type FromAddressParameter = string;
-
-export type ToAddressesParameter = string[];
-
-export type CcAddressesParameter = string[];
-
-export type BccAddressesParameter = string[];
-
-export type ReplyToParameter = string | null;
-
-export type SubjectParameter = string;
-
-export type SnippetParameter = string;
-
-export type BodyHtmlParameter = string | null;
-
-export type BodyTextParameter = string | null;
-
-export type MessageIdParameter = string | null;
-
-export type ReferencesParameter = string | null;
-
-export type SentAtParameter = string;
-
-export type SeenParameter = boolean;
-
-export type FlaggedParameter = boolean;
-
-export type DraftParameter = boolean;
-
-export type StreamUuidParameter = string;
 
 export type OrderIndexParameter = number | null;
 
@@ -4348,6 +2184,8 @@ export const ChatTypeParameter = {
   private: 'private',
   stream: 'stream',
 } as const;
+
+export type UnreadCountParameter = number;
 
 export type TitleParameter = string;
 
@@ -4366,7 +2204,43 @@ export const SystemTypeParameter = {
 
 export type FolderItemsParameter = string[];
 
+export type ProviderExternalIdParameter = string | null;
+
+/**
+ * @nullable
+ */
+export type DeliveryStatusParameter = typeof DeliveryStatusParameter[keyof typeof DeliveryStatusParameter] | null;
+
+
+export const DeliveryStatusParameter = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
+
+export type DeliveryErrorParameter = string | null;
+
+export type DeliveryUpdatedAtParameter = string | null;
+
+export type MessageUuidParameter = string;
+
 export type EmojiNameParameter = string;
+
+export type SourceNameParameter = typeof SourceNameParameter[keyof typeof SourceNameParameter];
+
+
+export const SourceNameParameter = {
+  native: 'native',
+  zulip: 'zulip',
+} as const;
+
+export type SourceParameter = typeof SourceParameter[keyof typeof SourceParameter];
+
+
+export const SourceParameter = {
+  iam: 'iam',
+  zulip: 'zulip',
+} as const;
 
 export type TopicUuidParameter = string;
 
@@ -4379,6 +2253,8 @@ export type PinnedParameter = boolean;
 export type StarredParameter = boolean;
 
 export type IsOwnParameter = boolean;
+
+export type MentionedParameter = boolean;
 
 export type ReactionsParameter = {[key: string]: string | number | boolean | { [key: string]: unknown } | unknown[]};
 
@@ -4403,6 +2279,8 @@ export const NotificationModeParameter = {
   mentions_only: 'mentions_only',
   muted: 'muted',
 } as const;
+
+export type ColorParameter = number;
 
 export type LastMessageUuidParameter = string | null;
 
@@ -4432,6 +2310,16 @@ export type IconParameter = string | null;
 
 export type UsernameParameter = string;
 
+export type StatusParameter = typeof StatusParameter[keyof typeof StatusParameter];
+
+
+export const StatusParameter = {
+  active: 'active',
+  do_not_disturb: 'do_not_disturb',
+  idle: 'idle',
+  offline: 'offline',
+} as const;
+
 export type StatusEmojiParameter = string | null;
 
 export type StatusTextParameter = string | null;
@@ -4445,6 +2333,26 @@ export type EmailParameter = string | null;
 export type AvatarParameter = string;
 
 export type LastPingAtParameter = string;
+
+export type GetUrls200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
+};
+
+export type FilterSpecifications200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
+};
 
 export type GetOpenApiSpecification200 = { [key: string]: unknown };
 
@@ -4463,179 +2371,25 @@ now)
 order_by?: string;
 };
 
-export type FilterV1CalendarParams = {
-/**
- * the filters to apply when filtering the routes (Is not
-implemented now)
-
- */
-filters?: string;
-/**
- * fields to order the routes by (Is not implemented
-now)
-
- */
-order_by?: string;
+export type FilterV1200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
 };
 
-export type FilterV1CalendarCalendarsParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-/**
- * @minLength 0
- * @maxLength 255
- */
-name?: string;
-user_uuid?: string;
-/**
- * @nullable
- */
-external_user_uuid?: string | null;
-/**
- * @minimum 0
- * @maximum 16777215
- */
-color?: number;
-/**
- * @minLength 0
- * @maxLength 512
- * @nullable
- */
-ctag?: string | null;
-source_name?: FilterV1CalendarCalendarsSourceName;
-source?: FilterV1CalendarCalendarsSource;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-sync_token?: string | null;
-sync_status?: FilterV1CalendarCalendarsSyncStatus;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-sync_error?: string | null;
-deleted?: boolean;
+export type FilterV1Epoch200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
 };
-
-export type FilterV1CalendarCalendarsSourceName = typeof FilterV1CalendarCalendarsSourceName[keyof typeof FilterV1CalendarCalendarsSourceName];
-
-
-export const FilterV1CalendarCalendarsSourceName = {
-  native: 'native',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1CalendarCalendarsSource = typeof FilterV1CalendarCalendarsSource[keyof typeof FilterV1CalendarCalendarsSource];
-
-
-export const FilterV1CalendarCalendarsSource = {
-  iam: 'iam',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1CalendarCalendarsSyncStatus = typeof FilterV1CalendarCalendarsSyncStatus[keyof typeof FilterV1CalendarCalendarsSyncStatus];
-
-
-export const FilterV1CalendarCalendarsSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export type FilterV1CalendarEventsParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-user_uuid?: string;
-calendar_uuid?: string;
-/**
- * @nullable
- */
-external_user_uuid?: string | null;
-/**
- * @minLength 1
- * @maxLength 1024
- */
-uid?: string;
-/**
- * @minLength 0
- * @maxLength 2048
- */
-summary?: string;
-/**
- * @minLength 0
- * @maxLength 255
- */
-description?: string;
-/**
- * @minLength 0
- * @maxLength 2048
- * @nullable
- */
-location?: string | null;
-starts_at?: string;
-ends_at?: string;
-all_day?: boolean;
-/**
- * @minLength 0
- * @maxLength 1024
- * @nullable
- */
-recurrence_id?: string | null;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-ics?: string | null;
-/**
- * @minLength 0
- * @maxLength 512
- * @nullable
- */
-etag?: string | null;
-source_name?: FilterV1CalendarEventsSourceName;
-source?: FilterV1CalendarEventsSource;
-sync_status?: FilterV1CalendarEventsSyncStatus;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-sync_error?: string | null;
-deleted?: boolean;
-};
-
-export type FilterV1CalendarEventsSourceName = typeof FilterV1CalendarEventsSourceName[keyof typeof FilterV1CalendarEventsSourceName];
-
-
-export const FilterV1CalendarEventsSourceName = {
-  native: 'native',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1CalendarEventsSource = typeof FilterV1CalendarEventsSource[keyof typeof FilterV1CalendarEventsSource];
-
-
-export const FilterV1CalendarEventsSource = {
-  iam: 'iam',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1CalendarEventsSyncStatus = typeof FilterV1CalendarEventsSyncStatus[keyof typeof FilterV1CalendarEventsSyncStatus];
-
-
-export const FilterV1CalendarEventsSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
 
 export type FilterV1EventsParams = {
 user_uuid?: string;
@@ -4654,6 +2408,10 @@ schema_version?: number;
 epoch_version?: number;
 object_type?: FilterV1EventsObjectType;
 action?: FilterV1EventsAction;
+/**
+ * Generation paired with a non-zero epoch cursor.
+ */
+epoch_generation?: string;
 };
 
 export type FilterV1EventsObjectType = typeof FilterV1EventsObjectType[keyof typeof FilterV1EventsObjectType];
@@ -4662,6 +2420,8 @@ export type FilterV1EventsObjectType = typeof FilterV1EventsObjectType[keyof typ
 export const FilterV1EventsObjectType = {
   calendar: 'calendar',
   calendar_event: 'calendar_event',
+  external_account: 'external_account',
+  file: 'file',
   folder: 'folder',
   folder_item: 'folder_item',
   mail_folder: 'mail_folder',
@@ -4684,331 +2444,49 @@ export const FilterV1EventsAction = {
   updated: 'updated',
 } as const;
 
-export type FilterV1ExternalUsersParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-user_uuid?: string;
-/**
- * @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$
- */
-server_url?: string;
-/**
- * @minLength 1
- * @maxLength 2048
- * @nullable
- */
-source_scope?: string | null;
-account_type?: FilterV1ExternalUsersAccountType;
-status?: FilterV1ExternalUsersStatus;
-access_status?: FilterV1ExternalUsersAccessStatus;
-/**
- * @nullable
- */
-access_checked_at?: string | null;
-/**
- * @nullable
- */
-access_confirmed_at?: string | null;
-access_next_check_at?: string;
-/**
- * @minLength 0
- * @maxLength 4096
- * @nullable
- */
-access_last_error?: string | null;
+export type FilterV1Events410Type = typeof FilterV1Events410Type[keyof typeof FilterV1Events410Type];
+
+
+export const FilterV1Events410Type = {
+  EventsCursorExpiredError: 'EventsCursorExpiredError',
+} as const;
+
+export type FilterV1Events410Code = typeof FilterV1Events410Code[keyof typeof FilterV1Events410Code];
+
+
+export const FilterV1Events410Code = {
+  NUMBER_410: 410,
+} as const;
+
+export type FilterV1Events410Error = typeof FilterV1Events410Error[keyof typeof FilterV1Events410Error];
+
+
+export const FilterV1Events410Error = {
+  epoch_pruned: 'epoch_pruned',
+} as const;
+
+export type FilterV1Events410Reason = typeof FilterV1Events410Reason[keyof typeof FilterV1Events410Reason];
+
+
+export const FilterV1Events410Reason = {
+  epoch_generation_required: 'epoch_generation_required',
+  epoch_generation_changed: 'epoch_generation_changed',
+  future_epoch: 'future_epoch',
+  epoch_pruned: 'epoch_pruned',
+} as const;
+
+export type FilterV1Events410 = {
+  type: FilterV1Events410Type;
+  code: FilterV1Events410Code;
+  error: FilterV1Events410Error;
+  message: string;
+  reason: FilterV1Events410Reason;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
 };
-
-export type FilterV1ExternalUsersAccountType = typeof FilterV1ExternalUsersAccountType[keyof typeof FilterV1ExternalUsersAccountType];
-
-
-export const FilterV1ExternalUsersAccountType = {
-  calendar: 'calendar',
-  iam: 'iam',
-  mail: 'mail',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1ExternalUsersStatus = typeof FilterV1ExternalUsersStatus[keyof typeof FilterV1ExternalUsersStatus];
-
-
-export const FilterV1ExternalUsersStatus = {
-  active: 'active',
-  do_not_disturb: 'do_not_disturb',
-  idle: 'idle',
-  offline: 'offline',
-} as const;
-
-export type FilterV1ExternalUsersAccessStatus = typeof FilterV1ExternalUsersAccessStatus[keyof typeof FilterV1ExternalUsersAccessStatus];
-
-
-export const FilterV1ExternalUsersAccessStatus = {
-  confirmed: 'confirmed',
-  invalid_credentials: 'invalid_credentials',
-  missing_credentials: 'missing_credentials',
-  pending: 'pending',
-  unavailable: 'unavailable',
-} as const;
-
-export type FilterV1MailParams = {
-/**
- * the filters to apply when filtering the routes (Is not
-implemented now)
-
- */
-filters?: string;
-/**
- * fields to order the routes by (Is not implemented
-now)
-
- */
-order_by?: string;
-};
-
-export type FilterV1MailAttachmentsParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-/**
- * @minLength 0
- * @maxLength 255
- */
-name?: string;
-user_uuid?: string;
-message_uuid?: string;
-/**
- * @minLength 0
- * @maxLength 2048
- * @nullable
- */
-content_id?: string | null;
-/**
- * @minLength 1
- * @maxLength 255
- */
-content_type?: string;
-/**
- * @minimum 0
- * @maximum 9223372036854776000
- */
-size_bytes?: number;
-/**
- * @minLength 1
- * @maxLength 255
- */
-hash?: string;
-storage_type?: FilterV1MailAttachmentsStorageType;
-/**
- * @minLength 0
- * @maxLength 255
- */
-storage_id?: string;
-/**
- * @minLength 1
- * @maxLength 255
- */
-storage_object_id?: string;
-};
-
-export type FilterV1MailAttachmentsStorageType = typeof FilterV1MailAttachmentsStorageType[keyof typeof FilterV1MailAttachmentsStorageType];
-
-
-export const FilterV1MailAttachmentsStorageType = {
-  file: 'file',
-  s3: 's3',
-} as const;
-
-export type CreateV1MailAttachmentsBody = {
-  message_uuid: string;
-  file: Blob;
-};
-
-export type FilterV1MailFoldersParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-user_uuid?: string;
-/**
- * @nullable
- */
-external_user_uuid?: string | null;
-/**
- * @minLength 1
- * @maxLength 1024
- */
-path?: string;
-/**
- * @minLength 0
- * @maxLength 255
- */
-name?: string;
-/**
- * @minLength 1
- * @maxLength 8
- */
-delimiter?: string;
-/**
- * @minLength 0
- * @maxLength 64
- * @nullable
- */
-special_use?: string | null;
-/**
- * @minimum 0
- * @maximum 9223372036854776000
- */
-unread_count?: number;
-/**
- * @minimum 0
- * @maximum 9223372036854776000
- */
-total_count?: number;
-source_name?: FilterV1MailFoldersSourceName;
-source?: FilterV1MailFoldersSource;
-/**
- * @minLength 0
- * @maxLength 512
- * @nullable
- */
-sync_cursor?: string | null;
-sync_status?: FilterV1MailFoldersSyncStatus;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-sync_error?: string | null;
-deleted?: boolean;
-};
-
-export type FilterV1MailFoldersSourceName = typeof FilterV1MailFoldersSourceName[keyof typeof FilterV1MailFoldersSourceName];
-
-
-export const FilterV1MailFoldersSourceName = {
-  native: 'native',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1MailFoldersSource = typeof FilterV1MailFoldersSource[keyof typeof FilterV1MailFoldersSource];
-
-
-export const FilterV1MailFoldersSource = {
-  iam: 'iam',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1MailFoldersSyncStatus = typeof FilterV1MailFoldersSyncStatus[keyof typeof FilterV1MailFoldersSyncStatus];
-
-
-export const FilterV1MailFoldersSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
-
-export type FilterV1MailMessagesParams = {
-project_id?: string;
-created_at?: string;
-updated_at?: string;
-user_uuid?: string;
-folder_uuid?: string;
-/**
- * @nullable
- */
-external_user_uuid?: string | null;
-/**
- * @minimum 1
- * @maximum 9223372036854776000
- * @nullable
- */
-external_uid?: number | null;
-/**
- * @minLength 0
- * @maxLength 2048
- */
-from_address?: string;
-/**
- * @minLength 0
- * @maxLength 2048
- * @nullable
- */
-reply_to?: string | null;
-/**
- * @minLength 0
- * @maxLength 2048
- */
-subject?: string;
-/**
- * @minLength 0
- * @maxLength 4096
- */
-snippet?: string;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-body_html?: string | null;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-body_text?: string | null;
-/**
- * @minLength 0
- * @maxLength 2048
- * @nullable
- */
-message_id?: string | null;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-references?: string | null;
-sent_at?: string;
-seen?: boolean;
-flagged?: boolean;
-draft?: boolean;
-deleted?: boolean;
-source_name?: FilterV1MailMessagesSourceName;
-source?: FilterV1MailMessagesSource;
-sync_status?: FilterV1MailMessagesSyncStatus;
-/**
- * @minLength 0
- * @maxLength 9223372036854776000
- * @nullable
- */
-sync_error?: string | null;
-};
-
-export type FilterV1MailMessagesSourceName = typeof FilterV1MailMessagesSourceName[keyof typeof FilterV1MailMessagesSourceName];
-
-
-export const FilterV1MailMessagesSourceName = {
-  native: 'native',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1MailMessagesSource = typeof FilterV1MailMessagesSource[keyof typeof FilterV1MailMessagesSource];
-
-
-export const FilterV1MailMessagesSource = {
-  iam: 'iam',
-  zulip: 'zulip',
-} as const;
-
-export type FilterV1MailMessagesSyncStatus = typeof FilterV1MailMessagesSyncStatus[keyof typeof FilterV1MailMessagesSyncStatus];
-
-
-export const FilterV1MailMessagesSyncStatus = {
-  failed: 'failed',
-  pending: 'pending',
-  processing: 'processing',
-  synced: 'synced',
-} as const;
 
 export type FilterV1MeParams = {
 /**
@@ -5025,6 +2503,16 @@ now)
 order_by?: string;
 };
 
+export type FilterV1Me200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
+};
+
 export type FilterV1MessengerParams = {
 /**
  * the filters to apply when filtering the routes (Is not
@@ -5038,6 +2526,16 @@ now)
 
  */
 order_by?: string;
+};
+
+export type FilterV1Messenger200 = {
+  /** @minimum 0 */
+  epoch_version: number;
+  epoch_generation: string;
+  /** @minimum 0 */
+  current_epoch_version: number;
+  /** @minimum 1 */
+  minimum_epoch_version: number;
 };
 
 export type FilterV1MessengerFilesParams = {
@@ -5056,6 +2554,14 @@ created_at?: string;
 updated_at?: string;
 user_uuid?: string;
 stream_uuid?: string;
+/**
+ * @nullable
+ */
+provider_uuid?: string | null;
+/**
+ * @nullable
+ */
+external_account_uuid?: string | null;
 /**
  * @minLength 1
  * @maxLength 255
@@ -5101,8 +2607,8 @@ export const CreateV1MessengerFilesBodyStorageType = {
 } as const;
 
 export type CreateV1MessengerFilesBody = {
-  file?: Blob;
-  stream_uuid?: string;
+  file: Blob;
+  stream_uuid: string;
   name?: string;
   description?: string;
   storage_type?: CreateV1MessengerFilesBodyStorageType;
@@ -5181,6 +2687,34 @@ export type FilterV1MessengerMessageReactionsParams = {
 project_id?: string;
 created_at?: string;
 updated_at?: string;
+/**
+ * @nullable
+ */
+provider_uuid?: string | null;
+/**
+ * @nullable
+ */
+external_account_uuid?: string | null;
+/**
+ * @minLength 0
+ * @maxLength 2048
+ * @nullable
+ */
+provider_external_id?: string | null;
+/**
+ * @nullable
+ */
+delivery_status?: FilterV1MessengerMessageReactionsDeliveryStatus;
+/**
+ * @minLength 0
+ * @maxLength 9223372036854776000
+ * @nullable
+ */
+delivery_error?: string | null;
+/**
+ * @nullable
+ */
+delivery_updated_at?: string | null;
 message_uuid?: string;
 user_uuid?: string;
 /**
@@ -5189,6 +2723,15 @@ user_uuid?: string;
  */
 emoji_name?: string;
 };
+
+export type FilterV1MessengerMessageReactionsDeliveryStatus = typeof FilterV1MessengerMessageReactionsDeliveryStatus[keyof typeof FilterV1MessengerMessageReactionsDeliveryStatus] | null;
+
+
+export const FilterV1MessengerMessageReactionsDeliveryStatus = {
+  delivered: 'delivered',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
 
 export type FilterV1MessengerMessagesParams = {
 user_uuid?: string;
@@ -5204,6 +2747,21 @@ read?: boolean;
 pinned?: boolean;
 starred?: boolean;
 is_own?: boolean;
+mentioned?: boolean;
+/**
+ * Maximum messages returned in this page.
+ * @minimum 0
+ */
+page_limit?: number;
+/**
+ * UUID of the last message from the previous page in the same IAM and filter scope.
+ */
+page_marker?: string;
+/**
+ * Messages are keyset-paginated by created_at and uuid.
+ */
+sort_key?: FilterV1MessengerMessagesSortKey;
+sort_dir?: FilterV1MessengerMessagesSortDir;
 };
 
 export type FilterV1MessengerMessagesSourceName = typeof FilterV1MessengerMessagesSourceName[keyof typeof FilterV1MessengerMessagesSourceName];
@@ -5220,6 +2778,21 @@ export type FilterV1MessengerMessagesSource = typeof FilterV1MessengerMessagesSo
 export const FilterV1MessengerMessagesSource = {
   iam: 'iam',
   zulip: 'zulip',
+} as const;
+
+export type FilterV1MessengerMessagesSortKey = typeof FilterV1MessengerMessagesSortKey[keyof typeof FilterV1MessengerMessagesSortKey];
+
+
+export const FilterV1MessengerMessagesSortKey = {
+  created_at: 'created_at',
+} as const;
+
+export type FilterV1MessengerMessagesSortDir = typeof FilterV1MessengerMessagesSortDir[keyof typeof FilterV1MessengerMessagesSortDir];
+
+
+export const FilterV1MessengerMessagesSortDir = {
+  asc: 'asc',
+  desc: 'desc',
 } as const;
 
 export type FilterV1MessengerStreamBindingsParams = {
@@ -5428,6 +3001,20 @@ export type FilterV1UsersParams = {
 created_at?: string;
 updated_at?: string;
 /**
+ * @nullable
+ */
+provider_uuid?: string | null;
+/**
+ * @nullable
+ */
+external_account_uuid?: string | null;
+/**
+ * @minLength 0
+ * @maxLength 2048
+ * @nullable
+ */
+provider_external_id?: string | null;
+/**
  * @minLength 1
  * @maxLength 128
  */
@@ -5490,6 +3077,10 @@ export const FilterV1UsersStatus = {
   offline: 'offline',
 } as const;
 
+export type AvatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeBody = {
+  file: Blob;
+};
+
 export const getGetUrlsUrl = () => {
 
 
@@ -5501,9 +3092,9 @@ export const getGetUrlsUrl = () => {
 /**
  * @summary Base application url
  */
-export const getUrls = async ( options?: RequestInit): Promise<string[]> => {
+export const getUrls = async ( options?: RequestInit): Promise<GetUrls200> => {
 
-  return customInstance<string[]>(getGetUrlsUrl(),
+  return customInstance<GetUrls200>(getGetUrlsUrl(),
   {
     ...options,
     method: 'GET'
@@ -5525,9 +3116,9 @@ export const getFilterSpecificationsUrl = () => {
 /**
  * @summary Get OpenApiSpecificationRoute OpenApiSpecificationControllers
  */
-export const filterSpecifications = async ( options?: RequestInit): Promise<string[]> => {
+export const filterSpecifications = async ( options?: RequestInit): Promise<FilterSpecifications200> => {
 
-  return customInstance<string[]>(getFilterSpecificationsUrl(),
+  return customInstance<FilterSpecifications200>(getFilterSpecificationsUrl(),
   {
     ...options,
     method: 'GET'
@@ -5580,323 +3171,12 @@ export const getFilterV1Url = (params?: FilterV1Params,) => {
 /**
  * @summary Returns a list of all routes in the main route that are collection
  */
-export const filterV1 = async (params?: FilterV1Params, options?: RequestInit): Promise<string[]> => {
+export const filterV1 = async (params?: FilterV1Params, options?: RequestInit): Promise<FilterV1200> => {
 
-  return customInstance<string[]>(getFilterV1Url(params),
+  return customInstance<FilterV1200>(getFilterV1Url(params),
   {
     ...options,
     method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getFilterV1CalendarUrl = (params?: FilterV1CalendarParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/calendar/?${stringifiedParams}` : `/v1/calendar/`
-}
-
-/**
- * @summary Returns a list of all routes in the main route that are collection
- */
-export const filterV1Calendar = async (params?: FilterV1CalendarParams, options?: RequestInit): Promise<string[]> => {
-
-  return customInstance<string[]>(getFilterV1CalendarUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getFilterV1CalendarCalendarsUrl = (params?: FilterV1CalendarCalendarsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/calendar/calendars/?${stringifiedParams}` : `/v1/calendar/calendars/`
-}
-
-/**
- * @summary Get Calendars
- */
-export const filterV1CalendarCalendars = async (params?: FilterV1CalendarCalendarsParams, options?: RequestInit): Promise<CalendarFilter[]> => {
-
-  return customInstance<CalendarFilter[]>(getFilterV1CalendarCalendarsUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1CalendarCalendarsUrl = () => {
-
-
-
-
-  return `/v1/calendar/calendars/`
-}
-
-/**
- * @summary Create Calendar
- */
-export const createV1CalendarCalendars = async (calendarCreate: NonReadonly<CalendarCreate>, options?: RequestInit): Promise<CalendarCreate> => {
-
-  return customInstance<CalendarCreate>(getCreateV1CalendarCalendarsUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarCreate)
-  }
-);}
-
-
-
-export const getGetV1CalendarCalendarsCalendarUuidUrl = (calendarUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/calendars/${calendarUuid}`
-}
-
-/**
- * @summary Get Calendar
- */
-export const getV1CalendarCalendarsCalendarUuid = async (calendarUuid: string, options?: RequestInit): Promise<CalendarGet> => {
-
-  return customInstance<CalendarGet>(getGetV1CalendarCalendarsCalendarUuidUrl(calendarUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getUpdateV1CalendarCalendarsCalendarUuidUrl = (calendarUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/calendars/${calendarUuid}`
-}
-
-/**
- * @summary Update Calendar
- */
-export const updateV1CalendarCalendarsCalendarUuid = async (calendarUuid: string,
-    calendarUpdate: NonReadonly<CalendarUpdate>, options?: RequestInit): Promise<CalendarUpdate> => {
-
-  return customInstance<CalendarUpdate>(getUpdateV1CalendarCalendarsCalendarUuidUrl(calendarUuid),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarUpdate)
-  }
-);}
-
-
-
-export const getDeleteV1CalendarCalendarsCalendarUuidUrl = (calendarUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/calendars/${calendarUuid}`
-}
-
-/**
- * @summary Delete Calendar
- */
-export const deleteV1CalendarCalendarsCalendarUuid = async (calendarUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1CalendarCalendarsCalendarUuidUrl(calendarUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getFilterV1CalendarEventsUrl = (params?: FilterV1CalendarEventsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/calendar/events/?${stringifiedParams}` : `/v1/calendar/events/`
-}
-
-/**
- * @summary Get CalendarEvents
- */
-export const filterV1CalendarEvents = async (params?: FilterV1CalendarEventsParams, options?: RequestInit): Promise<CalendarEventFilter[]> => {
-
-  return customInstance<CalendarEventFilter[]>(getFilterV1CalendarEventsUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1CalendarEventsUrl = () => {
-
-
-
-
-  return `/v1/calendar/events/`
-}
-
-/**
- * @summary Create CalendarEvent
- */
-export const createV1CalendarEvents = async (calendarEventCreate: NonReadonly<CalendarEventCreate>, options?: RequestInit): Promise<CalendarEventCreate> => {
-
-  return customInstance<CalendarEventCreate>(getCreateV1CalendarEventsUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarEventCreate)
-  }
-);}
-
-
-
-export const getGetV1CalendarEventsCalendarEventUuidUrl = (calendarEventUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/events/${calendarEventUuid}`
-}
-
-/**
- * @summary Get CalendarEvent
- */
-export const getV1CalendarEventsCalendarEventUuid = async (calendarEventUuid: string, options?: RequestInit): Promise<CalendarEventGet> => {
-
-  return customInstance<CalendarEventGet>(getGetV1CalendarEventsCalendarEventUuidUrl(calendarEventUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getUpdateV1CalendarEventsCalendarEventUuidUrl = (calendarEventUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/events/${calendarEventUuid}`
-}
-
-/**
- * @summary Update CalendarEvent
- */
-export const updateV1CalendarEventsCalendarEventUuid = async (calendarEventUuid: string,
-    calendarEventUpdate: NonReadonly<CalendarEventUpdate>, options?: RequestInit): Promise<CalendarEventUpdate> => {
-
-  return customInstance<CalendarEventUpdate>(getUpdateV1CalendarEventsCalendarEventUuidUrl(calendarEventUuid),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarEventUpdate)
-  }
-);}
-
-
-
-export const getDeleteV1CalendarEventsCalendarEventUuidUrl = (calendarEventUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/events/${calendarEventUuid}`
-}
-
-/**
- * @summary Delete CalendarEvent
- */
-export const deleteV1CalendarEventsCalendarEventUuid = async (calendarEventUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1CalendarEventsCalendarEventUuidUrl(calendarEventUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getMoveV1CalendarEventsCalendarEventUuidActionsMoveInvokeUrl = (calendarEventUuid: string,) => {
-
-
-
-
-  return `/v1/calendar/events/${calendarEventUuid}/actions/move/invoke`
-}
-
-/**
- * @summary Move CalendarEvent
- */
-export const moveV1CalendarEventsCalendarEventUuidActionsMoveInvoke = async (calendarEventUuid: string, options?: RequestInit): Promise<unknown> => {
-
-  return customInstance<unknown>(getMoveV1CalendarEventsCalendarEventUuidActionsMoveInvokeUrl(calendarEventUuid),
-  {
-    ...options,
-    method: 'POST'
 
 
   }
@@ -5915,9 +3195,9 @@ export const getFilterV1EpochUrl = () => {
 /**
  * @summary Get WorkspaceEpochRoute WorkspaceEpochControllers
  */
-export const filterV1Epoch = async ( options?: RequestInit): Promise<string[]> => {
+export const filterV1Epoch = async ( options?: RequestInit): Promise<FilterV1Epoch200> => {
 
-  return customInstance<string[]>(getFilterV1EpochUrl(),
+  return customInstance<FilterV1Epoch200>(getFilterV1EpochUrl(),
   {
     ...options,
     method: 'GET'
@@ -5944,607 +3224,14 @@ export const getFilterV1EventsUrl = (params?: FilterV1EventsParams,) => {
 }
 
 /**
- * @summary Get WorkspaceVisibleEvents
+ * @summary Get WorkspaceEvents
  */
-export const filterV1Events = async (params?: FilterV1EventsParams, options?: RequestInit): Promise<WorkspaceVisibleEventFilter[]> => {
+export const filterV1Events = async (params?: FilterV1EventsParams, options?: RequestInit): Promise<WorkspaceEventFilter[]> => {
 
-  return customInstance<WorkspaceVisibleEventFilter[]>(getFilterV1EventsUrl(params),
+  return customInstance<WorkspaceEventFilter[]>(getFilterV1EventsUrl(params),
   {
     ...options,
     method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getFilterV1ExternalUsersUrl = (params?: FilterV1ExternalUsersParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/external_users/?${stringifiedParams}` : `/v1/external_users/`
-}
-
-/**
- * @summary Get ExternalAccounts
- */
-export const filterV1ExternalUsers = async (params?: FilterV1ExternalUsersParams, options?: RequestInit): Promise<ExternalAccountFilter[]> => {
-
-  return customInstance<ExternalAccountFilter[]>(getFilterV1ExternalUsersUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1ExternalUsersUrl = () => {
-
-
-
-
-  return `/v1/external_users/`
-}
-
-/**
- * @summary Create ExternalAccount
- */
-export const createV1ExternalUsers = async (externalAccountCreate: NonReadonly<ExternalAccountCreate>, options?: RequestInit): Promise<ExternalAccountCreate> => {
-
-  return customInstance<ExternalAccountCreate>(getCreateV1ExternalUsersUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(externalAccountCreate)
-  }
-);}
-
-
-
-export const getGetV1ExternalUsersExternalAccountUuidUrl = (externalAccountUuid: string,) => {
-
-
-
-
-  return `/v1/external_users/${externalAccountUuid}`
-}
-
-/**
- * @summary Get ExternalAccount
- */
-export const getV1ExternalUsersExternalAccountUuid = async (externalAccountUuid: string, options?: RequestInit): Promise<ExternalAccountGet> => {
-
-  return customInstance<ExternalAccountGet>(getGetV1ExternalUsersExternalAccountUuidUrl(externalAccountUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getUpdateV1ExternalUsersExternalAccountUuidUrl = (externalAccountUuid: string,) => {
-
-
-
-
-  return `/v1/external_users/${externalAccountUuid}`
-}
-
-/**
- * @summary Update ExternalAccount
- */
-export const updateV1ExternalUsersExternalAccountUuid = async (externalAccountUuid: string,
-    externalAccountUpdate: NonReadonly<ExternalAccountUpdate>, options?: RequestInit): Promise<ExternalAccountUpdate> => {
-
-  return customInstance<ExternalAccountUpdate>(getUpdateV1ExternalUsersExternalAccountUuidUrl(externalAccountUuid),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(externalAccountUpdate)
-  }
-);}
-
-
-
-export const getDeleteV1ExternalUsersExternalAccountUuidUrl = (externalAccountUuid: string,) => {
-
-
-
-
-  return `/v1/external_users/${externalAccountUuid}`
-}
-
-/**
- * @summary Delete ExternalAccount
- */
-export const deleteV1ExternalUsersExternalAccountUuid = async (externalAccountUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1ExternalUsersExternalAccountUuidUrl(externalAccountUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getFilterV1MailUrl = (params?: FilterV1MailParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/mail/?${stringifiedParams}` : `/v1/mail/`
-}
-
-/**
- * @summary Returns a list of all routes in the main route that are collection
- */
-export const filterV1Mail = async (params?: FilterV1MailParams, options?: RequestInit): Promise<string[]> => {
-
-  return customInstance<string[]>(getFilterV1MailUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getFilterV1MailAttachmentsUrl = (params?: FilterV1MailAttachmentsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/mail/attachments/?${stringifiedParams}` : `/v1/mail/attachments/`
-}
-
-/**
- * @summary Get MailAttachments
- */
-export const filterV1MailAttachments = async (params?: FilterV1MailAttachmentsParams, options?: RequestInit): Promise<MailAttachmentFilter[]> => {
-
-  return customInstance<MailAttachmentFilter[]>(getFilterV1MailAttachmentsUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1MailAttachmentsUrl = () => {
-
-
-
-
-  return `/v1/mail/attachments/`
-}
-
-/**
- * @summary Upload mail attachment
- */
-export const createV1MailAttachments = async (createV1MailAttachmentsBody: CreateV1MailAttachmentsBody, options?: RequestInit): Promise<MailAttachmentCreate> => {
-    const formData = new FormData();
-formData.append(`message_uuid`, createV1MailAttachmentsBody.message_uuid);
-formData.append(`file`, createV1MailAttachmentsBody.file);
-
-  return customInstance<MailAttachmentCreate>(getCreateV1MailAttachmentsUrl(),
-  {
-    ...options,
-    method: 'POST'
-    ,
-    body: formData
-  }
-);}
-
-
-
-export const getGetV1MailAttachmentsMailAttachmentUuidUrl = (mailAttachmentUuid: string,) => {
-
-
-
-
-  return `/v1/mail/attachments/${mailAttachmentUuid}`
-}
-
-/**
- * @summary Get MailAttachment
- */
-export const getV1MailAttachmentsMailAttachmentUuid = async (mailAttachmentUuid: string, options?: RequestInit): Promise<MailAttachmentGet> => {
-
-  return customInstance<MailAttachmentGet>(getGetV1MailAttachmentsMailAttachmentUuidUrl(mailAttachmentUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getDeleteV1MailAttachmentsMailAttachmentUuidUrl = (mailAttachmentUuid: string,) => {
-
-
-
-
-  return `/v1/mail/attachments/${mailAttachmentUuid}`
-}
-
-/**
- * @summary Delete MailAttachment
- */
-export const deleteV1MailAttachmentsMailAttachmentUuid = async (mailAttachmentUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1MailAttachmentsMailAttachmentUuidUrl(mailAttachmentUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getDownloadV1MailAttachmentsMailAttachmentUuidActionsDownloadUrl = (mailAttachmentUuid: string,) => {
-
-
-
-
-  return `/v1/mail/attachments/${mailAttachmentUuid}/actions/download`
-}
-
-/**
- * @summary Download MailAttachment
- */
-export const downloadV1MailAttachmentsMailAttachmentUuidActionsDownload = async (mailAttachmentUuid: string, options?: RequestInit): Promise<unknown> => {
-
-  return customInstance<unknown>(getDownloadV1MailAttachmentsMailAttachmentUuidActionsDownloadUrl(mailAttachmentUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getFilterV1MailFoldersUrl = (params?: FilterV1MailFoldersParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/mail/folders/?${stringifiedParams}` : `/v1/mail/folders/`
-}
-
-/**
- * @summary Get MailFolders
- */
-export const filterV1MailFolders = async (params?: FilterV1MailFoldersParams, options?: RequestInit): Promise<MailFolderFilter[]> => {
-
-  return customInstance<MailFolderFilter[]>(getFilterV1MailFoldersUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1MailFoldersUrl = () => {
-
-
-
-
-  return `/v1/mail/folders/`
-}
-
-/**
- * @summary Create MailFolder
- */
-export const createV1MailFolders = async (mailFolderCreate: NonReadonly<MailFolderCreate>, options?: RequestInit): Promise<MailFolderCreate> => {
-
-  return customInstance<MailFolderCreate>(getCreateV1MailFoldersUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(mailFolderCreate)
-  }
-);}
-
-
-
-export const getGetV1MailFoldersMailFolderUuidUrl = (mailFolderUuid: string,) => {
-
-
-
-
-  return `/v1/mail/folders/${mailFolderUuid}`
-}
-
-/**
- * @summary Get MailFolder
- */
-export const getV1MailFoldersMailFolderUuid = async (mailFolderUuid: string, options?: RequestInit): Promise<MailFolderGet> => {
-
-  return customInstance<MailFolderGet>(getGetV1MailFoldersMailFolderUuidUrl(mailFolderUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getUpdateV1MailFoldersMailFolderUuidUrl = (mailFolderUuid: string,) => {
-
-
-
-
-  return `/v1/mail/folders/${mailFolderUuid}`
-}
-
-/**
- * @summary Update MailFolder
- */
-export const updateV1MailFoldersMailFolderUuid = async (mailFolderUuid: string,
-    mailFolderUpdate: NonReadonly<MailFolderUpdate>, options?: RequestInit): Promise<MailFolderUpdate> => {
-
-  return customInstance<MailFolderUpdate>(getUpdateV1MailFoldersMailFolderUuidUrl(mailFolderUuid),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(mailFolderUpdate)
-  }
-);}
-
-
-
-export const getDeleteV1MailFoldersMailFolderUuidUrl = (mailFolderUuid: string,) => {
-
-
-
-
-  return `/v1/mail/folders/${mailFolderUuid}`
-}
-
-/**
- * @summary Delete MailFolder
- */
-export const deleteV1MailFoldersMailFolderUuid = async (mailFolderUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1MailFoldersMailFolderUuidUrl(mailFolderUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getFilterV1MailMessagesUrl = (params?: FilterV1MailMessagesParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/v1/mail/messages/?${stringifiedParams}` : `/v1/mail/messages/`
-}
-
-/**
- * @summary Get MailMessages
- */
-export const filterV1MailMessages = async (params?: FilterV1MailMessagesParams, options?: RequestInit): Promise<MailMessageFilter[]> => {
-
-  return customInstance<MailMessageFilter[]>(getFilterV1MailMessagesUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getCreateV1MailMessagesUrl = () => {
-
-
-
-
-  return `/v1/mail/messages/`
-}
-
-/**
- * @summary Create MailMessage
- */
-export const createV1MailMessages = async (mailMessageCreate: NonReadonly<MailMessageCreate>, options?: RequestInit): Promise<MailMessageCreate> => {
-
-  return customInstance<MailMessageCreate>(getCreateV1MailMessagesUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(mailMessageCreate)
-  }
-);}
-
-
-
-export const getGetV1MailMessagesMailMessageUuidUrl = (mailMessageUuid: string,) => {
-
-
-
-
-  return `/v1/mail/messages/${mailMessageUuid}`
-}
-
-/**
- * @summary Get MailMessage
- */
-export const getV1MailMessagesMailMessageUuid = async (mailMessageUuid: string, options?: RequestInit): Promise<MailMessageGet> => {
-
-  return customInstance<MailMessageGet>(getGetV1MailMessagesMailMessageUuidUrl(mailMessageUuid),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getUpdateV1MailMessagesMailMessageUuidUrl = (mailMessageUuid: string,) => {
-
-
-
-
-  return `/v1/mail/messages/${mailMessageUuid}`
-}
-
-/**
- * @summary Update MailMessage
- */
-export const updateV1MailMessagesMailMessageUuid = async (mailMessageUuid: string,
-    mailMessageUpdate: NonReadonly<MailMessageUpdate>, options?: RequestInit): Promise<MailMessageUpdate> => {
-
-  return customInstance<MailMessageUpdate>(getUpdateV1MailMessagesMailMessageUuidUrl(mailMessageUuid),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(mailMessageUpdate)
-  }
-);}
-
-
-
-export const getDeleteV1MailMessagesMailMessageUuidUrl = (mailMessageUuid: string,) => {
-
-
-
-
-  return `/v1/mail/messages/${mailMessageUuid}`
-}
-
-/**
- * @summary Delete MailMessage
- */
-export const deleteV1MailMessagesMailMessageUuid = async (mailMessageUuid: string, options?: RequestInit): Promise<void> => {
-
-  return customInstance<void>(getDeleteV1MailMessagesMailMessageUuidUrl(mailMessageUuid),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getMoveV1MailMessagesMailMessageUuidActionsMoveInvokeUrl = (mailMessageUuid: string,) => {
-
-
-
-
-  return `/v1/mail/messages/${mailMessageUuid}/actions/move/invoke`
-}
-
-/**
- * @summary Move MailMessage
- */
-export const moveV1MailMessagesMailMessageUuidActionsMoveInvoke = async (mailMessageUuid: string, options?: RequestInit): Promise<unknown> => {
-
-  return customInstance<unknown>(getMoveV1MailMessagesMailMessageUuidActionsMoveInvokeUrl(mailMessageUuid),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export const getSendV1MailMessagesMailMessageUuidActionsSendInvokeUrl = (mailMessageUuid: string,) => {
-
-
-
-
-  return `/v1/mail/messages/${mailMessageUuid}/actions/send/invoke`
-}
-
-/**
- * @summary Send MailMessage
- */
-export const sendV1MailMessagesMailMessageUuidActionsSendInvoke = async (mailMessageUuid: string, options?: RequestInit): Promise<unknown> => {
-
-  return customInstance<unknown>(getSendV1MailMessagesMailMessageUuidActionsSendInvokeUrl(mailMessageUuid),
-  {
-    ...options,
-    method: 'POST'
 
 
   }
@@ -6570,9 +3257,9 @@ export const getFilterV1MeUrl = (params?: FilterV1MeParams,) => {
 /**
  * @summary Returns a list of all routes in the main route that are collection
  */
-export const filterV1Me = async (params?: FilterV1MeParams, options?: RequestInit): Promise<string[]> => {
+export const filterV1Me = async (params?: FilterV1MeParams, options?: RequestInit): Promise<FilterV1Me200> => {
 
-  return customInstance<string[]>(getFilterV1MeUrl(params),
+  return customInstance<FilterV1Me200>(getFilterV1MeUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6601,9 +3288,9 @@ export const getFilterV1MessengerUrl = (params?: FilterV1MessengerParams,) => {
 /**
  * @summary Returns a list of all routes in the main route that are collection
  */
-export const filterV1Messenger = async (params?: FilterV1MessengerParams, options?: RequestInit): Promise<string[]> => {
+export const filterV1Messenger = async (params?: FilterV1MessengerParams, options?: RequestInit): Promise<FilterV1Messenger200> => {
 
-  return customInstance<string[]>(getFilterV1MessengerUrl(params),
+  return customInstance<FilterV1Messenger200>(getFilterV1MessengerUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6658,12 +3345,8 @@ export const getCreateV1MessengerFilesUrl = () => {
  */
 export const createV1MessengerFiles = async (createV1MessengerFilesBody: CreateV1MessengerFilesBody, options?: RequestInit): Promise<WorkspaceFileCreate> => {
     const formData = new FormData();
-if(createV1MessengerFilesBody.file !== undefined) {
- formData.append(`file`, createV1MessengerFilesBody.file);
- }
-if(createV1MessengerFilesBody.stream_uuid !== undefined) {
- formData.append(`stream_uuid`, createV1MessengerFilesBody.stream_uuid);
- }
+formData.append(`file`, createV1MessengerFilesBody.file);
+formData.append(`stream_uuid`, createV1MessengerFilesBody.stream_uuid);
 if(createV1MessengerFilesBody.name !== undefined) {
  formData.append(`name`, createV1MessengerFilesBody.name);
  }
@@ -8047,6 +4730,57 @@ export const getV1UsersWorkspaceUserUuid = async (workspaceUserUuid: string, opt
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export const getAvatarResetV1UsersWorkspaceUserUuidActionsAvatarResetInvokeUrl = (workspaceUserUuid: string,) => {
+
+
+
+
+  return `/v1/users/${workspaceUserUuid}/actions/avatar_reset/invoke`
+}
+
+/**
+ * @summary Avatar_reset WorkspaceUser
+ */
+export const avatarResetV1UsersWorkspaceUserUuidActionsAvatarResetInvoke = async (workspaceUserUuid: string, options?: RequestInit): Promise<unknown> => {
+
+  return customInstance<unknown>(getAvatarResetV1UsersWorkspaceUserUuidActionsAvatarResetInvokeUrl(workspaceUserUuid),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getAvatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeUrl = (workspaceUserUuid: string,) => {
+
+
+
+
+  return `/v1/users/${workspaceUserUuid}/actions/avatar_upload/invoke`
+}
+
+/**
+ * @summary Upload own avatar
+ */
+export const avatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvoke = async (workspaceUserUuid: string,
+    avatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeBody: AvatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeBody, options?: RequestInit): Promise<WorkspaceUserAvatarUpload> => {
+    const formData = new FormData();
+formData.append(`file`, avatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeBody.file);
+
+  return customInstance<WorkspaceUserAvatarUpload>(getAvatarUploadV1UsersWorkspaceUserUuidActionsAvatarUploadInvokeUrl(workspaceUserUuid),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
   }
 );}
 

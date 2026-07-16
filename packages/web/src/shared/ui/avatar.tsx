@@ -15,10 +15,13 @@ const AvatarImage = React.memo<{
   imageLoading: "eager" | "lazy";
 }>(({ baseClass, src, imageLoading }) => {
   const displaySrc = useAvatarBlobSrc(src);
+  if (displaySrc == null) {
+    return <div className={baseClass} />;
+  }
   return (
     <div className={baseClass}>
       <img
-        src={displaySrc ?? src}
+        src={displaySrc}
         alt=""
         className="h-full w-full object-cover"
         loading={imageLoading}
