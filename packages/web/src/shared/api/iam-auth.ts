@@ -6,6 +6,7 @@
  */
 import { t } from "~/i18n/i18n";
 import { MessengerAuthError } from "~/shared/api/messenger.types";
+import { WORKSPACE_IAM_PROJECT_SCOPE } from "~/shared/config/workspace-project";
 import {
   resolveEmailFromAccessToken,
   resolveUserUuidFromAccessToken,
@@ -17,7 +18,7 @@ import { logAction } from "~/shared/lib/logger";
 const IAM_DEFAULT_CLIENT = "default";
 const IAM_GRANT_TYPE_PASSWORD_LOGIN = "login+password";
 const IAM_GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
-const IAM_TOKEN_SCOPE = "openid email profile project:default";
+const IAM_TOKEN_SCOPE = `openid email profile ${WORKSPACE_IAM_PROJECT_SCOPE}`;
 const IAM_TOKEN_TTL_SECONDS = 60 * 60;
 const IAM_REFRESH_TOKEN_TTL_SECONDS = 2 * 24 * 60 * 60;
 const IAM_OTP_HEADER = "X-OTP";
@@ -77,6 +78,7 @@ function createRefreshGrantPayload(refreshToken: string): string {
   const payload = new URLSearchParams();
   payload.set("grant_type", IAM_GRANT_TYPE_REFRESH_TOKEN);
   payload.set("refresh_token", refreshToken.trim());
+  payload.set("scope", IAM_TOKEN_SCOPE);
   return payload.toString();
 }
 

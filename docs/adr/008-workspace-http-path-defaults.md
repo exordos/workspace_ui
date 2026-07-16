@@ -27,8 +27,15 @@ configuration, uploads, and the event loop derive their URLs from that layout.
 An environment setting may change the API origin, but not these paths.
 
 All operations use the same Exordos Core IAM bearer token with
-`project:default` scope. The websocket is common to Workspace and is not nested
-below the Messenger domain.
+`project:fe02e55d-4548-4b3e-a175-fcae928f41b2` scope. The UUID is centralized
+in `packages/web/src/shared/config/workspace-project.ts` and is also used by
+cache partitions and realtime cursor storage. The websocket is common to
+Workspace and is not nested below the Messenger domain.
+
+Persisted IAM sessions include a versioned project-scope marker. Before normal
+application initialization, sessions with an older or absent marker are
+refreshed using the explicit canonical scope. API and realtime startup remains
+blocked on refresh failure; access-only legacy sessions require a new login.
 
 ## Consequences
 

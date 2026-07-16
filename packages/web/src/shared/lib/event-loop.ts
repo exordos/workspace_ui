@@ -13,6 +13,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { WORKSPACE_GATEWAY_V1_PATH } from "~/shared/config/workspace-api-layout";
+import { WORKSPACE_PROJECT_UUID } from "~/shared/config/workspace-project";
 import { resolveUserUuidFromAccessToken } from "~/shared/lib/access-token-claims.lib";
 import { recordDiagnosticRealtimeEvent } from "~/shared/lib/diagnostics-realtime.lib";
 import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
@@ -254,15 +255,8 @@ function buildStorageKey(identity: string): string {
   return `${REALTIME_STORAGE_PREFIX}${encodeURIComponent(identity)}`;
 }
 
-function buildAccountStorageIdentity(origin: string, scopeId: string, userUuid: string): string {
-  return `${origin.trim().replace(/\/+$/, "").toLowerCase()}|${scopeId}|${userUuid}`;
-}
-
-function resolveRealtimeAccountScope(instanceId: string | undefined, userUuid: string): string {
-  // IAM project scope is authoritative on server introspection and is not guaranteed
-  // to be embedded in the access token. The saved Workspace instance keeps cursors
-  // isolated without duplicating server-owned authorization context in the browser.
-  return readString(instanceId) ?? userUuid;
+function buildAccountStorageIdentity(origin: string, projectId: string, userUuid: string): string {
+  return `${origin.trim().replace(/\/+$/, "").toLowerCase()}|${projectId}|${userUuid}`;
 }
 
 function readEpochGeneration(storageKey: string): string | null {
@@ -367,8 +361,7 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
     if (accessToken.length === 0 || origin.length === 0 || userUuid == null) {
       return null;
     }
-    const accountScope = resolveRealtimeAccountScope(options.instanceId, userUuid);
-    const identity = buildAccountStorageIdentity(origin, accountScope, userUuid);
+    const identity = buildAccountStorageIdentity(origin, WORKSPACE_PROJECT_UUID, userUuid);
     return {
       accessToken,
       fetchMode: "direct",
@@ -390,8 +383,7 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
   const messengerApiBaseUrl = getWorkspaceCommonApiBaseForCurrentInstance();
   const userUuid = resolveUserUuidFromAccessToken(accessToken);
   if (userUuid == null) return null;
-  const accountScope = resolveRealtimeAccountScope(options.instanceId ?? instance.id, userUuid);
-  const identity = buildAccountStorageIdentity(websocketOrigin, accountScope, userUuid);
+  const identity = buildAccountStorageIdentity(websocketOrigin, WORKSPACE_PROJECT_UUID, userUuid);
   return {
     accessToken,
     fetchMode: "active-client",
@@ -1084,7 +1076,10 @@ function shouldDeliverEvent(
   options: StartMessengerEventLoopOptions,
   event: WorkspaceEvent,
 ): boolean {
-  return options.eventTypes == null || options.eventTypes.includes(event.object_type);
+  return (
+    event.project_id.trim().toLowerCase() === WORKSPACE_PROJECT_UUID &&
+    (options.eventTypes == null || options.eventTypes.includes(event.object_type))
+  );
 }
 
 function advanceStoredEpoch(state: LoopState, epochVersion: number): void {
@@ -1112,7 +1107,7 @@ async function processNormalizedEvent(
   }
 
   if (!shouldDeliverEvent(options, normalized.event)) {
-    log.debug("Skipping realtime event excluded by eventTypes", {
+    log.debug("Skipping realtime event outside configured scope or eventTypes", {
       epochVersion: normalized.epochVersion,
       type: normalized.event.object_type,
     });

@@ -14,7 +14,6 @@ import type {
 import { resolveCurrentMessengerCacheAccountScope } from "~/shared/lib/messenger-cache-scope.lib";
 import {
   buildMessengerEntitiesCacheKey,
-  loadMessengerEntitiesSnapshotByAccount,
   loadMessengerEntitiesSnapshotRow,
   persistMessengerEntitiesSnapshotRow,
 } from "~/shared/lib/messenger-entities-snapshot-db";
@@ -34,17 +33,9 @@ const inFlightByScope = new Map<string, Promise<LayoutMessengerBootstrapEntities
 
 async function loadBootstrapEntities(): Promise<LayoutMessengerBootstrapEntities> {
   const scope = resolveCurrentMessengerCacheAccountScope();
-  const tokenCacheKey =
-    scope?.projectIdFromToken == null
-      ? null
-      : buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectIdFromToken);
-  let cached = null;
-  if (scope != null) {
-    cached =
-      tokenCacheKey == null
-        ? await loadMessengerEntitiesSnapshotByAccount(scope.accountScope)
-        : await loadMessengerEntitiesSnapshotRow(tokenCacheKey);
-  }
+  const cacheKey =
+    scope == null ? null : buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectId);
+  const cached = cacheKey == null ? null : await loadMessengerEntitiesSnapshotRow(cacheKey);
   if (cached != null) {
     return {
       source: "cache",
@@ -64,19 +55,11 @@ async function loadBootstrapEntities(): Promise<LayoutMessengerBootstrapEntities
     fetchStreamTopics(),
     fetchStreamBindings(),
   ]);
-  const projectId =
-    scope?.projectIdFromToken ??
-    streams.find((stream) => stream.project_id != null)?.project_id ??
-    null;
-  const cacheKey =
-    scope != null && projectId != null
-      ? buildMessengerEntitiesCacheKey(scope.accountScope, projectId)
-      : null;
-  if (currentUserId != null && users.length > 0 && scope != null && projectId != null) {
+  if (currentUserId != null && users.length > 0 && scope != null) {
     await persistMessengerEntitiesSnapshotRow({
-      cacheKey: buildMessengerEntitiesCacheKey(scope.accountScope, projectId),
+      cacheKey: buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectId),
       accountScope: scope.accountScope,
-      projectId,
+      projectId: scope.projectId,
       version: 1,
       savedAt: Date.now(),
       currentUserId,

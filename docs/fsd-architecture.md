@@ -168,7 +168,7 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 │ React      │───►│ shared/api and   │───►│ /api/workspace/v1        │
 │ components │    │ @workspace/api   │    │   /messenger             │
 │            │    │ IAM Bearer token │    │   /events                │
-│ stores     │    │ project:default  │    │   /events/ws             │
+│ stores     │    │ project:<UUID>   │    │   /events/ws             │
 │            │◄───│ common event loop│◄───│                          │
 └────────────┘    └──────────────────┘    └──────────────────────────┘
 ```
@@ -177,6 +177,8 @@ Key points:
 
 - IAM authorization state supplies one bearer token for Workspace; passwords
   and API keys are not stored in the instance model.
+- `shared/config/workspace-project.ts` pins authentication, cache partitions,
+  and realtime cursors to project `fe02e55d-4548-4b3e-a175-fcae928f41b2`.
 - `shared/api/client.ts` — low-level messenger helpers plus the common IAM,
   logging, and retry middleware pipeline.
 - `shared/api/workspace-client.ts` and `@workspace/api` — common and Messenger

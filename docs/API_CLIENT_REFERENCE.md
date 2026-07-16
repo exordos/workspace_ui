@@ -18,8 +18,18 @@ features/<name>/<name>.api.ts      Feature-level API functions (ai-reply, mute-c
 
 All Workspace API calls use the Exordos Core IAM access token:
 `Authorization: Bearer <access token>`. Interactive authorization requests
-`openid email profile project:default`, the same scope and token used by the
-messenger domain.
+`openid email profile project:fe02e55d-4548-4b3e-a175-fcae928f41b2`. Refresh
+requests repeat the explicit project scope so an older saved refresh token is
+re-scoped before the replacement access token is used. The canonical project
+UUID is defined once in `shared/config/workspace-project.ts`. Native WebView
+hosts that inject an access token must obtain it with the same project scope.
+
+Persisted IAM sessions carry a versioned project-scope marker. At startup the
+application blocks API, cache bootstrap, and realtime initialization until
+every older marked or unmarked session has been refreshed with the current
+explicit scope. Access-only sessions that cannot be safely re-scoped are
+removed and require a new login. A transient refresh failure leaves the session
+unmarked and presents a retry state instead of using the old access token.
 
 Two approaches:
 
@@ -128,7 +138,8 @@ different message content or routing is rejected by the backend.
 **Public base URL**: `/api/workspace/v1`. `VITE_WORKSPACE_API_ORIGIN` may
 select another origin, but the path layout is fixed.
 
-**Auth**: Exordos Core IAM bearer token with `project:default` scope.
+**Auth**: Exordos Core IAM bearer token with
+`project:fe02e55d-4548-4b3e-a175-fcae928f41b2` scope.
 
 | Function                     | Purpose                               |
 | ---------------------------- | ------------------------------------- |
@@ -418,6 +429,8 @@ function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void;
    IAM origin, project, and user account.
 2. Fetch REST events strictly newer than the cursor until catch-up is empty.
 3. Apply each flat `schema_version: 1` event idempotently and persist its epoch.
+   Events outside the canonical project are not delivered to UI consumers, but
+   their epoch is still advanced defensively.
 4. Connect to the common websocket with `last_epoch_version` and IAM token
    subprotocols.
 5. Keep notifications disabled during initial REST/WebSocket catch-up. Enable
@@ -451,8 +464,10 @@ onEvent(event)
 ## Cache-first Messenger state
 
 The current account cache is stored in IndexedDB and partitioned by IAM origin,
-project, and user. It is rebuildable client state, never the authoritative data
-source.
+the canonical Workspace project UUID, and user. Realtime cursor persistence
+uses the same origin/project/user identity. These client-side scopes do not
+depend on optional project claims in the access token. The cache is rebuildable
+client state, never the authoritative data source.
 
 - Bootstrap reads cached users, streams, topics, and bindings before issuing
   network requests. A single-flight guard prevents duplicate bootstrap fetches.

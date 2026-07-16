@@ -121,7 +121,7 @@ function updateSnapshotForEntityEvent(
 export function persistWorkspaceEntityEventToCache(event: WorkspaceEvent): Promise<void> {
   const payload = isRecord(event.payload) ? event.payload : null;
   if (payload == null) return Promise.resolve();
-  const cacheKey = resolveCurrentMessengerEntitiesCacheKey(event.project_id);
+  const cacheKey = resolveCurrentMessengerEntitiesCacheKey();
   if (cacheKey == null) return Promise.resolve();
   const kind = typeof payload.kind === "string" ? payload.kind : "";
 

@@ -5,6 +5,7 @@
  */
 import { create } from "zustand";
 import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
+import { WORKSPACE_IAM_PROJECT_SCOPE_VERSION } from "~/shared/config/workspace-project";
 import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
 import {
@@ -28,6 +29,8 @@ export interface WorkspaceInstance {
   iamAccessToken?: string;
   /** IAM refresh token (authType `iam`). */
   iamRefreshToken?: string;
+  /** Versioned proof that the persisted IAM token was issued for the configured project scope. */
+  iamProjectScopeVersion?: number;
   realmIcon?: string;
   /** Workspace REST origin from the server URL entered at login (not canonical organization realm). */
   workspaceOrgOrigin?: string;
@@ -59,6 +62,13 @@ function normalizeAuthType(value: unknown): WorkspaceAuthType {
   return value === "iam" ? "iam" : "iam";
 }
 
+function normalizeIamProjectScopeVersion(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
+}
+
 function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
   if (!Array.isArray(value)) {
     return [];
@@ -84,6 +94,7 @@ function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
     const iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
     const iamRefreshToken =
       typeof iamRefreshTokenRaw === "string" ? iamRefreshTokenRaw.trim() : undefined;
+    const iamProjectScopeVersion = normalizeIamProjectScopeVersion(record.iamProjectScopeVersion);
 
     if (iamAccessToken === "") {
       continue;
@@ -97,6 +108,7 @@ function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
       authType,
       iamAccessToken: authType === "iam" ? iamAccessToken : undefined,
       iamRefreshToken: authType === "iam" ? iamRefreshToken : undefined,
+      iamProjectScopeVersion: authType === "iam" ? iamProjectScopeVersion : undefined,
       realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
       workspaceOrgOrigin:
         typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
@@ -276,6 +288,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       ...instance,
       id,
       authType: normalizeAuthType(instance.authType),
+      iamProjectScopeVersion: WORKSPACE_IAM_PROJECT_SCOPE_VERSION,
     };
 
     set((state) => {
@@ -393,7 +406,11 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
           ? tokens.refreshToken.trim()
           : current.iamRefreshToken;
 
-      if (current.iamAccessToken === accessToken && current.iamRefreshToken === refreshToken) {
+      if (
+        current.iamAccessToken === accessToken &&
+        current.iamRefreshToken === refreshToken &&
+        current.iamProjectScopeVersion === WORKSPACE_IAM_PROJECT_SCOPE_VERSION
+      ) {
         return state;
       }
 
@@ -402,6 +419,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
         ...current,
         iamAccessToken: accessToken,
         iamRefreshToken: refreshToken,
+        iamProjectScopeVersion: WORKSPACE_IAM_PROJECT_SCOPE_VERSION,
       };
       persist(instances, state.currentInstanceId, state.unreadCountsByInstance);
       logStoreAction("instances", "updateInstanceIamTokens", { instanceId: id });

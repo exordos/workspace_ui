@@ -27,9 +27,11 @@ schema source of truth and creates stores for:
 - protected file metadata and binary blobs;
 - avatar blobs and user-to-file avatar pointers.
 
-Cache keys include the instance/account scope required by each store. Protected
-Workspace files use the full IAM origin/project/user partition and a
-server-provided content hash as their revision.
+Cache keys include the account scope required by each store. Messenger entity
+snapshots, protected Workspace files, and realtime cursors use the full IAM
+origin/canonical-project/user partition; the canonical project is defined in
+`packages/web/src/shared/config/workspace-project.ts`. Protected files also use
+a server-provided content hash as their revision.
 
 Bootstrap is cache-first and single-flight. REST and realtime events refresh or
 invalidate targeted rows. Only an explicit expired server event cursor (HTTP

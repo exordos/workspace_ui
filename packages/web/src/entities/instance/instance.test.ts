@@ -6,6 +6,7 @@
  * because a bug means users lose access to their accounts or leak credentials.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_IAM_PROJECT_SCOPE_VERSION } from "~/shared/config/workspace-project";
 import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
@@ -50,6 +51,7 @@ describe("instancesStore", () => {
       expect(state.instances).toHaveLength(1);
       expect(state.instances[0]!.id).toBe(id);
       expect(state.instances[0]!.realm).toBe("https://z.test");
+      expect(state.instances[0]!.iamProjectScopeVersion).toBe(WORKSPACE_IAM_PROJECT_SCOPE_VERSION);
       expect(state.currentInstanceId).toBe(id);
     });
 
@@ -505,6 +507,7 @@ describe("instancesStore", () => {
       vi.resetModules();
       const { useInstancesStore: freshStore } = await import("./instance.model");
       expect(freshStore.getState().instances[0]?.login).toBe("legacy@example.com");
+      expect(freshStore.getState().instances[0]?.iamProjectScopeVersion).toBeUndefined();
     });
 
     it("persists workspaceOrgOrigin when present", () => {
@@ -532,10 +535,11 @@ describe("instancesStore", () => {
         authType: "iam",
         iamAccessToken: "access-token",
         iamRefreshToken: "refresh-token",
+        iamProjectScopeVersion: WORKSPACE_IAM_PROJECT_SCOPE_VERSION,
       });
     });
 
-    it("updates IAM tokens for an existing instance", () => {
+    it("updates IAM tokens and records the current project-scope version", () => {
       const { id } = useInstancesStore.getState().addInstance({
         realm: "https://z.test",
         login: "a@a.com",
@@ -543,6 +547,11 @@ describe("instancesStore", () => {
         iamAccessToken: "access-token",
         iamRefreshToken: "refresh-token",
       });
+      useInstancesStore.setState((state) => ({
+        instances: state.instances.map((instance) =>
+          instance.id === id ? { ...instance, iamProjectScopeVersion: undefined } : instance,
+        ),
+      }));
       useInstancesStore.getState().updateInstanceIamTokens(id, {
         accessToken: "new-access-token",
         refreshToken: "new-refresh-token",
@@ -550,6 +559,7 @@ describe("instancesStore", () => {
       const instance = useInstancesStore.getState().instances.find((item) => item.id === id);
       expect(instance?.iamAccessToken).toBe("new-access-token");
       expect(instance?.iamRefreshToken).toBe("new-refresh-token");
+      expect(instance?.iamProjectScopeVersion).toBe(WORKSPACE_IAM_PROJECT_SCOPE_VERSION);
     });
 
     // The active instance ID is stored separately so it survives independently.

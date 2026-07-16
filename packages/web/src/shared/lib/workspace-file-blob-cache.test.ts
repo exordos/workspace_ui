@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
+import { WORKSPACE_PROJECT_UUID } from "~/shared/config/workspace-project";
 import {
   openMessageCacheDb,
   resetMessageCacheDbSingletonForTests,
@@ -15,10 +16,12 @@ import {
   fetchWorkspaceFileBlobFromApi,
   getWorkspaceFileBlobCacheRowForTests,
   putWorkspaceFileMetadata,
+  resolveWorkspaceFileCacheScopeForInstance,
   type WorkspaceFileCacheScope,
 } from "./workspace-file-blob-cache";
 
-const PROJECT_UUID = "11111111-1111-4111-8111-111111111111";
+const PROJECT_UUID = WORKSPACE_PROJECT_UUID;
+const OTHER_PROJECT_UUID = "11111111-1111-4111-8111-111111111111";
 const USER_A_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_B_UUID = "33333333-3333-4333-8333-333333333333";
 const FILE_UUID = "44444444-4444-4444-8444-444444444444";
@@ -81,6 +84,22 @@ afterEach(async () => {
 });
 
 describe("workspace-file-blob-cache", () => {
+  it("uses the canonical Workspace project instead of a token project claim", () => {
+    const payload = btoa(JSON.stringify({ sub: USER_A_UUID, project_id: OTHER_PROJECT_UUID }));
+    const resolvedScope = resolveWorkspaceFileCacheScopeForInstance({
+      id: "instance-avatar",
+      realm: "https://workspace.example.com",
+      login: "cassi",
+      authType: "iam",
+      iamAccessToken: `e30.${payload}.signature`,
+    });
+
+    expect(resolvedScope).toMatchObject({
+      projectId: WORKSPACE_PROJECT_UUID,
+      partition: `https://workspace.example.com|${WORKSPACE_PROJECT_UUID}|${USER_A_UUID}`,
+    });
+  });
+
   it("fetches a protected avatar once and serves its second render from IDB", async () => {
     const payload = btoa(JSON.stringify({ sub: USER_A_UUID, project_id: PROJECT_UUID }));
     setInstanceProvider(() => ({

@@ -5,10 +5,8 @@ import {
   type InstanceCredentials,
 } from "~/shared/api/client";
 import { MESSENGER_WORKSPACE_API_PATH } from "~/shared/config/workspace-api-layout";
-import {
-  resolveProjectUuidFromAccessToken,
-  resolveUserUuidFromAccessToken,
-} from "~/shared/lib/access-token-claims.lib";
+import { WORKSPACE_PROJECT_UUID } from "~/shared/config/workspace-project";
+import { resolveUserUuidFromAccessToken } from "~/shared/lib/access-token-claims.lib";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
@@ -152,15 +150,14 @@ export function resolveWorkspaceFileCacheScopeForInstance(
 ): WorkspaceFileCacheScope | null {
   const accessToken = resolveIamAccessToken(instance);
   const userUuid = resolveUserUuidFromAccessToken(accessToken);
-  const projectId = resolveProjectUuidFromAccessToken(accessToken);
   const origin = normalizeOrigin(resolveIamApiOrigin(instance));
-  if (userUuid == null || projectId == null || origin === "") return null;
+  if (userUuid == null || origin === "") return null;
   return {
     instanceId: instance.id,
     origin,
-    projectId,
+    projectId: WORKSPACE_PROJECT_UUID,
     userUuid,
-    partition: buildWorkspaceFileCachePartition(origin, projectId, userUuid),
+    partition: buildWorkspaceFileCachePartition(origin, WORKSPACE_PROJECT_UUID, userUuid),
   };
 }
 

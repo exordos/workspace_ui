@@ -1,6 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
+import {
+  migratePersistedIamSessionsToCurrentProject,
+  type PersistedIamSessionScopeState,
+} from "~/app/app-iam-project-scope-migration.lib";
 import { installDevTools } from "~/app/devtools";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
@@ -11,13 +15,17 @@ import {
   refreshMessengerApiBase,
   setInstanceProvider,
 } from "~/shared/api/client";
-import { setIamTokenUpdater } from "~/shared/api/iam-refresh-session.lib";
+import {
+  refreshStoredIamAccessToken,
+  setIamTokenUpdater,
+} from "~/shared/api/iam-refresh-session.lib";
 import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
+import { resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
@@ -32,7 +40,9 @@ import { initTouchTracking } from "~/shared/lib/touch";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { initWebViewBridge } from "~/shared/lib/webview";
+import { PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { AppRoot } from "./app/app-root";
+import type { Root } from "react-dom/client";
 import "./app/app.styles.css";
 import "./app/focus-outline.styles.css";
 
@@ -110,12 +120,11 @@ setPluginDataProvider({
   getThemeMode: () => useThemeStore.getState().mode,
 });
 
-/** Application bootstrap after vendored Jitsi external_api is loaded (see `main.tsx`). */
-export function mountApplication(): void {
-  // ---------------------------------------------------------------------------
-  // App initialization
-  // ---------------------------------------------------------------------------
+let applicationRuntimeInitialized = false;
 
+function initializeApplicationRuntime(): void {
+  if (applicationRuntimeInitialized) return;
+  applicationRuntimeInitialized = true;
   syncApiBasesAfterInstanceChange();
 
   perf.mark("app:init");
@@ -147,9 +156,56 @@ export function mountApplication(): void {
     brand: brand.appName,
     instanceCount: useInstancesStore.getState().instances.length,
   });
+}
 
-  ReactDOM.createRoot(document.getElementById("root")!).render(React.createElement(AppRoot));
+async function refreshPersistedInstanceProjectScope(
+  instance: PersistedIamSessionScopeState,
+): Promise<boolean> {
+  const stored = useInstancesStore
+    .getState()
+    .instances.find((candidate) => candidate.id === instance.id);
+  if (stored == null) return true;
+  const refreshToken = stored.iamRefreshToken?.trim() ?? "";
+  const iamOrigin = resolveIamApiOrigin(stored);
+  if (refreshToken.length === 0 || iamOrigin.length === 0) return false;
+  const refreshed = await refreshStoredIamAccessToken({
+    iamOrigin,
+    refreshToken,
+    instanceId: stored.id,
+  });
+  return refreshed != null;
+}
 
+async function bootstrapApplication(root: Root): Promise<void> {
+  root.render(React.createElement(PageLoader));
+  const store = useInstancesStore.getState();
+  const migration = await migratePersistedIamSessionsToCurrentProject({
+    instances: store.instances,
+    refreshInstance: refreshPersistedInstanceProjectScope,
+    removeInstance: (instanceId) => useInstancesStore.getState().removeInstance(instanceId),
+  });
+  if (migration.failedInstanceIds.length > 0) {
+    createLogger("app").warn("Persisted IAM project-scope migration failed", {
+      failedSessionCount: migration.failedInstanceIds.length,
+    });
+    root.render(
+      React.createElement(PageErrorFallback, {
+        onRetry: () => {
+          void bootstrapApplication(root);
+        },
+      }),
+    );
+    return;
+  }
+
+  initializeApplicationRuntime();
+  root.render(React.createElement(AppRoot));
   perf.mark("app:rendered");
   perf.measure("app:bootstrap", "app:init", "app:rendered");
+}
+
+/** Application bootstrap after vendored Jitsi external_api is loaded (see `main.tsx`). */
+export function mountApplication(): void {
+  const root = ReactDOM.createRoot(document.getElementById("root")!);
+  void bootstrapApplication(root);
 }

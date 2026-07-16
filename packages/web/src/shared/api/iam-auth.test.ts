@@ -2,6 +2,7 @@
  * Tests for IAM-backed login (password grant only).
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { WORKSPACE_IAM_PROJECT_SCOPE } from "~/shared/config/workspace-project";
 import { IamOtpRequiredError, loginWithIamCredentials } from "./iam-auth";
 import { jsonResponse, mockFetch } from "./messenger.test.setup";
 import { MessengerAuthError } from "./messenger.types";
@@ -76,9 +77,7 @@ describe("loginWithIamCredentials", () => {
     expect(params.get("grant_type")).toBe("login+password");
     expect(params.get("login")).toBe("alice");
     expect(params.get("password")).toBe("pw");
-    expect(params.get("scope")).toContain("openid");
-    expect(params.get("scope")).toContain("email");
-    expect(params.get("scope")).toContain("project:default");
+    expect(params.get("scope")).toBe(`openid email profile ${WORKSPACE_IAM_PROJECT_SCOPE}`);
   });
 
   it("forwards OTP code via X-OTP header", async () => {
@@ -145,6 +144,7 @@ describe("refreshIamAccessToken", () => {
     const params = new URLSearchParams(init?.body as string);
     expect(params.get("grant_type")).toBe("refresh_token");
     expect(params.get("refresh_token")).toBe("old-refresh-token");
+    expect(params.get("scope")).toBe(`openid email profile ${WORKSPACE_IAM_PROJECT_SCOPE}`);
   });
 
   it("throws MessengerAuthError when refresh fails", async () => {

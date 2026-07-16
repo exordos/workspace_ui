@@ -3,7 +3,6 @@ import type { MockStream, WorkspaceStreamRole } from "~/shared/api/messenger.typ
 import { resolveCurrentMessengerCacheAccountScope } from "~/shared/lib/messenger-cache-scope.lib";
 import {
   buildMessengerEntitiesCacheKey,
-  loadMessengerEntitiesSnapshotByAccount,
   loadMessengerEntitiesSnapshotRow,
 } from "~/shared/lib/messenger-entities-snapshot-db";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -45,12 +44,9 @@ function isEntryFresh<T>(entry: CacheEntry<T> | undefined, now: number): entry i
 async function loadPersistentEntitiesSnapshot() {
   const scope = resolveCurrentMessengerCacheAccountScope();
   if (scope == null) return null;
-  if (scope.projectIdFromToken != null) {
-    return loadMessengerEntitiesSnapshotRow(
-      buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectIdFromToken),
-    );
-  }
-  return loadMessengerEntitiesSnapshotByAccount(scope.accountScope);
+  return loadMessengerEntitiesSnapshotRow(
+    buildMessengerEntitiesCacheKey(scope.accountScope, scope.projectId),
+  );
 }
 
 export async function loadStreamMembers(

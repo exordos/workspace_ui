@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
+import { WORKSPACE_PROJECT_UUID } from "~/shared/config/workspace-project";
 import {
   openMessageCacheDb,
   resetMessageCacheDbSingletonForTests,
@@ -13,7 +14,7 @@ import {
 } from "~/shared/lib/workspace-file-blob-cache";
 import type { WorkspaceEvent } from "~/shared/types/workspace-event";
 
-const PROJECT_UUID = "11111111-1111-4111-8111-111111111111";
+const TOKEN_PROJECT_UUID = "11111111-1111-4111-8111-111111111111";
 const USER_UUID = "22222222-2222-4222-8222-222222222222";
 const FILE_UUID = "33333333-3333-4333-8333-333333333333";
 const STREAM_UUID = "44444444-4444-4444-8444-444444444444";
@@ -22,7 +23,7 @@ const HASH_B = "b".repeat(64);
 const PATH = `/api/workspace/v1/messenger/files/${FILE_UUID}/actions/download`;
 
 function jwt(): string {
-  return `e30.${btoa(JSON.stringify({ sub: USER_UUID, project_id: PROJECT_UUID }))}.signature`;
+  return `e30.${btoa(JSON.stringify({ sub: USER_UUID, project_id: TOKEN_PROJECT_UUID }))}.signature`;
 }
 
 function fileUpdatedEvent(): WorkspaceEvent {
@@ -30,7 +31,7 @@ function fileUpdatedEvent(): WorkspaceEvent {
     schema_version: 1,
     uuid: "55555555-5555-4555-8555-555555555555",
     epoch_version: 12,
-    project_id: PROJECT_UUID,
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "file",
     action: "updated",

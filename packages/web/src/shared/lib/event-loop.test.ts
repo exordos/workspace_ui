@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_PROJECT_UUID } from "~/shared/config/workspace-project";
 import {
   normalizeWorkspaceEventModel,
   normalizeWorkspaceRealtimeEvent,
@@ -54,6 +55,7 @@ vi.mock("~/shared/lib/logger", () => ({
 
 const USER_UUID = "00000000-0000-4000-8000-000000000001";
 const OTHER_UUID = "00000000-0000-4000-8000-000000000002";
+const OTHER_PROJECT_UUID = "11111111-1111-4111-8111-111111111111";
 const MESSAGE_UUID = "00000000-0000-4000-8000-000000000101";
 const STREAM_UUID = "00000000-0000-4000-8000-000000000201";
 const TOPIC_UUID = "00000000-0000-4000-8000-000000000301";
@@ -96,7 +98,7 @@ function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown 
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "message",
     action: "created",
@@ -124,7 +126,7 @@ function fileWorkspaceEvent(epochVersion: number): unknown {
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "file",
     action: "created",
@@ -148,7 +150,7 @@ function streamWorkspaceEvent(
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "stream",
     action: kind.split(".")[1] ?? "updated",
@@ -157,7 +159,7 @@ function streamWorkspaceEvent(
     payload: {
       kind,
       uuid: STREAM_UUID,
-      project_id: "00000000-0000-4000-8000-000000000901",
+      project_id: WORKSPACE_PROJECT_UUID,
       user_uuid: USER_UUID,
       owner: USER_UUID,
       role: "owner",
@@ -181,7 +183,7 @@ function topicWorkspaceEvent(epochVersion: number, kind = "topic.created"): unkn
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "topic",
     action: kind.split(".")[1] ?? "updated",
@@ -190,7 +192,7 @@ function topicWorkspaceEvent(epochVersion: number, kind = "topic.created"): unkn
     payload: {
       kind,
       uuid: TOPIC_UUID,
-      project_id: "00000000-0000-4000-8000-000000000901",
+      project_id: WORKSPACE_PROJECT_UUID,
       user_uuid: USER_UUID,
       name: "planning",
       stream_uuid: STREAM_UUID,
@@ -208,7 +210,7 @@ function topicDeletedWorkspaceEvent(epochVersion: number): unknown {
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "topic",
     action: "deleted",
@@ -227,7 +229,7 @@ function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "folder",
     action: "updated",
@@ -236,7 +238,7 @@ function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
     payload: {
       kind: "folder.updated",
       uuid: FOLDER_UUID,
-      project_id: "00000000-0000-4000-8000-000000000901",
+      project_id: WORKSPACE_PROJECT_UUID,
       user_uuid: USER_UUID,
       title: "Channels",
       background_color_value: 0,
@@ -266,7 +268,7 @@ function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "stream_binding",
     action: "created",
@@ -274,12 +276,12 @@ function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
     updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "stream_bindings.created",
-      project_id: "00000000-0000-4000-8000-000000000901",
+      project_id: WORKSPACE_PROJECT_UUID,
       uuid: STREAM_UUID,
       items: [
         {
           uuid: STREAM_BINDING_UUID,
-          project_id: "00000000-0000-4000-8000-000000000901",
+          project_id: WORKSPACE_PROJECT_UUID,
           stream_uuid: STREAM_UUID,
           user_uuid: OTHER_UUID,
           who_uuid: USER_UUID,
@@ -297,7 +299,7 @@ function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
     schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
-    project_id: "00000000-0000-4000-8000-000000000901",
+    project_id: WORKSPACE_PROJECT_UUID,
     user_uuid: USER_UUID,
     object_type: "user",
     action: "updated",
@@ -563,7 +565,7 @@ describe("Workspace realtime event normalization", () => {
     const normalized = normalizeWorkspaceEventModel({
       epoch_version: 20,
       uuid: "00000000-0000-4000-8000-000000000020",
-      project_id: "00000000-0000-4000-8000-000000000901",
+      project_id: WORKSPACE_PROJECT_UUID,
       user_uuid: USER_UUID,
       payload: {
         kind: "stream.updated",
@@ -896,7 +898,7 @@ describe("Workspace realtime event normalization", () => {
         kind: "stream.created",
         stream: {
           uuid: STREAM_UUID,
-          project_id: "00000000-0000-4000-8000-000000000901",
+          project_id: WORKSPACE_PROJECT_UUID,
           user_uuid: USER_UUID,
           owner: USER_UUID,
           role: "owner",
@@ -1025,7 +1027,7 @@ describe("Workspace realtime event normalization", () => {
         stream_bindings: [
           {
             uuid: STREAM_BINDING_UUID,
-            project_id: "00000000-0000-4000-8000-000000000901",
+            project_id: WORKSPACE_PROJECT_UUID,
             stream_uuid: STREAM_UUID,
             user_uuid: OTHER_UUID,
             who_uuid: USER_UUID,
@@ -1127,8 +1129,9 @@ describe("Workspace realtime event normalization", () => {
 });
 
 describe("startMessengerEventLoop", () => {
-  const accountCursorKey =
-    "workspace-realtime:last-epoch:v1:https%3A%2F%2Fworkspace.example.test%7Cinst-1%7C00000000-0000-4000-8000-000000000001";
+  const accountCursorKey = `workspace-realtime:last-epoch:v1:${encodeURIComponent(
+    `https://workspace.example.test|${WORKSPACE_PROJECT_UUID}|${USER_UUID}`,
+  )}`;
   const accountGenerationKey = `${accountCursorKey}:generation`;
 
   beforeEach(() => {
@@ -1446,13 +1449,13 @@ describe("startMessengerEventLoop", () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it("starts from the saved instance scope without a client-side IAM project claim", async () => {
+  it("uses the canonical project scope without a client-side IAM project claim", async () => {
     mockActiveApiEvents(apiResponse([]));
     const controller = new AbortController();
     const onEvent = vi.fn();
 
     startMessengerEventLoop({
-      instanceId: "inst-1",
+      instanceId: "a-different-saved-instance-id",
       signal: controller.signal,
       onEvent,
     });
@@ -1468,6 +1471,28 @@ describe("startMessengerEventLoop", () => {
       { source: "realtime", notificationsAllowed: false },
     );
     expect(localStorage.getItem(accountCursorKey)).toBe("13");
+
+    controller.abort();
+  });
+
+  it("advances the cursor without delivering an event from another project", async () => {
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    startMessengerEventLoop({
+      signal: controller.signal,
+      onEvent,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.emit({
+      ...(workspaceEvent(13) as Record<string, unknown>),
+      project_id: OTHER_PROJECT_UUID,
+    });
+
+    await vi.waitFor(() => expect(localStorage.getItem(accountCursorKey)).toBe("13"));
+    expect(onEvent).not.toHaveBeenCalled();
 
     controller.abort();
   });
