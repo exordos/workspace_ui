@@ -616,6 +616,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onOpenUnsupportedFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.readOnlyReason).toBeUndefined();
+    expect(captured.composerProps?.optimisticClearOnSend).toBe(true);
     expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("enabled");
     expect(captured.composerProps?.composerCapabilities?.preview?.mode).toBe("enabled");
     expect(captured.composerProps?.resolveMention?.("Bob Reed")).toMatchObject({

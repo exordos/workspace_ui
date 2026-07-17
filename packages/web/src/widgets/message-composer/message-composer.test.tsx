@@ -252,6 +252,43 @@ describe("MessageComposer async send behavior", () => {
     });
   });
 
+  it("clears optimistically and accepts the next message while the first send is pending", async () => {
+    let resolveFirstSend: () => void = () => {
+      throw new Error("Expected send resolver to be assigned");
+    };
+    const onSend = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirstSend = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    renderWithProviders(<MessageComposer onSend={onSend} optimisticClearOnSend />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "First message" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "", undefined);
+      expect(textbox).toHaveValue("");
+      expect(textbox).not.toBeDisabled();
+    });
+
+    fireEvent.change(textbox, { target: { value: "Second message" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "", undefined);
+      expect(textbox).toHaveValue("");
+    });
+
+    resolveFirstSend();
+  });
+
   it("keeps the visible draft when a successful send reports a newer draft", async () => {
     const onClearReply = vi.fn();
     const onSend = vi.fn().mockResolvedValue({ shouldClearComposer: false });

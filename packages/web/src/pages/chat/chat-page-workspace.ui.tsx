@@ -1059,7 +1059,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const handleSend = useCallback(
-    async (content: string, _subjectOverride?: string, files?: File[]) => {
+    (content: string, _subjectOverride?: string, files?: File[]) => {
       // Composer remains old, but sending goes only through Workspace POST /messages/.
       setSendError(null);
       setUploadProgress(null);
@@ -1108,43 +1108,44 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       // Scroll right after the local row appears. A later server snapshot can
       // move it by backend created_at, but the user already sees the send happened.
       setScrollToBottomAfterSendNonce((value) => value + 1);
-      const sent = await deliverOutgoingMessage(outgoing.localId);
-      if (!sent) {
-        throw new Error(t("message.sendFailed"));
-      }
-      if (draftAtSend != null) {
-        const currentDraft = selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          sendOwnerKey,
-          conversationId,
-        );
-        if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
-          return { shouldClearComposer: false } satisfies MessageComposerSendResult;
+      return deliverOutgoingMessage(outgoing.localId).then((sent) => {
+        if (!sent) {
+          throw new Error(t("message.sendFailed"));
         }
-        // MessageComposer clears its value and reply after this promise resolves.
-        // Both callbacks still close over the sent composer state. Only consume that
-        // cleanup when the sent draft is still the current reply session.
-        workspaceComposerSendCleanupRef.current = {
-          ownerKey: sendOwnerKey,
-          conversationId,
-          snapshotId: draftAtSend.snapshotId,
-          ignoresValueClear: true,
-          ignoresReplyClear: true,
-        };
-        window.setTimeout(() => {
-          const pendingCleanup = workspaceComposerSendCleanupRef.current;
-          if (pendingCleanup?.snapshotId === draftAtSend.snapshotId) {
-            workspaceComposerSendCleanupRef.current = null;
+        if (draftAtSend != null) {
+          const currentDraft = selectWorkspaceComposerDraft(
+            useWorkspaceComposerDraftStore.getState(),
+            sendOwnerKey,
+            conversationId,
+          );
+          if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
+            return { shouldClearComposer: false } satisfies MessageComposerSendResult;
           }
-        }, 0);
-        setComposerDraftShadow(
-          createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
-          EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
-        );
-        useWorkspaceComposerDraftStore
-          .getState()
-          .clearDraftIfSnapshotMatches(sendOwnerKey, conversationId, draftAtSend.snapshotId);
-      }
+          // MessageComposer clears its value and reply after this promise resolves.
+          // Both callbacks still close over the sent composer state. Only consume that
+          // cleanup when the sent draft is still the current reply session.
+          workspaceComposerSendCleanupRef.current = {
+            ownerKey: sendOwnerKey,
+            conversationId,
+            snapshotId: draftAtSend.snapshotId,
+            ignoresValueClear: true,
+            ignoresReplyClear: true,
+          };
+          window.setTimeout(() => {
+            const pendingCleanup = workspaceComposerSendCleanupRef.current;
+            if (pendingCleanup?.snapshotId === draftAtSend.snapshotId) {
+              workspaceComposerSendCleanupRef.current = null;
+            }
+          }, 0);
+          setComposerDraftShadow(
+            createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
+            EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+          );
+          useWorkspaceComposerDraftStore
+            .getState()
+            .clearDraftIfSnapshotMatches(sendOwnerKey, conversationId, draftAtSend.snapshotId);
+        }
+      });
     },
     [
       conversationId,
@@ -2308,6 +2309,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           onExpandStreamTopics={noop}
           uploadProgress={uploadProgress}
           onSend={handleSend}
+          optimisticClearOnSend
           onCreateCallLink={undefined}
           onCancelUpload={handleCancelUpload}
           activeTopic={

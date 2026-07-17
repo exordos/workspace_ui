@@ -26,6 +26,7 @@ export interface ChatPageComposerSectionProps {
     subjectOverride?: string,
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
+  optimisticClearOnSend?: boolean;
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;

@@ -75,6 +75,8 @@ export interface MessageComposerProps {
     subject?: string,
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
+  /** Clears the composer after a send has been accepted locally, before the request settles. */
+  optimisticClearOnSend?: boolean;
   onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;

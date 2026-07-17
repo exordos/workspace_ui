@@ -20,6 +20,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onExpandStreamTopics,
   uploadProgress,
   onSend,
+  optimisticClearOnSend,
   onCreateCallLink,
   onCancelUpload,
   activeTopic,
@@ -64,6 +65,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     return (
       <MessageComposer
         onSend={onSend}
+        optimisticClearOnSend={optimisticClearOnSend}
         onCreateCallLink={undefined}
         onCancelUpload={onCancelUpload}
         disabled
@@ -123,6 +125,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   return (
     <MessageComposer
       onSend={onSend}
+      optimisticClearOnSend={optimisticClearOnSend}
       onCreateCallLink={onCreateCallLink}
       onCancelUpload={onCancelUpload}
       disabled={isComposerDisabled({

@@ -271,6 +271,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
+  optimisticClearOnSend = false,
   onSubmitEdit,
   onCancelEdit,
   onCreateCallLink,
@@ -802,9 +803,47 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     setSendInFlight(true);
 
-    let sendResult: MessageComposerSendResult | void;
+    let sendResult: MessageComposerSendResult | void | Promise<void | MessageComposerSendResult>;
     try {
-      sendResult = await onSend?.(bodyToSend, subject, filesToSend);
+      sendResult = onSend?.(bodyToSend, subject, filesToSend);
+    } catch {
+      setSendInFlight(false);
+      return;
+    }
+
+    if (optimisticClearOnSend) {
+      setSendInFlight(false);
+      resetMentionState();
+      resetWorkspaceReferenceState();
+      if (latestValueRef.current === valueToSend) {
+        setValue("");
+      }
+      if (latestFilesRef.current === filesSnapshot) {
+        setFiles([]);
+      }
+      setMode("write");
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (!textarea || disabled) {
+          return;
+        }
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+      });
+      if (effectiveReplyQuote) {
+        onClearReply?.();
+      }
+      setAiMenuOpen(false);
+      setScheduleMenuOpen(false);
+      setSavedSnippetsMenuOpen(false);
+      setMediaPickerOpen(false);
+      void Promise.resolve(sendResult).catch(() => undefined);
+      return;
+    }
+
+    let completedSendResult: MessageComposerSendResult | void;
+    try {
+      completedSendResult = await sendResult;
     } catch {
       return;
     } finally {
@@ -812,7 +851,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     }
     resetMentionState();
     resetWorkspaceReferenceState();
-    const shouldClearComposer = sendResult?.shouldClearComposer !== false;
+    const shouldClearComposer = completedSendResult?.shouldClearComposer !== false;
     if (shouldClearComposer && latestValueRef.current === valueToSend) {
       setValue("");
     }
