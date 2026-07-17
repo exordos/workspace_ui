@@ -286,8 +286,14 @@ export const LoginPage: React.FC = () => {
         [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
           (part) => (part?.length ?? 0) > 0,
         ) ?? "";
+      const canonicalIsValid =
+        canonicalFromServer.length > 0 && isValidRealmUrl(canonicalFromServer);
+      const canonicalDowngradesHttps =
+        canonicalIsValid &&
+        new URL(normalizedFromInput).protocol === "https:" &&
+        new URL(canonicalFromServer).protocol === "http:";
       const realmToStore =
-        canonicalFromServer.length > 0 && isValidRealmUrl(canonicalFromServer)
+        canonicalIsValid && !canonicalDowngradesHttps
           ? normalizeRealm(canonicalFromServer)
           : normalizedFromInput;
       const rawRealmIcon = serverSettings?.realm_icon_raw?.trim() ?? "";

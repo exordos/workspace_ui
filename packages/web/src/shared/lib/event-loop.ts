@@ -21,6 +21,7 @@ import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-ins
 import { createLogger, logEvent } from "~/shared/lib/logger";
 import { isOnline, onStatusChange } from "~/shared/lib/network";
 import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
+import { createResilientInterval } from "~/shared/lib/visibility";
 import type { WorkspaceEvent, WorkspaceEventObjectType } from "~/shared/types/workspace-event";
 
 const log = createLogger("realtime");
@@ -35,6 +36,7 @@ const CATCH_UP_PAGE_LIMIT = 500;
 const MAX_CATCH_UP_PAGES = 20;
 const MIN_RECONNECT_BACKOFF_MS = 1_000;
 const MAX_RECONNECT_BACKOFF_MS = 30_000;
+const REALTIME_WATCHDOG_INTERVAL_MS = 30_000;
 const CLIENT_RECONNECT_CLOSE_CODE = 4000;
 const CLIENT_OFFLINE_CLOSE_CODE = 4001;
 const AUTH_CLOSE_CODES = new Set([4401, 4403]);
@@ -1199,8 +1201,12 @@ function openRealtimeSocket(
     let queueReadySent = false;
     let settled = false;
     let deliveryQueue = Promise.resolve();
+    let stopWatchdog: (() => void) | null = null;
+    let watchdogProbeInFlight: Promise<void> | null = null;
 
     const cleanup = () => {
+      stopWatchdog?.();
+      stopWatchdog = null;
       signal?.removeEventListener("abort", onAbort);
       if (state.socket === socket) {
         state.socket = null;
@@ -1237,6 +1243,55 @@ function openRealtimeSocket(
       queueReadySent = true;
       options.onQueueReady?.();
     };
+    const reconnectSocket = (reason: string, resultCode: number = CLIENT_RECONNECT_CLOSE_CODE) => {
+      if (settled) {
+        return;
+      }
+      if (socket.readyState < 2) {
+        try {
+          socket.close(CLIENT_RECONNECT_CLOSE_CODE, reason);
+        } catch {
+          /* close is best-effort */
+        }
+      }
+      finish({ code: resultCode, reason, wasClean: false });
+    };
+    const probeRealtimeCursor = () => {
+      if (settled || watchdogProbeInFlight != null || !isOnline() || socket.readyState !== 1) {
+        return;
+      }
+      const probe = fetchServerEpochCursor(runtime, signal)
+        .then((serverCursor) => {
+          if (settled || socket.readyState !== 1) {
+            return;
+          }
+          const generationChanged =
+            state.epochGeneration != null && serverCursor.epochGeneration !== state.epochGeneration;
+          const socketFellBehind = serverCursor.epochVersion > state.lastEpochVersion;
+          if (!generationChanged && !socketFellBehind) {
+            return;
+          }
+          log.warn("Realtime websocket cursor watchdog detected stale delivery", {
+            generationChanged,
+            lastEpochVersion: state.lastEpochVersion,
+            serverEpochVersion: serverCursor.epochVersion,
+          });
+          reconnectSocket("realtime cursor lag");
+        })
+        .catch((error: unknown) => {
+          if (!settled && !isAbortError(error)) {
+            log.debug("Realtime websocket cursor watchdog probe failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+      watchdogProbeInFlight = probe;
+      void probe.finally(() => {
+        if (watchdogProbeInFlight === probe) {
+          watchdogProbeInFlight = null;
+        }
+      });
+    };
 
     try {
       socket = new WebSocket(url, [WORKSPACE_EVENTS_PROTOCOL, `bearer.${runtime.accessToken}`]);
@@ -1247,6 +1302,9 @@ function openRealtimeSocket(
 
     state.socket = socket;
     signal?.addEventListener("abort", onAbort, { once: true });
+    stopWatchdog = createResilientInterval(() => {
+      probeRealtimeCursor();
+    }, REALTIME_WATCHDOG_INTERVAL_MS);
 
     socket.onopen = () => {
       log.info("Realtime websocket connected", { url: WORKSPACE_REALTIME_WS_PATH });
@@ -1305,6 +1363,7 @@ function openRealtimeSocket(
 
     socket.onerror = () => {
       log.warn("Realtime websocket error");
+      reconnectSocket("websocket transport error", 1006);
     };
 
     socket.onclose = (event: CloseEvent) => {

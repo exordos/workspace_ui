@@ -22,6 +22,24 @@ describe("resolveLoginIconUrl", () => {
     );
   });
 
+  it("allows an explicit public organization HTTPS URL URN in the browser", () => {
+    vi.spyOn(electron, "isElectron").mockReturnValue(false);
+    expect(
+      resolveLoginIconUrl(
+        "https://chat.example.com",
+        "urn:url:https://assets.example.com/logo-512x512.png",
+      ),
+    ).toBe("https://assets.example.com/logo-512x512.png");
+  });
+
+  it("rejects unsafe public organization URL URNs", () => {
+    vi.spyOn(electron, "isElectron").mockReturnValue(false);
+    expect(
+      resolveLoginIconUrl("https://chat.example.com", "urn:url:http://chat.example.com/logo.png"),
+    ).toBe("");
+    expect(resolveLoginIconUrl("https://chat.example.com", "urn:url:javascript:alert(1)")).toBe("");
+  });
+
   it("resolves same-origin icon urls in Electron", () => {
     vi.spyOn(electron, "isElectron").mockReturnValue(true);
     expect(resolveLoginIconUrl("https://chat.example.com", "/user_avatars/1/realm/icon.png")).toBe(

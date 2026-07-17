@@ -90,6 +90,10 @@ class FakeWebSocket {
   emit(frame: unknown): void {
     this.onmessage?.({ data: JSON.stringify(frame) } as MessageEvent);
   }
+
+  emitError(): void {
+    this.onerror?.();
+  }
 }
 
 function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown {
@@ -1300,6 +1304,69 @@ describe("startMessengerEventLoop", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(1));
     expect(onCursorExpired).not.toHaveBeenCalled();
+
+    controller.abort();
+  });
+
+  it("reconnects when the browser reports a websocket transport error without a close event", async () => {
+    // Prevents a browser transport error from leaving the event loop waiting forever for onclose.
+    mockActiveApiEvents(apiResponse([]));
+    const controller = new AbortController();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0]!.emitError();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(1));
+
+    controller.abort();
+  });
+
+  it("reconnects and catches up when the server epoch advances but the websocket stays silent", async () => {
+    // Prevents a half-open socket from hiding new messages until the page is manually reloaded.
+    let currentEpochVersion = 12;
+    messengerApiMock.getWithBase.mockImplementation((_base, path) => {
+      if (path === "/epoch/") {
+        return Promise.resolve(
+          apiResponse({ epoch_generation: "91", epoch_version: currentEpochVersion }),
+        );
+      }
+      return Promise.resolve(
+        apiResponse(currentEpochVersion > 12 ? [workspaceEvent(currentEpochVersion)] : []),
+      );
+    });
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const silentSocket = FakeWebSocket.instances[0]!;
+    silentSocket.emit({ type: "ready", epoch_generation: "91", epoch_version: 12 });
+    await vi.waitFor(() => expect(localStorage.getItem(accountCursorKey)).toBe("12"));
+
+    currentEpochVersion = 13;
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(1));
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ epoch_version: 13, object_type: "message" }),
+        { source: "catchup", notificationsAllowed: true },
+      ),
+    );
+    expect(silentSocket.readyState).toBe(3);
+    expect(localStorage.getItem(accountCursorKey)).toBe("13");
 
     controller.abort();
   });

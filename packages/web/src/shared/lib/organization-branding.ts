@@ -4,8 +4,8 @@
  * Organization logos (`realm_icon`) are used in the UI (sidebar, instance switcher).
  * Tab favicon always uses the white-label app icon (`brand.logoUrl`), not the org logo.
  *
- * Workspace `realm_icon` may be an absolute URL or a realm-relative path (e.g.
- * `/user_avatars/…/realm/icon.png`); the latter is resolved against the org URL.
+ * Workspace `realm_icon` may be an absolute URL, a realm-relative path (e.g.
+ * `/user_avatars/…/realm/icon.png`), or a public HTTPS URL URN.
  */
 import { brand } from "~/shared/lib/brand";
 import { drawUnreadDotOnFavicon } from "~/shared/lib/favicon-unread.lib";
@@ -15,6 +15,16 @@ import { isValidUrl } from "~/shared/lib/validation";
 const brandingLog = createLogger("branding");
 
 let faviconApplyGeneration = 0;
+const PUBLIC_ORGANIZATION_URL_URN_PREFIX = "urn:url:";
+
+export function parsePublicOrganizationUrlUrn(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed.toLowerCase().startsWith(PUBLIC_ORGANIZATION_URL_URN_PREFIX)) {
+    return null;
+  }
+  const url = trimmed.slice(PUBLIC_ORGANIZATION_URL_URN_PREFIX.length).trim();
+  return url.startsWith("https://") && isValidUrl(url) ? url : null;
+}
 
 /**
  * Public `organization-fallback.svg` from `public/`.
@@ -68,6 +78,10 @@ export function resolveOrganizationLogoUrl(
   if (trimmed.length === 0) return null;
   if (isValidUrl(trimmed)) {
     return trimmed;
+  }
+  const publicUrl = parsePublicOrganizationUrlUrn(trimmed);
+  if (trimmed.toLowerCase().startsWith(PUBLIC_ORGANIZATION_URL_URN_PREFIX)) {
+    return publicUrl;
   }
   const baseTrimmed = realmBaseUrl?.trim() ?? "";
   if (baseTrimmed.length === 0) return null;

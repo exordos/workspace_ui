@@ -418,6 +418,54 @@ describe("LoginPage", () => {
     );
   });
 
+  it("stores a public organization URL URN for post-login logo resolution", async () => {
+    fetchServerSettings.mockResolvedValue({
+      realm_name: "Example Workspace",
+      realm_uri: "http://internal-workspace.example.com",
+      realm_url: "http://internal-workspace.example.com",
+      realm_icon: "urn:url:https://assets.example.com/logo-512x512.png",
+    });
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
+      email: "user@example.com",
+      user_id: 7,
+    });
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    const realmInput = await screen.findByLabelText(/server address/i);
+    fireEvent.blur(realmInput);
+
+    await waitFor(() => {
+      expect(screen.getByText("Example Workspace")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
+      "src",
+      "https://assets.example.com/logo-512x512.png",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/username or email/i);
+
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
+    });
+    expect(useInstancesStore.getState().instances[0]?.realmIcon).toBe(
+      "urn:url:https://assets.example.com/logo-512x512.png",
+    );
+    expect(useInstancesStore.getState().instances[0]?.realm).toBe("https://chat.example.com");
+  });
+
   it("stores canonical realm from server_settings when logging in", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Canonical Org",

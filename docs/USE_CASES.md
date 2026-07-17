@@ -61,7 +61,10 @@
 ### Preconditions
 
 - server is accessible at the entered URL
-- API endpoint returns `server_settings`
+- API endpoint returns public `server_settings`; an organization icon
+  `urn:url:` contains a valid HTTPS URL that may be loaded before login
+- an HTTPS address entered by the user is never replaced by an HTTP
+  `realm_url` or `realm_uri` from server discovery
 
 ### Flows
 

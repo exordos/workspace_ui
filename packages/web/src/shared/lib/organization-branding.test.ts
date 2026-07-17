@@ -44,6 +44,25 @@ describe("organization-branding", () => {
     ).toBe("https://chat.example.com/user_avatars/1/realm/icon.png");
   });
 
+  it("unwraps public organization HTTPS URL URNs", () => {
+    expect(
+      resolveOrganizationLogoUrl(
+        "urn:url:https://assets.example.com/logo-512x512.png",
+        "https://chat.example.com/api/workspace/v1/messenger",
+      ),
+    ).toBe("https://assets.example.com/logo-512x512.png");
+  });
+
+  it.each([
+    "urn:url:http://chat.example.com/logo.png",
+    "urn:url:javascript:alert(1)",
+    "urn:url://chat.example.com/logo.png",
+    "urn:url:/logo-512x512.png",
+    "urn:url:https://",
+  ])("rejects unsafe public organization URL URN %s", (realmIcon) => {
+    expect(resolveOrganizationLogoUrl(realmIcon, "https://chat.example.com")).toBeNull();
+  });
+
   it("returns fallback logo when organization logo is missing", () => {
     const fallback = getOrganizationFallbackLogoUrl();
     expect(getOrganizationLogoSrc()).toBe(fallback);
