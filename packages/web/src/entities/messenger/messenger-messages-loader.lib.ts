@@ -415,12 +415,16 @@ export async function loadMessengerConversationMessages({
           streamUuid: parsedConversationId.streamUuid,
           pageLimit,
           pageMarker,
+          sortKey: "created_at" as const,
+          sortDir: "desc" as const,
         }
       : {
           streamUuid: parsedConversationId.streamUuid,
           topicUuid: parsedConversationId.topicUuid,
           pageLimit,
           pageMarker,
+          sortKey: "created_at" as const,
+          sortDir: "desc" as const,
         };
 
   try {

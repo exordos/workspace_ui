@@ -695,6 +695,8 @@ describe("messenger conversation messages loader", () => {
         streamUuid: STREAM_A,
         pageLimit: 50,
         pageMarker: undefined,
+        sortKey: "created_at",
+        sortDir: "desc",
       },
     );
     expect(
@@ -739,6 +741,8 @@ describe("messenger conversation messages loader", () => {
         topicUuid: TOPIC_A,
         pageLimit: 25,
         pageMarker: "cursor-a",
+        sortKey: "created_at",
+        sortDir: "desc",
       },
     );
     expect(
