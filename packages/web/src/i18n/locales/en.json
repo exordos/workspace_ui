@@ -231,7 +231,6 @@
     "retrySend": "Retry send",
     "removeFailedSend": "Remove message",
     "notDelivered": "Not delivered",
-    "sentToServer": "Sent to server",
     "deleteSelectedConfirm": "Delete {{count}} messages?",
     "deleteSelected": "Delete selected",
     "forwardSelected": "Forward selected",

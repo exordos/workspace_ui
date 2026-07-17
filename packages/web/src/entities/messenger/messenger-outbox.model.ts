@@ -22,7 +22,6 @@ export interface MessengerOutboxStoreState {
     patch?: { markdown?: string; sourceMarkdown?: string; files?: readonly File[] | null },
   ) => void;
   markOutgoingMessageFailed: (localId: string, error: string) => void;
-  resolveOutgoingMessage: (localId: string, resolvedServerMessageUuid?: string) => void;
   removeOutgoingMessage: (localId: string) => void;
   clearOwner: (ownerKey: string) => void;
   clear: () => void;
@@ -89,37 +88,6 @@ function removeOutgoingMessageFromState(
       message.conversationId,
       localId,
     ),
-  };
-}
-
-function markOutgoingMessageSentInState(
-  state: Pick<
-    MessengerOutboxStoreState,
-    "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
-  >,
-  localId: string,
-  resolvedServerMessageUuid?: string,
-): Pick<
-  MessengerOutboxStoreState,
-  "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
-> {
-  const message = state.outgoingMessagesByLocalId[localId];
-  if (message == null) return state;
-
-  return {
-    outgoingMessagesByLocalId: {
-      ...state.outgoingMessagesByLocalId,
-      [localId]: {
-        // Успешная отправка не должна размонтировать bubble: локальная строка
-        // остаётся на месте, а серверный snapshot подхватывается поверх неё.
-        ...message,
-        status: "sent",
-        resolvedServerMessageUuid,
-        updatedAt: new Date().toISOString(),
-        error: null,
-      },
-    },
-    outgoingMessageLocalIdsByConversationId: state.outgoingMessageLocalIdsByConversationId,
   };
 }
 
@@ -247,14 +215,6 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
         },
       };
     });
-  },
-
-  resolveOutgoingMessage(localId, resolvedServerMessageUuid) {
-    logStoreAction("messengerOutbox", "resolveOutgoingMessage", {
-      localId,
-      resolvedServerMessageUuid,
-    });
-    set((state) => markOutgoingMessageSentInState(state, localId, resolvedServerMessageUuid));
   },
 
   removeOutgoingMessage(localId) {

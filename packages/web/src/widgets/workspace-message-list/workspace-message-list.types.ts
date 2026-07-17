@@ -57,7 +57,7 @@ export interface WorkspaceMessageListActions {
 
 export interface WorkspaceMessageListServerItem {
   kind: "server";
-  key: MessengerUuid;
+  key: string;
   message: MessengerMessage;
   createdAt: string;
   authorUuid: MessengerUuid;
@@ -69,7 +69,6 @@ export interface WorkspaceMessageListOutgoingItem {
   kind: "outgoing";
   key: string;
   message: MessengerOutgoingMessage;
-  resolvedServerMessage?: MessengerMessage;
   createdAt: string;
   authorUuid: MessengerUuid;
   isOwn: true;
@@ -83,6 +82,7 @@ export type WorkspaceMessageListItem =
 export interface WorkspaceMessageListProps {
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
+  resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   initialSnapshotReady?: boolean;

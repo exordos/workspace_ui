@@ -196,8 +196,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
   }): React.ReactElement {
     const owner = resolveMessageOwner(message, currentUserUuid);
     const isOwn = owner === "own";
-    const serverMessage =
-      message.kind === "server" ? message.message : (message.resolvedServerMessage ?? null);
+    const serverMessage = message.kind === "server" ? message.message : null;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
     const displayMessage = serverMessage ?? outgoingMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");

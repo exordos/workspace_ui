@@ -1,6 +1,6 @@
 import type { MessengerConversationId, MessengerUuid } from "./messenger.types";
 
-export type MessengerOutgoingMessageStatus = "uploading" | "sending" | "failed" | "sent";
+export type MessengerOutgoingMessageStatus = "uploading" | "sending" | "failed";
 
 export interface MessengerOutgoingMessage {
   localId: string;
@@ -18,7 +18,6 @@ export interface MessengerOutgoingMessage {
   attempt: number;
   error: string | null;
   includeStreamConversation: boolean;
-  resolvedServerMessageUuid?: MessengerUuid;
   files?: readonly File[];
 }
 

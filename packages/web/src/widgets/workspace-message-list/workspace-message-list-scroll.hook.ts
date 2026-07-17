@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   computeWorkspaceScrollTopAfterPrepend,
-  computeWorkspaceScrollTopFromAnchor,
+  computeWorkspaceScrollTopFromRenderAnchor,
   findWorkspaceMessageNode,
   isWorkspaceScrollAtBottom,
-  resolveVisibleWorkspaceMessageAnchor,
+  resolveVisibleWorkspaceMessageRenderAnchor,
   WORKSPACE_MESSAGE_UUID_ATTRIBUTE,
   WORKSPACE_MESSAGE_UUID_SELECTOR,
   type WorkspaceScrollAnchor,
@@ -223,7 +223,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       scrollHeight: root.scrollHeight,
       messageCount,
       firstMessageKey,
-      anchor: resolveVisibleWorkspaceMessageAnchor(root),
+      anchor: resolveVisibleWorkspaceMessageRenderAnchor(root),
     }),
     [firstMessageKey, messageCount],
   );
@@ -358,7 +358,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     ) {
       const root = scrollContainerRef.current;
       const nextScrollTop =
-        root == null ? null : computeWorkspaceScrollTopFromAnchor(root, pending.anchor);
+        root == null ? null : computeWorkspaceScrollTopFromRenderAnchor(root, pending.anchor);
 
       if (root != null && nextScrollTop != null && Math.abs(root.scrollTop - nextScrollTop) >= 1) {
         // Когда меняется высота уже видимого сообщения, DOM-узлы остаются теми же.
@@ -380,7 +380,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
           : {
               messageKeysKey,
               scrollToBottomKey,
-              anchor: resolveVisibleWorkspaceMessageAnchor(root),
+              anchor: resolveVisibleWorkspaceMessageRenderAnchor(root),
               wasAtBottom: wasAtBottomRef.current,
             };
     };
@@ -487,7 +487,9 @@ export function useWorkspaceMessageListScroll<TMessage>({
       scrollHeight: pending.scrollHeight,
     };
     const anchorScrollTop =
-      pending.anchor == null ? null : computeWorkspaceScrollTopFromAnchor(root, pending.anchor);
+      pending.anchor == null
+        ? null
+        : computeWorkspaceScrollTopFromRenderAnchor(root, pending.anchor);
     const nextScrollTop =
       anchorScrollTop ?? computeWorkspaceScrollTopAfterPrepend(snapshot, root.scrollHeight);
 

@@ -14,6 +14,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     hasInitialPayload,
     messages,
     outgoingMessages,
+    resolveServerMessageRenderKey,
     currentUserUuid,
     conversationId,
     scrollToBottomKey,
@@ -181,6 +182,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           key={conversationId}
           messages={messages}
           outgoingMessages={outgoingMessages}
+          resolveServerMessageRenderKey={resolveServerMessageRenderKey}
           currentUserUuid={currentUserUuid}
           conversationId={conversationId}
           initialSnapshotReady={hasInitialPayload && !messagesLoading}

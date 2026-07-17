@@ -231,7 +231,6 @@
     "retrySend": "Повторить отправку",
     "removeFailedSend": "Удалить сообщение",
     "notDelivered": "Не доставлено",
-    "sentToServer": "Доставлено на сервер",
     "deleteSelectedConfirm": "Удалить {{count}} сообщений?",
     "deleteSelected": "Удалить выбранные",
     "forwardSelected": "Переслать выбранные",

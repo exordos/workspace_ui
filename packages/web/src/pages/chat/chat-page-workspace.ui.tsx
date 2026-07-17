@@ -115,6 +115,7 @@ import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import { useWorkspaceTransientRenderKeys } from "./chat-page-workspace-transient-render-keys.hook";
 import {
   appendComposerMarkdownLinks,
   uploadWorkspaceComposerFiles,
@@ -506,6 +507,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       ? EMPTY_MESSAGES
       : selectWorkspaceMessagesForConversation(state, conversationId),
   );
+  const {
+    registerDeliveredOutgoingMessage,
+    removeServerMessageRenderKey,
+    resolveServerMessageRenderKey,
+  } = useWorkspaceTransientRenderKeys({ ownerKey, conversationId, messages: routeMessages });
   const outgoingMessagesByLocalId = useMessengerOutboxStore(
     (state) => state.outgoingMessagesByLocalId,
   );
@@ -1021,12 +1027,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
               topicUuid: outgoing.topicUuid,
               markdown,
               includeStreamConversation: outgoing.includeStreamConversation,
+              onBeforeMessageIndexed: (message) => {
+                registerDeliveredOutgoingMessage(
+                  outgoing.ownerKey,
+                  outgoing.conversationId,
+                  message.uuid,
+                  localId,
+                );
+              },
             });
 
-            if (result.status === "applied") {
-              useMessengerOutboxStore
-                .getState()
-                .resolveOutgoingMessage(localId, result.message?.uuid);
+            if (result.status === "applied" && result.message != null) {
+              useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
               return true;
             }
 
@@ -1055,7 +1067,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         },
       );
     },
-    [ownerKey, runWorkspaceAction, runtimeContext],
+    [ownerKey, registerDeliveredOutgoingMessage, runWorkspaceAction, runtimeContext],
   );
 
   const handleSend = useCallback(
@@ -1386,6 +1398,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       setActionError(t("workspaceMessenger.runtimeUnavailable"));
       return;
     }
+    const messageOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const message =
       pendingDeleteMessageUuid == null
         ? null
@@ -1406,10 +1419,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         streamUuid: message.streamUuid,
         topicUuid: message.topicUuid,
       }),
-    ).catch((error) => {
-      setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
-    });
-  }, [pendingDeleteMessageUuid, runWorkspaceAction, runtimeContext]);
+    )
+      .then((result) => {
+        if (result.status === "applied") {
+          removeServerMessageRenderKey(messageOwnerKey, message.conversationId, message.uuid);
+        }
+      })
+      .catch((error) => {
+        setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
+      });
+  }, [pendingDeleteMessageUuid, removeServerMessageRenderKey, runWorkspaceAction, runtimeContext]);
 
   const resolveWorkspaceReplyQuote = useCallback(
     (messageUuid: string, selectedText?: string): WorkspaceReplyQuote | null => {
@@ -2198,6 +2217,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         hasInitialPayload={routeMessages.length > 0}
         messages={routeMessages}
         outgoingMessages={outgoingMessages}
+        resolveServerMessageRenderKey={resolveServerMessageRenderKey}
         currentUserUuid={currentUserUuid}
         conversationId={selection.conversationId}
         scrollToBottomKey={`${selection.conversationId}:${activeFocusedMessageUuid ?? ""}`}

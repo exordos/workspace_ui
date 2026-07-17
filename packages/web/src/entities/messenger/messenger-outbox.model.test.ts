@@ -114,7 +114,7 @@ describe("messenger outbox store", () => {
     );
   });
 
-  it("keeps the same local row after server resolution", () => {
+  it("removes a local row after the server confirms delivery", () => {
     const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
       ownerKey: OWNER_A,
       conversationId: CONVERSATION_A,
@@ -128,9 +128,7 @@ describe("messenger outbox store", () => {
       includeStreamConversation: false,
     });
 
-    useMessengerOutboxStore
-      .getState()
-      .resolveOutgoingMessage(outgoing.localId, "server-message-uuid");
+    useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.localId);
 
     expect(
       selectMessengerOutgoingMessagesForConversation(
@@ -138,12 +136,6 @@ describe("messenger outbox store", () => {
         OWNER_A,
         CONVERSATION_A,
       ),
-    ).toEqual([
-      expect.objectContaining({
-        localId: outgoing.localId,
-        status: "sent",
-        resolvedServerMessageUuid: "server-message-uuid",
-      }),
-    ]);
+    ).toEqual([]);
   });
 });

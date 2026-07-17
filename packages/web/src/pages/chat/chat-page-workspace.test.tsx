@@ -531,7 +531,7 @@ describe("ChatPage Workspace route", () => {
     captured.sendMessengerMessage.mockResolvedValue({
       status: "applied",
       ownerKey: "owner-key",
-      message: null,
+      message: createMessage(),
     });
     useWorkspaceForwardMessageStore.getState().reset();
     captured.streamBindingsForRoute.mockClear();
@@ -988,7 +988,7 @@ describe("ChatPage Workspace route", () => {
         sendRequest.resolve({
           status: "applied",
           ownerKey,
-          message: null,
+          message: createMessage(),
         });
         await sendRequest.promise;
         await Promise.resolve();
@@ -1048,7 +1048,7 @@ describe("ChatPage Workspace route", () => {
       sendRequest.resolve({
         status: "applied",
         ownerKey,
-        message: null,
+        message: createMessage(),
       });
       await sendRequest.promise;
       await Promise.resolve();
@@ -1057,13 +1057,26 @@ describe("ChatPage Workspace route", () => {
     expect(useJitsiCallStore.getState().activeCall).toBeNull();
   });
 
-  it("adds a local outgoing row before Workspace send resolves", async () => {
+  it("removes the local outgoing row after Workspace send resolves", async () => {
     const sendRequest = createDeferred<{
       status: "applied";
       ownerKey: string;
       message: MessengerMessage;
     }>();
-    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+    let onBeforeMessageIndexed: ((message: MessengerMessage) => void) | undefined;
+    const serverMessage = {
+      ...createMessage(),
+      uuid: "server-message-uuid",
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: { onBeforeMessageIndexed?: (message: MessengerMessage) => void }) => {
+        onBeforeMessageIndexed = request.onBeforeMessageIndexed;
+        return sendRequest.promise;
+      },
+    );
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
@@ -1082,31 +1095,23 @@ describe("ChatPage Workspace route", () => {
         }),
       );
     });
-    expect(captured.messageListProps?.outgoingMessages?.[0]?.localId).toMatch(/^outgoing:/);
+    const localId = captured.messageListProps?.outgoingMessages?.[0]?.localId;
+    expect(localId).toMatch(/^outgoing:/);
 
     act(() => {
+      onBeforeMessageIndexed?.(serverMessage);
+      useWorkspaceMessageStore.getState().indexMessageIntoConversationBuckets(serverMessage);
       sendRequest.resolve({
         status: "applied",
         ownerKey: "owner-key",
-        message: {
-          ...createMessage(),
-          uuid: "server-message-uuid",
-          authorUuid: USER_UUID,
-          userUuid: USER_UUID,
-          isOwn: true,
-        },
+        message: serverMessage,
       });
     });
 
-    await waitFor(() => {
-      expect(captured.messageListProps?.outgoingMessages?.[0]).toEqual(
-        expect.objectContaining({
-          localId: expect.stringMatching(/^outgoing:/),
-          status: "sent",
-          resolvedServerMessageUuid: "server-message-uuid",
-        }),
-      );
-    });
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+    expect(captured.messageListProps?.resolveServerMessageRenderKey?.(serverMessage.uuid)).toBe(
+      localId,
+    );
   });
 
   it("uploads composer files before Workspace send and appends logical markdown refs", async () => {
@@ -1542,7 +1547,7 @@ describe("ChatPage Workspace route", () => {
     const sendRequest = createDeferred<{
       status: "applied";
       ownerKey: string;
-      message: null;
+      message: MessengerMessage;
     }>();
     captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
 
@@ -1560,7 +1565,7 @@ describe("ChatPage Workspace route", () => {
       captured.composerProps?.onComposerValueChange("newer draft");
     });
     act(() => {
-      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
 
@@ -1646,7 +1651,7 @@ describe("ChatPage Workspace route", () => {
     const sendRequest = createDeferred<{
       status: "applied";
       ownerKey: string;
-      message: null;
+      message: MessengerMessage;
     }>();
     captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
 
@@ -1668,7 +1673,7 @@ describe("ChatPage Workspace route", () => {
 
     act(() => {
       onComposerValueChange("newer reply");
-      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
 
@@ -1708,7 +1713,7 @@ describe("ChatPage Workspace route", () => {
     const sendRequest = createDeferred<{
       status: "applied";
       ownerKey: string;
-      message: null;
+      message: MessengerMessage;
     }>();
     captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
 
@@ -1732,7 +1737,7 @@ describe("ChatPage Workspace route", () => {
     );
 
     act(() => {
-      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
 

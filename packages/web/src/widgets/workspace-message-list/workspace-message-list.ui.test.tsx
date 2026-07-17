@@ -307,9 +307,17 @@ describe("WorkspaceMessageList", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the same outgoing row mounted when the server snapshot arrives", () => {
+  it("keeps an identical server message and local row separate until their exact mapping arrives", () => {
     const serverMessageUuid = "server-message-uuid";
     const localId = "local-outgoing-message";
+    const serverMessage = createWorkspaceMessage({
+      uuid: serverMessageUuid,
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+      markdown: "Local outgoing text",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
     const outgoingMessage = createOutgoingMessage({
       localId,
       markdown: "Local outgoing text",
@@ -318,39 +326,24 @@ describe("WorkspaceMessageList", () => {
 
     const { container, rerender } = render(
       <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: serverMessageUuid,
-            markdown: "Local outgoing text",
-            createdAt: "2026-07-03T09:01:00.000Z",
-          }),
-        ]}
+        messages={[serverMessage]}
         outgoingMessages={[outgoingMessage]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
     );
 
-    const articleBeforeResolve = container.querySelector("article");
+    expect(container.querySelectorAll("article")).toHaveLength(2);
+    const articleBeforeResolve = container.querySelector(`[data-outgoing-message-id='${localId}']`);
     expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", localId);
 
     rerender(
       <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: serverMessageUuid,
-            markdown: "Local outgoing text",
-            createdAt: "2026-07-03T09:01:00.000Z",
-          }),
-        ]}
-        outgoingMessages={[
-          createOutgoingMessage({
-            localId,
-            markdown: "Local outgoing text",
-            status: "sent",
-            resolvedServerMessageUuid: serverMessageUuid,
-          }),
-        ]}
+        messages={[serverMessage]}
+        outgoingMessages={[outgoingMessage]}
+        resolveServerMessageRenderKey={(messageUuid) =>
+          messageUuid === serverMessageUuid ? localId : undefined
+        }
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
@@ -359,15 +352,29 @@ describe("WorkspaceMessageList", () => {
     const articles = Array.from(container.querySelectorAll("article"));
     expect(articles).toHaveLength(1);
     expect(articles[0]).toBe(articleBeforeResolve);
-    expect(articles[0]).toHaveAttribute("data-message-uuid", localId);
-    expect(articles[0]).toHaveAttribute("data-outgoing-message-id", localId);
+    expect(articles[0]).toHaveAttribute("data-message-uuid", serverMessageUuid);
+    expect(articles[0]).toHaveAttribute("data-message-render-key", localId);
+    expect(articles[0]).not.toHaveAttribute("data-outgoing-message-id");
     expect(articles[0]).toHaveAttribute("data-server-message-uuid", serverMessageUuid);
-    expect(container.querySelector("[data-outgoing-delivery-status='sent']")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[serverMessage]}
+        outgoingMessages={[]}
+        resolveServerMessageRenderKey={(messageUuid) =>
+          messageUuid === serverMessageUuid ? localId : undefined
+        }
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(container.querySelector("article")).toBe(articleBeforeResolve);
   });
 
-  it("renders edited content from the resolved server snapshot", () => {
+  it("renders edited content from the server snapshot", () => {
     const serverMessageUuid = "edited-server-message-uuid";
-    const localId = "edited-local-outgoing-message";
     const { container, rerender } = render(
       <WorkspaceMessageList
         messages={[
@@ -378,14 +385,7 @@ describe("WorkspaceMessageList", () => {
             markdown: "Original server text",
           }),
         ]}
-        outgoingMessages={[
-          createOutgoingMessage({
-            localId,
-            markdown: "Original local text",
-            status: "sent",
-            resolvedServerMessageUuid: serverMessageUuid,
-          }),
-        ]}
+        outgoingMessages={[]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
@@ -404,23 +404,15 @@ describe("WorkspaceMessageList", () => {
             updatedAt: "2026-07-03T09:02:00.000Z",
           }),
         ]}
-        outgoingMessages={[
-          createOutgoingMessage({
-            localId,
-            markdown: "Original local text",
-            status: "sent",
-            resolvedServerMessageUuid: serverMessageUuid,
-          }),
-        ]}
+        outgoingMessages={[]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
     );
 
     expect(screen.getByText("Edited server text")).toBeInTheDocument();
-    expect(screen.queryByText("Original local text")).not.toBeInTheDocument();
     expect(
-      container.querySelector("[data-message-uuid='edited-local-outgoing-message']"),
+      container.querySelector("[data-message-uuid='edited-server-message-uuid']"),
     ).toBeInTheDocument();
   });
 

@@ -61,7 +61,7 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
     ];
 
     const groupedMessages = groupWorkspaceMessagesByDayAndAuthor(
-      sourceMessages.map(createWorkspaceMessageListServerItem),
+      sourceMessages.map((message) => createWorkspaceMessageListServerItem(message)),
     );
 
     expect(sourceMessages.map((message) => message.uuid)).toEqual([

@@ -66,10 +66,11 @@ function compareMessagesByCreatedAtThenKey(
 
 export function createWorkspaceMessageListServerItem(
   message: MessengerMessage,
+  key: string = message.uuid,
 ): WorkspaceMessageListServerItem {
   return {
     kind: "server",
-    key: message.uuid,
+    key,
     message,
     createdAt: message.createdAt,
     authorUuid: message.authorUuid,
@@ -80,13 +81,11 @@ export function createWorkspaceMessageListServerItem(
 
 export function createWorkspaceMessageListOutgoingItem(
   message: MessengerOutgoingMessage,
-  resolvedServerMessage?: MessengerMessage,
 ): WorkspaceMessageListOutgoingItem {
   return {
     kind: "outgoing",
     key: message.localId,
     message,
-    resolvedServerMessage,
     createdAt: message.createdAt,
     authorUuid: message.authorUuid,
     isOwn: true,

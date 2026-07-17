@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   computeWorkspaceScrollTopAfterPrepend,
   computeWorkspaceScrollTopFromAnchor,
+  computeWorkspaceScrollTopFromRenderAnchor,
   findWorkspaceMessageNode,
   resolveVisibleWorkspaceMessageAnchor,
+  resolveVisibleWorkspaceMessageRenderAnchor,
 } from "./workspace-message-list-scroll-anchor.lib";
 
 function setRect(element: HTMLElement, rect: Pick<DOMRect, "top" | "bottom">): void {
@@ -73,6 +75,31 @@ describe("workspace message scroll anchor helpers", () => {
         offsetTop: 40,
       }),
     ).toBe(170);
+  });
+
+  it("uses a render key for a stable anchor while keeping the server uuid separate", () => {
+    const root = document.createElement("div");
+    const message = document.createElement("article");
+
+    message.setAttribute("data-message-uuid", "server-message-uuid");
+    message.setAttribute("data-message-render-key", "outgoing:local-id");
+    root.append(message);
+    root.scrollTop = 120;
+
+    setRect(root, { top: 100, bottom: 300 });
+    setRect(message, { top: 190, bottom: 240 });
+
+    expect(resolveVisibleWorkspaceMessageRenderAnchor(root)).toEqual({
+      messageKey: "outgoing:local-id",
+      offsetTop: 90,
+    });
+    expect(
+      computeWorkspaceScrollTopFromRenderAnchor(root, {
+        messageKey: "outgoing:local-id",
+        offsetTop: 40,
+      }),
+    ).toBe(170);
+    expect(findWorkspaceMessageNode(root, "server-message-uuid")).toBe(message);
   });
 
   it("falls back to scrollHeight delta after prepend", () => {

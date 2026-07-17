@@ -20,6 +20,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   hasInitialPayload: boolean;
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
+  resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   scrollToBottomKey: string | undefined;

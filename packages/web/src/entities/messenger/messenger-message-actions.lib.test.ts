@@ -113,6 +113,9 @@ describe("messenger message actions", () => {
     const cache = {
       writeConversationMessagePage: vi.fn(() => Promise.resolve()),
     };
+    const onBeforeMessageIndexed = vi.fn((message) => {
+      expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]).toBeUndefined();
+    });
 
     await expect(
       sendMessengerMessage({
@@ -124,6 +127,7 @@ describe("messenger message actions", () => {
         includeStreamConversation: true,
         client: { createMessage },
         cache,
+        onBeforeMessageIndexed,
       }),
     ).resolves.toEqual({
       status: "applied",
@@ -147,6 +151,9 @@ describe("messenger message actions", () => {
       },
     );
     expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+    expect(onBeforeMessageIndexed).toHaveBeenCalledWith(
+      expect.objectContaining({ uuid: MESSAGE_A }),
+    );
     expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
       1,
       ownerKey,
@@ -177,6 +184,51 @@ describe("messenger message actions", () => {
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+  });
+
+  it("does not wait for the cache before reporting a sent message", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const cacheWrite = createDeferred<void>();
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => cacheWrite.promise),
+    };
+    const createMessage = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _body: WorkspaceMessengerCreateMessageRequestBody,
+      ): Promise<WorkspaceMessengerMessageDto> => Promise.resolve(createMessageDto()),
+    );
+    const action = sendMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "Hello, workspace",
+      client: { createMessage },
+      cache,
+    });
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<"timed-out">((resolve) => {
+      timeoutId = setTimeout(() => resolve("timed-out"), 100);
+    });
+
+    const result = await Promise.race([action, timeout]);
+    if (timeoutId != null) {
+      clearTimeout(timeoutId);
+    }
+
+    expect(result).toEqual({
+      status: "applied",
+      ownerKey,
+      message: expect.objectContaining({ uuid: MESSAGE_A }),
+    });
+    expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(1);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ uuid: MESSAGE_A }),
+    );
+
+    cacheWrite.resolve();
   });
 
   it("skips stale edit results after the runtime owner changes", async () => {

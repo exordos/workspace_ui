@@ -100,6 +100,7 @@ export interface SendMessengerMessageOptions extends MessengerMessageActionBaseO
   topicUuid: MessengerUuid;
   markdown: string;
   includeStreamConversation?: boolean;
+  onBeforeMessageIndexed?: (message: MessengerMessage) => void;
 }
 
 export interface EditMessengerMessageOptions extends MessengerMessageActionBaseOptions {
@@ -202,6 +203,7 @@ export async function sendMessengerMessage({
   topicUuid,
   markdown,
   includeStreamConversation = false,
+  onBeforeMessageIndexed,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
   // Sending creates a markdown payload in the Workspace API and indexes the response into message lists.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
@@ -222,11 +224,13 @@ export async function sendMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
+  onBeforeMessageIndexed?.(message);
   store.getState().indexMessageIntoConversationBuckets(message, {
     includeStreamConversation,
   });
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
-  await writeMessagePageCacheBestEffort(
+  // Cache persistence must not delay the successful send transition in the UI.
+  void writeMessagePageCacheBestEffort(
     cache,
     action.ownerKey,
     conversationIdsForMessageAction(message, includeStreamConversation),
