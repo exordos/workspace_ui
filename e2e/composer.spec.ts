@@ -4,23 +4,19 @@
  * Tests input, formatting toolbar, emoji picker, and file attachments.
  */
 import { test, expect } from "./fixtures";
+import { expectReadyMessageComposer } from "./helpers/message-composer";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 
 test.describe("Message Composer", () => {
   test.beforeEach(async ({ authenticated }) => {
     await openStreamChatWithComposer(authenticated);
   });
-  test("shows composer when authenticated", async ({ authenticated }) => {
-    const composer = authenticated
-      .getByPlaceholder(/сообщение|message/i)
-      .or(authenticated.locator("textarea"))
-      .first();
-    await expect(composer).toBeVisible({ timeout: 10_000 });
+  test("shows an enabled composer for the selected chat", async ({ authenticated }) => {
+    await expectReadyMessageComposer(authenticated);
   });
 
   test("composer accepts text input", async ({ authenticated }) => {
-    const textarea = authenticated.locator("textarea").first();
-    await textarea.waitFor({ state: "visible", timeout: 10_000 });
+    const textarea = await expectReadyMessageComposer(authenticated);
     await textarea.fill("Hello world");
     await expect(textarea).toHaveValue("Hello world");
   });

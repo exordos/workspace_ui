@@ -6,6 +6,7 @@
  * Uses the authenticated fixture to bypass login.
  */
 import { test, expect } from "./fixtures";
+import { expectReadyMessageComposer } from "./helpers/message-composer";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 
 test.describe("Chat Page", () => {
@@ -19,11 +20,9 @@ test.describe("Chat Page", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  // The message composer should be present at the bottom
-  test("shows message composer", async ({ authenticated }) => {
-    await expect(
-      authenticated.getByPlaceholder(/сообщение|message/i).or(authenticated.locator("textarea")).first(),
-    ).toBeVisible({ timeout: 10_000 });
+  // A selected routed chat must make the composer ready for input.
+  test("shows a ready message composer for the selected chat", async ({ authenticated }) => {
+    await expectReadyMessageComposer(authenticated);
   });
 
   // Skip-to-content link should exist (accessibility)
