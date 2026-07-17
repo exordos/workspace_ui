@@ -6,7 +6,7 @@ import {
   createMessengerRealtimeActiveApplier,
   createMessengerRealtimeBackgroundApplier,
 } from "~/entities/messenger/messenger-realtime-applier.lib";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
@@ -166,7 +166,7 @@ function defaultRuntimeFactory({
   onDiagnostic,
 }: LayoutWorkspaceRealtimeRuntimeFactoryOptions): WorkspaceRealtimeTransportCore {
   return createWorkspaceRealtimeTransportCore({
-    clientOptions: buildMessengerRequestOptions(runtimeContext),
+    clientOptions: buildWorkspaceRequestOptions(runtimeContext),
     cursorStorage,
     applier,
     isOwnerCurrent,
@@ -202,7 +202,7 @@ function defaultRuntimeFactory({
 
 function defaultPresenceReporterFactory(runtimeContext: WorkspaceRuntimeContext): () => void {
   return startWorkspacePresenceReporter({
-    clientOptions: buildMessengerRequestOptions(runtimeContext),
+    clientOptions: buildWorkspaceRequestOptions(runtimeContext),
     userUuid: runtimeContext.userUuid,
     onError: (error) => {
       reportUnexpectedError("workspace-presence:report", error);

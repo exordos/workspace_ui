@@ -13,6 +13,7 @@ import type { WorkspaceRealtimeCursorStorageLike } from "~/shared/lib/workspace-
 import { createWorkspaceRealtimeNoopApplier } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import type {
   WorkspaceRealtimeRuntimeContext,
+  WorkspaceRealtimeRuntimeOptions,
   WorkspaceRealtimeTransportCore,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
@@ -22,6 +23,22 @@ import {
 import type { LayoutWorkspaceRealtimeRuntimeFactory } from "./layout-workspace-realtime.hook";
 
 const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const workspaceRealtimeRuntimeOptions = vi.hoisted(() => [] as unknown[]);
+const createWorkspaceRealtimeTransportCoreMock = vi.hoisted(() =>
+  vi.fn((options: unknown): WorkspaceRealtimeTransportCore => {
+    workspaceRealtimeRuntimeOptions.push(options);
+    return {
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+      catchUp: vi.fn(() => Promise.resolve()),
+      connect: vi.fn(() => Promise.resolve()),
+      disconnect: vi.fn(() => Promise.resolve()),
+      nudge: vi.fn(() => Promise.resolve()),
+      reconnect: vi.fn(() => Promise.resolve()),
+    };
+  }),
+);
+const startWorkspacePresenceReporterMock = vi.hoisted(() => vi.fn(() => () => undefined));
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -35,6 +52,24 @@ const DATE = "2026-06-22T10:10:00Z";
 vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
   ensureFreshWorkspaceSession: ensureFreshWorkspaceSessionMock,
 }));
+
+vi.mock("~/entities/user/user-workspace-presence-reporter.lib", () => ({
+  startWorkspacePresenceReporter: startWorkspacePresenceReporterMock,
+}));
+
+vi.mock(
+  "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib")
+      >();
+    return {
+      ...actual,
+      createWorkspaceRealtimeTransportCore: createWorkspaceRealtimeTransportCoreMock,
+    };
+  },
+);
 
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
@@ -117,6 +152,9 @@ describe("useLayoutWorkspaceRealtime", () => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     ensureFreshWorkspaceSessionMock.mockClear();
+    createWorkspaceRealtimeTransportCoreMock.mockClear();
+    workspaceRealtimeRuntimeOptions.length = 0;
+    startWorkspacePresenceReporterMock.mockClear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
@@ -129,6 +167,7 @@ describe("useLayoutWorkspaceRealtime", () => {
   afterEach(() => {
     vi.clearAllMocks();
     ensureFreshWorkspaceSessionMock.mockClear();
+    workspaceRealtimeRuntimeOptions.length = 0;
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
@@ -171,6 +210,42 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       surface: "active",
     });
+  });
+
+  it("uses the common Workspace API base for default realtime and presence in production", async () => {
+    const originalDev = import.meta.env.DEV;
+    (import.meta.env as Record<string, unknown>).DEV = false;
+
+    try {
+      const session = createSession();
+      setWorkspaceSession(session);
+      const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+      renderHook(() =>
+        useLayoutWorkspaceRealtime({
+          enabled: true,
+          pathname: "/org/org-a/project/project-a/messenger",
+          cursorStorageFactory: () => cursorStorage,
+          applier: createWorkspaceRealtimeNoopApplier(),
+        }),
+      );
+
+      await waitFor(() => {
+        expect(createWorkspaceRealtimeTransportCoreMock).toHaveBeenCalledTimes(1);
+        expect(startWorkspacePresenceReporterMock).toHaveBeenCalledTimes(1);
+      });
+
+      const runtimeOptions = workspaceRealtimeRuntimeOptions[0] as WorkspaceRealtimeRuntimeOptions;
+      const expectedBaseUrl = "https://workspace.example.com/api/workspace/v1";
+      expect(runtimeOptions.clientOptions.baseUrl).toBe(expectedBaseUrl);
+      expect(startWorkspacePresenceReporterMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientOptions: expect.objectContaining({ baseUrl: expectedBaseUrl }),
+        }),
+      );
+    } finally {
+      (import.meta.env as Record<string, unknown>).DEV = originalDev;
+    }
   });
 
   it("starts and cleans up Workspace presence reporter on active route", async () => {
