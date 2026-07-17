@@ -1067,13 +1067,35 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     if (prev.firstId !== messageFirstId) return;
     if (focusedMessageId != null) return;
     if (pendingPrependScrollRef.current != null) return;
-    if (!wasAtBottomRef.current) return;
-    if (unreadAnchorId != null && unreadCount > 0 && !userScrollSeenRef.current) return;
+    const hasOwnOptimisticAppend = messages
+      .slice(prev.length)
+      .some(
+        (message) =>
+          message.delivery_status === "sending" &&
+          isMessageFromCurrentUser(message, currentUserId ?? null),
+      );
+    if (!hasOwnOptimisticAppend && !wasAtBottomRef.current) return;
+    if (
+      !hasOwnOptimisticAppend &&
+      unreadAnchorId != null &&
+      unreadCount > 0 &&
+      !userScrollSeenRef.current
+    ) {
+      return;
+    }
 
     const el = scrollRef.current;
     if (!el) return;
 
-    logScrollMetrics("scroll:toBottom", { reason: "tailAppend" });
+    if (hasOwnOptimisticAppend) {
+      // Sending is an explicit user intent to continue at the tail. It also
+      // unlocks the normal at-bottom read dispatch for messages now in view.
+      userScrollSeenRef.current = true;
+      suppressReadUntilMsRef.current = 0;
+    }
+    logScrollMetrics("scroll:toBottom", {
+      reason: hasOwnOptimisticAppend ? "ownOptimisticAppend" : "tailAppend",
+    });
     runProgrammaticScroll(() => {
       scrollToBottom(el);
       syncWasAtBottomFromElement(el);
@@ -1082,7 +1104,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     focusedMessageId,
     logScrollMetrics,
     messageFirstId,
-    messages.length,
+    messages,
+    currentUserId,
     runProgrammaticScroll,
     syncWasAtBottomFromElement,
     unreadAnchorId,

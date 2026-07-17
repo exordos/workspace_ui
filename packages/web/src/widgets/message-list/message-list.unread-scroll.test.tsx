@@ -877,6 +877,68 @@ describe("MessageList unread anchor scroll", () => {
 
     expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
+
+  it("marks loaded unread messages after an optimistic own append forces the list to bottom", async () => {
+    const onUnreadMessagesVisible = vi.fn();
+    const base = [
+      msg(1, { sender_id: 99, read: true }),
+      msg(2, { sender_id: 43, read: false }),
+      msg(3, { sender_id: 43, read: false }),
+    ];
+
+    scrollToBottomMock.mockImplementation((element: HTMLElement) => {
+      element.scrollTop = element.scrollHeight;
+    });
+
+    const { rerender } = render(
+      <MessageList
+        messages={base}
+        currentUserId={7}
+        firstUnreadId={testMessageId(2)}
+        unreadCount={2}
+        scrollToBottomKey="own-append-read"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2400 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 200 });
+    fireEvent.scroll(feed);
+
+    onUnreadMessagesVisible.mockClear();
+    scrollToBottomMock.mockClear();
+
+    const ownMessageId = testMessageId(4);
+    rerender(
+      <MessageList
+        messages={[
+          ...base,
+          msg(ownMessageId, {
+            sender_id: 7,
+            is_own: true,
+            read: true,
+            delivery_status: "sending",
+            local_echo_key: ownMessageId,
+          }),
+        ]}
+        currentUserId={7}
+        firstUnreadId={testMessageId(2)}
+        unreadCount={2}
+        scrollToBottomKey="own-append-read"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+    expect(feed.scrollTop).toBe(feed.scrollHeight);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([testMessageId(2), testMessageId(3)]);
+  });
 });
 
 describe("MessageList chat open initial scroll", () => {

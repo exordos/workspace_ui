@@ -22,6 +22,7 @@ vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
 const MESSAGE_ID_1 = testMessageId(1);
 const MESSAGE_ID_2 = testMessageId(2);
 const MESSAGE_ID_3 = testMessageId(3);
+const MESSAGE_ID_4 = testMessageId(4);
 const MESSAGE_ID_11 = testMessageId(11);
 const MESSAGE_ID_12 = testMessageId(12);
 
@@ -727,7 +728,7 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("does not scroll to bottom when a new own message appears away from bottom", () => {
+  it("scrolls to bottom when an optimistic own message appears away from bottom", () => {
     const scrollTo = vi.fn();
     const { rerender } = render(
       <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} />,
@@ -744,12 +745,22 @@ describe("MessageList focused message behavior", () => {
 
     rerender(
       <MessageList
-        messages={[msg(1), msg(2), msg(3), msg(4, { sender_id: 7 })]}
+        messages={[
+          msg(1),
+          msg(2),
+          msg(3),
+          msg(4, {
+            sender_id: 7,
+            is_own: true,
+            delivery_status: "sending",
+            local_echo_key: MESSAGE_ID_4,
+          }),
+        ]}
         currentUserId={7}
       />,
     );
 
-    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1200, behavior: "instant" });
   });
 
   it("uses smooth scrolling when the scroll-to-bottom button is clicked", () => {
