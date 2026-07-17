@@ -187,6 +187,9 @@ export interface WorkspaceMessengerUserDto {
 
 export interface WorkspaceMessengerEpochDto {
   epoch_version: WorkspaceMessengerEpochVersion;
+  epoch_generation: string;
+  current_epoch_version: WorkspaceMessengerEpochVersion;
+  minimum_epoch_version: WorkspaceMessengerEpochVersion;
 }
 
 export interface WorkspaceMessengerCreateFolderRequestBody {
@@ -291,6 +294,17 @@ export interface WorkspaceMessengerStreamBindingsCreatedPayloadDto {
   items: WorkspaceMessengerStreamBindingDto[];
 }
 
+export type WorkspaceMessengerStreamBindingUpdatedPayloadDto = {
+  kind: "stream_binding.updated";
+} & WorkspaceMessengerStreamBindingDto;
+
+export interface WorkspaceMessengerStreamBindingDeletedPayloadDto {
+  kind: "stream_binding.deleted";
+  uuid: WorkspaceMessengerUuid;
+  stream_uuid: WorkspaceMessengerUuid;
+  user_uuid: WorkspaceMessengerUuid;
+}
+
 export interface WorkspaceMessengerTopicDeletedPayloadDto {
   kind: "topic.deleted";
   uuid: WorkspaceMessengerUuid;
@@ -309,6 +323,30 @@ export interface WorkspaceMessengerUuidDeletedPayloadDto {
   uuid: WorkspaceMessengerUuid;
 }
 
+export interface WorkspaceMessengerFileDto {
+  uuid: WorkspaceMessengerUuid;
+  project_id: WorkspaceMessengerUuid;
+  user_uuid: WorkspaceMessengerUuid;
+  stream_uuid: WorkspaceMessengerUuid | null;
+  name: string;
+  description: string;
+  content_type: string;
+  size_bytes: number;
+  hash: string;
+  created_at: WorkspaceMessengerDateTime;
+  updated_at: WorkspaceMessengerDateTime;
+}
+
+export type WorkspaceMessengerFileCreatedOrUpdatedPayloadDto = {
+  kind: "file.created" | "file.updated";
+} & WorkspaceMessengerFileDto;
+
+export interface WorkspaceMessengerFileDeletedPayloadDto {
+  kind: "file.deleted";
+  uuid: WorkspaceMessengerUuid;
+  stream_uuid: WorkspaceMessengerUuid | null;
+}
+
 export type WorkspaceMessengerUserUpdatedPayloadDto = {
   kind: "user.updated";
 } & WorkspaceMessengerUserDto;
@@ -318,6 +356,8 @@ export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "stream.created" | "stream.updated" | "stream.read" } & WorkspaceMessengerStreamDto)
   | WorkspaceMessengerStreamDeletedPayloadDto
   | WorkspaceMessengerStreamBindingsCreatedPayloadDto
+  | WorkspaceMessengerStreamBindingUpdatedPayloadDto
+  | WorkspaceMessengerStreamBindingDeletedPayloadDto
   | ({ kind: "topic.created" | "topic.updated" | "topic.read" } & WorkspaceMessengerTopicDto)
   | WorkspaceMessengerTopicDeletedPayloadDto
   | ({
@@ -328,6 +368,8 @@ export type WorkspaceMessengerEventPayloadDto =
   | WorkspaceMessengerMessageReactionEventPayloadDto
   | ({ kind: "folder.created" | "folder.updated" } & WorkspaceMessengerFolderDto)
   | WorkspaceMessengerUuidDeletedPayloadDto
+  | WorkspaceMessengerFileCreatedOrUpdatedPayloadDto
+  | WorkspaceMessengerFileDeletedPayloadDto
   | WorkspaceMessengerUserUpdatedPayloadDto;
 
 export type WorkspaceMessengerEventObjectType =
@@ -338,7 +380,8 @@ export type WorkspaceMessengerEventObjectType =
   | "topic"
   | "user"
   | "folder"
-  | "folder_item";
+  | "folder_item"
+  | "file";
 
 export type WorkspaceMessengerEventAction = "created" | "updated" | "deleted" | "read";
 
@@ -445,6 +488,22 @@ export type WorkspaceRealtimeEvent =
     }
   | {
       epoch_version: WorkspaceMessengerEpochVersion;
+      type: "stream_binding";
+      kind: "stream_binding.updated";
+      stream_binding: WorkspaceMessengerStreamBindingDto;
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "stream_binding";
+      kind: "stream_binding.deleted";
+      stream_binding: {
+        uuid: WorkspaceMessengerUuid;
+        stream_uuid: WorkspaceMessengerUuid;
+        user_uuid: WorkspaceMessengerUuid;
+      };
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
       type: "topic";
       kind: "topic.created" | "topic.updated";
       topic: WorkspaceMessengerTopicDto;
@@ -475,6 +534,18 @@ export type WorkspaceRealtimeEvent =
     }
   | {
       epoch_version: WorkspaceMessengerEpochVersion;
+      type: "file";
+      kind: "file.created" | "file.updated";
+      file: WorkspaceMessengerFileDto;
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "file";
+      kind: "file.deleted";
+      file: { uuid: WorkspaceMessengerUuid; stream_uuid: WorkspaceMessengerUuid | null };
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
       type: "user";
       kind: "user.updated";
       user: WorkspaceMessengerUserDto;
@@ -486,47 +557,38 @@ export interface WorkspaceMessengerMessageDeletedPayloadDtoWithoutKind {
   topic_uuid: WorkspaceMessengerUuid;
 }
 
-export interface WorkspaceMessengerWebSocketHelloFrameDto {
-  type: "hello";
-  user_uuid: WorkspaceMessengerUuid;
-  project_id: WorkspaceMessengerUuid;
+export interface WorkspaceMessengerWebSocketReadyFrameDto {
+  type: "ready";
+  epoch_generation: string;
   epoch_version: WorkspaceMessengerEpochVersion;
-}
-
-export interface WorkspaceMessengerWebSocketConnectedFrameDto {
-  // connected - служебное приветствие от шлюза. Оно может дать только epoch_version,
-  // поэтому поля owner-а здесь optional и не должны ломать соединение.
-  type: "connected";
-  user_uuid?: WorkspaceMessengerUuid;
-  project_id?: WorkspaceMessengerUuid;
-  epoch_version?: WorkspaceMessengerEpochVersion;
-}
-
-export interface WorkspaceMessengerWebSocketPingFrameDto {
-  // ts optional: часть серверных сборок присылает просто { type: "ping" }.
-  // Runtime skips legacy ping frames before the domain layer.
-  type: "ping";
-  ts?: WorkspaceMessengerDateTime;
 }
 
 export interface WorkspaceMessengerWebSocketErrorFrameDto {
   type: "error";
-  code: string;
+  code: 410;
+  error: "epoch_pruned";
   message: string;
+  reason: string;
+  epoch_generation: string;
+  current_epoch_version: WorkspaceMessengerEpochVersion;
+  minimum_epoch_version: WorkspaceMessengerEpochVersion;
 }
 
-export interface WorkspaceMessengerWebSocketEventFrameDto {
-  type: "event";
-  event: WorkspaceRealtimeEvent;
+export interface WorkspaceEventsCursorExpiredErrorDto {
+  type: "EventsCursorExpiredError";
+  code: 410;
+  error: "epoch_pruned";
+  message: string;
+  reason: string;
+  epoch_generation: string;
+  current_epoch_version: WorkspaceMessengerEpochVersion;
+  minimum_epoch_version: WorkspaceMessengerEpochVersion;
 }
 
 export type WorkspaceMessengerWebSocketFrameDto =
   | WorkspaceMessengerRealtimeEventDto
-  | WorkspaceMessengerWebSocketHelloFrameDto
-  | WorkspaceMessengerWebSocketConnectedFrameDto
-  | WorkspaceMessengerWebSocketPingFrameDto
-  | WorkspaceMessengerWebSocketErrorFrameDto
-  | WorkspaceMessengerWebSocketEventFrameDto;
+  | WorkspaceMessengerWebSocketReadyFrameDto
+  | WorkspaceMessengerWebSocketErrorFrameDto;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -626,7 +688,8 @@ function isWorkspaceMessengerEventObjectType(
     value === "topic" ||
     value === "user" ||
     value === "folder" ||
-    value === "folder_item"
+    value === "folder_item" ||
+    value === "file"
   );
 }
 
@@ -664,6 +727,10 @@ function expectedWorkspaceMessengerEventMetadata(payloadKind: string): {
       return { objectType: "stream", action: "read" };
     case "stream_bindings.created":
       return { objectType: "stream_binding", action: "created" };
+    case "stream_binding.updated":
+      return { objectType: "stream_binding", action: "updated" };
+    case "stream_binding.deleted":
+      return { objectType: "stream_binding", action: "deleted" };
     case "topic.created":
       return { objectType: "topic", action: "created" };
     case "topic.updated":
@@ -682,6 +749,12 @@ function expectedWorkspaceMessengerEventMetadata(payloadKind: string): {
       return { objectType: "folder", action: "deleted" };
     case "folder_item.deleted":
       return { objectType: "folder_item", action: "deleted" };
+    case "file.created":
+      return { objectType: "file", action: "created" };
+    case "file.updated":
+      return { objectType: "file", action: "updated" };
+    case "file.deleted":
+      return { objectType: "file", action: "deleted" };
     default:
       return null;
   }
@@ -947,7 +1020,30 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
 }
 
 export function isWorkspaceMessengerEpochDto(value: unknown): value is WorkspaceMessengerEpochDto {
-  return isRecord(value) && isNonNegativeInteger(value.epoch_version);
+  return (
+    isRecord(value) &&
+    isNonNegativeInteger(value.epoch_version) &&
+    isNonEmptyString(value.epoch_generation) &&
+    isNonNegativeInteger(value.current_epoch_version) &&
+    isNonNegativeInteger(value.minimum_epoch_version)
+  );
+}
+
+export function isWorkspaceMessengerFileDto(value: unknown): value is WorkspaceMessengerFileDto {
+  return (
+    isRecord(value) &&
+    isUuid(value.uuid) &&
+    isUuid(value.project_id) &&
+    isUuid(value.user_uuid) &&
+    isNullableUuid(value.stream_uuid) &&
+    isNonEmptyString(value.name) &&
+    typeof value.description === "string" &&
+    isNonEmptyString(value.content_type) &&
+    isNonNegativeInteger(value.size_bytes) &&
+    isNonEmptyString(value.hash) &&
+    isDateTime(value.created_at) &&
+    isDateTime(value.updated_at)
+  );
 }
 
 export function isWorkspaceMessengerEventPayloadDto(
@@ -970,6 +1066,10 @@ export function isWorkspaceMessengerEventPayloadDto(
         Array.isArray(value.items) &&
         value.items.every(isWorkspaceMessengerStreamBindingDto)
       );
+    case "stream_binding.updated":
+      return isWorkspaceMessengerStreamBindingDto(value);
+    case "stream_binding.deleted":
+      return isUuid(value.uuid) && isUuid(value.stream_uuid) && isUuid(value.user_uuid);
     case "topic.created":
     case "topic.updated":
     case "topic.read":
@@ -998,6 +1098,11 @@ export function isWorkspaceMessengerEventPayloadDto(
     case "folder.deleted":
     case "folder_item.deleted":
       return isUuid(value.uuid);
+    case "file.created":
+    case "file.updated":
+      return isWorkspaceMessengerFileDto(value);
+    case "file.deleted":
+      return isUuid(value.uuid) && isNullableUuid(value.stream_uuid);
     case "user.updated":
       return isWorkspaceMessengerUserDto(value);
     default:
@@ -1096,6 +1201,78 @@ export function isWorkspaceMessengerServerSettingsDto(
   );
 }
 
+function isWorkspaceRealtimeMessageEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "message.deleted") {
+    return isMessageDeleteDto(value.message);
+  }
+  return (
+    (value.kind === undefined || value.kind === "message.updated") &&
+    isWorkspaceMessengerMessageDto(value.message)
+  );
+}
+
+function isWorkspaceRealtimeStreamEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "stream.deleted") {
+    return isUuidOnlyDto(value.stream);
+  }
+  return (
+    (value.kind === "stream.created" || value.kind === "stream.updated") &&
+    isWorkspaceMessengerStreamDto(value.stream)
+  );
+}
+
+function isWorkspaceRealtimeStreamBindingEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "stream_bindings.created") {
+    return (
+      isUuid(value.stream_uuid) &&
+      Array.isArray(value.stream_bindings) &&
+      value.stream_bindings.every(isWorkspaceMessengerStreamBindingDto)
+    );
+  }
+  if (value.kind === "stream_binding.updated") {
+    return isWorkspaceMessengerStreamBindingDto(value.stream_binding);
+  }
+  return (
+    value.kind === "stream_binding.deleted" &&
+    isRecord(value.stream_binding) &&
+    isUuid(value.stream_binding.uuid) &&
+    isUuid(value.stream_binding.stream_uuid) &&
+    isUuid(value.stream_binding.user_uuid)
+  );
+}
+
+function isWorkspaceRealtimeTopicEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "topic.deleted") {
+    return isTopicDeleteDto(value.topic);
+  }
+  return (
+    (value.kind === "topic.created" || value.kind === "topic.updated") &&
+    isWorkspaceMessengerTopicDto(value.topic)
+  );
+}
+
+function isWorkspaceRealtimeFolderEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "folder.deleted") {
+    return isUuidOnlyDto(value.folder);
+  }
+  return (
+    (value.kind === "folder.created" || value.kind === "folder.updated") &&
+    isWorkspaceMessengerFolderDto(value.folder)
+  );
+}
+
+function isWorkspaceRealtimeFileEvent(value: Record<string, unknown>): boolean {
+  if (value.kind === "file.deleted") {
+    return (
+      isRecord(value.file) && isUuid(value.file.uuid) && isNullableUuid(value.file.stream_uuid)
+    );
+  }
+  return (
+    (value.kind === "file.created" || value.kind === "file.updated") &&
+    isWorkspaceMessengerFileDto(value.file)
+  );
+}
+
 export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceRealtimeEvent {
   if (!isRecord(value) || !isNonNegativeInteger(value.epoch_version)) {
     return false;
@@ -1103,34 +1280,19 @@ export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceReal
 
   switch (value.type) {
     case "message":
-      return value.kind === "message.deleted"
-        ? isMessageDeleteDto(value.message)
-        : (value.kind === undefined || value.kind === "message.updated") &&
-            isWorkspaceMessengerMessageDto(value.message);
+      return isWorkspaceRealtimeMessageEvent(value);
     case "stream":
-      return value.kind === "stream.deleted"
-        ? isUuidOnlyDto(value.stream)
-        : (value.kind === "stream.created" || value.kind === "stream.updated") &&
-            isWorkspaceMessengerStreamDto(value.stream);
+      return isWorkspaceRealtimeStreamEvent(value);
     case "stream_binding":
-      return (
-        value.kind === "stream_bindings.created" &&
-        isUuid(value.stream_uuid) &&
-        Array.isArray(value.stream_bindings) &&
-        value.stream_bindings.every(isWorkspaceMessengerStreamBindingDto)
-      );
+      return isWorkspaceRealtimeStreamBindingEvent(value);
     case "topic":
-      return value.kind === "topic.deleted"
-        ? isTopicDeleteDto(value.topic)
-        : (value.kind === "topic.created" || value.kind === "topic.updated") &&
-            isWorkspaceMessengerTopicDto(value.topic);
+      return isWorkspaceRealtimeTopicEvent(value);
     case "folder":
-      return value.kind === "folder.deleted"
-        ? isUuidOnlyDto(value.folder)
-        : (value.kind === "folder.created" || value.kind === "folder.updated") &&
-            isWorkspaceMessengerFolderDto(value.folder);
+      return isWorkspaceRealtimeFolderEvent(value);
     case "folder_item":
       return value.kind === "folder_item.deleted" && isUuidOnlyDto(value.folder_item);
+    case "file":
+      return isWorkspaceRealtimeFileEvent(value);
     case "user":
       return value.kind === "user.updated" && isWorkspaceMessengerUserDto(value.user);
     default:
@@ -1152,25 +1314,35 @@ export function isWorkspaceMessengerWebSocketFrameDto(
   }
 
   switch (value.type) {
-    case "hello":
-      return (
-        isUuid(value.user_uuid) &&
-        isUuid(value.project_id) &&
-        isNonNegativeInteger(value.epoch_version)
-      );
-    case "connected":
-      return (
-        (value.user_uuid === undefined || isUuid(value.user_uuid)) &&
-        (value.project_id === undefined || isUuid(value.project_id)) &&
-        (value.epoch_version === undefined || isNonNegativeInteger(value.epoch_version))
-      );
-    case "ping":
-      return value.ts === undefined || isDateTime(value.ts);
+    case "ready":
+      return isNonEmptyString(value.epoch_generation) && isNonNegativeInteger(value.epoch_version);
     case "error":
-      return typeof value.code === "string" && typeof value.message === "string";
-    case "event":
-      return isWorkspaceRealtimeEvent(value.event);
+      return (
+        value.code === 410 &&
+        value.error === "epoch_pruned" &&
+        typeof value.message === "string" &&
+        isNonEmptyString(value.reason) &&
+        isNonEmptyString(value.epoch_generation) &&
+        isNonNegativeInteger(value.current_epoch_version) &&
+        isNonNegativeInteger(value.minimum_epoch_version)
+      );
     default:
       return false;
   }
+}
+
+export function isWorkspaceEventsCursorExpiredErrorDto(
+  value: unknown,
+): value is WorkspaceEventsCursorExpiredErrorDto {
+  return (
+    isRecord(value) &&
+    value.type === "EventsCursorExpiredError" &&
+    value.code === 410 &&
+    value.error === "epoch_pruned" &&
+    typeof value.message === "string" &&
+    isNonEmptyString(value.reason) &&
+    isNonEmptyString(value.epoch_generation) &&
+    isNonNegativeInteger(value.current_epoch_version) &&
+    isNonNegativeInteger(value.minimum_epoch_version)
+  );
 }

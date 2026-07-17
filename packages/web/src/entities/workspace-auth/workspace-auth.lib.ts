@@ -89,7 +89,11 @@ function joinOriginPath(origin: string, path: string): string {
 }
 
 function messengerBaseUrlForOrganizationOrigin(origin: string): string {
-  return joinOriginPath(origin, "/api/messenger/v1");
+  return joinOriginPath(origin, "/api/workspace/v1/messenger");
+}
+
+function workspaceBaseUrlForOrganizationOrigin(origin: string): string {
+  return joinOriginPath(origin, "/api/workspace/v1");
 }
 
 function iamTokenUrlForOrganizationOrigin(origin: string): string {
@@ -667,7 +671,7 @@ export async function loginWorkspaceWithPassword({
     );
   }
   const safeOrigin = guard.nonEmpty(organizationOrigin, "workspaceAuth.organizationOrigin");
-  const messengerBaseUrl = messengerBaseUrlForOrganizationOrigin(safeOrigin);
+  const workspaceBaseUrl = workspaceBaseUrlForOrganizationOrigin(safeOrigin);
   const tokenUrl = iamTokenUrlForOrganizationOrigin(safeOrigin);
 
   const serverSettings = await fetchWorkspaceServerSettingsForOrganization(organizationUrl, {
@@ -694,7 +698,7 @@ export async function loginWorkspaceWithPassword({
 
   const profile = await loadWorkspaceProfileOrFallback({
     accessToken: token.accessToken,
-    baseUrl: messengerBaseUrl,
+    baseUrl: workspaceBaseUrl,
     fetchImpl,
     signal,
     userUuid,

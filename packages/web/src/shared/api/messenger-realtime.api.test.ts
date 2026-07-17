@@ -1,24 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
+import { getServerSettings } from "./messenger-client";
 import {
   buildMessengerWebSocketProtocols,
   buildMessengerWebSocketUrl,
-  getEpoch,
-  getEvents,
-  getEventsPage,
-  getServerSettings,
-  getUser,
-  getUsers,
-  getUsersPage,
   normalizeWorkspaceRestEvent,
   normalizeWorkspaceWebSocketFrame,
   parseWorkspaceWebSocketFrame,
 } from "./messenger-realtime.api";
+import {
+  getEpoch,
+  getEvents,
+  getEventsPage,
+  getUser,
+  getUsers,
+  getUsersPage,
+} from "./workspace-client";
 import type {
   WorkspaceMessengerEventAction,
   WorkspaceMessengerEventDto,
   WorkspaceMessengerEventObjectType,
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
+  WorkspaceMessengerFileDto,
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerRawEventDto,
   WorkspaceMessengerStreamBindingDto,
@@ -180,6 +183,20 @@ const folderDto: WorkspaceMessengerFolderDto = {
   updated_at: DATE,
 };
 
+const fileDto: WorkspaceMessengerFileDto = {
+  uuid: "3f718b7e-9c1b-4e65-b33f-cfd8f72d9df5",
+  project_id: PROJECT_UUID,
+  user_uuid: USER_UUID,
+  stream_uuid: STREAM_UUID,
+  name: "handoff.txt",
+  description: "Handoff notes",
+  content_type: "text/plain",
+  size_bytes: 12,
+  hash: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  created_at: DATE,
+  updated_at: DATE,
+};
+
 function eventActionFromKind(
   kind: WorkspaceMessengerEventDto["payload"]["kind"],
 ): WorkspaceMessengerEventAction {
@@ -195,11 +212,14 @@ function eventObjectTypeFromKind(
   if (kind.startsWith("message_reaction.")) return "message_reaction";
   if (kind === "messages.read") return "message";
   if (kind.startsWith("message.")) return "message";
-  if (kind.startsWith("stream_bindings.")) return "stream_binding";
+  if (kind.startsWith("stream_bindings.") || kind.startsWith("stream_binding.")) {
+    return "stream_binding";
+  }
   if (kind.startsWith("stream.")) return "stream";
   if (kind.startsWith("topic.")) return "topic";
   if (kind.startsWith("folder_item.")) return "folder_item";
   if (kind.startsWith("folder.")) return "folder";
+  if (kind.startsWith("file.")) return "file";
   return "user";
 }
 
@@ -279,7 +299,7 @@ describe("messenger-realtime.api", () => {
     });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/server_settings");
+    expect(url).toBe("/api/workspace/v1/messenger/server_settings");
     expect(init?.headers).toEqual({
       Accept: "application/json",
     });
@@ -290,13 +310,13 @@ describe("messenger-realtime.api", () => {
     await expect(
       getUser({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID),
     ).resolves.toEqual(userDto);
-    expect(firstFetchCall(fetchMock)[0]).toBe(`/api/messenger/v1/users/${USER_UUID}`);
+    expect(firstFetchCall(fetchMock)[0]).toBe(`/api/workspace/v1/users/${USER_UUID}`);
 
     const usersFetchMock = createFetchMock([userDto]);
     await expect(
       getUsers({ accessToken: "access-token", fetchImpl: usersFetchMock }),
     ).resolves.toEqual([userDto]);
-    expect(firstFetchCall(usersFetchMock)[0]).toBe("/api/messenger/v1/users/");
+    expect(firstFetchCall(usersFetchMock)[0]).toBe("/api/workspace/v1/users/");
 
     const eventDto = createEvent({ kind: "message.created", ...messageDto });
     const eventsFetchMock = createFetchMock([eventDto]);
@@ -304,22 +324,27 @@ describe("messenger-realtime.api", () => {
       getEvents(
         {
           accessToken: "access-token",
-          baseUrl: "/api/messenger/v1",
+          baseUrl: "/api/workspace/v1",
           fetchImpl: eventsFetchMock,
           projectId: PROJECT_UUID,
         },
-        { afterEpochVersion: 123 },
+        { afterEpochVersion: 123, epochGeneration: "generation-a" },
       ),
     ).resolves.toEqual([eventDto]);
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      "/api/messenger/v1/events/?epoch_version%3E=123",
+      "/api/workspace/v1/events/?epoch_version%3E=123&epoch_generation=generation-a",
     );
 
-    const epochFetchMock = createFetchMock({ epoch_version: 124 });
+    const epochFetchMock = createFetchMock({
+      epoch_version: 124,
+      epoch_generation: "generation-a",
+      current_epoch_version: 124,
+      minimum_epoch_version: 1,
+    });
     await expect(
       getEpoch({ accessToken: "access-token", fetchImpl: epochFetchMock }),
-    ).resolves.toEqual({ epoch_version: 124 });
-    expect(firstFetchCall(epochFetchMock)[0]).toBe("/api/messenger/v1/epoch/");
+    ).resolves.toMatchObject({ epoch_version: 124, epoch_generation: "generation-a" });
+    expect(firstFetchCall(epochFetchMock)[0]).toBe("/api/workspace/v1/epoch/");
   });
 
   it("returns users and events pagination metadata", async () => {
@@ -338,7 +363,7 @@ describe("messenger-realtime.api", () => {
       pageLimit: 50,
     });
     expect(firstFetchCall(usersFetchMock)[0]).toBe(
-      "/api/messenger/v1/users/?page_limit=50&page_marker=prev",
+      "/api/workspace/v1/users/?page_limit=50&page_marker=prev",
     );
 
     const eventDto = createEvent({ kind: "message.created", ...messageDto });
@@ -349,7 +374,7 @@ describe("messenger-realtime.api", () => {
     await expect(
       getEventsPage(
         { accessToken: "access-token", fetchImpl: eventsFetchMock, projectId: PROJECT_UUID },
-        { afterEpochVersion: 123, pageLimit: 500 },
+        { afterEpochVersion: 123, epochGeneration: "generation-a", pageLimit: 500 },
       ),
     ).resolves.toEqual({
       items: [eventDto],
@@ -357,7 +382,7 @@ describe("messenger-realtime.api", () => {
       pageLimit: 500,
     });
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      "/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123",
+      "/api/workspace/v1/events/?page_limit=500&epoch_version%3E=123&epoch_generation=generation-a",
     );
   });
 
@@ -371,7 +396,7 @@ describe("messenger-realtime.api", () => {
     await expect(
       getEventsPage(
         { accessToken: "access-token", fetchImpl: fetchMock, projectId: PROJECT_UUID },
-        { afterEpochVersion: 123, pageLimit: 500 },
+        { afterEpochVersion: 123, epochGeneration: "generation-a", pageLimit: 500 },
       ),
     ).resolves.toEqual({
       items: [rawEvent],
@@ -399,20 +424,23 @@ describe("messenger-realtime.api", () => {
     ]);
 
     await expect(getEvents({ accessToken: "access-token", fetchImpl: fetchMock })).rejects.toThrow(
-      "Expected valid messenger events response item at index 0",
+      "Expected valid workspace events response item at index 0",
     );
   });
 
   it("builds websocket URL and protocols", () => {
-    expect(buildMessengerWebSocketUrl({ lastEpochVersion: 124 })).toBe(
-      "/api/messenger/ws?last_epoch_version=124",
-    );
+    expect(
+      buildMessengerWebSocketUrl({ lastEpochVersion: 124, epochGeneration: "generation-a" }),
+    ).toBe("/api/workspace/v1/events/ws?last_epoch_version=124&epoch_generation=generation-a");
     expect(
       buildMessengerWebSocketUrl({
         baseUrl: "https://chat.example.com/",
         lastEpochVersion: 125,
+        epochGeneration: "generation-a",
       }),
-    ).toBe(`wss://chat.example.com/api/messenger/ws?last_epoch_version=125`);
+    ).toBe(
+      `wss://chat.example.com/api/workspace/v1/events/ws?last_epoch_version=125&epoch_generation=generation-a`,
+    );
     expect(buildMessengerWebSocketProtocols("  access-token  ")).toEqual([
       "workspace.events.v1",
       "bearer.access-token",
@@ -421,19 +449,8 @@ describe("messenger-realtime.api", () => {
 
   it("parses websocket string frames and rejects invalid input", () => {
     const websocketEvent = createEvent({ kind: "message.created", ...messageDto }, 125);
-    const helloFrame = {
-      type: "hello",
-      user_uuid: USER_UUID,
-      project_id: PROJECT_UUID,
-      epoch_version: 124,
-    };
-    expect(parseWorkspaceWebSocketFrame(JSON.stringify(helloFrame))).toEqual(helloFrame);
-    expect(parseWorkspaceWebSocketFrame(JSON.stringify({ type: "connected" }))).toEqual({
-      type: "connected",
-    });
-    expect(parseWorkspaceWebSocketFrame(JSON.stringify({ type: "ping" }))).toEqual({
-      type: "ping",
-    });
+    const readyFrame = { type: "ready", epoch_generation: "generation-a", epoch_version: 124 };
+    expect(parseWorkspaceWebSocketFrame(JSON.stringify(readyFrame))).toEqual(readyFrame);
 
     expect(parseWorkspaceWebSocketFrame(JSON.stringify(websocketEvent))).toEqual(websocketEvent);
     expect(parseWorkspaceWebSocketFrame(JSON.stringify(createRawEvent(126)))).toEqual(
@@ -502,6 +519,17 @@ describe("messenger-realtime.api", () => {
 
     expect(
       normalizeWorkspaceRestEvent(
+        createEvent({ kind: "stream_binding.updated", ...streamBindingDto }),
+      ),
+    ).toEqual({
+      epoch_version: 124,
+      type: "stream_binding",
+      kind: "stream_binding.updated",
+      stream_binding: streamBindingDto,
+    });
+
+    expect(
+      normalizeWorkspaceRestEvent(
         createEvent({
           kind: "topic.deleted",
           uuid: TOPIC_UUID,
@@ -516,6 +544,13 @@ describe("messenger-realtime.api", () => {
         uuid: TOPIC_UUID,
         stream_uuid: STREAM_UUID,
       },
+    });
+
+    expect(normalizeWorkspaceRestEvent(createEvent({ kind: "file.updated", ...fileDto }))).toEqual({
+      epoch_version: 124,
+      type: "file",
+      kind: "file.updated",
+      file: fileDto,
     });
 
     expect(
@@ -631,9 +666,8 @@ describe("messenger-realtime.api", () => {
   it("normalizes websocket frames", () => {
     expect(
       normalizeWorkspaceWebSocketFrame({
-        type: "hello",
-        user_uuid: USER_UUID,
-        project_id: PROJECT_UUID,
+        type: "ready",
+        epoch_generation: "generation-a",
         epoch_version: 124,
       }),
     ).toBeNull();

@@ -2693,7 +2693,7 @@ describe("ChatPage Workspace route", () => {
         objectUrl: "blob:workspace-viewer-image",
       },
     });
-    expect(viewerItem?.url).not.toContain("/api/messenger/v1/files");
+    expect(viewerItem?.url).not.toContain("/api/workspace/v1/messenger/files");
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
 
     unmount();
@@ -2863,8 +2863,12 @@ describe("ChatPage Workspace route", () => {
         },
       },
     ]);
-    expect(useMediaViewerStore.getState().items[0]?.url).not.toContain("/api/messenger/v1/files");
-    expect(useMediaViewerStore.getState().items[1]?.url).not.toContain("/api/messenger/v1/files");
+    expect(useMediaViewerStore.getState().items[0]?.url).not.toContain(
+      "/api/workspace/v1/messenger/files",
+    );
+    expect(useMediaViewerStore.getState().items[1]?.url).not.toContain(
+      "/api/workspace/v1/messenger/files",
+    );
 
     unmount();
 

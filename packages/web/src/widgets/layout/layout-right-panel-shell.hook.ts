@@ -63,12 +63,12 @@ export function useLayoutRightPanelShell(
   const workspaceMessengerActive = workspaceRoute != null;
 
   const rightDrawerOverrideUser =
-    rightDrawerUserIdOverride != null ? usersMapForRightDrawer.get(rightDrawerUserIdOverride) : null;
+    rightDrawerUserIdOverride != null
+      ? usersMapForRightDrawer.get(rightDrawerUserIdOverride)
+      : null;
   const rightDrawerOverrideUserName = rightDrawerOverrideUser?.full_name?.trim();
 
-  const {
-    title: rightDrawerTitle,
-  } = useLayoutRightDrawerContext({
+  const { title: rightDrawerTitle } = useLayoutRightDrawerContext({
     streams: streamsFromStore,
     dms: dmsFromStore,
     streamsMap,

@@ -393,7 +393,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...context, source: "websocket" },
+      { ...context, source: "websocket", notificationsEnabled: true },
     );
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toEqual(
@@ -495,7 +495,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...context, source: "websocket" },
+      { ...context, source: "websocket", notificationsEnabled: true },
     );
     factoryOptions[0]!.applier.applyEvent(
       {
@@ -516,7 +516,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...context, source: "websocket" },
+      { ...context, source: "websocket", notificationsEnabled: true },
     );
     factoryOptions[0]!.applier.applyEvent(
       {
@@ -542,7 +542,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...context, source: "websocket" },
+      { ...context, source: "websocket", notificationsEnabled: true },
     );
 
     expect(useJitsiCallStore.getState().incomingInvite).toEqual(
@@ -601,7 +601,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...context, source: "websocket" },
+      { ...context, source: "websocket", notificationsEnabled: true },
     );
 
     expect(useUsersStore.getState().getUser(USER_UUID)).toEqual(
@@ -680,7 +680,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           updated_at: DATE,
         },
       },
-      { ...backgroundContext, source: "websocket" },
+      { ...backgroundContext, source: "websocket", notificationsEnabled: true },
     );
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();

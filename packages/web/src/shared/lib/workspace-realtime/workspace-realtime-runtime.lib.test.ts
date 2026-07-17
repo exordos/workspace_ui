@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { MessengerApiError } from "~/shared/api/messenger-client";
-import type { MessengerCollectionPage } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerEventDto,
   WorkspaceMessengerMessageDto,
@@ -8,6 +7,7 @@ import type {
   WorkspaceMessengerRealtimeEventDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
+import type { WorkspaceCollectionPage } from "~/shared/api/workspace-client";
 import { createWorkspaceRealtimeCursorStorage } from "./workspace-realtime-cursor.lib";
 import { createWorkspaceRealtimeTransportCore } from "./workspace-realtime-runtime.lib";
 import type {
@@ -31,6 +31,11 @@ const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const EVENT_UUID = "0cb14b5a-6bf0-4de2-bdb5-4e98df4044e0";
 const DATE = "2026-06-30T10:10:00Z";
+const EPOCH_GENERATION = "generation-a";
+
+function cursor(epochVersion: number) {
+  return { epochGeneration: EPOCH_GENERATION, epochVersion };
+}
 
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
@@ -172,7 +177,7 @@ function createRawEventDto(epochVersion: number): WorkspaceMessengerRawEventDto 
 
 function createPage(
   items: WorkspaceMessengerRealtimeEventDto[],
-): MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto> {
+): WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto> {
   return {
     items,
     nextPageMarker: null,
@@ -216,7 +221,12 @@ describe("workspace-realtime transport runtime", () => {
       applier,
       getEpoch: () => {
         order.push("epoch");
-        return Promise.resolve({ epoch_version: 10 });
+        return Promise.resolve({
+          epoch_version: 10,
+          epoch_generation: EPOCH_GENERATION,
+          current_epoch_version: 10,
+          minimum_epoch_version: 1,
+        });
       },
       getEventsPage: () => {
         order.push("catch-up");
@@ -235,7 +245,7 @@ describe("workspace-realtime transport runtime", () => {
 
     expect(order).toEqual(["epoch", "catch-up", "connect"]);
     expect(sockets[0]?.url).toBe(
-      "wss://workspace.example.test/api/messenger/ws?last_epoch_version=10",
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=10&epoch_generation=generation-a",
     );
     expect(sockets[0]?.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
   });
@@ -243,7 +253,7 @@ describe("workspace-realtime transport runtime", () => {
   it("applies a websocket event and advances cursor", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, appliedEpochs } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -262,14 +272,118 @@ describe("workspace-realtime transport runtime", () => {
     await flushAsyncHandlers();
 
     expect(appliedEpochs).toEqual([11]);
-    expect(cursorStorage.read(cursorOwner)).toBe(11);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
     expect(sockets[0]?.sent).toEqual([]);
+  });
+
+  it("keeps notification effects disabled until websocket ready", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const notificationFlags: boolean[] = [];
+    const applier: WorkspaceRealtimeEventApplier = {
+      applyEvent: (_event, eventContext) => {
+        notificationFlags.push(eventContext.notificationsEnabled === true);
+      },
+      skipEvent: () => undefined,
+      onTransportStateChange: () => undefined,
+    };
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await flushAsyncHandlers();
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 11 }),
+    );
+    await flushAsyncHandlers();
+    sockets[0]?.message(JSON.stringify(createRestEventDto(12)));
+    for (let index = 0; index < 12; index += 1) {
+      await Promise.resolve();
+    }
+
+    expect(notificationFlags).toEqual([false, true]);
+  });
+
+  it("clears the cursor and snapshots before retrying a pruned REST cursor", async () => {
+    vi.useFakeTimers();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () =>
+        Promise.reject(
+          new MessengerApiError("cursor expired", 410, {
+            type: "EventsCursorExpiredError",
+            code: 410,
+            error: "epoch_pruned",
+            message: "The saved events cursor is outside the retained event journal",
+            reason: "epoch_pruned",
+            epoch_generation: EPOCH_GENERATION,
+            current_epoch_version: 20,
+            minimum_epoch_version: 11,
+          }),
+        ),
+      resetAuthoritativeSnapshots,
+      reconnectDelayMs: () => 10,
+    });
+
+    await runtime.start(context);
+
+    expect(cursorStorage.read(cursorOwner)).toBeNull();
+    expect(resetAuthoritativeSnapshots).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ error: "epoch_pruned", epoch_generation: EPOCH_GENERATION }),
+    );
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("treats websocket close 4410 as the same cursor reset boundary", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      resetAuthoritativeSnapshots,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.networkClose(4410);
+    await flushAsyncHandlers();
+
+    expect(cursorStorage.read(cursorOwner)).toBeNull();
+    expect(resetAuthoritativeSnapshots).toHaveBeenCalledOnce();
   });
 
   it("serializes websocket frames before applying the next epoch", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const appliedEpochs: number[] = [];
     let releaseFirstEvent = (): void => {
       throw new Error("First event was not started");
@@ -313,14 +427,14 @@ describe("workspace-realtime transport runtime", () => {
     }
 
     expect(appliedEpochs).toEqual([11, 12]);
-    expect(cursorStorage.read(cursorOwner)).toBe(12);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
   });
 
-  it("accepts legacy service frames without advancing cursor", async () => {
+  it("opens the notification gate only after the ready frame", async () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -338,30 +452,22 @@ describe("workspace-realtime transport runtime", () => {
     });
 
     await runtime.start(context);
-    sockets[0]?.message(JSON.stringify({ type: "connected", epoch_version: 11 }));
     sockets[0]?.message(
-      JSON.stringify({
-        type: "hello",
-        user_uuid: USER_UUID,
-        project_id: PROJECT_UUID,
-        epoch_version: 12,
-      }),
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
     );
-    sockets[0]?.message(JSON.stringify({ type: "ping" }));
-    sockets[0]?.message(JSON.stringify({ type: "ping", ts: DATE }));
     await flushAsyncHandlers();
 
     expect(sockets[0]?.sent).toEqual([]);
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([]);
     expect(diagnostics).toEqual([]);
-    expect(cursorStorage.read(cursorOwner)).toBe(10);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
   });
 
   it("skips duplicate or old websocket events without rolling cursor back", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 12);
+    cursorStorage.write(cursorOwner, cursor(12));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -381,14 +487,14 @@ describe("workspace-realtime transport runtime", () => {
 
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([{ epochVersion: 11, reason: "duplicate_epoch" }]);
-    expect(cursorStorage.read(cursorOwner)).toBe(12);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
     expect(sockets[0]?.sent).toEqual([]);
   });
 
-  it("skips unsupported websocket frames when they advance cursor", async () => {
+  it("rejects invalid websocket control frames without advancing cursor", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, skippedEvents } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -413,8 +519,8 @@ describe("workspace-realtime transport runtime", () => {
     );
     await flushAsyncHandlers();
 
-    expect(skippedEvents).toEqual([{ epochVersion: 11, reason: "unsupported_event" }]);
-    expect(cursorStorage.read(cursorOwner)).toBe(11);
+    expect(skippedEvents).toEqual([{ epochVersion: 10, reason: "invalid_frame" }]);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
     expect(sockets[0]?.sent).toEqual([]);
   });
 
@@ -422,7 +528,7 @@ describe("workspace-realtime transport runtime", () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -446,14 +552,14 @@ describe("workspace-realtime transport runtime", () => {
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([{ epochVersion: 12, reason: "unsupported_event" }]);
     expect(diagnostics).not.toContain("invalid_frame");
-    expect(cursorStorage.read(cursorOwner)).toBe(12);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
   });
 
   it("reports and skips an invalid websocket frame without crashing runtime", async () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, skippedEvents } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -476,14 +582,14 @@ describe("workspace-realtime transport runtime", () => {
 
     expect(diagnostics).toContain("invalid_frame");
     expect(skippedEvents).toEqual([{ epochVersion: 10, reason: "invalid_frame" }]);
-    expect(cursorStorage.read(cursorOwner)).toBe(10);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
   });
 
   it("closes socket on stop and does not reconnect", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -511,7 +617,7 @@ describe("workspace-realtime transport runtime", () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
     let current = true;
     const runtime = createWorkspaceRealtimeTransportCore({
@@ -538,7 +644,7 @@ describe("workspace-realtime transport runtime", () => {
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([]);
     expect(diagnostics).toContain("stale_owner");
-    expect(cursorStorage.read(cursorOwner)).toBe(10);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
     expect(sockets[0]?.sent).toEqual([]);
   });
 
@@ -547,7 +653,7 @@ describe("workspace-realtime transport runtime", () => {
     const order: string[] = [];
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -582,7 +688,7 @@ describe("workspace-realtime transport runtime", () => {
     const states: string[] = [];
     const refreshSession = vi.fn(() => Promise.resolve());
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
@@ -623,7 +729,7 @@ describe("workspace-realtime transport runtime", () => {
     const sockets: FakeWebSocket[] = [];
     const refreshSession = vi.fn(() => Promise.resolve());
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, states } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
@@ -656,7 +762,7 @@ describe("workspace-realtime transport runtime", () => {
   it("refreshes the session after catch-up 403", async () => {
     const refreshSession = vi.fn(() => Promise.resolve());
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },

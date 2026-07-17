@@ -51,13 +51,17 @@ describe("messenger external accounts API", () => {
 
     await expect(
       getExternalAccounts(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         { pageLimit: 20, pageMarker: "account-page" },
       ),
     ).resolves.toEqual([accountDto]);
 
     expect(firstFetchCall(fetchMock)[0]).toBe(
-      "/api/messenger/v1/external_accounts/?page_limit=20&page_marker=account-page",
+      "/api/workspace/v1/messenger/external_accounts/?page_limit=20&page_marker=account-page",
     );
 
     const pageFetchMock = vi.fn<typeof fetch>();
@@ -69,7 +73,11 @@ describe("messenger external accounts API", () => {
     );
     await expect(
       getExternalAccountsPage(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: pageFetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: pageFetchMock,
+        },
         { pageLimit: 20 },
       ),
     ).resolves.toEqual({
@@ -92,14 +100,18 @@ describe("messenger external accounts API", () => {
 
     await expect(
       createExternalAccount(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         body,
       ),
     ).resolves.toEqual(accountDto);
 
     const [url, init] = firstFetchCall(fetchMock);
     const serializedBody = typeof init?.body === "string" ? init.body : "";
-    expect(url).toBe("/api/messenger/v1/external_accounts/");
+    expect(url).toBe("/api/workspace/v1/messenger/external_accounts/");
     expect(init?.method).toBe("POST");
     expect(serializedBody).toBe(JSON.stringify(body));
     expect(JSON.parse(serializedBody)).not.toHaveProperty("project_id");

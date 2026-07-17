@@ -16,7 +16,6 @@ import {
   getFolders as defaultGetFolders,
   getStreams as defaultGetStreams,
   getStreamTopics as defaultGetTopics,
-  getUsers as defaultGetUsers,
 } from "~/shared/api/messenger-client";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type {
@@ -25,6 +24,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
+import { getUsers as defaultGetUsers } from "~/shared/api/workspace-client";
 import { isAbortError } from "~/shared/lib/abort-error";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import {
@@ -42,6 +42,7 @@ import {
 } from "./messenger-last-messages-loader.lib";
 import {
   buildMessengerRequestOptions,
+  buildWorkspaceRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -225,6 +226,11 @@ export async function bootstrapMessengerStore({
   })();
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const workspaceRequestOptions = buildWorkspaceRequestOptions(
+    runtimeContext,
+    clientOptions,
+    signal,
+  );
   const catalogReconcileFence = (
     cache.createMessengerCatalogCacheReconcileFence ??
     defaultCreateMessengerCatalogCacheReconcileFence
@@ -234,7 +240,7 @@ export async function bootstrapMessengerStore({
     // Streams and topics are needed first: they quickly build the base chat list.
     // Folders are loaded separately below, so a folder error does not break the whole sidebar.
     const usersRequest: Promise<BootstrapUsersResult> = (client.getUsers ?? defaultGetUsers)(
-      requestOptions,
+      workspaceRequestOptions,
     ).then(
       (value) => ({ status: "fulfilled", value }),
       (reason: unknown) => ({ status: "rejected", reason }),

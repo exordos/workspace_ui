@@ -1,138 +1,27 @@
 import { getMessengerWebSocketBearerProtocol } from "./messenger-auth";
 import {
-  messengerGetJson,
-  messengerPublicGetJson,
-  messengerRequestJsonResult,
-  paginationParams,
-  parseDto,
-  parseDtoList,
-  parsePaginationHeaders,
-  parseStrictDtoList,
-} from "./messenger-transport.internal";
-import {
-  isWorkspaceMessengerEpochDto,
   isWorkspaceMessengerEventDto,
-  isWorkspaceMessengerRealtimeEventDto,
-  isWorkspaceMessengerServerSettingsDto,
-  isWorkspaceMessengerUserDto,
   isWorkspaceMessengerWebSocketFrameDto,
 } from "./messenger.types";
 import type {
-  MessengerClientOptions,
-  MessengerCollectionPage,
-  MessengerPaginationQuery,
-  MessengerPublicClientOptions,
-} from "./messenger-transport.internal";
-import type {
-  WorkspaceMessengerEpochDto,
   WorkspaceMessengerRealtimeEventDto,
-  WorkspaceMessengerServerSettingsDto,
-  WorkspaceMessengerUserDto,
   WorkspaceMessengerWebSocketFrameDto,
   WorkspaceRealtimeEvent,
 } from "./messenger.types";
 
-// REST живёт под /v1, а WebSocket сервер отдаёт через отдельный путь шлюза.
-const DEFAULT_MESSENGER_WEBSOCKET_PATH = "/api/messenger/ws";
+const DEFAULT_MESSENGER_WEBSOCKET_PATH = "/api/workspace/v1/events/ws";
 const MESSENGER_WEBSOCKET_PROTOCOL = "workspace.events.v1";
-
-export type { MessengerClientOptions, MessengerCollectionPage, MessengerPaginationQuery };
-
-export interface GetEventsQuery extends MessengerPaginationQuery {
-  afterEpochVersion?: number;
-}
 
 export interface BuildMessengerWebSocketUrlOptions {
   baseUrl?: string;
   lastEpochVersion: number;
-}
-
-export async function getServerSettings(
-  options: MessengerPublicClientOptions = {},
-): Promise<WorkspaceMessengerServerSettingsDto> {
-  const data = await messengerPublicGetJson("/server_settings", options);
-  return parseDto(
-    data,
-    isWorkspaceMessengerServerSettingsDto,
-    "messenger server_settings response",
-  );
-}
-
-export async function getUsers(
-  options: MessengerClientOptions,
-  query: MessengerPaginationQuery = {},
-): Promise<WorkspaceMessengerUserDto[]> {
-  const data = await messengerGetJson("/users/", options, paginationParams(query));
-  return parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response");
-}
-
-export async function getUsersPage(
-  options: MessengerClientOptions,
-  query: MessengerPaginationQuery = {},
-): Promise<MessengerCollectionPage<WorkspaceMessengerUserDto>> {
-  const { data, headers } = await messengerRequestJsonResult(
-    "GET",
-    "/users/",
-    options,
-    paginationParams(query),
-  );
-  return {
-    items: parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response"),
-    ...parsePaginationHeaders(headers),
-  };
-}
-
-export async function getUser(
-  options: MessengerClientOptions,
-  userUuid: string,
-): Promise<WorkspaceMessengerUserDto> {
-  const data = await messengerGetJson(`/users/${encodeURIComponent(userUuid)}`, options);
-  return parseDto(data, isWorkspaceMessengerUserDto, "messenger user response");
-}
-
-export async function getEvents(
-  options: MessengerClientOptions,
-  query: GetEventsQuery = {},
-): Promise<WorkspaceMessengerRealtimeEventDto[]> {
-  const data = await messengerGetJson("/events/", options, {
-    ...paginationParams(query),
-    "epoch_version>": query.afterEpochVersion,
-  });
-  return parseStrictDtoList(
-    data,
-    isWorkspaceMessengerRealtimeEventDto,
-    "messenger events response",
-  );
-}
-
-export async function getEventsPage(
-  options: MessengerClientOptions,
-  query: GetEventsQuery = {},
-): Promise<MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto>> {
-  const { data, headers } = await messengerRequestJsonResult("GET", "/events/", options, {
-    ...paginationParams(query),
-    "epoch_version>": query.afterEpochVersion,
-  });
-  return {
-    items: parseStrictDtoList(
-      data,
-      isWorkspaceMessengerRealtimeEventDto,
-      "messenger events response",
-    ),
-    ...parsePaginationHeaders(headers),
-  };
-}
-
-export async function getEpoch(
-  options: MessengerClientOptions,
-): Promise<WorkspaceMessengerEpochDto> {
-  const data = await messengerGetJson("/epoch/", options);
-  return parseDto(data, isWorkspaceMessengerEpochDto, "messenger epoch response");
+  epochGeneration?: string;
 }
 
 export function buildMessengerWebSocketUrl({
   baseUrl,
   lastEpochVersion,
+  epochGeneration,
 }: BuildMessengerWebSocketUrlOptions): string {
   // В URL оставляем только cursor. Токен и project scope не кладём в параметры,
   // чтобы не светить авторизацию в логах proxy и истории браузера.
@@ -142,9 +31,14 @@ export function buildMessengerWebSocketUrl({
     if (/^http:\/\//i.test(trimmed)) return trimmed.replace(/^http:/i, "ws:");
     return trimmed;
   })();
-  const search = new URLSearchParams({
-    last_epoch_version: String(lastEpochVersion),
-  });
+  if (lastEpochVersion > 0 && (epochGeneration == null || epochGeneration.trim().length === 0)) {
+    throw new TypeError("Workspace realtime resume cursor requires epoch_generation");
+  }
+  const search = new URLSearchParams();
+  if (lastEpochVersion > 0) {
+    search.set("last_epoch_version", String(lastEpochVersion));
+    search.set("epoch_generation", epochGeneration ?? "");
+  }
   return `${root}${DEFAULT_MESSENGER_WEBSOCKET_PATH}?${search.toString()}`;
 }
 
@@ -252,6 +146,26 @@ export function normalizeWorkspaceRestEvent(
         stream_uuid: model.payload.uuid,
         stream_bindings: model.payload.items,
       };
+    case "stream_binding.updated": {
+      const streamBinding = withoutPayloadKind(model.payload);
+      return {
+        epoch_version: model.epoch_version,
+        type: "stream_binding",
+        kind: "stream_binding.updated",
+        stream_binding: streamBinding,
+      };
+    }
+    case "stream_binding.deleted":
+      return {
+        epoch_version: model.epoch_version,
+        type: "stream_binding",
+        kind: "stream_binding.deleted",
+        stream_binding: {
+          uuid: model.payload.uuid,
+          stream_uuid: model.payload.stream_uuid,
+          user_uuid: model.payload.user_uuid,
+        },
+      };
     case "topic.created":
     case "topic.updated":
     case "topic.read": {
@@ -301,6 +215,26 @@ export function normalizeWorkspaceRestEvent(
           uuid: model.payload.uuid,
         },
       };
+    case "file.created":
+    case "file.updated": {
+      const { kind, ...file } = model.payload;
+      return {
+        epoch_version: model.epoch_version,
+        type: "file",
+        kind,
+        file,
+      };
+    }
+    case "file.deleted":
+      return {
+        epoch_version: model.epoch_version,
+        type: "file",
+        kind: "file.deleted",
+        file: {
+          uuid: model.payload.uuid,
+          stream_uuid: model.payload.stream_uuid,
+        },
+      };
     case "user.updated": {
       const { kind, ...user } = model.payload;
       return {
@@ -332,8 +266,5 @@ export function normalizeWorkspaceWebSocketFrame(
   if (isWorkspaceMessengerEventDto(frame)) {
     return normalizeWorkspaceRestEvent(frame);
   }
-  if (!("type" in frame) || frame.type !== "event") {
-    return null;
-  }
-  return frame.event;
+  return null;
 }

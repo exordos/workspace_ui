@@ -64,6 +64,7 @@ function createContext(
     ownerKey: workspaceRuntimeOwnerKey(owner),
     surface: "background",
     source: "websocket",
+    notificationsEnabled: true,
     ...overrides,
   };
 }
@@ -288,6 +289,27 @@ describe("messenger background projection", () => {
     expect(JSON.stringify(projection)).not.toContain("https://workspace.local/private?token=1");
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+  });
+
+  it("keeps message snapshots but suppresses notification candidates before realtime is ready", () => {
+    const context = createContext(createOwner(), { notificationsEnabled: false });
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ messageUuid: MESSAGE_A }),
+    );
+    expect(projection?.notificationCandidates).toEqual([]);
   });
 
   it("keeps notification names and modes null when message arrives before stream and topic snapshots", () => {

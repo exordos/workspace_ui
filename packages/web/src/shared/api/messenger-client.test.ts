@@ -3,19 +3,21 @@ import {
   createMessageReaction,
   deleteMessageReaction,
   MessengerApiError,
-  getEpoch,
-  getEvents,
   getMessageReactions,
   getMessages,
   getMessagesByUuids,
   getMessagesPage,
   getServerSettings,
   getStreams,
+} from "./messenger-client";
+import {
+  getEpoch,
+  getEvents,
   getUser,
   getUsers,
   getUsersPage,
   invokeUserPresence,
-} from "./messenger-client";
+} from "./workspace-client";
 
 // Phase 1 client tests cover the small bootstrap API facade.
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -146,7 +148,7 @@ describe("messenger-client", () => {
     ).resolves.toEqual([streamDto]);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/streams/");
+    expect(url).toBe("/api/workspace/v1/messenger/streams/");
     expect(init?.headers).toEqual({
       Accept: "application/json",
       Authorization: "Bearer access-token",
@@ -176,7 +178,7 @@ describe("messenger-client", () => {
       getEvents(
         {
           accessToken: "access-token",
-          baseUrl: "/api/messenger/v1",
+          baseUrl: "/api/workspace/v1",
           projectId: PROJECT_UUID,
           fetchImpl: fetchMock,
         },
@@ -185,9 +187,7 @@ describe("messenger-client", () => {
     ).resolves.toHaveLength(1);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe(
-      `/api/messenger/v1/events/?page_limit=500&project_id=${PROJECT_UUID}&epoch_version%3E=123`,
-    );
+    expect(url).toBe("/api/workspace/v1/events/?page_limit=500&epoch_version%3E=123");
   });
 
   it("strictly rejects invalid REST event rows", async () => {
@@ -208,7 +208,7 @@ describe("messenger-client", () => {
     ]);
 
     await expect(getEvents({ accessToken: "access-token", fetchImpl: fetchMock })).rejects.toThrow(
-      "Expected valid messenger events response item at index 0",
+      "Expected valid workspace events response item at index 0",
     );
   });
 
@@ -258,7 +258,9 @@ describe("messenger-client", () => {
     ).resolves.toEqual([messageDto]);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`);
+    expect(url).toBe(
+      `/api/workspace/v1/messenger/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`,
+    );
   });
 
   it("fetches a two-message UUID batch with repeated query params", async () => {
@@ -272,7 +274,9 @@ describe("messenger-client", () => {
     ).resolves.toEqual([messageDto]);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`);
+    expect(url).toBe(
+      `/api/workspace/v1/messenger/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`,
+    );
   });
 
   it("wraps message reaction list, create, and delete endpoints", async () => {
@@ -285,7 +289,7 @@ describe("messenger-client", () => {
     ).resolves.toEqual([reactionDto]);
     const [listUrl, listInit] = firstFetchCall(listFetchMock);
     expect(listUrl).toBe(
-      `/api/messenger/v1/message_reactions/?project_id=${PROJECT_UUID}&message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
+      `/api/workspace/v1/messenger/message_reactions/?project_id=${PROJECT_UUID}&message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
     );
     expect(listInit?.method).toBe("GET");
 
@@ -301,7 +305,7 @@ describe("messenger-client", () => {
       ),
     ).resolves.toEqual(reactionDto);
     const [createUrl, createInit] = firstFetchCall(createReactionFetchMock);
-    expect(createUrl).toBe("/api/messenger/v1/message_reactions/");
+    expect(createUrl).toBe("/api/workspace/v1/messenger/message_reactions/");
     expect(createInit?.method).toBe("POST");
     expect(createInit?.body).toBe(JSON.stringify(createBody));
 
@@ -313,7 +317,7 @@ describe("messenger-client", () => {
       ),
     ).resolves.toBeUndefined();
     const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
-    expect(deleteUrl).toBe(`/api/messenger/v1/message_reactions/${REACTION_UUID}`);
+    expect(deleteUrl).toBe(`/api/workspace/v1/messenger/message_reactions/${REACTION_UUID}`);
     expect(deleteInit?.method).toBe("DELETE");
     expect(deleteInit?.body).toBeUndefined();
   });
@@ -330,7 +334,7 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/message_reactions/?project_id=${PROJECT_UUID}&user_uuid=${USER_UUID}`,
+      `/api/workspace/v1/messenger/message_reactions/?project_id=${PROJECT_UUID}&user_uuid=${USER_UUID}`,
     );
     expect(url).not.toContain("message_uuid");
   });
@@ -400,7 +404,7 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&starred=true`,
+      `/api/workspace/v1/messenger/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&starred=true`,
     );
 
     const invalidFetchMock = createFetchMock([
@@ -423,7 +427,7 @@ describe("messenger-client", () => {
     await expect(
       getUsers({ accessToken: "access-token", fetchImpl: usersFetchMock }),
     ).resolves.toEqual([userDto]);
-    expect(firstFetchCall(usersFetchMock)[0]).toBe("/api/messenger/v1/users/");
+    expect(firstFetchCall(usersFetchMock)[0]).toBe("/api/workspace/v1/users/");
 
     const usersPageFetchMock = createFetchMock([userDto], 200, {
       "X-Pagination-Marker": USER_UUID,
@@ -440,14 +444,14 @@ describe("messenger-client", () => {
       pageLimit: 50,
     });
     expect(firstFetchCall(usersPageFetchMock)[0]).toBe(
-      "/api/messenger/v1/users/?page_limit=50&page_marker=prev",
+      "/api/workspace/v1/users/?page_limit=50&page_marker=prev",
     );
 
     const userFetchMock = createFetchMock(userDto);
     await expect(
       getUser({ accessToken: "access-token", fetchImpl: userFetchMock }, USER_UUID),
     ).resolves.toEqual(userDto);
-    expect(firstFetchCall(userFetchMock)[0]).toBe(`/api/messenger/v1/users/${USER_UUID}`);
+    expect(firstFetchCall(userFetchMock)[0]).toBe(`/api/workspace/v1/users/${USER_UUID}`);
   });
 
   it("posts Workspace user presence update", async () => {
@@ -472,7 +476,7 @@ describe("messenger-client", () => {
     });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/users/${USER_UUID}/actions/presence/invoke`);
+    expect(url).toBe(`/api/workspace/v1/users/${USER_UUID}/actions/presence/invoke`);
     expect(init?.method).toBe("POST");
     expect(init?.headers).toEqual({
       Accept: "application/json",
@@ -519,7 +523,7 @@ describe("messenger-client", () => {
     const fetchMock = createFetchMock({ epoch_version: "124" });
 
     await expect(getEpoch({ accessToken: "access-token", fetchImpl: fetchMock })).rejects.toThrow(
-      "Expected valid messenger epoch response",
+      "Expected valid workspace epoch response",
     );
   });
 
@@ -575,7 +579,7 @@ describe("messenger-client", () => {
     });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/server_settings");
+    expect(url).toBe("/api/workspace/v1/messenger/server_settings");
     expect(init?.headers).toEqual({
       Accept: "application/json",
     });

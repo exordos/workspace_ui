@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { normalizeWorkspaceRestEvent } from "~/shared/api/messenger-realtime.api";
-import type { MessengerCollectionPage } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerEventDto,
   WorkspaceMessengerMessageDto,
@@ -8,6 +7,7 @@ import type {
   WorkspaceMessengerRealtimeEventDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
+import type { WorkspaceCollectionPage } from "~/shared/api/workspace-client";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import { createWorkspaceRealtimeCursorStorage } from "./workspace-realtime-cursor.lib";
 import type {
@@ -29,6 +29,11 @@ const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const EVENT_UUID = "0cb14b5a-6bf0-4de2-bdb5-4e98df4044e0";
 const DATE = "2026-06-30T10:10:00Z";
+const EPOCH_GENERATION = "generation-a";
+
+function cursor(epochVersion: number) {
+  return { epochGeneration: EPOCH_GENERATION, epochVersion };
+}
 
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
@@ -128,7 +133,7 @@ function createRealtimeEvent(epochVersion: number): WorkspaceRealtimeEvent {
 function createPage(
   items: WorkspaceMessengerRealtimeEventDto[],
   nextPageMarker: string | null = null,
-): MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto> {
+): WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto> {
   return {
     items,
     nextPageMarker,
@@ -178,7 +183,12 @@ describe("workspace-realtime catch-up", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
     const getEpoch = vi.fn<NonNullable<WorkspaceRealtimeCatchUpOptions["getEpoch"]>>();
     const getEventsPage = vi.fn<NonNullable<WorkspaceRealtimeCatchUpOptions["getEventsPage"]>>();
-    getEpoch.mockResolvedValue({ epoch_version: 42 });
+    getEpoch.mockResolvedValue({
+      epoch_version: 42,
+      epoch_generation: EPOCH_GENERATION,
+      current_epoch_version: 42,
+      minimum_epoch_version: 1,
+    });
     getEventsPage.mockResolvedValue(createPage([]));
 
     const result = await catchUpWorkspaceRealtime(
@@ -194,14 +204,15 @@ describe("workspace-realtime catch-up", () => {
       expect.objectContaining({ projectId: PROJECT_UUID }),
       {
         afterEpochVersion: 42,
+        epochGeneration: EPOCH_GENERATION,
         pageLimit: 100,
         pageMarker: undefined,
       },
     );
-    expect(cursorStorage.read(cursorOwner)).toBe(42);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(42));
     expect(result).toMatchObject({
-      startedFrom: 42,
-      lastEpochVersion: 42,
+      startedFrom: cursor(42),
+      lastCursor: cursor(42),
       appliedCount: 0,
       skippedCount: 0,
       isStale: false,
@@ -211,7 +222,7 @@ describe("workspace-realtime catch-up", () => {
   it("sorts a batch and skips duplicate or old epochs", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
-    cursorStorage.write(cursorOwner, 5);
+    cursorStorage.write(cursorOwner, cursor(5));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
 
     const result = await catchUpWorkspaceRealtime(
@@ -228,14 +239,14 @@ describe("workspace-realtime catch-up", () => {
       { epochVersion: 4, reason: "duplicate_epoch" },
       { epochVersion: 6, reason: "duplicate_epoch" },
     ]);
-    expect(cursorStorage.read(cursorOwner)).toBe(6);
-    expect(result).toMatchObject({ appliedCount: 1, skippedCount: 2, lastEpochVersion: 6 });
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(6));
+    expect(result).toMatchObject({ appliedCount: 1, skippedCount: 2, lastCursor: cursor(6) });
   });
 
   it("skips unknown events and advances cursor after the skip", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
-    cursorStorage.write(cursorOwner, 5);
+    cursorStorage.write(cursorOwner, cursor(5));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
 
     await catchUpWorkspaceRealtime(
@@ -249,13 +260,13 @@ describe("workspace-realtime catch-up", () => {
 
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([{ epochVersion: 7, reason: "unsupported_event" }]);
-    expect(cursorStorage.read(cursorOwner)).toBe(7);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(7));
   });
 
   it("skips unknown flat event envelopes and advances cursor", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
-    cursorStorage.write(cursorOwner, 5);
+    cursorStorage.write(cursorOwner, cursor(5));
     const { applier, appliedEpochs, skippedEvents } = createApplier();
 
     await catchUpWorkspaceRealtime(
@@ -269,13 +280,13 @@ describe("workspace-realtime catch-up", () => {
 
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([{ epochVersion: 8, reason: "unsupported_event" }]);
-    expect(cursorStorage.read(cursorOwner)).toBe(8);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(8));
   });
 
   it("does not apply, skip, or advance cursor for a stale owner", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
-    cursorStorage.write(cursorOwner, 5);
+    cursorStorage.write(cursorOwner, cursor(5));
     const { applier } = createApplier();
     const isOwnerCurrent = vi.fn<NonNullable<WorkspaceRealtimeCatchUpOptions["isOwnerCurrent"]>>();
     isOwnerCurrent.mockReturnValueOnce(true).mockReturnValueOnce(false);
@@ -291,14 +302,14 @@ describe("workspace-realtime catch-up", () => {
 
     expect(applier.applyEvent).not.toHaveBeenCalled();
     expect(applier.skipEvent).not.toHaveBeenCalled();
-    expect(cursorStorage.read(cursorOwner)).toBe(5);
-    expect(result).toMatchObject({ isStale: true, lastEpochVersion: 5 });
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(5));
+    expect(result).toMatchObject({ isStale: true, lastCursor: cursor(5) });
   });
 
   it("advances cursor monotonically in sorted epoch order", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
-    cursorStorage.write(cursorOwner, 10);
+    cursorStorage.write(cursorOwner, cursor(10));
     const { applier, appliedEpochs } = createApplier();
 
     const result = await catchUpWorkspaceRealtime(
@@ -311,7 +322,7 @@ describe("workspace-realtime catch-up", () => {
     );
 
     expect(appliedEpochs).toEqual([11, 12, 13]);
-    expect(cursorStorage.read(cursorOwner)).toBe(13);
-    expect(result).toMatchObject({ lastEpochVersion: 13, appliedCount: 3 });
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(13));
+    expect(result).toMatchObject({ lastCursor: cursor(13), appliedCount: 3 });
   });
 });

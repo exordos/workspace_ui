@@ -71,7 +71,7 @@ describe("messenger topics API", () => {
 
     const [url, init] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/stream_topics/?page_limit=50&page_marker=cursor-1&stream_uuid=${STREAM_UUID}`,
+      `/api/workspace/v1/messenger/stream_topics/?page_limit=50&page_marker=cursor-1&stream_uuid=${STREAM_UUID}`,
     );
     expect(init?.headers).toEqual({
       Accept: "application/json",
@@ -98,7 +98,7 @@ describe("messenger topics API", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/stream_topics/?page_limit=50&page_marker=cursor-1&stream_uuid=${STREAM_UUID}`,
+      `/api/workspace/v1/messenger/stream_topics/?page_limit=50&page_marker=cursor-1&stream_uuid=${STREAM_UUID}`,
     );
   });
 
@@ -110,7 +110,7 @@ describe("messenger topics API", () => {
     ).resolves.toEqual(topicDto);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/stream_topics/${TOPIC_UUID}`);
+    expect(url).toBe(`/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}`);
   });
 
   it("creates a topic with name and stream uuid", async () => {
@@ -124,7 +124,7 @@ describe("messenger topics API", () => {
     ).resolves.toEqual(topicDto);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/stream_topics/");
+    expect(url).toBe("/api/workspace/v1/messenger/stream_topics/");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ name: "Releases", stream_uuid: STREAM_UUID }));
   });
@@ -139,7 +139,7 @@ describe("messenger topics API", () => {
     ).resolves.toEqual({ ...topicDto, name: "Incidents" });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/stream_topics/${TOPIC_UUID}`);
+    expect(url).toBe(`/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}`);
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({ name: "Incidents" }));
   });
@@ -152,7 +152,9 @@ describe("messenger topics API", () => {
     ).resolves.toEqual({ ...topicDto, is_done: true });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`);
+    expect(url).toBe(
+      `/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+    );
     expect(init?.method).toBe("POST");
     expect(init?.body).toBeUndefined();
   });
@@ -169,7 +171,9 @@ describe("messenger topics API", () => {
     ).resolves.toEqual({ ...topicDto, notification_mode: "follow" });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/stream_topics/${TOPIC_UUID}/actions/notifications/invoke`);
+    expect(url).toBe(
+      `/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}/actions/notifications/invoke`,
+    );
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ notification_mode: "follow" }));
   });
@@ -182,7 +186,7 @@ describe("messenger topics API", () => {
     ).resolves.toBeUndefined();
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/stream_topics/${TOPIC_UUID}`);
+    expect(url).toBe(`/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}`);
     expect(init?.method).toBe("DELETE");
     expect(init?.headers).toEqual({
       Accept: "application/json",

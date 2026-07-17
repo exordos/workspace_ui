@@ -185,27 +185,23 @@ export const Layout: React.FC = () => {
     navigate,
   });
 
-  const {
-    rightPanelTitleResolved,
-    participantsCount,
-    onlineCount,
-    workspaceRightPanelInfo,
-  } = useLayoutRightPanelShell({
-    streamsFromStore,
-    dmsFromStore,
-    streamsMap,
-    activeStreamSlug,
-    activeTopic,
-    dmIdParam,
-    currentUserId,
-    rightDrawerOpen,
-    rightDrawerMode,
-    rightDrawerUserIdOverride,
-    rightDrawerWorkspaceUserUuidOverride,
-    mutedStreamIds,
-    usersMapForRightDrawer,
-    workspaceRoute: workspaceMessengerRoute,
-  });
+  const { rightPanelTitleResolved, participantsCount, onlineCount, workspaceRightPanelInfo } =
+    useLayoutRightPanelShell({
+      streamsFromStore,
+      dmsFromStore,
+      streamsMap,
+      activeStreamSlug,
+      activeTopic,
+      dmIdParam,
+      currentUserId,
+      rightDrawerOpen,
+      rightDrawerMode,
+      rightDrawerUserIdOverride,
+      rightDrawerWorkspaceUserUuidOverride,
+      mutedStreamIds,
+      usersMapForRightDrawer,
+      workspaceRoute: workspaceMessengerRoute,
+    });
 
   const handleRetryBootstrap = useCallback(() => {
     clearBootstrapError();

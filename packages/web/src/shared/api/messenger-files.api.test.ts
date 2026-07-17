@@ -41,7 +41,7 @@ describe("messenger files API", () => {
     expect(await result.blob.text()).toBe("workspace file");
     expect(result.headers.get("content-disposition")).toContain("report.txt");
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/files/${FILE_UUID}/actions/download`);
+    expect(url).toBe(`/api/workspace/v1/messenger/files/${FILE_UUID}/actions/download`);
     expect(init?.method).toBe("GET");
     expect(init?.headers).toEqual({
       Accept: "*/*",
@@ -89,7 +89,7 @@ describe("messenger files API", () => {
       size_bytes: 14,
     });
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/files/");
+    expect(url).toBe("/api/workspace/v1/messenger/files/");
     expect(init?.method).toBe("POST");
     expect(init?.signal).toBe(controller.signal);
     expect(init?.headers).toEqual({

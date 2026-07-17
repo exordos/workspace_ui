@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
 import { createMessengerReactionAggregateRevalidateHandler } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import {
   createMessengerRealtimeActiveApplier,
   createMessengerRealtimeBackgroundApplier,
 } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
@@ -18,6 +21,7 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
 import {
@@ -168,6 +172,27 @@ function defaultRuntimeFactory({
     isOwnerCurrent,
     webSocketBaseUrl: runtimeContext.organizationOrigin,
     refreshSession,
+    resetAuthoritativeSnapshots: async (realtimeContext) => {
+      const ownerKey = workspaceRuntimeOwnerKey(realtimeContext.owner);
+      await deleteWorkspaceMessengerOwnerCache(ownerKey);
+
+      const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (
+        currentRuntimeContext == null ||
+        workspaceRuntimeOwnerKey(currentRuntimeContext) !== ownerKey ||
+        currentRuntimeContext.runtimeGeneration !== realtimeContext.owner.runtimeGeneration
+      ) {
+        return;
+      }
+
+      // The message store is active-owner scoped in memory. Never clear it for a background runtime.
+      useMessengerStore.getState().clear();
+      useWorkspaceMessageStore.getState().clear();
+      await bootstrapMessengerStore({
+        runtimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      });
+    },
     onDiagnostic: (diagnostic) => {
       onDiagnostic?.(diagnostic);
       reportUnexpectedError("workspace-realtime:transport", diagnostic.error ?? diagnostic.reason);

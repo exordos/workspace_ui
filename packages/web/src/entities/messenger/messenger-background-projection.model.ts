@@ -475,7 +475,7 @@ function applyMessageProjection(
     },
   };
 
-  if (!isMessageCreatedEvent(event)) {
+  if (!isMessageCreatedEvent(event) || context.notificationsEnabled !== true) {
     // Updates are needed for the id snapshot but must not become notification candidates again.
     return compactProjection(nextProjection, observedAt);
   }

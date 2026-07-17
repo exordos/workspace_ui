@@ -10,7 +10,10 @@ import {
   getJsonResult,
   sendFormDataResult,
 } from "~/shared/api/messenger-transport.internal";
-import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
+import {
+  buildMessengerRequestOptions,
+  buildWorkspaceRequestOptions,
+} from "./messenger-request-options.lib";
 
 function createRuntimeContext(
   overrides: Partial<WorkspaceRuntimeContext> = {},
@@ -121,7 +124,19 @@ describe("messenger request options", () => {
         ),
       ),
     ).toMatchObject({
-      baseUrl: "https://org-a.example.com/api/messenger/v1",
+      baseUrl: "https://org-a.example.com/api/workspace/v1/messenger",
+    });
+  });
+
+  it("uses the Workspace base for common API calls outside dev builds", () => {
+    expect(
+      withDevEnv(false, () =>
+        buildWorkspaceRequestOptions(
+          createRuntimeContext({ organizationOrigin: "https://org-a.example.com/" }),
+        ),
+      ),
+    ).toMatchObject({
+      baseUrl: "https://org-a.example.com/api/workspace/v1",
     });
   });
 

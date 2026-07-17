@@ -1360,7 +1360,7 @@ describe("WorkspaceMessageList", () => {
     expect(attachment).toHaveAttribute("title", "Файл: report.pdf");
     expect(attachment).not.toHaveAttribute("href");
     expect(container).not.toHaveTextContent(`urn:file:${fileUuid}`);
-    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
     expect(
       container.querySelector(`[${["data", "message", "id"].join("-")}]`),
     ).not.toBeInTheDocument();
@@ -1482,7 +1482,7 @@ describe("WorkspaceMessageList", () => {
       container.querySelector("img.workspace-message-file-placeholder__image"),
     ).toHaveAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
     expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
-    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
 
     fireEvent.click(media);
 
@@ -1757,7 +1757,7 @@ describe("WorkspaceMessageList", () => {
     expect(upgradedPlaceholderImage).not.toHaveAttribute("hidden");
     expect(upgradedPlaceholderImage).toHaveAttribute("src", "blob:workspace-image-preview");
     expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
-    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
 
     unmount();
 
@@ -2159,7 +2159,7 @@ describe("WorkspaceMessageList", () => {
 
   it("keeps Workspace image preview source on blob URL when the loader knows a backend URL", async () => {
     const fileUuid = "55555555-5555-4555-8555-555555555555";
-    const backendUrl = `/api/messenger/v1/files/${fileUuid}/actions/download`;
+    const backendUrl = `/api/workspace/v1/messenger/files/${fileUuid}/actions/download`;
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-safe");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob([backendUrl]));
@@ -2189,7 +2189,7 @@ describe("WorkspaceMessageList", () => {
     const image = await screen.findByRole("img", { name: "screen.png" });
 
     expect(image.getAttribute("src")).toBe("blob:workspace-safe");
-    expect(image.getAttribute("src")).not.toContain("/api/messenger/v1/files");
+    expect(image.getAttribute("src")).not.toContain("/api/workspace/v1/messenger/files");
 
     unmount();
 

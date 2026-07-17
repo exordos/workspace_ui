@@ -215,7 +215,7 @@ describe("workspace-auth flow", () => {
     expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: expect.any(String),
-        baseUrl: "https://workspace.example.com/api/messenger/v1",
+        baseUrl: "https://workspace.example.com/api/workspace/v1",
       }),
       USER_UUID,
     );

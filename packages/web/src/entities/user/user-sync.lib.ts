@@ -1,4 +1,4 @@
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -9,13 +9,13 @@ import type {
   WorkspaceRuntimeContext,
   WorkspaceRuntimeRequestContext,
 } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { isWorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import {
   getUser as defaultGetUser,
   getUsers as defaultGetUsers,
-} from "~/shared/api/messenger-client";
-import type { MessengerClientOptions } from "~/shared/api/messenger-client";
-import { isWorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
-import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+} from "~/shared/api/workspace-client";
+import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import {
   readWorkspaceUserCache as defaultReadWorkspaceUserCache,
   readWorkspaceUserCacheProfile as defaultReadWorkspaceUserCacheProfile,
@@ -36,14 +36,14 @@ export type UserSyncResult =
 export type UserCacheHydrateResult = UserSyncResult | { status: "empty" };
 
 export type UserRequestOptionsOverrides = Pick<
-  MessengerClientOptions,
+  WorkspaceClientOptions,
   "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
 >;
 
 export interface UserSyncClientDeps {
-  getUsers?: (options: MessengerClientOptions) => Promise<WorkspaceMessengerUserDto[]>;
+  getUsers?: (options: WorkspaceClientOptions) => Promise<WorkspaceMessengerUserDto[]>;
   getUser?: (
-    options: MessengerClientOptions,
+    options: WorkspaceClientOptions,
     userUuid: string,
   ) => Promise<WorkspaceMessengerUserDto>;
 }
@@ -135,8 +135,8 @@ function buildUserRequestOptions(
   runtimeContext: WorkspaceRuntimeContext,
   overrides?: UserRequestOptionsOverrides,
   signal?: AbortSignal,
-): MessengerClientOptions {
-  return buildMessengerRequestOptions(runtimeContext, overrides, signal);
+): WorkspaceClientOptions {
+  return buildWorkspaceRequestOptions(runtimeContext, overrides, signal);
 }
 
 function isUserSyncInvalidated({

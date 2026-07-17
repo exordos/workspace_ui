@@ -5,12 +5,14 @@ import {
   normalizeWorkspaceWebSocketFrame,
   parseWorkspaceWebSocketFrame,
 } from "~/shared/api/messenger-realtime.api";
-import type { MessengerClientOptions } from "~/shared/api/messenger-realtime.api";
 import type {
+  WorkspaceEventsCursorExpiredErrorDto,
   WorkspaceMessengerEpochVersion,
   WorkspaceMessengerWebSocketFrameDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
+import { isWorkspaceEventsCursorExpiredErrorDto } from "~/shared/api/messenger.types";
+import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import type {
   WorkspaceRealtimeCatchUpApplier,
@@ -18,6 +20,7 @@ import type {
 } from "./workspace-realtime-catch-up.lib";
 import type {
   WorkspaceRealtimeCursorOwner,
+  WorkspaceRealtimeCursor,
   WorkspaceRealtimeDurableCursorStorage,
 } from "./workspace-realtime-cursor.lib";
 
@@ -63,6 +66,7 @@ export interface WorkspaceRealtimeRuntimeContext {
 
 export interface WorkspaceRealtimeEventContext extends WorkspaceRealtimeRuntimeContext {
   source: WorkspaceRealtimeEventSource;
+  notificationsEnabled?: boolean;
 }
 
 export interface WorkspaceRealtimeTransportState {
@@ -103,7 +107,9 @@ export interface WorkspaceRealtimeDiagnostic {
     | "websocket_error"
     | "catch_up_failed"
     | "auth_failed"
-    | "auth_refresh_failed";
+    | "auth_refresh_failed"
+    | "cursor_expired"
+    | "snapshot_recovery_failed";
   error?: unknown;
 }
 
@@ -136,7 +142,7 @@ export type WorkspaceRealtimeSessionRefresh = (
 ) => Promise<unknown>;
 
 export interface WorkspaceRealtimeRuntimeOptions {
-  clientOptions: MessengerClientOptions;
+  clientOptions: WorkspaceClientOptions;
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeEventApplier;
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
@@ -148,6 +154,10 @@ export interface WorkspaceRealtimeRuntimeOptions {
   webSocketFactory?: WorkspaceRealtimeWebSocketFactory;
   reconnectDelayMs?: (attempt: number) => number;
   refreshSession?: WorkspaceRealtimeSessionRefresh;
+  resetAuthoritativeSnapshots?: (
+    context: WorkspaceRealtimeRuntimeContext,
+    error: WorkspaceEventsCursorExpiredErrorDto,
+  ) => Promise<void> | void;
   onDiagnostic?: (diagnostic: WorkspaceRealtimeDiagnostic) => unknown;
 }
 
@@ -164,6 +174,7 @@ export interface WorkspaceRealtimeTransportCore {
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE = 4401;
+const WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE = 4410;
 const INVALID_FRAME_SYNTHETIC_EPOCH: WorkspaceMessengerEpochVersion = 0;
 
 function defaultReconnectDelayMs(attempt: number): number {
@@ -218,9 +229,9 @@ function defaultWebSocketFactory(url: string, protocols: string[]): WorkspaceRea
 }
 
 function withAbortSignal(
-  options: MessengerClientOptions,
+  options: WorkspaceClientOptions,
   signal: AbortSignal | undefined,
-): MessengerClientOptions {
+): WorkspaceClientOptions {
   // Catch-up REST requests must be cancelled with the same runtime that owns the socket.
   return { ...options, signal };
 }
@@ -243,6 +254,19 @@ function isAuthFailureError(error: unknown): boolean {
   }
   const status = error.status;
   return status === 401 || status === 403;
+}
+
+function cursorExpiredError(error: unknown): WorkspaceEventsCursorExpiredErrorDto | null {
+  if (isWorkspaceEventsCursorExpiredErrorDto(error)) {
+    return error;
+  }
+  if (error instanceof MessengerApiError && isWorkspaceEventsCursorExpiredErrorDto(error.data)) {
+    return error.data;
+  }
+  if (typeof error === "object" && error != null && "data" in error) {
+    return isWorkspaceEventsCursorExpiredErrorDto(error.data) ? error.data : null;
+  }
+  return null;
 }
 
 function getWebSocketCloseCode(event: Event): number | null {
@@ -289,11 +313,14 @@ export function createWorkspaceRealtimeTransportCore(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
   let lastEpochVersion: WorkspaceMessengerEpochVersion | null = null;
+  let lastCursor: WorkspaceRealtimeCursor | null = null;
+  let notificationsEnabled = false;
   let stopped = true;
   let removeExternalAbortListener: (() => void) | null = null;
   let authRefreshPromise: Promise<void> | null = null;
   let lastAuthRefreshToken: string | null = null;
   let lastAuthFailure: { reason: string; error?: unknown } | null = null;
+  let cursorRecoveryPromise: Promise<void> | null = null;
   let frameQueue: Promise<void> = Promise.resolve();
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
@@ -446,19 +473,24 @@ export function createWorkspaceRealtimeTransportCore(
     source: WorkspaceRealtimeEventSource,
   ): Promise<void> {
     if (context == null) return;
-    await options.applier.skipEvent(event, reason, { ...context, source });
+    await options.applier.skipEvent(event, reason, {
+      ...context,
+      source,
+      notificationsEnabled,
+    });
   }
 
   function advanceCursor(epochVersion: WorkspaceMessengerEpochVersion): boolean {
-    if (context == null) return false;
-    const previousEpochVersion =
-      lastEpochVersion ??
-      options.cursorStorage.read(context.owner) ??
-      INVALID_FRAME_SYNTHETIC_EPOCH;
+    if (context == null || lastCursor == null) return false;
+    const previousEpochVersion = lastCursor.epochVersion;
     const nextEpochVersion = Math.max(previousEpochVersion, epochVersion);
     // Durable cursor moves in transport after a deliberate decision: apply or skip.
-    options.cursorStorage.write(context.owner, nextEpochVersion);
-    lastEpochVersion = nextEpochVersion;
+    lastCursor = {
+      epochGeneration: lastCursor.epochGeneration,
+      epochVersion: nextEpochVersion,
+    };
+    options.cursorStorage.write(context.owner, lastCursor);
+    lastEpochVersion = lastCursor.epochVersion;
     return nextEpochVersion > previousEpochVersion;
   }
 
@@ -470,14 +502,18 @@ export function createWorkspaceRealtimeTransportCore(
       return false;
     }
 
-    const currentCursor = lastEpochVersion ?? options.cursorStorage.read(context.owner);
-    if (currentCursor != null && event.epoch_version <= currentCursor) {
+    const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
+    if (currentCursor != null && event.epoch_version <= currentCursor.epochVersion) {
       await skipEvent(event, "duplicate_epoch", "websocket");
       advanceCursor(event.epoch_version);
       return false;
     }
 
-    await options.applier.applyEvent(event, { ...context, source: "websocket" });
+    await options.applier.applyEvent(event, {
+      ...context,
+      source: "websocket",
+      notificationsEnabled,
+    });
     return advanceCursor(event.epoch_version);
   }
 
@@ -487,9 +523,9 @@ export function createWorkspaceRealtimeTransportCore(
     if (context == null) return false;
     if ("epoch_version" in frame && typeof frame.epoch_version === "number") {
       const skippedEvent = { epoch_version: frame.epoch_version };
-      const currentCursor = lastEpochVersion ?? options.cursorStorage.read(context.owner);
+      const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
       const reason =
-        currentCursor != null && frame.epoch_version <= currentCursor
+        currentCursor != null && frame.epoch_version <= currentCursor.epochVersion
           ? "duplicate_epoch"
           : "unsupported_event";
       // Service or unsupported frames with an epoch still participate in event ordering.
@@ -511,13 +547,87 @@ export function createWorkspaceRealtimeTransportCore(
     );
   }
 
+  async function recoverFromCursorExpiry(
+    error: WorkspaceEventsCursorExpiredErrorDto,
+  ): Promise<void> {
+    if (cursorRecoveryPromise != null) {
+      return cursorRecoveryPromise;
+    }
+
+    const recovery = (async (): Promise<void> => {
+      if (context == null || stopped) return;
+
+      reportDiagnostic("cursor_expired", error);
+      notificationsEnabled = false;
+      lastCursor = null;
+      lastEpochVersion = null;
+      options.cursorStorage.clear(context.owner);
+      await disconnect("cursor_expired");
+
+      try {
+        await options.resetAuthoritativeSnapshots?.(context, error);
+      } catch (snapshotError) {
+        reportDiagnostic("snapshot_recovery_failed", snapshotError);
+        await emitState("failed", "snapshot_recovery_failed", snapshotError);
+      }
+
+      if (!stopped && isCurrentRuntime()) {
+        // Recovery is retried through the normal backoff path. A broken snapshot reload
+        // must not create a tight reconnect loop around the same pruned cursor.
+        scheduleReconnect("cursor_expired");
+      }
+    })();
+    cursorRecoveryPromise = recovery;
+    try {
+      await recovery;
+    } finally {
+      if (cursorRecoveryPromise === recovery) {
+        cursorRecoveryPromise = null;
+      }
+    }
+  }
+
+  async function handleReadyFrame(
+    frame: Extract<WorkspaceMessengerWebSocketFrameDto, { type: "ready" }>,
+  ): Promise<void> {
+    if (context == null || !isCurrentRuntime()) return;
+    if (lastCursor != null && lastCursor.epochGeneration !== frame.epoch_generation) {
+      await recoverFromCursorExpiry({
+        type: "EventsCursorExpiredError",
+        code: 410,
+        error: "epoch_pruned",
+        message: "Workspace realtime generation changed during websocket catch-up",
+        reason: "epoch_generation_changed",
+        epoch_generation: frame.epoch_generation,
+        current_epoch_version: frame.epoch_version,
+        minimum_epoch_version: frame.epoch_version,
+      });
+      return;
+    }
+
+    lastCursor = {
+      epochGeneration: frame.epoch_generation,
+      epochVersion: Math.max(lastCursor?.epochVersion ?? 0, frame.epoch_version),
+    };
+    options.cursorStorage.write(context.owner, lastCursor);
+    lastEpochVersion = lastCursor.epochVersion;
+    notificationsEnabled = true;
+    reconnectAttempt = 0;
+    await emitState("connected");
+  }
+
   async function handleRawFrame(raw: unknown): Promise<void> {
     try {
       const frame = parseWorkspaceWebSocketFrame(raw);
-      if (
-        "type" in frame &&
-        (frame.type === "connected" || frame.type === "hello" || frame.type === "ping")
-      ) {
+      if ("type" in frame && frame.type === "ready") {
+        await handleReadyFrame(frame);
+        return;
+      }
+      if ("type" in frame && frame.type === "error") {
+        await recoverFromCursorExpiry({
+          ...frame,
+          type: "EventsCursorExpiredError",
+        });
         return;
       }
       const event = normalizeWorkspaceWebSocketFrame(frame);
@@ -544,6 +654,7 @@ export function createWorkspaceRealtimeTransportCore(
           surface: catchUpContext.surface,
           signal: catchUpContext.signal,
           source: "catch_up",
+          notificationsEnabled: false,
         }),
       skipEvent: (event, reason, catchUpContext) =>
         options.applier.skipEvent(event, reason, {
@@ -552,6 +663,7 @@ export function createWorkspaceRealtimeTransportCore(
           surface: catchUpContext.surface,
           signal: catchUpContext.signal,
           source: "catch_up",
+          notificationsEnabled: false,
         }),
     };
 
@@ -569,7 +681,8 @@ export function createWorkspaceRealtimeTransportCore(
       normalizeRestEvent: options.normalizeRestEvent,
     });
 
-    lastEpochVersion = result.lastEpochVersion;
+    lastCursor = result.lastCursor;
+    lastEpochVersion = result.lastCursor.epochVersion;
     return !result.isStale && isCurrentRuntime();
   }
 
@@ -595,21 +708,18 @@ export function createWorkspaceRealtimeTransportCore(
     if (!isCurrentRuntime()) return;
     // Open the socket only after catch-up from the saved cursor.
     // Otherwise live events may arrive before missed REST events.
-    const currentCursor =
-      lastEpochVersion ??
-      options.cursorStorage.read(activeContext.owner) ??
-      INVALID_FRAME_SYNTHETIC_EPOCH;
+    const currentCursor = lastCursor ?? options.cursorStorage.read(activeContext.owner);
     const url = buildMessengerWebSocketUrl({
       baseUrl: options.webSocketBaseUrl,
-      lastEpochVersion: currentCursor,
+      lastEpochVersion: currentCursor?.epochVersion ?? INVALID_FRAME_SYNTHETIC_EPOCH,
+      epochGeneration: currentCursor?.epochGeneration,
     });
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);
     const activeSocket = socket;
 
     activeSocket.onopen = () => {
-      reconnectAttempt = 0;
-      void emitState("connected");
+      notificationsEnabled = false;
     };
     activeSocket.onmessage = (event) => {
       frameQueue = frameQueue
@@ -628,8 +738,22 @@ export function createWorkspaceRealtimeTransportCore(
     activeSocket.onclose = (event) => {
       socket = null;
       if (!stopped) {
-        if (getWebSocketCloseCode(event) === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE) {
+        const closeCode = getWebSocketCloseCode(event);
+        if (closeCode === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE) {
           void refreshSessionAfterAuthFailure("websocket_auth_failed", event);
+          return;
+        }
+        if (closeCode === WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE) {
+          void recoverFromCursorExpiry({
+            type: "EventsCursorExpiredError",
+            code: 410,
+            error: "epoch_pruned",
+            message: "Workspace realtime cursor expired",
+            reason: "websocket_closed",
+            epoch_generation: lastCursor?.epochGeneration ?? "unknown",
+            current_epoch_version: lastEpochVersion ?? 0,
+            minimum_epoch_version: 0,
+          });
           return;
         }
         scheduleReconnect("socket_close");
@@ -647,6 +771,11 @@ export function createWorkspaceRealtimeTransportCore(
       openWebSocket(context);
     } catch (error) {
       if (stopped || activeSignal()?.aborted === true) return;
+      const expiredCursor = cursorExpiredError(error);
+      if (expiredCursor != null) {
+        await recoverFromCursorExpiry(expiredCursor);
+        return;
+      }
       if (isAuthFailureError(error)) {
         await refreshSessionAfterAuthFailure("catch_up_auth_failed", error);
         return;
@@ -701,7 +830,10 @@ export function createWorkspaceRealtimeTransportCore(
     reconnectAttempt = 0;
     lastAuthRefreshToken = null;
     lastAuthFailure = null;
-    lastEpochVersion = options.cursorStorage.read(nextContext.owner);
+    cursorRecoveryPromise = null;
+    notificationsEnabled = false;
+    lastCursor = options.cursorStorage.read(nextContext.owner);
+    lastEpochVersion = lastCursor?.epochVersion ?? null;
     attachExternalAbort(nextContext.signal);
     await emitState("starting");
     await runCatchUpAndConnect("start");

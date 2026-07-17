@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createMessengerCatalogCacheReconcileFence,
+  deleteMessengerStreamBindingCatalogCache,
   deleteWorkspaceMessengerCacheDatabase,
   openWorkspaceMessengerCacheDb,
   readMessengerCatalogCache,
@@ -63,5 +64,14 @@ describe("messenger cache", () => {
 
     const snapshot = await readMessengerCatalogCache(OWNER_KEY);
     expect(snapshot.streamBindings.map((binding) => binding.uuid)).toEqual([BINDING_UUID]);
+  });
+
+  it("removes a realtime-deleted stream binding without touching other catalog rows", async () => {
+    await upsertMessengerStreamBindingsCache(OWNER_KEY, [createStreamBinding()]);
+
+    await deleteMessengerStreamBindingCatalogCache(OWNER_KEY, BINDING_UUID);
+
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.streamBindings).toEqual([]);
   });
 });

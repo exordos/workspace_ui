@@ -33,9 +33,26 @@ export interface WorkspaceFileResourceCache {
 interface ResourceCacheEntry {
   abortController: AbortController;
   promise: Promise<MessengerBinaryResult>;
+  invalidationVersion: number;
 }
 
 const pendingRequests = new Map<string, PendingRequest>();
+const invalidationVersionsByFileKey = new Map<string, number>();
+
+function fileCacheKey(ownerKey: string, fileUuid: string): string {
+  return JSON.stringify([ownerKey, fileUuid]);
+}
+
+function currentInvalidationVersion(ownerKey: string, fileUuid: string): number {
+  return invalidationVersionsByFileKey.get(fileCacheKey(ownerKey, fileUuid)) ?? 0;
+}
+
+// Realtime file mutations do not have a metadata store. Bump this version so the
+// next preview/download cannot reuse bytes fetched before the mutation.
+export function invalidateWorkspaceFileResourceCache(ownerKey: string, fileUuid: string): void {
+  const key = fileCacheKey(ownerKey, fileUuid);
+  invalidationVersionsByFileKey.set(key, (invalidationVersionsByFileKey.get(key) ?? 0) + 1);
+}
 
 function requestKey(options: WorkspaceFileLoaderOptions): string {
   return JSON.stringify([options.ownerKey, options.runtimeGeneration, options.fileUuid]);
@@ -196,6 +213,12 @@ export function createWorkspaceFileResourceCache(): WorkspaceFileResourceCache {
 
       const key = requestKey(options);
       let entry = entries.get(key);
+      const invalidationVersion = currentInvalidationVersion(options.ownerKey, options.fileUuid);
+      if (entry != null && entry.invalidationVersion !== invalidationVersion) {
+        entry.abortController.abort();
+        entries.delete(key);
+        entry = undefined;
+      }
       if (entry == null) {
         const abortController = new AbortController();
         const promise = loadWorkspaceFile({
@@ -207,7 +230,11 @@ export function createWorkspaceFileResourceCache(): WorkspaceFileResourceCache {
           }
           throw error instanceof Error ? error : new Error(String(error));
         });
-        entry = { abortController, promise };
+        entry = {
+          abortController,
+          promise,
+          invalidationVersion,
+        };
         entries.set(key, entry);
       }
 

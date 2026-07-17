@@ -1,9 +1,9 @@
-import { invokeUserPresence, type MessengerClientOptions } from "~/shared/api/messenger-client";
+import { invokeUserPresence, type WorkspaceClientOptions } from "~/shared/api/workspace-client";
 
 export const WORKSPACE_PRESENCE_REPORT_INTERVAL_MS = 30_000;
 
 export interface WorkspacePresenceReporterOptions {
-  clientOptions: MessengerClientOptions;
+  clientOptions: WorkspaceClientOptions;
   userUuid: string;
   reportIntervalMs?: number;
   onError?: (error: unknown) => void;

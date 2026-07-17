@@ -11,10 +11,10 @@
  */
 
 export const DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX = "/__dev_workspace_org";
-export const DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX = "/api/messenger";
+export const DEV_WORKSPACE_API_PATH_PREFIX = "/api/workspace";
 
-export function isDevWorkspaceMessengerApiPathname(pathname: string): boolean {
-  const prefix = DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX;
+export function isDevWorkspaceApiPathname(pathname: string): boolean {
+  const prefix = DEV_WORKSPACE_API_PATH_PREFIX;
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 

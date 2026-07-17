@@ -1478,6 +1478,23 @@ export async function deleteMessengerStreamCatalogCache(
   }
 }
 
+export async function deleteMessengerStreamBindingCatalogCache(
+  ownerKey: string,
+  streamBindingUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(stores.streamBindings, "readwrite");
+    transaction.objectStore(stores.streamBindings).delete(cacheRowId(ownerKey, streamBindingUuid));
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
 export async function deleteMessengerTopicCatalogCache(
   ownerKey: string,
   topicUuid: string,

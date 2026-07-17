@@ -249,7 +249,14 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerFolderDto(folderDto)).toBe(true);
     expect(isWorkspaceMessengerUserDto(userDto)).toBe(true);
     expect(isWorkspaceMessengerServerSettingsDto(serverSettingsDto)).toBe(true);
-    expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
+    expect(
+      isWorkspaceMessengerEpochDto({
+        epoch_version: 124,
+        epoch_generation: "generation-a",
+        current_epoch_version: 124,
+        minimum_epoch_version: 1,
+      }),
+    ).toBe(true);
   });
 
   it("keeps a user valid when the avatar is missing or uses an unknown format", () => {
@@ -715,34 +722,21 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
     expect(
       isWorkspaceMessengerWebSocketFrameDto({
-        type: "hello",
-        user_uuid: USER_UUID,
-        project_id: PROJECT_UUID,
+        type: "ready",
+        epoch_generation: "generation-a",
         epoch_version: 124,
       }),
     ).toBe(true);
-    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "connected" })).toBe(true);
-    expect(
-      isWorkspaceMessengerWebSocketFrameDto({
-        type: "connected",
-        user_uuid: USER_UUID,
-        project_id: PROJECT_UUID,
-        epoch_version: 124,
-      }),
-    ).toBe(true);
-    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "ping" })).toBe(true);
-    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "ping", ts: DATE })).toBe(true);
     expect(
       isWorkspaceMessengerWebSocketFrameDto({
         type: "error",
-        code: "bad_request",
-        message: "Invalid websocket frame",
-      }),
-    ).toBe(true);
-    expect(
-      isWorkspaceMessengerWebSocketFrameDto({
-        type: "event",
-        event: userUpdatedEvent,
+        code: 410,
+        error: "epoch_pruned",
+        message: "The saved events cursor is outside the retained event journal",
+        reason: "epoch_pruned",
+        epoch_generation: "generation-a",
+        current_epoch_version: 124,
+        minimum_epoch_version: 1,
       }),
     ).toBe(true);
   });

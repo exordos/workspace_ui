@@ -1,6 +1,7 @@
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
+import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-file-loader.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
@@ -40,6 +41,7 @@ type MessengerStreamBindingRealtimeEvent = Extract<
 type MessengerTopicRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "topic" }>;
 type MessengerFolderRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "folder" }>;
 type MessengerFolderItemRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "folder_item" }>;
+type MessengerFileRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "file" }>;
 
 export interface MessengerRealtimeCacheConversationPage {
   messages: readonly MessengerMessage[];
@@ -63,6 +65,10 @@ export interface MessengerRealtimeActiveCacheWriter {
   upsertCachedStreamBindings?: (
     ownerKey: string,
     streamBindings: readonly MessengerStreamBinding[],
+  ) => Promise<void> | void;
+  deleteCachedStreamBinding?: (
+    ownerKey: string,
+    streamBindingUuid: MessengerUuid,
   ) => Promise<void> | void;
   upsertCachedTopic?: (ownerKey: string, topic: MessengerTopic) => Promise<void> | void;
   deleteCachedTopic?: (
@@ -96,6 +102,7 @@ export interface MessengerRealtimeActiveApplierOptions {
     ownerKey: string,
     message: MessengerMessage,
   ) => void | Promise<void>;
+  onFileChanged?: (ownerKey: string, event: MessengerFileRealtimeEvent) => void | Promise<void>;
 }
 
 export interface MessengerRealtimeBackgroundApplierOptions {
@@ -142,7 +149,8 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): event is Messe
     eventType === "stream_binding" ||
     eventType === "topic" ||
     eventType === "folder" ||
-    eventType === "folder_item"
+    eventType === "folder_item" ||
+    eventType === "file"
   );
 }
 
@@ -151,8 +159,9 @@ function isNonMessengerRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
 }
 
 function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
-  // stream_binding is not stored in background yet: it contains membership data, not a lightweight id/counter snapshot.
-  return event.type !== "stream_binding";
+  // Membership and file bytes have no safe background projection. They are applied
+  // by the active runtime, where their scoped stores and caches are available.
+  return event.type !== "stream_binding" && event.type !== "file";
 }
 
 function skippedEpoch(event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent): number {
@@ -313,7 +322,7 @@ function applyMessageRealtimeEvent(
   }
 
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
-  if (options.onMessageCreated != null) {
+  if (context.notificationsEnabled === true && options.onMessageCreated != null) {
     writeRealtimeCacheBestEffort(() =>
       options.onMessageCreated?.(ownerKey, message, stream, context),
     );
@@ -349,12 +358,39 @@ function applyStreamBindingRealtimeEvent(
   ownerKey: string,
   activeCache: MessengerRealtimeActiveCacheWriter,
 ): void {
-  const streamBindings = event.stream_bindings.map(adaptMessengerStreamBinding);
-  useMessengerStore.getState().upsertStreamBindings(ownerKey, streamBindings);
+  if (event.kind === "stream_binding.deleted") {
+    useMessengerStore.getState().removeStreamBinding(ownerKey, {
+      uuid: event.stream_binding.uuid,
+      streamUuid: event.stream_binding.stream_uuid,
+    });
+    if (activeCache.deleteCachedStreamBinding != null) {
+      writeRealtimeCacheBestEffort(() =>
+        activeCache.deleteCachedStreamBinding?.(ownerKey, event.stream_binding.uuid),
+      );
+    }
+    return;
+  }
+
+  const bindings =
+    event.kind === "stream_binding.updated"
+      ? [adaptMessengerStreamBinding(event.stream_binding)]
+      : event.stream_bindings.map(adaptMessengerStreamBinding);
+  useMessengerStore.getState().upsertStreamBindings(ownerKey, bindings);
   if (activeCache.upsertCachedStreamBindings != null) {
     writeRealtimeCacheBestEffort(() =>
-      activeCache.upsertCachedStreamBindings?.(ownerKey, streamBindings),
+      activeCache.upsertCachedStreamBindings?.(ownerKey, bindings),
     );
+  }
+}
+
+function applyFileRealtimeEvent(
+  event: MessengerFileRealtimeEvent,
+  ownerKey: string,
+  options: MessengerRealtimeActiveApplierOptions,
+): void {
+  invalidateWorkspaceFileResourceCache(ownerKey, event.file.uuid);
+  if (options.onFileChanged != null) {
+    writeRealtimeCacheBestEffort(() => options.onFileChanged?.(ownerKey, event));
   }
 }
 
@@ -460,6 +496,9 @@ function applySupportedRealtimeEvent(
       break;
     case "folder_item":
       applyFolderItemRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "file":
+      applyFileRealtimeEvent(event, ownerKey, options);
       break;
   }
 }

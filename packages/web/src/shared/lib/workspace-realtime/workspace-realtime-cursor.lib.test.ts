@@ -47,11 +47,11 @@ describe("workspace-realtime cursor", () => {
     const storage = createWorkspaceRealtimeCursorStorage(rawStorage);
     const owner = createOwner();
 
-    storage.write(owner, 12);
-    storage.write(owner, 10);
-    storage.write(owner, 14);
+    storage.write(owner, { epochGeneration: "generation-a", epochVersion: 12 });
+    storage.write(owner, { epochGeneration: "generation-a", epochVersion: 10 });
+    storage.write(owner, { epochGeneration: "generation-a", epochVersion: 14 });
 
-    expect(storage.read(owner)).toBe(14);
+    expect(storage.read(owner)).toEqual({ epochGeneration: "generation-a", epochVersion: 14 });
   });
 
   it("ignores invalid stored cursor values", () => {
@@ -62,5 +62,16 @@ describe("workspace-realtime cursor", () => {
     rawStorage.setItem(workspaceRealtimeCursorKey(owner), "not-a-number");
 
     expect(storage.read(owner)).toBeNull();
+  });
+
+  it("removes legacy numeric cursors because they lack epoch generation", () => {
+    const rawStorage = new MemoryStorage();
+    const storage = createWorkspaceRealtimeCursorStorage(rawStorage);
+    const owner = createOwner();
+    const key = workspaceRealtimeCursorKey(owner);
+    rawStorage.setItem(key, "42");
+
+    expect(storage.read(owner)).toBeNull();
+    expect(rawStorage.getItem(key)).toBeNull();
   });
 });

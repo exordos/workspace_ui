@@ -47,7 +47,9 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
 
     if (instanceId == null) return;
 
-    const requestContext = captureWorkspaceRuntimeRequestContext(configRef.current.getRuntimeContext);
+    const requestContext = captureWorkspaceRuntimeRequestContext(
+      configRef.current.getRuntimeContext,
+    );
     if (requestContext == null) return;
 
     const controller = new AbortController();

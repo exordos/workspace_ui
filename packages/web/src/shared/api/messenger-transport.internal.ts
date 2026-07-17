@@ -1,13 +1,14 @@
 import {
   X_WORKSPACE_DEV_TARGET_ORIGIN,
-  isDevWorkspaceMessengerApiPathname,
+  isDevWorkspaceApiPathname,
   isAllowedDevWorkspaceProxyTargetOrigin,
 } from "~/shared/config/dev-workspace-org-proxy";
 import { buildMessengerBearerAuthHeader } from "./messenger-auth";
 
-// Low-level HTTP layer for Workspace Messenger API.
+// Low-level HTTP layer for Workspace APIs.
 // Higher layers should work with DTOs or domain objects instead of hand-built URLs.
-export const DEFAULT_MESSENGER_API_BASE = "/api/messenger/v1";
+export const DEFAULT_WORKSPACE_API_BASE = "/api/workspace/v1";
+export const DEFAULT_MESSENGER_API_BASE = `${DEFAULT_WORKSPACE_API_BASE}/messenger`;
 
 export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type MessengerDtoGuard<T> = (value: unknown) => value is T;
@@ -27,7 +28,7 @@ export type MessengerQueryParams = Record<
   | undefined
 >;
 
-export interface MessengerClientOptions {
+export interface WorkspaceApiClientOptions {
   accessToken: string | null | undefined;
   getAccessToken?: MessengerAccessTokenProvider;
   baseUrl?: string;
@@ -36,6 +37,8 @@ export interface MessengerClientOptions {
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
 }
+
+export type MessengerClientOptions = WorkspaceApiClientOptions;
 
 export interface MessengerPublicClientOptions {
   baseUrl?: string;
@@ -209,10 +212,7 @@ function shouldAppendDevProxyTargetHeader(url: string): boolean {
   }
   try {
     const parsed = new URL(url, window.location.origin);
-    return (
-      parsed.origin === window.location.origin &&
-      isDevWorkspaceMessengerApiPathname(parsed.pathname)
-    );
+    return parsed.origin === window.location.origin && isDevWorkspaceApiPathname(parsed.pathname);
   } catch {
     return false;
   }

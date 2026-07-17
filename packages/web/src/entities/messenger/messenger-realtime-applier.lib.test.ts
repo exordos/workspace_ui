@@ -74,6 +74,7 @@ function createContext(
     ownerKey: workspaceRuntimeOwnerKey(owner),
     surface: "active",
     source: "websocket",
+    notificationsEnabled: true,
     ...overrides,
   };
 }
@@ -577,6 +578,25 @@ describe("messenger realtime active applier", () => {
       }),
       context,
     );
+  });
+
+  it("does not run message-created side effects before realtime is ready", () => {
+    const context = createContext(createOwner(), { notificationsEnabled: false });
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeDefined();
+    expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
   it("inserts delayed live messages by created time in stream and topic buckets", () => {
@@ -1389,6 +1409,114 @@ describe("messenger realtime active applier", () => {
     expect(selectMessengerSidebarConversations(state)).toEqual([
       expect.objectContaining({ id: `stream:${STREAM_A}`, streamUuid: STREAM_A }),
     ]);
+  });
+
+  it("upserts updated stream bindings and removes deleted bindings from state and cache", () => {
+    const context = createContext();
+    const cache = {
+      upsertCachedStreamBindings: vi.fn(),
+      deleteCachedStreamBinding: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 103,
+        type: "stream_binding",
+        kind: "stream_binding.updated",
+        stream_binding: createStreamBindingDto({
+          role: "moderator",
+          notification_mode: "mentions_only",
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamBindingsById[STREAM_BINDING_A]).toEqual(
+      expect.objectContaining({
+        role: "moderator",
+        notificationMode: "mentions_only",
+        updatedAt: DATE_LATER,
+      }),
+    );
+    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(context.ownerKey, [
+      expect.objectContaining({ uuid: STREAM_BINDING_A, role: "moderator" }),
+    ]);
+
+    applier.applyEvent(
+      {
+        epoch_version: 104,
+        type: "stream_binding",
+        kind: "stream_binding.deleted",
+        stream_binding: {
+          uuid: STREAM_BINDING_A,
+          stream_uuid: STREAM_A,
+          user_uuid: USER_A,
+        },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamBindingsById[STREAM_BINDING_A]).toBeUndefined();
+    expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([]);
+    expect(cache.deleteCachedStreamBinding).toHaveBeenCalledWith(
+      context.ownerKey,
+      STREAM_BINDING_A,
+    );
+  });
+
+  it("invalidates file resources for created, updated, and deleted file events", () => {
+    const context = createContext();
+    const onFileChanged = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ onFileChanged });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    const file = {
+      uuid: "9c24cf53-2d2d-473f-aacd-97662627a9d4",
+      project_id: PROJECT_A,
+      user_uuid: USER_A,
+      stream_uuid: STREAM_A,
+      name: "release-notes.pdf",
+      description: "",
+      content_type: "application/pdf",
+      size_bytes: 128,
+      hash: "sha256:123",
+      created_at: DATE,
+      updated_at: DATE,
+    };
+
+    applier.applyEvent({ epoch_version: 105, type: "file", kind: "file.created", file }, context);
+    applier.applyEvent(
+      {
+        epoch_version: 106,
+        type: "file",
+        kind: "file.updated",
+        file: { ...file, updated_at: DATE_LATER },
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 107,
+        type: "file",
+        kind: "file.deleted",
+        file: { uuid: file.uuid, stream_uuid: STREAM_A },
+      },
+      context,
+    );
+
+    expect(onFileChanged).toHaveBeenCalledTimes(3);
+    expect(onFileChanged).toHaveBeenNthCalledWith(
+      3,
+      context.ownerKey,
+      expect.objectContaining({
+        kind: "file.deleted",
+        file: { uuid: file.uuid, stream_uuid: STREAM_A },
+      }),
+    );
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(107);
+    expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
   });
 
   it("keeps system folders stable after realtime folder updates", () => {

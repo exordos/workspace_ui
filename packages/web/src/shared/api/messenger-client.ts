@@ -12,8 +12,6 @@ import {
   parseStrictDtoList,
 } from "./messenger-transport.internal";
 import {
-  isWorkspaceMessengerEpochDto,
-  isWorkspaceMessengerEventDto,
   isWorkspaceMessengerFolderDto,
   isWorkspaceMessengerFolderItemDto,
   isWorkspaceMessengerMessageDto,
@@ -21,7 +19,6 @@ import {
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerStreamDto,
   isWorkspaceMessengerTopicDto,
-  isWorkspaceMessengerUserDto,
 } from "./messenger.types";
 import type {
   MessengerClientOptions,
@@ -31,8 +28,6 @@ import type {
   MessengerQueryParams,
 } from "./messenger-transport.internal";
 import type {
-  WorkspaceMessengerEpochDto,
-  WorkspaceMessengerEventDto,
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
   WorkspaceMessengerCreateMessageReactionRequestBody,
@@ -41,7 +36,6 @@ import type {
   WorkspaceMessengerServerSettingsDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "./messenger.types";
 
 export { MessengerApiError };
@@ -66,16 +60,6 @@ export interface GetMessageReactionsQuery {
 
 export interface GetFolderItemsQuery extends MessengerPaginationQuery {
   folderUuid?: string;
-}
-
-export interface GetEventsQuery extends MessengerPaginationQuery {
-  afterEpochVersion?: number;
-}
-
-export interface InvokeUserPresenceBody {
-  status: "active" | "idle" | "offline" | "do_not_disturb";
-  emoji?: string | null;
-  text?: string | null;
 }
 
 const MESSAGES_BY_UUIDS_CHUNK_SIZE = 100;
@@ -286,71 +270,4 @@ export async function getFolderItems(
     folder_uuid: query.folderUuid,
   });
   return parseDtoList(data, isWorkspaceMessengerFolderItemDto, "messenger folder items response");
-}
-
-export async function getUsers(
-  options: MessengerClientOptions,
-  query: MessengerPaginationQuery = {},
-): Promise<WorkspaceMessengerUserDto[]> {
-  const data = await messengerGetJson("/users/", options, paginationParams(query));
-  return parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response");
-}
-
-export async function getUsersPage(
-  options: MessengerClientOptions,
-  query: MessengerPaginationQuery = {},
-): Promise<MessengerCollectionPage<WorkspaceMessengerUserDto>> {
-  const { data, headers } = await messengerRequestJsonResult(
-    "GET",
-    "/users/",
-    options,
-    paginationParams(query),
-  );
-  return {
-    items: parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response"),
-    ...parsePaginationHeaders(headers),
-  };
-}
-
-export async function getUser(
-  options: MessengerClientOptions,
-  userUuid: string,
-): Promise<WorkspaceMessengerUserDto> {
-  const data = await messengerGetJson(`/users/${encodeURIComponent(userUuid)}`, options);
-  return parseDto(data, isWorkspaceMessengerUserDto, "messenger user response");
-}
-
-export async function invokeUserPresence(
-  options: MessengerClientOptions,
-  userUuid: string,
-  body: InvokeUserPresenceBody,
-): Promise<WorkspaceMessengerUserDto> {
-  const data = await messengerPostJson(
-    `/users/${encodeURIComponent(userUuid)}/actions/presence/invoke`,
-    options,
-    body,
-  );
-  return parseDto(data, isWorkspaceMessengerUserDto, "messenger user presence response");
-}
-
-export async function getEvents(
-  options: MessengerClientOptions,
-  query: GetEventsQuery = {},
-): Promise<WorkspaceMessengerEventDto[]> {
-  const data = await messengerGetJson(
-    "/events/",
-    options,
-    projectScopedParams(options, {
-      ...paginationParams(query),
-      "epoch_version>": query.afterEpochVersion,
-    }),
-  );
-  return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");
-}
-
-export async function getEpoch(
-  options: MessengerClientOptions,
-): Promise<WorkspaceMessengerEpochDto> {
-  const data = await messengerGetJson("/epoch/", options);
-  return parseDto(data, isWorkspaceMessengerEpochDto, "messenger epoch response");
 }

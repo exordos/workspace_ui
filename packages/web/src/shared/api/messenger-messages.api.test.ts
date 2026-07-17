@@ -149,7 +149,7 @@ describe("messenger messages API", () => {
 
     const [url, init] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/messages/?page_limit=50&page_marker=${MESSAGE_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
+      `/api/workspace/v1/messenger/messages/?page_limit=50&page_marker=${MESSAGE_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
     );
     expect(init?.method).toBe("GET");
     expect(init?.headers).toEqual({
@@ -182,7 +182,7 @@ describe("messenger messages API", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/messages/?page_limit=25&page_marker=previous-message&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
+      `/api/workspace/v1/messenger/messages/?page_limit=25&page_marker=previous-message&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
     );
   });
 
@@ -204,10 +204,10 @@ describe("messenger messages API", () => {
 
     fetchMock.mockImplementation((input) => {
       const url = parsedFetchUrl(input);
-      if (url.pathname === `/api/messenger/v1/messages/${MESSAGE_UUID}`) {
+      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
         return anchorResponse.promise;
       }
-      if (url.pathname === "/api/messenger/v1/messages/") {
+      if (url.pathname === "/api/workspace/v1/messenger/messages/") {
         const sortDir = url.searchParams.get("sort_dir");
         if (sortDir === "desc") {
           return Promise.resolve(
@@ -288,10 +288,10 @@ describe("messenger messages API", () => {
 
     fetchMock.mockImplementation((input) => {
       const url = parsedFetchUrl(input);
-      if (url.pathname === `/api/messenger/v1/messages/${MESSAGE_UUID}`) {
+      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
         return anchorResponse.promise;
       }
-      if (url.pathname === "/api/messenger/v1/messages/") {
+      if (url.pathname === "/api/workspace/v1/messenger/messages/") {
         expect(url.searchParams.get("stream_uuid")).toBe(STREAM_UUID);
         expect(url.searchParams.get("topic_uuid")).toBe(TOPIC_UUID);
         return Promise.resolve(
@@ -313,7 +313,9 @@ describe("messenger messages API", () => {
     await Promise.resolve();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(firstFetchCall(fetchMock)[0]).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}`);
+    expect(firstFetchCall(fetchMock)[0]).toBe(
+      `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`,
+    );
 
     anchorResponse.resolve(jsonResponse(messageDto));
 
@@ -347,7 +349,9 @@ describe("messenger messages API", () => {
     await expect(
       getMessage({ accessToken: "access-token", fetchImpl: getFetchMock }, MESSAGE_UUID),
     ).resolves.toEqual(messageDto);
-    expect(firstFetchCall(getFetchMock)[0]).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}`);
+    expect(firstFetchCall(getFetchMock)[0]).toBe(
+      `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`,
+    );
 
     const createBody = {
       stream_uuid: STREAM_UUID,
@@ -362,7 +366,7 @@ describe("messenger messages API", () => {
       createMessage({ accessToken: "access-token", fetchImpl: createFetch }, createBody),
     ).resolves.toEqual(messageDto);
     const [createUrl, createInit] = firstFetchCall(createFetch);
-    expect(createUrl).toBe("/api/messenger/v1/messages/");
+    expect(createUrl).toBe("/api/workspace/v1/messenger/messages/");
     expect(createInit?.method).toBe("POST");
     expect(createInit?.body).toBe(JSON.stringify(createBody));
 
@@ -381,7 +385,7 @@ describe("messenger messages API", () => {
       ),
     ).resolves.toEqual({ ...messageDto, payload: editBody.payload });
     const [editUrl, editInit] = firstFetchCall(editFetchMock);
-    expect(editUrl).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}`);
+    expect(editUrl).toBe(`/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`);
     expect(editInit?.method).toBe("PUT");
     expect(editInit?.body).toBe(JSON.stringify(editBody));
 
@@ -390,7 +394,9 @@ describe("messenger messages API", () => {
       markMessageRead({ accessToken: "access-token", fetchImpl: readFetchMock }, MESSAGE_UUID),
     ).resolves.toEqual({ ...messageDto, read: true });
     const [readUrl, readInit] = firstFetchCall(readFetchMock);
-    expect(readUrl).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}/actions/read/invoke`);
+    expect(readUrl).toBe(
+      `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}/actions/read/invoke`,
+    );
     expect(readInit?.method).toBe("POST");
     expect(readInit?.body).toBeUndefined();
 
@@ -403,7 +409,7 @@ describe("messenger messages API", () => {
     ).resolves.toEqual({ ...messageDto, read: true });
     const [readUpToUrl, readUpToInit] = firstFetchCall(readUpToFetchMock);
     expect(readUpToUrl).toBe(
-      `/api/messenger/v1/messages/${MESSAGE_UUID}/actions/read_up_to/invoke`,
+      `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}/actions/read_up_to/invoke`,
     );
     expect(readUpToInit?.method).toBe("POST");
     expect(readUpToInit?.body).toBeUndefined();
@@ -413,7 +419,7 @@ describe("messenger messages API", () => {
       deleteMessage({ accessToken: "access-token", fetchImpl: deleteFetchMock }, MESSAGE_UUID),
     ).resolves.toBeUndefined();
     const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
-    expect(deleteUrl).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}`);
+    expect(deleteUrl).toBe(`/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`);
     expect(deleteInit?.method).toBe("DELETE");
     expect(deleteInit?.body).toBeUndefined();
   });
@@ -428,7 +434,7 @@ describe("messenger messages API", () => {
     ).resolves.toEqual([reactionDto]);
     const [listUrl, listInit] = firstFetchCall(listFetchMock);
     expect(listUrl).toBe(
-      `/api/messenger/v1/message_reactions/?message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
+      `/api/workspace/v1/messenger/message_reactions/?message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
     );
     expect(listInit?.method).toBe("GET");
 
@@ -444,7 +450,7 @@ describe("messenger messages API", () => {
       ),
     ).resolves.toEqual(reactionDto);
     const [createUrl, createInit] = firstFetchCall(createReactionFetchMock);
-    expect(createUrl).toBe("/api/messenger/v1/message_reactions/");
+    expect(createUrl).toBe("/api/workspace/v1/messenger/message_reactions/");
     expect(createInit?.method).toBe("POST");
     expect(createInit?.body).toBe(JSON.stringify(createBody));
 
@@ -456,7 +462,7 @@ describe("messenger messages API", () => {
       ),
     ).resolves.toBeUndefined();
     const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
-    expect(deleteUrl).toBe(`/api/messenger/v1/message_reactions/${REACTION_UUID}`);
+    expect(deleteUrl).toBe(`/api/workspace/v1/messenger/message_reactions/${REACTION_UUID}`);
     expect(deleteInit?.method).toBe("DELETE");
     expect(deleteInit?.body).toBeUndefined();
   });
@@ -472,7 +478,7 @@ describe("messenger messages API", () => {
     ).resolves.toEqual([reactionDto]);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/message_reactions/?user_uuid=${USER_UUID}`);
+    expect(url).toBe(`/api/workspace/v1/messenger/message_reactions/?user_uuid=${USER_UUID}`);
     expect(url).not.toContain("message_uuid");
   });
 

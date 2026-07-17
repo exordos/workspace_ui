@@ -53,7 +53,7 @@ describe("messenger transport helper", () => {
         "epoch_version>": 123,
         page_marker: undefined,
       }),
-    ).toBe("/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123");
+    ).toBe("/api/workspace/v1/messenger/events/?page_limit=500&epoch_version%3E=123");
     expect(buildMessengerUrl("/custom/api/", "/server_settings")).toBe(
       "/custom/api/server_settings",
     );
@@ -64,7 +64,7 @@ describe("messenger transport helper", () => {
       buildMessengerUrl(undefined, "/messages/", {
         uuid: ["a", null, "b", undefined],
       }),
-    ).toBe("/api/messenger/v1/messages/?uuid=a&uuid=b");
+    ).toBe("/api/workspace/v1/messenger/messages/?uuid=a&uuid=b");
   });
 
   it("sends GET requests with bearer auth", async () => {
@@ -136,7 +136,7 @@ describe("messenger transport helper", () => {
 
     await getJsonResult("/streams/", {
       accessToken: "token",
-      baseUrl: "https://workspace.example.com/api/messenger/v1",
+      baseUrl: "https://workspace.example.com/api/workspace/v1/messenger",
       devTargetOrigin: "https://workspace.example.com",
       fetchImpl: fetchMock,
     });
@@ -157,7 +157,7 @@ describe("messenger transport helper", () => {
     await expect(
       getJsonResult(
         "/streams/",
-        { accessToken: "token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        { accessToken: "token", baseUrl: "/api/workspace/v1/messenger", fetchImpl: fetchMock },
         { page_limit: 50 },
       ),
     ).resolves.toMatchObject({
@@ -165,8 +165,8 @@ describe("messenger transport helper", () => {
     });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/messenger/v1/streams/?page_limit=50",
-      "/api/messenger/v1/streams?page_limit=50",
+      "/api/workspace/v1/messenger/streams/?page_limit=50",
+      "/api/workspace/v1/messenger/streams?page_limit=50",
     ]);
   });
 
@@ -183,7 +183,7 @@ describe("messenger transport helper", () => {
         "/streams/",
         {
           accessToken: "old-token",
-          baseUrl: "/api/messenger/v1",
+          baseUrl: "/api/workspace/v1/messenger",
           fetchImpl: fetchMock,
           getAccessToken,
         },
@@ -194,9 +194,9 @@ describe("messenger transport helper", () => {
     });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/messenger/v1/streams/?page_limit=50",
-      "/api/messenger/v1/streams?page_limit=50",
-      "/api/messenger/v1/streams?page_limit=50",
+      "/api/workspace/v1/messenger/streams/?page_limit=50",
+      "/api/workspace/v1/messenger/streams?page_limit=50",
+      "/api/workspace/v1/messenger/streams?page_limit=50",
     ]);
     expect(
       fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get("Authorization")),
@@ -315,8 +315,8 @@ describe("messenger transport helper", () => {
     ).resolves.toMatchObject({ data: { uuid: "file-uuid" } });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/messenger/v1/files/",
-      "/api/messenger/v1/files",
+      "/api/workspace/v1/messenger/files/",
+      "/api/workspace/v1/messenger/files",
     ]);
     const [, init] = firstFetchCall(fetchMock);
     expect(init?.method).toBe("POST");

@@ -7,6 +7,7 @@ import {
   deleteCachedTopicMessageBuckets,
   deleteMessengerFolderCatalogCache,
   deleteMessengerFolderItemCatalogCache,
+  deleteMessengerStreamBindingCatalogCache,
   deleteOwnMessageReaction,
   deleteOwnMessageReactionsForMessage,
   deleteOwnMessageReactionsForMessages,
@@ -235,6 +236,13 @@ export async function upsertMessengerStreamBindingsCache(
   await upsertMessengerStreamBindingsCatalogCache(ownerKey, streamBindings);
 }
 
+export async function deleteMessengerStreamBindingCache(
+  ownerKey: string,
+  streamBindingUuid: MessengerUuid,
+): Promise<void> {
+  await deleteMessengerStreamBindingCatalogCache(ownerKey, streamBindingUuid);
+}
+
 export async function upsertMessengerTopicCache(
   ownerKey: string,
   topic: MessengerTopic,
@@ -435,6 +443,7 @@ export const messengerRealtimeActiveCache = {
   upsertCachedStream: upsertMessengerStreamCache,
   deleteCachedStream: deleteMessengerStreamCache,
   upsertCachedStreamBindings: upsertMessengerStreamBindingsCache,
+  deleteCachedStreamBinding: deleteMessengerStreamBindingCache,
   upsertCachedTopic: upsertMessengerTopicCache,
   deleteCachedTopic: deleteMessengerTopicCache,
   upsertCachedFolder: writeMessengerFolderSnapshotCache,

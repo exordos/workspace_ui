@@ -1,13 +1,4 @@
-import {
-  getEpoch as defaultGetEpoch,
-  getEventsPage as defaultGetEventsPage,
-  normalizeWorkspaceRestEvent as defaultNormalizeWorkspaceRestEvent,
-} from "~/shared/api/messenger-realtime.api";
-import type {
-  MessengerClientOptions,
-  MessengerCollectionPage,
-  GetEventsQuery,
-} from "~/shared/api/messenger-realtime.api";
+import { normalizeWorkspaceRestEvent as defaultNormalizeWorkspaceRestEvent } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerEpochDto,
   WorkspaceMessengerEpochVersion,
@@ -15,7 +6,17 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import type {
+  GetWorkspaceEventsQuery,
+  WorkspaceClientOptions,
+  WorkspaceCollectionPage,
+} from "~/shared/api/workspace-client";
+import {
+  getEpoch as defaultGetEpoch,
+  getEventsPage as defaultGetEventsPage,
+} from "~/shared/api/workspace-client";
+import type {
   WorkspaceRealtimeCursorOwner,
+  WorkspaceRealtimeCursor,
   WorkspaceRealtimeDurableCursorStorage,
 } from "./workspace-realtime-cursor.lib";
 
@@ -52,8 +53,8 @@ export interface WorkspaceRealtimeCatchUpApplier {
 }
 
 export interface WorkspaceRealtimeCatchUpResult {
-  startedFrom: WorkspaceMessengerEpochVersion;
-  lastEpochVersion: WorkspaceMessengerEpochVersion;
+  startedFrom: WorkspaceRealtimeCursor;
+  lastCursor: WorkspaceRealtimeCursor;
   appliedCount: number;
   skippedCount: number;
   isStale: boolean;
@@ -63,16 +64,16 @@ export interface WorkspaceRealtimeCatchUpOptions {
   owner: WorkspaceRealtimeCatchUpOwner;
   ownerKey: string;
   surface: WorkspaceRealtimeCatchUpSurface;
-  clientOptions: MessengerClientOptions;
+  clientOptions: WorkspaceClientOptions;
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeCatchUpApplier;
   isOwnerCurrent?: (owner: WorkspaceRealtimeCatchUpOwner) => boolean;
   pageLimit?: number;
-  getEpoch?: (options: MessengerClientOptions) => Promise<WorkspaceMessengerEpochDto>;
+  getEpoch?: (options: WorkspaceClientOptions) => Promise<WorkspaceMessengerEpochDto>;
   getEventsPage?: (
-    options: MessengerClientOptions,
-    query: GetEventsQuery,
-  ) => Promise<MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto>>;
+    options: WorkspaceClientOptions,
+    query: GetWorkspaceEventsQuery,
+  ) => Promise<WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>>;
   normalizeRestEvent?: (event: WorkspaceMessengerRealtimeEventDto) => WorkspaceRealtimeEvent | null;
 }
 
@@ -98,26 +99,30 @@ function isCatchUpOwnerCurrent(options: WorkspaceRealtimeCatchUpOptions): boolea
 
 async function resolveStartCursor(
   options: WorkspaceRealtimeCatchUpOptions,
-): Promise<WorkspaceMessengerEpochVersion> {
+): Promise<WorkspaceRealtimeCursor> {
   const storedCursor = options.cursorStorage.read(options.owner);
   if (storedCursor != null) {
     return storedCursor;
   }
 
-  // Если cursor ещё не создан, начинаем с текущей epoch сервера.
-  // Это не загружает всю историю проекта, а только фиксирует точку старта live-событий.
+  // Если cursor ещё не создан, фиксируем актуальную пару с сервера.
+  // Браузер не создаёт старый числовой cursor и не пытается угадать generation.
   const getEpoch = options.getEpoch ?? defaultGetEpoch;
   const epoch = await getEpoch(options.clientOptions);
-  options.cursorStorage.write(options.owner, epoch.epoch_version);
-  return epoch.epoch_version;
+  const cursor = {
+    epochGeneration: epoch.epoch_generation,
+    epochVersion: epoch.epoch_version,
+  };
+  options.cursorStorage.write(options.owner, cursor);
+  return cursor;
 }
 
 function advanceCursor(
   options: WorkspaceRealtimeCatchUpOptions,
-  epochVersion: WorkspaceMessengerEpochVersion,
-): WorkspaceMessengerEpochVersion {
-  options.cursorStorage.write(options.owner, epochVersion);
-  return options.cursorStorage.read(options.owner) ?? epochVersion;
+  cursor: WorkspaceRealtimeCursor,
+): WorkspaceRealtimeCursor {
+  options.cursorStorage.write(options.owner, cursor);
+  return options.cursorStorage.read(options.owner) ?? cursor;
 }
 
 export async function catchUpWorkspaceRealtime(
@@ -134,7 +139,7 @@ export async function catchUpWorkspaceRealtime(
   };
 
   const startCursor = await resolveStartCursor(options);
-  let lastEpochVersion = startCursor;
+  let lastCursor = startCursor;
   let pageMarker: string | number | undefined;
   let appliedCount = 0;
   let skippedCount = 0;
@@ -144,7 +149,7 @@ export async function catchUpWorkspaceRealtime(
       // Устаревший owner не двигает state и durable cursor: это уже другой project-runtime.
       return {
         startedFrom: startCursor,
-        lastEpochVersion,
+        lastCursor,
         appliedCount,
         skippedCount,
         isStale: true,
@@ -152,7 +157,8 @@ export async function catchUpWorkspaceRealtime(
     }
 
     const page = await getEventsPage(options.clientOptions, {
-      afterEpochVersion: startCursor,
+      afterEpochVersion: lastCursor.epochVersion,
+      epochGeneration: startCursor.epochGeneration,
       pageLimit: options.pageLimit ?? DEFAULT_CATCH_UP_PAGE_LIMIT,
       pageMarker,
     });
@@ -162,14 +168,14 @@ export async function catchUpWorkspaceRealtime(
       if (!isCatchUpOwnerCurrent(options)) {
         return {
           startedFrom: startCursor,
-          lastEpochVersion,
+          lastCursor,
           appliedCount,
           skippedCount,
           isStale: true,
         };
       }
 
-      if (eventDto.epoch_version <= lastEpochVersion) {
+      if (eventDto.epoch_version <= lastCursor.epochVersion) {
         const skippedEvent = normalizeRestEvent(eventDto) ?? {
           epoch_version: eventDto.epoch_version,
         };
@@ -188,13 +194,19 @@ export async function catchUpWorkspaceRealtime(
           context,
         );
         skippedCount += 1;
-        lastEpochVersion = advanceCursor(options, eventDto.epoch_version);
+        lastCursor = advanceCursor(options, {
+          epochGeneration: startCursor.epochGeneration,
+          epochVersion: eventDto.epoch_version,
+        });
         continue;
       }
 
       await options.applier.applyEvent(event, context);
       appliedCount += 1;
-      lastEpochVersion = advanceCursor(options, event.epoch_version);
+      lastCursor = advanceCursor(options, {
+        epochGeneration: startCursor.epochGeneration,
+        epochVersion: event.epoch_version,
+      });
     }
 
     pageMarker = page.nextPageMarker ?? undefined;
@@ -202,7 +214,7 @@ export async function catchUpWorkspaceRealtime(
 
   return {
     startedFrom: startCursor,
-    lastEpochVersion,
+    lastCursor,
     appliedCount,
     skippedCount,
     isStale: false,

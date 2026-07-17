@@ -117,7 +117,7 @@ describe("messenger-streams api", () => {
     ).resolves.toEqual(streamDto);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/streams/");
+    expect(url).toBe("/api/workspace/v1/messenger/streams/");
     expect(init?.method).toBe("POST");
     expect(requestBody(init)).toEqual({
       name: "Engineering",
@@ -167,7 +167,7 @@ describe("messenger-streams api", () => {
     ).resolves.toEqual([streamBindingDto]);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(`/api/messenger/v1/streams/${STREAM_UUID}/actions/add_users/invoke`);
+    expect(url).toBe(`/api/workspace/v1/messenger/streams/${STREAM_UUID}/actions/add_users/invoke`);
     expect(init?.method).toBe("POST");
     expect(requestBody(init)).toEqual({ member: [OTHER_USER_UUID] });
 
@@ -203,14 +203,14 @@ describe("messenger-streams api", () => {
     ).resolves.toMatchObject({ notification_mode: "mentions_only" });
 
     expect(firstFetchCall(archiveFetchMock)[0]).toBe(
-      `/api/messenger/v1/streams/${STREAM_UUID}/actions/archive/invoke`,
+      `/api/workspace/v1/messenger/streams/${STREAM_UUID}/actions/archive/invoke`,
     );
     expect(firstFetchCall(unarchiveFetchMock)[0]).toBe(
-      `/api/messenger/v1/streams/${STREAM_UUID}/actions/unarchive/invoke`,
+      `/api/workspace/v1/messenger/streams/${STREAM_UUID}/actions/unarchive/invoke`,
     );
     const [notificationsUrl, notificationsInit] = firstFetchCall(notificationsFetchMock);
     expect(notificationsUrl).toBe(
-      `/api/messenger/v1/streams/${STREAM_UUID}/actions/notifications/invoke`,
+      `/api/workspace/v1/messenger/streams/${STREAM_UUID}/actions/notifications/invoke`,
     );
     expect(requestBody(notificationsInit)).toEqual({ notification_mode: "mentions_only" });
   });
@@ -233,7 +233,7 @@ describe("messenger-streams api", () => {
     });
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/streams/?page_limit=25&page_marker=after-stream");
+    expect(url).toBe("/api/workspace/v1/messenger/streams/?page_limit=25&page_marker=after-stream");
   });
 
   it("supports binding list, page, singleton, update, and delete", async () => {
@@ -283,20 +283,20 @@ describe("messenger-streams api", () => {
     ).resolves.toBeUndefined();
 
     expect(firstFetchCall(listFetchMock)[0]).toBe(
-      `/api/messenger/v1/stream_bindings/?stream_uuid=${STREAM_UUID}`,
+      `/api/workspace/v1/messenger/stream_bindings/?stream_uuid=${STREAM_UUID}`,
     );
     expect(firstFetchCall(pageFetchMock)[0]).toBe(
-      `/api/messenger/v1/stream_bindings/?page_limit=10&page_marker=after-binding&stream_uuid=${STREAM_UUID}`,
+      `/api/workspace/v1/messenger/stream_bindings/?page_limit=10&page_marker=after-binding&stream_uuid=${STREAM_UUID}`,
     );
     expect(firstFetchCall(singletonFetchMock)[0]).toBe(
-      `/api/messenger/v1/stream_bindings/${BINDING_UUID}`,
+      `/api/workspace/v1/messenger/stream_bindings/${BINDING_UUID}`,
     );
     const [updateUrl, updateInit] = firstFetchCall(updateFetchMock);
-    expect(updateUrl).toBe(`/api/messenger/v1/stream_bindings/${BINDING_UUID}`);
+    expect(updateUrl).toBe(`/api/workspace/v1/messenger/stream_bindings/${BINDING_UUID}`);
     expect(updateInit?.method).toBe("PUT");
     expect(requestBody(updateInit)).toEqual({ role: "moderator" });
     const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
-    expect(deleteUrl).toBe(`/api/messenger/v1/stream_bindings/${BINDING_UUID}`);
+    expect(deleteUrl).toBe(`/api/workspace/v1/messenger/stream_bindings/${BINDING_UUID}`);
     expect(deleteInit?.method).toBe("DELETE");
   });
 

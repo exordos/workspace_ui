@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   devWorkspaceBrowserMountPath,
-  isDevWorkspaceMessengerApiPathname,
+  isDevWorkspaceApiPathname,
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceDevProxyUpstreamPathname,
 } from "./dev-workspace-org-proxy";
@@ -20,12 +20,12 @@ describe("devWorkspaceBrowserMountPath", () => {
   });
 });
 
-describe("isDevWorkspaceMessengerApiPathname", () => {
-  it("matches only the messenger API mount", () => {
-    expect(isDevWorkspaceMessengerApiPathname("/api/messenger")).toBe(true);
-    expect(isDevWorkspaceMessengerApiPathname("/api/messenger/v1/streams/")).toBe(true);
-    expect(isDevWorkspaceMessengerApiPathname("/api/v1/users/me")).toBe(false);
-    expect(isDevWorkspaceMessengerApiPathname("/api/messengerish/v1")).toBe(false);
+describe("isDevWorkspaceApiPathname", () => {
+  it("matches only the Workspace API mount", () => {
+    expect(isDevWorkspaceApiPathname("/api/workspace")).toBe(true);
+    expect(isDevWorkspaceApiPathname("/api/workspace/v1/messenger/streams/")).toBe(true);
+    expect(isDevWorkspaceApiPathname("/api/v1/users/me")).toBe(false);
+    expect(isDevWorkspaceApiPathname("/api/workspaceish/v1")).toBe(false);
   });
 });
 

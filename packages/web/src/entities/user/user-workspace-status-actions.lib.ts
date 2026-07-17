@@ -1,12 +1,12 @@
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import {
   invokeUserPresence as defaultInvokeUserPresence,
-  type InvokeUserPresenceBody,
-  type MessengerClientOptions,
-} from "~/shared/api/messenger-client";
-import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+  type InvokeWorkspaceUserPresenceBody,
+  type WorkspaceClientOptions,
+} from "~/shared/api/workspace-client";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
 import { useUsersStore, type UsersStoreState } from "./user.model";
 import type { User } from "./user.types";
@@ -21,9 +21,9 @@ export interface UpdateWorkspaceOwnStatusParams {
   away: boolean;
   signal?: AbortSignal;
   invokePresence?: (
-    options: MessengerClientOptions,
+    options: WorkspaceClientOptions,
     userUuid: string,
-    body: InvokeUserPresenceBody,
+    body: InvokeWorkspaceUserPresenceBody,
   ) => Promise<WorkspaceMessengerUserDto>;
   store?: {
     getState: () => Pick<UsersStoreState, "ownerKey" | "upsertUser" | "upsertUserForOwner">;
@@ -41,7 +41,7 @@ function normalizeOptionalStatusValue(value: string | null, maxLength: number): 
 
 export function buildWorkspaceOwnStatusBody(
   params: Pick<UpdateWorkspaceOwnStatusParams, "statusText" | "statusEmoji" | "away">,
-): InvokeUserPresenceBody {
+): InvokeWorkspaceUserPresenceBody {
   return {
     status: params.away ? "idle" : "active",
     emoji: normalizeOptionalStatusValue(params.statusEmoji, WORKSPACE_STATUS_EMOJI_MAX_LENGTH),
@@ -52,8 +52,8 @@ export function buildWorkspaceOwnStatusBody(
 function buildWorkspaceStatusRequestOptions(
   runtimeContext: WorkspaceRuntimeContext,
   signal?: AbortSignal,
-): MessengerClientOptions {
-  return buildMessengerRequestOptions(runtimeContext, undefined, signal);
+): WorkspaceClientOptions {
+  return buildWorkspaceRequestOptions(runtimeContext, undefined, signal);
 }
 
 function upsertWorkspaceStatusUser(

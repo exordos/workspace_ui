@@ -256,7 +256,7 @@ describe("workspace message render core", () => {
   it("does not parse old Workspace file URLs as file metadata", () => {
     const fileUuid = "8c5fffd3-226e-4016-a49f-71282f52edfb";
     const oldProtocol = `workspace-file://${fileUuid}`;
-    const oldDownloadUrl = `/api/messenger/v1/files/${fileUuid}/actions/download`;
+    const oldDownloadUrl = `/api/workspace/v1/messenger/files/${fileUuid}/actions/download`;
 
     const document = parseWorkspaceMessageBody(
       [`[old-protocol](${oldProtocol})`, `[old-download](${oldDownloadUrl})`].join(" "),
@@ -279,15 +279,17 @@ describe("workspace message render core", () => {
     const document = parseWorkspaceMessageBody(
       [
         `[broad](/files/${fileUuid}/actions/download)`,
-        `[wrong-action](/api/messenger/v1/files/${fileUuid}/actions/preview)`,
-        "[docs](/api/messenger/v1/docs)",
+        `[wrong-action](/api/workspace/v1/messenger/files/${fileUuid}/actions/preview)`,
+        "[docs](/api/workspace/v1/messenger/docs)",
       ].join(" "),
     );
     const result = renderWorkspaceMessageBody(document);
 
     expect(result.html).toContain(`href="/files/${fileUuid}/actions/download"`);
-    expect(result.html).toContain(`href="/api/messenger/v1/files/${fileUuid}/actions/preview"`);
-    expect(result.html).toContain('href="/api/messenger/v1/docs"');
+    expect(result.html).toContain(
+      `href="/api/workspace/v1/messenger/files/${fileUuid}/actions/preview"`,
+    );
+    expect(result.html).toContain('href="/api/workspace/v1/messenger/docs"');
     expect(result.html).not.toContain('data-workspace-file="true"');
     expect(result.metadata).toMatchObject({
       hasLinks: true,
@@ -330,7 +332,7 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("href=");
     expect(result.html).not.toContain("blob:");
     expect(result.html).not.toContain(`urn:image:${fileUuid}`);
-    expect(result.html).not.toContain("/api/messenger/v1/files");
+    expect(result.html).not.toContain("/api/workspace/v1/messenger/files");
     expect(result.html).not.toContain(["", "user_uploads"].join("/"));
   });
 
@@ -401,7 +403,7 @@ describe("workspace message render core", () => {
     expect(enabled.html).not.toContain("href=");
     expect(enabled.html).not.toContain("download");
     expect(enabled.html).not.toContain(`urn:file:${fileUuid}`);
-    expect(enabled.html).not.toContain("/api/messenger/v1/files");
+    expect(enabled.html).not.toContain("/api/workspace/v1/messenger/files");
   });
 
   it("renders resolved Workspace mentions with UUID data attributes only", () => {

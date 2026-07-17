@@ -88,13 +88,19 @@ describe("messenger folders API", () => {
 
     await expect(
       getFolders(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: listFetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: listFetchMock,
+        },
         { pageLimit: 20, pageMarker: "folder-page" },
       ),
     ).resolves.toEqual([folderDto]);
 
     const [listUrl, listInit] = firstFetchCall(listFetchMock);
-    expect(listUrl).toBe("/api/messenger/v1/folders/?page_limit=20&page_marker=folder-page");
+    expect(listUrl).toBe(
+      "/api/workspace/v1/messenger/folders/?page_limit=20&page_marker=folder-page",
+    );
     expect(listInit?.headers).toEqual({
       Accept: "application/json",
       Authorization: "Bearer access-token",
@@ -107,7 +113,11 @@ describe("messenger folders API", () => {
 
     await expect(
       getFoldersPage(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: pageFetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: pageFetchMock,
+        },
         { pageLimit: 20 },
       ),
     ).resolves.toEqual({
@@ -139,20 +149,32 @@ describe("messenger folders API", () => {
 
     await expect(
       createFolder(
-        { accessToken: " access-token ", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: " access-token ",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         createBody,
       ),
     ).resolves.toEqual(folderDto);
     await expect(
       updateFolder(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_UUID,
         updateBody,
       ),
     ).resolves.toEqual({ ...folderDto, ...updateBody });
     await expect(
       deleteFolder(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_UUID,
       ),
     ).resolves.toBeUndefined();
@@ -167,12 +189,12 @@ describe("messenger folders API", () => {
     expect(createInit?.body).toBe(JSON.stringify(createBody));
 
     const [updateUrl, updateInit] = fetchMock.mock.calls[1] ?? [];
-    expect(updateUrl).toBe(`/api/messenger/v1/folders/${FOLDER_UUID}`);
+    expect(updateUrl).toBe(`/api/workspace/v1/messenger/folders/${FOLDER_UUID}`);
     expect(updateInit?.method).toBe("PUT");
     expect(updateInit?.body).toBe(JSON.stringify(updateBody));
 
     const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] ?? [];
-    expect(deleteUrl).toBe(`/api/messenger/v1/folders/${FOLDER_UUID}`);
+    expect(deleteUrl).toBe(`/api/workspace/v1/messenger/folders/${FOLDER_UUID}`);
     expect(deleteInit?.method).toBe("DELETE");
     expect(deleteInit?.headers).toEqual({
       Accept: "application/json",
@@ -185,14 +207,18 @@ describe("messenger folders API", () => {
 
     await expect(
       getFolderItems(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         { folderUuid: FOLDER_UUID, pageLimit: 50, pageMarker: "item-page" },
       ),
     ).resolves.toEqual([folderItemDto]);
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/folder_items/?page_limit=50&page_marker=item-page&folder_uuid=${FOLDER_UUID}`,
+      `/api/workspace/v1/messenger/folder_items/?page_limit=50&page_marker=item-page&folder_uuid=${FOLDER_UUID}`,
     );
   });
 
@@ -207,13 +233,17 @@ describe("messenger folders API", () => {
 
     await expect(
       createFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         body,
       ),
     ).resolves.toEqual(folderItemDto);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/folder_items/");
+    expect(url).toBe("/api/workspace/v1/messenger/folder_items/");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify(body));
   });
@@ -238,7 +268,11 @@ describe("messenger folders API", () => {
 
     await expect(
       createFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         body,
       ),
     ).resolves.toEqual({
@@ -270,7 +304,11 @@ describe("messenger folders API", () => {
 
     await expect(
       createFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         body,
       ),
     ).resolves.toEqual(folderItemDto);
@@ -286,19 +324,29 @@ describe("messenger folders API", () => {
 
     await expect(
       pinFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_ITEM_UUID,
       ),
     ).resolves.toEqual(pinnedItem);
     await expect(
       unpinFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_ITEM_UUID,
       ),
     ).resolves.toEqual(folderItemDto);
 
     const [pinUrl, pinInit] = fetchMock.mock.calls[0] ?? [];
-    expect(pinUrl).toBe(`/api/messenger/v1/folder_items/${FOLDER_ITEM_UUID}/actions/pin/invoke`);
+    expect(pinUrl).toBe(
+      `/api/workspace/v1/messenger/folder_items/${FOLDER_ITEM_UUID}/actions/pin/invoke`,
+    );
     expect(pinInit?.method).toBe("POST");
     expect(pinInit?.headers).toEqual({
       Accept: "application/json",
@@ -308,7 +356,7 @@ describe("messenger folders API", () => {
 
     const [unpinUrl, unpinInit] = fetchMock.mock.calls[1] ?? [];
     expect(unpinUrl).toBe(
-      `/api/messenger/v1/folder_items/${FOLDER_ITEM_UUID}/actions/unpin/invoke`,
+      `/api/workspace/v1/messenger/folder_items/${FOLDER_ITEM_UUID}/actions/unpin/invoke`,
     );
     expect(unpinInit?.method).toBe("POST");
     expect(unpinInit?.body).toBeUndefined();
@@ -327,13 +375,21 @@ describe("messenger folders API", () => {
 
     await expect(
       pinFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_ITEM_UUID,
       ),
     ).resolves.toEqual(pinnedItem);
     await expect(
       unpinFolderItem(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_ITEM_UUID,
       ),
     ).resolves.toEqual(folderItemDto);
@@ -347,7 +403,11 @@ describe("messenger folders API", () => {
 
     await expect(
       getFolder(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         FOLDER_UUID,
       ),
     ).rejects.toThrow("Expected valid messenger folder response");
@@ -358,7 +418,11 @@ describe("messenger folders API", () => {
 
     await expect(
       getFolderItemsPage(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1/messenger",
+          fetchImpl: fetchMock,
+        },
         { folderUuid: FOLDER_UUID },
       ),
     ).rejects.toThrow("Expected valid messenger folder items response item at index 1");

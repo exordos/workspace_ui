@@ -1,5 +1,5 @@
-import { messengerGetJson } from "./messenger-transport.internal";
-import type { MessengerClientOptions } from "./messenger-transport.internal";
+import { getUser } from "./workspace-client";
+import type { WorkspaceClientOptions } from "./workspace-client";
 
 export type WorkspaceMessengerAuthProfileStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
@@ -52,11 +52,10 @@ export function parseWorkspaceMessengerAuthProfile(
 }
 
 export async function getWorkspaceMessengerAuthProfile(
-  options: MessengerClientOptions,
+  options: WorkspaceClientOptions,
   userUuid: string,
 ): Promise<WorkspaceMessengerAuthProfileDto> {
-  const data = await messengerGetJson(`/users/${encodeURIComponent(userUuid)}`, options);
-  const profile = parseWorkspaceMessengerAuthProfile(data);
+  const profile = parseWorkspaceMessengerAuthProfile(await getUser(options, userUuid));
   if (profile == null) {
     throw new TypeError("messenger auth profile response parse failed");
   }

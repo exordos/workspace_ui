@@ -3,6 +3,7 @@ import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.internal";
 import {
   createWorkspaceFileResourceCache,
+  invalidateWorkspaceFileResourceCache,
   loadWorkspaceFile,
   type WorkspaceFileLoaderOptions,
 } from "./workspace-file-loader.lib";
@@ -167,6 +168,18 @@ describe("loadWorkspaceFile", () => {
 
     expect(downloadMock).toHaveBeenCalledTimes(1);
     expect(cached.headers.get("content-disposition")).toBe('attachment; filename="workspace.txt"');
+  });
+
+  it("does not reuse bytes cached before a realtime file mutation", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    downloadMock.mockResolvedValueOnce(result("before")).mockResolvedValueOnce(result("after"));
+
+    expect(await (await resourceCache.load(options())).blob.text()).toBe("before");
+
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+
+    expect(await (await resourceCache.load(options())).blob.text()).toBe("after");
+    expect(downloadMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([
