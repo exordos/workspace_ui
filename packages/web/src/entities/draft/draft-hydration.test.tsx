@@ -1,16 +1,16 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { testMessageId } from "~/test/factories";
+import { createDraftFixture } from "~/test/factories";
 import { useHydrateDrafts } from "./draft-hydration";
 import { useDraftStore } from "./draft.model";
 
-const fetchDrafts = vi.hoisted(() => vi.fn());
+const fetchDraftsPage = vi.hoisted(() => vi.fn());
 
 vi.mock("./draft.api", async () => {
   const actual = await vi.importActual("./draft.api");
   return {
     ...actual,
-    fetchDrafts,
+    fetchDraftsPage,
   };
 });
 
@@ -28,40 +28,29 @@ function Harness({
 describe("useHydrateDrafts", () => {
   afterEach(() => {
     useDraftStore.getState().clear();
-    fetchDrafts.mockReset();
+    fetchDraftsPage.mockReset();
   });
 
-  it("loads drafts when an instance is ready", async () => {
-    fetchDrafts.mockResolvedValue([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Draft 1",
-        timestamp: 1,
-      },
-    ]);
+  it("loads the first draft page when an instance is ready", async () => {
+    fetchDraftsPage.mockResolvedValue({
+      drafts: [createDraftFixture({ content: "Draft 1" })],
+      nextPageMarker: "next",
+    });
 
     render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
 
     await waitFor(() => {
-      expect(useDraftStore.getState().drafts).toHaveLength(1);
+      expect(useDraftStore.getState()).toMatchObject({
+        drafts: [{ payload: { content: "Draft 1" } }],
+        nextPageMarker: "next",
+        hasMore: true,
+      });
     });
   });
 
   it("clears stale drafts when readiness is lost", () => {
-    fetchDrafts.mockResolvedValue([]);
-    useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Draft 1",
-        timestamp: 1,
-      },
-    ]);
+    fetchDraftsPage.mockResolvedValue({ drafts: [], nextPageMarker: null });
+    useDraftStore.getState().setDrafts([createDraftFixture()]);
 
     const { rerender } = render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
     rerender(<Harness currentInstanceId="inst-1" currentUserStatus="loading" />);
@@ -70,25 +59,15 @@ describe("useHydrateDrafts", () => {
   });
 
   it("preserves existing drafts when refresh fails", async () => {
-    fetchDrafts.mockRejectedValue(new Error("offline"));
-    useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Draft 1",
-        timestamp: 1,
-      },
-    ]);
+    fetchDraftsPage.mockRejectedValue(new Error("offline"));
+    useDraftStore.getState().setDrafts([createDraftFixture()]);
 
     render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
 
     await waitFor(() => {
-      expect(fetchDrafts).toHaveBeenCalledTimes(1);
+      expect(fetchDraftsPage).toHaveBeenCalledTimes(1);
+      expect(useDraftStore.getState().loading).toBe(false);
     });
-    await expect(fetchDrafts.mock.results[0]!.value).rejects.toThrow("offline");
-
     expect(useDraftStore.getState().drafts).toHaveLength(1);
   });
 });

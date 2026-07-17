@@ -703,12 +703,16 @@ class ApiClient {
     baseUrl: string,
     path: string,
     body?: Record<string, string>,
+    headers?: Record<string, string>,
   ): Promise<ApiResponse> {
     const hasBody = body && Object.keys(body).length > 0;
     return this.execute({
       method: "DELETE",
       url: buildResolvedApiUrl(baseUrl, path),
-      headers: hasBody ? { "Content-Type": "application/x-www-form-urlencoded" } : {},
+      headers: {
+        ...(hasBody ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+        ...headers,
+      },
       body: hasBody ? new URLSearchParams(body).toString() : undefined,
       meta: {},
     });
@@ -749,11 +753,12 @@ class ApiClient {
     baseUrl: string,
     path: string,
     body: unknown,
+    headers?: Record<string, string>,
   ): Promise<ApiResponse & { data: T }> {
     const res = await this.execute({
       method: "PUT",
       url: buildResolvedApiUrl(baseUrl, path),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
       meta: {},
     });

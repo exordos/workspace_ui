@@ -8,7 +8,7 @@ import { useDraftStore } from "~/entities/draft/draft.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { createMessage, createUser, testMessageId } from "~/test/factories";
+import { createDraftFixture, createMessage, createUser, testMessageId } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -19,6 +19,8 @@ const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const removeMessageFlag = vi.hoisted(() => vi.fn());
 const ENGINEERING_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+const GENERAL_TOPIC_UUID = "00000000-0000-4000-8000-000000000020";
+const DM_STREAM_UUID = "00000000-0000-4000-8000-000000000030";
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -127,21 +129,31 @@ describe("ActivityPage drafts routing", () => {
             lastMessage: "",
             time: "",
             ts: 0,
-            topics: new Map(),
+            topics: new Map([
+              [
+                "general",
+                {
+                  topicUuid: GENERAL_TOPIC_UUID,
+                  subject: "general",
+                  lastMessage: "",
+                  time: "",
+                  ts: 0,
+                  unreadCount: 0,
+                },
+              ],
+            ]),
           },
         ],
       ]),
     });
 
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [ENGINEERING_STREAM_UUID],
-        topic: "general",
+      createDraftFixture({
+        uuid: testMessageId(1),
+        stream_uuid: ENGINEERING_STREAM_UUID,
+        topic_uuid: GENERAL_TOPIC_UUID,
         content: "Draft content",
-        timestamp: 1710000000,
-      },
+      }),
     ]);
 
     render(
@@ -161,7 +173,9 @@ describe("ActivityPage drafts routing", () => {
 
     fireEvent.click(screen.getByText("Draft content"));
 
-    expect(navigateSpy).toHaveBeenCalledWith(`/stream/${ENGINEERING_STREAM_UUID}/topic/general`);
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/${ENGINEERING_STREAM_UUID}/topic/general?draft=${testMessageId(1)}`,
+    );
   });
 
   it("does not build a topic route for stream drafts without a server topic", async () => {
@@ -182,14 +196,12 @@ describe("ActivityPage drafts routing", () => {
     });
 
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [ENGINEERING_STREAM_UUID],
-        topic: "",
+      createDraftFixture({
+        uuid: testMessageId(1),
+        stream_uuid: ENGINEERING_STREAM_UUID,
+        topic_uuid: GENERAL_TOPIC_UUID,
         content: "Draft content",
-        timestamp: 1710000000,
-      },
+      }),
     ]);
 
     render(
@@ -202,7 +214,9 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Draft content")).toBeInTheDocument();
-      expect(screen.getByText("General Chat")).toBeInTheDocument();
+      expect(
+        screen.getByText((_, element) => element?.textContent === "#engineering · General Chat"),
+      ).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Draft content"));
@@ -210,19 +224,35 @@ describe("ActivityPage drafts routing", () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
-  it("shows DM partner name on private draft rows", async () => {
+  it("opens the exact private draft through the DM stream mapping", async () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 7, full_name: "Bob" }));
-    useChatListStore.setState({ currentUserId: 42 });
+    useChatListStore.setState({
+      currentUserId: 42,
+      dmsMap: new Map([
+        [
+          "7,42",
+          {
+            id: 7,
+            name: "Bob",
+            slug: "7-bob",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            userIds: [7, 42],
+            streamUuid: DM_STREAM_UUID,
+            unreadCount: 0,
+          },
+        ],
+      ]),
+    });
 
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(2),
-        type: "private",
-        to: [7, 42],
-        topic: "",
+      createDraftFixture({
+        uuid: testMessageId(2),
+        stream_uuid: DM_STREAM_UUID,
+        topic_uuid: GENERAL_TOPIC_UUID,
         content: "DM draft text",
-        timestamp: 1710000001,
-      },
+      }),
     ]);
 
     render(
@@ -235,8 +265,9 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("DM draft text")).toBeInTheDocument();
-      expect(screen.getByText(/Bob/)).toBeInTheDocument();
     });
+    fireEvent.click(screen.getByText("DM draft text"));
+    expect(navigateSpy).toHaveBeenCalledWith(`/dm/7%2C42?draft=${testMessageId(2)}`);
   });
 
   it("opens activity message in chat from context action", async () => {
@@ -799,22 +830,16 @@ describe("ActivityPage drafts routing", () => {
     const restoreScrollHeight = mockElementScrollHeight(1200);
     try {
       useDraftStore.getState().setDrafts([
-        {
-          id: testMessageId(1),
-          type: "stream",
-          to: [10],
-          topic: "general",
+        createDraftFixture({
+          uuid: testMessageId(1),
           content: "Older draft",
-          timestamp: 1710000000,
-        },
-        {
-          id: testMessageId(2),
-          type: "stream",
-          to: [10],
-          topic: "general",
+          updated_at: "2026-07-16T10:00:00.000Z",
+        }),
+        createDraftFixture({
+          uuid: testMessageId(2),
           content: "Latest draft",
-          timestamp: 1710000100,
-        },
+          updated_at: "2026-07-16T11:00:00.000Z",
+        }),
       ]);
 
       const { container } = render(
@@ -838,23 +863,20 @@ describe("ActivityPage drafts routing", () => {
   });
 
   it("keeps a draft row visible while server deletion is pending", async () => {
-    let resolveDelete: (value: boolean) => void = (_value: boolean) => {
+    let resolveDelete: () => void = () => {
       throw new Error("Expected delete resolver to be assigned");
     };
     deleteDraftOnServer.mockReturnValue(
-      new Promise<boolean>((resolve) => {
+      new Promise<void>((resolve) => {
         resolveDelete = resolve;
       }),
     );
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(7),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: testMessageId(7),
         content: "Pending delete draft",
-        timestamp: 1710000000,
-      },
+        etag: '"7"',
+      }),
     ]);
 
     render(
@@ -872,28 +894,25 @@ describe("ActivityPage drafts routing", () => {
     const deleteButton = screen.getByTitle("Delete draft");
     fireEvent.click(deleteButton);
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7), '"7"');
     expect(screen.getByText("Pending delete draft")).toBeInTheDocument();
     expect(deleteButton).toBeDisabled();
 
-    resolveDelete(true);
+    resolveDelete();
 
     await waitFor(() => {
       expect(screen.queryByText("Pending delete draft")).not.toBeInTheDocument();
     });
   });
 
-  it("keeps a draft row when server deletion returns false", async () => {
-    deleteDraftOnServer.mockResolvedValue(false);
+  it("keeps a draft row when server deletion fails", async () => {
+    deleteDraftOnServer.mockRejectedValue(new Error("offline"));
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(11),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: testMessageId(11),
         content: "Failed delete draft",
-        timestamp: 1710000000,
-      },
+        etag: '"11"',
+      }),
     ]);
 
     render(
@@ -911,17 +930,17 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByTitle("Delete draft"));
 
     await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(11));
+      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(11), '"11"');
     });
 
     expect(screen.getByText("Failed delete draft")).toBeInTheDocument();
   });
 
   it("does not delete a new-organization draft when stale delete resolves", async () => {
-    let resolveDelete: ((value: boolean) => void) | undefined;
+    let resolveDelete: (() => void) | undefined;
     deleteDraftOnServer.mockImplementationOnce(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<void>((resolve) => {
           resolveDelete = resolve;
         }),
     );
@@ -947,14 +966,11 @@ describe("ActivityPage drafts routing", () => {
       activeOrgEpoch: 0,
     });
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(7),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: testMessageId(7),
         content: "Org A draft",
-        timestamp: 1710000000,
-      },
+        etag: '"7"',
+      }),
     ]);
 
     render(
@@ -970,41 +986,40 @@ describe("ActivityPage drafts routing", () => {
     });
 
     fireEvent.click(screen.getByTitle("Delete draft"));
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7), '"7"');
 
     act(() => {
       useInstancesStore.getState().setCurrentInstanceId("instance-2");
       useDraftStore.getState().setDrafts([
-        {
-          id: testMessageId(7),
-          type: "stream",
-          to: [20],
-          topic: "triage",
+        createDraftFixture({
+          uuid: testMessageId(7),
+          stream_uuid: "00000000-0000-4000-8000-000000000099",
+          topic_uuid: "00000000-0000-4000-8000-000000000098",
           content: "Org B draft",
-          timestamp: 1710000200,
-        },
+        }),
       ]);
     });
 
     act(() => {
-      resolveDelete?.(true);
+      resolveDelete?.();
     });
 
-    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
+    expect(useDraftStore.getState().drafts[0]?.payload.content).toBe("Org B draft");
   });
 
   it("edits a server-backed draft from the drafts list", async () => {
-    updateDraftOnServer.mockResolvedValue(true);
-    useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(8),
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Editable draft",
-        timestamp: 1710000000,
-      },
-    ]);
+    const editableDraft = createDraftFixture({
+      uuid: testMessageId(8),
+      content: "Editable draft",
+      etag: '"8"',
+    });
+    updateDraftOnServer.mockResolvedValue({
+      ...editableDraft,
+      payload: { kind: "markdown", content: "Edited draft content" },
+      revision: 9,
+      etag: '"9"',
+    });
+    useDraftStore.getState().setDrafts([editableDraft]);
 
     render(
       <MemoryRouter initialEntries={["/activity/drafts"]}>
@@ -1023,22 +1038,26 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(8), {
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Edited draft content",
-      });
+      expect(updateDraftOnServer).toHaveBeenCalledWith(
+        testMessageId(8),
+        { payload: { kind: "markdown", content: "Edited draft content" } },
+        '"8"',
+      );
     });
 
     expect(screen.getByText("Edited draft content")).toBeInTheDocument();
   });
 
   it("does not edit a new-organization draft when stale save resolves", async () => {
-    let resolveUpdate: ((value: boolean) => void) | undefined;
+    const orgADraft = createDraftFixture({
+      uuid: testMessageId(8),
+      content: "Org A draft",
+      etag: '"8"',
+    });
+    let resolveUpdate: ((draft: typeof orgADraft) => void) | undefined;
     updateDraftOnServer.mockImplementationOnce(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<typeof orgADraft>((resolve) => {
           resolveUpdate = resolve;
         }),
     );
@@ -1063,16 +1082,7 @@ describe("ActivityPage drafts routing", () => {
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(8),
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Org A draft",
-        timestamp: 1710000000,
-      },
-    ]);
+    useDraftStore.getState().setDrafts([orgADraft]);
 
     render(
       <MemoryRouter initialEntries={["/activity/drafts"]}>
@@ -1091,46 +1101,45 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(8), {
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Edited in org A",
-      });
+      expect(updateDraftOnServer).toHaveBeenCalledWith(
+        testMessageId(8),
+        { payload: { kind: "markdown", content: "Edited in org A" } },
+        '"8"',
+      );
     });
 
     act(() => {
       useInstancesStore.getState().setCurrentInstanceId("instance-2");
       useDraftStore.getState().setDrafts([
-        {
-          id: testMessageId(8),
-          type: "stream",
-          to: [20],
-          topic: "triage",
+        createDraftFixture({
+          uuid: testMessageId(8),
+          stream_uuid: "00000000-0000-4000-8000-000000000099",
+          topic_uuid: "00000000-0000-4000-8000-000000000098",
           content: "Org B draft",
-          timestamp: 1710000200,
-        },
+        }),
       ]);
     });
 
     act(() => {
-      resolveUpdate?.(true);
+      resolveUpdate?.({
+        ...orgADraft,
+        payload: { kind: "markdown", content: "Edited in org A" },
+        revision: 9,
+        etag: '"9"',
+      });
     });
 
-    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
+    expect(useDraftStore.getState().drafts[0]?.payload.content).toBe("Org B draft");
   });
 
   it("treats empty edited draft content as delete", async () => {
-    deleteDraftOnServer.mockResolvedValue(true);
+    deleteDraftOnServer.mockResolvedValue(undefined);
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(12),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: testMessageId(12),
         content: "Delete from edit draft",
-        timestamp: 1710000000,
-      },
+        etag: '"12"',
+      }),
     ]);
 
     render(
@@ -1150,7 +1159,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(12));
+      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(12), '"12"');
     });
 
     expect(screen.queryByText("Delete from edit draft")).not.toBeInTheDocument();

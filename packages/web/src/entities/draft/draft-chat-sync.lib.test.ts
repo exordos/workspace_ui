@@ -1,203 +1,194 @@
-import { describe, expect, it, vi } from "vitest";
-import type { Draft } from "~/entities/draft/draft.types";
-import { testMessageId } from "~/test/factories";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WorkspaceApiHttpError } from "~/shared/api/workspace-orval-mutator";
+import { createDraftFixture } from "~/test/factories";
+import { createPendingDraft, syncDraftContent } from "./draft-chat-sync.lib";
 import {
-  reconcileCreatedDraftServerId,
-  syncExistingDraftDeleteOnClear,
-  syncExistingDraftDeleteOnCleanup,
-  syncExistingDraftUpdateOnCleanup,
-} from "./draft-chat-sync.lib";
+  DraftPreconditionError,
+  createDraft,
+  deleteDraftOnServer,
+  updateDraftOnServer,
+} from "./draft.api";
+import type { Draft } from "./draft.types";
 
-const EXISTING_DRAFT: Draft = {
-  id: testMessageId(7),
-  type: "stream",
-  to: [10],
-  topic: "general",
-  content: "Original draft",
-  timestamp: 1,
-};
-
-describe("chat-page draft cleanup sync", () => {
-  it("restores previous draft content when server update fails during cleanup", async () => {
-    const updateDraft = vi.fn();
-    const restoreDraft = vi.fn();
-    const updateDraftOnServer = vi.fn().mockResolvedValue(false);
-
-    await syncExistingDraftUpdateOnCleanup({
-      draft: EXISTING_DRAFT,
-      existingId: testMessageId(7),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      nextContent: "Edited draft",
-      updateDraft,
-      restoreDraft,
-      updateDraftOnServer,
-    });
-
-    expect(updateDraft).toHaveBeenCalledWith(testMessageId(7), { content: "Edited draft" });
-    expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(7), {
-      type: "stream",
-      to: [10],
-      topic: "general",
-      content: "Edited draft",
-    });
-    expect(restoreDraft).toHaveBeenCalledWith(EXISTING_DRAFT);
-  });
-
-  it("restores removed draft when server delete fails during cleanup", async () => {
-    const removeDraftForChat = vi.fn();
-    const restoreDraft = vi.fn();
-    const setActiveDraftId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(false);
-
-    await syncExistingDraftDeleteOnCleanup({
-      draft: EXISTING_DRAFT,
-      existingId: testMessageId(7),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      deleteDraftOnServer,
-      removeDraftForChat,
-      restoreDraft,
-      setActiveDraftId,
-    });
-
-    expect(removeDraftForChat).toHaveBeenCalledWith("stream", [10], "general");
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
-    expect(restoreDraft).toHaveBeenCalledWith(EXISTING_DRAFT);
-    expect(setActiveDraftId).not.toHaveBeenCalled();
-  });
-
-  it("restores removed draft when live clear delete fails and composer is still empty", async () => {
-    const removeDraftForChat = vi.fn();
-    const restoreDraft = vi.fn();
-    const setActiveDraftId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(false);
-
-    await syncExistingDraftDeleteOnClear({
-      draft: EXISTING_DRAFT,
-      existingId: testMessageId(7),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      deleteDraftOnServer,
-      removeDraftForChat,
-      restoreDraft,
-      setActiveDraftId,
-      shouldRestoreDraft: () => true,
-    });
-
-    expect(restoreDraft).toHaveBeenCalledWith(EXISTING_DRAFT);
-  });
-
-  it("does not restore removed draft when live clear delete fails after the user retyped", async () => {
-    const removeDraftForChat = vi.fn();
-    const restoreDraft = vi.fn();
-    const setActiveDraftId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(false);
-
-    await syncExistingDraftDeleteOnClear({
-      draft: EXISTING_DRAFT,
-      existingId: testMessageId(7),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      deleteDraftOnServer,
-      removeDraftForChat,
-      restoreDraft,
-      setActiveDraftId,
-      shouldRestoreDraft: () => false,
-    });
-
-    expect(restoreDraft).not.toHaveBeenCalled();
-  });
+vi.mock("./draft.api", async () => {
+  const actual = await vi.importActual<typeof import("./draft.api")>("./draft.api");
+  return {
+    ...actual,
+    createDraft: vi.fn(),
+    deleteDraftOnServer: vi.fn(),
+    updateDraftOnServer: vi.fn(),
+  };
 });
 
-describe("reconcileCreatedDraftServerId", () => {
-  it("links local draft when server id arrives and draft is still local-only", async () => {
-    const getDraftForChat = vi.fn().mockReturnValue({
-      ...EXISTING_DRAFT,
-      id: null,
-      content: "Pending local draft",
-    });
-    const linkDraftToServerId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
+const createDraftMock = vi.mocked(createDraft);
+const deleteDraftOnServerMock = vi.mocked(deleteDraftOnServer);
+const updateDraftOnServerMock = vi.mocked(updateDraftOnServer);
 
-    await reconcileCreatedDraftServerId({
-      serverId: testMessageId(101),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      getDraftForChat,
-      linkDraftToServerId,
-      deleteDraftOnServer,
-    });
+const DRAFT_UUID = "00000000-0000-4000-8000-000000000007";
+const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+const TOPIC_UUID = "00000000-0000-4000-8000-000000000020";
 
-    expect(linkDraftToServerId).toHaveBeenCalledWith("stream", [10], "general", testMessageId(101));
-    expect(deleteDraftOnServer).not.toHaveBeenCalled();
+function options(overrides: Partial<Parameters<typeof syncDraftContent>[0]> = {}) {
+  const drafts = new Map<string, Draft>();
+  const upsertDraft = vi.fn((draft: Draft) => drafts.set(draft.uuid, draft));
+  const updateDraftPayload = vi.fn(
+    (uuid: string, content: string, syncState?: Draft["sync_state"]) => {
+      const draft = drafts.get(uuid);
+      if (draft != null) {
+        drafts.set(uuid, {
+          ...draft,
+          payload: { ...draft.payload, content },
+          sync_state: syncState,
+        });
+      }
+    },
+  );
+  const removeDraft = vi.fn((uuid: string) => drafts.delete(uuid));
+  return {
+    drafts,
+    input: {
+      uuid: DRAFT_UUID,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      content: "Edited draft",
+      getDraft: (uuid: string) => drafts.get(uuid),
+      getCurrentContent: () => "Edited draft",
+      upsertDraft,
+      updateDraftPayload,
+      markDraftConflict: vi.fn(),
+      removeDraft,
+      ...overrides,
+    },
+  };
+}
+
+describe("syncDraftContent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("deletes stale server draft when local draft was removed before create returned", async () => {
-    const getDraftForChat = vi.fn().mockReturnValue(undefined);
-    const linkDraftToServerId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
-
-    await reconcileCreatedDraftServerId({
-      serverId: testMessageId(202),
-      draftType: "private",
-      draftTo: [42],
-      draftTopic: "general",
-      getDraftForChat,
-      linkDraftToServerId,
-      deleteDraftOnServer,
+  it("creates the server draft with the existing client UUID", async () => {
+    const setup = options();
+    setup.drafts.set(
+      DRAFT_UUID,
+      createPendingDraft({
+        uuid: DRAFT_UUID,
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        content: "Edited draft",
+      }),
+    );
+    const server = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "Edited draft",
     });
+    createDraftMock.mockResolvedValue(server);
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(202));
-    expect(linkDraftToServerId).not.toHaveBeenCalled();
+    await expect(syncDraftContent(setup.input)).resolves.toEqual({
+      status: "synced",
+      needsResync: false,
+    });
+    expect(createDraftMock).toHaveBeenCalledWith({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      payload: { kind: "markdown", content: "Edited draft" },
+    });
+    expect(setup.input.upsertDraft).toHaveBeenCalledWith(server);
   });
 
-  it("deletes duplicate server draft when local draft is already linked to another id", async () => {
-    const getDraftForChat = vi.fn().mockReturnValue({
-      ...EXISTING_DRAFT,
-      id: testMessageId(77),
+  it("updates only payload with the active draft ETag", async () => {
+    const existing = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      etag: '"2"',
     });
-    const linkDraftToServerId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
-
-    await reconcileCreatedDraftServerId({
-      serverId: testMessageId(303),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      getDraftForChat,
-      linkDraftToServerId,
-      deleteDraftOnServer,
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    updateDraftOnServerMock.mockResolvedValue({
+      ...existing,
+      payload: { kind: "markdown", content: "Edited draft" },
+      revision: 3,
+      etag: '"3"',
     });
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(303));
-    expect(linkDraftToServerId).not.toHaveBeenCalled();
+    await syncDraftContent(setup.input);
+
+    expect(updateDraftOnServerMock).toHaveBeenCalledWith(
+      DRAFT_UUID,
+      { payload: { kind: "markdown", content: "Edited draft" } },
+      '"2"',
+    );
   });
 
-  it("does nothing when local draft is already linked to the same server id", async () => {
-    const getDraftForChat = vi.fn().mockReturnValue({
-      ...EXISTING_DRAFT,
-      id: testMessageId(404),
-    });
-    const linkDraftToServerId = vi.fn();
-    const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
-
-    await reconcileCreatedDraftServerId({
-      serverId: testMessageId(404),
-      draftType: "stream",
-      draftTo: [10],
-      draftTopic: "general",
-      getDraftForChat,
-      linkDraftToServerId,
-      deleteDraftOnServer,
+  it("preserves input typed while an autosave request is in flight", async () => {
+    const existing = createDraftFixture({ uuid: DRAFT_UUID, content: "Before" });
+    const setup = options({ getCurrentContent: () => "Typed during request" });
+    setup.drafts.set(DRAFT_UUID, existing);
+    updateDraftOnServerMock.mockResolvedValue({
+      ...existing,
+      payload: { kind: "markdown", content: "Edited draft" },
+      revision: 2,
+      etag: '"2"',
     });
 
-    expect(linkDraftToServerId).not.toHaveBeenCalled();
-    expect(deleteDraftOnServer).not.toHaveBeenCalled();
+    await expect(syncDraftContent(setup.input)).resolves.toEqual({
+      status: "synced",
+      needsResync: true,
+    });
+    expect(setup.input.updateDraftPayload).toHaveBeenCalledWith(
+      DRAFT_UUID,
+      "Typed during request",
+      "pending",
+    );
+  });
+
+  it("deletes only the active server draft using If-Match", async () => {
+    const existing = createDraftFixture({ uuid: DRAFT_UUID, etag: '"4"' });
+    const setup = options({ content: "", getCurrentContent: () => "" });
+    setup.drafts.set(DRAFT_UUID, existing);
+    deleteDraftOnServerMock.mockResolvedValue();
+
+    await expect(syncDraftContent(setup.input)).resolves.toEqual({
+      status: "deleted",
+      needsResync: false,
+    });
+    expect(deleteDraftOnServerMock).toHaveBeenCalledWith(DRAFT_UUID, '"4"');
+    expect(setup.input.removeDraft).toHaveBeenCalledWith(DRAFT_UUID);
+  });
+
+  it("keeps local text and exposes the direct conflict snapshot", async () => {
+    const existing = createDraftFixture({ uuid: DRAFT_UUID, content: "Local", etag: '"1"' });
+    const current = createDraftFixture({
+      uuid: DRAFT_UUID,
+      content: "Remote",
+      revision: 2,
+      etag: '"2"',
+    });
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    updateDraftOnServerMock.mockRejectedValue(
+      new DraftPreconditionError(
+        new WorkspaceApiHttpError("conflict", 412, current, new Headers({ ETag: '"2"' })),
+      ),
+    );
+
+    await expect(syncDraftContent(setup.input)).resolves.toEqual({
+      status: "conflict",
+      needsResync: false,
+    });
+    expect(setup.input.markDraftConflict).toHaveBeenCalledWith(
+      DRAFT_UUID,
+      expect.objectContaining({
+        uuid: current.uuid,
+        revision: current.revision,
+        etag: current.etag,
+        payload: current.payload,
+      }),
+    );
+    expect(setup.input.upsertDraft).not.toHaveBeenCalled();
   });
 });

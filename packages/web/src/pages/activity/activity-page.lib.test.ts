@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { Draft } from "~/entities/draft/draft.types";
 import {
   formatDraftMessageContext,
   getActivityPeerReactionGroups,
@@ -62,39 +61,49 @@ describe("formatDraftMessageContext", () => {
   };
 
   it("formats stream drafts as channel and topic", () => {
-    const draft: Pick<Draft, "type" | "to" | "topic"> = {
-      type: "stream",
-      to: [STREAM_UUID],
-      topic: "bugs",
+    const draft = {
+      stream_uuid: STREAM_UUID,
+      topic_uuid: "00000000-0000-4000-8000-000000000020",
     };
-    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
+    const streamsMap = new Map([
+      [
+        STREAM_UUID,
+        {
+          name: "engineering",
+          topics: new Map([
+            [
+              "bugs",
+              {
+                topicUuid: "00000000-0000-4000-8000-000000000020",
+                subject: "bugs",
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
 
     expect(
       formatDraftMessageContext({
         draft,
         streamsMap,
-        currentUserId: 42,
-        getUserDisplayName: () => "Unknown",
         ...labels,
       }),
     ).toBe("#engineering · bugs");
   });
 
-  it("formats private drafts with recipient display name", () => {
-    const draft: Pick<Draft, "type" | "to" | "topic"> = {
-      type: "private",
-      to: [7, 42],
-      topic: "",
+  it("formats drafts for unknown DM streams with the private label", () => {
+    const draft = {
+      stream_uuid: "00000000-0000-4000-8000-000000000099",
+      topic_uuid: "00000000-0000-4000-8000-000000000020",
     };
 
     expect(
       formatDraftMessageContext({
         draft,
         streamsMap: new Map(),
-        currentUserId: 42,
-        getUserDisplayName: (id) => (id === 7 ? "Bob" : "Me"),
         ...labels,
       }),
-    ).toBe("DM · Bob");
+    ).toBe("DM");
   });
 });

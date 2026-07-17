@@ -1,22 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { Draft } from "~/entities/draft/draft.types";
-import { testMessageId } from "~/test/factories";
+import { createDraftFixture } from "~/test/factories";
 import { resolveHydratedDraftBootstrap } from "./draft-chat-bootstrap.lib";
 
-const HYDRATED_DRAFT: Draft = {
-  id: testMessageId(42),
-  type: "stream",
-  to: [10],
-  topic: "general",
+const HYDRATED_DRAFT = createDraftFixture({
+  uuid: "00000000-0000-4000-8000-000000000042",
   content: "Hydrated draft",
-  timestamp: 1,
-};
+});
 
 describe("resolveHydratedDraftBootstrap", () => {
   it("adopts a hydrated draft when the composer is still empty", () => {
     expect(resolveHydratedDraftBootstrap("", HYDRATED_DRAFT)).toEqual({
       initialValue: "Hydrated draft",
-      activeDraftId: testMessageId(42),
+      activeDraftId: HYDRATED_DRAFT.uuid,
     });
   });
 

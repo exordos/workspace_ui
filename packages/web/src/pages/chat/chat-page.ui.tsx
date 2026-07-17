@@ -2,16 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import {
-  reconcileCreatedDraftServerId,
-  syncExistingDraftDeleteOnCleanup,
-  syncExistingDraftDeleteOnClear,
-  syncExistingDraftUpdateOnCleanup,
-} from "~/entities/draft/draft-chat-sync.lib";
-import { resolveDraftTargetIds } from "~/entities/draft/draft-chat-target.lib";
-import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
+import { createPendingDraft, syncDraftContent } from "~/entities/draft/draft-chat-sync.lib";
 import { useDraftStore } from "~/entities/draft/draft.model";
-import type { DraftType } from "~/entities/draft/draft.types";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -43,7 +35,7 @@ import {
   logScrollReadFlow,
   summarizeChatContextForLog,
 } from "~/shared/lib/message-flow-debug.lib";
-import type { MessageId } from "~/shared/lib/message-id.lib";
+import { createMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
@@ -87,7 +79,7 @@ import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
-import { resolveChatHeaderRightPanelLabel, resolveDraftType } from "./chat-page.lib";
+import { resolveChatHeaderRightPanelLabel } from "./chat-page.lib";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
@@ -368,20 +360,21 @@ export const ChatPage: React.FC = () => {
   // --- Draft persistence ---
   const composerValueRef = useRef("");
   const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
-  const activeDraftIdRef = useRef<MessageId | null>(null);
+  const activeDraftIdRef = useRef<string | null>(null);
   const pendingForwardPrefillRef = useRef<string | null>(null);
-
-  const draftType: DraftType | null = resolveDraftType(isDmView, activeStream);
-  const draftTo = useMemo(() => {
-    const ctx = useCurrentChatMessagesStore.getState().context;
-    return resolveDraftTargetIds({
-      isDmView,
-      activeDmUserIds,
-      activeStreamId: resolvedStreamId,
-      fallbackStreamId: ctx?.type === "stream" ? ctx.streamId : null,
-    });
-  }, [isDmView, activeDmUserIds, resolvedStreamId]);
-  const draftTopic = activeTopic ?? "";
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const draftSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const draftTopicUuid = useMemo(() => {
+    if (effectiveActiveTopicUuid != null) return effectiveActiveTopicUuid;
+    if (activeStreamUuid == null) return null;
+    const defaultTopicUuid = streamsMap.get(activeStreamUuid)?.defaultTopicUuid;
+    if (defaultTopicUuid != null) return defaultTopicUuid;
+    return (
+      messages.find(
+        (message) => message.stream_uuid === activeStreamUuid && message.topic_uuid != null,
+      )?.topic_uuid ?? null
+    );
+  }, [activeStreamUuid, effectiveActiveTopicUuid, messages, streamsMap]);
 
   useEffect(() => {
     // On route change close edit session and invalidate in-flight markdown loads.
@@ -390,9 +383,8 @@ export const ChatPage: React.FC = () => {
   }, [location.pathname]);
 
   useChatPageDraftHydration({
-    draftType,
-    draftTo,
-    draftTopic,
+    streamUuid: activeStreamUuid,
+    topicUuid: draftTopicUuid,
     drafts,
     composerValueRef,
     activeDraftIdRef,
@@ -400,87 +392,85 @@ export const ChatPage: React.FC = () => {
     setDraftInitialValue,
   });
 
+  const queueDraftSync = useCallback(
+    (content: string) => {
+      if (activeStreamUuid == null || draftTopicUuid == null) return;
+      let draftUuid = activeDraftIdRef.current;
+      if (draftUuid == null) {
+        if (content.trim().length === 0) return;
+        draftUuid = createMessageId();
+        activeDraftIdRef.current = draftUuid;
+        useDraftStore.getState().upsertDraft(
+          createPendingDraft({
+            uuid: draftUuid,
+            streamUuid: activeStreamUuid,
+            topicUuid: draftTopicUuid,
+            content,
+          }),
+        );
+      } else {
+        useDraftStore.getState().updateDraftPayload(draftUuid, content, "pending");
+      }
+
+      const targetUuid = draftUuid;
+      draftSyncQueueRef.current = draftSyncQueueRef.current
+        .catch(() => {})
+        .then(async () => {
+          for (;;) {
+            const store = useDraftStore.getState();
+            const currentContent = composerValueRef.current;
+            const result = await syncDraftContent({
+              uuid: targetUuid,
+              streamUuid: activeStreamUuid,
+              topicUuid: draftTopicUuid,
+              content: currentContent,
+              getDraft: store.getDraft,
+              getCurrentContent: () => composerValueRef.current,
+              upsertDraft: store.upsertDraft,
+              updateDraftPayload: store.updateDraftPayload,
+              markDraftConflict: store.markDraftConflict,
+              removeDraft: store.removeDraft,
+            });
+            if (result.status === "deleted" && !result.needsResync) {
+              if (activeDraftIdRef.current === targetUuid) {
+                activeDraftIdRef.current = null;
+              }
+            } else if (result.status === "conflict") {
+              setActionError(t("draft.conflict"));
+            }
+            if (!result.needsResync) break;
+          }
+        })
+        .catch((error) => {
+          reportUnexpectedError("chat:draftSync", error, { draftUuid: targetUuid });
+          setActionError(t("draft.saveError"));
+        });
+    },
+    [activeStreamUuid, draftTopicUuid],
+  );
+
+  const scheduleDraftSync = useCallback(
+    (content: string) => {
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+      }
+      draftSaveTimerRef.current = window.setTimeout(() => {
+        draftSaveTimerRef.current = null;
+        queueDraftSync(content);
+      }, 500);
+    },
+    [queueDraftSync],
+  );
+
   useEffect(() => {
     return () => {
-      const val = composerValueRef.current.trim();
-      const draftStore = useDraftStore.getState();
-      const existingDraft =
-        draftType && draftTo.length > 0
-          ? draftStore.getDraftForChat(draftType, draftTo, draftTopic)
-          : undefined;
-      const existingId = existingDraft?.id ?? activeDraftIdRef.current;
-
-      if (!val) {
-        if (draftType && draftTo.length > 0 && (existingDraft != null || existingId != null)) {
-          void syncExistingDraftDeleteOnCleanup({
-            draft: existingDraft,
-            existingId,
-            draftType,
-            draftTo,
-            draftTopic,
-            deleteDraftOnServer,
-            removeDraftForChat: draftStore.removeDraftForChat,
-            restoreDraft: draftStore.setLocalDraft,
-            setActiveDraftId: (id) => {
-              activeDraftIdRef.current = id;
-            },
-          }).then((deleted) => {
-            if (!deleted && existingId != null) {
-              log.error("Failed to delete draft during cleanup", { draftId: existingId });
-            }
-          });
-        }
-        return;
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
       }
-
-      if (!draftType || draftTo.length === 0) return;
-
-      if (existingId != null) {
-        void syncExistingDraftUpdateOnCleanup({
-          draft: existingDraft,
-          existingId,
-          draftType,
-          draftTo,
-          draftTopic,
-          nextContent: val,
-          updateDraft: draftStore.updateDraft,
-          restoreDraft: draftStore.setLocalDraft,
-          updateDraftOnServer,
-        }).then((updated) => {
-          if (!updated) {
-            log.error("Failed to update draft during cleanup", { draftId: existingId });
-          }
-        });
-      } else {
-        draftStore.setLocalDraft({
-          id: null,
-          type: draftType,
-          to: draftTo,
-          topic: draftTopic,
-          content: val,
-          timestamp: Math.floor(Date.now() / 1000),
-        });
-        createDraft({ type: draftType, to: draftTo, topic: draftTopic, content: val })
-          .then((serverId) => {
-            if (serverId == null) return;
-            activeDraftIdRef.current = serverId;
-            const draftStoreState = useDraftStore.getState();
-            void reconcileCreatedDraftServerId({
-              serverId,
-              draftType,
-              draftTo,
-              draftTopic,
-              getDraftForChat: draftStoreState.getDraftForChat,
-              linkDraftToServerId: draftStoreState.linkDraftToServerId,
-              deleteDraftOnServer,
-            });
-          })
-          .catch((err) =>
-            reportUnexpectedError("chat:draftSync", err, { phase: "linkDraftToServerId" }),
-          );
-      }
+      queueDraftSync(composerValueRef.current);
     };
-  }, [draftType, draftTo, draftTopic]);
+  }, [queueDraftSync]);
 
   const typingTarget = useMemo(() => {
     if (isDmView && activeDmUserIds?.length) {
@@ -551,35 +541,9 @@ export const ChatPage: React.FC = () => {
       }
       composerValueRef.current = v;
       onComposerValueChangeTyping(v);
-
-      const draftStore = useDraftStore.getState();
-      const existingDraft =
-        draftType && draftTo.length > 0
-          ? draftStore.getDraftForChat(draftType, draftTo, draftTopic)
-          : undefined;
-      const existingId = existingDraft?.id ?? activeDraftIdRef.current;
-      if (draftType && draftTo.length > 0 && (existingDraft != null || existingId != null)) {
-        void syncExistingDraftDeleteOnClear({
-          draft: existingDraft,
-          existingId,
-          draftType,
-          draftTo,
-          draftTopic,
-          deleteDraftOnServer,
-          removeDraftForChat: draftStore.removeDraftForChat,
-          restoreDraft: draftStore.setLocalDraft,
-          setActiveDraftId: (id) => {
-            activeDraftIdRef.current = id;
-          },
-          shouldRestoreDraft: () => composerValueRef.current.trim() === "",
-        }).then((deleted) => {
-          if (!deleted && existingId != null && composerValueRef.current.trim() === "") {
-            log.error("Failed to delete draft after composer clear", { draftId: existingId });
-          }
-        });
-      }
+      scheduleDraftSync(v);
     },
-    [onComposerValueChangeTyping, draftType, draftTo, draftTopic, composerEditSession],
+    [onComposerValueChangeTyping, scheduleDraftSync, composerEditSession],
   );
 
   useEffect(() => stopTypingNow, [stopTypingNow]);
@@ -895,21 +859,7 @@ export const ChatPage: React.FC = () => {
         return;
       }
 
-      const draftStore = useDraftStore.getState();
-      const existingTargetDraft = draftStore.getDraftForChat(
-        target.draftType,
-        target.draftTo,
-        target.draftTopic,
-      );
-      const mergedForwardContent = mergeForwardDraftContent(quoted, existingTargetDraft?.content);
-      draftStore.setLocalDraft({
-        id: existingTargetDraft?.id ?? null,
-        type: target.draftType,
-        to: target.draftTo,
-        topic: target.draftTopic,
-        content: mergedForwardContent,
-        timestamp: Math.floor(Date.now() / 1000),
-      });
+      const mergedForwardContent = mergeForwardDraftContent(quoted, undefined);
 
       setForwardMessages([]);
       setForwardSelectedText(undefined);
@@ -925,6 +875,7 @@ export const ChatPage: React.FC = () => {
         pendingForwardPrefillRef.current = mergedForwardContent;
         setDraftInitialValue(mergedForwardContent);
         composerValueRef.current = mergedForwardContent;
+        scheduleDraftSync(mergedForwardContent);
       }
     },
     [
@@ -935,6 +886,7 @@ export const ChatPage: React.FC = () => {
       location.pathname,
       navigate,
       realmBaseUrl,
+      scheduleDraftSync,
       t,
     ],
   );

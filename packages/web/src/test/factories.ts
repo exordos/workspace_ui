@@ -1,3 +1,4 @@
+import type { Draft } from "~/entities/draft/draft.types";
 import type { MessageReactions, WorkspaceUserPresenceStatus } from "~/shared/api/messenger.types";
 import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -272,5 +273,41 @@ export function createCalendarEvent(overrides: CalendarEventOverrides = {}) {
     alarms: [],
     recurrenceId: null,
     isRecurringInstance: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Messenger drafts
+// ---------------------------------------------------------------------------
+
+interface DraftOverrides {
+  uuid?: string;
+  project_id?: string;
+  user_uuid?: string;
+  stream_uuid?: string;
+  topic_uuid?: string;
+  content?: string;
+  revision?: number;
+  created_at?: string;
+  updated_at?: string;
+  etag?: string;
+  sync_state?: Draft["sync_state"];
+}
+
+export function createDraftFixture(overrides: DraftOverrides = {}): Draft {
+  const revision = overrides.revision ?? 1;
+  const createdAt = overrides.created_at ?? "2026-07-16T10:00:00.000Z";
+  return {
+    uuid: overrides.uuid ?? autoUuid(),
+    project_id: overrides.project_id ?? "fe02e55d-4548-4b3e-a175-fcae928f41b2",
+    user_uuid: overrides.user_uuid ?? "23ca1932-6cf7-4573-8ad6-9eb5b6395d1e",
+    stream_uuid: overrides.stream_uuid ?? "00000000-0000-4000-8000-000000000010",
+    topic_uuid: overrides.topic_uuid ?? "00000000-0000-4000-8000-000000000020",
+    payload: { kind: "markdown", content: overrides.content ?? "Draft content" },
+    revision,
+    created_at: createdAt,
+    updated_at: overrides.updated_at ?? createdAt,
+    etag: overrides.etag ?? `"${revision}"`,
+    ...(overrides.sync_state == null ? {} : { sync_state: overrides.sync_state }),
   };
 }

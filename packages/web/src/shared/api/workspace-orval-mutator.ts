@@ -9,12 +9,14 @@ import type { ApiResponse } from "./client";
 export class WorkspaceApiHttpError extends Error {
   readonly status: number;
   readonly data: unknown;
+  readonly headers: Headers | null;
 
-  constructor(message: string, status: number, data: unknown) {
+  constructor(message: string, status: number, data: unknown, headers: Headers | null = null) {
     super(message);
     this.name = "WorkspaceApiHttpError";
     this.status = status;
     this.data = data;
+    this.headers = headers;
   }
 }
 
@@ -54,6 +56,7 @@ function assertOk(res: ApiResponse): void {
     `Workspace API error: ${res.status}${statusText}`,
     res.status,
     res.data,
+    res.headers,
   );
 }
 

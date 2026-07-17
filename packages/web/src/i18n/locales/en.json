@@ -789,7 +789,9 @@
     "noDrafts": "No drafts",
     "streamDraft": "Channel draft",
     "privateDraft": "DM draft",
-    "topic": "Topic: {{topic}}"
+    "topic": "Topic: {{topic}}",
+    "conflict": "This draft was changed on another device. Your local text was kept; review the newer server version before saving again.",
+    "saveError": "The draft could not be synchronized. Your text remains in the composer."
   },
   "mediaViewer": {
     "openInNewTab": "Open in new tab",

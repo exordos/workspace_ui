@@ -2,26 +2,27 @@ import { useEffect, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import { useDraftStore } from "~/entities/draft/draft.model";
-import type { DraftTargetId, DraftType } from "~/entities/draft/draft.types";
-import type { MessageId } from "~/shared/lib/message-id.lib";
 import { consumePendingForwardPrefill } from "./chat-forward.lib";
 
 export interface UseChatPageDraftSyncParams {
-  draftType: DraftType | null;
-  draftTo: DraftTargetId[];
-  draftTopic: string;
+  streamUuid: string | null;
+  topicUuid: string | null;
   drafts: ReturnType<typeof useDraftStore.getState>["drafts"];
   composerValueRef: RefObject<string>;
-  activeDraftIdRef: RefObject<MessageId | null>;
+  activeDraftIdRef: RefObject<string | null>;
   pendingForwardPrefillRef: RefObject<string | null>;
   setDraftInitialValue: (value: string) => void;
 }
 
-/** Hydrates composer draft from store / forward prefill when route or drafts change. */
+function selectedDraftUuid(search: string): string | null {
+  const value = new URLSearchParams(search).get("draft")?.trim();
+  return value != null && value.length > 0 ? value : null;
+}
+
+/** Hydrates the exact selected draft UUID, or the newest draft for the current chat. */
 export function useChatPageDraftHydration({
-  draftType,
-  draftTo,
-  draftTopic,
+  streamUuid,
+  topicUuid,
   drafts,
   composerValueRef,
   activeDraftIdRef,
@@ -31,7 +32,7 @@ export function useChatPageDraftHydration({
   const location = useLocation();
 
   useEffect(() => {
-    if (!draftType || draftTo.length === 0) return;
+    if (streamUuid == null || topicUuid == null) return;
     const pendingForwardPrefill = consumePendingForwardPrefill(location.pathname);
     if (pendingForwardPrefill != null) {
       pendingForwardPrefillRef.current = pendingForwardPrefill;
@@ -41,21 +42,27 @@ export function useChatPageDraftHydration({
       return;
     }
 
-    const existing = useDraftStore.getState().getDraftForChat(draftType, draftTo, draftTopic);
-    if (existing) {
-      setDraftInitialValue(existing.content);
-      composerValueRef.current = existing.content;
-      activeDraftIdRef.current = existing.id;
+    const store = useDraftStore.getState();
+    const selectedUuid = selectedDraftUuid(location.search);
+    const selected = selectedUuid == null ? undefined : store.getDraft(selectedUuid);
+    const existing =
+      selected?.stream_uuid === streamUuid && selected.topic_uuid === topicUuid
+        ? selected
+        : store.getLatestDraftForChat(streamUuid, topicUuid);
+    if (existing != null) {
+      setDraftInitialValue(existing.payload.content);
+      composerValueRef.current = existing.payload.content;
+      activeDraftIdRef.current = existing.uuid;
     } else {
       setDraftInitialValue("");
       composerValueRef.current = "";
       activeDraftIdRef.current = null;
     }
   }, [
-    draftType,
-    draftTo,
-    draftTopic,
+    streamUuid,
+    topicUuid,
     location.pathname,
+    location.search,
     composerValueRef,
     activeDraftIdRef,
     pendingForwardPrefillRef,
@@ -63,22 +70,28 @@ export function useChatPageDraftHydration({
   ]);
 
   useEffect(() => {
-    if (!draftType || draftTo.length === 0) return;
+    if (streamUuid == null || topicUuid == null) return;
     if (pendingForwardPrefillRef.current != null) {
       pendingForwardPrefillRef.current = null;
       return;
     }
-    const existing = useDraftStore.getState().getDraftForChat(draftType, draftTo, draftTopic);
+    const selectedUuid = selectedDraftUuid(location.search);
+    const store = useDraftStore.getState();
+    const selected = selectedUuid == null ? undefined : store.getDraft(selectedUuid);
+    const existing =
+      selected?.stream_uuid === streamUuid && selected.topic_uuid === topicUuid
+        ? selected
+        : store.getLatestDraftForChat(streamUuid, topicUuid);
     const bootstrap = resolveHydratedDraftBootstrap(composerValueRef.current, existing);
     if (!bootstrap) return;
     setDraftInitialValue(bootstrap.initialValue);
     composerValueRef.current = bootstrap.initialValue;
     activeDraftIdRef.current = bootstrap.activeDraftId;
   }, [
-    draftType,
-    draftTo,
-    draftTopic,
+    streamUuid,
+    topicUuid,
     drafts,
+    location.search,
     composerValueRef,
     activeDraftIdRef,
     pendingForwardPrefillRef,

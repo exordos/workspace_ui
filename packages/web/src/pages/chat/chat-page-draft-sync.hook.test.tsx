@@ -1,9 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDraftStore } from "~/entities/draft/draft.model";
-import type { MessageId } from "~/shared/lib/message-id.lib";
-import { testMessageId } from "~/test/factories";
+import { createDraftFixture } from "~/test/factories";
 import { useChatPageDraftHydration } from "./chat-page-draft-sync.hook";
 import type React from "react";
 
@@ -11,29 +10,33 @@ vi.mock("./chat-forward.lib", () => ({
   consumePendingForwardPrefill: vi.fn(() => null),
 }));
 
+const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+const TOPIC_UUID = "00000000-0000-4000-8000-000000000020";
+
 describe("useChatPageDraftHydration", () => {
   beforeEach(() => {
-    useDraftStore.setState({ drafts: [] });
+    useDraftStore.getState().clear();
   });
 
-  it("hydrates composer from existing draft", () => {
-    useDraftStore.setState({
-      drafts: [
-        {
-          id: testMessageId(1),
-          type: "stream",
-          to: [5],
-          topic: "general",
-          content: "saved draft",
-          timestamp: 1,
-        },
-      ],
+  it("hydrates the exact draft selected by the stable query parameter", () => {
+    const older = createDraftFixture({
+      uuid: "00000000-0000-4000-8000-000000000001",
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "selected older draft",
+      updated_at: "2026-07-16T10:00:00.000Z",
     });
+    const newer = createDraftFixture({
+      uuid: "00000000-0000-4000-8000-000000000002",
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "newer sibling",
+      updated_at: "2026-07-16T11:00:00.000Z",
+    });
+    useDraftStore.getState().setDrafts([newer, older]);
 
     const composerValueRef = { current: "" } as React.RefObject<string>;
-    const activeDraftIdRef = {
-      current: null as MessageId | null,
-    } as React.RefObject<MessageId | null>;
+    const activeDraftIdRef = { current: null as string | null } as React.RefObject<string | null>;
     const pendingForwardPrefillRef = { current: null as string | null } as React.RefObject<
       string | null
     >;
@@ -42,9 +45,8 @@ describe("useChatPageDraftHydration", () => {
     renderHook(
       () =>
         useChatPageDraftHydration({
-          draftType: "stream",
-          draftTo: [5],
-          draftTopic: "general",
+          streamUuid: STREAM_UUID,
+          topicUuid: TOPIC_UUID,
           drafts: useDraftStore.getState().drafts,
           composerValueRef,
           activeDraftIdRef,
@@ -53,14 +55,18 @@ describe("useChatPageDraftHydration", () => {
         }),
       {
         wrapper: ({ children }) => (
-          <MemoryRouter initialEntries={["/org/example.com/stream/10-general/topic/general"]}>
+          <MemoryRouter
+            initialEntries={[
+              `/org/example.com/stream/10-general/topic/general?draft=${older.uuid}`,
+            ]}
+          >
             {children}
           </MemoryRouter>
         ),
       },
     );
 
-    expect(setDraftInitialValue).toHaveBeenCalledWith("saved draft");
-    expect(activeDraftIdRef.current).toBe(testMessageId(1));
+    expect(setDraftInitialValue).toHaveBeenCalledWith("selected older draft");
+    expect(activeDraftIdRef.current).toBe(older.uuid);
   });
 });

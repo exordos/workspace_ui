@@ -1,32 +1,51 @@
-/**
- * Draft entity type definitions.
- *
- * Drafts are saved locally. Each draft has a type (stream or DM), target, and content.
- */
+/** Workspace messenger draft API and client-state types. */
 
-import type { MessageId } from "~/shared/lib/message-id.lib";
-
-export type DraftType = "stream" | "private";
-export type DraftTargetId = number | string;
-
-export interface Draft {
-  /** Server-assigned UUID (null if local-only, not yet synced). */
-  id: MessageId | null;
-  /** "stream" for channel messages, "private" for DMs. */
-  type: DraftType;
-  /** For stream: [streamUuid]. For DM: recipient user IDs. */
-  to: DraftTargetId[];
-  /** Topic name (stream drafts only). */
-  topic: string;
-  /** Draft message content (markdown). */
+export interface DraftPayload extends Record<string, unknown> {
+  kind: "markdown";
   content: string;
-  /** Last update timestamp (Unix seconds). */
-  timestamp: number;
 }
 
-export interface DraftInput {
-  type: DraftType;
-  to: DraftTargetId[];
-  topic: string;
-  content: string;
+/** Server-owned draft snapshot. UUID is client-generated and stable across retries. */
+export interface Draft {
+  uuid: string;
+  project_id: string;
+  user_uuid: string;
+  stream_uuid: string;
+  topic_uuid: string;
+  payload: DraftPayload;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  /** Entity tag used by conditional PUT/DELETE. Derived from revision when list responses omit it. */
+  etag: string;
+  /** Local-only state; never serialized to the API. */
+  sync_state?: "synced" | "pending" | "conflict";
+}
+
+export interface DraftCreateInput {
+  uuid: string;
+  stream_uuid: string;
+  topic_uuid: string;
+  payload: DraftPayload;
+}
+
+export interface DraftUpdateInput {
+  payload: DraftPayload;
+}
+
+export interface DraftListFilters {
+  streamUuid?: string;
+  topicUuid?: string;
+  pageMarker?: string;
+  pageLimit?: number;
+}
+
+export interface DraftPage {
+  drafts: Draft[];
+  nextPageMarker: string | null;
+}
+
+export interface DraftConflictSnapshot {
+  draft: Draft | null;
+  etag: string | null;
 }

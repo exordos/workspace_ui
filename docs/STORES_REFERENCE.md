@@ -369,38 +369,33 @@ Draft messages synced with the messenger API Drafts API.
 ### Interfaces
 
 ```typescript
-type DraftType = "stream" | "private";
-
 interface Draft {
-  id: number | null;
-  type: DraftType;
-  to: number[];
-  topic: string;
-  content: string;
-  timestamp: number;
-}
-
-interface DraftState {
-  drafts: Draft[];
-  loading: boolean;
-
-  setDrafts: (drafts: Draft[]) => void;
-  addDraft: (draft: Draft) => void;
-  updateDraft: (id: number, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
-  removeDraft: (id: number) => void;
-  getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
-  setLoading: (loading: boolean) => void;
-  clear: () => void;
+  uuid: string;
+  project_id: string;
+  user_uuid: string;
+  stream_uuid: string;
+  topic_uuid: string;
+  payload: { kind: "markdown"; content: string };
+  revision: number; // server snapshots are >= 1; local pending drafts use 0
+  created_at: string;
+  updated_at: string;
+  etag: string;
+  sync_state?: "synced" | "pending" | "conflict";
 }
 ```
 
 ### Behavior
 
-| Action            | Logic                                                         |
-| ----------------- | ------------------------------------------------------------- |
-| `getDraftForChat` | Matches by `type`, sorted `to` array, and `topic` for streams |
-| `updateDraft`     | Refreshes `timestamp` on change                               |
-| `clear`           | Resets `drafts` and `loading`                                 |
+| Action                          | Logic                                                              |
+| ------------------------------- | ------------------------------------------------------------------ |
+| `setDrafts` / `appendDraftPage` | Hydrates UUID-keyed pages and preserves newer local pending drafts |
+| `upsertDraft`                   | Replaces only the matching UUID; sibling drafts in one chat remain |
+| `getDraftsForChat`              | Matches `stream_uuid + topic_uuid`, newest `updated_at` first      |
+| `markDraftConflict`             | Keeps local text separately while exposing the current snapshot    |
+| `clear`                         | Resets drafts, count, loading, and pagination state                |
+
+Drafts are hydrated from REST when an instance becomes ready and after reload. Activity links use
+`?draft=<uuid>` so a specific sibling draft remains addressable across reloads.
 
 ---
 

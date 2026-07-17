@@ -35,31 +35,10 @@ Before adding any organization-scoped async loader or mutation, read [ORG_SCOPED
 
 **Where**: `entities/<name>/<name>.api.ts`
 
-```typescript
-// entities/draft/draft.api.ts
-import { messengerFetch, messengerPost, messengerDelete } from "~/shared/api/client";
-import type { Draft, DraftInput } from "./draft.types";
-
-export async function fetchDrafts(): Promise<Draft[]> {
-  const res = await messengerFetch("drafts");
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  const data = await res.json();
-  return data.drafts;
-}
-
-export async function createDraft(draft: DraftInput): Promise<{ ids: number[] }> {
-  const res = await messengerPost("drafts", {
-    drafts: JSON.stringify([draft]),
-  });
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  return res.json();
-}
-
-export async function deleteDraft(id: number): Promise<void> {
-  const res = await messengerDelete(`drafts/${id}`);
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-}
-```
+For a current production example, see `entities/draft/draft.api.ts`. It uses the shared raw
+`messengerApi` wrapper because conditional mutations and pagination require access to `ETag`,
+`If-Match`, and `X-Pagination-Marker` headers. Prefer generated API functions normally; document
+an exception when the generated layer cannot expose a required part of the HTTP contract.
 
 **Workspace API** (via `shared/api/workspace-client.ts`):
 
@@ -77,86 +56,18 @@ export async function getFolders(): Promise<WorkspaceFolder[]> {
 
 **Where**: `entities/<name>/<name>.types.ts`
 
-```typescript
-// entities/draft/draft.types.ts
-export interface Draft {
-  id: number;
-  type: "private" | "stream";
-  to: number[];
-  topic: string;
-  content: string;
-  timestamp?: number;
-}
-
-export interface DraftInput {
-  type: "private" | "stream";
-  to: number[];
-  topic: string;
-  content: string;
-}
-```
+Model server-owned identifiers and concurrency fields explicitly. The Draft entity, for example,
+uses client-generated UUIDs, mandatory `stream_uuid` and `topic_uuid`, a typed markdown payload,
+server revision, timestamps, and ETag. Do not collapse multiple server resources into a
+chat-addressed singleton when the API permits sibling resources.
 
 ### 3. Zustand Store (entity model)
 
 **Where**: `entities/<name>/<name>.model.ts`
 
-```typescript
-// entities/draft/draft.model.ts
-import { create } from "zustand";
-import { createLogger } from "~/shared/lib/logger";
-import { fetchDrafts, createDraft as apiCreateDraft, deleteDraft as apiDeleteDraft } from "./draft.api";
-import type { Draft, DraftInput } from "./draft.types";
-
-const log = createLogger("draft");
-
-interface DraftsState {
-  drafts: Draft[];
-  loading: boolean;
-
-  loadDrafts: () => Promise<void>;
-  createDraft: (draft: DraftInput) => Promise<void>;
-  deleteDraft: (id: number) => Promise<void>;
-  getDraftForChat: (chatId: string) => Draft | undefined;
-  clear: () => void;
-}
-
-export const useDraftsStore = create<DraftsState>((set, get) => ({
-  drafts: [],
-  loading: false,
-
-  async loadDrafts() {
-    set({ loading: true });
-    try {
-      const drafts = await fetchDrafts();
-      set({ drafts, loading: false });
-      log.info("Drafts loaded", { count: drafts.length });
-    } catch (err) {
-      log.error("Failed to load drafts", { error: String(err) });
-      set({ loading: false });
-    }
-  },
-
-  async createDraft(input) {
-    const { ids } = await apiCreateDraft(input);
-    log.info("Draft created", { id: ids[0] });
-    await get().loadDrafts();
-  },
-
-  async deleteDraft(id) {
-    await apiDeleteDraft(id);
-    set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
-    log.info("Draft deleted", { id });
-  },
-
-  getDraftForChat(chatId) {
-    return get().drafts.find((d) => /* match logic */);
-  },
-
-  clear() {
-    set({ drafts: [], loading: false });
-  },
-}));
-```
+Keep entity stores keyed by stable server identity and separate paging/hydration from mutations.
+For optimistic conditional updates, preserve unsent local input on 412 and expose the current
+server snapshot rather than silently overwriting either side.
 
 ### 4. Feature (user scenario)
 

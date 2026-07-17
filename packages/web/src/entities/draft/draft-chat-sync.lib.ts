@@ -1,184 +1,112 @@
-import type { MessageId } from "~/shared/lib/message-id.lib";
-import type { Draft, DraftInput, DraftTargetId, DraftType } from "./draft.types";
-
-interface SyncExistingDraftDeleteOnCleanupOptions {
-  draft: Draft | undefined;
-  existingId: MessageId | null;
-  draftType: DraftType;
-  draftTo: DraftTargetId[];
-  draftTopic: string;
-  deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
-  removeDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => void;
-  restoreDraft: (draft: Draft) => void;
-  setActiveDraftId: (id: MessageId | null) => void;
-}
-
-interface SyncExistingDraftDeleteOnClearOptions extends SyncExistingDraftDeleteOnCleanupOptions {
-  shouldRestoreDraft: () => boolean;
-}
-
-interface SyncExistingDraftUpdateOnCleanupOptions {
-  draft: Draft | undefined;
-  existingId: MessageId;
-  draftType: DraftType;
-  draftTo: DraftTargetId[];
-  draftTopic: string;
-  nextContent: string;
-  updateDraft: (id: MessageId, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
-  restoreDraft: (draft: Draft) => void;
-  updateDraftOnServer: (id: MessageId, input: DraftInput) => Promise<boolean>;
-}
-
-interface ReconcileCreatedDraftServerIdOptions {
-  serverId: MessageId | null;
-  draftType: DraftType;
-  draftTo: DraftTargetId[];
-  draftTopic: string;
-  getDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => Draft | undefined;
-  linkDraftToServerId: (
-    type: DraftType,
-    to: DraftTargetId[],
-    topic: string,
-    newId: MessageId,
-  ) => void;
-  deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
-}
-
-export async function syncExistingDraftDeleteOnCleanup({
-  draft,
-  existingId,
-  draftType,
-  draftTo,
-  draftTopic,
+import {
+  DraftPreconditionError,
+  createDraft,
   deleteDraftOnServer,
-  removeDraftForChat,
-  restoreDraft,
-  setActiveDraftId,
-}: SyncExistingDraftDeleteOnCleanupOptions): Promise<boolean> {
-  return syncExistingDraftDeleteInternal({
-    draft,
-    existingId,
-    draftType,
-    draftTo,
-    draftTopic,
-    deleteDraftOnServer,
-    removeDraftForChat,
-    restoreDraft,
-    setActiveDraftId,
-    shouldRestoreDraft: () => true,
-  });
-}
-
-export async function syncExistingDraftDeleteOnClear({
-  draft,
-  existingId,
-  draftType,
-  draftTo,
-  draftTopic,
-  deleteDraftOnServer,
-  removeDraftForChat,
-  restoreDraft,
-  setActiveDraftId,
-  shouldRestoreDraft,
-}: SyncExistingDraftDeleteOnClearOptions): Promise<boolean> {
-  return syncExistingDraftDeleteInternal({
-    draft,
-    existingId,
-    draftType,
-    draftTo,
-    draftTopic,
-    deleteDraftOnServer,
-    removeDraftForChat,
-    restoreDraft,
-    setActiveDraftId,
-    shouldRestoreDraft,
-  });
-}
-
-async function syncExistingDraftDeleteInternal({
-  draft,
-  existingId,
-  draftType,
-  draftTo,
-  draftTopic,
-  deleteDraftOnServer,
-  removeDraftForChat,
-  restoreDraft,
-  setActiveDraftId,
-  shouldRestoreDraft,
-}: SyncExistingDraftDeleteOnClearOptions): Promise<boolean> {
-  if (draft != null) {
-    removeDraftForChat(draftType, draftTo, draftTopic);
-  }
-
-  if (existingId == null) return true;
-
-  const deleted = await deleteDraftOnServer(existingId);
-  if (!deleted && draft != null && shouldRestoreDraft()) {
-    restoreDraft(draft);
-    return false;
-  }
-  if (!deleted) return false;
-
-  setActiveDraftId(null);
-  return true;
-}
-
-export async function syncExistingDraftUpdateOnCleanup({
-  draft,
-  existingId,
-  draftType,
-  draftTo,
-  draftTopic,
-  nextContent,
-  updateDraft,
-  restoreDraft,
   updateDraftOnServer,
-}: SyncExistingDraftUpdateOnCleanupOptions): Promise<boolean> {
-  if (draft?.content === nextContent) return true;
+} from "./draft.api";
+import type { Draft } from "./draft.types";
 
-  if (draft != null) {
-    updateDraft(existingId, { content: nextContent });
-  }
-  const updated = await updateDraftOnServer(existingId, {
-    type: draftType,
-    to: draftTo,
-    topic: draftTopic,
-    content: nextContent,
-  });
+export interface DraftSyncResult {
+  status: "synced" | "deleted" | "conflict";
+  needsResync: boolean;
+}
 
-  if (!updated && draft != null) {
-    restoreDraft(draft);
+export interface SyncDraftContentOptions {
+  uuid: string;
+  streamUuid: string;
+  topicUuid: string;
+  content: string;
+  getDraft: (uuid: string) => Draft | undefined;
+  getCurrentContent: () => string;
+  upsertDraft: (draft: Draft) => void;
+  updateDraftPayload: (uuid: string, content: string, syncState?: Draft["sync_state"]) => void;
+  markDraftConflict: (uuid: string, current: Draft | null) => void;
+  removeDraft: (uuid: string) => void;
+}
+
+export function createPendingDraft(options: {
+  uuid: string;
+  streamUuid: string;
+  topicUuid: string;
+  content: string;
+}): Draft {
+  const now = new Date().toISOString();
+  return {
+    uuid: options.uuid,
+    project_id: "",
+    user_uuid: "",
+    stream_uuid: options.streamUuid,
+    topic_uuid: options.topicUuid,
+    payload: { kind: "markdown", content: options.content },
+    revision: 0,
+    created_at: now,
+    updated_at: now,
+    etag: '"0"',
+    sync_state: "pending",
+  };
+}
+
+function applyServerSnapshotWithoutLosingNewerInput(
+  snapshot: Draft,
+  requestedContent: string,
+  options: SyncDraftContentOptions,
+): boolean {
+  options.upsertDraft(snapshot);
+  const currentContent = options.getCurrentContent();
+  if (currentContent === requestedContent) {
     return false;
   }
-  if (!updated) return false;
-
+  options.updateDraftPayload(snapshot.uuid, currentContent, "pending");
   return true;
 }
 
-export async function reconcileCreatedDraftServerId({
-  serverId,
-  draftType,
-  draftTo,
-  draftTopic,
-  getDraftForChat,
-  linkDraftToServerId,
-  deleteDraftOnServer,
-}: ReconcileCreatedDraftServerIdOptions): Promise<void> {
-  if (serverId == null) return;
+export async function syncDraftContent(options: SyncDraftContentOptions): Promise<DraftSyncResult> {
+  const content = options.content;
+  const existing = options.getDraft(options.uuid);
 
-  const localDraft = getDraftForChat(draftType, draftTo, draftTopic);
-  if (localDraft == null || localDraft.content.trim() === "") {
-    await deleteDraftOnServer(serverId);
-    return;
+  if (content.trim().length === 0) {
+    if (existing == null || existing.project_id === "") {
+      options.removeDraft(options.uuid);
+      return { status: "deleted", needsResync: false };
+    }
+    try {
+      await deleteDraftOnServer(existing.uuid, existing.etag);
+      options.removeDraft(existing.uuid);
+      return {
+        status: "deleted",
+        needsResync: options.getCurrentContent().trim().length > 0,
+      };
+    } catch (error) {
+      if (error instanceof DraftPreconditionError) {
+        options.markDraftConflict(existing.uuid, error.current.draft);
+        return { status: "conflict", needsResync: false };
+      }
+      throw error;
+    }
   }
 
-  if (localDraft.id == null) {
-    linkDraftToServerId(draftType, draftTo, draftTopic, serverId);
-    return;
+  if (existing?.sync_state === "conflict") {
+    return { status: "conflict", needsResync: false };
   }
 
-  if (localDraft.id !== serverId) {
-    await deleteDraftOnServer(serverId);
+  const createInput = {
+    stream_uuid: options.streamUuid,
+    topic_uuid: options.topicUuid,
+    payload: { kind: "markdown" as const, content },
+  };
+
+  try {
+    const snapshot =
+      existing == null || existing.project_id === ""
+        ? await createDraft({ uuid: options.uuid, ...createInput })
+        : await updateDraftOnServer(existing.uuid, { payload: createInput.payload }, existing.etag);
+    const needsResync = applyServerSnapshotWithoutLosingNewerInput(snapshot, content, options);
+    return { status: "synced", needsResync };
+  } catch (error) {
+    if (error instanceof DraftPreconditionError) {
+      options.markDraftConflict(options.uuid, error.current.draft);
+      return { status: "conflict", needsResync: false };
+    }
+    throw error;
   }
 }

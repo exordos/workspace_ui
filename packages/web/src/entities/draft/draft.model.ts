@@ -1,145 +1,165 @@
-/**
- * Draft store — manages message drafts (auto-saved when leaving a chat).
- */
+/** Draft store keyed by stable client-generated UUID. */
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
-import type { MessageId } from "~/shared/lib/message-id.lib";
-import type { Draft, DraftTargetId, DraftType } from "./draft.types";
+import type { Draft } from "./draft.types";
 
-function buildDraftChatKey(type: DraftType, to: DraftTargetId[], topic?: string): string {
-  const toKey = [...to].map(String).sort().join(",");
-  return type === "stream" ? `${type}:${toKey}:${topic ?? ""}` : `${type}:${toKey}`;
+function draftUpdatedAtMs(draft: Draft): number {
+  const parsed = Date.parse(draft.updated_at);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortDrafts(drafts: readonly Draft[]): Draft[] {
+  return [...drafts].sort((a, b) => {
+    const updatedDelta = draftUpdatedAtMs(b) - draftUpdatedAtMs(a);
+    return updatedDelta !== 0 ? updatedDelta : b.uuid.localeCompare(a.uuid);
+  });
 }
 
 function countNonEmptyDrafts(drafts: readonly Draft[]): number {
-  let count = 0;
-  for (const draft of drafts) {
-    if (draft.content.trim().length > 0) count += 1;
+  return drafts.reduce((count, draft) => count + (draft.payload.content.trim() ? 1 : 0), 0);
+}
+
+function sameChat(draft: Draft, streamUuid: string, topicUuid: string): boolean {
+  return draft.stream_uuid === streamUuid && draft.topic_uuid === topicUuid;
+}
+
+function mergeDrafts(current: readonly Draft[], incoming: readonly Draft[]): Draft[] {
+  const byUuid = new Map(current.map((draft) => [draft.uuid, draft]));
+  for (const draft of incoming) {
+    const local = byUuid.get(draft.uuid);
+    if (local?.sync_state === "pending" && local.payload.content !== draft.payload.content) {
+      continue;
+    }
+    byUuid.set(draft.uuid, draft);
   }
-  return count;
+  return sortDrafts([...byUuid.values()]);
 }
 
 interface DraftState {
   drafts: Draft[];
   nonEmptyDraftCount: number;
   loading: boolean;
+  nextPageMarker: string | null;
+  hasMore: boolean;
 
-  setDrafts: (drafts: Draft[]) => void;
-  addDraft: (draft: Draft) => void;
-  setLocalDraft: (draft: Draft) => void;
-  updateDraft: (id: MessageId, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
-  updateDraftId: (oldId: MessageId, newId: MessageId) => void;
-  linkDraftToServerId: (
-    type: DraftType,
-    to: DraftTargetId[],
-    topic: string | undefined,
-    newId: MessageId,
-  ) => void;
-  removeDraft: (id: MessageId) => void;
-  /** Removes draft by id (server) or timestamp (local-only). Use when draft.id may be null. */
-  removeDraftByIdentifier: (identifier: MessageId | number) => void;
-  removeDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => void;
-  getDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => Draft | undefined;
+  setDrafts: (drafts: Draft[], nextPageMarker?: string | null) => void;
+  appendDraftPage: (drafts: Draft[], nextPageMarker: string | null) => void;
+  upsertDraft: (draft: Draft) => void;
+  updateDraftPayload: (uuid: string, content: string, syncState?: Draft["sync_state"]) => void;
+  markDraftConflict: (uuid: string, current: Draft | null) => void;
+  removeDraft: (uuid: string) => void;
+  getDraft: (uuid: string) => Draft | undefined;
+  getDraftsForChat: (streamUuid: string, topicUuid: string) => Draft[];
+  getLatestDraftForChat: (streamUuid: string, topicUuid: string) => Draft | undefined;
   setLoading: (loading: boolean) => void;
   clear: () => void;
+}
+
+function stateForDrafts(drafts: Draft[]) {
+  const sorted = sortDrafts(drafts);
+  return { drafts: sorted, nonEmptyDraftCount: countNonEmptyDrafts(sorted) };
 }
 
 export const useDraftStore = create<DraftState>((set, get) => ({
   drafts: [],
   nonEmptyDraftCount: 0,
   loading: false,
+  nextPageMarker: null,
+  hasMore: false,
 
-  setDrafts(drafts) {
+  setDrafts(drafts, nextPageMarker = null) {
     logStoreAction("draft", "setDrafts", { count: drafts.length });
-    set({ drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) });
-  },
-
-  addDraft(draft) {
-    logStoreAction("draft", "addDraft", { draftId: draft.id });
-    set((s) => {
-      const drafts = [...s.drafts, draft];
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  setLocalDraft(draft) {
-    logStoreAction("draft", "setLocalDraft", { draftType: draft.type });
-    const targetKey = buildDraftChatKey(draft.type, draft.to, draft.topic);
-    set((s) => {
-      const drafts = [
-        ...s.drafts.filter(
-          (existing) => buildDraftChatKey(existing.type, existing.to, existing.topic) !== targetKey,
+    set((state) => ({
+      ...stateForDrafts(
+        mergeDrafts(
+          state.drafts.filter((draft) => draft.sync_state === "pending"),
+          drafts,
         ),
+      ),
+      nextPageMarker,
+      hasMore: nextPageMarker != null,
+    }));
+  },
+
+  appendDraftPage(drafts, nextPageMarker) {
+    logStoreAction("draft", "appendDraftPage", { count: drafts.length });
+    set((state) => ({
+      ...stateForDrafts(mergeDrafts(state.drafts, drafts)),
+      nextPageMarker,
+      hasMore: nextPageMarker != null,
+    }));
+  },
+
+  upsertDraft(draft) {
+    logStoreAction("draft", "upsertDraft", { draftUuid: draft.uuid });
+    set((state) => ({
+      ...stateForDrafts([
+        ...state.drafts.filter((existing) => existing.uuid !== draft.uuid),
         draft,
-      ];
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
+      ]),
+    }));
+  },
+
+  updateDraftPayload(uuid, content, syncState = "pending") {
+    logStoreAction("draft", "updateDraftPayload", { uuid });
+    const updatedAt = new Date().toISOString();
+    set((state) => ({
+      ...stateForDrafts(
+        state.drafts.map((draft) =>
+          draft.uuid === uuid
+            ? {
+                ...draft,
+                payload: { ...draft.payload, content },
+                updated_at: updatedAt,
+                sync_state: syncState,
+              }
+            : draft,
+        ),
+      ),
+    }));
+  },
+
+  markDraftConflict(uuid, current) {
+    logStoreAction("draft", "markDraftConflict", { uuid, hasCurrent: current != null });
+    set((state) => {
+      const local = state.drafts.find((draft) => draft.uuid === uuid);
+      if (local == null && current == null) return state;
+      const conflict =
+        current == null
+          ? local == null
+            ? null
+            : { ...local, sync_state: "conflict" as const }
+          : {
+              ...current,
+              payload:
+                local == null
+                  ? current.payload
+                  : { ...current.payload, local_content: local.payload.content },
+              sync_state: "conflict" as const,
+            };
+      if (conflict == null) return state;
+      return {
+        ...stateForDrafts([...state.drafts.filter((draft) => draft.uuid !== uuid), conflict]),
+      };
     });
   },
 
-  updateDraft(id, patch) {
-    logStoreAction("draft", "updateDraft", { id });
-    set((s) => {
-      const drafts = s.drafts.map((d) =>
-        d.id === id ? { ...d, ...patch, timestamp: Math.floor(Date.now() / 1000) } : d,
-      );
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
+  removeDraft(uuid) {
+    logStoreAction("draft", "removeDraft", { uuid });
+    set((state) => stateForDrafts(state.drafts.filter((draft) => draft.uuid !== uuid)));
   },
 
-  updateDraftId(oldId, newId) {
-    logStoreAction("draft", "updateDraftId", { oldId, newId });
-    set((s) => {
-      const drafts = s.drafts.map((d) => (d.id === oldId ? { ...d, id: newId } : d));
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
+  getDraft(uuid) {
+    return get().drafts.find((draft) => draft.uuid === uuid);
   },
 
-  linkDraftToServerId(type, to, topic, newId) {
-    logStoreAction("draft", "linkDraftToServerId", { draftType: type, newId });
-    const targetKey = buildDraftChatKey(type, to, topic);
-    set((s) => {
-      const drafts = s.drafts.map((draft) =>
-        draft.id == null && buildDraftChatKey(draft.type, draft.to, draft.topic) === targetKey
-          ? { ...draft, id: newId }
-          : draft,
-      );
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
+  getDraftsForChat(streamUuid, topicUuid) {
+    return get().drafts.filter((draft) => sameChat(draft, streamUuid, topicUuid));
   },
 
-  removeDraft(id) {
-    logStoreAction("draft", "removeDraft", { id });
-    set((s) => {
-      const drafts = s.drafts.filter((d) => d.id !== id);
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  removeDraftByIdentifier(identifier) {
-    logStoreAction("draft", "removeDraftByIdentifier", { identifier });
-    set((s) => {
-      const drafts = s.drafts.filter((d) => (d.id ?? d.timestamp) !== identifier);
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  removeDraftForChat(type, to, topic) {
-    logStoreAction("draft", "removeDraftForChat", { draftType: type });
-    const targetKey = buildDraftChatKey(type, to, topic);
-    set((s) => {
-      const drafts = s.drafts.filter(
-        (draft) => buildDraftChatKey(draft.type, draft.to, draft.topic) !== targetKey,
-      );
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  getDraftForChat(type, to, topic) {
-    const targetKey = buildDraftChatKey(type, to, topic);
-    return get().drafts.find(
-      (draft) => buildDraftChatKey(draft.type, draft.to, draft.topic) === targetKey,
-    );
+  getLatestDraftForChat(streamUuid, topicUuid) {
+    return get().drafts.find((draft) => sameChat(draft, streamUuid, topicUuid));
   },
 
   setLoading(loading) {
@@ -148,6 +168,12 @@ export const useDraftStore = create<DraftState>((set, get) => ({
 
   clear() {
     logStoreAction("draft", "clear", {});
-    set({ drafts: [], nonEmptyDraftCount: 0, loading: false });
+    set({
+      drafts: [],
+      nonEmptyDraftCount: 0,
+      loading: false,
+      nextPageMarker: null,
+      hasMore: false,
+    });
   },
 }));

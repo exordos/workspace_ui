@@ -1,4 +1,3 @@
-import type { DraftType } from "~/entities/draft/draft.types";
 import { t } from "~/i18n/i18n";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { type UserId } from "~/shared/lib/user-id.lib";
@@ -6,19 +5,6 @@ import { type UserId } from "~/shared/lib/user-id.lib";
 export type ReadFallbackContext =
   | { type: "stream"; streamId: string; topic: string }
   | { type: "dm"; dmKey: string };
-
-export function resolveDraftType(
-  isDmView: boolean,
-  activeStream: string | null | undefined,
-): DraftType | null {
-  if (isDmView) {
-    return "private";
-  }
-  if (activeStream) {
-    return "stream";
-  }
-  return null;
-}
 
 export function buildReadFallbackContext(options: {
   isDmView: boolean;

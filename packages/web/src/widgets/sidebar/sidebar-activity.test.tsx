@@ -7,7 +7,7 @@ import { useDraftStore } from "~/entities/draft/draft.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { testMessageId } from "~/test/factories";
+import { createDraftFixture } from "~/test/factories";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
 
@@ -44,16 +44,18 @@ describe("SidebarActivity", () => {
       mentionsUnreadCount: 1,
     });
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: "00000000-0000-4000-8000-000000000001",
         content: "one",
-        timestamp: 1,
-      },
-      { id: testMessageId(2), type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
-      { id: testMessageId(3), type: "private", to: [42], topic: "", content: "   ", timestamp: 3 },
+      }),
+      createDraftFixture({
+        uuid: "00000000-0000-4000-8000-000000000002",
+        content: "two",
+      }),
+      createDraftFixture({
+        uuid: "00000000-0000-4000-8000-000000000003",
+        content: "   ",
+      }),
     ]);
 
     render(
@@ -127,15 +129,14 @@ describe("SidebarActivity", () => {
       mentionsUnreadCount: 1,
     });
     useDraftStore.getState().setDrafts([
-      {
-        id: testMessageId(1),
-        type: "stream",
-        to: [10],
-        topic: "general",
+      createDraftFixture({
+        uuid: "00000000-0000-4000-8000-000000000001",
         content: "one",
-        timestamp: 1,
-      },
-      { id: testMessageId(2), type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
+      }),
+      createDraftFixture({
+        uuid: "00000000-0000-4000-8000-000000000002",
+        content: "two",
+      }),
     ]);
 
     render(

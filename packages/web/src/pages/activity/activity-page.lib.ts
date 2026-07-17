@@ -66,46 +66,34 @@ export function resolveDraftDmDisplayName(options: {
 }
 
 export function formatDraftMessageContext(options: {
-  draft: Pick<Draft, "type" | "to" | "topic">;
-  streamsMap: ReadonlyMap<string, { name: string }>;
-  currentUserId: UserId | null;
-  getUserDisplayName: (userId: UserId) => string;
+  draft: Pick<Draft, "stream_uuid" | "topic_uuid">;
+  streamsMap: ReadonlyMap<
+    string,
+    { name: string; topics: ReadonlyMap<string, { topicUuid?: string; subject: string }> }
+  >;
   generalChatLabel: string;
   privateLabel: string;
 }): string {
-  const { draft, streamsMap, currentUserId, getUserDisplayName, generalChatLabel, privateLabel } =
-    options;
-
-  if (draft.type === "stream" && draft.to.length > 0) {
-    const streamId = String(draft.to[0]!);
-    const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
-    return formatActivityMessageContext({
-      isStream: true,
-      streamName,
-      topic: draft.topic?.trim() || null,
-      dmName: null,
-      generalChatLabel,
-      privateLabel,
-    });
+  const { draft, streamsMap, generalChatLabel, privateLabel } = options;
+  const stream = streamsMap.get(draft.stream_uuid);
+  if (stream == null) {
+    return privateLabel;
   }
-
-  if (draft.type === "private") {
-    const dmName = resolveDraftDmDisplayName({
-      recipientIds: draft.to,
-      currentUserId,
-      getUserDisplayName,
-    });
-    return formatActivityMessageContext({
-      isStream: false,
-      streamName: null,
-      topic: null,
-      dmName,
-      generalChatLabel,
-      privateLabel,
-    });
+  let topicName: string | null = null;
+  for (const topic of stream.topics.values()) {
+    if (topic.topicUuid === draft.topic_uuid) {
+      topicName = topic.subject;
+      break;
+    }
   }
-
-  return privateLabel;
+  return formatActivityMessageContext({
+    isStream: true,
+    streamName: stream.name,
+    topic: topicName ?? generalChatLabel,
+    dmName: null,
+    generalChatLabel,
+    privateLabel,
+  });
 }
 
 export function hasReactionCounts(reactions: MessageReactions | undefined): boolean {
