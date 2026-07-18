@@ -159,6 +159,7 @@ const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicke
 });
 
 function useMessageMenuItems({
+  reactionEnabled,
   emojiPickerOpen,
   onEmojiPickerOpenChange,
   visibleContextSections,
@@ -171,8 +172,9 @@ function useMessageMenuItems({
   "open" | "source" | "contextAnchor" | "onOpenChange" | "isOwn" | "onSourceChange"
 >): readonly DropdownMenuItem[] {
   return React.useMemo<DropdownMenuItem[]>(() => {
-    const items: DropdownMenuItem[] = [
-      {
+    const items: DropdownMenuItem[] = [];
+    if (reactionEnabled) {
+      items.push({
         type: "custom",
         key: "quick-reactions",
         render: () => (
@@ -198,8 +200,8 @@ function useMessageMenuItems({
             />
           </div>
         ),
-      },
-    ];
+      });
+    }
 
     visibleContextSections.forEach((section, sectionIndex) => {
       if (sectionIndex > 0) {
@@ -224,6 +226,7 @@ function useMessageMenuItems({
     onEmojiPickerOpenChange,
     onMenuItem,
     onQuickReaction,
+    reactionEnabled,
     visibleContextSections,
   ]);
 }
@@ -235,6 +238,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
   onSourceChange,
   onOpenChange,
   isOwn,
+  reactionEnabled,
   emojiPickerOpen,
   onEmojiPickerOpenChange,
   visibleContextSections,
@@ -244,6 +248,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
   customEmojis,
 }: MessageBubbleContextMenuProps) {
   const menuItems = useMessageMenuItems({
+    reactionEnabled,
     emojiPickerOpen,
     onEmojiPickerOpenChange,
     visibleContextSections,

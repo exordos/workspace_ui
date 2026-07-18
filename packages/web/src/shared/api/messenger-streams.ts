@@ -3,6 +3,7 @@
  */
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
 import {
   parseWorkspaceStreamNotificationMode,
   WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
@@ -299,6 +300,7 @@ export function parseMeStream(row: unknown): MessengerMeStream | null {
   const sourceName = readSourceName(row.source_name);
   const notificationMode = readStreamNotificationMode(row.notification_mode);
   const color = readWorkspaceColor(row.color);
+  const providerDelivery = parseProviderDeliveryMeta(row);
   return {
     uuid,
     name,
@@ -320,6 +322,7 @@ export function parseMeStream(row: unknown): MessengerMeStream | null {
     ...(color != null ? { color } : {}),
     unread_count: readSafeCount(row.unread_count),
     notification_mode: notificationMode ?? WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
+    ...providerDelivery,
   };
 }
 
@@ -505,6 +508,7 @@ export function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
   const color = readWorkspaceColor(row.color);
   const sourceName = readSourceName(row.source_name);
   const source = readSource(row.source);
+  const providerDelivery = parseProviderDeliveryMeta(row);
   return {
     uuid,
     name,
@@ -521,6 +525,7 @@ export function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
+    ...providerDelivery,
   };
 }
 
@@ -838,6 +843,8 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
     ...(stream.owner != null ? { owner: stream.owner } : {}),
     ...(stream.source_name != null ? { source_name: stream.source_name } : {}),
     ...(stream.source != null ? { source: stream.source } : {}),
+    ...(stream.provider !== undefined ? { provider: stream.provider } : {}),
+    ...(stream.delivery !== undefined ? { delivery: stream.delivery } : {}),
     ...(stream.color != null ? { color: stream.color } : {}),
     unread_count: stream.unread_count,
   };
@@ -865,6 +872,8 @@ export async function fetchStreams(): Promise<MockStream[]> {
       ...(stream.owner != null ? { owner: stream.owner } : {}),
       ...(stream.source_name != null ? { source_name: stream.source_name } : {}),
       ...(stream.source != null ? { source: stream.source } : {}),
+      ...(stream.provider !== undefined ? { provider: stream.provider } : {}),
+      ...(stream.delivery !== undefined ? { delivery: stream.delivery } : {}),
       ...(stream.color != null ? { color: stream.color } : {}),
     }));
 }

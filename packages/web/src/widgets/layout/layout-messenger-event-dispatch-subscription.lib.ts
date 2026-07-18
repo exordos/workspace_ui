@@ -9,8 +9,10 @@ import type {
   MessengerSourceName,
 } from "~/shared/api/messenger.types";
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
+import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
 import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notification-resolve.lib";
 import { parseWorkspaceTopicNotificationMode } from "~/shared/lib/topic-notification-resolve.lib";
+import type { ProviderDeliveryMeta } from "~/shared/types/provider-delivery";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
 const WORKSPACE_COLOR_MAX_VALUE = 0xffffff;
@@ -53,6 +55,8 @@ export function parseSubscriptionRows(value: unknown): {
   inviteOnly?: boolean;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderDeliveryMeta["provider"];
+  delivery?: ProviderDeliveryMeta["delivery"];
   color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -68,6 +72,8 @@ export function parseSubscriptionRows(value: unknown): {
     inviteOnly?: boolean;
     sourceName?: MessengerSourceName;
     source?: MessengerSource;
+    provider?: ProviderDeliveryMeta["provider"];
+    delivery?: ProviderDeliveryMeta["delivery"];
     color?: number;
     canAddSubscribersGroup?: MessengerGroupSettingValue;
     canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -92,6 +98,8 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   inviteOnly?: boolean;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderDeliveryMeta["provider"];
+  delivery?: ProviderDeliveryMeta["delivery"];
   color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -115,6 +123,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   const color = parseWorkspaceColor(record.color);
   const sourceName = parseSourceName(record.source_name);
   const source = parseSource(record.source);
+  const providerDelivery = parseProviderDeliveryMeta(record);
   return {
     streamUuid: streamUuidRaw,
     name: name.trim(),
@@ -123,6 +132,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
     ...(sourceName != null ? { sourceName } : {}),
     ...(source != null ? { source } : {}),
+    ...providerDelivery,
     ...(color != null ? { color } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
@@ -157,6 +167,8 @@ export interface WorkspaceStreamEventRow {
   color?: number;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderDeliveryMeta["provider"];
+  delivery?: ProviderDeliveryMeta["delivery"];
   notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 }
 
@@ -182,6 +194,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
   const color = parseWorkspaceColor(record.color);
   const sourceName = parseSourceName(record.source_name);
   const source = parseSource(record.source);
+  const providerDelivery = parseProviderDeliveryMeta(record);
   const defaultTopicUuid = parseDefaultTopicUuid(record.default_topic_uuid);
   return {
     streamUuid,
@@ -196,6 +209,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
     ...(color != null ? { color } : {}),
     ...(sourceName != null ? { sourceName } : {}),
     ...(source != null ? { source } : {}),
+    ...providerDelivery,
     ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
@@ -218,6 +232,8 @@ function buildChatListStreamMetadataRow(
     ...(row.color != null ? { color: row.color } : {}),
     ...(row.sourceName != null ? { sourceName: row.sourceName } : {}),
     ...(row.source != null ? { source: row.source } : {}),
+    ...(row.provider !== undefined ? { provider: row.provider } : {}),
+    ...(row.delivery !== undefined ? { delivery: row.delivery } : {}),
   };
 }
 export function handleSubscriptionAdd(
@@ -472,7 +488,9 @@ export function handleStream(
   if (row.notificationMode != null) {
     ctx.mute.setStreamNotificationMode(row.streamUuid, row.notificationMode);
   }
-  if (event.kind === "stream.read") {
+  if (row.unreadCount != null) {
+    ctx.folderSync?.applyStreamUnreadCount(row.streamUuid, row.unreadCount);
+  } else if (event.kind === "stream.read") {
     refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
   }
   if (event.kind !== "stream.updated") return;
@@ -495,6 +513,8 @@ interface WorkspaceTopicEventRow {
   color?: number;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderDeliveryMeta["provider"];
+  delivery?: ProviderDeliveryMeta["delivery"];
   notificationMode?: ReturnType<typeof parseWorkspaceTopicNotificationMode>;
 }
 
@@ -518,6 +538,7 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
   const color = parseWorkspaceColor(record.color);
   const sourceName = parseSourceName(record.source_name);
   const source = parseSource(record.source);
+  const providerDelivery = parseProviderDeliveryMeta(record);
   return {
     topicUuid,
     streamUuid,
@@ -527,6 +548,7 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
     ...(color != null ? { color } : {}),
     ...(sourceName != null ? { sourceName } : {}),
     ...(source != null ? { source } : {}),
+    ...providerDelivery,
     ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
@@ -574,6 +596,8 @@ export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDisp
       ...(row.color != null ? { color: row.color } : {}),
       ...(row.sourceName != null ? { sourceName: row.sourceName } : {}),
       ...(row.source != null ? { source: row.source } : {}),
+      ...(row.provider !== undefined ? { provider: row.provider } : {}),
+      ...(row.delivery !== undefined ? { delivery: row.delivery } : {}),
     },
   ]);
   if (event.kind === "topic.read") {

@@ -5,6 +5,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
 
 export interface TopicWithLast {
   topicUuid?: string;
@@ -21,6 +22,8 @@ export interface TopicWithLast {
   color?: number;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export type SidebarChat =
@@ -32,6 +35,8 @@ export type SidebarChat =
       color?: number;
       sourceName?: MessengerSourceName;
       source?: MessengerSource;
+      provider?: ProviderSummary | null;
+      delivery?: Delivery | null;
       name: string;
       lastMessage?: string;
       lastMessageSenderName?: string;
@@ -65,6 +70,8 @@ export interface SidebarProps {
     color?: number;
     sourceName?: MessengerSourceName;
     source?: MessengerSource;
+    provider?: ProviderSummary | null;
+    delivery?: Delivery | null;
     name: string;
     lastMessage?: string;
     time?: string;
@@ -85,6 +92,8 @@ export interface StreamWithLast {
   color?: number;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   name: string;
   lastMessage?: string;
   lastMessageSenderName?: string;
@@ -114,6 +123,8 @@ export interface StreamEntryInternal {
   inviteOnly?: boolean;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -134,6 +145,8 @@ export interface StreamEntryInternal {
       color?: number;
       sourceName?: MessengerSourceName;
       source?: MessengerSource;
+      provider?: ProviderSummary | null;
+      delivery?: Delivery | null;
       lastMessageId?: MessageId;
     }
   >;

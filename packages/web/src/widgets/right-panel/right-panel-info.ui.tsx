@@ -7,6 +7,12 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import {
+  EXTERNAL_CAPABILITY,
+  isExternalCapabilityAvailable,
+} from "~/features/external-accounts/external-capabilities.lib";
+import { ExternalOperationPreflightDialog } from "~/features/external-accounts/external-operation-preflight-dialog.ui";
+import { useExternalOperationPreflight } from "~/features/external-accounts/external-operation-preflight.hook";
 import { runOptimisticStreamNotificationLevelUpdate } from "~/features/mute-chat/mute-chat-notification.optimistic.lib";
 import { setStreamNotificationLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -102,6 +108,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const streamEntry = useChatListStore((s) =>
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
+  const streamProvider = streamEntry?.provider ?? null;
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const users = useUsersStore((s) => s.users);
   const currentUserStreamRole =
@@ -120,7 +127,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           },
     [currentUserStreamRole, streamId],
   );
-  const canEditChannel = streamId != null && channelActionCapabilities.canEditChannelMetadata;
+  const canRenameExternalStream =
+    streamProvider == null ||
+    isExternalCapabilityAvailable(streamProvider.capabilities, EXTERNAL_CAPABILITY.streamRename);
+  const canEditChannel =
+    streamId != null && channelActionCapabilities.canEditChannelMetadata && canRenameExternalStream;
   const canArchiveChannel = streamId != null && channelActionCapabilities.canArchiveChannel;
   const canDeleteTopic = channelActionCapabilities.canEditChannelMetadata;
   const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
@@ -149,6 +160,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [memberMenuStreamId, setMemberMenuStreamId] = useState<string | null>(null);
   const [memberActionPendingKey, setMemberActionPendingKey] = useState<string | null>(null);
   const [memberActionError, setMemberActionError] = useState<string | null>(null);
+  const externalPreflight = useExternalOperationPreflight();
   const openAddMembers = useAddStreamMembersStore((s) => s.openForStream);
   const syncExistingMembers = useAddStreamMembersStore((s) => s.setExistingMemberIds);
 
@@ -450,19 +462,14 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     setEditDescription(channelDescription ?? "");
     setEditOpen(true);
   };
-  const handleSaveEdit = async () => {
+  const performSaveEdit = async (trimmedName: string, trimmedDescription: string) => {
     if (streamId == null || channelActionPending) return;
-    const trimmedName = editName.trim();
-    if (trimmedName.length === 0) {
-      setChannelActionError(t("app.error"));
-      return;
-    }
 
     setChannelActionPending(true);
     setChannelActionError(null);
     const ok = await updateStream(streamId, {
       name: trimmedName,
-      description: editDescription.trim(),
+      description: trimmedDescription,
     });
     if (ok) {
       useChatListStore.getState().renameStream(streamId, trimmedName);
@@ -471,7 +478,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         useChatInfoStore.getState().setData({
           ...nextInfo,
           name: trimmedName,
-          description: editDescription.trim().length > 0 ? editDescription.trim() : null,
+          description: trimmedDescription.length > 0 ? trimmedDescription : null,
         });
       }
       void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId)}`), {
@@ -482,6 +489,24 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       setChannelActionError(t("app.error"));
     }
     setChannelActionPending(false);
+  };
+  const handleSaveEdit = () => {
+    if (streamId == null || channelActionPending || externalPreflight.pending) return;
+    const trimmedName = editName.trim();
+    if (trimmedName.length === 0) {
+      setChannelActionError(t("app.error"));
+      return;
+    }
+
+    const trimmedDescription = editDescription.trim();
+    externalPreflight.run({
+      provider: streamProvider,
+      action: EXTERNAL_CAPABILITY.streamRename,
+      target: { type: "stream", uuid: streamId },
+      execute: () => {
+        void performSaveEdit(trimmedName, trimmedDescription);
+      },
+    });
   };
   const handleDeleteChannel = async () => {
     if (streamId == null || channelActionPending) return;
@@ -686,7 +711,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                   <button
                     type="button"
                     onClick={handleOpenEdit}
-                    disabled={channelActionPending}
+                    disabled={channelActionPending || externalPreflight.pending}
                     className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
                   >
                     <Icon name="pen" size={20} className="shrink-0 text-current" />
@@ -763,7 +788,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                       type="button"
                       className="rounded-md px-2 py-1 text-xs text-text-secondary hover:bg-bg hover:text-text-primary"
                       onClick={() => setEditOpen(false)}
-                      disabled={channelActionPending}
+                      disabled={channelActionPending || externalPreflight.pending}
                     >
                       {t("common.cancel")}
                     </button>
@@ -771,7 +796,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                       type="button"
                       className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-on-accent hover:opacity-90 disabled:opacity-60"
                       onClick={handleSaveEdit}
-                      disabled={channelActionPending}
+                      disabled={channelActionPending || externalPreflight.pending}
                     >
                       {t("common.save")}
                     </button>
@@ -940,6 +965,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         </div>
       </ScrollArea>
       <AddStreamMembersDialog onSuccess={handleStreamMembersChangedSuccess} />
+      <ExternalOperationPreflightDialog
+        error={externalPreflight.error}
+        losses={externalPreflight.losses}
+        onConfirm={externalPreflight.confirm}
+        onDismiss={externalPreflight.dismiss}
+      />
     </div>
   );
 };

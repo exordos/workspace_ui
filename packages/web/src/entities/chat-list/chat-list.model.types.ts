@@ -8,6 +8,7 @@ import type {
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -26,6 +27,8 @@ export interface ChatListStreamMetadataRow {
   isArchived?: boolean;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   creatorId?: string;
   inviteOnly?: boolean;
   /** Server-owned stream color as 0xRRGGBB. */
@@ -46,6 +49,8 @@ export interface ChatListStreamTopicMetadataRow {
   isDone?: boolean;
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   /** Server-owned topic color as 0xRRGGBB. */
   color?: number;
 }

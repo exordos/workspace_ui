@@ -48,9 +48,8 @@ vi.mock("~/features/external-accounts/zulip-external-account.ui", () => ({
   ZulipExternalAccountCard: () => <div data-testid="zulip-external-account-card" />,
 }));
 
-vi.mock("~/features/external-accounts/groupware-external-accounts.ui", () => ({
-  MailExternalAccountCard: () => <div data-testid="mail-external-account-card" />,
-  CalendarExternalAccountCard: () => <div data-testid="calendar-external-account-card" />,
+vi.mock("~/features/external-accounts/zulip-external-admin.ui", () => ({
+  ZulipExternalAdminPanel: () => <div data-testid="zulip-external-admin-panel" />,
 }));
 
 function createPngFile(name = "avatar.png"): File {
@@ -188,20 +187,12 @@ describe("SettingsPersonalInfoPage", () => {
     expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("does not mount external account cards in messenger-only mode", () => {
-    renderWithProviders(<SettingsPersonalInfoPage messengerOnly />);
-
-    expect(screen.queryByTestId("zulip-external-account-card")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("mail-external-account-card")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("calendar-external-account-card")).not.toBeInTheDocument();
-  });
-
-  it("keeps external account cards available in full Workspace mode", () => {
-    renderWithProviders(<SettingsPersonalInfoPage messengerOnly={false} />);
+  it("keeps the Zulip account available without adding mail or calendar surfaces", () => {
+    renderWithProviders(<SettingsPersonalInfoPage />);
 
     expect(screen.getByTestId("zulip-external-account-card")).toBeInTheDocument();
-    expect(screen.getByTestId("mail-external-account-card")).toBeInTheDocument();
-    expect(screen.getByTestId("calendar-external-account-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("mail-external-account-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-external-account-card")).not.toBeInTheDocument();
   });
 
   it("copies profile link using current instance realm", async () => {

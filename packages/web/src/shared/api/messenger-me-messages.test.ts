@@ -99,25 +99,54 @@ describe("parseMeMessage", () => {
   it("maps canonical provider delivery metadata", () => {
     const parsed = parseMeMessage(
       rawRow({
-        provider: { uuid: "provider-1", name: "Zulip", kind: "zulip" },
+        provider: {
+          kind: "zulip",
+          account_uuid: "account-1",
+          external_id: "42",
+          capabilities: {},
+        },
         delivery: {
+          external_operation_uuid: "operation-1",
           status: "pending",
           safe_error: null,
+          can_retry: false,
+          can_discard: false,
           updated_at: "2026-07-15T10:00:00Z",
+          duplicate_risk: false,
+          retry_requires_confirmation: false,
+          original_url: null,
+          reconciliation_reason: null,
         },
       }),
     );
 
     expect(parsed).toMatchObject({
-      provider: { uuid: "provider-1", name: "Zulip", kind: "zulip" },
+      provider: {
+        kind: "zulip",
+        accountUuid: "account-1",
+        externalId: "42",
+        capabilities: {},
+      },
       delivery: {
+        externalOperationUuid: "operation-1",
         status: "pending",
         safeError: null,
+        canRetry: false,
+        canDiscard: false,
         updatedAt: "2026-07-15T10:00:00Z",
+        duplicateRisk: false,
+        retryRequiresConfirmation: false,
+        originalUrl: null,
+        reconciliationReason: null,
       },
     });
     expect(meMessageToMockMessage(parsed!)).toMatchObject({
-      provider: { name: "Zulip" },
+      provider: {
+        kind: "zulip",
+        accountUuid: "account-1",
+        externalId: "42",
+        capabilities: {},
+      },
       delivery: { status: "pending" },
     });
   });

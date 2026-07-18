@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ExternalOperationPreflightDialog } from "~/features/external-accounts/external-operation-preflight-dialog.ui";
 import {
   OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
   type FolderAssignmentRow,
@@ -18,6 +19,7 @@ import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notifi
 import { TopicNotificationLevelMenuPicker } from "~/features/mute-chat/topic-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
+import type { ProviderSummary } from "~/shared/types/provider-delivery";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import {
@@ -561,6 +563,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   streamName,
   topic,
   topicUuid,
+  provider,
   rowClassName,
   rowStyle,
   sideActions,
@@ -570,6 +573,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   streamName: string;
   topic: string;
   topicUuid?: string;
+  provider?: ProviderSummary | null;
   rowClassName: string;
   rowStyle?: React.CSSProperties;
   /** Mute and other controls rendered below the menu trigger in the right column. */
@@ -579,6 +583,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const {
     canToggle: canManageTopic,
+    canRenameTopic,
     isResolved,
     toggleTopicResolved,
     pending: topicActionPending,
@@ -590,6 +595,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     openRenameDialog,
     submitRename,
     renamePending,
+    externalPreflightDialog,
   } = useMarkTopicResolved({ streamId, topic, topicUuid, streamName });
 
   const {
@@ -605,7 +611,8 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     openMoveDialog,
     submitMove,
     channelName: moveChannelName,
-  } = useMoveTopicToStream({ streamId, topic, topicUuid, streamName });
+    externalPreflightDialog: moveExternalPreflightDialog,
+  } = useMoveTopicToStream({ streamId, topic, topicUuid, streamName, provider });
 
   const topicActionsPending = topicActionPending || movePending;
   const resolveLabel = isResolved ? t("channel.markTopicAsNotDone") : t("channel.markTopicAsDone");
@@ -679,25 +686,25 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
         onSelect: handleMarkAsRead,
       },
     ];
+    if (canRenameTopic) {
+      items.push({
+        type: "action",
+        key: "rename-topic",
+        icon: "pen",
+        label: t("channel.renameTopic"),
+        disabled: topicActionsPending,
+        onSelect: handleRenameSelect,
+      });
+    }
     if (canManageTopic) {
-      items.push(
-        {
-          type: "action",
-          key: "rename-topic",
-          icon: "pen",
-          label: t("channel.renameTopic"),
-          disabled: topicActionsPending,
-          onSelect: handleRenameSelect,
-        },
-        {
-          type: "action",
-          key: "resolve-topic",
-          icon: "check",
-          label: resolveLabel,
-          disabled: topicActionsPending,
-          onSelect: handleResolveSelect,
-        },
-      );
+      items.push({
+        type: "action",
+        key: "resolve-topic",
+        icon: "check",
+        label: resolveLabel,
+        disabled: topicActionsPending,
+        onSelect: handleResolveSelect,
+      });
     }
     if (canMoveTopicToChannel) {
       items.push({
@@ -712,6 +719,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     return items;
   }, [
     canManageTopic,
+    canRenameTopic,
     canMoveTopicToChannel,
     handleMarkAsRead,
     handleMoveSelect,
@@ -760,7 +768,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
           }}
         />
       </div>
-      {canManageTopic && (
+      {canRenameTopic && (
         <RenameStreamTopicDialog
           open={renameDialogOpen}
           channelName={channelName}
@@ -771,6 +779,8 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
           onSubmit={submitRename}
         />
       )}
+      <ExternalOperationPreflightDialog {...externalPreflightDialog} />
+      <ExternalOperationPreflightDialog {...moveExternalPreflightDialog} />
       {canMoveTopicToChannel && (
         <MoveTopicToStreamDialog
           open={moveDialogOpen}

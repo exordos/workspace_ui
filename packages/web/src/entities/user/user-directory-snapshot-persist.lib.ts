@@ -23,6 +23,8 @@ export function serializeDirectoryMembersForSnapshot(
       avatar_url: m.avatar_url ?? undefined,
       role: m.role,
       profile_data: m.profile_data,
+      identity_kind: m.identity_kind,
+      provider: m.provider,
     };
     if (m.is_active !== undefined) {
       row.is_active = m.is_active;

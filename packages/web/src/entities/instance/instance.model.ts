@@ -58,8 +58,8 @@ function toSafeUnreadCount(value: unknown): number {
   return Math.max(0, Math.trunc(value));
 }
 
-function normalizeAuthType(value: unknown): WorkspaceAuthType {
-  return value === "iam" ? "iam" : "iam";
+function normalizeAuthType(_value: unknown): WorkspaceAuthType {
+  return "iam";
 }
 
 function normalizeIamProjectScopeVersion(value: unknown): number | undefined {
@@ -69,52 +69,47 @@ function normalizeIamProjectScopeVersion(value: unknown): number | undefined {
   return value;
 }
 
-function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
-  if (!Array.isArray(value)) {
-    return [];
+function normalizeStoredInstanceCandidate(candidate: unknown): WorkspaceInstance | null {
+  if (!isRecord(candidate)) return null;
+  const loginRaw = candidate.login ?? candidate.email;
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.realm !== "string" ||
+    typeof loginRaw !== "string" ||
+    candidate.authType !== "iam"
+  ) {
+    return null;
   }
+  const iamAccessTokenRaw = candidate.iamAccessToken;
+  const iamRefreshTokenRaw = candidate.iamRefreshToken;
+  const iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
+  if (iamAccessToken === "") return null;
+
+  const iamRefreshToken =
+    typeof iamRefreshTokenRaw === "string" ? iamRefreshTokenRaw.trim() : undefined;
+  const workspaceOrgOriginRaw = candidate.workspaceOrgOrigin;
+  return {
+    id: candidate.id,
+    realm: candidate.realm,
+    login: loginRaw,
+    authType: normalizeAuthType(candidate.authType),
+    iamAccessToken,
+    iamRefreshToken,
+    iamProjectScopeVersion: normalizeIamProjectScopeVersion(candidate.iamProjectScopeVersion),
+    realmIcon: typeof candidate.realmIcon === "string" ? candidate.realmIcon : undefined,
+    workspaceOrgOrigin:
+      typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
+        ? workspaceOrgOriginRaw.trim()
+        : undefined,
+  };
+}
+
+function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
+  if (!Array.isArray(value)) return [];
   const normalized: WorkspaceInstance[] = [];
   for (const candidate of value) {
-    if (typeof candidate !== "object" || candidate == null) {
-      continue;
-    }
-    const record = candidate as Record<string, unknown>;
-    const loginRaw = record.login ?? record.email;
-    if (
-      typeof record.id !== "string" ||
-      typeof record.realm !== "string" ||
-      typeof loginRaw !== "string" ||
-      record.authType !== "iam"
-    ) {
-      continue;
-    }
-    const authType = normalizeAuthType(record.authType);
-    const iamAccessTokenRaw = record.iamAccessToken;
-    const iamRefreshTokenRaw = record.iamRefreshToken;
-    const iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
-    const iamRefreshToken =
-      typeof iamRefreshTokenRaw === "string" ? iamRefreshTokenRaw.trim() : undefined;
-    const iamProjectScopeVersion = normalizeIamProjectScopeVersion(record.iamProjectScopeVersion);
-
-    if (iamAccessToken === "") {
-      continue;
-    }
-
-    const workspaceOrgOriginRaw = record.workspaceOrgOrigin;
-    normalized.push({
-      id: record.id,
-      realm: record.realm,
-      login: loginRaw,
-      authType,
-      iamAccessToken: authType === "iam" ? iamAccessToken : undefined,
-      iamRefreshToken: authType === "iam" ? iamRefreshToken : undefined,
-      iamProjectScopeVersion: authType === "iam" ? iamProjectScopeVersion : undefined,
-      realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
-      workspaceOrgOrigin:
-        typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
-          ? workspaceOrgOriginRaw.trim()
-          : undefined,
-    });
+    const instance = normalizeStoredInstanceCandidate(candidate);
+    if (instance != null) normalized.push(instance);
   }
   return normalized;
 }

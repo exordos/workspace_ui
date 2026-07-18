@@ -2,6 +2,7 @@ import type { MessageReactions, MockMessage } from "~/shared/api/messenger.types
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
 
 export type DmMessagesAppliedSource = "cache" | "api";
 
@@ -70,6 +71,11 @@ export interface CurrentChatMessagesState {
     messageId: MessageId,
     sourceName: MockMessage["source_name"],
     source: MockMessage["source"],
+  ) => void;
+  updateMessageProviderDelivery: (
+    messageId: MessageId,
+    provider: ProviderSummary | null | undefined,
+    delivery: Delivery | null | undefined,
   ) => void;
   applyOptimisticMessageEdit: (messageId: MessageId, markdown: string) => void;
   commitOptimisticMessageEdit: (messageId: MessageId, serverMessage?: MockMessage | null) => void;

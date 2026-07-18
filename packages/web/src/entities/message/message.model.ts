@@ -346,6 +346,76 @@ function resolvePersistChatKeyForMessage(
   return chatKeyFromContext(context);
 }
 
+interface BoundaryPersistenceOptions {
+  instanceId: string | undefined;
+  currentUserId: UserId | null;
+  context: CurrentChatContext;
+  messages: readonly MockMessage[];
+  isRequestCurrent: () => boolean;
+}
+
+async function persistReachedBoundary(
+  options: BoundaryPersistenceOptions & {
+    reachedBoundary: boolean;
+    boundary: "oldest" | "newest";
+  },
+): Promise<void> {
+  const {
+    instanceId,
+    currentUserId,
+    context,
+    messages,
+    isRequestCurrent,
+    reachedBoundary,
+    boundary,
+  } = options;
+  if (
+    !reachedBoundary ||
+    !persistChatMessagesToIndexedDb() ||
+    instanceId == null ||
+    !isRequestCurrent()
+  ) {
+    return;
+  }
+  const patch = boundary === "oldest" ? { reachedOldest: true } : { reachedNewest: true };
+  if (context.type === "stream" && context.streamWideView === true) {
+    await patchPartitionMetaByMessages({
+      instanceId,
+      currentUserId,
+      messages,
+      patch,
+    });
+    return;
+  }
+  await updateChatMetaPatch(instanceId, chatKeyFromContext(context), patch);
+}
+
+async function persistFreshBoundaryMessages(options: BoundaryPersistenceOptions): Promise<void> {
+  const { instanceId, currentUserId, context, messages, isRequestCurrent } = options;
+  if (
+    !persistChatMessagesToIndexedDb() ||
+    instanceId == null ||
+    messages.length === 0 ||
+    !isRequestCurrent()
+  ) {
+    return;
+  }
+  if (context.type === "stream" && context.streamWideView === true) {
+    await upsertMessagesByChatPartitions({
+      instanceId,
+      currentUserId,
+      messages,
+    });
+    return;
+  }
+  await upsertChatMessages({
+    instanceId,
+    chatKey: chatKeyFromContext(context),
+    messages,
+    windowSizeN: messengerMessageCacheWindowN(context),
+  });
+}
+
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
   context: null,
   messages: [],
@@ -703,6 +773,22 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       })),
     }));
     logStoreAction("message", "updateMessageSource", { messageId, sourceName });
+  },
+
+  updateMessageProviderDelivery(messageId, provider, delivery) {
+    if (provider === undefined && delivery === undefined) return;
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, (message) => ({
+        ...message,
+        ...(provider !== undefined ? { provider } : {}),
+        ...(delivery !== undefined ? { delivery } : {}),
+      })),
+    }));
+    logStoreAction("message", "updateMessageProviderDelivery", {
+      messageId,
+      providerKind: provider?.kind,
+      deliveryStatus: delivery?.status,
+    });
   },
 
   applyOptimisticMessageEdit(messageId, markdown) {
@@ -1123,8 +1209,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     boundaryLoadAbortController = controller;
     const orgContext = captureActiveOrgRequestContext();
     const inst = getCurrentInstance()?.id;
-    const chatKey = chatKeyFromContext(ctx);
-    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
     const isRequestCurrent = () =>
       boundaryLoadAbortController === controller &&
       isActiveOrgRequestContextCurrent(orgContext) &&
@@ -1172,18 +1256,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         });
       }
 
-      if (page.foundOldest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
-        if (isStreamWide) {
-          await patchPartitionMetaByMessages({
-            instanceId: inst,
-            currentUserId,
-            messages: withoutAnchor,
-            patch: { reachedOldest: true },
-          });
-        } else {
-          await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
-        }
-      }
+      await persistReachedBoundary({
+        instanceId: inst,
+        currentUserId,
+        context: ctx,
+        messages: withoutAnchor,
+        isRequestCurrent,
+        reachedBoundary: page.foundOldest,
+        boundary: "oldest",
+      });
       if (!isRequestCurrent()) {
         return;
       }
@@ -1200,23 +1281,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         });
       }
 
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
-        if (isStreamWide) {
-          await upsertMessagesByChatPartitions({
-            instanceId: inst,
-            currentUserId,
-            messages: fresh,
-          });
-        } else {
-          const windowN = messengerMessageCacheWindowN(ctx);
-          await upsertChatMessages({
-            instanceId: inst,
-            chatKey,
-            messages: fresh,
-            windowSizeN: windowN,
-          });
-        }
-      }
+      await persistFreshBoundaryMessages({
+        instanceId: inst,
+        currentUserId,
+        context: ctx,
+        messages: fresh,
+        isRequestCurrent,
+      });
       if (!isRequestCurrent()) {
         return;
       }
@@ -1268,8 +1339,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     boundaryLoadAbortController = controller;
     const orgContext = captureActiveOrgRequestContext();
     const inst = getCurrentInstance()?.id;
-    const chatKey = chatKeyFromContext(ctx);
-    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
     const isRequestCurrent = () =>
       boundaryLoadAbortController === controller &&
       isActiveOrgRequestContextCurrent(orgContext) &&
@@ -1297,18 +1366,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
 
-      if (page.foundNewest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
-        if (isStreamWide) {
-          await patchPartitionMetaByMessages({
-            instanceId: inst,
-            currentUserId,
-            messages: withoutAnchor,
-            patch: { reachedNewest: true },
-          });
-        } else {
-          await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
-        }
-      }
+      await persistReachedBoundary({
+        instanceId: inst,
+        currentUserId,
+        context: ctx,
+        messages: withoutAnchor,
+        isRequestCurrent,
+        reachedBoundary: page.foundNewest,
+        boundary: "newest",
+      });
       if (!isRequestCurrent()) {
         return;
       }
@@ -1327,23 +1393,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         set((s) => ({ messages: [...s.messages, ...fresh] }));
       }
 
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
-        if (isStreamWide) {
-          await upsertMessagesByChatPartitions({
-            instanceId: inst,
-            currentUserId,
-            messages: fresh,
-          });
-        } else {
-          const windowN = messengerMessageCacheWindowN(ctx);
-          await upsertChatMessages({
-            instanceId: inst,
-            chatKey,
-            messages: fresh,
-            windowSizeN: windowN,
-          });
-        }
-      }
+      await persistFreshBoundaryMessages({
+        instanceId: inst,
+        currentUserId,
+        context: ctx,
+        messages: fresh,
+        isRequestCurrent,
+      });
       if (!isRequestCurrent()) {
         return;
       }

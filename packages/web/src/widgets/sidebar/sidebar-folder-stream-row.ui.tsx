@@ -70,7 +70,12 @@ function StreamRowLinkContent({
           }`}
         >
           <span className="min-w-0 truncate">#{displayName}</span>
-          <ExternalSourceBadge sourceName={chat.sourceName} />
+          <ExternalSourceBadge
+            sourceName={chat.sourceName}
+            source={chat.source}
+            provider={chat.provider}
+            delivery={chat.delivery}
+          />
         </div>
         {!isCompactDensity && (
           <SidebarMessagePreview
@@ -208,7 +213,12 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                       <span className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
                         {topicLabel}
                       </span>
-                      <ExternalSourceBadge sourceName={topic.sourceName} />
+                      <ExternalSourceBadge
+                        sourceName={topic.sourceName}
+                        source={topic.source}
+                        provider={topic.provider}
+                        delivery={topic.delivery}
+                      />
                     </div>
                     {!isCompactDensity && (
                       <SidebarMessagePreview

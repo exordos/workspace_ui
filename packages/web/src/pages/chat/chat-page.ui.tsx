@@ -10,6 +10,8 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { ExternalOperationPreflightDialog } from "~/features/external-accounts/external-operation-preflight-dialog.ui";
+import { useExternalOperationPreflight } from "~/features/external-accounts/external-operation-preflight.hook";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useComposerTypingController } from "~/features/typing-indicator/composer-typing-controller.hook";
@@ -49,6 +51,11 @@ import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
+import {
+  executeExternalPreflightedSend,
+  messageContentIncludesFileTransfer,
+  type ExternalSendTarget,
+} from "./chat-external-send-preflight.lib";
 import {
   buildForwardQuote,
   mergeForwardDraftContent,
@@ -151,6 +158,28 @@ export const ChatPage: React.FC = () => {
     }
     return activeStreamId != null ? (activeStreamEntry?.streamUuid ?? activeStreamId) : null;
   }, [activeStreamEntry?.streamUuid, activeStreamId, dmChat?.streamUuid, isDmView]);
+  const activeTopicEntry = useMemo(() => {
+    if (activeStreamEntry == null || activeTopic == null) return undefined;
+    if (activeTopicUuid != null) {
+      const normalizedTopicUuid = activeTopicUuid.trim().toLowerCase();
+      for (const topic of activeStreamEntry.topics.values()) {
+        if (topic.topicUuid?.trim().toLowerCase() === normalizedTopicUuid) return topic;
+      }
+    }
+    return activeStreamEntry.topics.get(activeTopic);
+  }, [activeStreamEntry, activeTopic, activeTopicUuid]);
+  const activeExternalProvider = useMemo(() => {
+    const streamProvider =
+      activeStreamEntry?.provider ??
+      (activeStreamUuid != null ? streamsMap.get(activeStreamUuid)?.provider : null);
+    return activeTopicEntry?.provider ?? streamProvider ?? null;
+  }, [activeStreamEntry?.provider, activeStreamUuid, activeTopicEntry?.provider, streamsMap]);
+  const externalSendTarget = useMemo<ExternalSendTarget | null>(() => {
+    if (activeTopicUuid != null) {
+      return { type: "topic", uuid: activeTopicUuid };
+    }
+    return activeStreamUuid != null ? { type: "stream", uuid: activeStreamUuid } : null;
+  }, [activeStreamUuid, activeTopicUuid]);
   const topicNamesByUuid = useMemo(() => {
     if (activeStreamEntry == null) return undefined;
     const names = new Map<string, string>();
@@ -635,6 +664,33 @@ export const ChatPage: React.FC = () => {
       setSendError,
       setUploadProgress,
     });
+  const externalSendPreflight = useExternalOperationPreflight();
+  const handlePreflightedSend = useCallback(
+    async (content: string, subjectOverride?: string, files?: File[]) => {
+      await executeExternalPreflightedSend({
+        provider: activeExternalProvider,
+        target: externalSendTarget,
+        includesFiles: files != null && files.length > 0,
+        runPreflight: externalSendPreflight.runAwaitable,
+        execute: () => handleSend(content, subjectOverride, files),
+      });
+    },
+    [activeExternalProvider, externalSendPreflight, externalSendTarget, handleSend],
+  );
+  const handlePreflightedRetryFailedOutgoing = useCallback(
+    (message: MockMessage) => {
+      void executeExternalPreflightedSend({
+        provider: activeExternalProvider,
+        target: externalSendTarget,
+        includesFiles: messageContentIncludesFileTransfer(message.content),
+        runPreflight: externalSendPreflight.runAwaitable,
+        execute: () => handleRetryFailedOutgoing(message),
+      }).catch(() => {
+        // The shared preflight dialog communicates fail-closed and cancellation outcomes.
+      });
+    },
+    [activeExternalProvider, externalSendPreflight, externalSendTarget, handleRetryFailedOutgoing],
+  );
 
   const { onMessageAddReaction, onMessageRemoveReaction } = useChatPageReaction({
     currentUserId,
@@ -824,7 +880,7 @@ export const ChatPage: React.FC = () => {
     onMessageRemoveReaction,
     openJitsiCall: (url, locationName) => openJitsiCall({ meetingUrl: url, locationName }),
     setReadReceiptsOpen,
-    onRetryFailedOutgoing: handleRetryFailedOutgoing,
+    onRetryFailedOutgoing: handlePreflightedRetryFailedOutgoing,
     onRemoveFailedOutgoing: handleRemoveFailedOutgoing,
     onRetryFailedEdit: handleRetryFailedEdit,
     onCancelFailedEdit: handleCancelFailedEdit,
@@ -1166,7 +1222,7 @@ export const ChatPage: React.FC = () => {
           streamSlug={streamSlug}
           onExpandStreamTopics={handleExpandCurrentStreamTopics}
           uploadProgress={uploadProgress}
-          onSend={handleSend}
+          onSend={handlePreflightedSend}
           onCreateCallLink={canStartCall ? buildCurrentCallLink : undefined}
           onCancelUpload={handleCancelUpload}
           activeTopic={activeTopic}
@@ -1180,6 +1236,12 @@ export const ChatPage: React.FC = () => {
           onCancelEdit={() => setComposerEditSession(null)}
           aiMessagesContext={aiMessagesContext}
           aiChatContext={aiChatContext}
+        />
+        <ExternalOperationPreflightDialog
+          error={externalSendPreflight.error}
+          losses={externalSendPreflight.losses}
+          onConfirm={externalSendPreflight.confirm}
+          onDismiss={externalSendPreflight.dismiss}
         />
       </section>
     </div>

@@ -1,19 +1,19 @@
 import type { Page } from "@playwright/test";
-import { E2E_REALM } from "../mocks/messenger-default-responses";
+import { E2E_REALM, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "../mocks/messenger-default-responses";
 
 export function e2eOrgBasePath(): string {
   const hostname = new URL(E2E_REALM).hostname;
   return `/org/${hostname}`;
 }
 
-/** Stream slug with numeric id prefix (matches E2E mock `stream_id: 10`, name `general`). */
-export const E2E_STREAM_SLUG = "10-general";
+/** Workspace stream UUID from the default E2E API response. */
+export const E2E_STREAM_SLUG = E2E_STREAM_UUID;
 
 /** Opens a stream topic view where the message composer is rendered. */
 export async function openStreamChatWithComposer(
   page: Page,
   streamSlug = E2E_STREAM_SLUG,
-  topicName = "general",
+  topicName = E2E_TOPIC_UUID,
 ): Promise<void> {
   const topicSegment = encodeURIComponent(topicName);
   await page.goto(`${e2eOrgBasePath()}/stream/${streamSlug}/topic/${topicSegment}`);

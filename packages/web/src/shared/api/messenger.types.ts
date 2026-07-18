@@ -64,6 +64,8 @@ export interface MessengerMeStream {
   color?: number;
   unread_count: number;
   notification_mode: WorkspaceStreamNotificationMode;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 /** Markdown message body from the Workspace gateway `/messages/` payload. */
@@ -122,6 +124,8 @@ export interface MessengerStreamTopic {
   project_id?: string;
   created_at?: string;
   updated_at?: string;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 /** One page of `/messages/` rows plus the marker-based pagination cursor. */
@@ -237,6 +241,9 @@ export interface MessengerUserMember {
   is_active?: boolean;
   /** Optional custom profile fields when the backend provides them. */
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
+  /** Read-only provider identity projected by an external messenger bridge. */
+  identity_kind?: "external";
+  provider?: { kind: "zulip"; account_uuid: string } | null;
 }
 
 /** Optional realm-wide presence response shape when a backend provides one. */
@@ -331,6 +338,8 @@ export interface MockStream {
   owner?: string | null;
   source_name?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   date_created?: number | null;
   folder_id?: number | null;
   is_default?: boolean;
@@ -452,6 +461,8 @@ export interface MessengerSubscription {
   owner?: string;
   source_name?: MessengerSourceName;
   source?: MessengerSource;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
   invite_only?: boolean;
   private?: boolean;
   can_add_subscribers_group?: MessengerGroupSettingValue;

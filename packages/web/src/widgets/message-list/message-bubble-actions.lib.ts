@@ -415,6 +415,7 @@ export function filterVisibleContextSections(
     isOwn: boolean;
     canEditMessageContent: boolean;
     isJitsiCall: boolean;
+    requireMutationCallbacks?: boolean;
     callbacks?: MessageBubbleCallbacks;
   },
 ): ContextItemLabel[][] {
@@ -425,6 +426,20 @@ export function filterVisibleContextSections(
           return false;
         }
         if (label === "edit" && !options.canEditMessageContent) {
+          return false;
+        }
+        if (
+          options.requireMutationCallbacks === true &&
+          label === "edit" &&
+          options.callbacks?.onEdit == null
+        ) {
+          return false;
+        }
+        if (
+          options.requireMutationCallbacks === true &&
+          label === "delete" &&
+          options.callbacks?.onDelete == null
+        ) {
           return false;
         }
         if (label === "openInChat" && options.callbacks?.onOpenInChat == null) {

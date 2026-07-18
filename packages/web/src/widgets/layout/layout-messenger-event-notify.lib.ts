@@ -101,6 +101,7 @@ export function maybeNotifyNewMessage(
   isFromSelf: boolean,
 ): void {
   if (ctx.notificationsEnabled === false) return;
+  if (raw.provider?.notificationEligible === false) return;
   if (wasRecentlyNotified(raw.id, ctx.currentInstanceId)) return;
 
   const { isMuted, isTopicFollowed } = resolveStreamMessageMuteState(raw, ctx.mute);

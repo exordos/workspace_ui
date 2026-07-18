@@ -83,7 +83,9 @@ export function createLayoutMessengerEventLoopOnEventHandler(
       fileCacheScope == null
         ? Promise.resolve()
         : applyWorkspaceFileCacheEvent(fileCacheScope, event),
-      event.object_type === "folder" || event.object_type === "folder_item"
+      event.object_type === "stream" ||
+      event.object_type === "folder" ||
+      event.object_type === "folder_item"
         ? persistCurrentFolderSnapshot()
         : Promise.resolve(),
     ]);
@@ -104,7 +106,11 @@ export function handleLayoutMessengerEventLoopQueueEvent(
     handleCanonicalGroupwareEvent(event);
     return Promise.resolve();
   }
-  if (event.object_type === "external_account") {
+  if (
+    event.object_type === "external_account" ||
+    event.object_type === "external_chat" ||
+    event.object_type === "external_operation"
+  ) {
     publishExternalAccountUpdated(event.payload);
     return Promise.resolve();
   }

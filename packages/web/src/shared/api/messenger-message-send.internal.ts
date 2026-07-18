@@ -5,6 +5,8 @@ import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
 import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
 
 export interface MessengerMessageSendClientParams {
@@ -33,6 +35,8 @@ export interface WorkspaceMessageSendResult {
   content: string;
   isOwn?: boolean;
   createdAt?: string;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 function readString(value: unknown): string | null {
@@ -98,6 +102,7 @@ export async function postWorkspaceSendMessage(
   const content = readString(payload.content) ?? params.content;
   const isOwn = typeof row.is_own === "boolean" ? row.is_own : undefined;
   const createdAt = readString(row.created_at) ?? undefined;
+  const providerDelivery = parseProviderDeliveryMeta(row);
 
   return {
     messageUuid,
@@ -106,5 +111,6 @@ export async function postWorkspaceSendMessage(
     content,
     ...(isOwn != null ? { isOwn } : {}),
     ...(createdAt != null ? { createdAt } : {}),
+    ...providerDelivery,
   };
 }

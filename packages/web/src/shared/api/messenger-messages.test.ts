@@ -1003,6 +1003,53 @@ describe("sendMessage", () => {
     );
   });
 
+  it("preserves canonical provider delivery metadata from the create response", async () => {
+    const messageUuid = testMessageId(106);
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 201,
+      data: {
+        uuid: messageUuid,
+        stream_uuid: streamUuid,
+        is_own: true,
+        payload: { kind: "markdown", content: "external hello" },
+        provider: {
+          kind: "zulip",
+          account_uuid: "11111111-1111-4111-8111-111111111111",
+          external_id: "42",
+          capabilities: {},
+        },
+        delivery: {
+          external_operation_uuid: "22222222-2222-4222-8222-222222222222",
+          status: "pending",
+          safe_error: null,
+          can_retry: false,
+          can_discard: false,
+          duplicate_risk: false,
+          retry_requires_confirmation: false,
+          original_url: null,
+          reconciliation_reason: null,
+          updated_at: "2026-07-18T10:00:00Z",
+        },
+      },
+      raw: { statusText: "Created" },
+    });
+
+    const result = await sendMessage({ messageUuid, streamUuid, content: "external hello" });
+
+    expect(result).toMatchObject({
+      provider: {
+        kind: "zulip",
+        accountUuid: "11111111-1111-4111-8111-111111111111",
+        externalId: "42",
+      },
+      delivery: {
+        externalOperationUuid: "22222222-2222-4222-8222-222222222222",
+        status: "pending",
+      },
+    });
+  });
+
   it("sends a DM message with the private stream uuid", async () => {
     const messageUuid = testMessageId(101);
     mockMessengerApi.postJsonWithBase.mockResolvedValue({

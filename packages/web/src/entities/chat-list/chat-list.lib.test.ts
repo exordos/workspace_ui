@@ -4,6 +4,8 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const AUTHOR_UUID = "22222222-2222-4222-8222-222222222222";
+const MENTIONED_UUID = "33333333-3333-4333-8333-333333333333";
 
 function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
@@ -72,6 +74,38 @@ describe("messageToDmEntry", () => {
 });
 
 describe("messageToStreamEntry", () => {
+  beforeEach(() => {
+    useUsersStore.getState().clear();
+  });
+
+  // A leading mention is message content and must never become the stream/topic preview sender.
+  it("uses the message author for stream and topic previews when content starts with a mention", () => {
+    useUsersStore.getState().mergeUser({
+      user_id: AUTHOR_UUID,
+      full_name: "Author User",
+    });
+
+    const entry = messageToStreamEntry({
+      id: "00000000-0000-4000-8000-000000000008",
+      sender_id: 0,
+      author_uuid: AUTHOR_UUID,
+      sender_full_name: "Mentioned User",
+      content: `[Mentioned User](urn:user:${MENTIONED_UUID}) Review the description`,
+      timestamp: 1_700_000_000,
+      type: "stream",
+      stream_uuid: STREAM_UUID,
+      display_recipient: "engineering",
+      subject: "general",
+      flags: [],
+    });
+
+    expect(entry).not.toBeNull();
+    expect(entry?.stream.lastMessageSenderName).toBe("Author User");
+    expect(entry?.topic.lastMessageSenderName).toBe("Author User");
+    expect(entry?.stream.lastMessage).toBe("Mentioned User Review the description");
+    expect(entry?.topic.lastMessage).toBe("Mentioned User Review the description");
+  });
+
   it("maps sender_full_name as stream and topic last message sender", () => {
     const entry = messageToStreamEntry({
       id: "00000000-0000-4000-8000-000000000009",

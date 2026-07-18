@@ -13,6 +13,8 @@ export type WorkspaceEventObjectType =
   | "folder_item"
   | "file"
   | "external_account"
+  | "external_chat"
+  | "external_operation"
   | "mail_folder"
   | "mail_message"
   | "calendar"

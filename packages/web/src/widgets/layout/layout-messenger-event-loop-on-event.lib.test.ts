@@ -169,4 +169,24 @@ describe("handleLayoutMessengerEventLoopQueueEvent", () => {
 
     expect(publishExternalAccountUpdated).toHaveBeenCalledWith(event.payload);
   });
+
+  it.each(["external_chat", "external_operation"] as const)(
+    "publishes backend %s updates for the external account UI",
+    (objectType) => {
+      const publishExternalAccountUpdated = vi
+        .spyOn(externalAccountRealtime, "publishExternalAccountUpdated")
+        .mockImplementation(() => undefined);
+      const event = workspaceEvent(5, objectType, "updated", {
+        kind: `${objectType}.updated`,
+        uuid: `${objectType}-1`,
+      });
+
+      handleLayoutMessengerEventLoopQueueEvent(event, {
+        currentInstanceId: "inst-1",
+        latestMessageIdRef: { current: null },
+      });
+
+      expect(publishExternalAccountUpdated).toHaveBeenCalledWith(event.payload);
+    },
+  );
 });

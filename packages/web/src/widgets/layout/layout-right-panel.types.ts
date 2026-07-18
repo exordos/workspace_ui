@@ -15,6 +15,8 @@ export interface RightPanelUserFromStoreLike {
   presence?: RightPanelPresenceLike;
   role?: number;
   is_active?: boolean;
+  identity_kind?: "external";
+  provider?: { kind: "zulip"; account_uuid: string } | null;
 }
 
 export interface RightPanelDetailedProfileLike {

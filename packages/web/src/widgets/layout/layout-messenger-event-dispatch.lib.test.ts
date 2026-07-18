@@ -74,6 +74,7 @@ function buildCtx(
       updateMessageContent:
         updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
       updateMessageSource: noop,
+      updateMessageProviderDelivery: noop,
       updateMessageLinkPreview:
         updateMessageLinkPreviewMock as LayoutCurrentChatActions["updateMessageLinkPreview"],
       moveStreamTopicMessages:
@@ -983,6 +984,40 @@ describe("dispatchMessengerEvent", () => {
 
       expect(modeSpy).toHaveBeenCalledWith(STREAM_UUID_42, "muted");
     });
+
+    it("projects authoritative unread into the sidebar and cached folders without refresh", () => {
+      const { ctx } = buildCtx();
+      const upsertStreamMetadataRows = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      const applyStreamUnreadCount = vi.fn();
+      const refresh = vi.fn();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount,
+        refresh,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 22,
+          type: "stream",
+          kind: "stream.updated",
+          stream: {
+            uuid: STREAM_UUID_42,
+            name: "platform",
+            unread_count: 7,
+          },
+        },
+        ctx,
+      );
+
+      expect(upsertStreamMetadataRows).toHaveBeenCalledWith([
+        { streamUuid: STREAM_UUID_42, name: "platform", unreadCount: 7 },
+      ]);
+      expect(applyStreamUnreadCount).toHaveBeenCalledWith(STREAM_UUID_42, 7);
+      expect(refresh).not.toHaveBeenCalled();
+    });
   });
 
   describe("folder realtime", () => {
@@ -993,6 +1028,7 @@ describe("dispatchMessengerEvent", () => {
         applyRealtimeFolderSnapshot,
         applyRealtimeFolderDeleted: vi.fn(),
         applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount: vi.fn(),
       };
       const folder = {
         uuid: "50ecadd0-9823-4d97-b54c-806cc672c210",
@@ -1030,6 +1066,7 @@ describe("dispatchMessengerEvent", () => {
         applyRealtimeFolderSnapshot: vi.fn(),
         applyRealtimeFolderDeleted: vi.fn(),
         applyRealtimeFolderItemDeleted,
+        applyStreamUnreadCount: vi.fn(),
       };
 
       dispatchMessengerEvent(
@@ -1211,6 +1248,7 @@ describe("dispatchMessengerEvent", () => {
       };
       const updateFlagsSpy = vi.spyOn(ctx.currentChat, "updateMessageFlags");
       const replaceReactionsSpy = vi.spyOn(ctx.currentChat, "replaceMessageReactions");
+      const updateProviderDeliverySpy = vi.spyOn(ctx.currentChat, "updateMessageProviderDelivery");
 
       dispatchMessengerEvent(
         {
@@ -1235,6 +1273,24 @@ describe("dispatchMessengerEvent", () => {
             starred: true,
             flags: ["read", "starred"],
             reactions: { thumbs_up: 2 },
+            provider: {
+              kind: "zulip",
+              accountUuid: "11111111-1111-4111-8111-111111111111",
+              externalId: "42",
+              capabilities: {},
+            },
+            delivery: {
+              externalOperationUuid: "22222222-2222-4222-8222-222222222222",
+              status: "manual_reconciliation_required",
+              safeError: "Remote state is ambiguous",
+              canRetry: true,
+              canDiscard: true,
+              duplicateRisk: true,
+              retryRequiresConfirmation: true,
+              originalUrl: "https://zulip.example.com/#narrow/channel/42",
+              reconciliationReason: "unsafe_provider_state",
+              updatedAt: "2026-07-18T10:00:00Z",
+            },
           },
         },
         ctx,
@@ -1261,6 +1317,11 @@ describe("dispatchMessengerEvent", () => {
       expect(replaceReactionsSpy).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000031", {
         thumbs_up: 2,
       });
+      expect(updateProviderDeliverySpy).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000031",
+        expect.objectContaining({ kind: "zulip" }),
+        expect.objectContaining({ status: "manual_reconciliation_required" }),
+      );
       expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
     });
 
@@ -1610,7 +1671,7 @@ describe("dispatchMessengerEvent", () => {
       expect(messages.find((m) => m.id === testMessageId(11))?.flags).toContain("read");
     });
 
-    it("clears open topic and stream badges from confirmed read ids and refreshes folders", () => {
+    it("clears open topic and stream badges from confirmed read ids and projects folders locally", () => {
       const streamUuid = "00000000-0000-4000-8000-000000000005";
       const topicUuid = "00000000-0000-4000-8000-000000000007";
       useChatListStore
@@ -1644,11 +1705,13 @@ describe("dispatchMessengerEvent", () => {
         }),
       ]);
       const refresh = vi.fn().mockResolvedValue(undefined);
+      const applyStreamUnreadCount = vi.fn();
       const ctx = buildIntegrationCtx();
       ctx.folderSync = {
         applyRealtimeFolderSnapshot: vi.fn(),
         applyRealtimeFolderDeleted: vi.fn(),
         applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount,
         refresh,
       };
 
@@ -1665,6 +1728,34 @@ describe("dispatchMessengerEvent", () => {
       const stream = useChatListStore.getState().streamsMap.get(streamUuid);
       expect(stream?.unreadCount).toBe(0);
       expect(stream?.topics.get("topic1")?.unreadCount).toBe(0);
+      expect(applyStreamUnreadCount).toHaveBeenCalledWith(streamUuid, 0);
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it("refreshes authoritative folder unread metadata for an unloaded read confirmation", () => {
+      useCurrentChatMessagesStore.getState().setMessages([mockMsg(11, { read: false })]);
+      const refresh = vi.fn().mockResolvedValue(undefined);
+      const applyStreamUnreadCount = vi.fn();
+      const ctx = buildIntegrationCtx();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount,
+        refresh,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 1025,
+          type: "message",
+          kind: "messages.read",
+          message_uuids: [testMessageId(99)],
+        },
+        ctx,
+      );
+
+      expect(applyStreamUnreadCount).not.toHaveBeenCalled();
       expect(refresh).toHaveBeenCalledWith("mutation");
     });
 
@@ -1695,7 +1786,15 @@ describe("dispatchMessengerEvent", () => {
           read: false,
         }),
       ]);
+      const applyStreamUnreadCount = vi.fn();
       const ctx = buildIntegrationCtx();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount,
+        refresh: vi.fn().mockResolvedValue(undefined),
+      };
       const event = {
         id: 1023,
         type: "message" as const,
@@ -1704,11 +1803,15 @@ describe("dispatchMessengerEvent", () => {
       };
 
       dispatchMessengerEvent(event, ctx);
-      dispatchMessengerEvent({ ...event, id: 1024 }, buildIntegrationCtx());
+      const duplicateCtx = buildIntegrationCtx();
+      duplicateCtx.folderSync = ctx.folderSync;
+      dispatchMessengerEvent({ ...event, id: 1024 }, duplicateCtx);
 
       const stream = useChatListStore.getState().streamsMap.get(streamUuid);
       expect(stream?.unreadCount).toBe(1);
       expect(stream?.topics.get("topic1")?.unreadCount).toBe(1);
+      expect(applyStreamUnreadCount).toHaveBeenCalledTimes(1);
+      expect(applyStreamUnreadCount).toHaveBeenCalledWith(streamUuid, 1);
     });
 
     it("marks inbox stale after read:add without locally removing entries", () => {
@@ -1769,10 +1872,19 @@ describe("dispatchMessengerEvent", () => {
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
     });
 
-    it("marks loaded messages read on markAllRead queue event", () => {
+    it("marks loaded messages read and refreshes authoritative folders on markAllRead", () => {
       useCurrentChatMessagesStore
         .getState()
         .setMessages([mockMsg(100, { flags: [] }), mockMsg(101, { flags: [] })]);
+      const refresh = vi.fn().mockResolvedValue(undefined);
+      const ctx = buildIntegrationCtx();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+        applyStreamUnreadCount: vi.fn(),
+        refresh,
+      };
 
       dispatchMessengerEvent(
         {
@@ -1783,12 +1895,13 @@ describe("dispatchMessengerEvent", () => {
           all: true,
           messages: [],
         },
-        buildIntegrationCtx(),
+        ctx,
       );
 
       for (const message of useCurrentChatMessagesStore.getState().messages) {
         expect(message.flags).toContain("read");
       }
+      expect(refresh).toHaveBeenCalledWith("mutation");
     });
 
     it("uses operation field when op is missing", () => {

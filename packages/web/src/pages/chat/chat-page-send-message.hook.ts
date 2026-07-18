@@ -45,6 +45,120 @@ export interface UseChatPageSendMessageResult {
   handleCancelUpload: () => void;
 }
 
+interface RetryFailedOutgoingContext {
+  currentUserId: UserId | null;
+  isDmView: boolean;
+  activeDmUserIds: UserId[] | null;
+  activeStream: string | null;
+  activeStreamCanonicalName: string | null;
+  activeStreamId: string | null | undefined;
+  activeStreamUuid: string | null | undefined;
+  activeTopic: string | null | undefined;
+  activeTopicUuid: string | null | undefined;
+  appendMessage: (message: MockMessage) => void;
+  commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
+  removeMessage: (messageId: MessageId) => void;
+  clearReplyQuote: () => void;
+  stopTyping: () => void;
+  setSendError: (message: string | null) => void;
+  setUploadProgress: (progress: ComposerUploadProgressState | null) => void;
+}
+
+function retryErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : t("message.sendFailed");
+}
+
+async function retryFailedDmMessage(
+  context: RetryFailedOutgoingContext,
+  failedMessage: MockMessage,
+): Promise<boolean> {
+  if (!context.isDmView || context.activeStreamUuid == null) return false;
+  const optimisticMessage = buildOptimisticOutgoingMessage({
+    id: failedMessage.id,
+    senderId: context.currentUserId,
+    senderFullName: t("common.you"),
+    content: failedMessage.content,
+    target: { mode: "dm", recipientIds: context.activeDmUserIds ?? [] },
+  });
+  context.appendMessage(optimisticMessage);
+  try {
+    const newMessage = await sendMessage({
+      messageUuid: failedMessage.id,
+      streamUuid: context.activeStreamUuid,
+      content: failedMessage.content,
+      ...(context.currentUserId != null ? { author_id: context.currentUserId } : {}),
+      sender_full_name: t("common.you"),
+    });
+    context.commitOutgoingMessage(failedMessage.id, newMessage);
+    context.clearReplyQuote();
+    context.stopTyping();
+  } catch (error) {
+    context.removeMessage(failedMessage.id);
+    context.appendMessage(markOutgoingMessageFailed(optimisticMessage));
+    context.setSendError(retryErrorMessage(error));
+  } finally {
+    context.setUploadProgress(null);
+  }
+  return true;
+}
+
+async function retryFailedStreamMessage(
+  context: RetryFailedOutgoingContext,
+  failedMessage: MockMessage,
+): Promise<void> {
+  if (!context.activeStream) return;
+  if (!context.activeStreamCanonicalName || context.activeStreamUuid == null) {
+    log.warn(
+      "Blocked retry for failed stream message without canonical stream name or stream uuid",
+      {
+        streamId: context.activeStreamId ?? undefined,
+        displayName: context.activeStream,
+        failedMessageId: failedMessage.id,
+        hasStreamUuid: context.activeStreamUuid != null,
+      },
+    );
+    context.setSendError(t("message.sendFailed"));
+    return;
+  }
+  const subject = normalizeTopicForIdentity(failedMessage.subject ?? context.activeTopic ?? "");
+  const retryTopicUuid = failedMessage.topic_uuid ?? context.activeTopicUuid ?? null;
+  const optimisticMessage = buildOptimisticOutgoingMessage({
+    id: failedMessage.id,
+    senderId: context.currentUserId,
+    senderFullName: t("common.you"),
+    content: failedMessage.content,
+    target: {
+      mode: "stream",
+      stream: context.activeStreamCanonicalName,
+      streamUuid: context.activeStreamUuid,
+      subject,
+      ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
+    },
+  });
+  context.appendMessage(optimisticMessage);
+  try {
+    const newMessage = await sendMessage({
+      messageUuid: failedMessage.id,
+      stream: context.activeStreamCanonicalName,
+      streamUuid: context.activeStreamUuid,
+      ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
+      subject,
+      content: failedMessage.content,
+      ...(context.currentUserId != null ? { author_id: context.currentUserId } : {}),
+      sender_full_name: t("common.you"),
+    });
+    context.commitOutgoingMessage(failedMessage.id, newMessage);
+    context.clearReplyQuote();
+    context.stopTyping();
+  } catch (error) {
+    context.removeMessage(failedMessage.id);
+    context.appendMessage(markOutgoingMessageFailed(optimisticMessage));
+    context.setSendError(retryErrorMessage(error));
+  } finally {
+    context.setUploadProgress(null);
+  }
+}
+
 export function useChatPageSendMessage(
   params: UseChatPageSendMessageParams,
 ): UseChatPageSendMessageResult {
@@ -142,96 +256,27 @@ export function useChatPageSendMessage(
     async (msg: MockMessage) => {
       if (msg.delivery_status !== "failed") return;
       setSendError(null);
-      const body = msg.content;
       removeMessage(msg.id);
-
-      const stopTypingAfterSend = () => {
-        stopTyping();
+      const context: RetryFailedOutgoingContext = {
+        currentUserId,
+        isDmView,
+        activeDmUserIds,
+        activeStream,
+        activeStreamCanonicalName,
+        activeStreamId,
+        activeStreamUuid,
+        activeTopic,
+        activeTopicUuid,
+        appendMessage,
+        commitOutgoingMessage,
+        removeMessage,
+        clearReplyQuote,
+        stopTyping,
+        setSendError,
+        setUploadProgress,
       };
-
-      if (isDmView && activeStreamUuid != null) {
-        const optimisticMessageId = msg.id;
-        const optimisticMessage = buildOptimisticOutgoingMessage({
-          id: optimisticMessageId,
-          senderId: currentUserId,
-          senderFullName: t("common.you"),
-          content: body,
-          target: { mode: "dm", recipientIds: activeDmUserIds ?? [] },
-        });
-        appendMessage(optimisticMessage);
-        try {
-          const newMsg = await sendMessage({
-            messageUuid: optimisticMessageId,
-            streamUuid: activeStreamUuid,
-            content: body,
-            ...(currentUserId != null ? { author_id: currentUserId } : {}),
-            sender_full_name: t("common.you"),
-          });
-          commitOutgoingMessage(optimisticMessageId, newMsg);
-          clearReplyQuote();
-          stopTypingAfterSend();
-        } catch (err) {
-          removeMessage(optimisticMessageId);
-          appendMessage(markOutgoingMessageFailed(optimisticMessage));
-          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        } finally {
-          setUploadProgress(null);
-        }
-        return;
-      }
-      if (activeStream) {
-        if (!activeStreamCanonicalName || activeStreamUuid == null) {
-          log.warn(
-            "Blocked retry for failed stream message without canonical stream name or stream uuid",
-            {
-              streamId: activeStreamId ?? undefined,
-              displayName: activeStream,
-              failedMessageId: msg.id,
-              hasStreamUuid: activeStreamUuid != null,
-            },
-          );
-          setSendError(t("message.sendFailed"));
-          return;
-        }
-        const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
-        const optimisticMessageId = msg.id;
-        const retryTopicUuid = msg.topic_uuid ?? activeTopicUuid ?? null;
-        const optimisticMessage = buildOptimisticOutgoingMessage({
-          id: optimisticMessageId,
-          senderId: currentUserId,
-          senderFullName: t("common.you"),
-          content: body,
-          target: {
-            mode: "stream",
-            stream: activeStreamCanonicalName,
-            streamUuid: activeStreamUuid,
-            subject,
-            ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
-          },
-        });
-        appendMessage(optimisticMessage);
-        try {
-          const newMsg = await sendMessage({
-            messageUuid: optimisticMessageId,
-            stream: activeStreamCanonicalName,
-            streamUuid: activeStreamUuid,
-            ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
-            subject,
-            content: body,
-            ...(currentUserId != null ? { author_id: currentUserId } : {}),
-            sender_full_name: t("common.you"),
-          });
-          commitOutgoingMessage(optimisticMessageId, newMsg);
-          clearReplyQuote();
-          stopTypingAfterSend();
-        } catch (err) {
-          removeMessage(optimisticMessageId);
-          appendMessage(markOutgoingMessageFailed(optimisticMessage));
-          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        } finally {
-          setUploadProgress(null);
-        }
-      }
+      if (await retryFailedDmMessage(context, msg)) return;
+      await retryFailedStreamMessage(context, msg);
     },
     [
       activeDmUserIds,

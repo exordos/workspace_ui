@@ -22,6 +22,9 @@ interface MessengerGatewayUserRow {
   email?: string;
   avatar_url?: string | null;
   last_ping_at?: string | null;
+  identity_kind?: "external";
+  display_name?: string;
+  provider?: { kind: "zulip"; account_uuid: string } | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +56,8 @@ function timestampFromValue(value: unknown): number {
 }
 
 function buildFullName(user: MessengerGatewayUserRow): string {
+  const displayName = readString(user.display_name);
+  if (displayName.length > 0) return displayName;
   const parts = [user.first_name, user.last_name]
     .map((part) => readString(part))
     .filter((part) => part.length > 0);
@@ -90,6 +95,14 @@ function parseGatewayUserRow(data: unknown): MessengerGatewayUserRow | null {
   if (uuid.length === 0) {
     return null;
   }
+  const providerValue = data.provider;
+  const provider = isRecord(providerValue);
+  const externalProvider =
+    provider && providerValue.kind === "zulip" && typeof providerValue.account_uuid === "string"
+      ? { kind: "zulip" as const, account_uuid: providerValue.account_uuid }
+      : null;
+  const identityKind = data.identity_kind === "external" ? "external" : undefined;
+  if (identityKind === "external" && externalProvider == null) return null;
   return {
     uuid,
     username: readString(data.username),
@@ -102,6 +115,9 @@ function parseGatewayUserRow(data: unknown): MessengerGatewayUserRow | null {
     email: readString(data.email),
     avatar_url: readOptionalString(data.avatar) ?? readOptionalString(data.avatar_url),
     last_ping_at: readOptionalString(data.last_ping_at),
+    ...(identityKind != null ? { identity_kind: identityKind } : {}),
+    display_name: readString(data.display_name),
+    ...(identityKind != null ? { provider: externalProvider } : {}),
   };
 }
 
@@ -126,6 +142,8 @@ export function parseMessengerGatewayUser(data: unknown): MessengerUserMember | 
     },
     ...(customStatus !== undefined ? { status: customStatus } : {}),
     is_active: true,
+    ...(user.identity_kind != null ? { identity_kind: user.identity_kind } : {}),
+    ...(user.provider !== undefined ? { provider: user.provider } : {}),
   };
 }
 

@@ -738,11 +738,12 @@ class ApiClient {
     baseUrl: string,
     path: string,
     body: unknown,
+    headers?: Record<string, string>,
   ): Promise<ApiResponse & { data: T }> {
     const res = await this.execute({
       method: "POST",
       url: buildResolvedApiUrl(baseUrl, path),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
       meta: {},
     });

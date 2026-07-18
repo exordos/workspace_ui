@@ -114,7 +114,12 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                           }`}
                         >
                           <span className="min-w-0 truncate">#{displayName}</span>
-                          <ExternalSourceBadge sourceName={stream.sourceName} />
+                          <ExternalSourceBadge
+                            sourceName={stream.sourceName}
+                            source={stream.source}
+                            provider={stream.provider}
+                            delivery={stream.delivery}
+                          />
                         </div>
                         {!isCompactDensity && (
                           <SidebarMessagePreview

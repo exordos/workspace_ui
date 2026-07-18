@@ -10,6 +10,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import {
   applyConfirmedReadMetadataDelta,
   refreshFolderUnreadAggregates,
+  requiresAuthoritativeUnreadRefresh,
 } from "~/entities/unread-sync/confirmed-read-metadata.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
@@ -135,12 +136,19 @@ export function useChatPageMarkRead({
           .then((confirmedIds) => {
             const ids = Array.isArray(confirmedIds) ? confirmedIds : [];
             if (ids.length > 0) {
-              applyConfirmedReadMetadataDelta(
+              const confirmedMessages = useCurrentChatMessagesStore.getState().messages;
+              const projections = applyConfirmedReadMetadataDelta(
                 useChatListStore.getState(),
-                useCurrentChatMessagesStore.getState().messages,
+                confirmedMessages,
                 ids,
               );
-              refreshFolderUnreadAggregates(useFolderSyncStore.getState().refresh);
+              const folderSync = useFolderSyncStore.getState();
+              for (const projection of projections) {
+                folderSync.applyStreamUnreadCount(projection.streamUuid, projection.unreadCount);
+              }
+              if (requiresAuthoritativeUnreadRefresh(confirmedMessages, ids, projections)) {
+                refreshFolderUnreadAggregates(folderSync.refresh);
+              }
               updateMessageFlagsInStore(ids, "read", "add");
             }
           })

@@ -7,6 +7,7 @@ import {
   foldersSuccess,
   servicesSuccess,
 } from "../mocks/workspace-default-responses";
+import { workspaceUsersSuccess } from "../mocks/messenger-default-responses";
 
 /** Same-origin Workspace REST in dev (avoid `*workspace*` — it matches `workspace-api` npm paths). */
 const WORKSPACE_REST_ROUTE = /\/api\/workspace\/v1\//;
@@ -38,10 +39,11 @@ export class WorkspaceApiMock {
     const method = request.method();
 
     if (path.includes("/v1/folders/") && path.includes("/items/") && method === "GET") {
+      const folderUuid = /\/folders\/([^/]+)\/items\/?$/.exec(path)?.[1];
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(folderItemsSuccess()),
+        body: JSON.stringify(folderItemsSuccess(folderUuid)),
       });
       return;
     }
@@ -79,6 +81,42 @@ export class WorkspaceApiMock {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(servicesSuccess()),
+      });
+      return;
+    }
+
+    if (path.endsWith("/v1/epoch/") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ epoch_generation: "e2e-generation", epoch_version: 0 }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/v1/events/") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (path.endsWith("/v1/users/") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(workspaceUsersSuccess()),
+      });
+      return;
+    }
+
+    if (/\/v1\/users\/[0-9a-f-]+\/?$/i.test(path) && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(workspaceUsersSuccess()[0]),
       });
       return;
     }

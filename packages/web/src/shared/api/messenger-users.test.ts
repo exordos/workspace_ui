@@ -169,6 +169,33 @@ describe("fetchUsers", () => {
     expect(result[0]?.full_name).toBe("charlie");
   });
 
+  it("keeps external identity metadata and provider display name", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: PARTNER_UUID,
+          identity_kind: "external",
+          display_name: "Zulip Guest",
+          provider: { kind: "zulip", account_uuid: "account-1" },
+          avatar: "urn:image:avatar-1",
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchUsers()).resolves.toEqual([
+      expect.objectContaining({
+        user_id: PARTNER_UUID,
+        full_name: "Zulip Guest",
+        identity_kind: "external",
+        provider: { kind: "zulip", account_uuid: "account-1" },
+        avatar_url: "urn:image:avatar-1",
+      }),
+    ]);
+  });
+
   it("returns empty on non-array payload", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,

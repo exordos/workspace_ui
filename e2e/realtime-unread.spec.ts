@@ -2,7 +2,7 @@
  * E2E: sidebar unread updates from injected messenger message events.
  */
 import { test, expect } from "./fixtures";
-import { E2E_USER_ID } from "./mocks/messenger-default-responses";
+import { E2E_STREAM_UUID, unreadSidebarDeltaEvents } from "./mocks/messenger-default-responses";
 
 test.describe("Realtime unread @mock", () => {
   test("updates sidebar preview and unread badge after injected message event", async ({
@@ -13,41 +13,12 @@ test.describe("Realtime unread @mock", () => {
 
     const sidebar = authenticated.locator("[data-focus-zone='sidebar']");
 
-    messengerApi.setNextEventsResponse({
-      result: "success",
-      events: [
-        {
-          type: "message",
-          id: 9001,
-          message: {
-            id: 5001,
-            sender_id: 2,
-            sender_full_name: "Other User",
-            content: "Unread from E2E",
-            timestamp: Math.floor(Date.now() / 1000),
-            type: "stream",
-            stream_id: 10,
-            display_recipient: "general",
-            subject: "general",
-            flags: [],
-          },
-        },
-      ],
+    messengerApi.setNextEventsResponse(unreadSidebarDeltaEvents());
+
+    const generalChatLink = sidebar.locator(`a[href*="/stream/${E2E_STREAM_UUID}"]`);
+    await expect(generalChatLink.getByText("Unread from E2E", { exact: true })).toBeVisible({
+      timeout: 20_000,
     });
-
-    await expect
-      .poll(
-        async () => {
-          const text = await sidebar.innerText();
-          return /Unread from E2E|general|общий/i.test(text);
-        },
-        { timeout: 20_000 },
-      )
-      .toBe(true);
-
-    const generalChatLink = sidebar.locator('a[href*="/stream/10-general"]');
     await expect(generalChatLink.getByText("1", { exact: true })).toBeVisible({ timeout: 10_000 });
-
-    expect(E2E_USER_ID).toBeGreaterThan(0);
   });
 });

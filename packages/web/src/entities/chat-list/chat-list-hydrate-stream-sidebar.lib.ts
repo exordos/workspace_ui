@@ -273,6 +273,8 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
           ...(topic.color != null ? { color: topic.color } : {}),
           ...(topic.source_name != null ? { sourceName: topic.source_name } : {}),
           ...(topic.source != null ? { source: topic.source } : {}),
+          ...(topic.provider != null ? { provider: topic.provider } : {}),
+          ...(topic.delivery != null ? { delivery: topic.delivery } : {}),
         })),
       );
       hydratedStreamTopicLists.add(scoped.key);

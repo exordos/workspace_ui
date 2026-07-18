@@ -85,6 +85,7 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       removeMessages: vi.fn(),
       updateMessageContent: vi.fn(),
       updateMessageSource: vi.fn(),
+      updateMessageProviderDelivery: vi.fn(),
       updateMessageLinkPreview: vi.fn(),
       moveStreamTopicMessages: vi.fn(),
       moveTopicToStreamMessages: vi.fn(),
@@ -199,6 +200,68 @@ describe("deliverDesktopNotificationForMessage", () => {
 });
 
 describe("maybeNotifyNewMessage", () => {
+  it("suppresses provider backfill and pre-ready live notifications but keeps native and eligible live behavior", () => {
+    setMuteSnapshot({
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
+    });
+    const notifications = createNotifications();
+    const ctx = createContext(notifications);
+    const providerBase = {
+      kind: "zulip",
+      accountUuid: "account-1",
+      externalId: "message-1",
+      capabilities: {},
+    } as const;
+
+    maybeNotifyNewMessage(
+      ctx,
+      createRawMessage({
+        id: 51,
+        provider: {
+          ...providerBase,
+          deliveryClass: "backfill",
+          notificationEligible: false,
+        },
+      }),
+      7,
+      false,
+      false,
+    );
+    maybeNotifyNewMessage(
+      ctx,
+      createRawMessage({
+        id: 52,
+        provider: {
+          ...providerBase,
+          deliveryClass: "live",
+          notificationEligible: false,
+        },
+      }),
+      7,
+      false,
+      false,
+    );
+    maybeNotifyNewMessage(ctx, createRawMessage({ id: 53 }), 7, false, false);
+    maybeNotifyNewMessage(
+      ctx,
+      createRawMessage({
+        id: 54,
+        provider: {
+          ...providerBase,
+          deliveryClass: "live",
+          notificationEligible: true,
+        },
+      }),
+      7,
+      false,
+      false,
+    );
+
+    expect(notifications.show).toHaveBeenCalledTimes(2);
+    expect(notifications.playSound).toHaveBeenCalledTimes(2);
+    expect(notifications.requestAttentionIfNotFocused).toHaveBeenCalledTimes(2);
+  });
+
   it("suppresses OS notification, sound, and attention while initial history is replayed", () => {
     setMuteSnapshot({
       streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],

@@ -30,6 +30,7 @@ import {
 } from "./folder-sync-assignment.types";
 import { areEquivalentChatIds, resolveFolderItemUuid } from "./folder-sync-chat-id.lib";
 import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
+import { projectStreamUnreadIntoFolders } from "./folder-sync-unread-projection.lib";
 import { loadFolderSyncSnapshot, type FolderSyncSnapshot } from "./folder-sync.api";
 import {
   resolveAllFolderApiUuid,
@@ -332,6 +333,8 @@ interface FolderSyncState {
   applyRealtimeFolderDeleted: (folderId: string) => void;
   /** Removes one cached folder item from realtime folder_item.deleted. */
   applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
+  /** Projects an absolute stream unread snapshot into cached folder items and rail badges. */
+  applyStreamUnreadCount: (streamUuid: string, unreadCount: number) => void;
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
     streamsMap: Map<string, StreamEntryInternal>;
@@ -1276,6 +1279,32 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           folderItemsByFolderId: nextMap,
           ...(selectedItems != null ? { selectedFolderChatIds: toChatIdSet(selectedItems) } : {}),
         };
+      });
+    },
+
+    applyStreamUnreadCount(streamUuid, unreadCount) {
+      const normalizedStreamUuid = streamUuid.trim().toLowerCase();
+      if (normalizedStreamUuid.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "applyStreamUnreadCount", {
+        streamUuid: normalizedStreamUuid,
+        unreadCount,
+      });
+      set((state) => {
+        const patch = projectStreamUnreadIntoFolders(
+          state.folders,
+          state.folderItemsByFolderId,
+          normalizedStreamUuid,
+          unreadCount,
+        );
+        if (patch == null) {
+          return {};
+        }
+        if (state.instanceId != null) {
+          schedulePersistFolders(state.instanceId, patch.folders, patch.folderItemsByFolderId);
+        }
+        return patch;
       });
     },
 

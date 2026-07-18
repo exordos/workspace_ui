@@ -2,11 +2,29 @@ import { describe, expect, it } from "vitest";
 import type { WorkspaceEvent } from "~/shared/types/workspace-event";
 import { reduceMailWorkspaceEvent, type MailEventState } from "./mail-event-reducer.lib";
 
-const provider = { uuid: "provider-1", name: "Mailcow", kind: "mail" };
+const provider = {
+  kind: "mail.imap",
+  account_uuid: "provider-account-1",
+  external_id: "mail-message-1",
+  capabilities: {},
+};
+const mappedProvider = {
+  kind: provider.kind,
+  accountUuid: provider.account_uuid,
+  externalId: provider.external_id,
+  capabilities: {},
+};
 const delivery = {
+  external_operation_uuid: "operation-1",
   status: "delivered",
   safe_error: null,
+  can_retry: false,
+  can_discard: false,
   updated_at: "2026-07-15T10:00:00Z",
+  duplicate_risk: false,
+  retry_requires_confirmation: false,
+  original_url: null,
+  reconciliation_reason: null,
 };
 
 const state: MailEventState = {
@@ -60,11 +78,18 @@ describe("reduceMailWorkspaceEvent", () => {
     expect(result.patch.messages).toEqual([
       expect.objectContaining({
         uid: "message-1",
-        provider,
+        provider: mappedProvider,
         delivery: {
+          externalOperationUuid: "operation-1",
           status: "delivered",
           safeError: null,
+          canRetry: false,
+          canDiscard: false,
           updatedAt: "2026-07-15T10:00:00Z",
+          duplicateRisk: false,
+          retryRequiresConfirmation: false,
+          originalUrl: null,
+          reconciliationReason: null,
         },
       }),
     ]);

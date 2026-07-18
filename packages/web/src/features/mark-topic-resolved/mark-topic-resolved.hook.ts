@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  EXTERNAL_CAPABILITY,
+  isExternalCapabilityAvailable,
+} from "~/features/external-accounts/external-capabilities.lib";
+import { useExternalOperationPreflight } from "~/features/external-accounts/external-operation-preflight.hook";
 import { renameStreamTopic, setTopicResolvedState } from "~/shared/api/messenger-read-state";
 import type { MessengerStreamTopic } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -30,6 +35,27 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
   const streamNameFromMap = useChatListStore((s) =>
     streamIdForMap != null ? (s.streamsMap.get(streamIdForMap)?.name ?? "") : "",
   );
+  const externalProvider = useChatListStore((s) => {
+    if (streamIdForMap == null) return null;
+    const stream = s.streamsMap.get(streamIdForMap);
+    if (stream == null) return null;
+    const explicitTopicUuid = explicitTarget?.topicUuid?.trim().toLowerCase();
+    const contextTopicUuid =
+      context?.type === "stream" ? context.topicUuid?.trim().toLowerCase() : undefined;
+    const targetTopicUuid = explicitTopicUuid ?? contextTopicUuid;
+    const targetTopicName =
+      explicitTarget?.topic ?? (context?.type === "stream" ? context.topic : null);
+    let topicProvider = stream.provider;
+    if (targetTopicUuid != null && targetTopicUuid.length > 0) {
+      topicProvider =
+        Array.from(stream.topics.values()).find(
+          (candidate) => candidate.topicUuid?.trim().toLowerCase() === targetTopicUuid,
+        )?.provider ?? topicProvider;
+    } else if (targetTopicName != null) {
+      topicProvider = stream.topics.get(targetTopicName)?.provider ?? topicProvider;
+    }
+    return topicProvider ?? null;
+  });
   const topicDoneFromMap = useChatListStore((s) => {
     if (streamIdForMap == null) return false;
     const stream = s.streamsMap.get(streamIdForMap);
@@ -54,6 +80,7 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
   const [renamePending, setRenamePending] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameTopicDraft, setRenameTopicDraft] = useState("");
+  const externalPreflight = useExternalOperationPreflight();
 
   const visibility = useMemo(() => {
     if (explicitTarget != null) {
@@ -83,7 +110,14 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
   const topicUuid = visibility.topicUuid;
 
   const isResolved = topicDoneFromMap;
-  const pending = resolvePending || renamePending;
+  const canRenameTopic =
+    canToggle &&
+    (externalProvider == null ||
+      isExternalCapabilityAvailable(
+        externalProvider.capabilities,
+        EXTERNAL_CAPABILITY.topicRename,
+      ));
+  const pending = resolvePending || renamePending || externalPreflight.pending;
   const channelName = visibility.effectiveStreamName;
 
   const syncServerTopicMetadata = useCallback((updatedTopic: MessengerStreamTopic) => {
@@ -211,15 +245,22 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
   }, [canToggle, topic, topicUuid, streamId, pending, isResolved, syncServerTopicMetadata]);
 
   const openRenameDialog = useCallback(() => {
-    if (!canToggle || topic == null || pending) {
+    if (!canRenameTopic || topic == null || pending) {
       return;
     }
     setRenameTopicDraft(topic);
     setRenameDialogOpen(true);
-  }, [canToggle, pending, topic]);
+  }, [canRenameTopic, pending, topic]);
 
   const submitRename = useCallback(() => {
-    if (!canToggle || topic == null || topicUuid == null || streamId == null || renamePending) {
+    if (
+      !canRenameTopic ||
+      topic == null ||
+      topicUuid == null ||
+      streamId == null ||
+      renamePending ||
+      externalPreflight.pending
+    ) {
       return;
     }
 
@@ -229,28 +270,39 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
       return;
     }
 
-    setRenamePending(true);
-    void renameStreamTopic(topicUuid, streamId, topic, targetTopic)
-      .then((updatedTopic) => {
-        if (updatedTopic == null) return;
-        syncTopicRenameLocally(topic, updatedTopic.name || targetTopic, updatedTopic);
-        setRenameDialogOpen(false);
-      })
-      .finally(() => {
-        setRenamePending(false);
-      });
+    setRenameDialogOpen(false);
+    externalPreflight.run({
+      provider: externalProvider,
+      action: EXTERNAL_CAPABILITY.topicRename,
+      target: { type: "topic", uuid: topicUuid },
+      execute: () => {
+        setRenamePending(true);
+        void renameStreamTopic(topicUuid, streamId, topic, targetTopic)
+          .then((updatedTopic) => {
+            if (updatedTopic == null) return;
+            syncTopicRenameLocally(topic, updatedTopic.name || targetTopic, updatedTopic);
+            setRenameDialogOpen(false);
+          })
+          .finally(() => {
+            setRenamePending(false);
+          });
+      },
+    });
   }, [
-    canToggle,
+    canRenameTopic,
     topic,
     topicUuid,
     streamId,
     renamePending,
     renameTopicDraft,
     syncTopicRenameLocally,
+    externalPreflight,
+    externalProvider,
   ]);
 
   return {
     canToggle,
+    canRenameTopic,
     isResolved,
     toggleTopicResolved,
     pending,
@@ -262,6 +314,12 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
     setRenameTopicDraft,
     openRenameDialog,
     submitRename,
-    renamePending,
+    renamePending: renamePending || externalPreflight.pending,
+    externalPreflightDialog: {
+      error: externalPreflight.error,
+      losses: externalPreflight.losses,
+      onConfirm: externalPreflight.confirm,
+      onDismiss: externalPreflight.dismiss,
+    },
   };
 }

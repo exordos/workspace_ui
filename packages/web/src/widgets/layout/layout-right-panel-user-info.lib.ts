@@ -51,12 +51,23 @@ function buildRightPanelUserInfoFromProfileSources(
     dateJoined: profileForRightPanelUser?.dateJoined ?? undefined,
     isBot: profileForRightPanelUser?.isBot ?? undefined,
     isActive: profileForRightPanelUser?.isActive ?? userFromStore?.is_active,
-    profileLink: resolveRightPanelProfileLink(resolvedUserId, currentInstanceRealm),
+    profileLink:
+      userFromStore?.identity_kind === "external"
+        ? undefined
+        : resolveRightPanelProfileLink(resolvedUserId, currentInstanceRealm),
     phone: profileForRightPanelUser?.phone ?? undefined,
     jobTitle: profileForRightPanelUser?.jobTitle ?? undefined,
     manager: profileForRightPanelUser?.manager ?? undefined,
     birthday: profileForRightPanelUser?.birthday ?? undefined,
     localTime: formatRightPanelLocalTime(profileForRightPanelUser?.timezone),
+    identityKind: userFromStore?.identity_kind,
+    provider:
+      userFromStore?.provider == null
+        ? userFromStore?.provider
+        : {
+            kind: userFromStore.provider.kind,
+            accountUuid: userFromStore.provider.account_uuid,
+          },
     media,
   };
 }

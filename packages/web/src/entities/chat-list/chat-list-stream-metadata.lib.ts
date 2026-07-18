@@ -9,6 +9,8 @@ interface StreamMetadataAccessFields {
   color?: number;
   sourceName?: StreamEntryInternal["sourceName"];
   source?: StreamEntryInternal["source"];
+  provider?: StreamEntryInternal["provider"];
+  delivery?: StreamEntryInternal["delivery"];
   canAddSubscribersGroup?: StreamEntryInternal["canAddSubscribersGroup"];
   canRemoveSubscribersGroup?: StreamEntryInternal["canRemoveSubscribersGroup"];
   canAdministerChannelGroup?: StreamEntryInternal["canAdministerChannelGroup"];
@@ -28,6 +30,8 @@ function resolveStreamMetadataAccessFields(
     color: row.color ?? existing?.color,
     sourceName: row.sourceName ?? existing?.sourceName,
     source: row.source ?? existing?.source,
+    provider: "provider" in row ? row.provider : existing?.provider,
+    delivery: "delivery" in row ? row.delivery : existing?.delivery,
     canAddSubscribersGroup: row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup,
     canRemoveSubscribersGroup: row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup,
     canAdministerChannelGroup: row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup,
@@ -48,6 +52,8 @@ function spreadStreamMetadataAccessFields(
     ...(fields.color != null ? { color: fields.color } : {}),
     ...(fields.sourceName != null ? { sourceName: fields.sourceName } : {}),
     ...(fields.source != null ? { source: fields.source } : {}),
+    ...(fields.provider !== undefined ? { provider: fields.provider } : {}),
+    ...(fields.delivery !== undefined ? { delivery: fields.delivery } : {}),
     ...(fields.canAddSubscribersGroup != null
       ? { canAddSubscribersGroup: fields.canAddSubscribersGroup }
       : {}),

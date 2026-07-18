@@ -2,6 +2,11 @@ import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  EXTERNAL_CAPABILITY,
+  isExternalCapabilityAvailable,
+} from "~/features/external-accounts/external-capabilities.lib";
+import { useExternalOperationPreflight } from "~/features/external-accounts/external-operation-preflight.hook";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { MessengerStreamTopic } from "~/shared/api/messenger.types";
 import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
@@ -9,6 +14,7 @@ import { moveTopicToStreamInCache } from "~/shared/lib/message-cache-db";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { ProviderSummary } from "~/shared/types/provider-delivery";
 import { moveTopicToChannel } from "./move-topic-to-stream.api";
 import {
   buildMoveTopicTargetStreamOptions,
@@ -21,10 +27,11 @@ export interface UseMoveTopicToStreamOptions {
   topic: string;
   topicUuid?: string;
   streamName: string;
+  provider?: ProviderSummary | null;
 }
 
 export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
-  const { streamId, topic, topicUuid, streamName } = options;
+  const { streamId, topic, topicUuid, streamName, provider } = options;
   const navigate = useNavigate();
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentUserId = useChatListStore((s) => s.currentUserId);
@@ -35,11 +42,23 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   const [targetStreamIdRaw, setTargetStreamIdRaw] = useState("");
   const [moveTopicDraft, setMoveTopicDraft] = useState("");
   const [moveError, setMoveError] = useState<string | null>(null);
+  const externalPreflight = useExternalOperationPreflight();
 
   const topicTrimmed = topic.trim();
   const normalizedTopicUuid = topicUuid?.trim().toLowerCase();
   const effectiveStreamName = streamName.trim() || (streamEntry?.name ?? "").trim();
   const streamSlug = effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
+  const effectiveProvider = useMemo(() => {
+    if (provider != null) return provider;
+    if (streamEntry == null) return null;
+    if (normalizedTopicUuid != null && normalizedTopicUuid.length > 0) {
+      const topicProvider = Array.from(streamEntry.topics.values()).find(
+        (candidate) => candidate.topicUuid?.trim().toLowerCase() === normalizedTopicUuid,
+      )?.provider;
+      if (topicProvider != null) return topicProvider;
+    }
+    return streamEntry.topics.get(topic)?.provider ?? streamEntry.provider ?? null;
+  }, [normalizedTopicUuid, provider, streamEntry, topic]);
 
   // Permission groups deferred — Messenger API remains the final arbiter on submit.
   const canMove =
@@ -47,7 +66,9 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     normalizedTopicUuid != null &&
     normalizedTopicUuid.length > 0 &&
     streamSlug != null &&
-    currentUserId != null;
+    currentUserId != null &&
+    (effectiveProvider == null ||
+      isExternalCapabilityAvailable(effectiveProvider.capabilities, EXTERNAL_CAPABILITY.topicMove));
 
   const targetStreamOptions = useMemo(
     () =>
@@ -174,26 +195,33 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     const targetStreamName =
       targetStreamOptions.find((stream) => stream.streamId === targetStreamId)?.name ?? "";
 
-    setMovePending(true);
     setMoveError(null);
-    void moveTopicToChannel(normalizedTopicUuid, streamId, topic, targetStreamId, targetTopic)
-      .then((updatedTopic) => {
-        if (updatedTopic == null) {
-          setMoveError("channel.moveTopicToChannelError");
-          return;
-        }
-        syncTopicMoveLocally(
-          targetStreamId,
-          targetStreamName,
-          topic,
-          updatedTopic.name,
-          updatedTopic,
-        );
-        setMoveDialogOpen(false);
-      })
-      .finally(() => {
-        setMovePending(false);
-      });
+    externalPreflight.run({
+      provider: effectiveProvider,
+      action: EXTERNAL_CAPABILITY.topicMove,
+      target: { type: "topic", uuid: normalizedTopicUuid },
+      execute: () => {
+        setMovePending(true);
+        return moveTopicToChannel(normalizedTopicUuid, streamId, topic, targetStreamId, targetTopic)
+          .then((updatedTopic) => {
+            if (updatedTopic == null) {
+              setMoveError("channel.moveTopicToChannelError");
+              return;
+            }
+            syncTopicMoveLocally(
+              targetStreamId,
+              targetStreamName,
+              topic,
+              updatedTopic.name,
+              updatedTopic,
+            );
+            setMoveDialogOpen(false);
+          })
+          .finally(() => {
+            setMovePending(false);
+          });
+      },
+    });
   }, [
     canMove,
     movePending,
@@ -204,11 +232,13 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     targetStreamIdRaw,
     targetStreamOptions,
     topic,
+    effectiveProvider,
+    externalPreflight,
   ]);
 
   return {
     canMove,
-    movePending,
+    movePending: movePending || externalPreflight.pending,
     moveDialogOpen,
     setMoveDialogOpen,
     targetStreamIdRaw,
@@ -220,5 +250,11 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     submitMove,
     moveError,
     channelName: effectiveStreamName,
+    externalPreflightDialog: {
+      error: externalPreflight.error,
+      losses: externalPreflight.losses,
+      onConfirm: externalPreflight.confirm,
+      onDismiss: externalPreflight.dismiss,
+    },
   };
 }

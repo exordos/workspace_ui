@@ -115,6 +115,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                   streamName={stream.name}
                   topic={topic.subject}
                   topicUuid={topic.topicUuid}
+                  provider={topic.provider}
                   rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   rowStyle={{ borderLeftColor: topicColor }}
                   sideActions={
@@ -140,7 +141,12 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                         >
                           {topicLabel}
                         </span>
-                        <ExternalSourceBadge sourceName={topic.sourceName} />
+                        <ExternalSourceBadge
+                          sourceName={topic.sourceName}
+                          source={topic.source}
+                          provider={topic.provider}
+                          delivery={topic.delivery}
+                        />
                       </div>
                       {!isCompactDensity && (
                         <SidebarMessagePreview

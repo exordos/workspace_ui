@@ -624,6 +624,8 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     content: result.content,
     markdown_source: result.content,
     timestamp,
+    ...(result.provider !== undefined ? { provider: result.provider } : {}),
+    ...(result.delivery !== undefined ? { delivery: result.delivery } : {}),
   };
   if (streamName.length > 0) {
     message.display_recipient = streamName;

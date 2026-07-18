@@ -5,11 +5,29 @@ import {
   type CalendarEventState,
 } from "./calendar-event-reducer.lib";
 
-const provider = { uuid: "provider-1", name: "CalDAV", kind: "calendar" };
+const provider = {
+  kind: "calendar.caldav",
+  account_uuid: "provider-account-1",
+  external_id: "calendar-event-1",
+  capabilities: {},
+};
+const mappedProvider = {
+  kind: provider.kind,
+  accountUuid: provider.account_uuid,
+  externalId: provider.external_id,
+  capabilities: {},
+};
 const delivery = {
+  external_operation_uuid: "operation-1",
   status: "pending",
   safe_error: null,
+  can_retry: false,
+  can_discard: false,
   updated_at: "2026-07-15T10:00:00Z",
+  duplicate_risk: false,
+  retry_requires_confirmation: false,
+  original_url: null,
+  reconciliation_reason: null,
 };
 
 const state: CalendarEventState = {
@@ -81,11 +99,18 @@ describe("reduceCalendarWorkspaceEvent", () => {
     expect(result.patch.events).toEqual([
       expect.objectContaining({
         uid: "event-1",
-        provider,
+        provider: mappedProvider,
         delivery: {
+          externalOperationUuid: "operation-1",
           status: "pending",
           safeError: null,
+          canRetry: false,
+          canDiscard: false,
           updatedAt: "2026-07-15T10:00:00Z",
+          duplicateRisk: false,
+          retryRequiresConfirmation: false,
+          originalUrl: null,
+          reconciliationReason: null,
         },
       }),
     ]);

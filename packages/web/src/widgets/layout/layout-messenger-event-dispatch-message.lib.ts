@@ -7,6 +7,7 @@ import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/mes
 import {
   applyConfirmedReadMetadataDelta,
   refreshFolderUnreadAggregates,
+  requiresAuthoritativeUnreadRefresh,
 } from "~/entities/unread-sync/confirmed-read-metadata.lib";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { getCurrentInstance } from "~/shared/api/client";
@@ -131,6 +132,22 @@ function applyMessageReactionSnapshot(
   ctx.currentChat.replaceMessageReactions(messageId, raw.reactions);
 }
 
+function applyConfirmedReadMetadata(
+  ctx: LayoutMessengerEventDispatchContext,
+  messageIds: readonly MessageId[],
+): boolean {
+  const messages = ctx.currentChat.messages ?? [];
+  const projections = applyConfirmedReadMetadataDelta(ctx.chatList, messages, messageIds);
+  for (const projection of projections) {
+    ctx.folderSync?.applyStreamUnreadCount(projection.streamUuid, projection.unreadCount);
+  }
+  const refreshRequired = requiresAuthoritativeUnreadRefresh(messages, messageIds, projections);
+  if (refreshRequired) {
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  }
+  return refreshRequired;
+}
+
 export function handleMessageUpdated(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
@@ -150,8 +167,7 @@ export function handleMessageUpdated(
   activity.markStarredSummaryStale();
   inbox.markStale();
   if (raw.read === true) {
-    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], [messageId]);
-    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+    applyConfirmedReadMetadata(ctx, [messageId]);
     closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
   }
 
@@ -165,6 +181,7 @@ export function handleMessageUpdated(
   const message = rawMessageToMockMessage(raw);
   currentChat.updateMessageContent(messageId, message.content, message.markdown_source);
   currentChat.updateMessageSource(messageId, message.source_name, message.source);
+  currentChat.updateMessageProviderDelivery(messageId, message.provider, message.delivery);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "read", raw.read);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "pinned", raw.pinned);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "starred", raw.starred);
@@ -191,8 +208,7 @@ export function handleMessagesRead(
   });
 
   closeReadMessageNotifications(notifications, parsed.messageIds, ctx.currentInstanceId);
-  applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], parsed.messageIds);
-  refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  applyConfirmedReadMetadata(ctx, parsed.messageIds);
   currentChat.updateMessageFlags(parsed.messageIds, "read", "add");
 }
 
@@ -204,11 +220,14 @@ function applyMarkAllReadFromQueueEvent(
   const chatListStore = useChatListStore.getState();
 
   const loadedIds = collectLoadedMessageIds(useCurrentChatMessagesStore.getState().messages);
+  let folderRefreshStarted = false;
   if (loadedIds.length > 0) {
-    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], loadedIds);
+    folderRefreshStarted = applyConfirmedReadMetadata(ctx, loadedIds);
     currentChat.updateMessageFlags(loadedIds, "read", "add");
   }
-  refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  if (!folderRefreshStarted) {
+    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+  }
 
   const indexedIds = [...chatListStore.messageIdToLocation.keys()];
   closeAllActiveMessageNotifications(notifications, ctx.currentInstanceId);
@@ -262,8 +281,7 @@ export function handleUpdateMessageFlags(
   if (op === "add") {
     inbox.markStale();
     closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
-    applyConfirmedReadMetadataDelta(ctx.chatList, ctx.currentChat.messages ?? [], messageIds);
-    refreshFolderUnreadAggregates(ctx.folderSync?.refresh);
+    applyConfirmedReadMetadata(ctx, messageIds);
     currentChat.updateMessageFlags(messageIds, "read", "add");
     return;
   }

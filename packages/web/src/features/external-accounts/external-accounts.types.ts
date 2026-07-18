@@ -1,123 +1,239 @@
-/**
- * External messenger account bindings for the current user.
- */
+/** Sanitized provider-neutral external-messenger resources. */
 
-export type ExternalAccountType = "zulip" | "mail" | "calendar";
-export type ExternalAccountStatus = "new" | "active";
-export type ExternalAccountAccessStatus =
-  | "pending"
-  | "missing_credentials"
-  | "confirmed"
-  | "invalid_credentials"
-  | "unavailable";
+export type ExternalAccountKind = "zulip";
 
-export interface WorkspaceProvider {
-  uuid: string;
-  name: string;
-  supportedKinds: ExternalAccountType[];
-  version: string | null;
+export type ExternalAccountStatus =
+  | "connecting"
+  | "backfill"
+  | "live"
+  | "degraded"
+  | "auth_required"
+  | "disconnected"
+  | "suspended";
+
+export type ExternalSelectionMode = "explicit" | "all";
+export type ExternalHistoryDepth = "new" | "7_days" | "30_days" | "90_days" | "all";
+
+export interface ExternalCapabilityUnavailableReason {
+  code: string;
+  message: string;
 }
 
-export interface ZulipExternalAccountUserInfo {
-  kind: "zulip";
-  userId: number;
-  role?: number | null;
+export interface ExternalCapability {
+  available: boolean;
+  revision: number;
+  limits: Record<string, unknown>;
+  unavailableReason?: ExternalCapabilityUnavailableReason | null;
 }
+
+export type ExternalCapabilities = Record<string, ExternalCapability>;
 
 export interface ZulipExternalAccountSettings {
   kind: "zulip";
-  login: string;
   serverUrl: string;
-  userInfo?: ZulipExternalAccountUserInfo;
+  email: string;
+  selectionMode: ExternalSelectionMode;
+  historyDepth: ExternalHistoryDepth;
+  defaultProjectId: string;
 }
 
 export interface ZulipExternalAccount {
   uuid: string;
-  providerUuid: string;
-  externalUserId?: string;
-  accountType: "zulip";
-  hasCredentials: boolean;
-  status?: ExternalAccountStatus;
-  accountSettings: ZulipExternalAccountSettings;
-  createdAt?: string;
-  updatedAt?: string;
+  settings: ZulipExternalAccountSettings;
+  credentialPresent: boolean;
+  status: ExternalAccountStatus;
+  liveReady: boolean;
+  safeError: string | null;
+  capabilities: ExternalCapabilities;
+  desiredGeneration: number;
+  appliedGeneration: number;
+  lastProgressAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  etag: string | null;
 }
 
-interface GroupwareExternalAccountBase {
+export interface CreateZulipExternalAccountInput {
   uuid: string;
-  providerUuid: string;
   serverUrl: string;
-  status?: ExternalAccountStatus;
-  accessStatus: ExternalAccountAccessStatus;
-  accessLastError?: string;
-}
-
-export interface MailExternalAccount extends GroupwareExternalAccountBase {
-  accountType: "mail";
   email: string;
-  imapHost: string;
-  imapPort: number;
-  imapSecurity: "tls" | "starttls" | "plain";
-  smtpHost: string;
-  smtpPort: number;
-  smtpSecurity: "tls" | "starttls" | "plain";
+  apiKey: string;
+  selectionMode: ExternalSelectionMode;
+  historyDepth: ExternalHistoryDepth;
+  defaultProjectId: string;
 }
 
-export interface CalendarExternalAccount extends GroupwareExternalAccountBase {
-  accountType: "calendar";
+export interface UpdateZulipExternalAccountInput {
+  uuid: string;
+  etag: string;
+  selectionMode: ExternalSelectionMode;
+  historyDepth: ExternalHistoryDepth;
+  defaultProjectId: string;
 }
 
-export interface SaveMailExternalAccountInput {
-  uuid?: string;
-  providerUuid: string;
+export interface ReconnectZulipExternalAccountInput {
+  uuid: string;
+  etag: string;
+  serverUrl: string;
   email: string;
-  username: string;
-  password: string;
-  imapHost: string;
-  imapPort: number;
-  imapSecurity: "tls" | "starttls" | "plain";
-  smtpHost: string;
-  smtpPort: number;
-  smtpSecurity: "tls" | "starttls" | "plain";
+  apiKey: string;
 }
 
-export interface SaveCalendarExternalAccountInput {
-  uuid?: string;
-  providerUuid: string;
-  serverUrl: string;
-  username: string;
-  password: string;
+export interface ZulipExternalChatSource extends Record<string, unknown> {
+  kind: "zulip";
+  chatType: "channel" | "direct" | "group_direct";
+  originalUrl: string | null;
 }
 
-export type SaveGroupwareExternalAccountResult<T> =
-  | { ok: true; account: T }
-  | { ok: false; kind: SaveExternalAccountErrorKind };
-
-export interface SaveZulipExternalAccountInput {
-  uuid?: string;
-  providerUuid: string;
-  login: string;
-  serverUrl: string;
-  token: string;
+export interface ExternalChat {
+  uuid: string;
+  externalAccountUuid: string;
+  source: ZulipExternalChatSource;
+  displayName: string;
+  selected: boolean;
+  projectId: string | null;
+  historyDepth: ExternalHistoryDepth;
+  projectionStreamUuid: string | null;
+  status: string;
+  safeError: string | null;
+  capabilities: ExternalCapabilities;
+  revision: number;
+  etag: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
-export type SaveExternalAccountErrorKind = "forbidden" | "invalid" | "conflict" | "transient";
+export type ExternalOperationStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "manual_reconciliation_required"
+  | "discarded";
 
-export type SaveZulipExternalAccountResult =
-  | {
-      ok: true;
-      account: ZulipExternalAccount;
-    }
-  | {
-      ok: false;
-      kind: SaveExternalAccountErrorKind;
-    };
+export type ExternalOperationReconciliationState =
+  | "not_required"
+  | "delayed_check"
+  | "committed_match"
+  | "automatic_resend_queued"
+  | "manual_required";
 
-export type UnlinkZulipExternalAccountResult =
-  | {
-      ok: true;
-    }
-  | {
-      ok: false;
-      kind: SaveExternalAccountErrorKind;
-    };
+export type ExternalOperationReconciliationReason =
+  | "provider_history_unavailable"
+  | "no_match_after_auto_resend"
+  | "unsafe_provider_state";
+
+export interface ExternalOperation {
+  uuid: string;
+  externalAccountUuid: string;
+  action: string;
+  targetType: string;
+  targetUuid: string | null;
+  status: ExternalOperationStatus;
+  safeError: string | null;
+  canRetry: boolean;
+  canDiscard: boolean;
+  duplicateRisk: boolean;
+  retryRequiresConfirmation: boolean;
+  originalUrl: string | null;
+  reconciliationState: ExternalOperationReconciliationState;
+  reconciliationReason: ExternalOperationReconciliationReason | null;
+  reconciliationEvidence: Record<string, unknown>;
+  attempt: number;
+  attemptHistory: unknown[];
+  details: Record<string, unknown>;
+  revision: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ExternalOperationPreflightInput {
+  externalAccountUuid: string;
+  action: string;
+  target: {
+    type: string;
+    uuid?: string | null;
+  };
+}
+
+export interface ExternalOperationPreflightResult {
+  allowed: boolean;
+  action: string;
+  target: {
+    type: string;
+    uuid: string | null;
+  };
+  losses: Record<string, unknown>[];
+  requiresConfirmation: boolean;
+}
+
+export interface ExternalProviderLimits {
+  maxAccounts: number;
+  maxSelectedChatsPerAccount: number;
+  maxFileBytes: number;
+}
+
+export interface ExternalProviderCustomCaBundle {
+  uuid: string;
+  generation: number;
+  sha256: string;
+  certificateCount: number;
+}
+
+export interface ExternalProviderPolicy {
+  provider: ExternalAccountKind;
+  enabled: boolean;
+  emergencySuspended: boolean;
+  limits: ExternalProviderLimits;
+  customCaBundle: ExternalProviderCustomCaBundle | null;
+  revision: number;
+  etag: string | null;
+}
+
+export interface UpdateExternalProviderPolicyInput {
+  policy: ExternalProviderPolicy;
+  enabled: boolean;
+  limits: ExternalProviderLimits;
+  customCaCertificatesPem: string[] | null;
+}
+
+export interface ExternalProviderHealth {
+  provider: ExternalAccountKind;
+  status: string;
+  accountCounts: Record<string, number>;
+  bridgeCounts: Record<string, number>;
+  operationCounts: Record<string, number>;
+  metrics: Record<string, unknown>;
+  updatedAt: string | null;
+}
+
+export type ExternalBridgeInstanceStatus =
+  | "enrolling"
+  | "active"
+  | "degraded"
+  | "incompatible"
+  | "suspended"
+  | "revoked";
+
+export interface ExternalBridgeInstance {
+  uuid: string;
+  provider: ExternalAccountKind;
+  identityGeneration: number;
+  status: ExternalBridgeInstanceStatus;
+  capabilities: Record<string, unknown>;
+  lastHeartbeatAt: string | null;
+  certificateNotAfter: string | null;
+  safeError: string | null;
+  revision: number;
+}
+
+export type ExternalAccountMutationErrorKind =
+  | "forbidden"
+  | "invalid"
+  | "conflict"
+  | "precondition"
+  | "transient";
+
+export type ExternalAccountMutationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; kind: ExternalAccountMutationErrorKind };

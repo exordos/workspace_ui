@@ -1,76 +1,51 @@
-/**
- * Current user's external messenger account API.
- */
+/** IAM-authenticated provider-neutral external-messenger API. */
 
 import {
-  getWorkspaceCommonApiBaseForCurrentInstance,
+  getMessengerWorkspaceApiBaseForCurrentInstance,
   messengerApi,
   type ApiResponse,
 } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import type { WorkspaceEventPayload } from "~/shared/types/workspace-event";
 import type {
-  SaveExternalAccountErrorKind,
-  CalendarExternalAccount,
-  MailExternalAccount,
-  SaveCalendarExternalAccountInput,
-  SaveGroupwareExternalAccountResult,
-  SaveMailExternalAccountInput,
-  SaveZulipExternalAccountInput,
-  SaveZulipExternalAccountResult,
-  UnlinkZulipExternalAccountResult,
+  CreateZulipExternalAccountInput,
+  ExternalAccountMutationErrorKind,
+  ExternalAccountMutationResult,
+  ExternalAccountStatus,
+  ExternalBridgeInstance,
+  ExternalBridgeInstanceStatus,
+  ExternalCapabilities,
+  ExternalCapability,
+  ExternalChat,
+  ExternalHistoryDepth,
+  ExternalOperation,
+  ExternalOperationReconciliationReason,
+  ExternalOperationReconciliationState,
+  ExternalOperationPreflightInput,
+  ExternalOperationPreflightResult,
+  ExternalOperationStatus,
+  ExternalProviderHealth,
+  ExternalProviderLimits,
+  ExternalProviderPolicy,
+  ExternalSelectionMode,
+  ReconnectZulipExternalAccountInput,
+  UpdateExternalProviderPolicyInput,
+  UpdateZulipExternalAccountInput,
   ZulipExternalAccount,
-  WorkspaceProvider,
+  ZulipExternalChatSource,
 } from "./external-accounts.types";
 
 const log = createLogger("external-accounts:api");
-const EXTERNAL_ACCOUNTS_PATH = "/external_users/";
-const ZULIP_ACCOUNT_TYPE = "zulip";
-const PROVIDERS_PATH = "/providers/";
+const EXTERNAL_ACCOUNTS_PATH = "/external_accounts/";
+const EXTERNAL_CHATS_PATH = "/external_chats/";
+const EXTERNAL_OPERATIONS_PATH = "/external_operations/";
+const EXTERNAL_BRIDGE_INSTANCES_PATH = "/external_bridge_instances/";
+const EXTERNAL_PROVIDER_POLICIES_PATH = "/external_provider_policies/";
+const EXTERNAL_PROVIDER_HEALTH_PATH = "/external_provider_health/";
 
-interface RawExternalAccount {
-  uuid?: unknown;
-  external_user_id?: unknown;
-  server_url?: unknown;
-  account_type?: unknown;
-  status?: unknown;
-  account_settings?: unknown;
-  created_at?: unknown;
-  updated_at?: unknown;
-  access_status?: unknown;
-  access_last_error?: unknown;
-  provider_uuid?: unknown;
-}
-
-interface RawWorkspaceProvider {
-  uuid?: unknown;
-  name?: unknown;
-  supported_kinds?: unknown;
-  version?: unknown;
-  enabled?: unknown;
-}
-
-function readPort(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 65535
-    ? value
-    : fallback;
-}
-
-function readSecurity(value: unknown, fallback: "tls" | "starttls" | "plain") {
-  return value === "tls" || value === "starttls" || value === "plain" ? value : fallback;
-}
-
-function readAccessStatus(value: unknown) {
-  if (
-    value === "pending" ||
-    value === "missing_credentials" ||
-    value === "confirmed" ||
-    value === "invalid_credentials" ||
-    value === "unavailable"
-  ) {
-    return value;
-  }
-  return "pending" as const;
+function apiBase(): string {
+  return getMessengerWorkspaceApiBaseForCurrentInstance();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,445 +53,792 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readRows(data: unknown): unknown[] {
-  if (Array.isArray(data)) {
-    return data;
-  }
-  if (!isRecord(data)) {
-    return [];
-  }
-  if (Array.isArray(data.results)) {
-    return data.results;
-  }
-  if (Array.isArray(data.items)) {
-    return data.items;
-  }
+  if (Array.isArray(data)) return data;
+  if (!isRecord(data)) return [];
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.items)) return data.items;
   return [];
 }
 
-function readString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
+function readNextPageMarker(headers: Headers | undefined): string | null {
+  const marker = headers?.get("X-Pagination-Marker")?.trim() ?? "";
+  return marker.length > 0 ? marker : null;
+}
+
+async function fetchAllRows(
+  path: string,
+  params: Record<string, string> | undefined,
+  signal: AbortSignal | undefined,
+  firstResponse?: ApiResponse,
+): Promise<{ rows: unknown[]; response: ApiResponse }> {
+  const rows: unknown[] = [];
+  const seenMarkers = new Set<string>();
+  let response = firstResponse ?? (await messengerApi.getWithBase(apiBase(), path, params, signal));
+  while (true) {
+    if (!response.ok) return { rows, response };
+    rows.push(...readRows(response.data));
+    const marker = readNextPageMarker(response.headers);
+    if (marker == null) return { rows, response };
+    if (seenMarkers.has(marker)) throw new Error("External resource pagination marker repeated");
+    seenMarkers.add(marker);
+    const pageParams =
+      params == null ? { page_marker: marker } : { ...params, page_marker: marker };
+    response = await messengerApi.getWithBase(apiBase(), path, pageParams, signal);
   }
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return trimmed.length === 0 ? null : trimmed;
 }
 
-function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function readInteger(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
 }
 
-function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
-  if (!isRecord(raw)) {
-    return null;
+function readNumericMap(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "number" && Number.isFinite(entry) && entry >= 0) result[key] = entry;
   }
-  const row = raw as RawExternalAccount;
-  const uuid = readString(row.uuid);
-  const providerUuid = readString(row.provider_uuid);
-  const externalUserId = readString(row.external_user_id);
-  const accountType = readString(row.account_type) ?? ZULIP_ACCOUNT_TYPE;
-  const status = readString(row.status);
-  const settings = isRecord(row.account_settings) ? row.account_settings : null;
-  const credentials = isRecord(settings?.credentials) ? settings.credentials : null;
-  const userInfoRaw = isRecord(settings?.user_info) ? settings.user_info : null;
-  const kind = readString(settings?.kind) ?? ZULIP_ACCOUNT_TYPE;
-  const credentialsKind =
-    credentials == null ? ZULIP_ACCOUNT_TYPE : (readString(credentials.kind) ?? ZULIP_ACCOUNT_TYPE);
-  const credentialsLogin = readString(credentials?.login);
-  const login = credentialsLogin ?? readString(userInfoRaw?.email) ?? "";
-  const accessStatus = readAccessStatus(row.access_status);
-  const hasCredentials =
-    (credentials != null && credentialsLogin != null) || accessStatus !== "missing_credentials";
-  const serverUrl =
-    readString(row.server_url) ??
-    readString(credentials?.server_url) ??
-    readString(settings?.server_url) ??
-    "";
-  const userInfoKind = readString(userInfoRaw?.kind) ?? ZULIP_ACCOUNT_TYPE;
-  const userId = readNumber(userInfoRaw?.user_id);
-  const role = readNumber(userInfoRaw?.role) ?? null;
+  return result;
+}
+
+function readNullableString(value: unknown): string | null {
+  return value == null ? null : readString(value);
+}
+
+function readSelectionMode(value: unknown): ExternalSelectionMode | null {
+  return value === "explicit" || value === "all" ? value : null;
+}
+
+function readHistoryDepth(value: unknown): ExternalHistoryDepth | null {
+  return value === "new" ||
+    value === "7_days" ||
+    value === "30_days" ||
+    value === "90_days" ||
+    value === "all"
+    ? value
+    : null;
+}
+
+function readAccountStatus(value: unknown): ExternalAccountStatus | null {
+  return value === "connecting" ||
+    value === "backfill" ||
+    value === "live" ||
+    value === "degraded" ||
+    value === "auth_required" ||
+    value === "disconnected" ||
+    value === "suspended"
+    ? value
+    : null;
+}
+
+function readOperationStatus(value: unknown): ExternalOperationStatus | null {
+  return value === "queued" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "manual_reconciliation_required" ||
+    value === "discarded"
+    ? value
+    : null;
+}
+
+function readReconciliationState(value: unknown): ExternalOperationReconciliationState | null {
+  return value === "not_required" ||
+    value === "delayed_check" ||
+    value === "committed_match" ||
+    value === "automatic_resend_queued" ||
+    value === "manual_required"
+    ? value
+    : null;
+}
+
+function readReconciliationReason(value: unknown): ExternalOperationReconciliationReason | null {
+  return value === "provider_history_unavailable" ||
+    value === "no_match_after_auto_resend" ||
+    value === "unsafe_provider_state"
+    ? value
+    : null;
+}
+
+function readCapability(value: unknown): ExternalCapability | null {
+  if (!isRecord(value) || typeof value.available !== "boolean") return null;
+  const revision = readInteger(value.revision);
+  if (revision < 1) return null;
+  const limits = isRecord(value.limits) ? value.limits : {};
+  const unavailableReason = isRecord(value.unavailable_reason)
+    ? {
+        code: readString(value.unavailable_reason.code) ?? "unavailable",
+        message: readString(value.unavailable_reason.message) ?? "",
+      }
+    : null;
+  return {
+    available: value.available,
+    revision,
+    limits,
+    unavailableReason,
+  };
+}
+
+function readCapabilities(value: unknown): ExternalCapabilities {
+  if (!isRecord(value)) return {};
+  const capabilities: ExternalCapabilities = {};
+  for (const [name, descriptor] of Object.entries(value)) {
+    const capability = readCapability(descriptor);
+    if (capability != null) capabilities[name] = capability;
+  }
+  return capabilities;
+}
+
+function readEtag(headers: Headers | undefined): string | null {
+  return headers?.get("ETag") ?? headers?.get("etag") ?? null;
+}
+
+function mapZulipExternalAccount(raw: unknown, etag: string | null): ZulipExternalAccount | null {
+  if (!isRecord(raw) || !isRecord(raw.settings) || raw.settings.kind !== "zulip") return null;
+  const uuid = readString(raw.uuid);
+  const serverUrl = readString(raw.settings.server_url);
+  const email = readString(raw.settings.email);
+  const selectionMode = readSelectionMode(raw.settings.selection_mode);
+  const historyDepth = readHistoryDepth(raw.settings.history_depth);
+  const defaultProjectId = readString(raw.settings.default_project_id);
+  const status = readAccountStatus(raw.status);
   if (
     uuid == null ||
-    providerUuid == null ||
-    accountType !== ZULIP_ACCOUNT_TYPE ||
-    kind !== ZULIP_ACCOUNT_TYPE ||
-    credentialsKind !== ZULIP_ACCOUNT_TYPE
+    serverUrl == null ||
+    email == null ||
+    selectionMode == null ||
+    historyDepth == null ||
+    defaultProjectId == null ||
+    status == null
   ) {
     return null;
   }
-  const createdAt = readString(row.created_at);
-  const updatedAt = readString(row.updated_at);
   return {
     uuid,
-    providerUuid,
-    accountType,
-    hasCredentials,
-    accountSettings: {
-      kind: ZULIP_ACCOUNT_TYPE,
-      login,
+    settings: {
+      kind: "zulip",
       serverUrl,
-      ...(userInfoRaw != null && userId != null && userInfoKind === ZULIP_ACCOUNT_TYPE
-        ? {
-            userInfo: {
-              kind: ZULIP_ACCOUNT_TYPE,
-              userId,
-              role,
-            },
-          }
-        : {}),
+      email,
+      selectionMode,
+      historyDepth,
+      defaultProjectId,
     },
-    ...(externalUserId != null ? { externalUserId } : {}),
-    ...(status === "new" || status === "active" ? { status } : {}),
-    ...(createdAt != null ? { createdAt } : {}),
-    ...(updatedAt != null ? { updatedAt } : {}),
-  };
-}
-
-function mapMailExternalAccount(raw: unknown): MailExternalAccount | null {
-  if (!isRecord(raw)) return null;
-  const row = raw as RawExternalAccount;
-  const settings = isRecord(row.account_settings) ? row.account_settings : null;
-  const uuid = readString(row.uuid);
-  const providerUuid = readString(row.provider_uuid);
-  if (
-    uuid == null ||
-    providerUuid == null ||
-    row.account_type !== "mail" ||
-    settings?.kind !== "mail"
-  )
-    return null;
-  return {
-    uuid,
-    providerUuid,
-    accountType: "mail",
-    serverUrl: readString(row.server_url) ?? "",
-    email: readString(settings.email) ?? "",
-    imapHost: readString(settings.imap_host) ?? "",
-    imapPort: readPort(settings.imap_port, 993),
-    imapSecurity: readSecurity(settings.imap_security, "tls"),
-    smtpHost: readString(settings.smtp_host) ?? "",
-    smtpPort: readPort(settings.smtp_port, 465),
-    smtpSecurity: readSecurity(settings.smtp_security, "tls"),
-    accessStatus: readAccessStatus(row.access_status),
-    ...(readString(row.access_last_error) != null
-      ? { accessLastError: readString(row.access_last_error) }
-      : {}),
-    ...(row.status === "new" || row.status === "active" ? { status: row.status } : {}),
-  };
-}
-
-function mapCalendarExternalAccount(raw: unknown): CalendarExternalAccount | null {
-  if (!isRecord(raw)) return null;
-  const row = raw as RawExternalAccount;
-  const settings = isRecord(row.account_settings) ? row.account_settings : null;
-  const uuid = readString(row.uuid);
-  const providerUuid = readString(row.provider_uuid);
-  if (
-    uuid == null ||
-    providerUuid == null ||
-    row.account_type !== "calendar" ||
-    settings?.kind !== "calendar"
-  )
-    return null;
-  return {
-    uuid,
-    providerUuid,
-    accountType: "calendar",
-    serverUrl: readString(row.server_url) ?? "",
-    accessStatus: readAccessStatus(row.access_status),
-    ...(readString(row.access_last_error) != null
-      ? { accessLastError: readString(row.access_last_error) }
-      : {}),
-    ...(row.status === "new" || row.status === "active" ? { status: row.status } : {}),
+    credentialPresent: raw.credential_present === true,
+    status,
+    liveReady: raw.live_ready === true,
+    safeError: readNullableString(raw.safe_error),
+    capabilities: readCapabilities(raw.capabilities),
+    desiredGeneration: readInteger(raw.desired_generation),
+    appliedGeneration: readInteger(raw.applied_generation),
+    lastProgressAt: readNullableString(raw.last_progress_at),
+    createdAt: readString(raw.created_at) ?? "",
+    updatedAt: readString(raw.updated_at) ?? "",
+    etag: etag ?? (readInteger(raw.revision) > 0 ? `"${readInteger(raw.revision)}"` : null),
   };
 }
 
 function externalAccountPath(uuid: string): string {
-  return `${EXTERNAL_ACCOUNTS_PATH}${encodeURIComponent(uuid)}`;
+  return `${EXTERNAL_ACCOUNTS_PATH}${encodeURIComponent(guard.nonEmpty(uuid, "account uuid"))}`;
 }
 
-function mapMutationError(status: number): SaveExternalAccountErrorKind {
+function externalChatPath(uuid: string): string {
+  return `${EXTERNAL_CHATS_PATH}${encodeURIComponent(guard.nonEmpty(uuid, "chat uuid"))}`;
+}
+
+function externalOperationPath(uuid: string): string {
+  return `${EXTERNAL_OPERATIONS_PATH}${encodeURIComponent(guard.nonEmpty(uuid, "operation uuid"))}`;
+}
+
+function mapMutationError(status: number): ExternalAccountMutationErrorKind {
   if (status === 403) return "forbidden";
   if (status === 409) return "conflict";
+  if (status === 412 || status === 428) return "precondition";
   if (status === 400 || status === 422) return "invalid";
   return "transient";
 }
 
-function buildZulipPayload(input: SaveZulipExternalAccountInput): {
-  provider_uuid: string;
-  account_type: "zulip";
-  server_url: string;
-  account_settings: {
-    kind: "zulip";
-    credentials: {
-      kind: "zulip";
-      login: string;
-      token: string;
-    };
-  };
-} {
+function mutationFailure<T>(response: ApiResponse): ExternalAccountMutationResult<T> {
+  return { ok: false, kind: mapMutationError(response.status) };
+}
+
+function buildCreateSettings(input: CreateZulipExternalAccountInput) {
   return {
-    provider_uuid: guard.nonEmpty(input.providerUuid, "zulip provider uuid").trim(),
-    account_type: ZULIP_ACCOUNT_TYPE,
-    server_url: guard.nonEmpty(input.serverUrl, "zulip server url").trim(),
-    account_settings: {
-      kind: ZULIP_ACCOUNT_TYPE,
-      credentials: {
-        kind: ZULIP_ACCOUNT_TYPE,
-        login: guard.nonEmpty(input.login, "zulip login").trim(),
-        token: guard.nonEmpty(input.token, "zulip token").trim(),
-      },
-    },
+    kind: "zulip" as const,
+    server_url: guard.nonEmpty(input.serverUrl, "Zulip server URL").trim(),
+    email: guard.nonEmpty(input.email, "Zulip email").trim(),
+    api_key: guard.nonEmpty(input.apiKey, "Zulip API key").trim(),
+    selection_mode: input.selectionMode,
+    history_depth: input.historyDepth,
+    default_project_id: guard.nonEmpty(input.defaultProjectId, "default project uuid").trim(),
   };
 }
 
-function mapWorkspaceProvider(raw: unknown): WorkspaceProvider | null {
-  if (!isRecord(raw)) return null;
-  const row = raw as RawWorkspaceProvider;
-  const uuid = readString(row.uuid);
-  const name = readString(row.name);
-  if (
-    uuid == null ||
-    name == null ||
-    row.enabled === false ||
-    !Array.isArray(row.supported_kinds)
-  ) {
-    return null;
-  }
-  const supportedKinds = row.supported_kinds.filter(
-    (kind): kind is "zulip" | "mail" | "calendar" =>
-      kind === "zulip" || kind === "mail" || kind === "calendar",
-  );
-  if (supportedKinds.length === 0) return null;
-  return {
-    uuid,
-    name,
-    supportedKinds,
-    version: readString(row.version) ?? null,
-  };
-}
-
-export async function fetchWorkspaceProviders(signal?: AbortSignal): Promise<WorkspaceProvider[]> {
+async function fetchAccountResource(
+  uuid: string,
+  signal?: AbortSignal,
+): Promise<ZulipExternalAccount | null> {
   const response = await messengerApi.getWithBase(
-    getWorkspaceCommonApiBaseForCurrentInstance(),
-    PROVIDERS_PATH,
+    apiBase(),
+    externalAccountPath(uuid),
     undefined,
     signal,
   );
-  if (!response.ok) {
-    throw new Error(`Provider catalog request failed (${response.status})`);
-  }
-  return readRows(response.data)
-    .map(mapWorkspaceProvider)
-    .filter((provider): provider is WorkspaceProvider => provider != null);
-}
-
-function assertOkResponse(response: ApiResponse): response is ApiResponse & { ok: true } {
-  return response.ok;
+  if (!response.ok) return null;
+  return mapZulipExternalAccount(response.data, readEtag(response.headers));
 }
 
 export async function fetchZulipExternalAccount(options?: {
   signal?: AbortSignal;
 }): Promise<ZulipExternalAccount | null> {
-  try {
-    const response = await messengerApi.getWithBase(
-      getWorkspaceCommonApiBaseForCurrentInstance(),
-      EXTERNAL_ACCOUNTS_PATH,
-      { account_type: ZULIP_ACCOUNT_TYPE },
-      options?.signal,
-    );
-    if (!response.ok) {
-      log.warn("Failed to fetch external accounts", { status: response.status });
-      return null;
-    }
-    for (const row of readRows(response.data)) {
-      const account = mapExternalAccount(row);
-      if (account != null) {
-        return account;
-      }
-    }
-    return null;
-  } catch (error) {
-    if (options?.signal?.aborted) {
-      throw error;
-    }
-    log.warn("External account fetch error", { error: String(error) });
-    return null;
+  const { rows, response } = await fetchAllRows(EXTERNAL_ACCOUNTS_PATH, undefined, options?.signal);
+  if (!response.ok) {
+    throw new Error(`External accounts request failed (${response.status})`);
   }
+  const account = rows
+    .map((row) => mapZulipExternalAccount(row, null))
+    .find((row): row is ZulipExternalAccount => row != null);
+  if (account == null) return null;
+  return (await fetchAccountResource(account.uuid, options?.signal)) ?? account;
 }
 
-export async function saveZulipExternalAccount(
-  input: SaveZulipExternalAccountInput,
-): Promise<SaveZulipExternalAccountResult> {
-  const payload = buildZulipPayload(input);
-  try {
-    const response =
-      input.uuid == null
-        ? await messengerApi.postJsonWithBase(
-            getWorkspaceCommonApiBaseForCurrentInstance(),
-            EXTERNAL_ACCOUNTS_PATH,
-            payload,
-          )
-        : await messengerApi.putJsonWithBase(
-            getWorkspaceCommonApiBaseForCurrentInstance(),
-            externalAccountPath(input.uuid),
-            payload,
-          );
-    if (!assertOkResponse(response)) {
-      log.warn("Failed to save external account", { status: response.status });
-      return { ok: false, kind: mapMutationError(response.status) };
-    }
-    const account = mapExternalAccount(response.data);
-    if (account == null) {
-      log.warn("External account save returned invalid payload", {});
-      return { ok: false, kind: "transient" };
-    }
-    log.info("External account saved", { accountType: account.accountType, uuid: account.uuid });
-    return { ok: true, account };
-  } catch (error) {
-    log.warn("External account save error", { error: String(error) });
-    return { ok: false, kind: "transient" };
-  }
+export async function createZulipExternalAccount(
+  input: CreateZulipExternalAccountInput,
+): Promise<ExternalAccountMutationResult<ZulipExternalAccount>> {
+  const response = await messengerApi.postJsonWithBase(apiBase(), EXTERNAL_ACCOUNTS_PATH, {
+    uuid: guard.nonEmpty(input.uuid, "external account uuid").trim(),
+    settings: buildCreateSettings(input),
+  });
+  if (!response.ok) return mutationFailure(response);
+  const account = mapZulipExternalAccount(response.data, readEtag(response.headers));
+  if (account == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: account };
 }
 
-export async function unlinkZulipExternalAccount(
-  uuid: string,
-): Promise<UnlinkZulipExternalAccountResult> {
-  const accountUuid = guard.nonEmpty(uuid, "external account uuid").trim();
-  try {
-    const response = await messengerApi.deleteWithBase(
-      getWorkspaceCommonApiBaseForCurrentInstance(),
-      externalAccountPath(accountUuid),
-    );
-    if (!assertOkResponse(response)) {
-      log.warn("Failed to unlink external account", { status: response.status });
-      return { ok: false, kind: mapMutationError(response.status) };
-    }
-    log.info("External account unlinked", { uuid: accountUuid });
-    return { ok: true };
-  } catch (error) {
-    log.warn("External account unlink error", { error: String(error) });
-    return { ok: false, kind: "transient" };
-  }
-}
-
-async function fetchGroupwareAccount<T>(
-  accountType: "mail" | "calendar",
-  mapper: (raw: unknown) => T | null,
-  signal?: AbortSignal,
-): Promise<T | null> {
-  try {
-    const response = await messengerApi.getWithBase(
-      getWorkspaceCommonApiBaseForCurrentInstance(),
-      EXTERNAL_ACCOUNTS_PATH,
-      { account_type: accountType },
-      signal,
-    );
-    if (!response.ok) return null;
-    for (const row of readRows(response.data)) {
-      const account = mapper(row);
-      if (account != null) return account;
-    }
-    return null;
-  } catch (error) {
-    if (signal?.aborted) return null;
-    log.warn("Groupware external account fetch error", {
-      accountType,
-      error: String(error),
-    });
-    return null;
-  }
-}
-
-async function saveGroupwareAccount<T>(
-  uuid: string | undefined,
-  payload: unknown,
-  mapper: (raw: unknown) => T | null,
-): Promise<SaveGroupwareExternalAccountResult<T>> {
-  try {
-    const response =
-      uuid == null
-        ? await messengerApi.postJsonWithBase(
-            getWorkspaceCommonApiBaseForCurrentInstance(),
-            EXTERNAL_ACCOUNTS_PATH,
-            payload,
-          )
-        : await messengerApi.putJsonWithBase(
-            getWorkspaceCommonApiBaseForCurrentInstance(),
-            externalAccountPath(uuid),
-            payload,
-          );
-    if (!response.ok) return { ok: false, kind: mapMutationError(response.status) };
-    const account = mapper(response.data);
-    return account == null ? { ok: false, kind: "transient" } : { ok: true, account };
-  } catch {
-    return { ok: false, kind: "transient" };
-  }
-}
-
-export function fetchMailExternalAccount(
-  signal?: AbortSignal,
-): Promise<MailExternalAccount | null> {
-  return fetchGroupwareAccount("mail", mapMailExternalAccount, signal);
-}
-
-export function fetchCalendarExternalAccount(
-  signal?: AbortSignal,
-): Promise<CalendarExternalAccount | null> {
-  return fetchGroupwareAccount("calendar", mapCalendarExternalAccount, signal);
-}
-
-export function saveMailExternalAccount(
-  input: SaveMailExternalAccountInput,
-): Promise<SaveGroupwareExternalAccountResult<MailExternalAccount>> {
-  const imapHost = guard.nonEmpty(input.imapHost, "IMAP host").trim();
-  return saveGroupwareAccount(
-    input.uuid,
+export async function updateZulipExternalAccount(
+  input: UpdateZulipExternalAccountInput,
+): Promise<ExternalAccountMutationResult<ZulipExternalAccount>> {
+  const response = await messengerApi.putJsonWithBase(
+    apiBase(),
+    externalAccountPath(input.uuid),
     {
-      provider_uuid: guard.nonEmpty(input.providerUuid, "mail provider uuid").trim(),
-      server_url: `https://${imapHost}`,
-      account_settings: {
-        kind: "mail",
-        credentials: {
-          kind: "mail",
-          username: guard.nonEmpty(input.username, "mail username").trim(),
-          password: guard.nonEmpty(input.password, "mail password"),
-        },
-        email: guard.nonEmpty(input.email, "mail email").trim(),
-        imap_host: imapHost,
-        imap_port: input.imapPort,
-        imap_security: input.imapSecurity,
-        smtp_host: guard.nonEmpty(input.smtpHost, "SMTP host").trim(),
-        smtp_port: input.smtpPort,
-        smtp_security: input.smtpSecurity,
+      settings: {
+        kind: "zulip",
+        selection_mode: input.selectionMode,
+        history_depth: input.historyDepth,
+        default_project_id: guard.nonEmpty(input.defaultProjectId, "default project uuid").trim(),
       },
     },
-    mapMailExternalAccount,
+    { "If-Match": guard.nonEmpty(input.etag, "external account ETag") },
+  );
+  if (!response.ok) return mutationFailure(response);
+  const account = mapZulipExternalAccount(response.data, readEtag(response.headers));
+  if (account == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: account };
+}
+
+export async function reconnectZulipExternalAccount(
+  input: ReconnectZulipExternalAccountInput,
+): Promise<ExternalAccountMutationResult<ZulipExternalAccount>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${externalAccountPath(input.uuid)}/actions/reconnect/invoke`,
+    {
+      settings: {
+        kind: "zulip",
+        server_url: guard.nonEmpty(input.serverUrl, "Zulip server URL").trim(),
+        email: guard.nonEmpty(input.email, "Zulip email").trim(),
+        api_key: guard.nonEmpty(input.apiKey, "Zulip API key").trim(),
+      },
+    },
+    { "If-Match": guard.nonEmpty(input.etag, "external account ETag") },
+  );
+  if (!response.ok) return mutationFailure(response);
+  const account = mapZulipExternalAccount(response.data, readEtag(response.headers));
+  if (account == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: account };
+}
+
+export async function disconnectZulipExternalAccount(
+  uuid: string,
+): Promise<ExternalAccountMutationResult<ZulipExternalAccount>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${externalAccountPath(uuid)}/actions/disconnect/invoke`,
+    {},
+  );
+  if (!response.ok) return mutationFailure(response);
+  const account = mapZulipExternalAccount(response.data, readEtag(response.headers));
+  if (account == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: account };
+}
+
+export async function deleteZulipExternalAccount(
+  uuid: string,
+): Promise<ExternalAccountMutationResult<null>> {
+  const response = await messengerApi.deleteWithBase(apiBase(), externalAccountPath(uuid));
+  if (!response.ok) return mutationFailure(response);
+  return { ok: true, value: null };
+}
+
+function mapExternalChat(raw: unknown, etag: string | null = null): ExternalChat | null {
+  if (!isRecord(raw) || !isRecord(raw.source) || raw.source.kind !== "zulip") return null;
+  const uuid = readString(raw.uuid);
+  const externalAccountUuid = readString(raw.external_account_uuid);
+  if (uuid == null || externalAccountUuid == null) return null;
+  const chatType = raw.source.chat_type;
+  const displayName = readString(raw.display_name);
+  const historyDepth = readHistoryDepth(raw.history_depth);
+  if (
+    (chatType !== "channel" && chatType !== "direct" && chatType !== "group_direct") ||
+    displayName == null ||
+    historyDepth == null
+  ) {
+    return null;
+  }
+  const source: ZulipExternalChatSource = {
+    ...raw.source,
+    kind: "zulip",
+    chatType,
+    originalUrl: readNullableString(raw.source.original_url),
+  };
+  return {
+    uuid,
+    externalAccountUuid,
+    source,
+    displayName,
+    selected: raw.selected === true,
+    projectId: readNullableString(raw.project_id),
+    historyDepth,
+    projectionStreamUuid: readNullableString(raw.projection_stream_uuid),
+    status: readString(raw.status) ?? "available",
+    safeError: readNullableString(raw.safe_error),
+    capabilities: readCapabilities(raw.capabilities),
+    revision: readInteger(raw.revision),
+    etag: etag ?? (readInteger(raw.revision) > 0 ? `"${readInteger(raw.revision)}"` : null),
+    createdAt: readNullableString(raw.created_at),
+    updatedAt: readNullableString(raw.updated_at),
+  };
+}
+
+export async function fetchExternalChats(
+  externalAccountUuid: string,
+  signal?: AbortSignal,
+): Promise<ExternalChat[]> {
+  const { rows, response } = await fetchAllRows(
+    EXTERNAL_CHATS_PATH,
+    { external_account_uuid: guard.nonEmpty(externalAccountUuid, "external account uuid") },
+    signal,
+  );
+  if (!response.ok) throw new Error(`External chats request failed (${response.status})`);
+  return rows
+    .map((row) => mapExternalChat(row))
+    .filter((chat): chat is ExternalChat => chat != null);
+}
+
+export async function fetchExternalChat(
+  chatUuid: string,
+  signal?: AbortSignal,
+): Promise<ExternalChat | null> {
+  const response = await messengerApi.getWithBase(
+    apiBase(),
+    externalChatPath(chatUuid),
+    undefined,
+    signal,
+  );
+  if (!response.ok) return null;
+  return mapExternalChat(response.data, readEtag(response.headers));
+}
+
+async function mutateExternalChat(
+  chatUuid: string,
+  action: "select" | "deselect" | "move",
+  body: Record<string, string>,
+  headers?: Record<string, string>,
+): Promise<ExternalAccountMutationResult<ExternalChat>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${externalChatPath(chatUuid)}/actions/${action}/invoke`,
+    body,
+    headers,
+  );
+  if (!response.ok) return mutationFailure(response);
+  const chat = mapExternalChat(response.data, readEtag(response.headers));
+  if (chat == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: chat };
+}
+
+export function selectExternalChat(
+  chatUuid: string,
+  projectId: string,
+): Promise<ExternalAccountMutationResult<ExternalChat>> {
+  return mutateExternalChat(chatUuid, "select", {
+    project_id: guard.nonEmpty(projectId, "project uuid").trim(),
+  });
+}
+
+export function deselectExternalChat(
+  chatUuid: string,
+): Promise<ExternalAccountMutationResult<ExternalChat>> {
+  return mutateExternalChat(chatUuid, "deselect", {});
+}
+
+export async function moveExternalChat(
+  chatUuid: string,
+  projectId: string,
+  etag?: string | null,
+): Promise<ExternalAccountMutationResult<ExternalChat>> {
+  const currentChat = etag == null ? await fetchExternalChat(chatUuid) : null;
+  const effectiveEtag = etag ?? currentChat?.etag;
+  if (effectiveEtag == null) return { ok: false, kind: "precondition" };
+  return mutateExternalChat(
+    chatUuid,
+    "move",
+    { project_id: guard.nonEmpty(projectId, "project uuid").trim() },
+    { "If-Match": guard.nonEmpty(effectiveEtag, "external chat ETag") },
   );
 }
 
-export function saveCalendarExternalAccount(
-  input: SaveCalendarExternalAccountInput,
-): Promise<SaveGroupwareExternalAccountResult<CalendarExternalAccount>> {
-  return saveGroupwareAccount(
-    input.uuid,
-    {
-      provider_uuid: guard.nonEmpty(input.providerUuid, "calendar provider uuid").trim(),
-      server_url: guard.nonEmpty(input.serverUrl, "CalDAV URL").trim(),
-      account_settings: {
-        kind: "calendar",
-        credentials: {
-          kind: "calendar",
-          username: guard.nonEmpty(input.username, "calendar username").trim(),
-          password: guard.nonEmpty(input.password, "calendar password"),
-        },
-      },
-    },
-    mapCalendarExternalAccount,
-  );
+function mapExternalOperation(raw: unknown): ExternalOperation | null {
+  if (!isRecord(raw)) return null;
+  const uuid = readString(raw.uuid);
+  const externalAccountUuid = readString(raw.external_account_uuid);
+  const action = readString(raw.action);
+  const targetType = readString(raw.target_type);
+  const status = readOperationStatus(raw.status);
+  const reconciliationState = readReconciliationState(raw.reconciliation_state);
+  if (
+    uuid == null ||
+    externalAccountUuid == null ||
+    action == null ||
+    targetType == null ||
+    status == null ||
+    reconciliationState == null
+  ) {
+    return null;
+  }
+  return {
+    uuid,
+    externalAccountUuid,
+    action,
+    targetType,
+    targetUuid: readNullableString(raw.target_uuid),
+    status,
+    safeError: readNullableString(raw.safe_error),
+    canRetry: raw.can_retry === true,
+    canDiscard: raw.can_discard === true,
+    duplicateRisk: raw.duplicate_risk === true,
+    retryRequiresConfirmation: raw.retry_requires_confirmation === true,
+    originalUrl: readNullableString(raw.original_url),
+    reconciliationState,
+    reconciliationReason: readReconciliationReason(raw.reconciliation_reason),
+    reconciliationEvidence: isRecord(raw.reconciliation_evidence)
+      ? raw.reconciliation_evidence
+      : {},
+    attempt: readInteger(raw.attempt),
+    attemptHistory: Array.isArray(raw.attempt_history) ? raw.attempt_history : [],
+    details: isRecord(raw.details) ? raw.details : {},
+    revision: readInteger(raw.revision),
+    createdAt: readNullableString(raw.created_at),
+    updatedAt: readNullableString(raw.updated_at),
+  };
 }
 
-export async function unlinkGroupwareExternalAccount(
+export async function fetchExternalOperations(
+  externalAccountUuid: string,
+  signal?: AbortSignal,
+): Promise<ExternalOperation[]> {
+  const { rows, response } = await fetchAllRows(
+    EXTERNAL_OPERATIONS_PATH,
+    { external_account_uuid: guard.nonEmpty(externalAccountUuid, "external account uuid") },
+    signal,
+  );
+  if (!response.ok) throw new Error(`External operations request failed (${response.status})`);
+  return rows
+    .map(mapExternalOperation)
+    .filter((operation): operation is ExternalOperation => operation != null);
+}
+
+export async function retryExternalOperation(
   uuid: string,
-): Promise<UnlinkZulipExternalAccountResult> {
-  return unlinkZulipExternalAccount(uuid);
+  options: { confirmDuplicateRisk: boolean },
+): Promise<ExternalAccountMutationResult<ExternalOperation>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${externalOperationPath(uuid)}/actions/retry/invoke`,
+    options.confirmDuplicateRisk ? { confirm_duplicate_risk: true } : {},
+  );
+  if (!response.ok) return mutationFailure(response);
+  const operation = mapExternalOperation(response.data);
+  if (operation == null) return { ok: false, kind: "transient" };
+  return { ok: true, value: operation };
+}
+
+export async function discardExternalOperation(
+  uuid: string,
+): Promise<ExternalAccountMutationResult<null>> {
+  const response = await messengerApi.deleteWithBase(apiBase(), externalOperationPath(uuid));
+  if (!response.ok) return mutationFailure(response);
+  return { ok: true, value: null };
+}
+
+export async function preflightExternalOperation(
+  input: ExternalOperationPreflightInput,
+): Promise<ExternalAccountMutationResult<ExternalOperationPreflightResult>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${EXTERNAL_OPERATIONS_PATH}actions/preflight/invoke`,
+    {
+      external_account_uuid: guard.nonEmpty(input.externalAccountUuid, "external account uuid"),
+      action: guard.nonEmpty(input.action, "external operation action"),
+      target: {
+        type: guard.nonEmpty(input.target.type, "external operation target type"),
+        ...(input.target.uuid == null ? {} : { uuid: input.target.uuid }),
+      },
+    },
+  );
+  if (!response.ok) return mutationFailure(response);
+  if (
+    !isRecord(response.data) ||
+    typeof response.data.allowed !== "boolean" ||
+    typeof response.data.action !== "string" ||
+    !isRecord(response.data.target) ||
+    typeof response.data.target.type !== "string" ||
+    (response.data.target.uuid != null && typeof response.data.target.uuid !== "string") ||
+    !Array.isArray(response.data.losses) ||
+    !response.data.losses.every(isRecord) ||
+    typeof response.data.requires_confirmation !== "boolean"
+  ) {
+    return { ok: false, kind: "transient" };
+  }
+  return {
+    ok: true,
+    value: {
+      allowed: response.data.allowed,
+      action: response.data.action,
+      target: {
+        type: response.data.target.type,
+        uuid: response.data.target.uuid ?? null,
+      },
+      losses: response.data.losses,
+      requiresConfirmation: response.data.requires_confirmation,
+    },
+  };
+}
+
+function readProviderLimits(value: unknown): ExternalProviderLimits | null {
+  if (!isRecord(value)) return null;
+  const maxAccounts = readInteger(value.max_accounts, -1);
+  const maxSelectedChatsPerAccount = readInteger(value.max_selected_chats_per_account, -1);
+  const maxFileBytes = readInteger(value.max_file_bytes, -1);
+  if (maxAccounts < 0 || maxSelectedChatsPerAccount < 0 || maxFileBytes < 0) return null;
+  return { maxAccounts, maxSelectedChatsPerAccount, maxFileBytes };
+}
+
+function mapExternalProviderPolicy(
+  raw: unknown,
+  etag: string | null,
+): ExternalProviderPolicy | null {
+  if (!isRecord(raw) || raw.provider !== "zulip" || typeof raw.enabled !== "boolean") return null;
+  const limits = readProviderLimits(raw.limits);
+  if (limits == null) return null;
+  let customCaBundle: ExternalProviderPolicy["customCaBundle"] = null;
+  if (raw.custom_ca_bundle != null) {
+    if (!isRecord(raw.custom_ca_bundle)) return null;
+    const uuid = readString(raw.custom_ca_bundle.uuid);
+    const sha256 = readString(raw.custom_ca_bundle.sha256);
+    const generation = readInteger(raw.custom_ca_bundle.generation);
+    const certificateCount = readInteger(raw.custom_ca_bundle.certificate_count);
+    if (uuid == null || sha256 == null || generation < 1 || certificateCount < 1) return null;
+    customCaBundle = { uuid, sha256, generation, certificateCount };
+  }
+  return {
+    provider: "zulip",
+    enabled: raw.enabled,
+    emergencySuspended: raw.emergency_suspended === true,
+    limits,
+    customCaBundle,
+    revision: readInteger(raw.revision, 1),
+    etag,
+  };
+}
+
+export async function fetchZulipExternalProviderPolicy(): Promise<ExternalProviderPolicy | null> {
+  const response = await messengerApi.getWithBase(
+    apiBase(),
+    `${EXTERNAL_PROVIDER_POLICIES_PATH}zulip`,
+  );
+  if (response.status === 403) return null;
+  if (!response.ok) throw new Error(`External provider policy request failed (${response.status})`);
+  const policy = mapExternalProviderPolicy(response.data, readEtag(response.headers));
+  if (policy == null) throw new Error("Invalid external provider policy response");
+  return policy;
+}
+
+export async function updateZulipExternalProviderPolicy(
+  input: UpdateExternalProviderPolicyInput,
+): Promise<ExternalAccountMutationResult<ExternalProviderPolicy>> {
+  const response = await messengerApi.putJsonWithBase(
+    apiBase(),
+    `${EXTERNAL_PROVIDER_POLICIES_PATH}zulip`,
+    {
+      settings: {
+        kind: "zulip",
+        enabled: input.enabled,
+        limits: {
+          max_accounts: input.limits.maxAccounts,
+          max_selected_chats_per_account: input.limits.maxSelectedChatsPerAccount,
+          max_file_bytes: input.limits.maxFileBytes,
+        },
+        custom_ca_bundle:
+          input.customCaCertificatesPem == null
+            ? null
+            : { certificates_pem: input.customCaCertificatesPem },
+      },
+    },
+    { "If-Match": guard.nonEmpty(input.policy.etag ?? "", "provider policy ETag") },
+  );
+  if (!response.ok) return mutationFailure(response);
+  const policy = mapExternalProviderPolicy(response.data, readEtag(response.headers));
+  return policy == null ? { ok: false, kind: "transient" } : { ok: true, value: policy };
+}
+
+export async function changeZulipExternalProviderSuspension(
+  action: "suspend" | "resume",
+): Promise<ExternalAccountMutationResult<ExternalProviderPolicy>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${EXTERNAL_PROVIDER_POLICIES_PATH}zulip/actions/${action}/invoke`,
+    {},
+  );
+  if (!response.ok) return mutationFailure(response);
+  const policy = mapExternalProviderPolicy(response.data, readEtag(response.headers));
+  return policy == null ? { ok: false, kind: "transient" } : { ok: true, value: policy };
+}
+
+export async function fetchZulipExternalProviderHealth(): Promise<ExternalProviderHealth | null> {
+  const response = await messengerApi.getWithBase(
+    apiBase(),
+    `${EXTERNAL_PROVIDER_HEALTH_PATH}zulip`,
+  );
+  if (response.status === 403) return null;
+  if (!response.ok || !isRecord(response.data) || typeof response.data.status !== "string") {
+    if (!response.ok)
+      throw new Error(`External provider health request failed (${response.status})`);
+    throw new Error("Invalid external provider health response");
+  }
+  return {
+    provider: "zulip",
+    status: response.data.status,
+    accountCounts: readNumericMap(response.data.account_counts),
+    bridgeCounts: readNumericMap(response.data.bridge_counts),
+    operationCounts: readNumericMap(response.data.operation_counts),
+    metrics: isRecord(response.data.metrics) ? response.data.metrics : {},
+    updatedAt: readNullableString(response.data.updated_at),
+  };
+}
+
+function readBridgeInstanceStatus(value: unknown): ExternalBridgeInstanceStatus | null {
+  return value === "enrolling" ||
+    value === "active" ||
+    value === "degraded" ||
+    value === "incompatible" ||
+    value === "suspended" ||
+    value === "revoked"
+    ? value
+    : null;
+}
+
+function mapExternalBridgeInstance(raw: unknown): ExternalBridgeInstance | null {
+  if (!isRecord(raw) || raw.provider !== "zulip") return null;
+  const uuid = readString(raw.uuid);
+  const status = readBridgeInstanceStatus(raw.status);
+  const identityGeneration = readInteger(raw.identity_generation);
+  if (uuid == null || status == null || identityGeneration < 1) return null;
+  return {
+    uuid,
+    provider: "zulip",
+    identityGeneration,
+    status,
+    capabilities: isRecord(raw.capabilities) ? raw.capabilities : {},
+    lastHeartbeatAt: readNullableString(raw.last_heartbeat_at),
+    certificateNotAfter: readNullableString(raw.certificate_not_after),
+    safeError: readNullableString(raw.safe_error),
+    revision: readInteger(raw.revision, 1),
+  };
+}
+
+export async function fetchZulipExternalBridgeInstances(): Promise<
+  ExternalBridgeInstance[] | null
+> {
+  const firstResponse = await messengerApi.getWithBase(apiBase(), EXTERNAL_BRIDGE_INSTANCES_PATH);
+  const { rows, response } = await fetchAllRows(
+    EXTERNAL_BRIDGE_INSTANCES_PATH,
+    undefined,
+    undefined,
+    firstResponse,
+  );
+  if (response.status === 403) return null;
+  if (!response.ok)
+    throw new Error(`External bridge instances request failed (${response.status})`);
+  return rows
+    .map(mapExternalBridgeInstance)
+    .filter((instance): instance is ExternalBridgeInstance => instance != null);
+}
+
+export type ExternalRealtimeUpdate =
+  | { resource: "account"; action: "upsert"; value: ZulipExternalAccount }
+  | { resource: "account"; action: "delete"; uuid: string }
+  | { resource: "chat"; action: "upsert"; value: ExternalChat }
+  | { resource: "chat"; action: "delete"; uuid: string }
+  | { resource: "operation"; action: "upsert"; value: ExternalOperation }
+  | { resource: "operation"; action: "delete"; uuid: string };
+
+export function parseExternalRealtimeUpdate(
+  payload: WorkspaceEventPayload,
+): ExternalRealtimeUpdate | null {
+  const uuid = readString(payload.uuid);
+  if (uuid == null || !isRecord(payload.snapshot)) return null;
+  const snapshot = { ...payload.snapshot, uuid };
+  const deleted = payload.kind.endsWith(".deleted");
+  if (payload.kind.startsWith("external_account.")) {
+    if (deleted) return { resource: "account", action: "delete", uuid };
+    const value = mapZulipExternalAccount(snapshot, null);
+    return value == null ? null : { resource: "account", action: "upsert", value };
+  }
+  if (payload.kind.startsWith("external_chat.")) {
+    if (deleted) return { resource: "chat", action: "delete", uuid };
+    const value = mapExternalChat(snapshot);
+    return value == null ? null : { resource: "chat", action: "upsert", value };
+  }
+  if (payload.kind.startsWith("external_operation.")) {
+    if (deleted) return { resource: "operation", action: "delete", uuid };
+    const value = mapExternalOperation(snapshot);
+    return value == null ? null : { resource: "operation", action: "upsert", value };
+  }
+  return null;
+}
+
+export async function changeExternalBridgeInstanceStatus(
+  uuid: string,
+  action: "suspend" | "resume" | "revoke",
+): Promise<ExternalAccountMutationResult<ExternalBridgeInstance>> {
+  const response = await messengerApi.postJsonWithBase(
+    apiBase(),
+    `${EXTERNAL_BRIDGE_INSTANCES_PATH}${encodeURIComponent(
+      guard.nonEmpty(uuid, "bridge instance uuid"),
+    )}/actions/${action}/invoke`,
+    {},
+  );
+  if (!response.ok) return mutationFailure(response);
+  const instance = mapExternalBridgeInstance(response.data);
+  return instance == null ? { ok: false, kind: "transient" } : { ok: true, value: instance };
+}
+
+export function logExternalAccountRefreshFailure(error: unknown): void {
+  log.warn("External account refresh failed", { error: String(error) });
 }

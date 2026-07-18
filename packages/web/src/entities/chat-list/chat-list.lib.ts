@@ -45,6 +45,22 @@ interface StreamTopicEntry {
   lastMessageId?: MessageId;
 }
 
+function resolveStreamMessageSenderName(message: WorkspaceRawMessage): string | undefined {
+  const usersStore = useUsersStore.getState();
+  const authorUuid = message.author_uuid ?? message.sender_uuid;
+  if (authorUuid != null) {
+    const authorName = usersStore.getUser(authorUuid)?.full_name.trim();
+    return authorName && authorName.length > 0 ? authorName : undefined;
+  }
+
+  const legacyAuthorName = usersStore.getUser(message.sender_id)?.full_name.trim();
+  if (legacyAuthorName && legacyAuthorName.length > 0) {
+    return legacyAuthorName;
+  }
+  const legacySenderName = message.sender_full_name?.trim();
+  return legacySenderName && legacySenderName.length > 0 ? legacySenderName : undefined;
+}
+
 export function streamTopicIdentityFromMessage(
   m: Pick<WorkspaceRawMessage, "subject" | "topic_uuid">,
 ): { subject: string; topicUuid?: string } | null {
@@ -71,9 +87,7 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
   const topicIdentity = streamTopicIdentityFromMessage(m);
   if (topicIdentity == null) return null;
   const lastMsg = truncatePreview(m.content);
-  const trimmedSenderName = m.sender_full_name?.trim();
-  const lastMessageSenderName =
-    trimmedSenderName && trimmedSenderName.length > 0 ? trimmedSenderName : undefined;
+  const lastMessageSenderName = resolveStreamMessageSenderName(m);
   const time = formatMessageTime(m.timestamp);
   const name =
     typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_uuid);
@@ -304,6 +318,8 @@ function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
       ...(t.color != null ? { color: t.color } : {}),
       ...(t.sourceName != null ? { sourceName: t.sourceName } : {}),
       ...(t.source != null ? { source: t.source } : {}),
+      ...(t.provider != null ? { provider: t.provider } : {}),
+      ...(t.delivery != null ? { delivery: t.delivery } : {}),
     }));
   const badge = s.unreadCount ?? 0;
   return {
@@ -311,6 +327,8 @@ function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
     ...(s.color != null ? { color: s.color } : {}),
     ...(s.sourceName != null ? { sourceName: s.sourceName } : {}),
     ...(s.source != null ? { source: s.source } : {}),
+    ...(s.provider != null ? { provider: s.provider } : {}),
+    ...(s.delivery != null ? { delivery: s.delivery } : {}),
     streamUuid: s.streamUuid,
     name: s.name,
     lastMessage: s.lastMessage,

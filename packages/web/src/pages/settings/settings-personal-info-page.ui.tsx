@@ -6,11 +6,8 @@ import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.l
 import { fetchOwnStatus, updateOwnStatus } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
-import {
-  CalendarExternalAccountCard,
-  MailExternalAccountCard,
-} from "~/features/external-accounts/groupware-external-accounts.ui";
 import { ZulipExternalAccountCard } from "~/features/external-accounts/zulip-external-account.ui";
+import { ZulipExternalAdminPanel } from "~/features/external-accounts/zulip-external-admin.ui";
 import {
   fetchUserProfile,
   getOwnAvatarCapabilities,
@@ -24,7 +21,6 @@ import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
-import { env } from "~/shared/lib/env";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
@@ -104,13 +100,7 @@ function saveChangedProfileFields(params: SaveChangedProfileFieldsParams) {
   return Promise.all([profileUpdatePromise, statusUpdatePromise]);
 }
 
-interface SettingsPersonalInfoPageProps {
-  messengerOnly?: boolean;
-}
-
-export const SettingsPersonalInfoPage: React.FC<SettingsPersonalInfoPageProps> = ({
-  messengerOnly = env.MESSENGER_ONLY,
-}) => {
+export const SettingsPersonalInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
   const [copied, setCopied] = useState(false);
@@ -602,13 +592,8 @@ export const SettingsPersonalInfoPage: React.FC<SettingsPersonalInfoPageProps> =
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-        {!messengerOnly && (
-          <>
-            <ZulipExternalAccountCard />
-            <MailExternalAccountCard />
-            <CalendarExternalAccountCard />
-          </>
-        )}
+        <ZulipExternalAccountCard />
+        <ZulipExternalAdminPanel />
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
           <header className="border-b border-border-subtle pb-3">
             <h2 className="mb-3 text-sm font-semibold text-text-primary">

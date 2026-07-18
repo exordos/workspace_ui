@@ -76,6 +76,11 @@ export interface LayoutCurrentChatActions {
     sourceName: MockMessage["source_name"],
     source: MockMessage["source"],
   ) => void;
+  updateMessageProviderDelivery: (
+    messageId: MessageId,
+    provider: MockMessage["provider"],
+    delivery: MockMessage["delivery"],
+  ) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: string;
@@ -174,6 +179,7 @@ export interface LayoutFolderSyncActions {
   applyRealtimeFolderSnapshot: (folder: WorkspaceFolder) => void;
   applyRealtimeFolderDeleted: (folderId: string) => void;
   applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
+  applyStreamUnreadCount: (streamUuid: string, unreadCount: number) => void;
   refresh?: (reason: "mutation") => Promise<void> | void;
 }
 

@@ -3,7 +3,6 @@ import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import type { UserStatus } from "~/entities/user/user.model";
 import { ZulipExternalAccountCard } from "~/features/external-accounts/zulip-external-account.ui";
 import { t } from "~/i18n/i18n";
-import { env } from "~/shared/lib/env";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
@@ -27,7 +26,6 @@ export interface RightPanelUserProfileHeaderProps {
   showProfileCallButton: boolean;
   onProfileDmCall: () => void;
   onAvatarAction: () => void;
-  messengerOnly?: boolean;
 }
 
 export const RightPanelUserProfileHeader = React.memo(function RightPanelUserProfileHeader({
@@ -44,7 +42,6 @@ export const RightPanelUserProfileHeader = React.memo(function RightPanelUserPro
   showProfileCallButton,
   onProfileDmCall,
   onAvatarAction,
-  messengerOnly = env.MESSENGER_ONLY,
 }: RightPanelUserProfileHeaderProps) {
   const handleOpenDm = useCallback(() => {
     if (directMessageUserId != null) onOpenDirectMessage?.(directMessageUserId);
@@ -103,6 +100,14 @@ export const RightPanelUserProfileHeader = React.memo(function RightPanelUserPro
             </p>
           )}
           {lastSeenLabel && <p className="text-[11px] text-text-secondary">{lastSeenLabel}</p>}
+          {user.identityKind === "external" && user.provider != null && (
+            <p
+              className="text-[11px] font-medium text-accent"
+              data-testid="external-identity-badge"
+            >
+              {t("info.externalIdentity", { provider: user.provider.kind })}
+            </p>
+          )}
         </div>
       </div>
       {directMessageUserId != null && (
@@ -128,7 +133,7 @@ export const RightPanelUserProfileHeader = React.memo(function RightPanelUserPro
           )}
         </div>
       )}
-      {isOwnProfile && !messengerOnly && (
+      {isOwnProfile && (
         <div className="mt-3">
           <ZulipExternalAccountCard compact />
         </div>

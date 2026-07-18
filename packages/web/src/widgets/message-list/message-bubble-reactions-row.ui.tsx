@@ -25,6 +25,9 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
     <div className="flex min-w-0 flex-1 flex-wrap items-end justify-start gap-1">
       {reactionGroups.map(({ key, count, displayChar, emojiName, imageUrl }) => {
         const hasCurrentUser = ownReactionEmojiNames.has(emojiName);
+        const reactionEnabled =
+          message.provider == null ||
+          (hasCurrentUser ? callbacks?.onRemoveReaction != null : callbacks?.onAddReaction != null);
         const reactionPrefix = imageUrl != null ? `:${emojiName}:` : displayChar;
         const reactionTitle = resolveReactionTitle({
           reactionAuthors: "",
@@ -36,13 +39,16 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
           <button
             type="button"
             key={key}
-            className={`inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+            className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+              reactionEnabled ? "cursor-pointer" : "cursor-default opacity-70"
+            } ${
               hasCurrentUser
                 ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
                 : "bg-bg-elevated/90 border-border-subtle hover:bg-bg-elevated"
             }`}
             title={hideReactionChipMeta ? undefined : reactionTitle}
             aria-label={reactionTitle}
+            disabled={!reactionEnabled}
             onClick={() => {
               const payload = {
                 emojiName,

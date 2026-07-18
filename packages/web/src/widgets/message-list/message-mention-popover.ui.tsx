@@ -92,6 +92,8 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
         avatar_url: u.avatar_url ?? undefined,
         role: u.role,
         profile_data: u.profile_data,
+        identity_kind: u.identity_kind,
+        provider: u.provider,
       });
       useChatListStore.getState().patchPersonalDmRowLabelsForUser(u.user_id);
     });
@@ -254,6 +256,11 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             ) : (
               <p className="truncate text-xs text-text-muted">{statusLine}</p>
             )}
+            {user?.identity_kind === "external" && user.provider != null && (
+              <p className="truncate text-xs font-medium text-accent">
+                {t("info.externalIdentity", { provider: user.provider.kind })}
+              </p>
+            )}
           </div>
         </div>
         <div className="mt-3 max-h-[calc(100dvh-12rem)] min-h-0 overflow-y-auto overscroll-contain border-t border-border-subtle pt-3">
@@ -294,15 +301,18 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
           </div>
         </div>
         <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
-            onClick={handleOpenDm}
-          >
-            <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-            <span className="truncate">{t("info.openDirectMessages")}</span>
-          </button>
+          {user?.identity_kind !== "external" && (
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+              onClick={handleOpenDm}
+            >
+              <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
+              <span className="truncate">{t("info.openDirectMessages")}</span>
+            </button>
+          )}
           {profileDmCallHandlerReady &&
+            user?.identity_kind !== "external" &&
             numericUserId != null &&
             currentUserId != null &&
             !userIdsEqual(userId, currentUserId) && (

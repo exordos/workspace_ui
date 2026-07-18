@@ -53,6 +53,8 @@ const WORKSPACE_EVENT_OBJECT_TYPES = new Set<WorkspaceEventObjectType>([
   "folder_item",
   "file",
   "external_account",
+  "external_chat",
+  "external_operation",
   "mail_folder",
   "mail_message",
   "calendar",
@@ -822,6 +824,125 @@ function folderItemDeletedEventFromWorkspaceItem(
   };
 }
 
+type ExactWorkspaceEventAdapter = (
+  epochVersion: number,
+  row: Record<string, unknown>,
+  payload: Record<string, unknown>,
+) => AdaptedMessengerEvent;
+
+function adaptedEventOrInvalid(
+  epochVersion: number,
+  event: MessengerEvent | null,
+  invalidReason: string,
+): AdaptedMessengerEvent {
+  return event == null
+    ? { epochVersion, event: null, skipReason: invalidReason }
+    : { epochVersion, event };
+}
+
+function adaptWorkspaceMessageEvent(
+  epochVersion: number,
+  row: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  kind: "message.created" | "message.updated" | "message.read",
+): AdaptedMessengerEvent {
+  const currentUserUuid = normalizeUuid(row.user_uuid);
+  const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
+  if (message == null) {
+    return { epochVersion, event: null, skipReason: `invalid ${kind} payload` };
+  }
+  return {
+    epochVersion,
+    event: {
+      id: epochVersion,
+      type: "message",
+      kind,
+      epoch_version: epochVersion,
+      message,
+    },
+  };
+}
+
+function adaptWorkspaceDeletedMessageEvent(
+  epochVersion: number,
+  payload: Record<string, unknown>,
+): AdaptedMessengerEvent {
+  const message = deletedMessageFromWorkspaceEventPayload(payload);
+  if (message == null) {
+    return { epochVersion, event: null, skipReason: "invalid message.deleted payload" };
+  }
+  return {
+    epochVersion,
+    event: {
+      id: epochVersion,
+      type: "message",
+      kind: "message.deleted",
+      epoch_version: epochVersion,
+      message,
+      message_id: message.id,
+      message_ids: [message.id],
+    },
+  };
+}
+
+const exactWorkspaceEventAdapters: Readonly<Record<string, ExactWorkspaceEventAdapter>> = {
+  "user.updated": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      userEventFromWorkspaceUser(epochVersion, payload),
+      "invalid user.updated payload",
+    ),
+  "messages.read": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      messagesReadEventFromWorkspacePayload(epochVersion, payload),
+      "invalid messages.read payload",
+    ),
+  "message.created": (epochVersion, row, payload) =>
+    adaptWorkspaceMessageEvent(epochVersion, row, payload, "message.created"),
+  "message.updated": (epochVersion, row, payload) =>
+    adaptWorkspaceMessageEvent(epochVersion, row, payload, "message.updated"),
+  "message.read": (epochVersion, row, payload) =>
+    adaptWorkspaceMessageEvent(epochVersion, row, payload, "message.read"),
+  "message.deleted": (epochVersion, _row, payload) =>
+    adaptWorkspaceDeletedMessageEvent(epochVersion, payload),
+  "stream_bindings.created": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      streamBindingsEventFromWorkspacePayload(epochVersion, payload),
+      "invalid stream_bindings.created payload",
+    ),
+  "folder.created": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      folderEventFromWorkspaceFolder(epochVersion, "folder.created", payload),
+      "invalid folder.created payload",
+    ),
+  "folder.updated": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      folderEventFromWorkspaceFolder(epochVersion, "folder.updated", payload),
+      "invalid folder.updated payload",
+    ),
+  "folder.deleted": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      folderDeletedEventFromWorkspaceFolder(epochVersion, payload),
+      "invalid folder.deleted payload",
+    ),
+  "folder_item.deleted": (epochVersion, _row, payload) =>
+    adaptedEventOrInvalid(
+      epochVersion,
+      folderItemDeletedEventFromWorkspaceItem(epochVersion, payload),
+      "invalid folder_item.deleted payload",
+    ),
+};
+
+function exactWorkspaceEventAdapter(kind: string | null): ExactWorkspaceEventAdapter | null {
+  if (kind == null || !Object.hasOwn(exactWorkspaceEventAdapters, kind)) return null;
+  return exactWorkspaceEventAdapters[kind] ?? null;
+}
+
 export function adaptWorkspaceEventForMessenger(row: unknown): AdaptedMessengerEvent | null {
   if (!isRecord(row)) {
     return null;
@@ -835,52 +956,9 @@ export function adaptWorkspaceEventForMessenger(row: unknown): AdaptedMessengerE
     return { epochVersion, event: null, skipReason: "missing payload" };
   }
   const kind = readString(payload.kind);
-  if (kind === "user.updated") {
-    const event = userEventFromWorkspaceUser(epochVersion, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid user.updated payload" }
-      : { epochVersion, event };
-  }
-  if (kind === "messages.read") {
-    const event = messagesReadEventFromWorkspacePayload(epochVersion, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid messages.read payload" }
-      : { epochVersion, event };
-  }
-  if (kind === "message.created" || kind === "message.updated" || kind === "message.read") {
-    const currentUserUuid = normalizeUuid(row.user_uuid);
-    const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
-    if (message == null) {
-      return { epochVersion, event: null, skipReason: `invalid ${kind} payload` };
-    }
-    return {
-      epochVersion,
-      event: {
-        id: epochVersion,
-        type: "message",
-        kind,
-        epoch_version: epochVersion,
-        message,
-      },
-    };
-  }
-  if (kind === "message.deleted") {
-    const message = deletedMessageFromWorkspaceEventPayload(payload);
-    if (message == null) {
-      return { epochVersion, event: null, skipReason: "invalid message.deleted payload" };
-    }
-    return {
-      epochVersion,
-      event: {
-        id: epochVersion,
-        type: "message",
-        kind,
-        epoch_version: epochVersion,
-        message,
-        message_id: message.id,
-        message_ids: [message.id],
-      },
-    };
+  const exactAdapter = exactWorkspaceEventAdapter(kind);
+  if (exactAdapter != null) {
+    return exactAdapter(epochVersion, row, payload);
   }
   if (isWorkspaceStreamEventKind(kind)) {
     const event = streamEventFromWorkspaceStream(epochVersion, kind, payload);
@@ -892,30 +970,6 @@ export function adaptWorkspaceEventForMessenger(row: unknown): AdaptedMessengerE
     const event = topicEventFromWorkspaceTopic(epochVersion, kind, payload);
     return event == null
       ? { epochVersion, event: null, skipReason: `invalid ${kind} payload` }
-      : { epochVersion, event };
-  }
-  if (kind === "stream_bindings.created") {
-    const event = streamBindingsEventFromWorkspacePayload(epochVersion, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid stream_bindings.created payload" }
-      : { epochVersion, event };
-  }
-  if (kind === "folder.created" || kind === "folder.updated") {
-    const event = folderEventFromWorkspaceFolder(epochVersion, kind, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: `invalid ${kind} payload` }
-      : { epochVersion, event };
-  }
-  if (kind === "folder.deleted") {
-    const event = folderDeletedEventFromWorkspaceFolder(epochVersion, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid folder.deleted payload" }
-      : { epochVersion, event };
-  }
-  if (kind === "folder_item.deleted") {
-    const event = folderItemDeletedEventFromWorkspaceItem(epochVersion, payload);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted payload" }
       : { epochVersion, event };
   }
   if (kind?.startsWith("mail.") || kind?.startsWith("calendar.")) {

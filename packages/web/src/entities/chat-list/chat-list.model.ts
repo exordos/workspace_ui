@@ -82,15 +82,16 @@ import {
   streamTopicIdentityFromMessage,
 } from "./chat-list.lib";
 import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
-import type { ChatListState, MessageLocation } from "./chat-list.model.types";
+import type {
+  ChatListState,
+  ChatListStreamTopicMetadataRow,
+  MessageLocation,
+} from "./chat-list.model.types";
 
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
-function sourceMetadataEqual(
-  left: StreamTopicEntryInternal["source"] | undefined,
-  right: StreamTopicEntryInternal["source"] | undefined,
-): boolean {
+function sourceMetadataEqual(left: unknown, right: unknown): boolean {
   if (left === right) return true;
   if (left == null || right == null) return left == null && right == null;
   return JSON.stringify(left) === JSON.stringify(right);
@@ -105,6 +106,8 @@ function isStreamTopicShellSynced(
   color: number | undefined,
   sourceName: StreamTopicEntryInternal["sourceName"] | undefined,
   source: StreamTopicEntryInternal["source"] | undefined,
+  provider: StreamTopicEntryInternal["provider"] | undefined,
+  delivery: StreamTopicEntryInternal["delivery"] | undefined,
 ): boolean {
   return (
     existing?.topicUuid === topicUuid &&
@@ -113,7 +116,9 @@ function isStreamTopicShellSynced(
     (existing.isDone ?? false) === isDone &&
     existing.color === color &&
     existing.sourceName === sourceName &&
-    sourceMetadataEqual(existing.source, source)
+    sourceMetadataEqual(existing.source, source) &&
+    sourceMetadataEqual(existing.provider, provider) &&
+    sourceMetadataEqual(existing.delivery, delivery)
   );
 }
 
@@ -364,7 +369,7 @@ function hasStreamMetadataAccessChanged(
 }
 
 function findTopicKeyByUuid(
-  topics: Map<string, StreamTopicEntryInternal>,
+  topics: ReadonlyMap<string, StreamTopicEntryInternal>,
   topicUuid: string,
 ): string | null {
   for (const [key, topic] of topics) {
@@ -373,6 +378,74 @@ function findTopicKeyByUuid(
     }
   }
   return null;
+}
+
+interface StreamTopicShellMutation {
+  existingKey: string;
+  topicName: string;
+  nextTopic: StreamTopicEntryInternal;
+}
+
+function resolveStreamTopicShellMutation(
+  topics: ReadonlyMap<string, StreamTopicEntryInternal>,
+  row: ChatListStreamTopicMetadataRow,
+): StreamTopicShellMutation | null {
+  const topicUuid = row.topicUuid.trim().toLowerCase();
+  const topicName = row.name.trim();
+  if (topicUuid.length === 0 || topicName.length === 0) return null;
+
+  const existingByName = topics.get(topicName);
+  const existingUuidKey = existingByName == null ? findTopicKeyByUuid(topics, topicUuid) : null;
+  const existingKey = existingUuidKey ?? topicName;
+  const existing =
+    existingByName ?? (existingUuidKey != null ? topics.get(existingUuidKey) : undefined);
+  const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
+  const isDone = row.isDone ?? existing?.isDone ?? false;
+  const color = row.color ?? existing?.color;
+  const sourceName = row.sourceName ?? existing?.sourceName;
+  const source = row.source ?? existing?.source;
+  const provider = "provider" in row ? row.provider : existing?.provider;
+  const delivery = "delivery" in row ? row.delivery : existing?.delivery;
+  if (
+    isStreamTopicShellSynced(
+      existing,
+      topicUuid,
+      topicName,
+      unreadCount,
+      isDone,
+      color,
+      sourceName,
+      source,
+      provider,
+      delivery,
+    )
+  ) {
+    return null;
+  }
+
+  const nextTopic: StreamTopicEntryInternal = {
+    ...(existing ?? {
+      lastMessage: "",
+      lastMessageSenderName: undefined,
+      time: "",
+      ts: 0,
+      unreadCount: 0,
+    }),
+    topicUuid,
+    subject: topicName,
+    unreadCount,
+    ...(color != null ? { color } : {}),
+    ...(sourceName != null ? { sourceName } : {}),
+    ...(source != null ? { source } : {}),
+    ...(provider !== undefined ? { provider } : {}),
+    ...(delivery !== undefined ? { delivery } : {}),
+  };
+  if (isDone) {
+    nextTopic.isDone = true;
+  } else {
+    delete nextTopic.isDone;
+  }
+  return { existingKey, topicName, nextTopic };
 }
 
 export const useChatListStore = create<ChatListState>((set, get) => {
@@ -685,65 +758,16 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         let nextTopics = stream.topics;
         let changed = false;
         for (const row of topics) {
-          const topicUuid = row.topicUuid.trim().toLowerCase();
-          const topicName = row.name.trim();
-          if (topicUuid.length === 0 || topicName.length === 0) {
-            continue;
-          }
-          const existingByName = nextTopics.get(topicName);
-          const existingUuidKey =
-            existingByName == null ? findTopicKeyByUuid(nextTopics, topicUuid) : null;
-          const existingKey = existingUuidKey ?? topicName;
-          const existing =
-            existingByName ??
-            (existingUuidKey != null ? nextTopics.get(existingUuidKey) : undefined);
-          const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
-          const isDone = row.isDone ?? existing?.isDone ?? false;
-          const color = row.color ?? existing?.color;
-          const sourceName = row.sourceName ?? existing?.sourceName;
-          const source = row.source ?? existing?.source;
-          if (
-            isStreamTopicShellSynced(
-              existing,
-              topicUuid,
-              topicName,
-              unreadCount,
-              isDone,
-              color,
-              sourceName,
-              source,
-            )
-          ) {
-            continue;
-          }
+          const mutation = resolveStreamTopicShellMutation(nextTopics, row);
+          if (mutation == null) continue;
           if (!changed) {
             nextTopics = new Map(nextTopics);
             changed = true;
           }
-          if (existingKey !== topicName) {
-            nextTopics.delete(existingKey);
+          if (mutation.existingKey !== mutation.topicName) {
+            nextTopics.delete(mutation.existingKey);
           }
-          const nextTopic: StreamTopicEntryInternal = {
-            ...(existing ?? {
-              lastMessage: "",
-              lastMessageSenderName: undefined,
-              time: "",
-              ts: 0,
-              unreadCount: 0,
-            }),
-            topicUuid,
-            subject: topicName,
-            unreadCount,
-            ...(color != null ? { color } : {}),
-            ...(sourceName != null ? { sourceName } : {}),
-            ...(source != null ? { source } : {}),
-          };
-          if (isDone) {
-            nextTopic.isDone = true;
-          } else {
-            delete nextTopic.isDone;
-          }
-          nextTopics.set(topicName, nextTopic);
+          nextTopics.set(mutation.topicName, mutation.nextTopic);
         }
         if (!changed) return state;
         const nextStreams = new Map(state.streamsMap);

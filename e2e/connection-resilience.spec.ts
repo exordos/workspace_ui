@@ -1,10 +1,8 @@
 /**
- * E2E: connection banner, offline mode, API failures, event-queue re-register.
+ * E2E: connection banner, offline mode, API failures, and Workspace event catch-up.
  */
 import { test, expect } from "./fixtures";
-import { badEventQueueIdError } from "./helpers/messenger-api-mock";
-import { reconnectSidebarDeltaMessages } from "./mocks/messenger-default-responses";
-import { failWorkspaceApi } from "./helpers/fail-workspace-api";
+import { reconnectSidebarDeltaEvents } from "./mocks/messenger-default-responses";
 import { setBrowserOffline, setBrowserOnline } from "./helpers/network";
 import { seedAuthStorage } from "./helpers/seed-auth";
 import { seedChatListIndexedDb } from "./helpers/seed-chat-list-cache";
@@ -18,9 +16,10 @@ test.describe("Connection resilience @mock", () => {
     messengerApi,
   }) => {
     // 400 avoids client retry backoff on 503 (bootstrap would stay on fullscreen loader too long).
-    messengerApi.statusMatching(/\/api\/v1\//, 400, 100);
-    await failWorkspaceApi(page);
-    await seedAuthStorage(page);
+    messengerApi.statusMatching(/\/api\/workspace\/v1\//, 400, 100);
+    // Keep the IAM instance valid while omitting identity claims so bootstrap must resolve the
+    // current user from the unavailable API rather than treating the JWT subject as cached data.
+    await seedAuthStorage(page, "e2e.invalid.signature");
     await page.reload();
 
     const blocked = new ConnectionBlockedPage(page);
@@ -38,8 +37,7 @@ test.describe("Connection resilience @mock", () => {
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await seedChatListIndexedDb(page);
 
-    messengerApi.statusMatching(/\/api\/v1\//, 400, 100);
-    await failWorkspaceApi(page);
+    messengerApi.abortMatching(/\/api\/workspace\/v1\//, 100);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 
@@ -51,15 +49,16 @@ test.describe("Connection resilience @mock", () => {
     await banner.expectDegradedMessage();
   });
 
-  test("shows degraded banner when events request aborts", async ({ authenticated, messengerApi }) => {
-    const initialRegisters = messengerApi.getRegisterCallCount();
+  test("shows degraded banner when events request aborts", async ({
+    authenticated,
+    messengerApi,
+  }) => {
     messengerApi.abortMatching(/\/events/, 3);
 
     const banner = new ConnectionBannerPage(authenticated);
     await banner.expectVisible({ timeout: 15_000 });
     await banner.expectDegradedMessage();
     await expect(banner.reloadButton).toBeVisible();
-    expect(messengerApi.getRegisterCallCount()).toBeGreaterThanOrEqual(initialRegisters);
   });
 
   test("hides banner after API recovers", async ({ authenticated, messengerApi }) => {
@@ -106,11 +105,9 @@ test.describe("Connection resilience @mock", () => {
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await expect(authenticated.getByText("Cached hello")).toBeVisible({ timeout: 15_000 });
 
-    messengerApi.setPersistentMessagesResponse(reconnectSidebarDeltaMessages());
     await setBrowserOffline(context);
+    messengerApi.setNextEventsResponse(reconnectSidebarDeltaEvents());
     await setBrowserOnline(context);
-    // Full reconnect stages stream previews until the next queue register (rare in mock E2E).
-    // Window focus triggers the light reconnect path, which applies the /messages delta directly.
     await authenticated.evaluate(() => window.dispatchEvent(new Event("focus")));
     await authenticated.waitForTimeout(800);
 
@@ -119,7 +116,10 @@ test.describe("Connection resilience @mock", () => {
     });
   });
 
-  test("clears offline banner when browser goes back online", async ({ authenticated, context }) => {
+  test("clears offline banner when browser goes back online", async ({
+    authenticated,
+    context,
+  }) => {
     await setBrowserOffline(context);
     const banner = new ConnectionBannerPage(authenticated);
     await banner.expectVisible({ timeout: 15_000 });
@@ -128,27 +128,23 @@ test.describe("Connection resilience @mock", () => {
     await banner.expectHidden({ timeout: 20_000 });
   });
 
-  test("re-registers queue after BAD_EVENT_QUEUE_ID on events", async ({ page, messengerApi }) => {
-    messengerApi.setFixedQueueId("e2e-queue-initial");
-    messengerApi.setNextEventsResponse(badEventQueueIdError("e2e-queue-initial"));
+  test("fetches the current event feed after bootstrap", async ({ page, messengerApi }) => {
+    const eventsBefore = messengerApi.getEventsCallCount();
     await seedAuthStorage(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 30_000 });
 
-    await expect.poll(() => messengerApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThanOrEqual(
-      2,
-    );
+    await expect
+      .poll(() => messengerApi.getEventsCallCount(), { timeout: 20_000 })
+      .toBeGreaterThan(eventsBefore);
   });
 
-  test("re-registers queue when events response omits result", async ({ page, messengerApi }) => {
-    const registersBefore = messengerApi.getRegisterCallCount();
-    messengerApi.setNextEventsResponse({ events: [] });
+  test("accepts the current event envelope response", async ({ page, messengerApi }) => {
+    messengerApi.setNextEventsResponse({ events: reconnectSidebarDeltaEvents() });
     await seedAuthStorage(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 30_000 });
 
-    await expect.poll(() => messengerApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThan(
-      registersBefore + 1,
-    );
+    await expect(page.getByText("After reconnect sidebar")).toBeVisible({ timeout: 20_000 });
   });
 });

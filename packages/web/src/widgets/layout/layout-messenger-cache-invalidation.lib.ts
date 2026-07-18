@@ -1,4 +1,5 @@
 /** Clears the current account cache after the server explicitly expires its event cursor. */
+import { deleteCurrentExternalAccountsSnapshot } from "~/features/external-accounts/external-accounts-cache.db";
 import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
 import { deleteFoldersSnapshotRow } from "~/shared/lib/folders-snapshot-db";
 import { deleteMessageCacheForInstance } from "~/shared/lib/message-cache-db";
@@ -20,6 +21,7 @@ export async function clearMessengerCachesForExpiredCursor(instanceId: string): 
     deleteMessageCacheForInstance(instanceId),
     deleteMuteSnapshotRow(instanceId),
     deleteUsersDirectoryRow(instanceId),
+    deleteCurrentExternalAccountsSnapshot(),
     ...(accountScope == null ? [] : [deleteMessengerEntitiesSnapshotsByAccount(accountScope)]),
     ...(fileCacheScope == null ? [] : [clearWorkspaceFileCachePartition(fileCacheScope)]),
   ]);

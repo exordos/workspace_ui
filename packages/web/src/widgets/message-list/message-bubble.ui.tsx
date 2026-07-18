@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { preflightExternalOperation } from "~/features/external-accounts/external-accounts.api";
+import {
+  EXTERNAL_CAPABILITY,
+  type ExternalCapabilityName,
+} from "~/features/external-accounts/external-capabilities.lib";
 import { t } from "~/i18n/i18n";
 import { fetchMessageReactions } from "~/shared/api/messenger-messages";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
@@ -11,7 +16,7 @@ import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdo
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
 import { isIamUserUuid, numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
-import { ProviderDeliveryBadge } from "~/shared/ui/provider-delivery-badge";
+import { AccessibleAlertDialog } from "~/shared/ui/accessible-alert-dialog.ui";
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
@@ -32,9 +37,66 @@ import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
-import type { MessageBubbleProps } from "./message-bubble.types";
+import type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+
+interface ExternalPreflightDialogProps {
+  losses: readonly string[] | null;
+  error: string | null;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}
+
+const ExternalPreflightDialog: React.FC<ExternalPreflightDialogProps> = ({
+  losses,
+  error,
+  onConfirm,
+  onDismiss,
+}) => {
+  if (losses == null && error == null) return null;
+  const label =
+    losses == null
+      ? t("message.externalOperationUnavailable")
+      : t("message.externalOperationLossTitle");
+  return (
+    <AccessibleAlertDialog
+      className="fixed inset-0 z-modal grid place-items-center bg-black/50 p-4"
+      label={label}
+      onDismiss={onDismiss}
+      data-testid="external-operation-preflight-dialog"
+    >
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-card-bg p-4 shadow-xl">
+        <p className="text-sm font-semibold text-text-primary">{label}</p>
+        {losses != null && (
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text-secondary">
+            {losses.map((loss) => (
+              <li key={loss}>{loss}</li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 flex gap-2">
+          {losses != null && (
+            <button
+              type="button"
+              className="min-h-11 rounded-lg bg-accent px-3 text-sm text-on-accent"
+              onClick={onConfirm}
+            >
+              {t("message.externalOperationContinue")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="min-h-11 rounded-lg border border-border-subtle px-3 text-sm text-text-primary"
+            onClick={onDismiss}
+          >
+            {losses == null ? t("common.close") : t("common.cancel")}
+          </button>
+        </div>
+      </div>
+    </AccessibleAlertDialog>
+  );
+};
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -60,6 +122,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
     const [canEditMessageContentForMenu, setCanEditMessageContentForMenu] = useState(false);
+    const [externalPreflightLosses, setExternalPreflightLosses] = useState<string[] | null>(null);
+    const [externalPreflightError, setExternalPreflightError] = useState<string | null>(null);
+    const [pendingExternalMutation, setPendingExternalMutation] = useState<(() => void) | null>(
+      null,
+    );
 
     const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
@@ -183,6 +250,83 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       );
     }, [currentUserId, message]);
 
+    const preflightExternalMutation = useCallback(
+      (action: ExternalCapabilityName, execute: () => void) => {
+        if (message.provider == null) {
+          execute();
+          return;
+        }
+        setExternalPreflightError(null);
+        void preflightExternalOperation({
+          externalAccountUuid: message.provider.accountUuid,
+          action,
+          target: { type: "message", uuid: String(message.id) },
+        })
+          .then((result) => {
+            if (!result.ok || !result.value.allowed) {
+              setExternalPreflightError(t("message.externalOperationUnavailable"));
+              return;
+            }
+            if (!result.value.requiresConfirmation) {
+              execute();
+              return;
+            }
+            setPendingExternalMutation(() => execute);
+            setExternalPreflightLosses(
+              result.value.losses.map((loss) =>
+                typeof loss.message === "string"
+                  ? loss.message
+                  : t("message.externalOperationLossFallback"),
+              ),
+            );
+          })
+          .catch(() => setExternalPreflightError(t("message.externalOperationUnavailable")));
+      },
+      [message.id, message.provider],
+    );
+    const effectiveCallbacks = useMemo(() => {
+      if (message.provider == null) return callbacks;
+      const editAvailable =
+        message.provider.capabilities["messenger.message.edit"]?.available === true;
+      const deleteAvailable =
+        message.provider.capabilities["messenger.message.delete"]?.available === true;
+      const reactionAvailable =
+        message.provider.capabilities[EXTERNAL_CAPABILITY.reactionWrite]?.available === true;
+      const onAddReaction: MessageBubbleCallbacks["onAddReaction"] =
+        callbacks?.onAddReaction != null && reactionAvailable
+          ? (messageId, payload) =>
+              preflightExternalMutation(EXTERNAL_CAPABILITY.reactionWrite, () =>
+                callbacks.onAddReaction?.(messageId, payload),
+              )
+          : undefined;
+      const onRemoveReaction: MessageBubbleCallbacks["onRemoveReaction"] =
+        callbacks?.onRemoveReaction != null && reactionAvailable
+          ? (messageId, payload) =>
+              preflightExternalMutation(EXTERNAL_CAPABILITY.reactionWrite, () =>
+                callbacks.onRemoveReaction?.(messageId, payload),
+              )
+          : undefined;
+      return {
+        ...callbacks,
+        onEdit:
+          callbacks?.onEdit != null && editAvailable
+            ? (target: typeof message) =>
+                preflightExternalMutation("messenger.message.edit", () =>
+                  callbacks.onEdit?.(target),
+                )
+            : undefined,
+        onDelete:
+          callbacks?.onDelete != null && deleteAvailable
+            ? (target: typeof message) =>
+                preflightExternalMutation("messenger.message.delete", () =>
+                  callbacks.onDelete?.(target),
+                )
+            : undefined,
+        onAddReaction,
+        onRemoveReaction,
+      };
+    }, [callbacks, message, preflightExternalMutation]);
+
     const interactions = useMessageBubbleInteractions({
       message,
       messageContent: message.content,
@@ -191,7 +335,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       jitsiUrl,
       jitsiLocationName,
       mediaGallery,
-      callbacks,
+      callbacks: effectiveCallbacks,
       onEmojiPickerOpen,
       onBeforeMenuOpen: handleBeforeMenuOpen,
       messageBodyRef,
@@ -219,16 +363,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       ? resolveMessageEditStatusIndicatorNode(message, callbacks)
       : null;
     const localDeliveryIndicator = editStatusIndicator ?? deliveryStatusIndicator;
-    const providerDeliveryBadge = (
-      <ProviderDeliveryBadge provider={message.provider} delivery={message.delivery} />
-    );
-    const ownDeliveryIndicator =
-      localDeliveryIndicator == null && message.provider == null ? null : (
-        <span className="inline-flex items-center gap-1">
-          {providerDeliveryBadge}
-          {localDeliveryIndicator}
-        </span>
-      );
+    const ownDeliveryIndicator = localDeliveryIndicator;
     const bubbleSurfaceClass = "rounded-[18px]";
     const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
     const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
@@ -243,10 +378,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           isOwn,
           canEditMessageContent: canEditMessageContentForMenu,
           isJitsiCall,
-          callbacks,
+          requireMutationCallbacks: message.provider != null,
+          callbacks: effectiveCallbacks,
         }),
-      [contextSections, isOwn, canEditMessageContentForMenu, isJitsiCall, callbacks],
+      [
+        contextSections,
+        isOwn,
+        canEditMessageContentForMenu,
+        isJitsiCall,
+        message.provider,
+        effectiveCallbacks,
+      ],
     );
+
+    const handleExternalPreflightDismiss = useCallback(() => {
+      setPendingExternalMutation(null);
+      setExternalPreflightLosses(null);
+      setExternalPreflightError(null);
+    }, []);
+    const handleExternalPreflightConfirm = useCallback(() => {
+      setPendingExternalMutation(null);
+      setExternalPreflightLosses(null);
+      pendingExternalMutation?.();
+    }, [pendingExternalMutation]);
 
     const contextMenu = (
       <MessageBubbleContextMenu
@@ -256,6 +410,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         onSourceChange={interactions.handleContextMenuSourceChange}
         onOpenChange={interactions.handleContextMenuOpenChange}
         isOwn={isOwn}
+        reactionEnabled={message.provider == null || effectiveCallbacks?.onAddReaction != null}
         emojiPickerOpen={interactions.emojiPickerOpen}
         onEmojiPickerOpenChange={interactions.handleEmojiPickerOpenChange}
         visibleContextSections={visibleContextSections}
@@ -290,7 +445,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           bubbleSurfaceClass={bubbleSurfaceClass}
           ownBubbleTailClass={ownBubbleTailClass}
           peerBubbleTailClass={peerBubbleTailClass}
-          callbacks={callbacks}
+          callbacks={effectiveCallbacks}
         />
         {contextMenu}
       </>
@@ -303,7 +458,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           hasReactions={hasReactions}
           reactionGroups={reactionGroups}
           ownReactionEmojiNames={ownReactionEmojiNames}
-          callbacks={callbacks}
+          callbacks={effectiveCallbacks}
           ownDeliveryIndicator={ownDeliveryIndicator}
           bubbleSurfaceClass={bubbleSurfaceClass}
           ownBubbleTailClass={ownBubbleTailClass}
@@ -337,11 +492,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       children: bubbleInner,
     };
 
+    const externalPreflightDialog = (
+      <ExternalPreflightDialog
+        losses={externalPreflightLosses}
+        error={externalPreflightError}
+        onConfirm={handleExternalPreflightConfirm}
+        onDismiss={handleExternalPreflightDismiss}
+      />
+    );
+
     if (inSenderGroup) {
       return (
         <>
           <MessageBubbleGroupedShell {...shellProps} containerRef={groupedContainerRef} />
           {mentionPopoverPortal}
+          {externalPreflightDialog}
         </>
       );
     }
@@ -350,6 +515,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       <>
         <MessageBubbleStandaloneShell {...shellProps} containerRef={regularContainerRef} />
         {mentionPopoverPortal}
+        {externalPreflightDialog}
       </>
     );
   },

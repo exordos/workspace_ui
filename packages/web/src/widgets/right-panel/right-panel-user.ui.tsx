@@ -21,7 +21,7 @@ export const RightPanelUser = React.memo(function RightPanelUser({
 }: RightPanelUserProps) {
   const navigate = useNavigate();
   const media = user.media ?? {};
-  const directMessageUserId = user.userId;
+  const directMessageUserId = user.identityKind === "external" ? undefined : user.userId;
   const contactRows = buildRightPanelUserContactRows(user);
   const avatarSrc = resolveAvatarSrc(user.avatarUrl);
   const openMediaViewer = useMediaViewerStore((s) => s.open);

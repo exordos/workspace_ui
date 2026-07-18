@@ -14,6 +14,7 @@ import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import type * as ExternalAccountsApiModule from "~/features/external-accounts/external-accounts.api";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import * as muteChat from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -37,6 +38,7 @@ const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const updateOwnStatusMock = vi.hoisted(() => vi.fn());
+const preflightExternalOperationMock = vi.hoisted(() => vi.fn());
 const ENGINEERING_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
 const DESIGN_STREAM_UUID = "00000000-0000-4000-8000-000000000011";
 const RELEASE_TOPIC_UUID = "00000000-0000-4000-8000-000000000210";
@@ -85,6 +87,14 @@ vi.mock("~/shared/lib/updater", () => ({
 vi.mock("~/features/external-accounts/zulip-external-account.ui", () => ({
   ZulipExternalAccountCard: () => "Zulip external account card",
 }));
+
+vi.mock("~/features/external-accounts/external-accounts.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof ExternalAccountsApiModule>();
+  return {
+    ...actual,
+    preflightExternalOperation: (...args: unknown[]) => preflightExternalOperationMock(...args),
+  };
+});
 
 vi.mock("~/shared/api/messenger-users", async () => {
   const actual = await vi.importActual("~/shared/api/messenger-users");
@@ -158,6 +168,17 @@ describe("RightPanel truthfulness", () => {
   beforeEach(() => {
     removeUserStatusAwayPreference(ADMIN_USER_UUID);
     resetRealmEmojisCacheForTests();
+    preflightExternalOperationMock.mockReset();
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.stream.rename",
+        target: { type: "stream", uuid: ENGINEERING_STREAM_UUID },
+        losses: [],
+        requiresConfirmation: false,
+      },
+    });
   });
 
   afterEach(() => {
@@ -743,7 +764,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("Zulip external account card")).toBeInTheDocument();
   });
 
-  it("does not mount external account controls in a messenger-only right-panel profile", () => {
+  it("keeps Zulip controls available in the messenger-only right-panel profile", () => {
     renderWithProviders(
       <RightPanelUserProfileHeader
         user={{ name: "Admin User", userId: 42 }}
@@ -758,11 +779,10 @@ describe("RightPanel truthfulness", () => {
         showProfileCallButton={false}
         onProfileDmCall={vi.fn()}
         onAvatarAction={vi.fn()}
-        messengerOnly
       />,
     );
 
-    expect(screen.queryByText("Zulip external account card")).not.toBeInTheDocument();
+    expect(screen.getByText("Zulip external account card")).toBeInTheDocument();
   });
 
   it("copies email and user id from profile contact rows", async () => {
@@ -2415,6 +2435,120 @@ describe("RightPanel truthfulness", () => {
       expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, {
         name: "platform",
         description: "Platform discussions",
+      });
+    });
+  });
+
+  it("fails closed for external stream rename without the effective capability", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: ENGINEERING_STREAM_UUID,
+          streamName: "engineering",
+          topic: "general",
+        },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: ENGINEERING_STREAM_UUID,
+          name: "engineering",
+          provider: {
+            kind: "zulip",
+            accountUuid: "external-account-1",
+            externalId: "zulip-stream-1",
+            capabilities: {},
+          },
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /edit channel/i })).not.toBeInTheDocument();
+    expect(preflightExternalOperationMock).not.toHaveBeenCalled();
+  });
+
+  it("preflights an allowed external stream rename before updating the stream", async () => {
+    const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
+    const provider = {
+      kind: "zulip",
+      accountUuid: "external-account-1",
+      externalId: "zulip-stream-1",
+      capabilities: {
+        "messenger.stream.rename": { available: true, revision: 1, limits: {} },
+      },
+    };
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: ENGINEERING_STREAM_UUID,
+          streamName: "engineering",
+          topic: "general",
+        },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: ENGINEERING_STREAM_UUID, name: "engineering", provider },
+        ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
+    fireEvent.change(screen.getByLabelText(/channel name/i), {
+      target: { value: "platform" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(preflightExternalOperationMock).toHaveBeenCalledWith({
+        externalAccountUuid: "external-account-1",
+        action: "messenger.stream.rename",
+        target: { type: "stream", uuid: ENGINEERING_STREAM_UUID },
+      });
+      expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, {
+        name: "platform",
+        description: "Engineering stream",
       });
     });
   });

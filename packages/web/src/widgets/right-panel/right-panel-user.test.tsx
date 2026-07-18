@@ -80,4 +80,25 @@ describe("RightPanelUser", () => {
 
     expect(screen.queryByRole("button", { name: /^call$/i })).not.toBeInTheDocument();
   });
+
+  it("labels an external identity and does not offer native DM or call actions", () => {
+    useChatListStore.getState().setCurrentUserId(7);
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(vi.fn());
+
+    renderWithProviders(
+      <RightPanelUser
+        user={{
+          name: "Zulip Guest",
+          userId: 99,
+          identityKind: "external",
+          provider: { kind: "zulip", accountUuid: "account-1" },
+        }}
+        onOpenDirectMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("external-identity-badge")).toHaveTextContent("External zulip");
+    expect(screen.queryByRole("button", { name: /direct messages/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^call$/i })).not.toBeInTheDocument();
+  });
 });

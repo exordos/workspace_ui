@@ -21,6 +21,8 @@ export interface RightPanelUserInfo {
   manager?: string;
   localTime?: string;
   birthday?: string;
+  identityKind?: "external";
+  provider?: { kind: "zulip"; accountUuid: string } | null;
   media?: { photos?: number; videos?: number; files?: number; links?: number };
 }
 

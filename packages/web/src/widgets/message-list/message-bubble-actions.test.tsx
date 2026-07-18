@@ -14,6 +14,11 @@ import { buildMessageMediaGallery } from "./message-list-media.lib";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
 const emojiPickerMock = vi.hoisted(() => vi.fn());
+const preflightExternalOperationMock = vi.hoisted(() => vi.fn());
+
+vi.mock("~/features/external-accounts/external-accounts.api", () => ({
+  preflightExternalOperation: preflightExternalOperationMock,
+}));
 
 vi.mock("emoji-picker-react", () => ({
   default: (props: {
@@ -110,6 +115,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
     emojiPickerMock.mockReset();
+    preflightExternalOperationMock.mockReset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -533,23 +539,31 @@ describe("MessageBubble edit/delete actions parity", () => {
           source_name: "zulip",
           source: { kind: "zulip", message_id: 42 },
           provider: {
-            uuid: "provider-1",
-            name: "CASSI Zulip",
             kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {},
           },
           delivery: {
+            externalOperationUuid: "operation-1",
             status: "failed",
             safeError: "Remote service unavailable",
+            canRetry: true,
+            canDiscard: true,
             updatedAt: "2026-07-15T10:00:00Z",
+            duplicateRisk: false,
+            retryRequiresConfirmation: false,
+            originalUrl: null,
+            reconciliationReason: null,
           },
         })}
         isOwn
       />,
     );
 
-    expect(screen.getByTestId("provider-delivery-failed")).toHaveTextContent("CASSI Zulip");
-    expect(screen.queryByTestId("external-source-zulip")).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/delivery via cassi zulip failed/i)).toHaveAttribute(
+    expect(screen.getByTestId("external-source-zulip")).toHaveTextContent("Zulip");
+    expect(screen.queryByTestId("provider-delivery-failed")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/delivery via zulip failed/i)).toHaveAttribute(
       "title",
       expect.stringContaining("Remote service unavailable"),
     );
@@ -557,6 +571,204 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(metadata.lastElementChild).toBe(
       screen.getByTestId(`message-time-${testMessageId(101)}`),
     );
+  });
+
+  it("shows an interactive provider badge for an incoming external message without delivery", () => {
+    render(
+      <MessageBubble
+        message={createMessage({
+          source_name: "zulip",
+          source: {
+            kind: "zulip",
+            original_url: "https://zulip.example.com/#narrow/channel/42",
+          },
+          provider: {
+            kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {},
+          },
+          delivery: null,
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const badge = screen.getByLabelText(/imported from zulip/i);
+    expect(badge).toHaveAttribute("aria-haspopup", "dialog");
+    fireEvent.click(badge);
+    expect(screen.getByRole("dialog", { name: "Zulip connection details" })).toBeInTheDocument();
+    expect(screen.getByTestId("external-source-zulip-open-original")).toHaveAttribute(
+      "href",
+      "https://zulip.example.com/#narrow/channel/42",
+    );
+  });
+
+  it("fails closed for external message actions without an effective capability", () => {
+    render(
+      <MessageBubble
+        message={createMessage({
+          provider: {
+            kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {},
+          },
+        })}
+        isOwn
+        currentUserId={77}
+        callbacks={{
+          onEdit: vi.fn(),
+          onDelete: vi.fn(),
+          onAddReaction: vi.fn(),
+          onRemoveReaction: vi.fn(),
+        }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
+
+    expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /(delete|удал)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /more reactions/i })).not.toBeInTheDocument();
+    expect(preflightExternalOperationMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a null delivery timestamp safe while rendering and preflighting", async () => {
+    const onAddReaction = vi.fn();
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.reaction.write",
+        target: { type: "message", uuid: testMessageId(101) },
+        losses: [],
+        requiresConfirmation: false,
+      },
+    });
+    render(
+      <MessageBubble
+        message={createMessage({
+          provider: {
+            kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {
+              "messenger.reaction.write": { available: true, revision: 1, limits: {} },
+            },
+          },
+          delivery: {
+            externalOperationUuid: "operation-1",
+            status: "pending",
+            safeError: null,
+            canRetry: false,
+            canDiscard: false,
+            duplicateRisk: false,
+            retryRequiresConfirmation: false,
+            originalUrl: null,
+            reconciliationReason: null,
+            updatedAt: null,
+          },
+        })}
+        isOwn={false}
+        callbacks={{ onAddReaction }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
+    expect(screen.getByTestId("external-source-zulip")).toHaveTextContent("Zulip");
+    fireEvent.click(await screen.findByRole("button", { name: /thumbs up/i }));
+
+    await waitFor(() => {
+      expect(preflightExternalOperationMock).toHaveBeenCalledWith({
+        externalAccountUuid: "account-1",
+        action: "messenger.reaction.write",
+        target: { type: "message", uuid: testMessageId(101) },
+      });
+      expect(onAddReaction).toHaveBeenCalledWith(testMessageId(101), {
+        emojiName: "thumbs_up",
+      });
+    });
+  });
+
+  it("preflights an allowed external edit before dispatching it", async () => {
+    const onEdit = vi.fn();
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.message.edit",
+        target: { type: "message", uuid: testMessageId(101) },
+        losses: [],
+        requiresConfirmation: false,
+      },
+    });
+    render(
+      <MessageBubble
+        message={createMessage({
+          provider: {
+            kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {
+              "messenger.message.edit": { available: true, revision: 1, limits: {} },
+            },
+          },
+        })}
+        isOwn
+        currentUserId={77}
+        callbacks={{ onEdit }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /(edit|редакт)/i }));
+
+    await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(1));
+    expect(preflightExternalOperationMock).toHaveBeenCalledWith({
+      externalAccountUuid: "account-1",
+      action: "messenger.message.edit",
+      target: { type: "message", uuid: testMessageId(101) },
+    });
+  });
+
+  it("requires explicit confirmation when external edit preflight reports losses", async () => {
+    const onEdit = vi.fn();
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.message.edit",
+        target: { type: "message", uuid: testMessageId(101) },
+        losses: [{ code: "formatting", message: "Formatting will be simplified." }],
+        requiresConfirmation: true,
+      },
+    });
+    render(
+      <MessageBubble
+        message={createMessage({
+          provider: {
+            kind: "zulip",
+            accountUuid: "account-1",
+            externalId: "42",
+            capabilities: {
+              "messenger.message.edit": { available: true, revision: 1, limits: {} },
+            },
+          },
+        })}
+        isOwn
+        currentUserId={77}
+        callbacks={{ onEdit }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /(edit|редакт)/i }));
+
+    expect(await screen.findByText("Formatting will be simplified.")).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /continue anyway/i }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
   it("keeps message content selectable", () => {

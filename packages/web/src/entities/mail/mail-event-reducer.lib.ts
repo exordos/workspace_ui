@@ -93,87 +93,111 @@ function objectTypeMatchesMailKind(event: WorkspaceEvent): boolean {
   return false;
 }
 
+function incompleteMailEventReduction(): MailEventReduction {
+  return { complete: false, patch: {} };
+}
+
+function reduceMailFolderUpsert(
+  state: MailEventState,
+  resource: Record<string, unknown>,
+): MailEventReduction {
+  if (!isFullFolder(resource)) return incompleteMailEventReduction();
+  const previous = state.folders.find((folder) => folder.uuid === resource.uuid);
+  const folder = mapWorkspaceMailFolder(resource);
+  return {
+    complete: true,
+    patch: {
+      folders: upsertByUuid(state.folders, folder),
+      ...(previous?.path === state.selectedFolder ? { selectedFolder: folder.path } : {}),
+    },
+  };
+}
+
+function reduceMailFolderDeleted(
+  state: MailEventState,
+  resource: Record<string, unknown>,
+): MailEventReduction {
+  if (typeof resource.uuid !== "string") return incompleteMailEventReduction();
+  const deleted = state.folders.find((folder) => folder.uuid === resource.uuid);
+  return {
+    complete: true,
+    patch: {
+      folders: state.folders.filter((folder) => folder.uuid !== resource.uuid),
+      ...(deleted?.path === state.selectedFolder
+        ? {
+            selectedFolder: "INBOX",
+            messages: [],
+            selectedUid: null,
+            selectedMessage: null,
+          }
+        : {}),
+    },
+  };
+}
+
+function reduceMailMessageUpsert(
+  state: MailEventState,
+  resource: Record<string, unknown>,
+): MailEventReduction {
+  if (!isFullMessage(resource)) return incompleteMailEventReduction();
+  const selectedFolderUuid = state.folders.find(
+    (folder) => folder.path === state.selectedFolder,
+  )?.uuid;
+  if (selectedFolderUuid == null) return incompleteMailEventReduction();
+  const message = mapWorkspaceMailMessage(resource);
+  if (resource.folder_uuid !== selectedFolderUuid) {
+    return {
+      complete: true,
+      patch: {
+        messages: state.messages.filter((item) => item.uid !== message.uid),
+        ...(state.selectedUid === message.uid ? { selectedUid: null, selectedMessage: null } : {}),
+      },
+    };
+  }
+  return {
+    complete: true,
+    patch: {
+      messages: upsertMessage(state.messages, message),
+      ...(state.selectedUid === message.uid ? { selectedMessage: message } : {}),
+    },
+  };
+}
+
+function reduceMailMessageDeleted(
+  state: MailEventState,
+  resource: Record<string, unknown>,
+): MailEventReduction {
+  if (typeof resource.uuid !== "string") return incompleteMailEventReduction();
+  return {
+    complete: true,
+    patch: {
+      messages: state.messages.filter((message) => message.uid !== resource.uuid),
+      ...(state.selectedUid === resource.uuid ? { selectedUid: null, selectedMessage: null } : {}),
+    },
+  };
+}
+
 export function reduceMailWorkspaceEvent(
   state: MailEventState,
   event: WorkspaceEvent,
 ): MailEventReduction {
   if (!isRecord(event.payload) || !objectTypeMatchesMailKind(event)) {
-    return { complete: false, patch: {} };
+    return incompleteMailEventReduction();
   }
   const resource = event.payload;
 
   switch (event.payload.kind) {
     case "mail.folder.created":
-    case "mail.folder.updated": {
-      if (!isFullFolder(resource)) return { complete: false, patch: {} };
-      const previous = state.folders.find((folder) => folder.uuid === resource.uuid);
-      const folder = mapWorkspaceMailFolder(resource);
-      return {
-        complete: true,
-        patch: {
-          folders: upsertByUuid(state.folders, folder),
-          ...(previous?.path === state.selectedFolder ? { selectedFolder: folder.path } : {}),
-        },
-      };
-    }
-    case "mail.folder.deleted": {
-      if (typeof resource.uuid !== "string") return { complete: false, patch: {} };
-      const deleted = state.folders.find((folder) => folder.uuid === resource.uuid);
-      return {
-        complete: true,
-        patch: {
-          folders: state.folders.filter((folder) => folder.uuid !== resource.uuid),
-          ...(deleted?.path === state.selectedFolder
-            ? {
-                selectedFolder: "INBOX",
-                messages: [],
-                selectedUid: null,
-                selectedMessage: null,
-              }
-            : {}),
-        },
-      };
-    }
+    case "mail.folder.updated":
+      return reduceMailFolderUpsert(state, resource);
+    case "mail.folder.deleted":
+      return reduceMailFolderDeleted(state, resource);
     case "mail.message.created":
-    case "mail.message.updated": {
-      if (!isFullMessage(resource)) return { complete: false, patch: {} };
-      const selectedFolderUuid = state.folders.find(
-        (folder) => folder.path === state.selectedFolder,
-      )?.uuid;
-      if (selectedFolderUuid == null) return { complete: false, patch: {} };
-      const message = mapWorkspaceMailMessage(resource);
-      if (resource.folder_uuid !== selectedFolderUuid) {
-        return {
-          complete: true,
-          patch: {
-            messages: state.messages.filter((item) => item.uid !== message.uid),
-            ...(state.selectedUid === message.uid
-              ? { selectedUid: null, selectedMessage: null }
-              : {}),
-          },
-        };
-      }
-      return {
-        complete: true,
-        patch: {
-          messages: upsertMessage(state.messages, message),
-          ...(state.selectedUid === message.uid ? { selectedMessage: message } : {}),
-        },
-      };
-    }
-    case "mail.message.deleted": {
-      if (typeof resource.uuid !== "string") return { complete: false, patch: {} };
-      return {
-        complete: true,
-        patch: {
-          messages: state.messages.filter((message) => message.uid !== resource.uuid),
-          ...(state.selectedUid === resource.uuid
-            ? { selectedUid: null, selectedMessage: null }
-            : {}),
-        },
-      };
-    }
+    case "mail.message.updated":
+      return reduceMailMessageUpsert(state, resource);
+    case "mail.message.deleted":
+      return reduceMailMessageDeleted(state, resource);
     default:
-      return { complete: false, patch: {} };
+      return incompleteMailEventReduction();
   }
 }

@@ -14,7 +14,7 @@ test.describe("Login page", () => {
     await expectLoginOrganizationStep(guestPage);
   });
 
-  test("has realm, email, and password fields across login steps", async ({
+  test("has realm, username or email, and password fields across login steps", async ({
     guestPage,
     messengerApi: _messengerApi,
   }) => {
@@ -22,8 +22,9 @@ test.describe("Login page", () => {
     await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);
     await guestPage.getByRole("button", { name: LOGIN_NEXT_BUTTON }).click();
 
-    await expect(guestPage.getByLabel(/^email$/i)).toBeVisible();
-    await guestPage.getByLabel(/^email$/i).fill(E2E_EMAIL);
+    const usernameOrEmail = guestPage.getByLabel(/username|email|имя пользователя/i);
+    await expect(usernameOrEmail).toBeVisible();
+    await usernameOrEmail.fill(E2E_EMAIL);
     await expect(guestPage.getByLabel(/^пароль$|^password$/i)).toBeVisible();
   });
 
@@ -34,8 +35,9 @@ test.describe("Login page", () => {
     await guestPage.goto("/");
     await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);
     await guestPage.getByRole("button", { name: LOGIN_NEXT_BUTTON }).click();
-    await expect(guestPage.getByLabel(/^email$/i)).toBeVisible();
-    await guestPage.getByLabel(/^email$/i).fill(E2E_EMAIL);
+    const usernameOrEmail = guestPage.getByLabel(/username|email|имя пользователя/i);
+    await expect(usernameOrEmail).toBeVisible();
+    await usernameOrEmail.fill(E2E_EMAIL);
 
     const button = guestPage.getByRole("button", { name: LOGIN_BUTTON });
     await expect(button).toBeVisible();

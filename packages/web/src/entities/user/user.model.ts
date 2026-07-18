@@ -54,6 +54,8 @@ export interface UserRecord {
   is_active?: boolean;
   /** Workspace GET /users `profile_data` (custom profile fields). */
   profile_data?: WorkspaceCustomProfileDataMap;
+  identity_kind?: "external";
+  provider?: { kind: "zulip"; account_uuid: string } | null;
 }
 
 export interface UserStatusFetchMeta {
@@ -121,6 +123,8 @@ function normalizeUser(payload: UserMergePayload): UserRecord {
     statusErrorKind: payload.statusErrorKind,
     is_active: payload.is_active,
     profile_data: payload.profile_data,
+    identity_kind: payload.identity_kind,
+    provider: payload.provider,
   };
 }
 
@@ -176,6 +180,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         statusErrorKind: payload.statusErrorKind ?? existing?.statusErrorKind,
         is_active: payload.is_active ?? existing?.is_active,
         profile_data: payload.profile_data ?? existing?.profile_data,
+        identity_kind: payload.identity_kind ?? existing?.identity_kind,
+        provider: payload.provider !== undefined ? payload.provider : existing?.provider,
       };
       next.set(key, merged);
       const nextEmail = new Map(state.emailToUserId);
@@ -211,6 +217,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           statusErrorKind: u.statusErrorKind ?? existing?.statusErrorKind,
           is_active: u.is_active ?? existing?.is_active,
           profile_data: u.profile_data ?? existing?.profile_data,
+          identity_kind: u.identity_kind ?? existing?.identity_kind,
+          provider: u.provider !== undefined ? u.provider : existing?.provider,
         };
         next.set(key, merged);
         if (merged.email) {

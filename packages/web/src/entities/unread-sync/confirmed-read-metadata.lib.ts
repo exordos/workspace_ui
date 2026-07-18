@@ -31,6 +31,32 @@ interface StreamTopicReadDelta {
   count: number;
 }
 
+export interface ConfirmedReadStreamUnreadProjection {
+  streamUuid: string;
+  unreadCount: number;
+}
+
+/** Requires a server aggregate refresh when confirmed rows cannot be safely projected locally. */
+export function requiresAuthoritativeUnreadRefresh(
+  messages: readonly MockMessage[],
+  messageIds: readonly MessageId[],
+  projections: readonly ConfirmedReadStreamUnreadProjection[],
+): boolean {
+  const targetIds = new Set(messageIds);
+  const projectedStreamUuids = new Set(
+    projections.map((projection) => projection.streamUuid.trim().toLowerCase()),
+  );
+  const locallyProjectedIds = new Set<MessageId>();
+  for (const message of messages) {
+    if (!targetIds.has(message.id) || message.read !== false) continue;
+    const streamUuid = message.stream_uuid?.trim().toLowerCase() ?? "";
+    if (streamUuid.length > 0 && projectedStreamUuids.has(streamUuid)) {
+      locallyProjectedIds.add(message.id);
+    }
+  }
+  return messageIds.some((messageId) => !locallyProjectedIds.has(messageId));
+}
+
 function findTopicByIdentity(
   chatList: ConfirmedReadChatListActions,
   streamUuid: string,
@@ -79,10 +105,10 @@ export function applyConfirmedReadMetadataDelta(
   chatList: ConfirmedReadChatListActions,
   messages: readonly MockMessage[],
   messageIds: readonly MessageId[],
-): void {
-  if (messageIds.length === 0) return;
+): ConfirmedReadStreamUnreadProjection[] {
+  if (messageIds.length === 0) return [];
   const deltas = collectStreamTopicReadDeltas(messages, messageIds);
-  if (deltas.length === 0) return;
+  if (deltas.length === 0) return [];
 
   const streamReadCounts = new Map<string, number>();
   for (const delta of deltas) {
@@ -105,17 +131,21 @@ export function applyConfirmedReadMetadataDelta(
     );
   }
 
+  const projections: ConfirmedReadStreamUnreadProjection[] = [];
   for (const [streamUuid, count] of streamReadCounts) {
     const stream = chatList.streamsMap.get(streamUuid);
     if (stream == null) continue;
+    const unreadCount = Math.max(0, (stream.unreadCount ?? 0) - count);
     chatList.upsertStreamMetadataRows([
       {
         streamUuid,
         name: stream.name,
-        unreadCount: Math.max(0, (stream.unreadCount ?? 0) - count),
+        unreadCount,
       },
     ]);
+    projections.push({ streamUuid, unreadCount });
   }
+  return projections;
 }
 
 export function refreshFolderUnreadAggregates(

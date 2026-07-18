@@ -5,6 +5,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
+import type * as ExternalAccountsApiModule from "~/features/external-accounts/external-accounts.api";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -41,6 +42,7 @@ const unpinChatInFolderMock = vi.fn();
 const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
+const preflightExternalOperationMock = vi.hoisted(() => vi.fn());
 const INSTANCE_ID = "sidebar-test-instance";
 const ALL_FOLDER_UUID = "00000000-0000-0000-0000-000000000000";
 const PERSONAL_FOLDER_UUID = "00000000-0000-0000-0000-000000000001";
@@ -78,6 +80,14 @@ vi.mock("~/shared/api/messenger-read-state", async (importOriginal) => {
     markTopicAsRead: (...args: unknown[]) => markTopicAsReadMock(...args),
     setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),
     renameStreamTopic: (...args: unknown[]) => renameStreamTopicMock(...args),
+  };
+});
+
+vi.mock("~/features/external-accounts/external-accounts.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof ExternalAccountsApiModule>();
+  return {
+    ...actual,
+    preflightExternalOperation: (...args: unknown[]) => preflightExternalOperationMock(...args),
   };
 });
 
@@ -205,6 +215,17 @@ describe("Sidebar", () => {
     renameStreamTopicMock.mockReset();
     setTopicResolvedStateMock.mockResolvedValue(topicEntity("\u2714 incident"));
     renameStreamTopicMock.mockResolvedValue(topicEntity("postmortem"));
+    preflightExternalOperationMock.mockReset();
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.topic.rename",
+        target: { type: "topic", uuid: TOPIC_UUID },
+        losses: [],
+        requiresConfirmation: false,
+      },
+    });
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
     setStreamNotificationLevelMock.mockReset();
@@ -877,6 +898,7 @@ describe("Sidebar", () => {
     );
 
     fireEvent.contextMenu(screen.getByText("incident"));
+    expect(await screen.findByRole("menuitem", { name: /move to channel/i })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
 
     const input = await screen.findByRole("textbox", { name: /topic name/i });
@@ -891,6 +913,191 @@ describe("Sidebar", () => {
         "postmortem",
       );
     });
+  });
+
+  it("fails closed for external topic rename without the effective capability", async () => {
+    const provider = {
+      kind: "zulip",
+      accountUuid: "external-account-1",
+      externalId: "zulip-topic-1",
+      capabilities: {},
+    };
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "Engineering", provider }]);
+    useChatListStore.getState().upsertStreamTopicShells(STREAM_UUID, [
+      {
+        topicUuid: TOPIC_UUID,
+        streamUuid: STREAM_UUID,
+        name: "incident",
+        provider,
+      },
+    ]);
+    useChatListStore.getState().setCurrentUserId(42);
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [STREAM_UUID] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      provider,
+      topics: [
+        { topicUuid: TOPIC_UUID, subject: "incident", badge: 0, lastMessage: "Need fix", provider },
+      ],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[streamWithTopics]}
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug={STREAM_UUID}
+        sidebarChats={[streamWithTopics]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    await screen.findByRole("menuitem", { name: /mark as read/i });
+    expect(screen.queryByRole("menuitem", { name: /rename topic/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /move to channel/i })).not.toBeInTheDocument();
+    expect(preflightExternalOperationMock).not.toHaveBeenCalled();
+  });
+
+  it("preflights an allowed external topic rename before dispatch", async () => {
+    renameStreamTopicMock.mockResolvedValue(topicEntity("postmortem"));
+    const provider = {
+      kind: "zulip",
+      accountUuid: "external-account-1",
+      externalId: "zulip-topic-1",
+      capabilities: {
+        "messenger.topic.rename": { available: true, revision: 1, limits: {} },
+      },
+    };
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "Engineering", provider }]);
+    useChatListStore.getState().upsertStreamTopicShells(STREAM_UUID, [
+      {
+        topicUuid: TOPIC_UUID,
+        streamUuid: STREAM_UUID,
+        name: "incident",
+        provider,
+      },
+    ]);
+    useChatListStore.getState().setCurrentUserId(42);
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [STREAM_UUID] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      provider,
+      topics: [
+        { topicUuid: TOPIC_UUID, subject: "incident", badge: 0, lastMessage: "Need fix", provider },
+      ],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[streamWithTopics]}
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug={STREAM_UUID}
+        sidebarChats={[streamWithTopics]}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /topic name/i }), {
+      target: { value: "postmortem" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(preflightExternalOperationMock).toHaveBeenCalledWith({
+        externalAccountUuid: "external-account-1",
+        action: "messenger.topic.rename",
+        target: { type: "topic", uuid: TOPIC_UUID },
+      });
+      expect(renameStreamTopicMock).toHaveBeenCalledWith(
+        TOPIC_UUID,
+        STREAM_UUID,
+        "incident",
+        "postmortem",
+      );
+    });
+  });
+
+  it("requires confirmation for lossy external topic rename and honors cancel", async () => {
+    renameStreamTopicMock.mockResolvedValue(topicEntity("postmortem"));
+    preflightExternalOperationMock.mockResolvedValue({
+      ok: true,
+      value: {
+        allowed: true,
+        action: "messenger.topic.rename",
+        target: { type: "topic", uuid: TOPIC_UUID },
+        losses: [{ code: "metadata", message: "Provider metadata will be simplified." }],
+        requiresConfirmation: true,
+      },
+    });
+    const provider = {
+      kind: "zulip",
+      accountUuid: "external-account-1",
+      externalId: "zulip-topic-1",
+      capabilities: {
+        "messenger.topic.rename": { available: true, revision: 1, limits: {} },
+      },
+    };
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "Engineering", provider }]);
+    useChatListStore.getState().upsertStreamTopicShells(STREAM_UUID, [
+      {
+        topicUuid: TOPIC_UUID,
+        streamUuid: STREAM_UUID,
+        name: "incident",
+        provider,
+      },
+    ]);
+    useChatListStore.getState().setCurrentUserId(42);
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [STREAM_UUID] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      provider,
+      topics: [
+        { topicUuid: TOPIC_UUID, subject: "incident", badge: 0, lastMessage: "Need fix", provider },
+      ],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[streamWithTopics]}
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug={STREAM_UUID}
+        sidebarChats={[streamWithTopics]}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /topic name/i }), {
+      target: { value: "postmortem" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Provider metadata will be simplified.")).toBeInTheDocument();
+    expect(renameStreamTopicMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: /cancel/i }),
+    );
+    expect(renameStreamTopicMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /topic name/i }), {
+      target: { value: "postmortem" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    const confirmation = await screen.findByRole("alertdialog");
+    expect(
+      within(confirmation).getByText("Provider metadata will be simplified."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(confirmation).getByRole("button", { name: /continue anyway/i }));
+    await waitFor(() => expect(renameStreamTopicMock).toHaveBeenCalledTimes(1));
   });
 
   it("does not show pin action in personal system folder stream context menu", async () => {

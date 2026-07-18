@@ -19,6 +19,7 @@ export interface MessageBubbleContextMenuProps {
   onOpenChange: (open: boolean) => void;
   /** Align menu for own vs others' messages in trigger mode. */
   isOwn: boolean;
+  reactionEnabled: boolean;
   emojiPickerOpen: boolean;
   onEmojiPickerOpenChange: (open: boolean) => void;
   visibleContextSections: readonly (readonly ContextItemLabel[])[];

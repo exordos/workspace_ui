@@ -1,23 +1,20 @@
-/**
- * Playwright route mock for Messenger REST API (`/api/workspace/v1/messenger/**`).
- */
+/** Playwright route mock for the common and Messenger Workspace REST API. */
 import type { Page, Route } from "@playwright/test";
 import {
-  badEventQueueIdError,
-  eventsSuccess,
   flagsSuccess,
-  genericSuccess,
   messagesSuccess,
-  registerSuccess,
-  resetE2eQueueIdSequence,
   serverSettingsSuccess,
   subscriptionsSuccess,
   usersMeSuccess,
   usersSuccess,
+  workspaceStreamBindingsSuccess,
+  workspaceStreamsSuccess,
+  workspaceTopicsSuccess,
+  workspaceUsersSuccess,
 } from "../mocks/messenger-default-responses";
-import { foldersSuccess } from "../mocks/workspace-default-responses";
+import { folderItemsSuccess, foldersSuccess } from "../mocks/workspace-default-responses";
 
-const MESSENGER_API_ROUTE = "**/api/workspace/v1/messenger/**";
+const MESSENGER_API_ROUTE = "**/api/workspace/v1/**";
 
 export interface MessengerApiFailRule {
   pattern: RegExp;
@@ -28,18 +25,12 @@ export interface MessengerApiFailRule {
 
 export class MessengerApiMock {
   private installed = false;
-  private registerCount = 0;
   private eventsCount = 0;
   private failRules: MessengerApiFailRule[] = [];
-  private nextEventsBody: Record<string, unknown> | null = null;
-  private persistentMessagesBody: Record<string, unknown> | null = null;
-  private fixedQueueId: string | null = null;
+  private nextEventsBody: unknown = null;
+  private persistentMessagesBody: unknown = null;
 
   constructor(private readonly page: Page) {}
-
-  getRegisterCallCount(): number {
-    return this.registerCount;
-  }
 
   getEventsCallCount(): number {
     return this.eventsCount;
@@ -47,13 +38,10 @@ export class MessengerApiMock {
 
   async install(): Promise<void> {
     if (this.installed) return;
-    resetE2eQueueIdSequence();
-    this.registerCount = 0;
     this.eventsCount = 0;
     this.failRules = [];
     this.nextEventsBody = null;
     this.persistentMessagesBody = null;
-    this.fixedQueueId = null;
     await this.page.route(MESSENGER_API_ROUTE, (route) => this.handleRoute(route));
     this.installed = true;
   }
@@ -71,7 +59,7 @@ export class MessengerApiMock {
   }
 
   /** All GET /messages responses use this body until `restoreDefaults`. */
-  setPersistentMessagesResponse(body: Record<string, unknown>): void {
+  setPersistentMessagesResponse(body: unknown): void {
     this.persistentMessagesBody = body;
   }
 
@@ -95,12 +83,8 @@ export class MessengerApiMock {
     this.failMatching(pattern, { mode: "status", status, times });
   }
 
-  setNextEventsResponse(body: Record<string, unknown>): void {
+  setNextEventsResponse(body: unknown): void {
     this.nextEventsBody = body;
-  }
-
-  setFixedQueueId(queueId: string): void {
-    this.fixedQueueId = queueId;
   }
 
   private consumeFailRule(url: string): MessengerApiFailRule | null {
@@ -134,9 +118,57 @@ export class MessengerApiMock {
     }
 
     const path = new URL(url).pathname;
+    const normalizedPath = path.replace(/\/+$/, "");
     const method = request.method();
 
-    if (path.endsWith("/server_settings") && method === "GET") {
+    if (normalizedPath.endsWith("/epoch") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ epoch_generation: "e2e-generation", epoch_version: 0 }),
+      });
+      return;
+    }
+
+    if (normalizedPath.endsWith("/events") && method === "GET") {
+      this.eventsCount += 1;
+      const payload = this.nextEventsBody ?? [];
+      this.nextEventsBody = null;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (
+      normalizedPath.endsWith("/users") &&
+      !normalizedPath.includes("/messenger/") &&
+      method === "GET"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(workspaceUsersSuccess()),
+      });
+      return;
+    }
+
+    if (
+      /\/users\/[0-9a-f-]+$/i.test(normalizedPath) &&
+      !normalizedPath.includes("/messenger/") &&
+      method === "GET"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(workspaceUsersSuccess()[0]),
+      });
+      return;
+    }
+
+    if (normalizedPath.endsWith("/server_settings") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -185,10 +217,11 @@ export class MessengerApiMock {
     }
 
     if (path.includes("/folders/") && path.includes("/items/") && method === "GET") {
+      const folderUuid = /\/folders\/([^/]+)\/items\/?$/.exec(path)?.[1];
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([]),
+        body: JSON.stringify(folderItemsSuccess(folderUuid)),
       });
       return;
     }
@@ -234,30 +267,34 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/register") && method === "POST") {
-      this.registerCount += 1;
-      const body = registerSuccess(this.fixedQueueId ?? undefined);
+    if (normalizedPath.endsWith("/streams") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(body),
+        body: JSON.stringify(workspaceStreamsSuccess()),
       });
       return;
     }
 
-    if (path.endsWith("/events") && method === "GET") {
-      this.eventsCount += 1;
-      const payload = this.nextEventsBody ?? eventsSuccess();
-      this.nextEventsBody = null;
+    if (normalizedPath.endsWith("/stream_topics") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(workspaceTopicsSuccess()),
       });
       return;
     }
 
-    if (path.endsWith("/users/me") && method === "GET") {
+    if (normalizedPath.endsWith("/stream_bindings") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(workspaceStreamBindingsSuccess()),
+      });
+      return;
+    }
+
+    if (normalizedPath.endsWith("/users/me") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -266,7 +303,7 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/users/me/subscriptions") && method === "GET") {
+    if (normalizedPath.endsWith("/users/me/subscriptions") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -294,7 +331,7 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/users") && method === "GET") {
+    if (normalizedPath.endsWith("/users") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -312,7 +349,7 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/messages") && method === "GET") {
+    if (normalizedPath.endsWith("/messages") && method === "GET") {
       const payload = this.persistentMessagesBody ?? messagesSuccess();
       await route.fulfill({
         status: 200,
@@ -322,7 +359,7 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/messages") && method === "POST") {
+    if (normalizedPath.endsWith("/messages") && method === "POST") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -331,7 +368,7 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.endsWith("/realm/presence") && method === "GET") {
+    if (normalizedPath.endsWith("/realm/presence") && method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -340,12 +377,6 @@ export class MessengerApiMock {
       return;
     }
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(genericSuccess()),
-    });
+    await route.fallback();
   }
 }
-
-export { badEventQueueIdError };

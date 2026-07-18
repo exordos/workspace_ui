@@ -526,6 +526,58 @@ async function applyAvatarPointer(
   }
 }
 
+async function applyWorkspaceFileEvent(
+  scope: WorkspaceFileCacheScope,
+  event: WorkspaceEvent,
+  kind: string,
+): Promise<void> {
+  const fileUuid = normalizeUuid(event.payload.uuid);
+  if (fileUuid == null) return;
+  if (kind === "file.deleted") {
+    await evictFile(scope, fileUuid);
+    return;
+  }
+  if (kind !== "file.created" && kind !== "file.updated") return;
+
+  const hash = normalizeHash(event.payload.hash);
+  const streamUuid =
+    event.payload.stream_uuid == null ? null : normalizeUuid(event.payload.stream_uuid);
+  if (hash == null || (event.payload.stream_uuid != null && streamUuid == null)) return;
+  if (kind === "file.updated") await evictFile(scope, fileUuid);
+  await putWorkspaceFileMetadata(scope, { fileUuid, hash, streamUuid });
+}
+
+async function applyWorkspaceStreamEvent(
+  scope: WorkspaceFileCacheScope,
+  event: WorkspaceEvent,
+  kind: string,
+): Promise<void> {
+  if (kind !== "stream.deleted") return;
+  const streamUuid = normalizeUuid(event.payload.uuid);
+  if (streamUuid != null) await evictStream(scope, streamUuid);
+}
+
+async function applyWorkspaceStreamBindingEvent(
+  scope: WorkspaceFileCacheScope,
+  event: WorkspaceEvent,
+  kind: string,
+): Promise<void> {
+  if (kind !== "stream_binding.deleted") return;
+  const userUuid = normalizeUuid(event.payload.user_uuid);
+  const streamUuid = normalizeUuid(event.payload.stream_uuid);
+  if (userUuid === scope.userUuid && streamUuid != null) await evictStream(scope, streamUuid);
+}
+
+async function applyWorkspaceUserEvent(
+  scope: WorkspaceFileCacheScope,
+  event: WorkspaceEvent,
+  kind: string,
+): Promise<void> {
+  if (kind !== "user.updated") return;
+  const userUuid = normalizeUuid(event.payload.uuid);
+  if (userUuid != null) await applyAvatarPointer(scope, userUuid, event.payload.avatar);
+}
+
 export async function applyWorkspaceFileCacheEvent(
   scope: WorkspaceFileCacheScope,
   event: WorkspaceEvent,
@@ -533,36 +585,19 @@ export async function applyWorkspaceFileCacheEvent(
   if (event.project_id.toLowerCase() !== scope.projectId) return;
   const kind = typeof event.payload.kind === "string" ? event.payload.kind : "";
   if (event.object_type === "file") {
-    const fileUuid = normalizeUuid(event.payload.uuid);
-    if (fileUuid == null) return;
-    if (kind === "file.deleted") {
-      await evictFile(scope, fileUuid);
-      return;
-    }
-    if (kind === "file.created" || kind === "file.updated") {
-      const hash = normalizeHash(event.payload.hash);
-      const streamUuid =
-        event.payload.stream_uuid == null ? null : normalizeUuid(event.payload.stream_uuid);
-      if (hash == null || (event.payload.stream_uuid != null && streamUuid == null)) return;
-      if (kind === "file.updated") await evictFile(scope, fileUuid);
-      await putWorkspaceFileMetadata(scope, { fileUuid, hash, streamUuid });
-    }
+    await applyWorkspaceFileEvent(scope, event, kind);
     return;
   }
-  if (event.object_type === "stream" && kind === "stream.deleted") {
-    const streamUuid = normalizeUuid(event.payload.uuid);
-    if (streamUuid != null) await evictStream(scope, streamUuid);
+  if (event.object_type === "stream") {
+    await applyWorkspaceStreamEvent(scope, event, kind);
     return;
   }
-  if (event.object_type === "stream_binding" && kind === "stream_binding.deleted") {
-    const userUuid = normalizeUuid(event.payload.user_uuid);
-    const streamUuid = normalizeUuid(event.payload.stream_uuid);
-    if (userUuid === scope.userUuid && streamUuid != null) await evictStream(scope, streamUuid);
+  if (event.object_type === "stream_binding") {
+    await applyWorkspaceStreamBindingEvent(scope, event, kind);
     return;
   }
-  if (event.object_type === "user" && kind === "user.updated") {
-    const userUuid = normalizeUuid(event.payload.uuid);
-    if (userUuid != null) await applyAvatarPointer(scope, userUuid, event.payload.avatar);
+  if (event.object_type === "user") {
+    await applyWorkspaceUserEvent(scope, event, kind);
   }
 }
 

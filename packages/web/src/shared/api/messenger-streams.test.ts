@@ -138,6 +138,66 @@ describe("fetchSubscriptions", () => {
       },
     ]);
   });
+
+  it("preserves canonical provider and delivery metadata on stream rows", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          name: "Zulip engineering",
+          description: "",
+          invite_only: false,
+          announce: false,
+          private: false,
+          is_archived: false,
+          provider: {
+            kind: "zulip",
+            account_uuid: "account-1",
+            external_id: "42",
+            capabilities: {},
+          },
+          delivery: {
+            external_operation_uuid: "operation-1",
+            status: "delivered",
+            safe_error: null,
+            can_retry: false,
+            can_discard: false,
+            updated_at: "2026-07-17T12:00:00Z",
+            duplicate_risk: false,
+            retry_requires_confirmation: false,
+            original_url: null,
+            reconciliation_reason: null,
+          },
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchSubscriptions()).resolves.toEqual([
+      expect.objectContaining({
+        provider: {
+          kind: "zulip",
+          accountUuid: "account-1",
+          externalId: "42",
+          capabilities: {},
+        },
+        delivery: {
+          externalOperationUuid: "operation-1",
+          status: "delivered",
+          safeError: null,
+          canRetry: false,
+          canDiscard: false,
+          updatedAt: "2026-07-17T12:00:00Z",
+          duplicateRisk: false,
+          retryRequiresConfirmation: false,
+          originalUrl: null,
+          reconciliationReason: null,
+        },
+      }),
+    ]);
+  });
 });
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
@@ -627,6 +687,24 @@ describe("fetchTopics", () => {
             stream_id: 42,
             topic_name: "planning",
           },
+          provider: {
+            kind: "zulip",
+            account_uuid: "account-1",
+            external_id: "42",
+            capabilities: {},
+          },
+          delivery: {
+            external_operation_uuid: "operation-2",
+            status: "pending",
+            safe_error: null,
+            can_retry: false,
+            can_discard: false,
+            updated_at: "2026-07-17T12:00:00Z",
+            duplicate_risk: false,
+            retry_requires_confirmation: false,
+            original_url: null,
+            reconciliation_reason: null,
+          },
         },
       ],
       raw: { statusText: "OK" },
@@ -641,6 +719,24 @@ describe("fetchTopics", () => {
           server_url: "https://zulip.example",
           stream_id: 42,
           topic_name: "planning",
+        },
+        provider: {
+          kind: "zulip",
+          accountUuid: "account-1",
+          externalId: "42",
+          capabilities: {},
+        },
+        delivery: {
+          externalOperationUuid: "operation-2",
+          status: "pending",
+          safeError: null,
+          canRetry: false,
+          canDiscard: false,
+          updatedAt: "2026-07-17T12:00:00Z",
+          duplicateRisk: false,
+          retryRequiresConfirmation: false,
+          originalUrl: null,
+          reconciliationReason: null,
         },
       }),
     ]);

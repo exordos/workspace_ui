@@ -2,16 +2,17 @@
  * E2E: expired session (401) clears credentials and redirects to login.
  */
 import { test, expect, expectLoginOrganizationStep } from "./fixtures";
+import { failWorkspaceApi } from "./helpers/fail-workspace-api";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 
 test.describe("Session expiry @mock", () => {
   test("redirects to login after protected API returns 401", async ({
     authenticated,
-    messengerApi,
+    messengerApi: _messengerApi,
   }) => {
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 
-    messengerApi.statusMatching(/\/api\/v1\//, 401, 100);
+    await failWorkspaceApi(authenticated, 401);
     void openStreamChatWithComposer(authenticated).catch(() => undefined);
 
     await expectLoginOrganizationStep(authenticated, { timeout: 30_000 });
