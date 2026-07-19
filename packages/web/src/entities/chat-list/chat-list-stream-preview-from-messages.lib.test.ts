@@ -67,6 +67,36 @@ describe("chat-list-stream-preview-from-messages.lib", () => {
     expect(entry.lastMessage).toContain("Hello");
   });
 
+  it("preserves completed topic metadata while hydrating its message preview", () => {
+    const streamId = "00000000-0000-4000-8000-000000000011";
+    const topic = "completed";
+    const existing = streamShell(streamId, 100);
+    existing.topics.set(topic, {
+      subject: topic,
+      lastMessage: "",
+      time: "",
+      ts: 100,
+      unreadCount: 0,
+      isDone: true,
+    });
+    const streamsMap = new Map([[streamId, existing]]);
+
+    const msg = streamMessage({
+      id: 201,
+      type: "stream",
+      stream_uuid: streamId,
+      subject: topic,
+      content: "Completed topic preview",
+      timestamp: 150,
+      flags: ["read"],
+    });
+
+    const next = mergeStreamSidebarPreviewsFromMessages(streamsMap, [msg]);
+
+    // Preview hydration must not erase authoritative completion metadata from stream_topics.
+    expect(next.get(streamId)!.topics.get(topic)!.isDone).toBe(true);
+  });
+
   it("does not lower sidebar stream unread when batch has only read stream messages", () => {
     const streamId = "00000000-0000-4000-8000-000000000020";
     const existing = streamShell(streamId, 50);

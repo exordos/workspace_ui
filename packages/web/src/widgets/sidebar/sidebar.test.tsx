@@ -1680,6 +1680,44 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: t("channel.hideExtraTopics") })).toBeInTheDocument();
   });
 
+  it("hides done topics until show-more is expanded and marks them as completed", () => {
+    const streamWithDoneTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [
+        { subject: "active-a", badge: 0, lastMessage: "A" },
+        { subject: "done-topic", badge: 0, lastMessage: "Done", isDone: true },
+        { subject: "active-b", badge: 0, lastMessage: "B" },
+      ],
+    };
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
+        sidebarChats={[streamWithDoneTopic]}
+      />,
+    );
+
+    expect(screen.getByText("active-a")).toBeInTheDocument();
+    expect(screen.getByText("active-b")).toBeInTheDocument();
+    // Completed topics used to consume collapsed slots and appear beside active work.
+    expect(screen.queryByText("\u2714 done-topic")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("channel.showMoreTopicsWithCount", { count: 1 }),
+      }),
+    );
+
+    const completedTopic = screen.getByText("\u2714 done-topic");
+    expect(completedTopic).toBeInTheDocument();
+    expect(completedTopic).toHaveClass("text-text-muted");
+  });
+
   it("shows topic last message sender name in folder stream list", async () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,

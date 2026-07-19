@@ -1,25 +1,41 @@
 /** How many topics to show in the sidebar before the "Show more" button. */
 export const SIDEBAR_COLLAPSED_TOPIC_LIMIT = 3;
 
-/** How many topics are hidden while the list is collapsed. */
-export function getSidebarHiddenTopicCount(totalTopics: number): number {
-  return Math.max(0, totalTopics - SIDEBAR_COLLAPSED_TOPIC_LIMIT);
+interface SidebarCollapsibleTopic {
+  isDone?: boolean;
 }
 
-/** Whether to truncate the topic list (hidden topics exist and the user has not expanded fully). */
-export function shouldTruncateSidebarTopics(
-  totalTopics: number,
-  allTopicsVisible: boolean,
-): boolean {
-  return !allTopicsVisible && getSidebarHiddenTopicCount(totalTopics) > 0;
+/** Keep active topics ahead of completed topics while preserving each group's source order. */
+export function orderSidebarTopicsByCompletion<T extends SidebarCollapsibleTopic>(
+  topics: readonly T[],
+): T[] {
+  const activeTopics: T[] = [];
+  const doneTopics: T[] = [];
+
+  for (const topic of topics) {
+    if (topic.isDone === true) {
+      doneTopics.push(topic);
+    } else {
+      activeTopics.push(topic);
+    }
+  }
+
+  return [...activeTopics, ...doneTopics];
 }
 
-/** How many topics to render given collapsed/expanded state. */
-export function getSidebarVisibleTopicCount(
-  totalTopics: number,
-  allTopicsVisible: boolean,
+export function getSidebarCollapsedVisibleTopicCount<T extends SidebarCollapsibleTopic>(
+  topics: readonly T[],
 ): number {
-  return shouldTruncateSidebarTopics(totalTopics, allTopicsVisible)
-    ? SIDEBAR_COLLAPSED_TOPIC_LIMIT
-    : totalTopics;
+  const activeTopicCount = topics.reduce(
+    (count, topic) => count + (topic.isDone === true ? 0 : 1),
+    0,
+  );
+  return Math.min(activeTopicCount, SIDEBAR_COLLAPSED_TOPIC_LIMIT);
+}
+
+/** How many topics are hidden while the list is collapsed. */
+export function getSidebarHiddenTopicCount<T extends SidebarCollapsibleTopic>(
+  topics: readonly T[],
+): number {
+  return topics.length - getSidebarCollapsedVisibleTopicCount(topics);
 }

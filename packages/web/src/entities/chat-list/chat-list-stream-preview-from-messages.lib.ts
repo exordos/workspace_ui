@@ -101,6 +101,7 @@ function mergeStreamPreviewEntry(
     ...(topicColor != null ? { color: topicColor } : {}),
     ...(resolvedTopicSourceName != null ? { sourceName: resolvedTopicSourceName } : {}),
     ...(resolvedTopicSource != null ? { source: resolvedTopicSource } : {}),
+    ...(existingTopic?.isDone === true ? { isDone: true } : {}),
     lastMessageId,
   };
   if (!existing) {

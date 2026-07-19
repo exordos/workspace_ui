@@ -54,9 +54,8 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
     newTopicInputRef,
     onMuteError,
   }) {
-    const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
-      useSidebarTopicCollapse(topics.length);
-    const visibleTopics = topics.slice(0, visibleCount);
+    const { allTopicsVisible, hiddenCount, showToggle, visibleTopics, toggleAllTopics } =
+      useSidebarTopicCollapse(topics);
 
     return (
       <>
@@ -137,7 +136,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                         }`}
                       >
                         <span
-                          className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""}`}
+                          className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""} ${topic.isDone === true ? "text-text-muted" : ""}`}
                         >
                           {topicLabel}
                         </span>

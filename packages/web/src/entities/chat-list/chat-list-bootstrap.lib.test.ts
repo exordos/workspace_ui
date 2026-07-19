@@ -130,6 +130,101 @@ describe("mergeStreamAccessMetadata", () => {
     expect(merged.lastMessage).toBe("new");
     expect(merged.inviteOnly).toBe(true);
   });
+
+  it("preserves completed topic metadata during a full message rebuild", () => {
+    const existing: StreamEntryInternal = {
+      streamUuid: STREAM_UUID,
+      name: "general",
+      lastMessage: "",
+      time: "",
+      ts: 100,
+      topics: new Map([
+        [
+          "completed",
+          {
+            subject: "completed",
+            lastMessage: "",
+            time: "",
+            ts: 100,
+            unreadCount: 0,
+            color: 0x123456,
+            isDone: true,
+          },
+        ],
+      ]),
+    };
+    const incoming: StreamEntryInternal = {
+      streamUuid: STREAM_UUID,
+      name: "general",
+      lastMessage: "new",
+      time: "now",
+      ts: 200,
+      topics: new Map([
+        [
+          "completed",
+          {
+            subject: "completed",
+            lastMessage: "new",
+            time: "now",
+            ts: 200,
+            unreadCount: 0,
+          },
+        ],
+      ]),
+    };
+
+    const merged = mergeStreamAccessMetadata(incoming, existing);
+
+    // Full message bootstrap must retain authoritative completion state from stream_topics.
+    expect(merged.topics.get("completed")?.isDone).toBe(true);
+  });
+
+  it("keeps an explicit reopened topic state during a full rebuild", () => {
+    const existing: StreamEntryInternal = {
+      streamUuid: STREAM_UUID,
+      name: "general",
+      lastMessage: "",
+      time: "",
+      ts: 100,
+      topics: new Map([
+        [
+          "reopened",
+          {
+            subject: "reopened",
+            lastMessage: "",
+            time: "",
+            ts: 100,
+            unreadCount: 0,
+            isDone: true,
+          },
+        ],
+      ]),
+    };
+    const incoming: StreamEntryInternal = {
+      streamUuid: STREAM_UUID,
+      name: "general",
+      lastMessage: "new",
+      time: "now",
+      ts: 200,
+      topics: new Map([
+        [
+          "reopened",
+          {
+            subject: "reopened",
+            lastMessage: "new",
+            time: "now",
+            ts: 200,
+            unreadCount: 0,
+            isDone: false,
+          },
+        ],
+      ]),
+    };
+
+    const merged = mergeStreamAccessMetadata(incoming, existing);
+
+    expect(merged.topics.get("reopened")?.isDone).toBe(false);
+  });
 });
 
 describe("mergeBootstrapStreamsWithPreviousMetadata", () => {

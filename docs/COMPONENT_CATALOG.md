@@ -336,7 +336,7 @@ interface FolderRailProps {
 
 **Props**: `SidebarProps` (streams, chats, active selections, handlers)
 **Children**: ScrollArea, SidebarActivity, SidebarFolderChatList, SidebarDmList, SidebarGroupList, SidebarStreamList
-**Features**: chat search, expand/collapse streams
+**Features**: chat search, expand/collapse streams, active/completed topic disclosure
 **Layout**: `w-[300px] md:w-[340px] bg-sidebar-bg rounded-[12px]`
 
 **Sub-components** (not exported, internal to widget):
@@ -347,17 +347,22 @@ interface FolderRailProps {
 | `SidebarFolderChatList` | `sidebar-folder-chat-list.ui.tsx` | Unified stream+DM list with expand/collapse         |
 | `SidebarDmList`         | `sidebar-dm-list.ui.tsx`          | DM conversation list with presence                  |
 | `SidebarGroupList`      | `sidebar-group-list.ui.tsx`       | Group chat list                                     |
-| `SidebarStreamList`     | `sidebar-stream-list.ui.tsx`      | Channel/stream list with topics                     |
+| `SidebarStreamList`     | `sidebar-stream-list.ui.tsx`      | Channel/stream list with collapsible topics         |
+
+An expanded stream initially shows at most three active topics. The topic
+disclosure control expands the list with all remaining active topics followed
+by completed topics. Completed topics use a `✔` prefix plus muted text and are
+hidden again when the disclosure is collapsed.
 
 **Utilities** (`sidebar.lib.ts`):
 
-| Export                                                   | Purpose                        |
-| -------------------------------------------------------- | ------------------------------ |
-| `slugForStream(stream)`                                  | `"5-general"` — ID + name slug |
-| `parseStreamSlug(slug)`                                  | `{ stream_id?, stream_name }`  |
-| `parseDmSlugToUserIds(slug)`                             | `number[]`                     |
-| `buildSidebarFromMessages(messages, userId, avatarMap?)` | Builds streams + DMs maps      |
-| `dmConversationKey(display_recipient, userId)`           | Canonical DM key               |
+| Export                                                   | Purpose                    |
+| -------------------------------------------------------- | -------------------------- |
+| `slugForStream(stream)`                                  | Canonical stream UUID      |
+| `parseStreamSlug(slug)`                                  | `{ streamUuid }` or `null` |
+| `parseDmSlugToUserIds(slug)`                             | `number[]`                 |
+| `buildSidebarFromMessages(messages, userId, avatarMap?)` | Builds streams + DMs maps  |
+| `dmConversationKey(display_recipient, userId)`           | Canonical DM key           |
 
 ### widgets/chat-view
 

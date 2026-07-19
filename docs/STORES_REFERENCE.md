@@ -119,51 +119,67 @@ interface InstancesState {
 **Path**: `entities/chat-list/chat-list.model.ts`
 **Import**: `import { useChatListStore } from '~/entities/chat-list/chat-list.model'`
 
-Main store for the sidebar: streams, DMs, topics, unread counts. Built from messages.
+Main store for the sidebar: streams, DMs, topics, server-owned metadata, and
+unread counts. Message previews and authoritative metadata are merged without
+dropping topic completion state.
 
 ### Interfaces
 
 ```typescript
 type MessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
+  | { type: "stream"; streamUuid: string; topic: string; topicUuid?: string }
   | { type: "dm"; dmKey: string };
 
-interface ChatListState {
-  streamsMap: Map<number, StreamEntryInternal>;
-  dmsMap: Map<string, DmEntryInternal>;
-  currentUserId: number | null;
-  lastAppliedMessages: WorkspaceRawMessage[] | null;
-  messageIdToLocation: Map<number, MessageLocation>;
+interface ChatListStreamTopicMetadataRow {
+  topicUuid: string;
+  streamUuid: string;
+  name: string;
+  unreadCount?: number;
+  isDefault?: boolean;
+  isDone?: boolean;
+  color?: number;
+}
 
-  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
+interface ChatListState {
+  streamsMap: Map<string, StreamEntryInternal>;
+  dmsMap: Map<string, DmEntryInternal>;
+  sidebarDataHydrated: boolean;
+  streamMetadataHydrated: boolean;
+  currentUserId: UserId | null;
+  lastAppliedMessages: WorkspaceRawMessage[] | null;
+  messageIdToLocation: Map<MessageId, MessageLocation>;
+
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: UserId | null) => void;
+  hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
   addMessage: (message: WorkspaceRawMessage) => void;
   addMessages: (messages: WorkspaceRawMessage[]) => void;
-  setCurrentUserId: (id: number | null) => void;
+  applyStreamSidebarPreviewsFromMessages: (messages: WorkspaceRawMessage[]) => void;
+  upsertStreamTopicShells: (
+    streamUuid: string,
+    topics: readonly ChatListStreamTopicMetadataRow[],
+  ) => void;
+  upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
+  setCurrentUserId: (id: UserId | null) => void;
   clear: () => void;
-  decrementUnreadForMessages: (messageIds: number[]) => void;
-  incrementUnreadForMessages: (messageIds: number[]) => void;
-  handleDeleteMessages: (messageIds: number[]) => void;
+  handleDeleteMessages: (messageIds: MessageId[]) => void;
 
   streams: () => StreamWithLast[];
   dms: () => Extract<SidebarChat, { type: "dm" }>[];
-  chatsSortedByLastMessage: () => SidebarChat[];
 }
 ```
 
 ### Behavior
 
-| Action                       | Logic                                                                                                            |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `setFromMessages`            | Full rebuild from message array via `buildSidebarFromMessages()`. Builds both Maps + index `messageIdToLocation` |
-| `addMessage`                 | Incremental add: merges into `streamsMap` or `dmsMap`. Accounts for unread delta                                 |
-| `addMessages`                | Batch add: deduplicates by stream_id/dmKey, keeps latest by timestamp                                            |
-| `setCurrentUserId`           | If changed from null → value and `lastAppliedMessages` exists → full rebuild                                     |
-| `decrementUnreadForMessages` | For each messageId finds location → decrements unreadCount by 1                                                  |
-| `incrementUnreadForMessages` | Inverse operation — increments unreadCount                                                                       |
-| `handleDeleteMessages`       | Removes: if message was lastMessage in topic → removes topic (and stream if no topics remain)                    |
-| `streams()`                  | Sorts streamsMap by ts desc, within each — topics by ts desc. Badge = sum of unreadCount                         |
-| `dms()`                      | Sorts dmsMap by ts desc                                                                                          |
-| `chatsSortedByLastMessage()` | Combines streams + DMs into one array, sorts by ts desc                                                          |
+| Action                                   | Logic                                                                                                 |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `setFromMessages`                        | Rebuilds previews and locations while retaining authoritative topic metadata by subject or topic UUID |
+| `applyStreamSidebarPreviewsFromMessages` | Refreshes stream/topic previews without dropping `isDone`, color, or source metadata                  |
+| `upsertStreamTopicShells`                | Applies authoritative topic UUID, unread, default, done, and color metadata                           |
+| `addMessage` / `addMessages`             | Incrementally merges the latest stream and DM previews                                                |
+| `setCurrentUserId`                       | Rebuilds DM identities when the current user becomes available                                        |
+| `handleDeleteMessages`                   | Removes deleted locations and resolves replacement previews when needed                               |
+| `streams()`                              | Projects sorted streams/topics and preserves server-owned `isDone` for sidebar consumers              |
+| `dms()`                                  | Projects DMs sorted by latest activity                                                                |
 
 ### Cross-store
 

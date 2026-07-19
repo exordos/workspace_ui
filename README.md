@@ -17,12 +17,12 @@ Single React codebase, multiple targets:
 
 ## Highlights
 
-- React 19 + TypeScript 5.9 (`strict`, `noUncheckedIndexedAccess`)
+- React 19 + TypeScript 6.0 (`strict`, `noUncheckedIndexedAccess`)
 - Feature-Sliced Design (FSD): `app -> pages -> widgets -> features -> entities -> shared`
 - Zustand domain stores + API middleware pipeline
 - Tailwind design tokens (dark/light + multiple palettes)
 - i18n (English + Russian)
-- 4500+ tests (Vitest + Testing Library + MSW + Playwright)
+- 4600+ tests (Vitest + Testing Library + MSW + Playwright)
 - Security-focused defaults: CSP, sanitization, guarded APIs, secret checks in hooks
 
 ## Requirements

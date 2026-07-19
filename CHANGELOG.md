@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Completed sidebar topics are visually marked and stay behind the topic expansion control.
+
 ## [0.1.11] — 2026-06-18
 
 ### Added

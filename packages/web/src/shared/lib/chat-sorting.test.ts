@@ -81,6 +81,22 @@ describe("sortChatsByLastMessage", () => {
     });
   });
 
+  it("keeps completed topic state in the selected-folder sidebar projection", () => {
+    const stream = createStreamEntry(10, "Engineering", 5000, 0);
+    const topic = stream.topics.get("general");
+    if (topic != null) {
+      topic.isDone = true;
+    }
+    const streamsMap = new Map<string, StreamEntryInternal>([[streamUuid(10), stream]]);
+
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set());
+
+    expect(sorted[0]).toMatchObject({
+      type: "stream",
+      topics: [expect.objectContaining({ isDone: true })],
+    });
+  });
+
   it("uses server stream unread badge without client-side topic recomputation", () => {
     const streamsMap = new Map<string, StreamEntryInternal>([
       [

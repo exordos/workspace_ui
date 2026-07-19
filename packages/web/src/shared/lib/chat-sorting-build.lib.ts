@@ -34,6 +34,7 @@ function streamTopicsToSidebarTopics(
         lastMessage: t.lastMessage,
         lastMessageSenderName: t.lastMessageSenderName,
         time: t.time,
+        isDone: t.isDone === true ? true : undefined,
         ...(t.color != null ? { color: t.color } : {}),
         badge: !topicMuted && t.unreadCount > 0 ? t.unreadCount : undefined,
       };

@@ -1,25 +1,34 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
+  getSidebarCollapsedVisibleTopicCount,
   getSidebarHiddenTopicCount,
-  getSidebarVisibleTopicCount,
+  orderSidebarTopicsByCompletion,
 } from "./sidebar-topic-collapse.lib";
 
 /**
  * Local state for expanding the full channel topic list.
  * The component unmounts when the channel collapses, so state resets automatically.
  */
-export function useSidebarTopicCollapse(totalTopics: number): {
+export function useSidebarTopicCollapse<T extends { isDone?: boolean }>(
+  topics: readonly T[],
+): {
   allTopicsVisible: boolean;
   hiddenCount: number;
   showToggle: boolean;
-  visibleCount: number;
+  visibleTopics: T[];
   toggleAllTopics: () => void;
 } {
   const [allTopicsVisible, setAllTopicsVisible] = useState(false);
 
-  const hiddenCount = getSidebarHiddenTopicCount(totalTopics);
+  const hiddenCount = getSidebarHiddenTopicCount(topics);
   const showToggle = hiddenCount > 0;
-  const visibleCount = getSidebarVisibleTopicCount(totalTopics, allTopicsVisible);
+  const visibleCount = allTopicsVisible
+    ? topics.length
+    : getSidebarCollapsedVisibleTopicCount(topics);
+  const visibleTopics = useMemo(
+    () => orderSidebarTopicsByCompletion(topics).slice(0, visibleCount),
+    [topics, visibleCount],
+  );
 
   const toggleAllTopics = useCallback(() => {
     setAllTopicsVisible((prev) => !prev);
@@ -29,7 +38,7 @@ export function useSidebarTopicCollapse(totalTopics: number): {
     allTopicsVisible,
     hiddenCount,
     showToggle,
-    visibleCount,
+    visibleTopics,
     toggleAllTopics,
   };
 }

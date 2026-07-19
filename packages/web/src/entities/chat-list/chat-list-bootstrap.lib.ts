@@ -65,12 +65,12 @@ export function buildMessageIdToLocation(
   return map;
 }
 
-function findTopicWithColorMetadata(
+function findTopicMetadata(
   previousTopics: Map<string, StreamTopicEntryInternal>,
   topic: StreamTopicEntryInternal,
 ): StreamTopicEntryInternal | undefined {
   const bySubject = previousTopics.get(topic.subject);
-  if (bySubject?.color != null) {
+  if (bySubject != null) {
     return bySubject;
   }
   const topicUuid = topic.topicUuid?.trim().toLowerCase();
@@ -78,36 +78,38 @@ function findTopicWithColorMetadata(
     return undefined;
   }
   for (const previousTopic of previousTopics.values()) {
-    if (
-      previousTopic.topicUuid?.trim().toLowerCase() === topicUuid &&
-      previousTopic.color != null
-    ) {
+    if (previousTopic.topicUuid?.trim().toLowerCase() === topicUuid) {
       return previousTopic;
     }
   }
   return undefined;
 }
 
-function mergeTopicColorMetadata(
+function mergeTopicMetadata(
   topics: Map<string, StreamTopicEntryInternal>,
   previousTopics: Map<string, StreamTopicEntryInternal>,
 ): Map<string, StreamTopicEntryInternal> {
   let nextTopics = topics;
   for (const [key, topic] of topics) {
-    if (topic.color != null) continue;
-    const previousTopic = findTopicWithColorMetadata(previousTopics, topic);
-    if (previousTopic?.color == null) continue;
+    const previousTopic = findTopicMetadata(previousTopics, topic);
+    const missingColor = topic.color == null && previousTopic?.color != null;
+    const missingDoneState = topic.isDone == null && previousTopic?.isDone === true;
+    if (!missingColor && !missingDoneState) continue;
     if (nextTopics === topics) {
       nextTopics = new Map(topics);
     }
-    nextTopics.set(key, { ...topic, color: previousTopic.color });
+    nextTopics.set(key, {
+      ...topic,
+      ...(missingColor ? { color: previousTopic.color } : {}),
+      ...(missingDoneState ? { isDone: true } : {}),
+    });
   }
   return nextTopics;
 }
 
-function hasTopicColorMetadata(topics: Map<string, StreamTopicEntryInternal>): boolean {
+function hasTopicMetadata(topics: Map<string, StreamTopicEntryInternal>): boolean {
   for (const topic of topics.values()) {
-    if (topic.color != null) return true;
+    if (topic.color != null || topic.isDone === true) return true;
   }
   return false;
 }
@@ -118,7 +120,7 @@ export function mergeStreamAccessMetadata(
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   if (existing == null) return stream;
-  const topics = mergeTopicColorMetadata(stream.topics, existing.topics);
+  const topics = mergeTopicMetadata(stream.topics, existing.topics);
   const hasMetadata =
     existing.unreadCount != null ||
     existing.isArchived != null ||
@@ -131,7 +133,7 @@ export function mergeStreamAccessMetadata(
     existing.canAdministerChannelGroup != null ||
     existing.canResolveTopicsGroup != null ||
     existing.canMoveMessagesOutOfChannelGroup != null ||
-    hasTopicColorMetadata(existing.topics);
+    hasTopicMetadata(existing.topics);
   if (!hasMetadata) return stream;
   return {
     ...stream,

@@ -132,9 +132,8 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
   newTopicInputRef: React.RefObject<HTMLInputElement | null>;
   onMuteError: (retry: () => void) => void;
 }): React.ReactElement {
-  const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
-    useSidebarTopicCollapse(topics.length);
-  const visibleTopics = topics.slice(0, visibleCount);
+  const { allTopicsVisible, hiddenCount, showToggle, visibleTopics, toggleAllTopics } =
+    useSidebarTopicCollapse(topics);
 
   return (
     <>
@@ -210,7 +209,9 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                         (topic.badge ?? 0) > 0 ? "font-semibold" : "font-medium"
                       }`}
                     >
-                      <span className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
+                      <span
+                        className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""} ${topic.isDone === true ? "text-text-muted" : ""}`}
+                      >
                         {topicLabel}
                       </span>
                       <ExternalSourceBadge

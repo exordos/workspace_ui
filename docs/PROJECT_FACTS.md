@@ -2,7 +2,7 @@
 
 Single source of truth for volatile counts, paths, and workflow. Other docs should link here instead of duplicating.
 
-**Last verified:** 2026-07-16 (branch `cassi/workspace-messenger-platform`).
+**Last verified:** 2026-07-19 (branch `cassi/workspace-messenger-platform`).
 
 ## Current product surface
 
@@ -23,11 +23,11 @@ current routes or supported backend APIs.
 
 | Technology | Version |
 | ---------- | ------- |
-| TypeScript | 5.9.3   |
+| TypeScript | 6.0.3   |
 | React      | 19.2.7  |
 | Vite       | 8.0.16  |
-| Zustand    | 4.5.7   |
-| Electron   | 42.1.0  |
+| Zustand    | 5.0.14  |
+| Electron   | 42.4.0  |
 | Vitest     | 4.1.8   |
 | Playwright | 1.60.0  |
 | Lerna      | 9.0.7   |
@@ -73,11 +73,11 @@ import { workspaceApi } from "~/shared/api/workspace-api";
 
 ## Testing
 
-| Metric               |                                        Value |
-| -------------------- | -------------------------------------------: |
-| Unit/component tests | 4500+ (`it`/`test` blocks in `packages/web`) |
-| Test files           |                                          476 |
-| E2E specs            |                      21 (`e2e/**/*.spec.ts`) |
+| Metric               |                         Value |
+| -------------------- | ----------------------------: |
+| Unit/component tests | 4610 (latest full Vitest run) |
+| Test files           |                           488 |
+| E2E specs            |       21 (`e2e/**/*.spec.ts`) |
 
 ## Documentation
 
