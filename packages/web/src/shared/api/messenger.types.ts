@@ -400,6 +400,15 @@ export interface MockMessage {
   delivery?: Delivery | null;
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
+  /** Client-only identity and exact inputs for a failed optimistic send. */
+  local_composer_attempt?: {
+    composerIdentity: string;
+    draftUuid: string | null;
+    streamUuid: string;
+    topicUuid: string;
+    content: string;
+    files: File[];
+  };
   /** Local state for optimistic edits of existing server messages. */
   edit_status?: MockMessageEditStatus;
   /** Markdown submitted for an optimistic edit; used for retry after failure. */

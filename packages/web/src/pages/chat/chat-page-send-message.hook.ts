@@ -10,7 +10,7 @@ import { createMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import { executeChatPageSend } from "./chat-page-send-handler.lib";
+import { executeChatPageSend, type ChatPageSendAttemptInput } from "./chat-page-send-handler.lib";
 import {
   buildOptimisticOutgoingMessage,
   markOutgoingMessageFailed,
@@ -36,10 +36,16 @@ export interface UseChatPageSendMessageParams {
   stopTyping: () => void;
   setSendError: (message: string | null) => void;
   setUploadProgress: (progress: ComposerUploadProgressState | null) => void;
+  onRetrySucceeded: (failedMessage: MockMessage) => void | Promise<void>;
 }
 
 export interface UseChatPageSendMessageResult {
-  handleSend: (content: string, subjectOverride?: string, files?: File[]) => Promise<void>;
+  handleSend: (
+    content: string,
+    subjectOverride?: string,
+    files?: File[],
+    attemptInput?: ChatPageSendAttemptInput,
+  ) => Promise<void>;
   handleRetryFailedOutgoing: (msg: MockMessage) => Promise<void>;
   handleRemoveFailedOutgoing: (msg: MockMessage) => void;
   handleCancelUpload: () => void;
@@ -62,6 +68,7 @@ interface RetryFailedOutgoingContext {
   stopTyping: () => void;
   setSendError: (message: string | null) => void;
   setUploadProgress: (progress: ComposerUploadProgressState | null) => void;
+  onRetrySucceeded: (failedMessage: MockMessage) => void | Promise<void>;
 }
 
 function retryErrorMessage(error: unknown): string {
@@ -78,6 +85,7 @@ async function retryFailedDmMessage(
     senderId: context.currentUserId,
     senderFullName: t("common.you"),
     content: failedMessage.content,
+    composerAttempt: failedMessage.local_composer_attempt,
     target: { mode: "dm", recipientIds: context.activeDmUserIds ?? [] },
   });
   context.appendMessage(optimisticMessage);
@@ -90,6 +98,11 @@ async function retryFailedDmMessage(
       sender_full_name: t("common.you"),
     });
     context.commitOutgoingMessage(failedMessage.id, newMessage);
+    try {
+      await context.onRetrySucceeded(failedMessage);
+    } catch (error) {
+      log.error("Failed to finalize local DM retry state", { error });
+    }
     context.clearReplyQuote();
     context.stopTyping();
   } catch (error) {
@@ -127,6 +140,7 @@ async function retryFailedStreamMessage(
     senderId: context.currentUserId,
     senderFullName: t("common.you"),
     content: failedMessage.content,
+    composerAttempt: failedMessage.local_composer_attempt,
     target: {
       mode: "stream",
       stream: context.activeStreamCanonicalName,
@@ -148,6 +162,11 @@ async function retryFailedStreamMessage(
       sender_full_name: t("common.you"),
     });
     context.commitOutgoingMessage(failedMessage.id, newMessage);
+    try {
+      await context.onRetrySucceeded(failedMessage);
+    } catch (error) {
+      log.error("Failed to finalize local stream retry state", { error });
+    }
     context.clearReplyQuote();
     context.stopTyping();
   } catch (error) {
@@ -179,6 +198,7 @@ export function useChatPageSendMessage(
     stopTyping,
     setSendError,
     setUploadProgress,
+    onRetrySucceeded,
   } = params;
 
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -191,7 +211,12 @@ export function useChatPageSendMessage(
   }, []);
 
   const handleSend = useCallback(
-    async (content: string, subjectOverride?: string, files?: File[]) => {
+    async (
+      content: string,
+      subjectOverride?: string,
+      files?: File[],
+      attemptInput?: ChatPageSendAttemptInput,
+    ) => {
       await executeChatPageSend(
         {
           currentUserId,
@@ -222,6 +247,7 @@ export function useChatPageSendMessage(
         content,
         subjectOverride,
         files,
+        attemptInput,
       );
     },
     [
@@ -274,6 +300,7 @@ export function useChatPageSendMessage(
         stopTyping,
         setSendError,
         setUploadProgress,
+        onRetrySucceeded,
       };
       if (await retryFailedDmMessage(context, msg)) return;
       await retryFailedStreamMessage(context, msg);
@@ -294,6 +321,7 @@ export function useChatPageSendMessage(
       removeMessage,
       setSendError,
       setUploadProgress,
+      onRetrySucceeded,
       stopTyping,
     ],
   );

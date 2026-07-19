@@ -26,6 +26,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onClearReply,
   draftInitialValue,
   onComposerValueChange,
+  composerClearRequest,
+  currentComposerIdentity,
   onEditLastMessage,
   editSession,
   onSubmitEdit,
@@ -76,6 +78,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       onClearReply={onClearReply}
       initialValue={draftInitialValue}
       onValueChange={onComposerValueChange}
+      clearRequest={composerClearRequest}
+      currentComposerIdentity={currentComposerIdentity}
       onEditLastMessage={onEditLastMessage}
       editSession={editSession}
       onSubmitEdit={onSubmitEdit}

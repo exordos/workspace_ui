@@ -34,8 +34,20 @@ export interface ComposerEditSession {
   initialMarkdown: string;
 }
 
+export interface ComposerClearRequest {
+  id: number;
+  composerIdentity: string;
+  content: string;
+  files: File[];
+}
+
 export interface MessageComposerProps {
-  onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
+  onSend?: (
+    content: string,
+    subject?: string,
+    files?: File[],
+    composerContent?: string,
+  ) => void | Promise<void>;
   onSubmitEdit?: (messageId: MessageId, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;
@@ -52,6 +64,10 @@ export interface MessageComposerProps {
   initialValue?: string;
   /** Called whenever the composer text changes (for draft persistence) */
   onValueChange?: (value: string) => void;
+  /** Clear the current draft only when it still matches a successfully retried message. */
+  clearRequest?: ComposerClearRequest | null;
+  /** Live route/draft/edit identity used to consume retry cleanup without cross-chat races. */
+  currentComposerIdentity?: string;
   /** Trigger edit mode for the latest own message when composer is empty. */
   onEditLastMessage?: () => void;
   /** Active message edit session routed from chat page. */

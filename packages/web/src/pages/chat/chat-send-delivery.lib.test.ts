@@ -116,6 +116,32 @@ describe("buildOptimisticOutgoingMessage", () => {
       }),
     );
   });
+
+  it("keeps the original composer draft separately from the outgoing body", () => {
+    expect(
+      buildOptimisticOutgoingMessage({
+        id: testMessageId(900007),
+        senderId: 42,
+        senderFullName: "You",
+        content: "> quoted body\n\nreply",
+        composerAttempt: {
+          composerIdentity: "chat-draft-write",
+          draftUuid: "00000000-0000-4000-8000-000000000007",
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          topicUuid: "00000000-0000-4000-8000-000000000020",
+          content: "reply",
+          files: [],
+        },
+        target: { mode: "dm", recipientIds: [7] },
+        nowSec: 112,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        content: "> quoted body\n\nreply",
+        local_composer_attempt: expect.objectContaining({ content: "reply" }),
+      }),
+    );
+  });
 });
 
 describe("delivery transitions", () => {

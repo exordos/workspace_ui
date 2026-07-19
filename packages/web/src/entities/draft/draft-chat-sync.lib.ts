@@ -1,3 +1,4 @@
+import { WorkspaceApiHttpError } from "~/shared/api/workspace-orval-mutator";
 import {
   DraftPreconditionError,
   createDraft,
@@ -23,6 +24,20 @@ export interface SyncDraftContentOptions {
   markDraftConflict: (uuid: string, current: Draft | null) => void;
   removeDraft: (uuid: string) => void;
 }
+
+export interface FinalizeSentDraftOptions {
+  uuid: string;
+  streamUuid: string;
+  topicUuid: string;
+  sentContent: string;
+  getDraft: (uuid: string) => Draft | undefined;
+  upsertDraft: (draft: Draft) => void;
+  updateDraftPayload: (uuid: string, content: string, syncState?: Draft["sync_state"]) => void;
+  markDraftConflict: (uuid: string, current: Draft | null) => void;
+  removeDraft: (uuid: string) => void;
+}
+
+export type FinalizeSentDraftStatus = "deleted" | "preserved" | "conflict" | "missing";
 
 export function createPendingDraft(options: {
   uuid: string;
@@ -109,4 +124,60 @@ export async function syncDraftContent(options: SyncDraftContentOptions): Promis
     }
     throw error;
   }
+}
+
+/** Deletes exactly the server draft consumed by a successful send and preserves concurrent edits. */
+export async function finalizeDraftAfterSuccessfulSend(
+  options: FinalizeSentDraftOptions,
+): Promise<FinalizeSentDraftStatus> {
+  const existing = options.getDraft(options.uuid);
+  if (existing == null) return "missing";
+  if (existing.payload.content !== options.sentContent) return "preserved";
+
+  if (existing.project_id === "") {
+    options.removeDraft(existing.uuid);
+    return "deleted";
+  }
+
+  try {
+    await deleteDraftOnServer(existing.uuid, existing.etag);
+  } catch (error) {
+    if (error instanceof WorkspaceApiHttpError && error.status === 404) {
+      // The authoritative draft is already absent. Reconcile local state exactly as after a
+      // successful idempotent DELETE, including preservation of concurrent local edits below.
+    } else if (error instanceof DraftPreconditionError) {
+      options.markDraftConflict(existing.uuid, error.current.draft);
+      return "conflict";
+    } else {
+      throw error;
+    }
+  }
+
+  const current = options.getDraft(existing.uuid);
+  if (current == null || current.payload.content === options.sentContent) {
+    options.removeDraft(existing.uuid);
+    return "deleted";
+  }
+
+  const newerContent = current.payload.content;
+  options.upsertDraft(
+    createPendingDraft({
+      uuid: existing.uuid,
+      streamUuid: options.streamUuid,
+      topicUuid: options.topicUuid,
+      content: newerContent,
+    }),
+  );
+  const recreated = await createDraft({
+    uuid: existing.uuid,
+    stream_uuid: options.streamUuid,
+    topic_uuid: options.topicUuid,
+    payload: { kind: "markdown", content: newerContent },
+  });
+  const latest = options.getDraft(existing.uuid);
+  options.upsertDraft(recreated);
+  if (latest != null && latest.payload.content !== newerContent) {
+    options.updateDraftPayload(existing.uuid, latest.payload.content, "pending");
+  }
+  return "preserved";
 }

@@ -20,6 +20,7 @@ export interface BuildOptimisticOutgoingMessageInput {
   senderId: UserId | null;
   senderFullName: string;
   content: string;
+  composerAttempt?: MockMessage["local_composer_attempt"];
   target: OutgoingMessageTarget;
   nowSec?: number;
 }
@@ -45,6 +46,7 @@ export function buildOptimisticOutgoingMessage(
       subject: "",
       content: input.content,
       markdown_source: input.content,
+      ...(input.composerAttempt != null ? { local_composer_attempt: input.composerAttempt } : {}),
       timestamp,
       delivery_status: "sending",
       local_echo_key: input.id,
@@ -64,6 +66,7 @@ export function buildOptimisticOutgoingMessage(
     ...(input.target.topicUuid != null ? { topic_uuid: input.target.topicUuid } : {}),
     content: input.content,
     markdown_source: input.content,
+    ...(input.composerAttempt != null ? { local_composer_attempt: input.composerAttempt } : {}),
     timestamp,
     delivery_status: "sending",
     local_echo_key: input.id,

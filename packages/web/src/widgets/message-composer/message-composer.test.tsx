@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -173,7 +173,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.change(textbox, { target: { value: "Hello world" } });
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
-    expect(onSend).toHaveBeenCalledWith("Hello world", "", undefined);
+    expect(onSend).toHaveBeenCalledWith("Hello world", "", undefined, "Hello world");
     await waitFor(() => {
       expect(textbox).toHaveValue("");
     });
@@ -202,7 +202,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "", undefined);
+      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "", undefined, "First message");
       expect(textbox).toHaveValue("");
       expect(textbox).toHaveFocus();
     });
@@ -211,7 +211,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "", undefined);
+      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "", undefined, "Second message");
     });
 
     resolveFirstSend();
@@ -231,12 +231,200 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("Draft text", "", undefined);
+      expect(onSend).toHaveBeenCalledWith("Draft text", "", undefined, "Draft text");
     });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("Draft text");
       expect(onValueChange).toHaveBeenLastCalledWith("Draft text");
+    });
+  });
+
+  it("clears the restored draft after the matching failed message retry succeeds", async () => {
+    const onValueChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <MessageComposer initialValue="Retry this" onValueChange={onValueChange} />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveValue("Retry this");
+
+    rerender(
+      <MessageComposer
+        initialValue="Retry this"
+        onValueChange={onValueChange}
+        currentComposerIdentity="chat-draft-write"
+        clearRequest={{
+          id: 1,
+          composerIdentity: "chat-draft-write",
+          content: "Retry this",
+          files: [],
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(textbox).toHaveValue("");
+      expect(onValueChange).toHaveBeenLastCalledWith("");
+    });
+  });
+
+  it("preserves newer composer text when an older failed message retry succeeds", async () => {
+    const onValueChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <MessageComposer initialValue="Retry this" onValueChange={onValueChange} />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "New draft" } });
+
+    rerender(
+      <MessageComposer
+        initialValue="Retry this"
+        onValueChange={onValueChange}
+        currentComposerIdentity="chat-draft-write"
+        clearRequest={{
+          id: 1,
+          composerIdentity: "chat-draft-write",
+          content: "Retry this",
+          files: [],
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(textbox).toHaveValue("New draft");
+    });
+
+    fireEvent.change(textbox, { target: { value: "Retry this" } });
+    await waitFor(() => {
+      expect(textbox).toHaveValue("Retry this");
+      expect(onValueChange).not.toHaveBeenCalledWith("");
+    });
+  });
+
+  it("removes restored file chips from the successfully retried attempt", async () => {
+    const failedFile = new File(["failed"], "failed.txt", { type: "text/plain" });
+    const { container, rerender } = renderWithProviders(
+      <MessageComposer initialValue="Retry this" />,
+    );
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected hidden file input");
+    fireEvent.change(input, { target: { files: [failedFile] } });
+    const restoredContent = screen.getByRole<HTMLTextAreaElement>("textbox").value;
+
+    rerender(
+      <MessageComposer
+        initialValue={restoredContent}
+        currentComposerIdentity="chat-draft-write"
+        clearRequest={{
+          id: 1,
+          composerIdentity: "chat-draft-write",
+          content: restoredContent,
+          files: [failedFile],
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue("");
+      expect(screen.queryByText("failed.txt")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not apply a retry clear request while editing a message", async () => {
+    renderWithProviders(
+      <MessageComposer
+        initialValue="Retry this"
+        currentComposerIdentity="chat-draft-write"
+        editSession={{ messageId: testMessageId(42), initialMarkdown: "Retry this" }}
+        clearRequest={{
+          id: 1,
+          composerIdentity: "chat-draft-write",
+          content: "Retry this",
+          files: [],
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue("Retry this");
+    });
+  });
+
+  it("defers a matching retry clear in Preview and consumes it after returning to Write", async () => {
+    renderMessageContentMock.mockResolvedValue("<p>Retry this</p>");
+    const onValueChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        initialValue="Retry this"
+        onValueChange={onValueChange}
+        currentComposerIdentity="composer-a"
+      />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    });
+
+    act(() => {
+      rerender(
+        <MessageComposer
+          initialValue="Retry this"
+          onValueChange={onValueChange}
+          currentComposerIdentity="composer-a"
+          clearRequest={{
+            id: 1,
+            composerIdentity: "composer-a",
+            content: "Retry this",
+            files: [],
+          }}
+        />,
+      );
+    });
+
+    expect(onValueChange).not.toHaveBeenCalledWith("");
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue("");
+      expect(onValueChange).toHaveBeenLastCalledWith("");
+    });
+  });
+
+  it("does not consume a clear request in another chat and applies it after identity returns", async () => {
+    const onValueChange = vi.fn();
+    const request = {
+      id: 1,
+      composerIdentity: "composer-a",
+      content: "Same text",
+      files: [],
+    };
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        initialValue="Same text"
+        onValueChange={onValueChange}
+        currentComposerIdentity="composer-b"
+        clearRequest={request}
+      />,
+    );
+
+    expect(screen.getByRole("textbox")).toHaveValue("Same text");
+    expect(onValueChange).not.toHaveBeenCalledWith("");
+
+    act(() => {
+      rerender(
+        <MessageComposer
+          initialValue="Same text"
+          onValueChange={onValueChange}
+          currentComposerIdentity="composer-a"
+          clearRequest={request}
+        />,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue("");
+      expect(onValueChange).toHaveBeenLastCalledWith("");
     });
   });
 
@@ -764,7 +952,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("@zzz", "", undefined);
+      expect(onSend).toHaveBeenCalledWith("@zzz", "", undefined, "@zzz");
     });
     expect(useMentionSuggestStore.getState().visible).toBe(false);
   });
@@ -1061,7 +1249,7 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with file", "", [file]);
+      expect(onSend).toHaveBeenCalledWith("message with file", "", [file], "message with file");
     });
   });
 
@@ -1080,7 +1268,12 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with failed file", "", [file]);
+      expect(onSend).toHaveBeenCalledWith(
+        "message with failed file",
+        "",
+        [file],
+        "message with failed file",
+      );
       expect(textbox).toHaveValue("message with failed file");
       expect(screen.getByText("retry-spec.txt")).toBeInTheDocument();
     });
@@ -1112,9 +1305,12 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith(expect.stringMatching(/workspace-upload:\/\//), "", [
-        file,
-      ]);
+      expect(onSend).toHaveBeenCalledWith(
+        expect.stringMatching(/workspace-upload:\/\//),
+        "",
+        [file],
+        expect.stringMatching(/workspace-upload:\/\//),
+      );
     });
   });
 
@@ -1137,7 +1333,12 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with input event file", "", [file]);
+      expect(onSend).toHaveBeenCalledWith(
+        "message with input event file",
+        "",
+        [file],
+        "message with input event file",
+      );
     });
   });
 
@@ -1162,7 +1363,12 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with single picker selection", "", [file]);
+      expect(onSend).toHaveBeenCalledWith(
+        "message with single picker selection",
+        "",
+        [file],
+        "message with single picker selection",
+      );
     });
   });
 
@@ -1187,7 +1393,12 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with duplicate files", "", [file, file]);
+      expect(onSend).toHaveBeenCalledWith(
+        "message with duplicate files",
+        "",
+        [file, file],
+        "message with duplicate files",
+      );
     });
   });
 
@@ -1206,7 +1417,7 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message from drop", "", [file]);
+      expect(onSend).toHaveBeenCalledWith("message from drop", "", [file], "message from drop");
     });
   });
 
@@ -1416,6 +1627,23 @@ describe("MessageComposer reply quote", () => {
 
     expect(textbox).not.toHaveFocus();
   });
+
+  it("passes raw composer text separately from the quoted outgoing body", async () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} replyQuote={sampleReplyQuote} />);
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "My reply" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        expect.stringContaining("Original message"),
+        "",
+        undefined,
+        "My reply",
+      );
+    });
+  });
 });
 
 describe("MessageComposer edit session", () => {
@@ -1572,7 +1800,7 @@ describe("MessageComposer send shortcuts", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("hello", "", undefined);
+      expect(onSend).toHaveBeenCalledWith("hello", "", undefined, "hello");
     });
   });
 

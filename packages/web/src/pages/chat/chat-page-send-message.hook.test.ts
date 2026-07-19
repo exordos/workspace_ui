@@ -15,11 +15,18 @@ vi.mock("~/shared/api/messenger-messages", () => ({
 }));
 
 vi.mock("./chat-send-delivery.lib", () => ({
-  buildOptimisticOutgoingMessage: vi.fn((opts: { id: number; content: string }) => ({
-    id: opts.id,
-    content: opts.content,
-    delivery_status: "pending",
-  })),
+  buildOptimisticOutgoingMessage: vi.fn(
+    (opts: {
+      id: number;
+      content: string;
+      composerAttempt?: MockMessage["local_composer_attempt"];
+    }) => ({
+      id: opts.id,
+      content: opts.content,
+      ...(opts.composerAttempt != null ? { local_composer_attempt: opts.composerAttempt } : {}),
+      delivery_status: "pending",
+    }),
+  ),
   markOutgoingMessageFailed: vi.fn((msg: MockMessage) => ({
     ...msg,
     delivery_status: "failed",
@@ -59,6 +66,7 @@ function defaultParams(overrides: Partial<Parameters<typeof useChatPageSendMessa
     stopTyping: vi.fn(),
     setSendError: vi.fn(),
     setUploadProgress: vi.fn(),
+    onRetrySucceeded: vi.fn(),
     ...overrides,
   };
 }
@@ -86,6 +94,7 @@ describe("useChatPageSendMessage", () => {
         activeDmUserIds: [42],
       }),
       "hello",
+      undefined,
       undefined,
       undefined,
     );
@@ -136,7 +145,30 @@ describe("useChatPageSendMessage", () => {
         testMessageId(-3),
         expect.objectContaining({ id: testMessageId(99) }),
       );
+      expect(params.onRetrySucceeded).toHaveBeenCalledWith(
+        expect.objectContaining({ id: testMessageId(-3), content: "retry me" }),
+      );
     });
+  });
+
+  it("keeps a delivered retry committed when post-send draft finalization fails", async () => {
+    const params = defaultParams({
+      onRetrySucceeded: vi.fn().mockRejectedValue(new Error("draft cleanup failed")),
+    });
+    const { result } = renderHook(() => useChatPageSendMessage(params));
+
+    await act(async () => {
+      await result.current.handleRetryFailedOutgoing(failedOutgoing());
+    });
+
+    expect(params.commitOutgoingMessage).toHaveBeenCalledWith(
+      testMessageId(-3),
+      expect.objectContaining({ id: testMessageId(99) }),
+    );
+    expect(params.appendMessage).toHaveBeenCalledTimes(1);
+    expect(params.appendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "failed" }),
+    );
   });
 
   it("marks retried stream message failed and removes optimistic row on send error", async () => {
@@ -184,15 +216,31 @@ describe("useChatPageSendMessage", () => {
     const { result } = renderHook(() => useChatPageSendMessage(params));
 
     await act(async () => {
-      await result.current.handleRetryFailedOutgoing(failedOutgoing());
+      await result.current.handleRetryFailedOutgoing(
+        failedOutgoing({
+          local_composer_attempt: {
+            composerIdentity: "chat-draft-write",
+            draftUuid: "00000000-0000-4000-8000-000000000007",
+            streamUuid: "22222222-2222-4222-8222-222222222222",
+            topicUuid: "00000000-0000-4000-8000-000000000020",
+            content: "restored draft",
+            files: [],
+          },
+        }),
+      );
     });
 
     await waitFor(() => {
       expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
       expect(params.setSendError).toHaveBeenCalledWith("network");
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: testMessageId(-3), delivery_status: "failed" }),
+        expect.objectContaining({
+          id: testMessageId(-3),
+          delivery_status: "failed",
+          local_composer_attempt: expect.objectContaining({ content: "restored draft" }),
+        }),
       );
+      expect(params.onRetrySucceeded).not.toHaveBeenCalled();
     });
   });
 });

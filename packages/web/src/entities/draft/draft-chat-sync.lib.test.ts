@@ -1,17 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceApiHttpError } from "~/shared/api/workspace-orval-mutator";
 import { createDraftFixture } from "~/test/factories";
-import { createPendingDraft, syncDraftContent } from "./draft-chat-sync.lib";
+import {
+  createPendingDraft,
+  finalizeDraftAfterSuccessfulSend,
+  syncDraftContent,
+} from "./draft-chat-sync.lib";
 import {
   DraftPreconditionError,
   createDraft,
   deleteDraftOnServer,
   updateDraftOnServer,
 } from "./draft.api";
+import type * as DraftApiModule from "./draft.api";
 import type { Draft } from "./draft.types";
 
 vi.mock("./draft.api", async () => {
-  const actual = await vi.importActual<typeof import("./draft.api")>("./draft.api");
+  const actual = await vi.importActual<typeof DraftApiModule>("./draft.api");
   return {
     ...actual,
     createDraft: vi.fn(),
@@ -190,5 +195,144 @@ describe("syncDraftContent", () => {
       }),
     );
     expect(setup.input.upsertDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("finalizeDraftAfterSuccessfulSend", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("deletes the exact server draft even after the originating composer unmounts", async () => {
+    const existing = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "Sent draft",
+      etag: '"4"',
+    });
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    deleteDraftOnServerMock.mockResolvedValue();
+
+    await expect(
+      finalizeDraftAfterSuccessfulSend({
+        ...setup.input,
+        sentContent: "Sent draft",
+      }),
+    ).resolves.toBe("deleted");
+    expect(deleteDraftOnServerMock).toHaveBeenCalledWith(DRAFT_UUID, '"4"');
+    expect(setup.drafts.has(DRAFT_UUID)).toBe(false);
+  });
+
+  it("treats a typed DELETE 404 as idempotent and removes the matching local draft", async () => {
+    const existing = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "Sent draft",
+      etag: '"4"',
+    });
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    deleteDraftOnServerMock.mockRejectedValue(
+      new WorkspaceApiHttpError("draft not found", 404, { type: "not_found" }),
+    );
+
+    await expect(
+      finalizeDraftAfterSuccessfulSend({
+        ...setup.input,
+        sentContent: "Sent draft",
+      }),
+    ).resolves.toBe("deleted");
+    expect(setup.input.removeDraft).toHaveBeenCalledWith(DRAFT_UUID);
+    expect(setup.drafts.has(DRAFT_UUID)).toBe(false);
+  });
+
+  it("does not mistake a typed non-404 transport error for an idempotent delete", async () => {
+    const existing = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "Sent draft",
+    });
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    const serverError = new WorkspaceApiHttpError("server error", 500, null);
+    deleteDraftOnServerMock.mockRejectedValue(serverError);
+
+    await expect(
+      finalizeDraftAfterSuccessfulSend({
+        ...setup.input,
+        sentContent: "Sent draft",
+      }),
+    ).rejects.toBe(serverError);
+    expect(setup.input.removeDraft).not.toHaveBeenCalled();
+    expect(setup.drafts.get(DRAFT_UUID)).toBe(existing);
+  });
+
+  it("preserves a different draft with the same chat identity", async () => {
+    const setup = options();
+    setup.drafts.set(
+      DRAFT_UUID,
+      createDraftFixture({
+        uuid: DRAFT_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+        content: "Newer draft",
+      }),
+    );
+
+    await expect(
+      finalizeDraftAfterSuccessfulSend({
+        ...setup.input,
+        sentContent: "Sent draft",
+      }),
+    ).resolves.toBe("preserved");
+    expect(deleteDraftOnServerMock).not.toHaveBeenCalled();
+  });
+
+  it("recreates text typed while server deletion is in flight", async () => {
+    let resolveDelete: () => void = () => {
+      throw new Error("Expected delete resolver to be assigned");
+    };
+    deleteDraftOnServerMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    const existing = createDraftFixture({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      content: "Sent draft",
+    });
+    const setup = options();
+    setup.drafts.set(DRAFT_UUID, existing);
+    createDraftMock.mockResolvedValue(
+      createDraftFixture({
+        uuid: DRAFT_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+        content: "Typed during retry",
+      }),
+    );
+
+    const finalizing = finalizeDraftAfterSuccessfulSend({
+      ...setup.input,
+      sentContent: "Sent draft",
+    });
+    setup.input.updateDraftPayload(DRAFT_UUID, "Typed during retry", "pending");
+    resolveDelete();
+
+    await expect(finalizing).resolves.toBe("preserved");
+    expect(createDraftMock).toHaveBeenCalledWith({
+      uuid: DRAFT_UUID,
+      stream_uuid: STREAM_UUID,
+      topic_uuid: TOPIC_UUID,
+      payload: { kind: "markdown", content: "Typed during retry" },
+    });
+    expect(setup.drafts.get(DRAFT_UUID)?.payload.content).toBe("Typed during retry");
   });
 });

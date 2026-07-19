@@ -38,6 +38,14 @@ export interface ChatPageSendHandlerDeps {
   releaseUploadAbortController: (controller: AbortController) => void;
 }
 
+export interface ChatPageSendAttemptInput {
+  composerIdentity: string;
+  draftUuid: string | null;
+  streamUuid: string;
+  topicUuid: string;
+  content: string;
+}
+
 async function prepareComposerBodyWithUploads(options: {
   content: string;
   files: File[] | undefined;
@@ -94,16 +102,18 @@ async function prepareComposerBodyWithUploads(options: {
 async function sendOutgoingMessageWithOptimisticUi(options: {
   deps: ChatPageSendHandlerDeps;
   body: string;
+  composerAttempt?: MockMessage["local_composer_attempt"];
   target: OutgoingMessageTarget;
   apiPayload: Parameters<typeof sendMessage>[0];
 }): Promise<void> {
-  const { deps, body, target, apiPayload } = options;
+  const { deps, body, composerAttempt, target, apiPayload } = options;
   const optimisticMessageId = deps.allocateOptimisticMessageId();
   const optimisticMessage = buildOptimisticOutgoingMessage({
     id: optimisticMessageId,
     senderId: deps.currentUserId,
     senderFullName: t("common.you"),
     content: body,
+    composerAttempt,
     target,
   });
 
@@ -135,6 +145,7 @@ export async function executeChatPageSend(
   content: string,
   subjectOverride?: string,
   files?: File[],
+  attemptInput?: ChatPageSendAttemptInput,
 ): Promise<void> {
   deps.setSendError(null);
   deps.setUploadProgress(null);
@@ -161,6 +172,10 @@ export async function executeChatPageSend(
     await sendOutgoingMessageWithOptimisticUi({
       deps,
       body,
+      composerAttempt:
+        attemptInput == null
+          ? undefined
+          : { ...attemptInput, files: files == null ? [] : [...files] },
       target: { mode: "dm", recipientIds: deps.activeDmUserIds ?? [] },
       apiPayload: { streamUuid: deps.activeStreamUuid, content: body },
     });
@@ -197,6 +212,10 @@ export async function executeChatPageSend(
   await sendOutgoingMessageWithOptimisticUi({
     deps,
     body,
+    composerAttempt:
+      attemptInput == null
+        ? undefined
+        : { ...attemptInput, files: files == null ? [] : [...files] },
     target: {
       mode: "stream",
       stream: deps.activeStreamCanonicalName,

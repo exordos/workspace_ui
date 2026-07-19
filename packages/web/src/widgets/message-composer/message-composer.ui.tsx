@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import React, { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect } from "react";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
@@ -49,6 +49,7 @@ import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
 import { MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 import { useMessageComposerPreview } from "./message-composer-preview.hook";
+import { removeRetriedComposerFiles } from "./message-composer-retry-clear.lib";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
 import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
@@ -91,6 +92,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onClearReply,
   initialValue,
   onValueChange,
+  clearRequest,
+  currentComposerIdentity,
   onEditLastMessage,
   editSession,
   aiMessagesContext,
@@ -122,7 +125,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
-  const { value, setValue, isEditing } = useComposerDraft({
+  const { value, setValue, setRawValue, isEditing } = useComposerDraft({
     initialValue,
     editSession,
     onValueChange,
@@ -134,6 +137,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   });
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handledClearRequestIdRef = useRef<number | null>(null);
 
   const insertTextAtSelection = useCallback(
     (text: string) => {
@@ -234,6 +238,21 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     uploadProgress,
     onFilesAdded: insertUploadPlaceholders,
   });
+
+  useEffect(() => {
+    if (clearRequest == null || handledClearRequestIdRef.current === clearRequest.id) return;
+    if (
+      isEditing ||
+      mode !== "write" ||
+      currentComposerIdentity !== clearRequest.composerIdentity
+    ) {
+      return;
+    }
+    handledClearRequestIdRef.current = clearRequest.id;
+    if (value !== clearRequest.content) return;
+    setValue("");
+    setFiles((current) => removeRetriedComposerFiles(current, clearRequest.files));
+  }, [clearRequest, currentComposerIdentity, isEditing, mode, setFiles, setValue, value]);
   const removeFile = useCallback(
     (index: number) => {
       const file = files[index];
@@ -451,7 +470,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     const draftToSend = value;
     const bodyToSend = outgoingBody;
     const filesToSend = hasFiles ? [...files] : undefined;
-    setValue("");
+    setRawValue("");
     setFiles([]);
 
     // Restore focus/caret after optimistic clear so typing can continue before network.
@@ -465,14 +484,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     });
 
     try {
-      await onSend?.(bodyToSend, subject, filesToSend);
+      await onSend?.(bodyToSend, subject, filesToSend, draftToSend);
     } catch {
       // Preserve input across transient send failures without overwriting
       // anything the user typed or attached while this request was pending.
-      setValue((current) => (current.length === 0 ? draftToSend : current));
+      setRawValue((current) => (current.length === 0 ? draftToSend : current));
       setFiles((current) => (current.length === 0 && filesToSend != null ? filesToSend : current));
       return;
     }
+    setValue((current) => current);
     if (effectiveReplyQuote) {
       onClearReply?.();
     }

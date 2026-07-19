@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { createPendingDraft, syncDraftContent } from "~/entities/draft/draft-chat-sync.lib";
+import {
+  createPendingDraft,
+  finalizeDraftAfterSuccessfulSend,
+  syncDraftContent,
+} from "~/entities/draft/draft-chat-sync.lib";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -48,6 +52,7 @@ import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { userIdStorageKey, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import type { ComposerClearRequest } from "~/widgets/message-composer/message-composer.types";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
@@ -87,6 +92,10 @@ import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
 import { resolveChatHeaderRightPanelLabel } from "./chat-page.lib";
+import {
+  buildChatComposerIdentity,
+  shouldClearComposerAfterRetry,
+} from "./chat-retry-composer.lib";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
@@ -101,6 +110,8 @@ export const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const location = useLocation();
+  const currentRouteRef = useRef("");
+  currentRouteRef.current = `${location.pathname}${location.search}`;
   const {
     streamSlug,
     topicName,
@@ -318,6 +329,13 @@ export const ChatPage: React.FC = () => {
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSessionState | null>(
     null,
   );
+  const [composerClearRequest, setComposerClearRequest] = useState<ComposerClearRequest | null>(
+    null,
+  );
+  const composerClearRequestIdRef = useRef(0);
+  const composerEditSessionRef = useRef<ComposerEditSessionState | null>(null);
+  composerEditSessionRef.current = composerEditSession;
+  const mountedRef = useRef(true);
   const { forwardMessages, setForwardMessages, forwardSelectedText, setForwardSelectedText } =
     useChatForwardHydration({ forwardMessageId, messages });
   const [actionError, setActionError] = useState<string | null>(null);
@@ -568,12 +586,42 @@ export const ChatPage: React.FC = () => {
       if (composerEditSession != null) {
         return;
       }
+      if (
+        v.trim().length > 0 &&
+        activeDraftIdRef.current == null &&
+        activeStreamUuid != null &&
+        draftTopicUuid != null
+      ) {
+        const draftUuid = createMessageId();
+        activeDraftIdRef.current = draftUuid;
+        useDraftStore.getState().upsertDraft(
+          createPendingDraft({
+            uuid: draftUuid,
+            streamUuid: activeStreamUuid,
+            topicUuid: draftTopicUuid,
+            content: v,
+          }),
+        );
+      }
       composerValueRef.current = v;
       onComposerValueChangeTyping(v);
       scheduleDraftSync(v);
     },
-    [onComposerValueChangeTyping, scheduleDraftSync, composerEditSession],
+    [
+      activeStreamUuid,
+      composerEditSession,
+      draftTopicUuid,
+      onComposerValueChangeTyping,
+      scheduleDraftSync,
+    ],
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => stopTypingNow, [stopTypingNow]);
 
@@ -629,6 +677,63 @@ export const ChatPage: React.FC = () => {
     setSendError(null);
   }, []);
 
+  const handleRetrySucceeded = useCallback(async (failedMessage: MockMessage) => {
+    const attempt = failedMessage.local_composer_attempt;
+    if (attempt == null) return;
+
+    const currentComposerIdentity = buildChatComposerIdentity({
+      route: currentRouteRef.current,
+      draftUuid: activeDraftIdRef.current,
+      editMessageId: composerEditSessionRef.current?.messageId ?? null,
+    });
+    if (
+      mountedRef.current &&
+      shouldClearComposerAfterRetry({
+        attempt,
+        currentComposerIdentity,
+        currentContent: composerValueRef.current,
+        isEditing: composerEditSessionRef.current != null,
+      })
+    ) {
+      composerClearRequestIdRef.current += 1;
+      setComposerClearRequest({
+        id: composerClearRequestIdRef.current,
+        composerIdentity: attempt.composerIdentity,
+        content: attempt.content,
+        files: attempt.files,
+      });
+    }
+
+    const draftUuid = attempt.draftUuid;
+    if (draftUuid == null) return;
+    const finalize = async () => {
+      const store = useDraftStore.getState();
+      const status = await finalizeDraftAfterSuccessfulSend({
+        uuid: draftUuid,
+        streamUuid: attempt.streamUuid,
+        topicUuid: attempt.topicUuid,
+        sentContent: attempt.content,
+        getDraft: store.getDraft,
+        upsertDraft: store.upsertDraft,
+        updateDraftPayload: store.updateDraftPayload,
+        markDraftConflict: store.markDraftConflict,
+        removeDraft: store.removeDraft,
+      });
+      if (status === "conflict" && mountedRef.current) {
+        setActionError(t("draft.conflict"));
+      }
+    };
+    draftSyncQueueRef.current = draftSyncQueueRef.current.catch(() => {}).then(finalize);
+    try {
+      await draftSyncQueueRef.current;
+    } catch (error) {
+      reportUnexpectedError("chat:retryDraftFinalize", error, {
+        draftUuid: attempt.draftUuid,
+      });
+      if (mountedRef.current) setActionError(t("draft.saveError"));
+    }
+  }, []);
+
   const { canStartCall, buildCurrentCallLink, handleCallClick } = useChatPageCall({
     isDmView,
     isOneToOneDm,
@@ -663,19 +768,41 @@ export const ChatPage: React.FC = () => {
       stopTyping: stopTypingNow,
       setSendError,
       setUploadProgress,
+      onRetrySucceeded: handleRetrySucceeded,
     });
   const externalSendPreflight = useExternalOperationPreflight();
   const handlePreflightedSend = useCallback(
-    async (content: string, subjectOverride?: string, files?: File[]) => {
+    async (content: string, subjectOverride?: string, files?: File[], composerContent?: string) => {
+      const attemptInput =
+        activeStreamUuid == null || draftTopicUuid == null
+          ? undefined
+          : {
+              composerIdentity: buildChatComposerIdentity({
+                route: currentRouteRef.current,
+                draftUuid: activeDraftIdRef.current,
+                editMessageId: null,
+              }),
+              draftUuid: activeDraftIdRef.current,
+              streamUuid: activeStreamUuid,
+              topicUuid: draftTopicUuid,
+              content: composerContent ?? content,
+            };
       await executeExternalPreflightedSend({
         provider: activeExternalProvider,
         target: externalSendTarget,
         includesFiles: files != null && files.length > 0,
         runPreflight: externalSendPreflight.runAwaitable,
-        execute: () => handleSend(content, subjectOverride, files),
+        execute: () => handleSend(content, subjectOverride, files, attemptInput),
       });
     },
-    [activeExternalProvider, externalSendPreflight, externalSendTarget, handleSend],
+    [
+      activeExternalProvider,
+      activeStreamUuid,
+      draftTopicUuid,
+      externalSendPreflight,
+      externalSendTarget,
+      handleSend,
+    ],
   );
   const handlePreflightedRetryFailedOutgoing = useCallback(
     (message: MockMessage) => {
@@ -1230,6 +1357,12 @@ export const ChatPage: React.FC = () => {
           onClearReply={() => setReplyQuote(null)}
           draftInitialValue={draftInitialValue}
           onComposerValueChange={handleComposerValueChange}
+          composerClearRequest={composerClearRequest}
+          currentComposerIdentity={buildChatComposerIdentity({
+            route: currentRouteRef.current,
+            draftUuid: activeDraftIdRef.current,
+            editMessageId: composerEditSession?.messageId ?? null,
+          })}
           onEditLastMessage={handleEditLastMessage}
           editSession={composerEditSession}
           onSubmitEdit={handleSubmitComposerEdit}

@@ -15,11 +15,20 @@ vi.mock("~/shared/api/messenger-upload", () => ({
 }));
 
 vi.mock("./chat-send-delivery.lib", () => ({
-  buildOptimisticOutgoingMessage: vi.fn((options: { id: number; content: string }) => ({
-    id: options.id,
-    content: options.content,
-    delivery_status: "pending",
-  })),
+  buildOptimisticOutgoingMessage: vi.fn(
+    (options: {
+      id: number;
+      content: string;
+      composerAttempt?: MockMessage["local_composer_attempt"];
+    }) => ({
+      id: options.id,
+      content: options.content,
+      ...(options.composerAttempt != null
+        ? { local_composer_attempt: options.composerAttempt }
+        : {}),
+      delivery_status: "pending",
+    }),
+  ),
   markOutgoingMessageFailed: vi.fn((message: MockMessage) => ({
     ...message,
     delivery_status: "failed",
@@ -135,8 +144,17 @@ describe("executeChatPageSend", () => {
   it("moves an API-rejected submission to the failed outbox and rejects for composer restore", async () => {
     vi.mocked(sendMessage).mockRejectedValueOnce(new Error("mail unavailable"));
     const deps = createDeps();
+    const file = new File(["retry"], "retry.txt", { type: "text/plain" });
 
-    await expect(executeChatPageSend(deps, "retry safely")).rejects.toThrow("mail unavailable");
+    await expect(
+      executeChatPageSend(deps, "rendered body", undefined, [file], {
+        composerIdentity: "chat-draft-write",
+        draftUuid: "00000000-0000-4000-8000-000000000007",
+        streamUuid: activeStreamUuid,
+        topicUuid: "00000000-0000-4000-8000-000000000020",
+        content: "retry safely",
+      }),
+    ).rejects.toThrow("mail unavailable");
 
     expect(deps.appendMessage).toHaveBeenNthCalledWith(
       1,
@@ -150,6 +168,11 @@ describe("executeChatPageSend", () => {
       expect.objectContaining({
         id: optimisticMessageUuid,
         delivery_status: "failed",
+        local_composer_attempt: expect.objectContaining({
+          composerIdentity: "chat-draft-write",
+          content: "retry safely",
+          files: [file],
+        }),
       }),
     );
     expect(deps.setSendError).toHaveBeenCalledWith("mail unavailable");
