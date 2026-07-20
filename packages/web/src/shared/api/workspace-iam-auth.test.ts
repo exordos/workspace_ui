@@ -163,7 +163,7 @@ describe("workspace-iam-auth", () => {
     );
   });
 
-  it("recognizes the current IAM OTP challenge response", () => {
+  it("recognizes IAM 401 token responses as OTP challenge responses", () => {
     expect(
       isWorkspaceIamOtpRequiredError(
         new WorkspaceIamAuthError("failed", 401, {
@@ -177,6 +177,14 @@ describe("workspace-iam-auth", () => {
         new WorkspaceIamAuthError("failed", 401, {
           error: "invalid_grant",
           error_description: "Invalid credentials",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isWorkspaceIamOtpRequiredError(
+        new WorkspaceIamAuthError("failed", 400, {
+          error: "invalid_client",
+          error_description: "The provided otp code is invalid",
         }),
       ),
     ).toBe(false);

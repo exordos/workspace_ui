@@ -50,16 +50,7 @@ export class WorkspaceIamAuthError extends Error {
 }
 
 export function isWorkspaceIamOtpRequiredError(error: unknown): boolean {
-  if (!(error instanceof WorkspaceIamAuthError) || error.status !== 401) {
-    return false;
-  }
-  if (!isRecord(error.data)) {
-    return false;
-  }
-
-  const errorCode = stringField(error.data, "error");
-  const errorDescription = stringField(error.data, "error_description");
-  return errorCode === "invalid_client" && /\botp\b/i.test(errorDescription ?? "");
+  return error instanceof WorkspaceIamAuthError && error.status === 401;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
