@@ -69,6 +69,14 @@
     "organizationStepHint": "Сначала укажите адрес вашей организации.",
     "organizationStepLoading": "Загружаем настройки организации…",
     "authStepHint": "Выберите способ входа или введите email/логин и пароль.",
+    "otpStepHint": "Введите шестизначный код из приложения-аутентификатора.",
+    "otpCode": "Код подтверждения",
+    "confirmOtp": "Подтвердить код",
+    "invalidOtp": "Код подтверждения неверный. Попробуйте ещё раз.",
+    "projectStepHint": "Выберите проект, который хотите открыть.",
+    "selectProject": "Проект",
+    "selectProjectPlaceholder": "Выберите проект",
+    "noProjectsAvailable": "У вашего аккаунта нет доступа к проектам этой организации.",
     "organizationSettingsLoadError": "Не удалось загрузить настройки организации. Проверьте адрес сервера и попробуйте ещё раз.",
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
     "defaultOrganizationName": "Exordos Core Public"
@@ -200,6 +208,14 @@
     "readReceiptsUnsupported": "Просмотры пока не подключены к Workspace-мессенджеру.",
     "permalinkUnsupported": "Старые ссылки на сообщения пока не подключены к Workspace-мессенджеру.",
     "retryUnsupported": "Повтор этого Workspace-действия пока не подключен."
+  },
+  "workspaceDrafts": {
+    "channel": "Канал",
+    "direct": "Личный чат",
+    "local": "Ожидает сохранения",
+    "saving": "Сохраняется",
+    "conflict": "Конфликт: сохранена версия с сервера",
+    "deleting": "Удаляется"
   },
   "message": {
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",

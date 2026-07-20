@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  completeWorkspaceProjectLogin,
   fetchWorkspaceServerSettingsForOrganization,
-  getDefaultWorkspaceProjectId,
-  loginWorkspaceWithPassword,
+  prepareWorkspaceProjectLogin,
+  type PreparedWorkspaceProjectLogin,
   WorkspaceAuthFlowError,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { isWorkspaceIamOtpRequiredError } from "~/shared/api/workspace-iam-auth";
 import { env } from "~/shared/lib/env";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
@@ -18,10 +20,12 @@ import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
+import { LoginPageOtpForm } from "./login-page-otp-form.ui";
+import { LoginPageProjectForm } from "./login-page-project-form.ui";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
 
-type LoginStep = "organization" | "auth";
+type LoginStep = "organization" | "credentials" | "otp" | "project";
 
 interface LoginServerSettings {
   realm_base: string;
@@ -51,13 +55,14 @@ export const LoginPage: React.FC = () => {
   }, [location.search]);
 
   const [realm, setRealm] = useState(() => realmPrefill ?? "");
-  const [projectId, setProjectId] = useState(() => getDefaultWorkspaceProjectId());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [preparedLogin, setPreparedLogin] = useState<PreparedWorkspaceProjectLogin | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<LoginStep>("organization");
   const [checkedRealm, setCheckedRealm] = useState<string | null>(null);
   const [serverSettings, setServerSettings] = useState<LoginServerSettings | null>(null);
@@ -117,7 +122,7 @@ export const LoginPage: React.FC = () => {
         pendingAuthRealmRef.current = null;
 
         if (nextSettings != null) {
-          setStep("auth");
+          setStep("credentials");
         } else {
           setError(t("auth.organizationSettingsLoadError"));
         }
@@ -166,6 +171,9 @@ export const LoginPage: React.FC = () => {
       if (nextRealm !== checkedRealm) {
         setCheckedRealm(null);
         setServerSettings(null);
+        setPreparedLogin(null);
+        setProjectId("");
+        setOtpCode("");
         pendingAuthRealmRef.current = null;
         setStep("organization");
       }
@@ -184,6 +192,9 @@ export const LoginPage: React.FC = () => {
     setError(null);
     setCheckedRealm(null);
     setServerSettings(null);
+    setPreparedLogin(null);
+    setProjectId("");
+    setOtpCode("");
     pendingAuthRealmRef.current = null;
     setStep("organization");
   }, [defaultOrganizationUrl]);
@@ -210,7 +221,7 @@ export const LoginPage: React.FC = () => {
         pendingAuthRealmRef.current = null;
 
         if (serverSettings != null) {
-          setStep("auth");
+          setStep("credentials");
           return;
         }
 
@@ -228,6 +239,9 @@ export const LoginPage: React.FC = () => {
   const handleBackToOrganizationStep = useCallback(() => {
     pendingAuthRealmRef.current = null;
     setError(null);
+    setPreparedLogin(null);
+    setProjectId("");
+    setOtpCode("");
     setStep("organization");
   }, []);
 
@@ -237,12 +251,11 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleCredentialsSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const projectIdTrim = projectId.trim();
     const usernameTrim = username.trim();
-    if (!realmTrim || !projectIdTrim || !usernameTrim || !password) {
+    if (!realmTrim || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
       return;
     }
@@ -252,12 +265,73 @@ export const LoginPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      await loginWorkspaceWithPassword({
+      const nextPreparedLogin = await prepareWorkspaceProjectLogin({
         organizationUrl: realmTrim,
         login: usernameTrim,
         password,
-        projectId: projectIdTrim,
       });
+      setPreparedLogin(nextPreparedLogin);
+      setPassword("");
+      setOtpCode("");
+      setProjectId("");
+      setStep("project");
+    } catch (err) {
+      if (isWorkspaceIamOtpRequiredError(err)) {
+        setOtpCode("");
+        setStep("otp");
+      } else {
+        setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    const usernameTrim = username.trim();
+    if (!realmTrim || !usernameTrim || !password || otpCode.length !== 6) {
+      setError(t("auth.fillAllFields"));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const nextPreparedLogin = await prepareWorkspaceProjectLogin({
+        organizationUrl: realmTrim,
+        login: usernameTrim,
+        password,
+        otpCode,
+      });
+      setPreparedLogin(nextPreparedLogin);
+      setPassword("");
+      setOtpCode("");
+      setProjectId("");
+      setStep("project");
+    } catch (err) {
+      if (isWorkspaceIamOtpRequiredError(err)) {
+        setOtpCode("");
+        setError(t("auth.invalidOtp"));
+      } else {
+        setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProjectSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    if (preparedLogin == null || projectId.length === 0) {
+      setError(t("auth.selectProjectPlaceholder"));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await completeWorkspaceProjectLogin({ preparedLogin, projectId });
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
       setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
@@ -266,13 +340,27 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const toggleShowPassword = useCallback(() => {
-    setShowPassword((p) => !p);
+  const handleBackToCredentialsStep = useCallback(() => {
+    setError(null);
+    setPreparedLogin(null);
+    setProjectId("");
+    setStep("credentials");
+  }, []);
+
+  const handleBackToCredentialsFromOtp = useCallback(() => {
+    setError(null);
+    setOtpCode("");
+    setStep("credentials");
   }, []);
 
   const title = isAddServer ? t("auth.addServerZulip") : t("auth.connectToZulip");
-  const description =
-    step === "organization" ? t("auth.organizationStepHint") : t("auth.authStepHint");
+  const descriptionByStep: Record<LoginStep, string> = {
+    organization: t("auth.organizationStepHint"),
+    credentials: t("auth.authStepHint"),
+    otp: t("auth.otpStepHint"),
+    project: t("auth.projectStepHint"),
+  };
+  const description = descriptionByStep[step];
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
@@ -301,7 +389,7 @@ export const LoginPage: React.FC = () => {
             />
           )}
 
-        {step === "organization" ? (
+        {step === "organization" && (
           <form onSubmit={handleContinueToAuthStep} className="flex flex-col gap-4">
             <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
               <input
@@ -347,26 +435,66 @@ export const LoginPage: React.FC = () => {
               {settingsLoading ? t("auth.organizationStepLoading") : t("common.next")}
             </Button>
           </form>
-        ) : (
+        )}
+        {step === "credentials" && (
           <div className="flex flex-col gap-4">
             <LoginPageCredentialsForm
-              projectId={projectId}
               username={username}
               password={password}
-              showPassword={showPassword}
               loading={loading}
               error={error}
-              onProjectIdChange={setProjectId}
               onUsernameChange={setUsername}
               onPasswordChange={setPassword}
-              onToggleShowPassword={toggleShowPassword}
-              onSubmit={handleSubmit}
+              onSubmit={handleCredentialsSubmit}
             />
 
             <Button
               type="button"
               variant="ghost"
               onClick={handleBackToOrganizationStep}
+              disabled={loading}
+              className="w-full"
+            >
+              {t("common.back")}
+            </Button>
+          </div>
+        )}
+        {step === "project" && (
+          <div className="flex flex-col gap-4">
+            <LoginPageProjectForm
+              projects={preparedLogin?.projects ?? []}
+              projectId={projectId}
+              loading={loading}
+              error={error}
+              onProjectChange={setProjectId}
+              onSubmit={handleProjectSubmit}
+            />
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleBackToCredentialsStep}
+              disabled={loading}
+              className="w-full"
+            >
+              {t("common.back")}
+            </Button>
+          </div>
+        )}
+        {step === "otp" && (
+          <div className="flex flex-col gap-4">
+            <LoginPageOtpForm
+              otpCode={otpCode}
+              loading={loading}
+              error={error}
+              onOtpCodeChange={setOtpCode}
+              onSubmit={handleOtpSubmit}
+            />
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleBackToCredentialsFromOtp}
               disabled={loading}
               className="w-full"
             >

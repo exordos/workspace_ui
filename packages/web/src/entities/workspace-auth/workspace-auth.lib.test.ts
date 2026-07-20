@@ -4,8 +4,10 @@ import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
 import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import {
   classifyWorkspaceAuthRefreshError,
+  completeWorkspaceProjectLogin,
   ensureFreshWorkspaceSession,
   loginWorkspaceWithPassword,
+  prepareWorkspaceProjectLogin,
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
@@ -15,6 +17,7 @@ const getServerSettings = vi.hoisted(() => vi.fn());
 const getWorkspaceMessengerAuthProfile = vi.hoisted(() => vi.fn());
 const requestWorkspaceIamLoginPasswordToken = vi.hoisted(() => vi.fn());
 const refreshWorkspaceIamToken = vi.hoisted(() => vi.fn());
+const getWorkspaceIamProjects = vi.hoisted(() => vi.fn());
 const deleteWorkspaceExternalAccountOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceMessengerOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceUserOwnerCache = vi.hoisted(() => vi.fn());
@@ -39,6 +42,10 @@ vi.mock("~/shared/api/workspace-iam-auth", async (importOriginal) => {
     refreshWorkspaceIamToken,
   };
 });
+
+vi.mock("~/shared/api/workspace-iam-projects.api", () => ({
+  getWorkspaceIamProjects,
+}));
 
 vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
   deleteWorkspaceMessengerOwnerCache,
@@ -186,6 +193,15 @@ describe("workspace-auth flow", () => {
       refreshToken: "refresh-token",
       raw: {},
     });
+    getWorkspaceIamProjects.mockResolvedValue([
+      {
+        uuid: PROJECT_ID,
+        name: "Customer support",
+        description: "Support conversations",
+        status: "active",
+        organization: { uuid: "organization-1", name: "Example organization" },
+      },
+    ]);
   });
 
   afterEach(() => {
@@ -227,6 +243,108 @@ describe("workspace-auth flow", () => {
       profile: {
         email: "user@example.com",
       },
+    });
+  });
+
+  it("keeps the temporary IAM token out of the session store while loading projects", async () => {
+    requestWorkspaceIamLoginPasswordToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, exp: 1_900_000_000 }),
+      refreshToken: "temporary-refresh-token",
+      raw: {},
+    });
+
+    const preparedLogin = await prepareWorkspaceProjectLogin({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    });
+
+    expect(requestWorkspaceIamLoginPasswordToken).toHaveBeenCalledWith(
+      { login: "user@example.com", password: "secret" },
+      expect.any(Object),
+    );
+    expect(getWorkspaceIamProjects).toHaveBeenCalledWith({
+      accessToken: preparedLogin.accessToken,
+      baseUrl: "https://workspace.example.com",
+      fetchImpl: undefined,
+      signal: undefined,
+    });
+    expect(preparedLogin.projects).toEqual([
+      {
+        id: PROJECT_ID,
+        name: "Customer support",
+        description: "Support conversations",
+        organizationName: "Example organization",
+      },
+    ]);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(localStorage.getItem("workspace-auth-sessions")).toBeNull();
+  });
+
+  it("exchanges the temporary token for the chosen project before persisting a session", async () => {
+    requestWorkspaceIamLoginPasswordToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, exp: 1_900_000_000 }),
+      refreshToken: "temporary-refresh-token",
+      raw: {},
+    });
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: PROJECT_ID,
+        exp: 1_900_000_000,
+      }),
+      refreshToken: "project-refresh-token",
+      raw: {},
+    });
+
+    const preparedLogin = await prepareWorkspaceProjectLogin({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    });
+    await completeWorkspaceProjectLogin({ preparedLogin, projectId: PROJECT_ID });
+
+    expect(refreshWorkspaceIamToken).toHaveBeenCalledWith(
+      {
+        refreshToken: "temporary-refresh-token",
+        scope: `openid email profile project:${PROJECT_ID}`,
+      },
+      expect.objectContaining({
+        tokenUrl:
+          "https://workspace.example.com/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      }),
+    );
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      projectId: PROJECT_ID,
+      accessToken: expect.not.stringContaining("temporary"),
+      refreshToken: "project-refresh-token",
+    });
+  });
+
+  it("keeps the temporary refresh token when a scoped refresh omits a replacement", async () => {
+    requestWorkspaceIamLoginPasswordToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, exp: 1_900_000_000 }),
+      refreshToken: "temporary-refresh-token",
+      raw: {},
+    });
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: PROJECT_ID,
+        exp: 1_900_000_000,
+      }),
+      raw: {},
+    });
+
+    const preparedLogin = await prepareWorkspaceProjectLogin({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    });
+    await completeWorkspaceProjectLogin({ preparedLogin, projectId: PROJECT_ID });
+
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      refreshToken: "temporary-refresh-token",
     });
   });
 

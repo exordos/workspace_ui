@@ -7,8 +7,13 @@ import {
   decodeWorkspaceIamClaims,
   refreshWorkspaceIamToken,
   requestWorkspaceIamLoginPasswordToken,
+  workspaceIamProjectScope,
   WorkspaceIamAuthError,
 } from "~/shared/api/workspace-iam-auth";
+import {
+  getWorkspaceIamProjects,
+  type WorkspaceIamProject,
+} from "~/shared/api/workspace-iam-projects.api";
 import { getWorkspaceMessengerAuthProfile } from "~/shared/api/workspace-messenger-profile.api";
 import { env } from "~/shared/lib/env";
 import { guard } from "~/shared/lib/guards";
@@ -58,9 +63,43 @@ export interface LoginWorkspaceWithPasswordResult {
   serverSettings: WorkspaceMessengerServerSettingsDto;
 }
 
+export interface WorkspaceAuthProject {
+  id: string;
+  name: string;
+  description?: string;
+  organizationName?: string;
+}
+
+export interface PrepareWorkspaceProjectLoginParams {
+  organizationUrl: string;
+  login: string;
+  password: string;
+  otpCode?: string;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+}
+
+export interface PreparedWorkspaceProjectLogin {
+  readonly organizationUrl: string;
+  readonly organizationOrigin: string;
+  readonly login: string;
+  readonly userUuid: string;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly projects: readonly WorkspaceAuthProject[];
+}
+
+export interface CompleteWorkspaceProjectLoginParams {
+  preparedLogin: PreparedWorkspaceProjectLogin;
+  projectId: string;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+}
+
 export class WorkspaceAuthFlowError extends Error {
   readonly code:
     | "missing-project"
+    | "missing-refresh-token"
     | "missing-claims"
     | "project-mismatch"
     | "profile-load-failed"
@@ -449,6 +488,17 @@ function userUuidFromClaims(
   return claims?.userUuid ?? claims?.subject;
 }
 
+function workspaceProjectFromIamDto(value: WorkspaceIamProject): WorkspaceAuthProject {
+  const description = value.description?.trim();
+  const organizationName = value.organization?.name?.trim();
+  return {
+    id: value.uuid,
+    name: value.name,
+    ...(description != null && description.length > 0 ? { description } : {}),
+    ...(organizationName != null && organizationName.length > 0 ? { organizationName } : {}),
+  };
+}
+
 function resolveWorkspaceRefreshOwnerMismatch(
   session: WorkspaceAuthSession,
   claims: ReturnType<typeof decodeWorkspaceIamClaims>,
@@ -563,7 +613,7 @@ async function refreshWorkspaceAuthSessionOnce(
 
   useWorkspaceAuthStore.getState().updateTokens(session.accountId, {
     accessToken: token.accessToken,
-    refreshToken: token.refreshToken,
+    refreshToken: token.refreshToken ?? session.refreshToken,
     expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
   });
 
@@ -652,6 +702,137 @@ export function ensureFreshWorkspaceSession(
     })
     .catch(() => undefined);
   return raceWithAbortSignal(refreshPromise, options.signal);
+}
+
+export async function prepareWorkspaceProjectLogin({
+  organizationUrl,
+  login,
+  password,
+  otpCode,
+  fetchImpl,
+  signal,
+}: PrepareWorkspaceProjectLoginParams): Promise<PreparedWorkspaceProjectLogin> {
+  const organizationOrigin = workspaceOrgOriginFromLoginServerUrlInput(organizationUrl);
+  const safeOrigin = guard.nonEmpty(organizationOrigin, "workspaceAuth.organizationOrigin");
+  const token = await requestWorkspaceIamLoginPasswordToken(
+    { login: login.trim(), password, ...(otpCode == null ? {} : { otpCode }) },
+    { tokenUrl: iamTokenUrlForOrganizationOrigin(safeOrigin), fetchImpl, signal },
+  );
+  const refreshToken = token.refreshToken?.trim();
+  if (refreshToken == null || refreshToken.length === 0) {
+    throw new WorkspaceAuthFlowError(
+      "missing-refresh-token",
+      "Workspace IAM login did not return a refresh token",
+    );
+  }
+
+  const claims = decodeWorkspaceIamClaims(token.accessToken);
+  const userUuid = userUuidFromClaims(claims);
+  if (userUuid == null) {
+    throw new WorkspaceAuthFlowError("missing-claims", "Workspace IAM token has no owner claims");
+  }
+
+  const iamProjects = await getWorkspaceIamProjects({
+    accessToken: token.accessToken,
+    baseUrl: safeOrigin,
+    fetchImpl,
+    signal,
+  });
+  const projects = iamProjects.map(workspaceProjectFromIamDto);
+
+  return {
+    organizationUrl,
+    organizationOrigin: safeOrigin,
+    login: login.trim(),
+    userUuid,
+    accessToken: token.accessToken,
+    refreshToken,
+    projects,
+  };
+}
+
+export async function completeWorkspaceProjectLogin({
+  preparedLogin,
+  projectId,
+  fetchImpl,
+  signal,
+}: CompleteWorkspaceProjectLoginParams): Promise<LoginWorkspaceWithPasswordResult> {
+  const trimmedProjectId = projectId.trim();
+  if (!preparedLogin.projects.some((project) => project.id === trimmedProjectId)) {
+    throw new WorkspaceAuthFlowError(
+      "missing-project",
+      "Selected Workspace project is unavailable",
+    );
+  }
+
+  const token = await refreshWorkspaceIamToken(
+    {
+      refreshToken: preparedLogin.refreshToken,
+      scope: workspaceIamProjectScope(trimmedProjectId),
+    },
+    {
+      tokenUrl: iamTokenUrlForOrganizationOrigin(preparedLogin.organizationOrigin),
+      fetchImpl,
+      signal,
+    },
+  );
+  const claims = decodeWorkspaceIamClaims(token.accessToken);
+  const userUuid = userUuidFromClaims(claims);
+  if (userUuid == null) {
+    throw new WorkspaceAuthFlowError("missing-claims", "Workspace IAM token has no owner claims");
+  }
+  if (userUuid !== preparedLogin.userUuid) {
+    throw new WorkspaceAuthFlowError("owner-mismatch", "Workspace IAM token user mismatch");
+  }
+  if (claims?.projectId != null && claims.projectId !== trimmedProjectId) {
+    throw new WorkspaceAuthFlowError("project-mismatch", "Workspace IAM token project mismatch");
+  }
+
+  const workspaceBaseUrl = workspaceBaseUrlForOrganizationOrigin(preparedLogin.organizationOrigin);
+  const [serverSettings, profile] = await Promise.all([
+    fetchWorkspaceServerSettingsForOrganization(preparedLogin.organizationUrl, {
+      fetchImpl,
+      signal,
+    }),
+    loadWorkspaceProfileOrFallback({
+      accessToken: token.accessToken,
+      baseUrl: workspaceBaseUrl,
+      fetchImpl,
+      signal,
+      userUuid,
+      login: preparedLogin.login,
+    }),
+  ]);
+  const organizationId = buildOrgRouteIdFromOrigin(preparedLogin.organizationOrigin);
+  const accountId = buildWorkspaceAccountId({
+    organizationId,
+    projectId: trimmedProjectId,
+    userUuid,
+  });
+  const existing = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((session) => session.accountId === accountId);
+  const session: WorkspaceAuthSession = {
+    accountId,
+    instanceId: existing?.instanceId ?? generateInstanceId(),
+    organizationId,
+    organizationOrigin: preparedLogin.organizationOrigin,
+    projectId: trimmedProjectId,
+    userUuid,
+    login: preparedLogin.login,
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken ?? preparedLogin.refreshToken,
+    expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
+    profile,
+    runtimeGeneration: existing?.runtimeGeneration ?? 0,
+  };
+
+  resetTerminalRefreshFailureAttempts(accountId);
+  useWorkspaceAuthStore.getState().setSession(session);
+  return {
+    session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
+    serverSettings,
+  };
 }
 
 export async function loginWorkspaceWithPassword({

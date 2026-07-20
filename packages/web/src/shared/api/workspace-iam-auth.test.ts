@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
   decodeWorkspaceIamClaims,
+  isWorkspaceIamOtpRequiredError,
   refreshWorkspaceIamToken,
   requestWorkspaceIamLoginPasswordToken,
+  WorkspaceIamAuthError,
+  workspaceIamBaseScope,
   workspaceIamProjectScope,
 } from "./workspace-iam-auth";
 
@@ -27,6 +30,30 @@ function jwtPayload(payload: Record<string, unknown>): string {
 describe("workspace-iam-auth", () => {
   it("builds the project-scoped IAM scope", () => {
     expect(workspaceIamProjectScope("project-1")).toBe("openid email profile project:project-1");
+    expect(workspaceIamBaseScope()).toBe("openid email profile");
+  });
+
+  it("requests a temporary IAM token without project scope", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ access_token: "temporary-token" }));
+
+    await requestWorkspaceIamLoginPasswordToken(
+      { login: "admin", password: "admin" },
+      { fetchImpl },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      expect.objectContaining({
+        body: JSON.stringify({
+          grant_type: "login+password",
+          login: "admin",
+          password: "admin",
+          scope: "openid email profile",
+          ttl: 3600,
+          refresh_ttl: DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
+        }),
+      }),
+    );
   });
 
   it("requests login+password token through the default IAM client", async () => {
@@ -69,6 +96,22 @@ describe("workspace-iam-auth", () => {
     );
   });
 
+  it("retries a login with the one-time code in the X-OTP header", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ access_token: "access-token" }));
+
+    await requestWorkspaceIamLoginPasswordToken(
+      { login: "admin", password: "admin", otpCode: "123456" },
+      { fetchImpl },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-OTP": "123456" }),
+      }),
+    );
+  });
+
   it("refreshes token without sending login credentials", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ access_token: "new-token" }));
 
@@ -80,6 +123,26 @@ describe("workspace-iam-auth", () => {
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: "refresh-token",
+        }),
+      }),
+    );
+  });
+
+  it("refreshes a token with an explicit project scope", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ access_token: "project-token" }));
+
+    await refreshWorkspaceIamToken(
+      { refreshToken: "temporary-refresh-token", scope: workspaceIamProjectScope("project-1") },
+      { fetchImpl },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      expect.objectContaining({
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: "temporary-refresh-token",
+          scope: "openid email profile project:project-1",
         }),
       }),
     );
@@ -98,6 +161,25 @@ describe("workspace-iam-auth", () => {
     await expect(promise).rejects.toEqual(
       expect.objectContaining({ status: 401, name: "WorkspaceIamAuthError" }),
     );
+  });
+
+  it("recognizes the current IAM OTP challenge response", () => {
+    expect(
+      isWorkspaceIamOtpRequiredError(
+        new WorkspaceIamAuthError("failed", 401, {
+          error: "invalid_client",
+          error_description: "The provided otp code is invalid",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isWorkspaceIamOtpRequiredError(
+        new WorkspaceIamAuthError("failed", 401, {
+          error: "invalid_grant",
+          error_description: "Invalid credentials",
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("decodes user and project claims from an access token", () => {

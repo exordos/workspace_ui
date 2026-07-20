@@ -20,13 +20,15 @@ export interface WorkspaceIamClaims {
 export interface WorkspaceIamLoginPasswordParams {
   login: string;
   password: string;
-  projectId: string;
+  otpCode?: string;
+  projectId?: string;
   ttlSeconds?: number;
   refreshTtlSeconds?: number;
 }
 
 export interface WorkspaceIamRefreshParams {
   refreshToken: string;
+  scope?: string;
 }
 
 export interface WorkspaceIamRequestOptions {
@@ -45,6 +47,19 @@ export class WorkspaceIamAuthError extends Error {
     this.status = status;
     this.data = data;
   }
+}
+
+export function isWorkspaceIamOtpRequiredError(error: unknown): boolean {
+  if (!(error instanceof WorkspaceIamAuthError) || error.status !== 401) {
+    return false;
+  }
+  if (!isRecord(error.data)) {
+    return false;
+  }
+
+  const errorCode = stringField(error.data, "error");
+  const errorDescription = stringField(error.data, "error_description");
+  return errorCode === "invalid_client" && /\botp\b/i.test(errorDescription ?? "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,6 +98,7 @@ function parseWorkspaceIamTokenResponse(data: unknown): WorkspaceIamTokenRespons
 async function postIamJson(
   body: Record<string, unknown>,
   options: WorkspaceIamRequestOptions,
+  headers: Record<string, string> = {},
 ): Promise<WorkspaceIamTokenResponse> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(options.tokenUrl ?? DEFAULT_IAM_TOKEN_URL, {
@@ -90,6 +106,7 @@ async function postIamJson(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...headers,
     },
     body: JSON.stringify(body),
     signal: options.signal,
@@ -107,21 +124,31 @@ export function workspaceIamProjectScope(projectId: string): string {
   return `openid email profile project:${projectId}`;
 }
 
-// Login requests must include the project scope so messenger can resolve project_id.
+export function workspaceIamBaseScope(): string {
+  return "openid email profile";
+}
+
+// Login uses the base scope while projects are being discovered; it can also issue
+// a project-scoped token for existing callers.
 export function requestWorkspaceIamLoginPasswordToken(
   params: WorkspaceIamLoginPasswordParams,
   options: WorkspaceIamRequestOptions = {},
 ): Promise<WorkspaceIamTokenResponse> {
+  const otpCode = params.otpCode?.trim();
   return postIamJson(
     {
       grant_type: "login+password",
       login: params.login,
       password: params.password,
-      scope: workspaceIamProjectScope(params.projectId),
+      scope:
+        params.projectId == null
+          ? workspaceIamBaseScope()
+          : workspaceIamProjectScope(params.projectId),
       ttl: params.ttlSeconds ?? 3600,
       refresh_ttl: params.refreshTtlSeconds ?? DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
     },
     options,
+    otpCode == null || otpCode.length === 0 ? {} : { "X-OTP": otpCode },
   );
 }
 
@@ -133,6 +160,7 @@ export function refreshWorkspaceIamToken(
     {
       grant_type: "refresh_token",
       refresh_token: params.refreshToken,
+      ...(params.scope == null ? {} : { scope: params.scope }),
     },
     options,
   );

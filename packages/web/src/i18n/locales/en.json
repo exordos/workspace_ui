@@ -69,6 +69,14 @@
     "organizationStepHint": "Enter your organization address first.",
     "organizationStepLoading": "Loading organization settings…",
     "authStepHint": "Choose a sign-in method or enter your email/login and password.",
+    "otpStepHint": "Enter the six-digit code from your authenticator app.",
+    "otpCode": "Authentication code",
+    "confirmOtp": "Confirm code",
+    "invalidOtp": "The authentication code is invalid. Try again.",
+    "projectStepHint": "Choose the project you want to open.",
+    "selectProject": "Project",
+    "selectProjectPlaceholder": "Select a project",
+    "noProjectsAvailable": "Your account does not have access to any projects in this organization.",
     "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again.",
     "defaultOrganizationHint": "Or connect to our public service.",
     "defaultOrganizationName": "Exordos Core Public"
@@ -200,6 +208,14 @@
     "readReceiptsUnsupported": "Read receipts are not connected to Workspace messaging yet.",
     "permalinkUnsupported": "Old message links are not connected to Workspace messaging yet.",
     "retryUnsupported": "Retry for this Workspace action is not connected yet."
+  },
+  "workspaceDrafts": {
+    "channel": "Channel",
+    "direct": "Direct chat",
+    "local": "Waiting to save",
+    "saving": "Saving",
+    "conflict": "Conflict: remote version was kept",
+    "deleting": "Deleting"
   },
   "message": {
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
