@@ -182,12 +182,14 @@ describe("messenger-client", () => {
           projectId: PROJECT_UUID,
           fetchImpl: fetchMock,
         },
-        { afterEpochVersion: 123, pageLimit: 500 },
+        { afterEpochVersion: 123, epochGeneration: "generation-a", pageLimit: 500 },
       ),
     ).resolves.toHaveLength(1);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/workspace/v1/events/?page_limit=500&epoch_version%3E=123");
+    expect(url).toBe(
+      "/api/workspace/v1/events/?page_limit=500&epoch_version%3E=123&epoch_generation=generation-a",
+    );
   });
 
   it("strictly rejects invalid REST event rows", async () => {

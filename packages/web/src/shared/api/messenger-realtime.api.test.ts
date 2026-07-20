@@ -335,6 +335,20 @@ describe("messenger-realtime.api", () => {
       "/api/workspace/v1/events/?epoch_version%3E=123&epoch_generation=generation-a",
     );
 
+    const invalidGenerationFetchMock = createFetchMock([eventDto]);
+    await expect(
+      getEvents(
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/workspace/v1",
+          fetchImpl: invalidGenerationFetchMock,
+          projectId: PROJECT_UUID,
+        },
+        { afterEpochVersion: 123, epochGeneration: "" },
+      ),
+    ).rejects.toThrow("Workspace events resume cursor requires epoch_generation");
+    expect(invalidGenerationFetchMock).not.toHaveBeenCalled();
+
     const epochFetchMock = createFetchMock({
       epoch_version: 124,
       epoch_generation: "generation-a",
@@ -432,6 +446,15 @@ describe("messenger-realtime.api", () => {
     expect(
       buildMessengerWebSocketUrl({ lastEpochVersion: 124, epochGeneration: "generation-a" }),
     ).toBe("/api/workspace/v1/events/ws?last_epoch_version=124&epoch_generation=generation-a");
+    expect(() =>
+      buildMessengerWebSocketUrl({ lastEpochVersion: 124, epochGeneration: "" }),
+    ).toThrow("Workspace realtime resume cursor requires epoch_generation");
+    expect(() =>
+      buildMessengerWebSocketUrl({
+        lastEpochVersion: 124,
+        epochGeneration: 91,
+      } as unknown as Parameters<typeof buildMessengerWebSocketUrl>[0]),
+    ).toThrow("Workspace realtime resume cursor requires epoch_generation");
     expect(
       buildMessengerWebSocketUrl({
         baseUrl: "https://chat.example.com/",

@@ -31,7 +31,10 @@ export function buildMessengerWebSocketUrl({
     if (/^http:\/\//i.test(trimmed)) return trimmed.replace(/^http:/i, "ws:");
     return trimmed;
   })();
-  if (lastEpochVersion > 0 && (epochGeneration == null || epochGeneration.trim().length === 0)) {
+  if (
+    lastEpochVersion > 0 &&
+    (typeof epochGeneration !== "string" || epochGeneration.trim().length === 0)
+  ) {
     throw new TypeError("Workspace realtime resume cursor requires epoch_generation");
   }
   const search = new URLSearchParams();

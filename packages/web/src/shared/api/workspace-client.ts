@@ -41,7 +41,7 @@ export interface WorkspaceServiceDto {
 
 export interface GetWorkspaceEventsQuery extends WorkspacePaginationQuery {
   afterEpochVersion?: number;
-  epochGeneration?: string | number;
+  epochGeneration?: string;
 }
 
 export interface InvokeWorkspaceUserPresenceBody {
@@ -148,6 +148,9 @@ export async function getEvents(
   options: WorkspaceClientOptions,
   query: GetWorkspaceEventsQuery = {},
 ): Promise<WorkspaceMessengerRealtimeEventDto[]> {
+  if ((query.afterEpochVersion ?? 0) > 0 && !query.epochGeneration?.trim()) {
+    throw new TypeError("Workspace events resume cursor requires epoch_generation");
+  }
   const data = await messengerGetJson("/events/", withWorkspaceApiBase(options), {
     ...paginationParams(query),
     "epoch_version>": query.afterEpochVersion,
@@ -164,6 +167,9 @@ export async function getEventsPage(
   options: WorkspaceClientOptions,
   query: GetWorkspaceEventsQuery = {},
 ): Promise<WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>> {
+  if ((query.afterEpochVersion ?? 0) > 0 && !query.epochGeneration?.trim()) {
+    throw new TypeError("Workspace events resume cursor requires epoch_generation");
+  }
   const { data, headers } = await messengerRequestJsonResult(
     "GET",
     "/events/",
