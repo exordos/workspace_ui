@@ -114,9 +114,8 @@ export async function getWorkspaceIamProjects(
     },
     signal: options.signal,
   });
-  const data = response.status === 204 ? null : ((await response.json()) as unknown);
-
   if (!response.ok) {
+    const data = (await response.json()) as unknown;
     throw new WorkspaceIamProjectsError(
       "Workspace IAM projects request failed",
       response.status,
@@ -124,5 +123,8 @@ export async function getWorkspaceIamProjects(
     );
   }
 
+  if (response.status === 204) return [];
+
+  const data = (await response.json()) as unknown;
   return parseWorkspaceIamProjects(data);
 }

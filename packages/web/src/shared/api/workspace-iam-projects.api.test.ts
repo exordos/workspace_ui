@@ -37,6 +37,12 @@ describe("workspace-iam-projects", () => {
     );
   });
 
+  it("returns an empty project list for a successful no-content response", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(getWorkspaceIamProjects({ accessToken: "token", fetchImpl })).resolves.toEqual([]);
+  });
+
   it("supports a Core gateway base URL and RESTAlchemy collection envelopes", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ items: [project] }));
 

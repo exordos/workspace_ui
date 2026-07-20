@@ -473,7 +473,7 @@ describe("workspace-realtime transport runtime", () => {
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
   });
 
-  it("checks the server epoch only after sixty seconds without frames after ready", async () => {
+  it("checks the server epoch again after a full idle timeout when it is current", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
@@ -507,7 +507,13 @@ describe("workspace-realtime transport runtime", () => {
 
     expect(getEpoch).toHaveBeenCalledTimes(1);
     await flushAsyncHandlers();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(getEpoch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getEpoch).toHaveBeenCalledTimes(2);
+    await flushAsyncHandlers();
+    expect(vi.getTimerCount()).toBe(1);
     await runtime.stop();
     vi.useRealTimers();
   });

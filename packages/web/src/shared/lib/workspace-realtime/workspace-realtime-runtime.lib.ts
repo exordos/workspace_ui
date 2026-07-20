@@ -620,7 +620,10 @@ export function createWorkspaceRealtimeTransportCore(
     }
   }
 
-  function scheduleEpochWatchdog(activeSocket: WorkspaceRealtimeWebSocketLike): void {
+  function scheduleEpochWatchdog(
+    activeSocket: WorkspaceRealtimeWebSocketLike,
+    idleSince = lastWebSocketFrameAt ?? Date.now(),
+  ): void {
     if (
       !isEpochWatchdogActive(activeSocket) ||
       epochWatchdogTimer != null ||
@@ -630,8 +633,7 @@ export function createWorkspaceRealtimeTransportCore(
       return;
     }
 
-    const lastFrameAt = lastWebSocketFrameAt ?? Date.now();
-    const remainingDelay = Math.max(0, EPOCH_WATCHDOG_IDLE_TIMEOUT_MS - (Date.now() - lastFrameAt));
+    const remainingDelay = Math.max(0, EPOCH_WATCHDOG_IDLE_TIMEOUT_MS - (Date.now() - idleSince));
     epochWatchdogTimer = setTimeout(() => {
       epochWatchdogTimer = null;
       void checkEpochAfterSocketIdle(activeSocket);
@@ -693,6 +695,7 @@ export function createWorkspaceRealtimeTransportCore(
 
     const epochCheckContext = context;
     const epochCheckSignal = activeSignal();
+    let shouldScheduleNextEpochCheck = false;
     const check = (async (): Promise<void> => {
       try {
         const getEpoch = options.getEpoch ?? defaultGetEpoch;
@@ -723,6 +726,8 @@ export function createWorkspaceRealtimeTransportCore(
             serverEpoch.epoch_generation,
             serverEpoch.epoch_version,
           );
+        } else {
+          shouldScheduleNextEpochCheck = true;
         }
       } catch {
         if (isEpochWatchdogActive(activeSocket)) {
@@ -737,6 +742,9 @@ export function createWorkspaceRealtimeTransportCore(
     void check.finally(() => {
       if (epochCheckPromise === check) {
         epochCheckPromise = null;
+        if (shouldScheduleNextEpochCheck) {
+          scheduleEpochWatchdog(activeSocket, Date.now());
+        }
       }
     });
   }

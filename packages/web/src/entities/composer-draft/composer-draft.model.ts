@@ -41,7 +41,9 @@ const pendingOperations = new Map<string, ScheduledOperation>();
 const persistChains = new Map<string, Promise<void>>();
 const ownerGenerations = new Map<string, number>();
 const hydratedOwners = new Set<string>();
+const hydrationPromises = new Map<string, Promise<void>>();
 let lastDraftUpdatedAt = 0;
+let storeGeneration = 0;
 
 function ownerGeneration(ownerKey: string): number {
   return ownerGenerations.get(ownerKey) ?? 0;
@@ -260,35 +262,52 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       return next;
     },
 
-    async hydrateOwnerDrafts(ownerKey) {
-      if (hydratedOwners.has(ownerKey)) return;
+    hydrateOwnerDrafts(ownerKey) {
+      if (hydratedOwners.has(ownerKey)) return Promise.resolve();
+      const existing = hydrationPromises.get(ownerKey);
+      if (existing != null) return existing;
       const generation = ownerGeneration(ownerKey);
-      const rows = await readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(ownerKey);
-      if (generation !== ownerGeneration(ownerKey)) return;
-      hydratedOwners.add(ownerKey);
-      const drafts = rows.map((row) => ({
-        ...row,
-        key: draftKey(ownerKey, row.draftUuid),
-        content: normalizeWorkspaceComposerDraftContent(row.content),
-        ...(row.conflictServerContent == null
-          ? {}
-          : {
-              conflictServerContent: normalizeWorkspaceComposerDraftContent(
-                row.conflictServerContent,
-              ),
-            }),
-        pendingCreatePayload: row.pendingCreatePayload ?? null,
-      }));
-      set((state) => ({
-        draftsByKey: {
-          ...state.draftsByKey,
-          ...Object.fromEntries(
-            drafts
-              .filter((draft) => state.draftsByKey[draft.key] == null)
-              .map((draft) => [draft.key, draft]),
-          ),
+      const generationAtStart = storeGeneration;
+      const hydration = (async (): Promise<void> => {
+        const rows =
+          await readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(ownerKey);
+        if (generation !== ownerGeneration(ownerKey) || generationAtStart !== storeGeneration)
+          return;
+        hydratedOwners.add(ownerKey);
+        const drafts = rows.map((row) => ({
+          ...row,
+          key: draftKey(ownerKey, row.draftUuid),
+          content: normalizeWorkspaceComposerDraftContent(row.content),
+          ...(row.conflictServerContent == null
+            ? {}
+            : {
+                conflictServerContent: normalizeWorkspaceComposerDraftContent(
+                  row.conflictServerContent,
+                ),
+              }),
+          pendingCreatePayload: row.pendingCreatePayload ?? null,
+        }));
+        set((state) => ({
+          draftsByKey: {
+            ...state.draftsByKey,
+            ...Object.fromEntries(
+              drafts
+                .filter((draft) => state.draftsByKey[draft.key] == null)
+                .map((draft) => [draft.key, draft]),
+            ),
+          },
+        }));
+      })();
+      hydrationPromises.set(ownerKey, hydration);
+      void hydration.then(
+        () => {
+          if (hydrationPromises.get(ownerKey) === hydration) hydrationPromises.delete(ownerKey);
         },
-      }));
+        () => {
+          if (hydrationPromises.get(ownerKey) === hydration) hydrationPromises.delete(ownerKey);
+        },
+      );
+      return hydration;
     },
 
     async hydrateDraft(ownerKey, conversationId, requestedDraftUuid) {
@@ -612,6 +631,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
     async disposeOwner(ownerKey) {
       ownerGenerations.set(ownerKey, ownerGeneration(ownerKey) + 1);
       hydratedOwners.delete(ownerKey);
+      hydrationPromises.delete(ownerKey);
       const keys = [...pendingOperations.keys()].filter((key) => key.startsWith(`${ownerKey}:`));
       for (const key of keys) clearPendingOperation(key);
       await Promise.all(
@@ -674,7 +694,9 @@ export function resetWorkspaceComposerDraftStoreForTests(): void {
   persistChains.clear();
   ownerGenerations.clear();
   hydratedOwners.clear();
+  hydrationPromises.clear();
   lastDraftUpdatedAt = 0;
+  storeGeneration += 1;
   useWorkspaceComposerDraftStore.setState({
     draftsByKey: {},
     activeDraftUuidByConversationKey: {},
