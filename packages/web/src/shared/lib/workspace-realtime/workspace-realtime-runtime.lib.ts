@@ -737,9 +737,6 @@ export function createWorkspaceRealtimeTransportCore(
     void check.finally(() => {
       if (epochCheckPromise === check) {
         epochCheckPromise = null;
-        if (socket != null) {
-          scheduleEpochWatchdog(socket);
-        }
       }
     });
   }

@@ -506,6 +506,8 @@ describe("workspace-realtime transport runtime", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(getEpoch).toHaveBeenCalledTimes(1);
+    await flushAsyncHandlers();
+    expect(vi.getTimerCount()).toBe(0);
     await runtime.stop();
     vi.useRealTimers();
   });
