@@ -2,7 +2,6 @@ import type { Page } from "@playwright/test";
 import {
   test,
   expect,
-  LOGIN_BUTTON,
   LOGIN_NEXT_BUTTON,
   LOGIN_SERVER_FIELD,
   expectLoginOrganizationStep,
@@ -46,7 +45,7 @@ test.describe("Login page", () => {
     await advanceToEmailStep(guestPage);
     await guestPage.getByLabel(LOGIN_EMAIL_FIELD).fill(E2E_EMAIL);
 
-    const button = guestPage.getByRole("button", { name: LOGIN_BUTTON });
+    const button = guestPage.getByRole("button", { name: LOGIN_NEXT_BUTTON });
     await expect(button).toBeVisible();
     await expect(button).toBeEnabled();
   });
