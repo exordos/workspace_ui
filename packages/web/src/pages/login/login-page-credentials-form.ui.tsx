@@ -8,12 +8,15 @@ export interface LoginPageCredentialsFormProps {
   projectId: string;
   username: string;
   password: string;
+  otpCode: string;
+  otpRequired: boolean;
   showPassword: boolean;
   loading: boolean;
   error: string | null;
   onProjectIdChange: (value: string) => void;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
+  onOtpCodeChange: (value: string) => void;
   onToggleShowPassword: () => void;
   onSubmit: (e: React.SyntheticEvent<HTMLFormElement>) => void;
 }
@@ -23,12 +26,15 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
     projectId,
     username,
     password,
+    otpCode,
+    otpRequired,
     showPassword,
     loading,
     error,
     onProjectIdChange,
     onUsernameChange,
     onPasswordChange,
+    onOtpCodeChange,
     onToggleShowPassword,
     onSubmit,
   }) {
@@ -85,6 +91,24 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
               </button>
             </div>
           </FormField>
+
+          {otpRequired && (
+            <FormField label={t("auth.otpCode")} htmlFor="otpCode">
+              <input
+                id="otpCode"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                placeholder={t("auth.otpCodePlaceholder")}
+                value={otpCode}
+                onChange={(e) => onOtpCodeChange(e.target.value)}
+                className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={loading}
+              />
+            </FormField>
+          )}
 
           {error != null && error.length > 0 && (
             <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">

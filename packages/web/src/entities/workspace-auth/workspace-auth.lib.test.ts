@@ -230,6 +230,88 @@ describe("workspace-auth flow", () => {
     });
   });
 
+  it("forwards an OTP code to the IAM password grant", async () => {
+    await loginWorkspaceWithPassword({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+      projectId: PROJECT_ID,
+      otpCode: "123456",
+    });
+
+    expect(requestWorkspaceIamLoginPasswordToken).toHaveBeenCalledWith(
+      {
+        login: "user@example.com",
+        password: "secret",
+        projectId: PROJECT_ID,
+        otpCode: "123456",
+      },
+      expect.objectContaining({
+        tokenUrl:
+          "https://workspace.example.com/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      }),
+    );
+  });
+
+  it("maps the IAM OTP rejection to the login flow", async () => {
+    requestWorkspaceIamLoginPasswordToken.mockRejectedValueOnce(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 401, {
+        error: "invalid_client",
+        error_description: "The provided otp code is invalid",
+      }),
+    );
+
+    await expect(
+      loginWorkspaceWithPassword({
+        organizationUrl: "https://workspace.example.com",
+        login: "user@example.com",
+        password: "secret",
+        projectId: PROJECT_ID,
+      }),
+    ).rejects.toMatchObject({ code: "otp-required", name: "WorkspaceAuthFlowError" });
+
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it.each(["Two-factor authentication is required", "Multi factor authentication is required"])(
+    "recognizes an IAM OTP challenge described as %s",
+    async (errorDescription) => {
+      requestWorkspaceIamLoginPasswordToken.mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 401, {
+          error: "invalid_client",
+          error_description: errorDescription,
+        }),
+      );
+
+      await expect(
+        loginWorkspaceWithPassword({
+          organizationUrl: "https://workspace.example.com",
+          login: "user@example.com",
+          password: "secret",
+          projectId: PROJECT_ID,
+        }),
+      ).rejects.toMatchObject({ code: "otp-required", name: "WorkspaceAuthFlowError" });
+    },
+  );
+
+  it("preserves an IAM rejection after an OTP code was submitted", async () => {
+    const invalidOtpError = new WorkspaceIamAuthError("Workspace IAM token request failed", 401, {
+      error: "invalid_client",
+      error_description: "The provided otp code is invalid",
+    });
+    requestWorkspaceIamLoginPasswordToken.mockRejectedValueOnce(invalidOtpError);
+
+    await expect(
+      loginWorkspaceWithPassword({
+        organizationUrl: "https://workspace.example.com",
+        login: "user@example.com",
+        password: "secret",
+        projectId: PROJECT_ID,
+        otpCode: "000000",
+      }),
+    ).rejects.toBe(invalidOtpError);
+  });
+
   it("rejects token project mismatch without saving a session", async () => {
     requestWorkspaceIamLoginPasswordToken.mockResolvedValueOnce({
       accessToken: tokenWithClaims({

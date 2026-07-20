@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WorkspaceAuthFlowError } from "~/entities/workspace-auth/workspace-auth.lib";
 import type * as WorkspaceAuthLibModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { renderWithProviders } from "~/test/render";
@@ -191,6 +192,73 @@ describe("LoginPage", () => {
         projectId: "project-default",
       });
     });
+  });
+
+  it("requests and submits an OTP code after IAM challenges the password login", async () => {
+    loginWorkspaceWithPassword
+      .mockRejectedValueOnce(
+        new WorkspaceAuthFlowError("otp-required", "Workspace IAM requires an OTP code"),
+      )
+      .mockResolvedValueOnce({});
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /next/i }));
+    fireEvent.change(await screen.findByLabelText(/email or login/i), {
+      target: { value: "otp-user" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    const otpInput = await screen.findByLabelText(/otp code/i);
+    expect(otpInput).toHaveAttribute("autocomplete", "one-time-code");
+    expect(screen.getByText(/enter your otp code and sign in again/i)).toBeInTheDocument();
+
+    fireEvent.change(otpInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(loginWorkspaceWithPassword).toHaveBeenLastCalledWith({
+        organizationUrl: "https://chat.example.com",
+        login: "otp-user",
+        password: "secret",
+        projectId: "project-default",
+        otpCode: "123456",
+      });
+      expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
+    });
+  });
+
+  it("keeps the OTP field and submitted code after an invalid OTP response", async () => {
+    loginWorkspaceWithPassword
+      .mockRejectedValueOnce(
+        new WorkspaceAuthFlowError("otp-required", "Workspace IAM requires an OTP code"),
+      )
+      .mockRejectedValueOnce(new Error("invalid OTP"));
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /next/i }));
+    fireEvent.change(await screen.findByLabelText(/email or login/i), {
+      target: { value: "otp-user" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    const otpInput = await screen.findByLabelText(/otp code/i);
+    fireEvent.change(otpInput, { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByText(/^login failed$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/otp code/i)).toHaveValue("000000");
   });
 
   it("shows organization error when Workspace discovery fails", async () => {

@@ -7,6 +7,7 @@ import {
   decodeWorkspaceIamClaims,
   refreshWorkspaceIamToken,
   requestWorkspaceIamLoginPasswordToken,
+  type WorkspaceIamTokenResponse,
   WorkspaceIamAuthError,
 } from "~/shared/api/workspace-iam-auth";
 import { getWorkspaceMessengerAuthProfile } from "~/shared/api/workspace-messenger-profile.api";
@@ -24,6 +25,8 @@ import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-aut
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const TERMINAL_REFRESH_FAILURE_WINDOW_MS = 60_000;
 const TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD = 3;
+const IAM_OTP_CHALLENGE_RE =
+  /\b(?:otp|totp|one[-\s]?time|2fa|mfa|two[-\s]?factor|multi[-\s]?factor)\b/i;
 const authLogger = createLogger("auth:workspace");
 const pendingWorkspaceSessionRefreshes = new Map<string, Promise<WorkspaceAuthSession>>();
 const terminalRefreshFailureAttemptsByAccountId = new Map<
@@ -49,6 +52,7 @@ export interface LoginWorkspaceWithPasswordParams {
   login: string;
   password: string;
   projectId?: string;
+  otpCode?: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
 }
@@ -65,7 +69,8 @@ export class WorkspaceAuthFlowError extends Error {
     | "project-mismatch"
     | "profile-load-failed"
     | "owner-mismatch"
-    | "refresh-unavailable";
+    | "refresh-unavailable"
+    | "otp-required";
 
   constructor(code: WorkspaceAuthFlowError["code"], message: string) {
     super(message);
@@ -159,6 +164,14 @@ function knownErrorText(value: unknown): string {
     .filter((fieldValue): fieldValue is string => typeof fieldValue === "string")
     .join(" ")
     .toLowerCase();
+}
+
+function isWorkspaceIamOtpChallengeError(error: unknown): error is WorkspaceIamAuthError {
+  return (
+    error instanceof WorkspaceIamAuthError &&
+    error.status === 401 &&
+    IAM_OTP_CHALLENGE_RE.test(knownErrorText(error.data))
+  );
 }
 
 function normalizeAuthErrorMarker(value: string): string {
@@ -659,6 +672,7 @@ export async function loginWorkspaceWithPassword({
   login,
   password,
   projectId = getDefaultWorkspaceProjectId(),
+  otpCode,
   fetchImpl,
   signal,
 }: LoginWorkspaceWithPasswordParams): Promise<LoginWorkspaceWithPasswordResult> {
@@ -678,14 +692,23 @@ export async function loginWorkspaceWithPassword({
     fetchImpl,
     signal,
   });
-  const token = await requestWorkspaceIamLoginPasswordToken(
-    {
-      login: login.trim(),
-      password,
-      projectId: trimmedProjectId,
-    },
-    { tokenUrl, fetchImpl, signal },
-  );
+  let token: WorkspaceIamTokenResponse;
+  try {
+    token = await requestWorkspaceIamLoginPasswordToken(
+      {
+        login: login.trim(),
+        password,
+        projectId: trimmedProjectId,
+        ...(otpCode?.trim() ? { otpCode: otpCode.trim() } : {}),
+      },
+      { tokenUrl, fetchImpl, signal },
+    );
+  } catch (error) {
+    if (isWorkspaceIamOtpChallengeError(error) && !otpCode?.trim()) {
+      throw new WorkspaceAuthFlowError("otp-required", "Workspace IAM requires an OTP code");
+    }
+    throw error;
+  }
   const claims = decodeWorkspaceIamClaims(token.accessToken);
   const userUuid = userUuidFromClaims(claims);
   const tokenProjectId = claims?.projectId;

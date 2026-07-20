@@ -1,4 +1,5 @@
 export const DEFAULT_IAM_TOKEN_URL = "/api/core/v1/iam/clients/default/actions/get_token/invoke";
+const IAM_OTP_HEADER = "X-OTP";
 const SECONDS_PER_DAY = 24 * 60 * 60;
 export const DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS = 30 * SECONDS_PER_DAY;
 
@@ -21,6 +22,7 @@ export interface WorkspaceIamLoginPasswordParams {
   login: string;
   password: string;
   projectId: string;
+  otpCode?: string;
   ttlSeconds?: number;
   refreshTtlSeconds?: number;
 }
@@ -83,6 +85,7 @@ function parseWorkspaceIamTokenResponse(data: unknown): WorkspaceIamTokenRespons
 async function postIamJson(
   body: Record<string, unknown>,
   options: WorkspaceIamRequestOptions,
+  requestHeaders: Record<string, string> = {},
 ): Promise<WorkspaceIamTokenResponse> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(options.tokenUrl ?? DEFAULT_IAM_TOKEN_URL, {
@@ -90,6 +93,7 @@ async function postIamJson(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...requestHeaders,
     },
     body: JSON.stringify(body),
     signal: options.signal,
@@ -112,6 +116,7 @@ export function requestWorkspaceIamLoginPasswordToken(
   params: WorkspaceIamLoginPasswordParams,
   options: WorkspaceIamRequestOptions = {},
 ): Promise<WorkspaceIamTokenResponse> {
+  const otpCode = params.otpCode?.trim();
   return postIamJson(
     {
       grant_type: "login+password",
@@ -122,6 +127,7 @@ export function requestWorkspaceIamLoginPasswordToken(
       refresh_ttl: params.refreshTtlSeconds ?? DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
     },
     options,
+    otpCode != null && otpCode.length > 0 ? { [IAM_OTP_HEADER]: otpCode } : {},
   );
 }
 

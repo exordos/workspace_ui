@@ -69,6 +69,35 @@ describe("workspace-iam-auth", () => {
     );
   });
 
+  it("sends an OTP code in the IAM header when provided", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        access_token: "access-token",
+      }),
+    );
+
+    await requestWorkspaceIamLoginPasswordToken(
+      {
+        login: "admin",
+        password: "admin",
+        projectId: "project-1",
+        otpCode: " 123456 ",
+      },
+      { fetchImpl },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-OTP": "123456",
+        },
+      }),
+    );
+  });
+
   it("refreshes token without sending login credentials", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ access_token: "new-token" }));
 

@@ -54,6 +54,8 @@ export const LoginPage: React.FC = () => {
   const [projectId, setProjectId] = useState(() => getDefaultWorkspaceProjectId());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpRequired, setOtpRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -237,6 +239,41 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
+  const resetOtpChallenge = useCallback(() => {
+    setOtpCode("");
+    setOtpRequired(false);
+    setError(null);
+  }, []);
+
+  const handleProjectIdChange = useCallback(
+    (value: string) => {
+      setProjectId(value);
+      resetOtpChallenge();
+    },
+    [resetOtpChallenge],
+  );
+
+  const handleUsernameChange = useCallback(
+    (value: string) => {
+      setUsername(value);
+      resetOtpChallenge();
+    },
+    [resetOtpChallenge],
+  );
+
+  const handlePasswordChange = useCallback(
+    (value: string) => {
+      setPassword(value);
+      resetOtpChallenge();
+    },
+    [resetOtpChallenge],
+  );
+
+  const handleOtpCodeChange = useCallback((value: string) => {
+    setOtpCode(value);
+    setError(null);
+  }, []);
+
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -244,6 +281,10 @@ export const LoginPage: React.FC = () => {
     const usernameTrim = username.trim();
     if (!realmTrim || !projectIdTrim || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
+      return;
+    }
+    if (otpRequired && otpCode.trim().length === 0) {
+      setError(t("auth.otpRequired"));
       return;
     }
     if (!isValidRealmUrl(realmTrim)) {
@@ -257,9 +298,16 @@ export const LoginPage: React.FC = () => {
         login: usernameTrim,
         password,
         projectId: projectIdTrim,
+        ...(otpRequired ? { otpCode: otpCode.trim() } : {}),
       });
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
+      if (err instanceof WorkspaceAuthFlowError && err.code === "otp-required") {
+        setOtpCode("");
+        setOtpRequired(true);
+        setError(t("auth.otpRequired"));
+        return;
+      }
       setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
     } finally {
       setLoading(false);
@@ -353,12 +401,15 @@ export const LoginPage: React.FC = () => {
               projectId={projectId}
               username={username}
               password={password}
+              otpCode={otpCode}
+              otpRequired={otpRequired}
               showPassword={showPassword}
               loading={loading}
               error={error}
-              onProjectIdChange={setProjectId}
-              onUsernameChange={setUsername}
-              onPasswordChange={setPassword}
+              onProjectIdChange={handleProjectIdChange}
+              onUsernameChange={handleUsernameChange}
+              onPasswordChange={handlePasswordChange}
+              onOtpCodeChange={handleOtpCodeChange}
               onToggleShowPassword={toggleShowPassword}
               onSubmit={handleSubmit}
             />
