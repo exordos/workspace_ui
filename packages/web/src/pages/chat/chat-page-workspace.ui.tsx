@@ -2285,7 +2285,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   return (
     <div
-      className="flex max-h-full min-h-0 min-w-0 max-w-chat-page flex-1 flex-col overflow-hidden"
+      className="flex max-h-full min-h-0 min-w-chat-page flex-1 flex-col overflow-hidden"
       data-testid="chat-page"
     >
       <ChatHeader

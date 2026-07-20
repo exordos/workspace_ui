@@ -65,7 +65,13 @@ describe("LayoutMainWorkspace", () => {
     });
   });
 
-  it("limits main width when chat shell and right panel are both visible", () => {
+  it("does not limit the workspace row width", () => {
+    render(<LayoutMainWorkspace {...buildProps()} />);
+
+    expect(screen.getByRole("main").parentElement).not.toHaveClass("max-w-main-workspace");
+  });
+
+  it("does not limit main width when chat shell and right panel are both visible", () => {
     render(
       <LayoutMainWorkspace
         {...buildProps({
@@ -76,7 +82,7 @@ describe("LayoutMainWorkspace", () => {
       />,
     );
 
-    expect(screen.getByRole("main")).toHaveClass("max-w-chat-page");
+    expect(screen.getByRole("main")).not.toHaveClass("max-w-chat-page");
   });
 
   it("does not limit main width when right panel is closed", () => {

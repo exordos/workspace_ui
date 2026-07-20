@@ -1,5 +1,6 @@
 import type { Config } from "tailwindcss";
 import scrollbar from "tailwind-scrollbar";
+import { CHAT_PAGE_MIN_WIDTH_PX } from "./src/shared/config/layout-widths.constants";
 
 const colorVar = (name: string) => `var(--color-${name})`;
 
@@ -83,12 +84,12 @@ export default {
       maxWidth: {
         "main-workspace": "1920px",
         "narrow-page": "1199px",
-        "chat-page": "1600px",
         "modal-manage-folder": "520px",
         "drawer-profile": "360px",
       },
       minWidth: {
         "app-shell-min": "360px",
+        "chat-page": `${CHAT_PAGE_MIN_WIDTH_PX}px`,
         "context-menu": "160px",
         "context-menu-message": "200px",
         "context-menu-wide": "220px",

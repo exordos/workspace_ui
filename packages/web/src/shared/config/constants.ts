@@ -10,6 +10,8 @@
  */
 import { env } from "~/shared/lib/env";
 
+export { CHAT_PAGE_MIN_WIDTH_PX } from "./layout-widths.constants";
+
 export const SCROLL_AREA_CLASS =
   "scrollbar scrollbar-thin scrollbar-thumb-border-subtle scrollbar-track-transparent scrollbar-thumb-rounded-md";
 

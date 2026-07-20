@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   APP_SHELL_MIN_WIDTH_PX,
+  CHAT_PAGE_MIN_WIDTH_PX,
   COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE,
   SCROLL_AREA_CLASS,
   DESKTOP_MIN_VIEWPORT_WIDTH_PX,
@@ -91,5 +92,6 @@ describe("constants", () => {
     expect(DESKTOP_MIN_VIEWPORT_WIDTH_PX).toBeGreaterThan(0);
     expect(NARROW_PAGE_MAX_WIDTH_PX).toBe(DESKTOP_MIN_VIEWPORT_WIDTH_PX - 1);
     expect(APP_SHELL_MIN_WIDTH_PX).toBe(360);
+    expect(CHAT_PAGE_MIN_WIDTH_PX).toBe(480);
   });
 });

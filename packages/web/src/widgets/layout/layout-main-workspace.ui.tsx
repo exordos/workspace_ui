@@ -32,19 +32,12 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
       rightDrawerMode === "user-menu" ||
       rightDrawerMode === "about" ||
       shouldShowChatShell);
-  const stickRightPanelToChatContent = shouldShowChatShell && showRightPanel;
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
   );
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
-  const mainClassName = [
-    "flex min-h-0 min-w-0 flex-1 items-stretch justify-start overflow-hidden",
-    stickRightPanelToChatContent ? "max-w-chat-page" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
   const sidebarStyle = useMemo<React.CSSProperties>(
     () => ({
       width: sidebarWidth,
@@ -137,7 +130,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 items-stretch justify-center">
-      <div className="flex min-h-0 w-full min-w-0 max-w-main-workspace gap-1">
+      <div className="flex min-h-0 w-full min-w-0 gap-1">
         {shouldShowChatShell && sidebarOpen && (
           <SidebarShell
             sidebarStyle={sidebarStyle}
@@ -160,7 +153,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
           />
         )}
         <main
-          className={mainClassName}
+          className="flex min-h-0 min-w-0 flex-1 items-stretch justify-start overflow-hidden"
           data-focus-zone="main"
           role="main"
           aria-label={t("nav.messenger")}

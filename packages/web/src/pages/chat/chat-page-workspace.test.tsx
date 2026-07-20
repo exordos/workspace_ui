@@ -569,7 +569,7 @@ describe("ChatPage Workspace route", () => {
 
     expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
     expect(screen.getByTestId("chat-page")).toHaveClass(
-      "max-w-chat-page",
+      "min-w-chat-page",
       "flex-1",
       "overflow-hidden",
     );
