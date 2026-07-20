@@ -9,7 +9,7 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
-import { MY_ACTIVITY } from "./sidebar.lib";
+import { type MY_ACTIVITY, VISIBLE_MY_ACTIVITY } from "./sidebar.lib";
 
 type SidebarActivityItemKey = (typeof MY_ACTIVITY)[number]["key"];
 
@@ -211,7 +211,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                   )}
                 </li>
               )}
-              {MY_ACTIVITY.map((item) => {
+              {VISIBLE_MY_ACTIVITY.map((item) => {
                 const route = resolveActivityRoute(item.key);
                 const disabledReason = disabledItems[item.key];
                 const isActive = disabledReason == null && isActivityRouteActive(item.key);
@@ -333,7 +333,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
               )}
             </li>
           )}
-          {MY_ACTIVITY.map((item) => {
+          {VISIBLE_MY_ACTIVITY.map((item) => {
             const route = resolveActivityRoute(item.key);
             const disabledReason = disabledItems[item.key];
             const isActive = disabledReason == null && isActivityRouteActive(item.key);

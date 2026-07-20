@@ -57,6 +57,17 @@ export const MY_ACTIVITY = [
   },
 ] as const;
 
+const VISIBLE_MY_ACTIVITY_KEYS: ReadonlySet<(typeof MY_ACTIVITY)[number]["key"]> = new Set([
+  "inbox",
+  "drafts",
+  "favorites",
+]);
+
+/** UI-only navigation list. Keep hidden items available for their routes. */
+export const VISIBLE_MY_ACTIVITY = MY_ACTIVITY.filter((item) =>
+  VISIBLE_MY_ACTIVITY_KEYS.has(item.key),
+);
+
 export const TOPIC_BAR_COLORS = ["var(--color-indicator-yellow)", "var(--color-indicator-pink)"];
 export const MOCK_DMS: SidebarChat[] = [
   {

@@ -8,7 +8,14 @@ import {
   isSidebarSystemFolderScope,
   parseStreamSlug,
   resolveStreamRouteFromSlug,
+  VISIBLE_MY_ACTIVITY,
 } from "./sidebar.lib";
+
+describe("VISIBLE_MY_ACTIVITY", () => {
+  it("keeps only the available activity navigation items", () => {
+    expect(VISIBLE_MY_ACTIVITY.map((item) => item.key)).toEqual(["inbox", "drafts", "favorites"]);
+  });
+});
 
 describe("isSidebarSystemFolderScope", () => {
   it("includes system rail ids", () => {
