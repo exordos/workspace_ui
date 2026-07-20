@@ -171,6 +171,12 @@ describe("WorkspaceSidebar context menu", () => {
     runWorkspaceTopicDoneToggleMock.mockReset();
   });
 
+  it("uses the stream color as the channel avatar background", () => {
+    renderWorkspaceSidebar([createStream({ color: 0x2563eb })]);
+
+    expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+  });
+
   it("opens the stream context menu from right click without mark-as-read", async () => {
     renderWorkspaceSidebar([createStream()]);
 

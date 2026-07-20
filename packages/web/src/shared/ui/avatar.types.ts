@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export type AvatarSize = "xs" | "sm" | "md" | "lg";
 
@@ -10,4 +10,5 @@ export interface AvatarProps {
   imageLoading?: "eager" | "lazy";
   children: ReactNode;
   className?: string;
+  style?: CSSProperties;
 }

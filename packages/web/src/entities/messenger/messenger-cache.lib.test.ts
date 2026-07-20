@@ -9,8 +9,15 @@ import {
   resetWorkspaceMessengerCacheDbSingletonForTests,
   upsertMessengerStreamBindingsCache,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { writeMessengerCatalogPayloadCache } from "./messenger-cache.lib";
-import type { MessengerBootstrapPayload, MessengerStreamBinding } from "./messenger.types";
+import {
+  readMessengerCatalogPayloadCache,
+  writeMessengerCatalogPayloadCache,
+} from "./messenger-cache.lib";
+import type {
+  MessengerBootstrapPayload,
+  MessengerStream,
+  MessengerStreamBinding,
+} from "./messenger.types";
 
 const OWNER_KEY = "account:a:org:o:project:p:user:u";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
@@ -42,6 +49,32 @@ function createStreamBinding(): MessengerStreamBinding {
   };
 }
 
+function createStream(): MessengerStream {
+  return {
+    uuid: STREAM_UUID,
+    projectId: "project-a",
+    ownerUuid: USER_UUID,
+    userUuid: USER_UUID,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Engineering",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    color: 0x2563eb,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+  };
+}
+
 afterEach(async () => {
   try {
     const db = await openWorkspaceMessengerCacheDb();
@@ -54,6 +87,21 @@ afterEach(async () => {
 });
 
 describe("messenger cache", () => {
+  it("restores stream color from the catalog cache", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+    });
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+
+    expect(cached?.payload.streams[0]).toMatchObject({
+      uuid: STREAM_UUID,
+      name: "Engineering",
+      color: 0x2563eb,
+    });
+  });
+
   it("keeps side-loaded stream bindings when bootstrap reconcile has no bindings catalog", async () => {
     await upsertMessengerStreamBindingsCache(OWNER_KEY, [createStreamBinding()]);
 

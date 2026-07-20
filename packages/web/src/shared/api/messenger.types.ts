@@ -41,6 +41,7 @@ export interface WorkspaceMessengerStreamDto {
   announce: boolean;
   private: boolean;
   is_archived: boolean;
+  color?: number | null;
   direct_user_uuid?: WorkspaceMessengerUuid | null;
   last_message_uuid?: WorkspaceMessengerUuid | null;
   created_at: WorkspaceMessengerDateTime;
@@ -849,6 +850,9 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
     typeof value.is_archived === "boolean" &&
+    (value.color === undefined ||
+      value.color === null ||
+      (isNonNegativeInteger(value.color) && value.color <= 0xffffff)) &&
     (value.direct_user_uuid === undefined || isNullableUuid(value.direct_user_uuid)) &&
     (value.last_message_uuid === undefined || isNullableUuid(value.last_message_uuid)) &&
     isDateTime(value.created_at) &&

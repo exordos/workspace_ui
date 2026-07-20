@@ -504,7 +504,7 @@ describe("messenger bootstrap store", () => {
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
     const cachedPayload = adaptMessengerBootstrapPayload({
-      streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
+      streams: [createStreamDto({ last_message_uuid: MESSAGE_A, color: 0x2563eb })],
       topics: [createTopicDto({ last_message_uuid: MESSAGE_A })],
       folders: [],
     });
@@ -532,6 +532,7 @@ describe("messenger bootstrap store", () => {
     await flushPromises();
 
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.color).toBe(0x2563eb);
     expect(readMessagesByUuids).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Cached preview",

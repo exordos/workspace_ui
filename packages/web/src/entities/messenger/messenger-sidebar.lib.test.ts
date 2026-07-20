@@ -286,6 +286,7 @@ describe("messenger sidebar selectors", () => {
       isPrivate: false,
       uiKind: "channel",
       unreadCount: 3,
+      color: null,
       preview: null,
     });
     expect(rows[0]?.topics[0]).toMatchObject({

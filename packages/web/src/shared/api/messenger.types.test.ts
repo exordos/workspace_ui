@@ -474,6 +474,8 @@ describe("Workspace messenger DTO guards", () => {
       false,
     );
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, is_archived: undefined })).toBe(false);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, color: 0x2563eb })).toBe(true);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, color: 0x1000000 })).toBe(false);
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, direct_user_uuid: undefined })).toBe(true);
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, last_message_uuid: undefined })).toBe(
       true,

@@ -229,6 +229,10 @@ function WorkspaceSidebarStreamRow({
   const avatarSize = compact ? "sm" : "md";
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
+  const avatarStyle =
+    !isDirectPrivate && stream.color != null
+      ? { backgroundColor: `#${stream.color.toString(16).padStart(6, "0")}` }
+      : undefined;
   const title = isDirectPrivate ? stream.title : `#${stream.title}`;
   const statusEmoji = isDirectPrivate ? (stream.statusEmoji ?? null) : null;
   const statusText =
@@ -255,6 +259,7 @@ function WorkspaceSidebarStreamRow({
               <WorkspaceAvatar
                 size={avatarSize}
                 avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
+                style={avatarStyle}
               >
                 {avatarLabel}
               </WorkspaceAvatar>

@@ -47,6 +47,7 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     inviteOnly: dto.invite_only,
     announce: dto.announce,
     isArchived: dto.is_archived,
+    color: dto.color ?? null,
     directUserUuid: dto.direct_user_uuid ?? null,
     lastMessageUuid: dto.last_message_uuid ?? null,
     createdAt: dto.created_at,

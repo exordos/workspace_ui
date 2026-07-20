@@ -270,6 +270,7 @@ function streamItemFromStream(input: {
       usersById: input.usersById,
       currentUserUuid: input.currentUserUuid,
     }),
+    color: input.stream.color ?? null,
     avatarUrl: uiKind === "directPrivate" ? (directUser?.avatarUrl ?? null) : undefined,
     presence:
       uiKind === "directPrivate" ? resolveUserPresenceVisual(directUser?.status) : undefined,

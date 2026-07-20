@@ -24,6 +24,7 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
 
 export interface WorkspaceMessengerCachedStream {
   uuid: string;
+  color?: number | null;
   lastMessageUuid?: string | null;
   updatedAt?: string | null;
 }
@@ -971,6 +972,12 @@ async function upsertStreams(
     const previous = previousRows.get(row.id);
     if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
       store.put(row);
+    } else if (previous != null && previous.stream.color == null && row.stream.color != null) {
+      store.put({
+        ...previous,
+        stream: { ...previous.stream, color: row.stream.color },
+        cacheUpdatedAt,
+      });
     }
   }
   await transactionDone(transaction);

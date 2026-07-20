@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { AvatarProps, AvatarSize } from "./avatar.types";
+import type { CSSProperties } from "react";
 
 const SIZE_CLASS: Record<AvatarSize, string> = {
   xs: "w-9 h-9 text-xs",
@@ -13,9 +14,10 @@ const AvatarImage = React.memo<{
   src: string;
   imageLoading: "eager" | "lazy";
   onError: () => void;
-}>(({ baseClass, src, imageLoading, onError }) => {
+  style?: CSSProperties;
+}>(({ baseClass, src, imageLoading, onError, style }) => {
   return (
-    <div className={baseClass}>
+    <div className={baseClass} style={style}>
       <img
         src={src}
         alt=""
@@ -29,7 +31,7 @@ const AvatarImage = React.memo<{
 });
 
 export const Avatar = React.memo<AvatarProps>(
-  ({ size = "md", src, imageLoading = "lazy", children, className = "" }) => {
+  ({ size = "md", src, imageLoading = "lazy", children, className = "", style }) => {
     const sizeClass = SIZE_CLASS[size];
     const baseClass =
       `flex-shrink-0 rounded-full bg-bg border border-border-subtle flex items-center justify-center overflow-hidden font-semibold text-text-primary ${sizeClass} ${className}`.trim();
@@ -47,9 +49,14 @@ export const Avatar = React.memo<AvatarProps>(
           src={trimmedSrc}
           imageLoading={imageLoading}
           onError={() => setImageFailed(true)}
+          style={style}
         />
       );
     }
-    return <div className={baseClass}>{children}</div>;
+    return (
+      <div className={baseClass} style={style}>
+        {children}
+      </div>
+    );
   },
 );

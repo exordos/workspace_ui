@@ -74,6 +74,7 @@ export interface MessengerStream {
   inviteOnly: boolean;
   announce: boolean;
   isArchived: boolean;
+  color?: number | null;
   directUserUuid: MessengerUuid | null;
   lastMessageUuid: MessengerUuid | null;
   createdAt: string;
@@ -245,6 +246,7 @@ export interface MessengerSidebarStreamItem {
   route: string;
   topics: MessengerSidebarTopicItem[];
   preview: MessengerSidebarMessagePreview | null;
+  color?: number | null;
   avatarUrl?: string | null;
   presence?: PresenceVisual;
   statusEmoji?: string | null;

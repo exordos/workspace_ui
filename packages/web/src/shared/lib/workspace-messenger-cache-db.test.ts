@@ -190,7 +190,7 @@ describe("workspace-messenger-cache-db", () => {
 
   it("writes and reads catalog snapshots without leaking between owners", async () => {
     await writeMessengerCatalogCache(OWNER, {
-      streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" }],
+      streams: [{ uuid: STREAM, color: 0x2563eb, updatedAt: "2026-07-01T08:00:00.000Z" }],
       topics: [{ uuid: TOPIC, streamUuid: STREAM, updatedAt: "2026-07-01T08:01:00.000Z" }],
       conversations: [
         {
@@ -232,7 +232,9 @@ describe("workspace-messenger-cache-db", () => {
     const otherSnapshot = await readMessengerCatalogCache(OTHER_OWNER);
 
     expect(snapshot.ownerMeta?.lastHydratedAt).toBe(42);
-    expect(snapshot.streams.map((stream) => stream.uuid)).toEqual([STREAM]);
+    expect(snapshot.streams).toEqual([
+      { uuid: STREAM, color: 0x2563eb, updatedAt: "2026-07-01T08:00:00.000Z" },
+    ]);
     expect(snapshot.topics.map((topic) => topic.uuid)).toEqual([TOPIC]);
     expect(snapshot.conversations.map((conversation) => conversation.id)).toEqual([
       TOPIC_CONVERSATION,
@@ -294,6 +296,40 @@ describe("workspace-messenger-cache-db", () => {
     ).toEqual([STREAM, "stream-b"]);
     expect(snapshot.folders.map((folder) => folder.uuid)).toEqual(["folder-a"]);
     expect(snapshot.folderItems.map((item) => item.uuid)).toEqual(["folder-item-a"]);
+  });
+
+  it("backfills a missing stream color without replacing newer cached data", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          lastMessageUuid: "newer-message",
+          updatedAt: "2026-07-01T08:02:00.000Z",
+        },
+      ],
+    });
+
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          color: 0x2563eb,
+          lastMessageUuid: "older-message",
+          updatedAt: "2026-07-01T08:01:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(snapshot.streams).toEqual([
+      {
+        uuid: STREAM,
+        color: 0x2563eb,
+        lastMessageUuid: "newer-message",
+        updatedAt: "2026-07-01T08:02:00.000Z",
+      },
+    ]);
   });
 
   it("reconciles catalog snapshots by deleting missing rows", async () => {

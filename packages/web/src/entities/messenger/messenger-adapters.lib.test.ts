@@ -43,6 +43,7 @@ const streamDto: WorkspaceMessengerStreamDto = {
   announce: false,
   private: false,
   is_archived: false,
+  color: 0x2563eb,
   direct_user_uuid: null,
   created_at: DATE,
   updated_at: DATE,
@@ -111,6 +112,7 @@ describe("messenger adapters", () => {
       sourceName: "native",
       source: { kind: "native" },
       isArchived: false,
+      color: 0x2563eb,
       directUserUuid: null,
     });
     expect(adaptMessengerTopic(topicDto)).toMatchObject({
