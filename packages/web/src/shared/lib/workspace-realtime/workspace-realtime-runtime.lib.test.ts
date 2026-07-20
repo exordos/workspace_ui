@@ -37,6 +37,15 @@ function cursor(epochVersion: number) {
   return { epochGeneration: EPOCH_GENERATION, epochVersion };
 }
 
+function epoch(epochVersion: number, epochGeneration = EPOCH_GENERATION) {
+  return {
+    epoch_version: epochVersion,
+    epoch_generation: epochGeneration,
+    current_epoch_version: epochVersion,
+    minimum_epoch_version: 1,
+  };
+}
+
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
 
@@ -462,6 +471,233 @@ describe("workspace-realtime transport runtime", () => {
     expect(skippedEvents).toEqual([]);
     expect(diagnostics).toEqual([]);
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+  });
+
+  it("checks the server epoch only after sixty seconds without frames after ready", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const getEpoch = vi.fn(() => Promise.resolve(epoch(10)));
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getEpoch).not.toHaveBeenCalled();
+
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(getEpoch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(getEpoch).toHaveBeenCalledTimes(1);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("does not reconnect when websocket catches up during the epoch grace period", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch: () => Promise.resolve(epoch(11)),
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(2_999);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(sockets).toHaveLength(1);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("reconnects through the normal path when the epoch lag persists", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch: () => Promise.resolve(epoch(11)),
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(63_000);
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]?.closed).toBe(true);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("uses cursor expiry recovery when the checked epoch generation changes", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch: () => Promise.resolve(epoch(11, "generation-b")),
+      getEventsPage: () => Promise.resolve(createPage([])),
+      resetAuthoritativeSnapshots,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(cursorStorage.read(cursorOwner)).toBeNull();
+    expect(resetAuthoritativeSnapshots).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        reason: "epoch_generation_changed",
+        epoch_generation: "generation-b",
+      }),
+    );
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("only reports an epoch request failure and keeps the socket open", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const diagnostics: string[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch: () => Promise.reject(new Error("request failed")),
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+      onDiagnostic: (diagnostic) => {
+        diagnostics.push(diagnostic.reason);
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(false);
+    expect(diagnostics).toContain("epoch_check_failed");
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("ignores an epoch response that resolves after runtime stop", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    let resolveEpoch = (): void => {
+      throw new Error("Epoch request was not started");
+    };
+    const getEpoch = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof epoch>>((resolve) => {
+          resolveEpoch = () => resolve(epoch(11));
+        }),
+    );
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getEpoch).toHaveBeenCalledTimes(1);
+
+    await runtime.stop();
+    resolveEpoch();
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(true);
+    vi.useRealTimers();
   });
 
   it("skips duplicate or old websocket events without rolling cursor back", async () => {

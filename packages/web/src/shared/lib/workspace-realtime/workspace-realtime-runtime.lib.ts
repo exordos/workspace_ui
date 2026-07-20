@@ -12,6 +12,7 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { isWorkspaceEventsCursorExpiredErrorDto } from "~/shared/api/messenger.types";
+import { getEpoch as defaultGetEpoch } from "~/shared/api/workspace-client";
 import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import type {
@@ -109,7 +110,8 @@ export interface WorkspaceRealtimeDiagnostic {
     | "auth_failed"
     | "auth_refresh_failed"
     | "cursor_expired"
-    | "snapshot_recovery_failed";
+    | "snapshot_recovery_failed"
+    | "epoch_check_failed";
   error?: unknown;
 }
 
@@ -176,6 +178,10 @@ const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE = 4401;
 const WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE = 4410;
 const INVALID_FRAME_SYNTHETIC_EPOCH: WorkspaceMessengerEpochVersion = 0;
+// Check the server cursor only after the socket has been quiet for this long.
+const EPOCH_WATCHDOG_IDLE_TIMEOUT_MS = 60_000;
+// Give queued WebSocket frames time to advance the durable cursor.
+const EPOCH_WATCHDOG_GRACE_PERIOD_MS = 3_000;
 
 function defaultReconnectDelayMs(attempt: number): number {
   return Math.min(
@@ -322,6 +328,11 @@ export function createWorkspaceRealtimeTransportCore(
   let lastAuthFailure: { reason: string; error?: unknown } | null = null;
   let cursorRecoveryPromise: Promise<void> | null = null;
   let frameQueue: Promise<void> = Promise.resolve();
+  let transportMode: WorkspaceRealtimeRuntimeMode = "idle";
+  let lastWebSocketFrameAt: number | null = null;
+  let epochWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let epochLagTimer: ReturnType<typeof setTimeout> | null = null;
+  let epochCheckPromise: Promise<void> | null = null;
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
@@ -336,6 +347,18 @@ export function createWorkspaceRealtimeTransportCore(
     reconnectTimer = null;
   }
 
+  function clearEpochWatchdogTimers(): void {
+    if (epochWatchdogTimer != null) {
+      clearTimeout(epochWatchdogTimer);
+      epochWatchdogTimer = null;
+    }
+    if (epochLagTimer != null) {
+      clearTimeout(epochLagTimer);
+      epochLagTimer = null;
+    }
+    lastWebSocketFrameAt = null;
+  }
+
   function cleanupExternalAbortListener(): void {
     removeExternalAbortListener?.();
     removeExternalAbortListener = null;
@@ -346,12 +369,22 @@ export function createWorkspaceRealtimeTransportCore(
     return isOwnerCurrent(context.owner, options, activeSignal());
   }
 
+  function isEpochWatchdogActive(activeSocket: WorkspaceRealtimeWebSocketLike): boolean {
+    return (
+      isCurrentRuntime() &&
+      transportMode === "connected" &&
+      notificationsEnabled &&
+      socket === activeSocket
+    );
+  }
+
   async function emitState(
     mode: WorkspaceRealtimeRuntimeMode,
     reason?: string,
     error?: unknown,
   ): Promise<void> {
     if (context == null) return;
+    transportMode = mode;
     const state: WorkspaceRealtimeTransportState = {
       owner: context.owner,
       ownerKey: context.ownerKey,
@@ -587,6 +620,140 @@ export function createWorkspaceRealtimeTransportCore(
     }
   }
 
+  function scheduleEpochWatchdog(activeSocket: WorkspaceRealtimeWebSocketLike): void {
+    if (
+      !isEpochWatchdogActive(activeSocket) ||
+      epochWatchdogTimer != null ||
+      epochLagTimer != null ||
+      epochCheckPromise != null
+    ) {
+      return;
+    }
+
+    const lastFrameAt = lastWebSocketFrameAt ?? Date.now();
+    const remainingDelay = Math.max(0, EPOCH_WATCHDOG_IDLE_TIMEOUT_MS - (Date.now() - lastFrameAt));
+    epochWatchdogTimer = setTimeout(() => {
+      epochWatchdogTimer = null;
+      void checkEpochAfterSocketIdle(activeSocket);
+    }, remainingDelay);
+  }
+
+  function recoverFromEpochGenerationChange(
+    epochGeneration: string,
+    epochVersion: WorkspaceMessengerEpochVersion,
+  ): Promise<void> {
+    return recoverFromCursorExpiry({
+      type: "EventsCursorExpiredError",
+      code: 410,
+      error: "epoch_pruned",
+      message: "Workspace realtime generation changed during epoch verification",
+      reason: "epoch_generation_changed",
+      epoch_generation: epochGeneration,
+      current_epoch_version: epochVersion,
+      minimum_epoch_version: epochVersion,
+    });
+  }
+
+  async function confirmEpochLag(
+    activeSocket: WorkspaceRealtimeWebSocketLike,
+    epochGeneration: string,
+    epochVersion: WorkspaceMessengerEpochVersion,
+  ): Promise<void> {
+    if (!isEpochWatchdogActive(activeSocket) || context == null) return;
+
+    const currentCursor = options.cursorStorage.read(context.owner);
+    if (currentCursor == null) return;
+    if (currentCursor.epochGeneration !== epochGeneration) {
+      await recoverFromEpochGenerationChange(epochGeneration, epochVersion);
+      return;
+    }
+    if (currentCursor.epochVersion >= epochVersion) {
+      scheduleEpochWatchdog(activeSocket);
+      return;
+    }
+
+    await nudge("epoch_lag_detected");
+  }
+
+  function scheduleEpochLagConfirmation(
+    activeSocket: WorkspaceRealtimeWebSocketLike,
+    epochGeneration: string,
+    epochVersion: WorkspaceMessengerEpochVersion,
+  ): void {
+    if (!isEpochWatchdogActive(activeSocket) || epochLagTimer != null) return;
+    epochLagTimer = setTimeout(() => {
+      epochLagTimer = null;
+      void confirmEpochLag(activeSocket, epochGeneration, epochVersion);
+    }, EPOCH_WATCHDOG_GRACE_PERIOD_MS);
+  }
+
+  function checkEpochAfterSocketIdle(activeSocket: WorkspaceRealtimeWebSocketLike): void {
+    if (!isEpochWatchdogActive(activeSocket) || epochCheckPromise != null || context == null)
+      return;
+
+    const epochCheckContext = context;
+    const epochCheckSignal = activeSignal();
+    const check = (async (): Promise<void> => {
+      try {
+        const getEpoch = options.getEpoch ?? defaultGetEpoch;
+        const serverEpoch = await getEpoch(
+          withAbortSignal(options.clientOptions, epochCheckSignal),
+        );
+        if (
+          !isEpochWatchdogActive(activeSocket) ||
+          context == null ||
+          context !== epochCheckContext ||
+          activeSignal() !== epochCheckSignal
+        ) {
+          return;
+        }
+
+        const currentCursor = options.cursorStorage.read(context.owner);
+        if (currentCursor == null) return;
+        if (currentCursor.epochGeneration !== serverEpoch.epoch_generation) {
+          await recoverFromEpochGenerationChange(
+            serverEpoch.epoch_generation,
+            serverEpoch.epoch_version,
+          );
+          return;
+        }
+        if (serverEpoch.epoch_version > currentCursor.epochVersion) {
+          scheduleEpochLagConfirmation(
+            activeSocket,
+            serverEpoch.epoch_generation,
+            serverEpoch.epoch_version,
+          );
+        }
+      } catch {
+        if (isEpochWatchdogActive(activeSocket)) {
+          reportDiagnostic(
+            "epoch_check_failed",
+            new Error("Workspace realtime epoch check failed"),
+          );
+        }
+      }
+    })();
+    epochCheckPromise = check;
+    void check.finally(() => {
+      if (epochCheckPromise === check) {
+        epochCheckPromise = null;
+        if (socket != null) {
+          scheduleEpochWatchdog(socket);
+        }
+      }
+    });
+  }
+
+  function recordIncomingWebSocketFrame(activeSocket: WorkspaceRealtimeWebSocketLike): void {
+    if (!isEpochWatchdogActive(activeSocket)) return;
+    lastWebSocketFrameAt = Date.now();
+    if (epochWatchdogTimer != null) {
+      clearTimeout(epochWatchdogTimer);
+      epochWatchdogTimer = null;
+    }
+    scheduleEpochWatchdog(activeSocket);
+  }
+
   async function handleReadyFrame(
     frame: Extract<WorkspaceMessengerWebSocketFrameDto, { type: "ready" }>,
   ): Promise<void> {
@@ -614,6 +781,9 @@ export function createWorkspaceRealtimeTransportCore(
     notificationsEnabled = true;
     reconnectAttempt = 0;
     await emitState("connected");
+    if (socket != null) {
+      scheduleEpochWatchdog(socket);
+    }
   }
 
   async function handleRawFrame(raw: unknown): Promise<void> {
@@ -722,6 +892,7 @@ export function createWorkspaceRealtimeTransportCore(
       notificationsEnabled = false;
     };
     activeSocket.onmessage = (event) => {
+      recordIncomingWebSocketFrame(activeSocket);
       frameQueue = frameQueue
         .then(async () => {
           // Preserve server epoch order and ignore frames left behind by an old socket.
@@ -797,6 +968,8 @@ export function createWorkspaceRealtimeTransportCore(
   }
 
   async function disconnect(reason = "disconnect"): Promise<void> {
+    clearEpochWatchdogTimers();
+    notificationsEnabled = false;
     await emitState("disconnecting", reason);
     const activeSocket = socket;
     socket = null;
@@ -813,6 +986,7 @@ export function createWorkspaceRealtimeTransportCore(
     if (stopped && context == null) return;
     stopped = true;
     clearReconnectTimer();
+    clearEpochWatchdogTimers();
     cleanupExternalAbortListener();
     lastAuthFailure = null;
     controller?.abort();
@@ -831,6 +1005,8 @@ export function createWorkspaceRealtimeTransportCore(
     lastAuthRefreshToken = null;
     lastAuthFailure = null;
     cursorRecoveryPromise = null;
+    epochCheckPromise = null;
+    clearEpochWatchdogTimers();
     notificationsEnabled = false;
     lastCursor = options.cursorStorage.read(nextContext.owner);
     lastEpochVersion = lastCursor?.epochVersion ?? null;
