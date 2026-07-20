@@ -24,7 +24,10 @@ function createOwnerIndex(store: IDBObjectStore): void {
   store.createIndex("byOwner", "ownerKey", { unique: false });
 }
 
-export function createWorkspaceMessengerCacheDbSchema(db: IDBDatabase): void {
+export function createWorkspaceMessengerCacheDbSchema(
+  db: IDBDatabase,
+  upgradeTransaction?: IDBTransaction | null,
+): void {
   const stores = WORKSPACE_MESSENGER_CACHE_STORES;
 
   if (!db.objectStoreNames.contains(stores.ownerMeta)) {
@@ -116,10 +119,19 @@ export function createWorkspaceMessengerCacheDbSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(stores.composerDrafts)) {
     const store = db.createObjectStore(stores.composerDrafts, { keyPath: "id" });
     createOwnerIndex(store);
+  } else {
+    const store = upgradeTransaction?.objectStore(stores.composerDrafts);
+    if (store == null) return;
+    if (!store.indexNames.contains("byOwner")) {
+      createOwnerIndex(store);
+    }
   }
 }
 
 /** Ensures the latest Workspace messenger cache schema exists during open. */
-export function runWorkspaceMessengerCacheDbUpgrade(db: IDBDatabase): void {
-  createWorkspaceMessengerCacheDbSchema(db);
+export function runWorkspaceMessengerCacheDbUpgrade(
+  db: IDBDatabase,
+  upgradeTransaction?: IDBTransaction | null,
+): void {
+  createWorkspaceMessengerCacheDbSchema(db, upgradeTransaction);
 }

@@ -32,7 +32,6 @@ import {
   deleteWorkspaceMessengerCacheDatabase,
   openWorkspaceMessengerCacheDb,
   resetWorkspaceMessengerCacheDbSingletonForTests,
-  writeWorkspaceComposerDraft,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -82,6 +81,8 @@ const captured = vi.hoisted(() => ({
   uploadWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
   streamBindingsForRoute: vi.fn(),
+  syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
+  deleteWorkspaceComposerDraftFromServer: vi.fn().mockResolvedValue(true),
 }));
 
 function createTestWorkspaceFileResourceCache() {
@@ -186,6 +187,11 @@ vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOrigi
 
 vi.mock("~/entities/messenger/messenger-stream-bindings-loader.lib", () => ({
   useMessengerStreamBindingsForRoute: captured.streamBindingsForRoute,
+}));
+
+vi.mock("~/entities/composer-draft/composer-draft-sync.lib", () => ({
+  syncWorkspaceComposerDraft: captured.syncWorkspaceComposerDraft,
+  deleteWorkspaceComposerDraftFromServer: captured.deleteWorkspaceComposerDraftFromServer,
 }));
 
 vi.mock("~/widgets/chat-view/chat-header.ui", () => ({
@@ -533,6 +539,17 @@ describe("ChatPage Workspace route", () => {
       ownerKey: "owner-key",
       message: createMessage(),
     });
+    captured.syncWorkspaceComposerDraft.mockReset();
+    captured.syncWorkspaceComposerDraft.mockResolvedValue(undefined);
+    captured.deleteWorkspaceComposerDraftFromServer.mockReset();
+    captured.deleteWorkspaceComposerDraftFromServer.mockImplementation(
+      (params: { draft: { ownerKey: string; draftUuid: string } }) => {
+        useWorkspaceComposerDraftStore
+          .getState()
+          .removeDraftByUuid(params.draft.ownerKey, params.draft.draftUuid);
+        return Promise.resolve(true);
+      },
+    );
     useWorkspaceForwardMessageStore.getState().reset();
     captured.streamBindingsForRoute.mockClear();
     useDownloadStore.getState().clearDownloads();
@@ -1481,13 +1498,27 @@ describe("ChatPage Workspace route", () => {
   it("starts a new composer session after IndexedDB hydration restores a text draft", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
-    await writeWorkspaceComposerDraft(ownerKey, conversationId, {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction("composerDrafts", "readwrite");
+    transaction.objectStore("composerDrafts").put({
+      id: `${ownerKey}:${conversationId}`,
+      ownerKey,
+      conversationId,
       snapshotId: "persisted-text-draft",
       updatedAt: Date.now(),
       content: {
         text: "restored after reload",
         replySession: { tabs: [], activeTabId: null },
       },
+    });
+    await new Promise<void>((resolve, reject) => {
+      transaction.addEventListener("complete", () => resolve());
+      transaction.addEventListener("error", () =>
+        reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+      );
+      transaction.addEventListener("abort", () =>
+        reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+      );
     });
     useWorkspaceComposerDraftStore.getState().clear();
 
@@ -1535,6 +1566,63 @@ describe("ChatPage Workspace route", () => {
     expect(captured.composerProps?.draftInitialValue).toBe("typed before hydration");
     expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:text");
     useWorkspaceComposerDraftStore.setState({ hydrateDraft: originalHydrateDraft });
+  });
+
+  it("enqueues draft synchronization from composer input without a chat sync effect", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.composerProps?.onComposerValueChange("queued locally");
+    });
+
+    await waitFor(() => {
+      expect(captured.syncWorkspaceComposerDraft).toHaveBeenCalledTimes(1);
+      expect(captured.syncWorkspaceComposerDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          draft: expect.objectContaining({
+            ownerKey,
+            conversationId,
+            content: expect.objectContaining({ text: "queued locally" }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("queues deletion of the sent draft without waiting for the composer visit to end", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "send this draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    await act(async () => {
+      await expect(onSend("send this draft", "")).resolves.toBeUndefined();
+    });
+
+    expect(captured.deleteWorkspaceComposerDraftFromServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: expect.objectContaining({
+          ownerKey,
+          conversationId,
+          content: expect.objectContaining({ text: "send this draft" }),
+        }),
+      }),
+    );
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
   });
 
   it("keeps a newer draft when an earlier send succeeds", async () => {

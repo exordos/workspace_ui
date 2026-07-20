@@ -191,6 +191,7 @@ function defaultRuntimeFactory({
       await bootstrapMessengerStore({
         runtimeContext,
         getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        loadDrafts: false,
       });
     },
     onDiagnostic: (diagnostic) => {

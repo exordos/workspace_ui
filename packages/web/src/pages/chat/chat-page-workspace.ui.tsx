@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  deleteWorkspaceComposerDraftFromServer,
+  syncWorkspaceComposerDraft,
+} from "~/entities/composer-draft/composer-draft-sync.lib";
 import {
   createWorkspaceComposerDraftKey,
   EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+  isWorkspaceComposerDraftContentEmpty,
 } from "~/entities/composer-draft/composer-draft.lib";
 import {
   selectWorkspaceComposerDraft,
@@ -337,6 +342,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
   const navigate = useNavigate();
+  const location = useLocation();
   const pendingReadUpToMessageUuidRef = useRef<string | null>(null);
   const lastReadUpToMessageUuidRef = useRef<string | null>(null);
   const readBatchTimerRef = useRef<number | null>(null);
@@ -426,9 +432,24 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     ownerKey == null || conversationId == null
       ? null
       : createWorkspaceComposerDraftKey(ownerKey, conversationId);
+  const requestedWorkspaceDraftUuid = useMemo(
+    () => new URLSearchParams(location.search).get("draft_uuid"),
+    [location.search],
+  );
   const workspaceComposerDraft = useWorkspaceComposerDraftStore((state) =>
     selectWorkspaceComposerDraft(state, ownerKey, conversationId),
   );
+  const composerDraftTopicsById = useMessengerStore((state) => state.topicsById);
+  const composerDraftTarget = useMemo(() => {
+    if (selection.status !== "conversation") return null;
+    if (selection.kind === "topic") {
+      return { streamUuid: selection.streamUuid, topicUuid: selection.topicUuid };
+    }
+    const defaultTopic = findDefaultTopic(composerDraftTopicsById, selection.streamUuid);
+    return defaultTopic == null
+      ? null
+      : { streamUuid: selection.streamUuid, topicUuid: defaultTopic.uuid };
+  }, [composerDraftTopicsById, selection]);
   const workspaceComposerContent =
     workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
       ? workspaceComposerDraftShadow.content
@@ -462,9 +483,50 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
       const nextContent = update(currentContent);
       setComposerDraftShadow(workspaceComposerDraftScopeKey, nextContent);
-      useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, nextContent);
+
+      if (isWorkspaceComposerDraftContentEmpty(nextContent)) {
+        if (currentDraft == null) return;
+
+        // Keep the record until the entity queue has either deleted it or
+        // recorded a conflict. Removing it here would lose the ETag needed
+        // after an in-flight POST/PUT.
+        if (runtimeContext != null) {
+          void deleteWorkspaceComposerDraftFromServer({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            draft: currentDraft,
+          });
+          useWorkspaceComposerDraftStore
+            .getState()
+            .completeDraftVisit(ownerKey, conversationId, currentDraft.draftUuid);
+          return;
+        }
+
+        useWorkspaceComposerDraftStore
+          .getState()
+          .clearDraftIfSnapshotMatches(ownerKey, conversationId, currentDraft.snapshotId);
+        return;
+      }
+
+      const nextDraft = useWorkspaceComposerDraftStore
+        .getState()
+        .setDraft(ownerKey, conversationId, nextContent, composerDraftTarget ?? undefined);
+      if (nextDraft == null || runtimeContext == null) return;
+
+      void syncWorkspaceComposerDraft({
+        runtimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        draft: nextDraft,
+      });
     },
-    [conversationId, ownerKey, setComposerDraftShadow, workspaceComposerDraftScopeKey],
+    [
+      composerDraftTarget,
+      conversationId,
+      ownerKey,
+      runtimeContext,
+      setComposerDraftShadow,
+      workspaceComposerDraftScopeKey,
+    ],
   );
   const setWorkspaceReplySession = useCallback(
     (
@@ -830,7 +892,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
     void useWorkspaceComposerDraftStore
       .getState()
-      .hydrateDraft(ownerKey, conversationId)
+      .hydrateDraft(ownerKey, conversationId, requestedWorkspaceDraftUuid)
       .then((draft) => {
         if (!isCurrentScope) return;
 
@@ -850,12 +912,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
     return () => {
       isCurrentScope = false;
-      void useWorkspaceComposerDraftStore.getState().flushDraft(ownerKey, conversationId);
+      const selected = selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      );
+      if (selected != null) {
+        void useWorkspaceComposerDraftStore.getState().flushDraft(ownerKey, selected.draftUuid);
+      }
+      useWorkspaceComposerDraftStore.getState().leaveConversation(ownerKey, conversationId);
     };
   }, [
     conversationId,
     ownerKey,
     runtimeContext?.runtimeGeneration,
+    requestedWorkspaceDraftUuid,
     setComposerDraftShadow,
     workspaceComposerDraftScopeKey,
   ]);
@@ -1153,9 +1224,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
             EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
           );
+          // The message is already sent. Deleting its draft must not delay
+          // clearing the composer and must wait for an in-flight POST/PUT.
+          // The queue retains conflict data if the DELETE receives 412.
+          void deleteWorkspaceComposerDraftFromServer({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            draft: currentDraft,
+          });
           useWorkspaceComposerDraftStore
             .getState()
-            .clearDraftIfSnapshotMatches(sendOwnerKey, conversationId, draftAtSend.snapshotId);
+            .completeDraftVisit(sendOwnerKey, conversationId, currentDraft.draftUuid);
         }
       });
     },

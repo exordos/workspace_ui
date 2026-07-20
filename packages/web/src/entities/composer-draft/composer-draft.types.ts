@@ -21,9 +21,23 @@ export interface WorkspaceComposerDraftContent {
 
 export interface WorkspaceComposerDraft {
   key: string;
+  draftUuid: string;
   ownerKey: string;
   conversationId: string;
+  streamUuid: string;
+  topicUuid: string;
   snapshotId: string;
   content: WorkspaceComposerDraftContent;
+  etag: string | null;
+  syncStatus: "local" | "saving" | "saved" | "failed" | "conflict" | "deleting";
+  serverUpdatedAt: string | null;
+  conflictServerContent?: WorkspaceComposerDraftContent;
+  conflictServerEtag?: string;
+  pendingCreatePayload?: string | null;
   updatedAt: number;
+}
+
+export interface WorkspaceComposerDraftTarget {
+  streamUuid: string;
+  topicUuid: string;
 }

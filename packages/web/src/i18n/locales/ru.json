@@ -214,8 +214,13 @@
     "direct": "Личный чат",
     "local": "Ожидает сохранения",
     "saving": "Сохраняется",
+    "failed": "Не удалось сохранить",
     "conflict": "Конфликт: сохранена версия с сервера",
-    "deleting": "Удаляется"
+    "deleting": "Удаляется",
+    "conflictAcceptServer": "Принять версию сервера",
+    "conflictKeepLocal": "Оставить мою версию",
+    "conflictDeleteServer": "Удалить черновик",
+    "loadError": "Не удалось обновить черновики"
   },
   "message": {
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",

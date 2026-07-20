@@ -4,8 +4,8 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-// Version 5 adds one owner-scoped current composer draft per conversation.
-const DB_VERSION = 5;
+// Version 6 stores a collection of composer drafts for one conversation.
+const DB_VERSION = 6;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -253,10 +253,38 @@ export interface WorkspaceMessengerComposerDraftCacheRow<TContent = unknown> {
   updatedAt: number;
 }
 
-export interface WorkspaceMessengerComposerDraftCacheWrite<TContent> {
+export interface WorkspaceMessengerComposerDraftRecordCacheRow<TContent = unknown> {
+  id: string;
+  ownerKey: string;
+  draftUuid: string;
+  conversationId: string;
+  streamUuid: string;
+  topicUuid: string;
   snapshotId: string;
   content: TContent;
+  etag: string | null;
+  syncStatus: "local" | "saving" | "saved" | "failed" | "conflict" | "deleting";
   updatedAt: number;
+  serverUpdatedAt: string | null;
+  conflictServerContent?: TContent;
+  conflictServerEtag?: string;
+  pendingCreatePayload?: string | null;
+}
+
+export interface WorkspaceMessengerComposerDraftRecordCacheWrite<TContent> {
+  draftUuid: string;
+  conversationId: string;
+  streamUuid: string;
+  topicUuid: string;
+  snapshotId: string;
+  content: TContent;
+  etag: string | null;
+  syncStatus: WorkspaceMessengerComposerDraftRecordCacheRow["syncStatus"];
+  updatedAt: number;
+  serverUpdatedAt: string | null;
+  conflictServerContent?: TContent;
+  conflictServerEtag?: string;
+  pendingCreatePayload?: string | null;
 }
 
 export interface WorkspaceMessengerCatalogCacheSnapshot {
@@ -392,6 +420,10 @@ function composerDraftId(ownerKey: string, conversationId: string): string {
   return `${ownerKey}:${conversationId}`;
 }
 
+function composerDraftRecordId(ownerKey: string, draftUuid: string): string {
+  return `${ownerKey}:${draftUuid}`;
+}
+
 function streamConversationId(streamUuid: string): string {
   return `stream:${streamUuid}`;
 }
@@ -443,7 +475,7 @@ export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = () => {
-      runWorkspaceMessengerCacheDbUpgrade(request.result);
+      runWorkspaceMessengerCacheDbUpgrade(request.result, request.transaction);
     };
   });
 
@@ -2346,10 +2378,29 @@ export async function readWorkspaceComposerDraft<TContent>(
   }
 }
 
-export async function writeWorkspaceComposerDraft<TContent>(
+export async function readWorkspaceComposerDraftRecords<TContent>(
   ownerKey: string,
-  conversationId: string,
-  draft: WorkspaceMessengerComposerDraftCacheWrite<TContent>,
+): Promise<WorkspaceMessengerComposerDraftRecordCacheRow<TContent>[]> {
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts, "readonly");
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    const rows = store.indexNames.contains("byOwner")
+      ? await requestToPromise(store.index("byOwner").getAll(ownerKey))
+      : await requestToPromise(store.getAll());
+    return (rows as WorkspaceMessengerComposerDraftRecordCacheRow<TContent>[]).filter(
+      (row) => row.ownerKey === ownerKey && typeof row.draftUuid === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function writeWorkspaceComposerDraftRecord<TContent>(
+  ownerKey: string,
+  draft: WorkspaceMessengerComposerDraftRecordCacheWrite<TContent>,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -2360,22 +2411,50 @@ export async function writeWorkspaceComposerDraft<TContent>(
       "readwrite",
     );
     transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts).put({
-      id: composerDraftId(ownerKey, conversationId),
+      id: composerDraftRecordId(ownerKey, draft.draftUuid),
       ownerKey,
-      conversationId,
-      snapshotId: draft.snapshotId,
-      content: draft.content,
-      updatedAt: draft.updatedAt,
-    } satisfies WorkspaceMessengerComposerDraftCacheRow<TContent>);
+      ...draft,
+    } satisfies WorkspaceMessengerComposerDraftRecordCacheRow<TContent>);
     await transactionDone(transaction);
   } catch {
     return;
   }
 }
 
-export async function deleteWorkspaceComposerDraft(
+/**
+ * Moves a pre-v6 single-conversation draft into the record format without
+ * leaving a legacy row that could be restored after the new record is deleted.
+ */
+export async function migrateWorkspaceComposerDraftToRecord<TContent>(
   ownerKey: string,
   conversationId: string,
+  draft: WorkspaceMessengerComposerDraftRecordCacheWrite<TContent>,
+): Promise<boolean> {
+  if (!isIndexedDBAvailable()) return false;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    store.put({
+      id: composerDraftRecordId(ownerKey, draft.draftUuid),
+      ownerKey,
+      ...draft,
+    } satisfies WorkspaceMessengerComposerDraftRecordCacheRow<TContent>);
+    store.delete(composerDraftId(ownerKey, conversationId));
+    await transactionDone(transaction);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteWorkspaceComposerDraftRecord(
+  ownerKey: string,
+  draftUuid: string,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -2387,38 +2466,10 @@ export async function deleteWorkspaceComposerDraft(
     );
     transaction
       .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts)
-      .delete(composerDraftId(ownerKey, conversationId));
+      .delete(composerDraftRecordId(ownerKey, draftUuid));
     await transactionDone(transaction);
   } catch {
     return;
-  }
-}
-
-export async function deleteWorkspaceComposerDraftIfSnapshotMatches(
-  ownerKey: string,
-  conversationId: string,
-  snapshotId: string,
-): Promise<boolean> {
-  if (!isIndexedDBAvailable()) return false;
-
-  try {
-    const db = await openWorkspaceMessengerCacheDb();
-    const transaction = db.transaction(
-      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
-      "readwrite",
-    );
-    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
-    const row = (await requestToPromise(store.get(composerDraftId(ownerKey, conversationId)))) as
-      | WorkspaceMessengerComposerDraftCacheRow
-      | undefined;
-    if (row?.snapshotId !== snapshotId) {
-      return false;
-    }
-    store.delete(row.id);
-    await transactionDone(transaction);
-    return true;
-  } catch {
-    return false;
   }
 }
 

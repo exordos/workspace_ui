@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetWorkspaceComposerDraftStoreForTests,
+  useWorkspaceComposerDraftStore,
+} from "~/entities/composer-draft/composer-draft.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -9,6 +13,7 @@ import {
   type WorkspaceAuthSession,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -16,6 +21,7 @@ import type * as ReactRouterDom from "react-router-dom";
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const openWorkspaceForward = vi.hoisted(() => vi.fn());
+const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -27,6 +33,10 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
   fetchWorkspaceStarredMessages,
+}));
+
+vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
+  loadWorkspaceComposerDrafts,
 }));
 
 vi.mock("~/features/workspace-forward-message/workspace-forward-message.model", () => ({
@@ -179,8 +189,11 @@ describe("ActivityPage", () => {
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
+    resetWorkspaceComposerDraftStoreForTests();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
+    loadWorkspaceComposerDrafts.mockReset();
+    loadWorkspaceComposerDrafts.mockResolvedValue(undefined);
     navigateSpy.mockReset();
   });
 
@@ -188,8 +201,10 @@ describe("ActivityPage", () => {
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
+    resetWorkspaceComposerDraftStoreForTests();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
+    loadWorkspaceComposerDrafts.mockReset();
     navigateSpy.mockReset();
   });
 
@@ -271,12 +286,69 @@ describe("ActivityPage", () => {
   it.each([
     ["mentions", "Mentions are not connected to Workspace messaging yet."],
     ["reactions", "Reactions are not connected to Workspace messaging yet."],
-    ["drafts", "Workspace drafts are not connected yet."],
   ] as const)("shows an explicit unsupported state for /activity/%s", (filter, message) => {
     renderActivityPage(`/activity/${filter}`);
 
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+  });
+
+  it("opens the native Workspace drafts page", () => {
+    renderActivityPage("/activity/drafts");
+
+    expect(screen.getByText("Drafts")).toBeInTheDocument();
+    expect(screen.getByText("Workspace session is not ready yet.")).toBeInTheDocument();
+    expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads drafts explicitly and keeps compact sidebar context on the card", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    const ownerKey = workspaceRuntimeOwnerKey(WORKSPACE_SESSION);
+    act(() => {
+      useMessengerStore.setState((state) => ({
+        streamsById: {
+          ...state.streamsById,
+          "stream-1": { ...state.streamsById["stream-1"]!, color: 0x2563eb },
+        },
+      }));
+      useWorkspaceComposerDraftStore.setState({
+        draftsByKey: {
+          [`${ownerKey}:draft-1`]: {
+            key: `${ownerKey}:draft-1`,
+            draftUuid: "draft-1",
+            ownerKey,
+            conversationId: "topic:stream-1:topic-1",
+            streamUuid: "stream-1",
+            topicUuid: "topic-1",
+            snapshotId: "snapshot-1",
+            content: {
+              text: "Review the release notes",
+              replySession: { tabs: [], activeTabId: null },
+            },
+            etag: '"1"',
+            syncStatus: "saved",
+            serverUpdatedAt: "2026-06-22T10:10:00Z",
+            updatedAt: Date.parse("2026-06-22T10:10:00Z"),
+          },
+        },
+      });
+    });
+
+    renderActivityPage("/org/acme/project/project-1/activity/drafts");
+
+    await waitFor(() => {
+      expect(loadWorkspaceComposerDrafts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtimeContext: expect.objectContaining({ projectId: "project-1" }),
+        }),
+      );
+    });
+    expect(screen.getByText("Channel")).toBeInTheDocument();
+    expect(screen.getByText("#engineering")).toBeInTheDocument();
+    expect(screen.getByText("bugs")).toBeInTheDocument();
+    expect(screen.getByText("Review the release notes")).toBeInTheDocument();
+    expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
   });
 
   it("does not apply stale Workspace starred load after runtime changes", async () => {

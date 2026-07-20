@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const deleteWorkspaceComposerDraft = vi.hoisted(() => vi.fn());
-const deleteWorkspaceComposerDraftIfSnapshotMatches = vi.hoisted(() => vi.fn());
+const deleteWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
+const migrateWorkspaceComposerDraftToRecord = vi.hoisted(() => vi.fn());
 const readWorkspaceComposerDraft = vi.hoisted(() => vi.fn());
-const writeWorkspaceComposerDraft = vi.hoisted(() => vi.fn());
+const readWorkspaceComposerDraftRecords = vi.hoisted(() => vi.fn());
+const writeWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
-  deleteWorkspaceComposerDraft,
-  deleteWorkspaceComposerDraftIfSnapshotMatches,
+  deleteWorkspaceComposerDraftRecord,
+  migrateWorkspaceComposerDraftToRecord,
   readWorkspaceComposerDraft,
-  writeWorkspaceComposerDraft,
+  readWorkspaceComposerDraftRecords,
+  writeWorkspaceComposerDraftRecord,
 }));
 
 import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
@@ -31,7 +33,7 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 
 async function waitForWriteStart(): Promise<void> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    if (writeWorkspaceComposerDraft.mock.calls.length > 0) return;
+    if (writeWorkspaceComposerDraftRecord.mock.calls.length > 0) return;
     await Promise.resolve();
   }
   throw new Error("Expected composer draft write to start");
@@ -40,9 +42,10 @@ async function waitForWriteStart(): Promise<void> {
 beforeEach(() => {
   resetWorkspaceComposerDraftStoreForTests();
   vi.clearAllMocks();
-  deleteWorkspaceComposerDraft.mockResolvedValue(undefined);
-  deleteWorkspaceComposerDraftIfSnapshotMatches.mockResolvedValue(false);
+  deleteWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
+  migrateWorkspaceComposerDraftToRecord.mockResolvedValue(false);
   readWorkspaceComposerDraft.mockResolvedValue(null);
+  readWorkspaceComposerDraftRecords.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -52,13 +55,14 @@ afterEach(() => {
 describe("workspace composer draft owner disposal", () => {
   it("waits for an in-flight write before owner cache cleanup can continue", async () => {
     const deferredWrite = createDeferred();
-    writeWorkspaceComposerDraft.mockReturnValueOnce(deferredWrite.promise);
-    useWorkspaceComposerDraftStore.getState().setDraft(OWNER, CONVERSATION, {
+    writeWorkspaceComposerDraftRecord.mockReturnValueOnce(deferredWrite.promise);
+    const draft = useWorkspaceComposerDraftStore.getState().setDraft(OWNER, CONVERSATION, {
       text: "Черновик",
       replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
     });
+    expect(draft).not.toBeNull();
 
-    const flush = useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, CONVERSATION);
+    const flush = useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, draft!.draftUuid);
     await waitForWriteStart();
 
     let disposed = false;

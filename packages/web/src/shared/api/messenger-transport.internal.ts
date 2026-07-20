@@ -71,12 +71,14 @@ export interface MessengerBinaryResult {
 export class MessengerApiError extends Error {
   readonly status: number;
   readonly data: unknown;
+  readonly headers: Headers;
 
-  constructor(message: string, status: number, data: unknown) {
+  constructor(message: string, status: number, data: unknown, headers = new Headers()) {
     super(message);
     this.name = "MessengerApiError";
     this.status = status;
     this.data = data;
+    this.headers = headers;
   }
 }
 
@@ -158,6 +160,7 @@ function buildHeaders(
   devTargetOrigin: string | undefined,
   shouldAppendDevTargetOrigin: boolean,
   accept = "application/json",
+  requestHeaders?: HeadersInit,
 ): Record<string, string> {
   const trimmedDevTargetOrigin = devTargetOrigin?.trim() ?? "";
   return {
@@ -169,6 +172,7 @@ function buildHeaders(
     isAllowedDevWorkspaceProxyTargetOrigin(trimmedDevTargetOrigin)
       ? { [X_WORKSPACE_DEV_TARGET_ORIGIN]: new URL(trimmedDevTargetOrigin).origin }
       : {}),
+    ...Object.fromEntries(new Headers(requestHeaders).entries()),
   };
 }
 
@@ -225,6 +229,7 @@ export async function sendJsonResult(
   options: MessengerClientOptions,
   params: MessengerQueryParams = {},
   body?: unknown,
+  requestHeaders?: HeadersInit,
 ): Promise<MessengerJsonResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
@@ -236,6 +241,8 @@ export async function sendJsonResult(
       false,
       options.devTargetOrigin,
       shouldAppendDevProxyTargetHeader(url),
+      "application/json",
+      requestHeaders,
     ),
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: options.signal,
@@ -258,6 +265,8 @@ export async function sendJsonResult(
         false,
         options.devTargetOrigin,
         shouldAppendDevProxyTargetHeader(retryUrl),
+        "application/json",
+        requestHeaders,
       ),
     });
     data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
@@ -267,6 +276,7 @@ export async function sendJsonResult(
       `Messenger API ${method} ${responsePath} failed`,
       response.status,
       data,
+      response.headers,
     );
   }
   return { data, headers: response.headers };
@@ -315,7 +325,12 @@ export async function sendFormDataResult(
     data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
   }
   if (!response.ok) {
-    throw new MessengerApiError(`Messenger API POST ${responsePath} failed`, response.status, data);
+    throw new MessengerApiError(
+      `Messenger API POST ${responsePath} failed`,
+      response.status,
+      data,
+      response.headers,
+    );
   }
   return { data, headers: response.headers };
 }
@@ -377,7 +392,12 @@ export async function getBinaryResult(
       }
       data = await parseErrorResponse(response);
     }
-    throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
+    throw new MessengerApiError(
+      `Messenger API GET ${responsePath} failed`,
+      response.status,
+      data,
+      response.headers,
+    );
   }
   return { blob: await response.blob(), headers: response.headers };
 }
@@ -409,7 +429,12 @@ export async function publicGetJsonResult(
   }
   const data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
   if (!response.ok) {
-    throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
+    throw new MessengerApiError(
+      `Messenger API GET ${responsePath} failed`,
+      response.status,
+      data,
+      response.headers,
+    );
   }
   return { data, headers: response.headers };
 }
@@ -443,8 +468,9 @@ export async function messengerPutJson(
   options: MessengerClientOptions,
   body?: unknown,
   params: MessengerQueryParams = {},
+  requestHeaders?: HeadersInit,
 ): Promise<unknown> {
-  const { data } = await sendJsonResult("PUT", path, options, params, body);
+  const { data } = await sendJsonResult("PUT", path, options, params, body, requestHeaders);
   return data;
 }
 
@@ -452,8 +478,9 @@ export async function messengerDeleteJson(
   path: string,
   options: MessengerClientOptions,
   params: MessengerQueryParams = {},
+  requestHeaders?: HeadersInit,
 ): Promise<unknown> {
-  const { data } = await sendJsonResult("DELETE", path, options, params);
+  const { data } = await sendJsonResult("DELETE", path, options, params, undefined, requestHeaders);
   return data;
 }
 

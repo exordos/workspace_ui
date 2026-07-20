@@ -30,6 +30,7 @@ import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY } from "~/widgets/sidebar/sidebar.lib";
+import { WorkspaceDraftsPage } from "./workspace-drafts-page.ui";
 
 const log = createLogger("activity-page");
 
@@ -251,6 +252,9 @@ export const ActivityPage: React.FC = () => {
   const title = getActivityTitle(validFilter);
 
   const renderActivityContent = () => {
+    if (validFilter === "drafts") {
+      return <WorkspaceDraftsPage />;
+    }
     if (validFilter !== "starred") {
       return <ActivityUnsupportedState filter={validFilter} />;
     }

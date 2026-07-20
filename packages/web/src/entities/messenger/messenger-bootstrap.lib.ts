@@ -1,3 +1,4 @@
+import { loadWorkspaceComposerDrafts } from "~/entities/composer-draft/composer-draft-loader.lib";
 import {
   applyBootstrapUsers,
   hydrateUsersFromCache,
@@ -122,6 +123,7 @@ export interface BootstrapMessengerStoreOptions {
   lastMessagesCache?: MessengerLastMessagesCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
+  loadDrafts?: boolean;
   store?: MessengerStoreApi;
   userCache?: Pick<UserCacheDeps, "readUsersCache" | "replaceUsersCache">;
 }
@@ -166,6 +168,7 @@ export async function bootstrapMessengerStore({
   lastMessagesCache,
   clientOptions,
   signal,
+  loadDrafts = true,
   store = useMessengerStore,
   userCache,
 }: BootstrapMessengerStoreOptions): Promise<MessengerBootstrapResult> {
@@ -235,6 +238,17 @@ export async function bootstrapMessengerStore({
     cache.createMessengerCatalogCacheReconcileFence ??
     defaultCreateMessengerCatalogCacheReconcileFence
   )();
+
+  // Drafts have no realtime events. This bootstrap request fills the shared
+  // composer store; entering a chat must not start another list request.
+  if (loadDrafts) {
+    void loadWorkspaceComposerDrafts({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      resumePending: true,
+    }).catch(() => undefined);
+  }
 
   try {
     // Streams and topics are needed first: they quickly build the base chat list.

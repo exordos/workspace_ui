@@ -116,3 +116,14 @@ export function createWorkspaceComposerDraftSnapshotId(): string {
   nextSnapshotOrdinal += 1;
   return `composer-draft:${Date.now().toString(36)}:${ordinal.toString(36)}`;
 }
+
+export function createWorkspaceComposerDraftUuid(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  if (randomUuid != null) return randomUuid;
+
+  const ordinal = nextSnapshotOrdinal;
+  nextSnapshotOrdinal += 1;
+  const timestamp = Date.now().toString(16).padStart(12, "0").slice(-12);
+  const suffix = ordinal.toString(16).padStart(3, "0").slice(-3);
+  return `00000000-0000-4000-8000-${timestamp.slice(0, 9)}${suffix}`;
+}

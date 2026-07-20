@@ -214,8 +214,13 @@
     "direct": "Direct chat",
     "local": "Waiting to save",
     "saving": "Saving",
+    "failed": "Could not save",
     "conflict": "Conflict: remote version was kept",
-    "deleting": "Deleting"
+    "deleting": "Deleting",
+    "conflictAcceptServer": "Use server version",
+    "conflictKeepLocal": "Keep my version",
+    "conflictDeleteServer": "Delete draft",
+    "loadError": "Could not refresh drafts"
   },
   "message": {
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",

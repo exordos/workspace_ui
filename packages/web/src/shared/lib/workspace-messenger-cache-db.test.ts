@@ -2,7 +2,6 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createMessengerCatalogCacheReconcileFence,
-  deleteWorkspaceComposerDraftIfSnapshotMatches,
   deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
   deleteCachedTopicMessageBuckets,
@@ -30,11 +29,11 @@ import {
   upsertCachedMessages,
   upsertOwnMessageReaction,
   writeConversationMessagePage,
-  writeWorkspaceComposerDraft,
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
   writeRealtimeCursor,
 } from "./workspace-messenger-cache-db";
+import type { WorkspaceMessengerComposerDraftCacheRow } from "./workspace-messenger-cache-db";
 
 const OWNER = "account:a:org:o:project:p:user:u";
 const OTHER_OWNER = "account:b:org:o:project:p:user:u";
@@ -65,6 +64,33 @@ function ownReaction(messageUuid: string, emojiName: string, reactionUuid: strin
     createdAt: "2026-07-01T08:00:00.000Z",
     updatedAt: "2026-07-01T08:00:00.000Z",
   };
+}
+
+async function seedLegacyComposerDraft<TContent>(
+  ownerKey: string,
+  conversationId: string,
+  draft: Omit<
+    WorkspaceMessengerComposerDraftCacheRow<TContent>,
+    "id" | "ownerKey" | "conversationId"
+  >,
+): Promise<void> {
+  const db = await openWorkspaceMessengerCacheDb();
+  const transaction = db.transaction("composerDrafts", "readwrite");
+  transaction.objectStore("composerDrafts").put({
+    id: `${ownerKey}:${conversationId}`,
+    ownerKey,
+    conversationId,
+    ...draft,
+  } satisfies WorkspaceMessengerComposerDraftCacheRow<TContent>);
+  await new Promise<void>((resolve, reject) => {
+    transaction.addEventListener("complete", () => resolve());
+    transaction.addEventListener("error", () =>
+      reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+    );
+    transaction.addEventListener("abort", () =>
+      reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+    );
+  });
 }
 
 afterEach(async () => {
@@ -115,21 +141,16 @@ describe("workspace-messenger-cache-db", () => {
     ]);
   });
 
-  it("stores one current composer draft per owner and conversation", async () => {
-    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+  it("reads legacy composer drafts independently by owner and conversation", async () => {
+    await seedLegacyComposerDraft(OWNER, TOPIC_CONVERSATION, {
       snapshotId: "snapshot-a",
       content: { text: "Черновик" },
       updatedAt: 100,
     });
-    await writeWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
+    await seedLegacyComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
       snapshotId: "snapshot-b",
       content: { text: "Другой владелец" },
       updatedAt: 200,
-    });
-    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
-      snapshotId: "snapshot-c",
-      content: { text: "Новая версия" },
-      updatedAt: 300,
     });
 
     await expect(
@@ -138,41 +159,22 @@ describe("workspace-messenger-cache-db", () => {
       id: `${OWNER}:${TOPIC_CONVERSATION}`,
       ownerKey: OWNER,
       conversationId: TOPIC_CONVERSATION,
-      snapshotId: "snapshot-c",
-      content: { text: "Новая версия" },
-      updatedAt: 300,
+      snapshotId: "snapshot-a",
+      content: { text: "Черновик" },
+      updatedAt: 100,
     });
     await expect(
       readWorkspaceComposerDraft<{ text: string }>(OTHER_OWNER, TOPIC_CONVERSATION),
     ).resolves.toMatchObject({ snapshotId: "snapshot-b" });
   });
 
-  it("conditionally deletes a composer draft only when its snapshot still matches", async () => {
-    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
-      snapshotId: "snapshot-a",
-      content: { text: "Черновик" },
-      updatedAt: 100,
-    });
-
-    await expect(
-      deleteWorkspaceComposerDraftIfSnapshotMatches(OWNER, TOPIC_CONVERSATION, "snapshot-b"),
-    ).resolves.toBe(false);
-    await expect(
-      readWorkspaceComposerDraft<{ text: string }>(OWNER, TOPIC_CONVERSATION),
-    ).resolves.toMatchObject({ snapshotId: "snapshot-a" });
-    await expect(
-      deleteWorkspaceComposerDraftIfSnapshotMatches(OWNER, TOPIC_CONVERSATION, "snapshot-a"),
-    ).resolves.toBe(true);
-    await expect(readWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION)).resolves.toBeNull();
-  });
-
   it("removes composer drafts with the rest of an owner cache", async () => {
-    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+    await seedLegacyComposerDraft(OWNER, TOPIC_CONVERSATION, {
       snapshotId: "snapshot-a",
       content: { text: "Черновик" },
       updatedAt: 100,
     });
-    await writeWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
+    await seedLegacyComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
       snapshotId: "snapshot-b",
       content: { text: "Другой владелец" },
       updatedAt: 100,
