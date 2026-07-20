@@ -253,12 +253,10 @@ describe("LoginPage", () => {
       password: "secret",
     });
     expect(await screen.findByRole("option", { name: /customer support/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^project$/i)).toHaveValue("project-a");
+    expect(screen.queryByText("Support team conversations")).not.toBeInTheDocument();
     expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText(/^project$/i), {
-      target: { value: "project-a" },
-    });
-    expect(screen.getByText("Support team conversations")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /login/i }));
 
     await waitFor(() => {
@@ -268,6 +266,19 @@ describe("LoginPage", () => {
       });
       expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
     });
+  });
+
+  it("selects the only available project by default", async () => {
+    prepareWorkspaceProjectLogin.mockResolvedValue({
+      ...PREPARED_LOGIN,
+      projects: [PREPARED_LOGIN.projects[0]],
+    });
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    await moveToProjectStep();
+
+    expect(screen.getByLabelText(/^project$/i)).toHaveValue("project-a");
+    expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
   });
 
   it("shows a blocking empty state when no projects are available", async () => {

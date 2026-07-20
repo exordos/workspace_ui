@@ -59,24 +59,6 @@ export const LoginPageProjectForm = React.memo<LoginPageProjectFormProps>(
           </select>
         </FormField>
 
-        {projectId.length > 0 &&
-          projects.map((project) => {
-            if (project.id !== projectId) return null;
-            return (
-              <div
-                key={project.id}
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2"
-              >
-                {project.organizationName != null && (
-                  <p className="text-xs text-text-muted">{project.organizationName}</p>
-                )}
-                {project.description != null && project.description.length > 0 && (
-                  <p className="mt-1 text-sm text-text-primary">{project.description}</p>
-                )}
-              </div>
-            );
-          })}
-
         {error != null && error.length > 0 && (
           <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">
             {error}

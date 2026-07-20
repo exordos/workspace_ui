@@ -273,7 +273,7 @@ export const LoginPage: React.FC = () => {
       setPreparedLogin(nextPreparedLogin);
       setPassword("");
       setOtpCode("");
-      setProjectId("");
+      setProjectId(nextPreparedLogin.projects[0]?.id ?? "");
       setStep("project");
     } catch (err) {
       if (isWorkspaceIamOtpRequiredError(err)) {
@@ -307,7 +307,7 @@ export const LoginPage: React.FC = () => {
       setPreparedLogin(nextPreparedLogin);
       setPassword("");
       setOtpCode("");
-      setProjectId("");
+      setProjectId(nextPreparedLogin.projects[0]?.id ?? "");
       setStep("project");
     } catch (err) {
       if (isWorkspaceIamOtpRequiredError(err)) {
