@@ -18,7 +18,7 @@ const MENU_TRIGGER_CLASS_NAME =
 const MENU_ITEM_CLASS_NAME =
   "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
 const REACTION_BUTTON_CLASS_NAME =
-  "hover:bg-sidebar-hover flex h-6 w-6 items-center justify-center rounded p-1 transition-colors";
+  "hover:bg-sidebar-hover flex h-7 w-7 items-center justify-center rounded p-1 transition-colors";
 const REACTION_EMOJI_PICKER_WIDTH = 320;
 const REACTION_EMOJI_PICKER_HEIGHT = 360;
 const REACTION_EMOJI_PICKER_MARGIN = 8;
