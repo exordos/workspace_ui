@@ -14,7 +14,10 @@ import { env } from "~/shared/lib/env";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
-import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  parseWorkspaceMessengerRoute,
+  workspaceMessengerRootRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
@@ -331,8 +334,10 @@ export const LoginPage: React.FC = () => {
 
     setLoading(true);
     try {
-      await completeWorkspaceProjectLogin({ preparedLogin, projectId });
-      void navigate(redirectTarget ?? "/", { replace: true });
+      const { session } = await completeWorkspaceProjectLogin({ preparedLogin, projectId });
+      const nextRoute =
+        redirectTarget ?? workspaceMessengerRootRoute(session.organizationId, session.projectId);
+      void navigate(nextRoute, { replace: true });
     } catch (err) {
       setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
     } finally {
