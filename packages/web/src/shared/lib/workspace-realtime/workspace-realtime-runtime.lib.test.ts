@@ -585,6 +585,41 @@ describe("workspace-realtime transport runtime", () => {
     vi.useRealTimers();
   });
 
+  it("reconnects when another tab advances the durable cursor", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEpoch: () => Promise.resolve(epoch(11)),
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+
+    // Browser tabs share localStorage, but this runtime has not received epoch 11.
+    cursorStorage.write(cursorOwner, cursor(11));
+    await vi.advanceTimersByTimeAsync(63_000);
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]?.closed).toBe(true);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
   it("uses cursor expiry recovery when the checked epoch generation changes", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];

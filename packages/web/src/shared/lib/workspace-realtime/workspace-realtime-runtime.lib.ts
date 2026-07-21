@@ -663,7 +663,9 @@ export function createWorkspaceRealtimeTransportCore(
   ): Promise<void> {
     if (!isEpochWatchdogActive(activeSocket) || context == null) return;
 
-    const currentCursor = options.cursorStorage.read(context.owner);
+    // Durable storage is shared by browser tabs. Only this runtime's in-memory cursor
+    // can prove that this socket received the server epoch.
+    const currentCursor = lastCursor;
     if (currentCursor == null) return;
     if (currentCursor.epochGeneration !== epochGeneration) {
       await recoverFromEpochGenerationChange(epochGeneration, epochVersion);
@@ -711,7 +713,8 @@ export function createWorkspaceRealtimeTransportCore(
           return;
         }
 
-        const currentCursor = options.cursorStorage.read(context.owner);
+        // Another tab may advance durable storage while this socket is stale.
+        const currentCursor = lastCursor;
         if (currentCursor == null) return;
         if (currentCursor.epochGeneration !== serverEpoch.epoch_generation) {
           await recoverFromEpochGenerationChange(
