@@ -474,6 +474,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [currentAccountId, sessions],
   );
   const notificationMode = storeNotificationMode ?? info.notificationMode;
+  const channelAvatarStyle = useMemo(
+    () =>
+      info.color == null
+        ? undefined
+        : { backgroundColor: `#${info.color.toString(16).padStart(6, "0")}` },
+    [info.color],
+  );
   const notificationLevel = useMemo<WorkspaceStreamNotificationLevel | null>(
     () =>
       notificationMode == null ? null : mapWorkspaceStreamNotificationModeToLevel(notificationMode),
@@ -721,7 +728,11 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
       <header className="flex-shrink-0 border-b border-border-subtle px-4 pb-3 pt-0">
         <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.channelInfo")}</h2>
         <div className="flex items-center gap-3">
-          <Avatar size="lg" className="bg-bg-elevated text-text-secondary">
+          <Avatar
+            size="lg"
+            className="bg-bg-elevated text-text-secondary"
+            style={channelAvatarStyle}
+          >
             {info.title.slice(0, 1)}
           </Avatar>
           <div className="min-w-0 flex-1">
@@ -839,9 +850,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                   <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
                     <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <div className="relative shrink-0">
-                        <Avatar size="sm" className="bg-bg-elevated text-text-primary">
+                        <WorkspaceAvatar
+                          size="sm"
+                          avatarUrn={member.avatarUrl}
+                          className="bg-bg-elevated text-text-primary"
+                        >
                           {member.name.slice(0, 1)}
-                        </Avatar>
+                        </WorkspaceAvatar>
                         <span className="absolute -bottom-0.5 -right-0.5">
                           <PresenceIndicator
                             status={member.isOnline ? "active" : "offline"}

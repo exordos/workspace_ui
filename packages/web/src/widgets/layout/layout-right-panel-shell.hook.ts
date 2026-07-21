@@ -146,6 +146,7 @@ export function useLayoutRightPanelShell(
       streamUuid: null,
       notificationMode: null,
       title: t("workspaceMessenger.temporarilyNotConnected"),
+      color: null,
       description: null,
       participantsCount: 0,
       onlineCount: 0,

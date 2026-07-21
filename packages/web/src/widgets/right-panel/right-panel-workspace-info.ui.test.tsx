@@ -54,6 +54,7 @@ function createInfo(
     streamUuid: STREAM_UUID,
     notificationMode: "all_messages",
     title: "#general",
+    color: 0x336699,
     description: null,
     participantsCount: 2,
     onlineCount: 1,
@@ -62,6 +63,7 @@ function createInfo(
         bindingUuid: ALICE_BINDING_UUID,
         userUuid: ALICE_USER_UUID,
         name: "Alice Adams",
+        avatarUrl: "urn:url:https://cdn.example/alice.png",
         email: "alice@example.com",
         status: "active",
         role: "member",
@@ -268,6 +270,17 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.getByText("online")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alice Adams" })).not.toBeInTheDocument();
     expect(screen.queryByText("Temporarily unavailable")).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="https://cdn.example/alice.png"]')).not.toBeNull();
+  });
+
+  it("uses the stream color as the channel avatar background", () => {
+    seedWorkspaceAuth();
+
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const channelTitle = screen.getByText("#general");
+    const channelAvatar = channelTitle.parentElement?.previousElementSibling;
+    expect(channelAvatar).toHaveStyle({ backgroundColor: "#336699" });
   });
 
   it("renders workspace direct private profile without channel-only actions", () => {
@@ -421,6 +434,7 @@ describe("RightPanelWorkspaceInfo", () => {
               bindingUuid: SELF_BINDING_UUID,
               userUuid: CURRENT_USER_UUID,
               name: "Current User",
+              avatarUrl: null,
               email: "current@example.com",
               status: "active",
               role: "owner",
@@ -462,6 +476,7 @@ describe("RightPanelWorkspaceInfo", () => {
               bindingUuid: ALICE_BINDING_UUID,
               userUuid: ALICE_USER_UUID,
               name: "Alice Adams",
+              avatarUrl: null,
               email: "alice@example.com",
               status: "active",
               role: "member",

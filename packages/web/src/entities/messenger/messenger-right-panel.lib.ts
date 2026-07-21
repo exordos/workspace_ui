@@ -37,6 +37,7 @@ export interface WorkspaceRightPanelMemberView {
   bindingUuid: MessengerUuid;
   userUuid: MessengerUuid;
   name: string;
+  avatarUrl: string | null;
   email: string | null;
   status: User["status"] | null;
   role: MessengerStreamBinding["role"];
@@ -65,6 +66,7 @@ export interface WorkspaceRightPanelChannelInfoView {
   streamUuid: string | null;
   notificationMode: WorkspaceMessengerStreamNotificationMode | null;
   title: string;
+  color: number | null;
   description: string | null;
   participantsCount: number;
   onlineCount: number;
@@ -266,6 +268,7 @@ export function selectWorkspaceRightPanelInfoView(
         bindingUuid: binding.uuid,
         userUuid: binding.userUuid,
         name: resolveWorkspaceRightPanelMemberName(user, binding.userUuid),
+        avatarUrl: user?.avatarUrl ?? null,
         email: user?.email?.trim() || null,
         status: user?.status ?? null,
         role: binding.role,
@@ -303,6 +306,7 @@ export function selectWorkspaceRightPanelInfoView(
     streamUuid: stream?.uuid ?? null,
     notificationMode: stream?.notificationMode ?? null,
     title: `#${title}`,
+    color: stream?.color ?? null,
     description: rawDescription != null && rawDescription.length > 0 ? rawDescription : null,
     participantsCount,
     onlineCount,
