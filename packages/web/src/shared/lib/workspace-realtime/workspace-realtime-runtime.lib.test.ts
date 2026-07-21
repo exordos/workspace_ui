@@ -926,6 +926,84 @@ describe("workspace-realtime transport runtime", () => {
     vi.useRealTimers();
   });
 
+  it("reconnects when the websocket errors without a close event", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    const stalledSocket = sockets[0]!;
+    stalledSocket.onerror?.(new Event("error"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(10);
+
+    // A transport error is not guaranteed to be followed by close in every browser state.
+    expect(stalledSocket.closed).toBe(true);
+    expect(sockets).toHaveLength(2);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("lets an auth close supersede a websocket-error reconnect", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    let completeRefresh = (): void => {
+      throw new Error("Session refresh was not started");
+    };
+    const refreshSession = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeRefresh = resolve;
+        }),
+    );
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      refreshSession,
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    const failedSocket = sockets[0]!;
+    failedSocket.onerror?.(new Event("error"));
+    await vi.advanceTimersByTimeAsync(0);
+    failedSocket.networkClose(4401);
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(refreshSession).toHaveBeenCalledOnce();
+    expect(sockets).toHaveLength(1);
+    completeRefresh();
+    await flushAsyncHandlers();
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
   it("refreshes the session instead of reconnecting with the old token after websocket 4401", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];

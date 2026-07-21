@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Workspace realtime delivery recovery when a WebSocket errors without closing
+
 ## [0.1.13] — 2026-06-26
 
 ### Added

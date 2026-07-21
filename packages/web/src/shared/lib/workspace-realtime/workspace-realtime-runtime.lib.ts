@@ -910,11 +910,26 @@ export function createWorkspaceRealtimeTransportCore(
     };
     activeSocket.onerror = (event) => {
       reportDiagnostic("websocket_error", event);
+      // Give a matching close event the first chance to select auth or cursor recovery.
+      setTimeout(() => {
+        if (!stopped && socket === activeSocket) {
+          // Some browser/network failures never produce a close callback. Reconnect explicitly
+          // so the REST catch-up path cannot remain blocked until a full page reload.
+          scheduleReconnect("socket_error");
+        }
+      }, 0);
     };
     activeSocket.onclose = (event) => {
       socket = null;
       if (!stopped) {
         const closeCode = getWebSocketCloseCode(event);
+        if (
+          closeCode === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE ||
+          closeCode === WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE
+        ) {
+          // A preceding error may already have armed the generic reconnect path.
+          clearReconnectTimer();
+        }
         if (closeCode === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE) {
           void refreshSessionAfterAuthFailure("websocket_auth_failed", event);
           return;
