@@ -6,9 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-21
+
+### Added
+
+- Workspace-native messenger flows for project-scoped realtime, chat lists, messages, inbox, starred messages, notifications, forwarding, media, and stream membership (#211)
+- IAM project selection and one-time-password login (#217)
+- Server-synchronized message drafts with a dedicated drafts view (#217)
+
+### Changed
+
+- Web and desktop sessions now use Workspace API authentication and messaging contracts instead of legacy Zulip credentials (#211)
+- Messenger state, cache reconciliation, background projection, and desktop notifications now operate on Workspace-native data (#211)
+
 ### Fixed
 
-- Workspace realtime delivery recovery when a WebSocket errors without closing
+- Stale realtime cursor recovery and runaway epoch watchdog requests (#217)
+- Workspace realtime delivery recovery when a WebSocket errors without closing (#221)
+- Multi-tab watchdog recovery when another tab advances the shared durable cursor (#222)
+
+### Migration notes
+
+- The client now requires Workspace API and IAM project access; the legacy Zulip credential path is no longer supported.
+- Existing sessions may require project selection and authentication after upgrading.
 
 ## [0.1.13] — 2026-06-26
 
