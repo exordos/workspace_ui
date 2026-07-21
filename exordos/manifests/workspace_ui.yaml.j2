@@ -1,0 +1,97 @@
+name: "workspace_ui"
+description: "Workspace web UI and public load balancer"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.2.3"
+  workspace:
+    from_version: "0.1.5"
+
+imports:
+  backend_node:
+    element: "$workspace"
+    kind: "resource"
+    link: "$core.compute.nodes.$workspace_backend"
+
+resources:
+  $core.network.lb:
+    workspace_ui_lb:
+      name: workspace-ui
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type:
+        kind: core
+        cpu: 1
+        ram: 512
+        disk_size: 10
+        nodes_number: 1
+
+  $core.network.lb.$workspace_ui_lb.backend_pools:
+    workspace_backend_http:
+      name: workspace-backend-http
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$workspace_ui_lb:uuid
+      endpoints:
+        - kind: host
+          host: $workspace_ui.imports.$backend_node:default_network:ipv4
+          port: 80
+          weight: 1
+
+  $core.network.lb.$workspace_ui_lb.vhosts:
+    workspace_http:
+      name: workspace-http
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$workspace_ui_lb:uuid
+      domains:
+        - "{{ public_domain | default('workspace.exordos.com') }}"
+      protocol: http
+      port: 80
+
+  $core.network.lb.$workspace_ui_lb.vhosts.$workspace_http.routes:
+    workspace_api:
+      name: workspace-api
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$workspace_ui_lb.vhosts.$workspace_http:uuid
+      condition:
+        kind: prefix
+        value: /api/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$workspace_ui_lb.backend_pools.$workspace_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - X-Forwarded-For
+          - kind: set_header
+            name: Host
+            value: "{{ forwarded_host | default('workspace.exordos.com') }}"
+          - kind: set_header
+            name: X-Forwarded-Proto
+            value: "{{ forwarded_proto | default('https') }}"
+    workspace_web:
+      name: workspace-web
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$workspace_ui_lb.vhosts.$workspace_http:uuid
+      condition:
+        kind: prefix
+        value: /
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: local_dir_download
+            url: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/workspace_ui/{{ version }}/artifacts/workspace-ui.tar.zst"
+            is_spa: true
+
+exports:
+  load_balancer:
+    link: "$core.network.lb.$workspace_ui_lb"
+    kind: "resource"
+  http_vhost:
+    link: "$core.network.lb.$workspace_ui_lb.vhosts.$workspace_http"
+    kind: "resource"

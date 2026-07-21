@@ -1,0 +1,107 @@
+name: Exordos element
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the built element to the configured Exordos repository"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  ARTIFACTS_PATH: output
+  EXORDOS_CFG: exordos/exordos.yaml
+
+jobs:
+  build:
+    runs-on: [self-hosted, vm]
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Build web artifact
+        run: scripts/build-exordos-web-artifact.sh
+
+      - name: Install Exordos CLI
+        env:
+          EXORDOS_RELEASE_URL: https://github.com/exordos/exordos/releases/download/3.1.3/exordos-linux
+          EXORDOS_RELEASE_SHA256: 166c193394263996723393ad79f0133e956bae1c3b7bb8d5bcb02ee532bd91ee
+        run: |
+          set -euo pipefail
+
+          exordos_bin="${RUNNER_TEMP}/exordos"
+          exordos_download="${exordos_bin}.download"
+          rm -f "${exordos_download}"
+          curl --fail --location --silent --show-error \
+            --connect-timeout 30 \
+            --max-time 180 \
+            --retry 4 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            --retry-max-time 600 \
+            "${EXORDOS_RELEASE_URL}" \
+            --output "${exordos_download}"
+          printf "%s  %s\n" "${EXORDOS_RELEASE_SHA256}" "${exordos_download}" \
+            | sha256sum --check --status -
+          mv "${exordos_download}" "${exordos_bin}"
+          chmod 0755 "${exordos_bin}"
+          printf "EXORDOS_BIN=%s\n" "${exordos_bin}" >> "${GITHUB_ENV}"
+          "${exordos_bin}" version
+
+      - name: Build element
+        run: |
+          set -euo pipefail
+
+          rm -rf "${ARTIFACTS_PATH}"
+          "${EXORDOS_BIN}" build . \
+            --exordos-cfg-file "${EXORDOS_CFG}" \
+            --output-dir "${ARTIFACTS_PATH}" \
+            --force
+
+      - name: Validate element manifest
+        run: node scripts/validate-exordos-element.mjs "${ARTIFACTS_PATH}/exordos-elements"
+
+      - name: Show build output
+        run: find "${ARTIFACTS_PATH}" -maxdepth 5 -type f -printf "%p %s bytes\n"
+
+      - name: Publish element
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        env:
+          PUSH_CFG: ${{ secrets.PUSH_CFG }}
+        run: |
+          set -euo pipefail
+
+          : "${PUSH_CFG:?Set secret PUSH_CFG to base64-encoded exordos.push.yaml content}"
+          push_cfg_path="${RUNNER_TEMP}/exordos.push.yaml"
+          printf "%s" "${PUSH_CFG}" | base64 -d > "${push_cfg_path}"
+
+          latest_arg=()
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            latest_arg=(--latest)
+          fi
+
+          "${EXORDOS_BIN}" push . \
+            --exordos-cfg-file "${push_cfg_path}" \
+            --element-dir "${ARTIFACTS_PATH}" \
+            --force \
+            "${latest_arg[@]}"

@@ -1,5 +1,10 @@
 # Workspace UI
 
+The web application is also published as the independent `workspace_ui`
+Exordos element. Its manifest owns the public load balancer, serves the
+versioned static artifact, and proxies `/api/` to the separately deployed
+Workspace backend. See [the Exordos element guide](docs/exordos-element.md).
+
 Open-source corporate messenger built on the [Zulip](https://zulip.com/) API.
 
 Single React codebase, multiple targets:

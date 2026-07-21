@@ -8,6 +8,8 @@ dist/
 build/
 *.tsbuildinfo
 *.tgz
+/output/
+/packages/web/workspace-ui.tar.zst
 
 # ── Environment ──────────────────────────────────────────
 .env

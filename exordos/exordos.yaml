@@ -1,0 +1,5 @@
+build:
+  elements:
+    - manifest: manifests/workspace_ui.yaml.j2
+      artifacts:
+        - path: ../packages/web/workspace-ui.tar.zst
