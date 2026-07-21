@@ -371,7 +371,6 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
       <ScrollArea className="flex-1 px-4 py-3">
         <header className="border-b border-border-subtle pb-3">
-          <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
           <div className="flex items-center gap-3">
             <div className="relative shrink-0">
               <WorkspaceAvatar
@@ -725,8 +724,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      <header className="flex-shrink-0 border-b border-border-subtle px-4 pb-3 pt-0">
-        <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.channelInfo")}</h2>
+      <header className="flex-shrink-0 border-b border-border-subtle px-4 pb-3 pt-1">
         <div className="flex items-center gap-3">
           <Avatar
             size="lg"
@@ -800,7 +798,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                   <li key={topic.id}>
                     <button
                       type="button"
-                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active"
                       onClick={() => handleOpenTopic(topic.route)}
                     >
                       <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
@@ -829,7 +827,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 type="button"
                 aria-label={t("channel.addMembers")}
                 onClick={handleOpenAddMembers}
-                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-card-bg-active hover:text-text-primary"
               >
                 <Icon name="person_add" size={24} className="text-current" />
               </button>
@@ -845,7 +843,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 <li key={member.bindingUuid} className="group/member">
                   {/* The member row is intentionally not a button: Workspace profile
                       flow is not wired here yet, so this surface creates no false action. */}
-                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-card-bg-active">
                     <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <div className="relative shrink-0">
                         <WorkspaceAvatar

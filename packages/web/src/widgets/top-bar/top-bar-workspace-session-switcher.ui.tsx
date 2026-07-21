@@ -134,7 +134,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
       className={`focus-visible:ring-accent/40 relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 ${
         isActive
           ? "bg-card-bg-active text-text-primary"
-          : "hover:bg-bg/50 bg-transparent text-text-muted hover:text-text-primary"
+          : "bg-transparent text-text-muted hover:bg-card-bg-active hover:text-text-primary"
       }`}
       aria-label={isActive ? `${t("auth.currentServer")}: ${label}` : label}
       title={label}
@@ -340,7 +340,7 @@ export const InstanceSwitcher: React.FC = () => {
         trigger={
           <button
             type="button"
-            className="hover:bg-bg/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-transparent text-text-muted transition-colors hover:text-text-primary"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-transparent text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
             aria-label={t("auth.selectServer")}
             title={t("auth.selectServer")}
           >

@@ -19,18 +19,21 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   rightDrawerOpen,
   rightDrawerMode,
   onCloseRightDrawer,
+  rightDrawerTitle,
   rightPanelTitle,
   participantsCount,
   onlineCount,
   workspaceRightPanelInfo,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
+  onOpenBuildsDrawer,
 }: LayoutMainWorkspaceProps) {
   const showRightPanel =
     rightDrawerOpen &&
     (rightDrawerMode === "settings" ||
       rightDrawerMode === "user-menu" ||
       rightDrawerMode === "about" ||
+      rightDrawerMode === "builds" ||
       shouldShowChatShell);
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
@@ -161,7 +164,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
           <Outlet />
         </main>
         {showRightPanel && (
-          <RightDrawer onClose={onCloseRightDrawer}>
+          <RightDrawer onClose={onCloseRightDrawer} title={rightDrawerTitle}>
             <RightPanel
               mode={rightDrawerMode}
               title={rightPanelTitle}
@@ -170,6 +173,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               workspaceInfo={workspaceRightPanelInfo}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
+              onOpenBuildsDrawer={onOpenBuildsDrawer}
             />
           </RightDrawer>
         )}

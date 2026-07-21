@@ -2,7 +2,6 @@ import type { IconName } from "~/shared/ui/icon";
 import type { ReactNode } from "react";
 
 export interface RightPanelUserMenuProps {
-  heading?: string;
   onOpenAboutDrawer?: () => void;
   onOpenBuildsDrawer?: () => void;
 }

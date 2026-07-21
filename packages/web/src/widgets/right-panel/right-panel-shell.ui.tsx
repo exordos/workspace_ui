@@ -35,7 +35,6 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
 
     return (
       <RightPanelUserMenu
-        heading={mode === "settings" ? t("settings.settings") : undefined}
         onOpenAboutDrawer={handleOpenAbout}
         onOpenBuildsDrawer={handleOpenBuilds}
       />

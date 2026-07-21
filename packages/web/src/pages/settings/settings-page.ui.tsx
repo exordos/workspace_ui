@@ -112,7 +112,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={openPersonalInfo}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
         >
           <span className="flex items-center gap-3">
             <Icon name="profile" size={20} className="text-accent" />
@@ -126,7 +126,7 @@ export const SettingsPage: React.FC = () => {
           <button
             type="button"
             onClick={openLogs}
-            className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+            className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
           >
             <span className="flex items-center gap-3">
               <Icon name="grid" size={20} className="text-accent" />
@@ -140,7 +140,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={openBuilds}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
         >
           <span className="flex items-center gap-3">
             <Icon name="mood" size={20} className="text-accent" />
@@ -153,7 +153,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={toggleThemeSettings}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
           aria-expanded={themeSettingsOpen}
         >
           <span className="flex items-center gap-3">
@@ -174,7 +174,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={handleCycleNotificationSound}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
         >
           <span className="flex items-center gap-3">
             <Icon name="bell" size={20} className="text-accent" />
@@ -187,7 +187,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={handleCycleLanguage}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
         >
           <span className="flex items-center gap-3">
             <Icon name="alternate_email" size={20} className="text-accent" />
@@ -198,7 +198,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={toggleChatSortingSettings}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
           aria-expanded={chatSortingSettingsOpen}
         >
           <span className="flex items-center gap-3">
@@ -220,7 +220,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={toggleFolderLayoutSettings}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
           aria-expanded={folderLayoutSettingsOpen}
         >
           <span className="flex items-center gap-3">
@@ -240,7 +240,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={toggleAuthIdleTimeoutSettings}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
           aria-expanded={authIdleTimeoutSettingsOpen}
         >
           <span className="flex items-center gap-3">
@@ -275,7 +275,7 @@ export const SettingsPage: React.FC = () => {
         <button
           type="button"
           onClick={handleLogout}
-          className="mt-2 flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          className="mt-2 flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
         >
           <span className="flex items-center gap-3">
             <Icon name="chevron-right" size={20} className="text-accent" />

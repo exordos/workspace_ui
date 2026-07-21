@@ -21,12 +21,15 @@ export interface LayoutAppShellProps {
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   onCloseRightDrawer: () => void;
+  /** Shell title shown next to the drawer close button. */
+  rightDrawerTitle: string;
   rightPanelTitle: string;
   participantsCount: number;
   onlineCount: number;
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
+  onOpenBuildsDrawer: () => void;
 }
 
 export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutAppShell({
@@ -41,12 +44,14 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   sidebarOpen,
   rightDrawerMode,
   onCloseRightDrawer,
+  rightDrawerTitle,
   rightPanelTitle,
   participantsCount,
   onlineCount,
   workspaceRightPanelInfo,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
+  onOpenBuildsDrawer,
 }) {
   return (
     <OpenSearchContext.Provider value={openSearch}>
@@ -74,12 +79,14 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerMode={rightDrawerMode}
             onCloseRightDrawer={onCloseRightDrawer}
+            rightDrawerTitle={rightDrawerTitle}
             rightPanelTitle={rightPanelTitle}
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             workspaceRightPanelInfo={workspaceRightPanelInfo}
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
+            onOpenBuildsDrawer={onOpenBuildsDrawer}
           />
         </div>
       </RightDrawerContext.Provider>

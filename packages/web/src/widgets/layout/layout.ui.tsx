@@ -87,6 +87,7 @@ export const Layout: React.FC = () => {
   const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
+  const openRightDrawerBuilds = useRightDrawerStore((s) => s.openBuilds);
 
   const online = useLayoutOnlineStatus();
   const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
@@ -185,23 +186,28 @@ export const Layout: React.FC = () => {
     navigate,
   });
 
-  const { rightPanelTitleResolved, participantsCount, onlineCount, workspaceRightPanelInfo } =
-    useLayoutRightPanelShell({
-      streamsFromStore,
-      dmsFromStore,
-      streamsMap,
-      activeStreamSlug,
-      activeTopic,
-      dmIdParam,
-      currentUserId,
-      rightDrawerOpen,
-      rightDrawerMode,
-      rightDrawerUserIdOverride,
-      rightDrawerWorkspaceUserUuidOverride,
-      mutedStreamIds,
-      usersMapForRightDrawer,
-      workspaceRoute: workspaceMessengerRoute,
-    });
+  const {
+    rightDrawerTitle,
+    rightPanelTitleResolved,
+    participantsCount,
+    onlineCount,
+    workspaceRightPanelInfo,
+  } = useLayoutRightPanelShell({
+    streamsFromStore,
+    dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+    rightDrawerOpen,
+    rightDrawerMode,
+    rightDrawerUserIdOverride,
+    rightDrawerWorkspaceUserUuidOverride,
+    mutedStreamIds,
+    usersMapForRightDrawer,
+    workspaceRoute: workspaceMessengerRoute,
+  });
 
   const handleRetryBootstrap = useCallback(() => {
     setBootstrapRetryNonce((value) => value + 1);
@@ -249,12 +255,14 @@ export const Layout: React.FC = () => {
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}
             onCloseRightDrawer={handleCloseRightDrawer}
+            rightDrawerTitle={rightDrawerTitle}
             rightPanelTitle={rightPanelTitleResolved}
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             workspaceRightPanelInfo={workspaceRightPanelInfo}
             onOpenSettingsDrawer={openRightDrawerSettings}
             onOpenAboutDrawer={openRightDrawerAbout}
+            onOpenBuildsDrawer={openRightDrawerBuilds}
           />
         </LayoutLoadingGate>
       </div>

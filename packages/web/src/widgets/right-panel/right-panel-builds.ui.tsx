@@ -131,10 +131,6 @@ export const RightPanelBuilds: React.FC = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-border-subtle px-4 py-4">
-        <h2 className="text-base font-semibold text-text-primary">{t("settings.selectBuild")}</h2>
-      </header>
-
       <ScrollArea className="flex-1 px-4 py-3">
         <div className="space-y-3">
           <section className="rounded-xl border border-border-subtle bg-card-bg p-4">
@@ -228,7 +224,7 @@ export const RightPanelBuilds: React.FC = () => {
                       href={downloadUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-card-bg p-3 transition-colors hover:bg-bg-elevated"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-card-bg p-3 transition-colors hover:bg-card-bg-active"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">

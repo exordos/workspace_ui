@@ -34,7 +34,7 @@ export const RightPanelThemeSettingsPanel = React.memo(function RightPanelThemeS
             className={`rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
               currentThemeMode === mode
                 ? "bg-accent text-on-accent"
-                : "bg-bg text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+                : "bg-bg text-text-muted hover:bg-card-bg-active hover:text-text-primary"
             }`}
           >
             {t(THEME_MODE_LABEL_KEYS[mode])}
@@ -50,8 +50,8 @@ export const RightPanelThemeSettingsPanel = React.memo(function RightPanelThemeS
             onClick={() => selectPalette(palette.id)}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors ${
               currentPaletteId === palette.id
-                ? "bg-bg ring-2 ring-accent"
-                : "bg-bg hover:bg-bg-elevated"
+                ? "bg-card-bg-active ring-2 ring-accent"
+                : "bg-bg hover:bg-card-bg-active"
             }`}
           >
             <span

@@ -121,12 +121,12 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
     <button
       type="button"
       onClick={handleClick}
-      className="hover:bg-bg/50 relative flex items-center gap-2 rounded-lg p-1.5 text-left transition-colors"
+      className="group relative flex items-center gap-2 rounded-lg p-1.5 text-left transition-colors hover:bg-card-bg-active"
       aria-label={t("nav.profile")}
       aria-expanded={isUserMenuOpen}
     >
       <div className="relative flex-shrink-0">
-        <WorkspaceAvatar size="xs" avatarUrn={currentUser?.avatarUrl}>
+        <WorkspaceAvatar size="xs" interactive avatarUrn={currentUser?.avatarUrl}>
           {avatarLetter}
         </WorkspaceAvatar>
         <PresenceIndicator

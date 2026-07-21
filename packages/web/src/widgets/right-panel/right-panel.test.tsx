@@ -111,7 +111,7 @@ describe("RightPanelShell", () => {
   it("renders settings mode without legacy chat info fallback", () => {
     renderWithProviders(<RightPanelShell mode="settings" title="Settings" />);
 
-    expect(screen.getByRole("heading", { name: /^settings$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /notification sound/i })).toBeInTheDocument();
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: /notification sound/i }));
     });

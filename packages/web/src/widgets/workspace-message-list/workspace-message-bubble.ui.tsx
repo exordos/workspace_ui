@@ -383,9 +383,21 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           </button>
         ) : null}
         {peerAuthorLabel.length > 0 ? (
-          <div className="mb-1 text-xs font-medium text-text-muted" data-peer-author-label="true">
-            {peerAuthorLabel}
-          </div>
+          actions?.onOpenAuthorProfile != null ? (
+            <button
+              type="button"
+              className="mb-1 rounded-sm text-xs font-medium text-text-muted transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+              data-peer-author-label="true"
+              aria-label={t("a11y.openUserProfile", { name: peerAuthorLabel })}
+              onClick={() => actions.onOpenAuthorProfile?.(displayMessage.authorUuid)}
+            >
+              {peerAuthorLabel}
+            </button>
+          ) : (
+            <div className="mb-1 text-xs font-medium text-text-muted" data-peer-author-label="true">
+              {peerAuthorLabel}
+            </div>
+          )
         ) : null}
         {isJitsiCall ? (
           <WorkspaceMessageBubbleJitsiCard

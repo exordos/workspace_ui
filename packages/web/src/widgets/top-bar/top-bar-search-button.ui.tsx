@@ -12,9 +12,10 @@ export const TopBarSearchButton = React.memo<TopBarSearchButtonProps>(({ onOpenS
     <button
       type="button"
       onClick={handleClick}
-      className="hover:bg-bg/50 flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary"
+      className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
       aria-label={t("search.search")}
     >
+      {/* search.svg 20×20 без padding — визуально сопоставима с соседними иконками */}
       <Icon name="search" size={20} className="text-current" />
     </button>
   );

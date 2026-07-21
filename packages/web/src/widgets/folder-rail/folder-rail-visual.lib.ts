@@ -39,6 +39,18 @@ function resolveFolderLabelTextColor(
   return isSelected ? "text-text-primary" : "text-text-muted";
 }
 
+/**
+ * Neutral surface for system folders on hover only.
+ * Selected folders (system and custom) stay outline-free — active icon/label/scale carry the state.
+ */
+function resolveSystemFolderSurfaceClassName(
+  isHovered: boolean,
+  isSelected: boolean,
+): string | undefined {
+  if (isSelected || !isHovered) return undefined;
+  return "bg-sidebar-hover border-border-subtle";
+}
+
 export function buildFolderItemVisualState({
   folder,
   index,
@@ -60,16 +72,17 @@ export function buildFolderItemVisualState({
 
   const iconColorStyle = isCustomFolder ? { color: folderColor } : undefined;
   const labelColorStyle = labelUsesCustomColor ? { color: folderColor } : undefined;
+  // Custom folders: colored surface on hover only (same selected exception as system).
   const folderSurfaceStyle =
-    isCustomFolder && isInteractive
+    isCustomFolder && isHovered && !isSelected
       ? {
-          backgroundColor: folderColorValueToCssRgba(
-            folder.backgroundColor,
-            isSelected ? 0.2 : 0.1,
-          ),
-          borderColor: folderColorValueToCssRgba(folder.backgroundColor, isSelected ? 0.4 : 0.22),
+          backgroundColor: folderColorValueToCssRgba(folder.backgroundColor, 0.1),
+          borderColor: folderColorValueToCssRgba(folder.backgroundColor, 0.22),
         }
       : undefined;
+  const folderSurfaceClassName = isSystemFolder
+    ? resolveSystemFolderSurfaceClassName(isHovered, isSelected)
+    : undefined;
 
   return {
     isSystemFolder,
@@ -80,6 +93,7 @@ export function buildFolderItemVisualState({
     iconColorStyle,
     labelColorStyle,
     folderSurfaceStyle,
+    folderSurfaceClassName,
     labelUsesCustomColor,
     labelUsesAccent,
   };

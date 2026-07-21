@@ -55,7 +55,7 @@ function SidebarChatRowActionSlot({
         <button
           type="button"
           onClick={handleChevronClick}
-          className="hover:bg-bg-elevated/80 focus-visible:bg-bg-elevated/80 absolute inset-0 z-10 hidden items-center justify-center rounded-lg text-text-muted hover:text-text-primary focus-visible:text-text-primary group-focus-within/stream:flex group-hover/stream:flex"
+          className="hover:bg-sidebar-hover/80 focus-visible:bg-sidebar-hover/80 absolute inset-0 z-10 hidden items-center justify-center rounded-lg text-text-muted hover:text-text-primary focus-visible:text-text-primary group-focus-within/stream:flex group-hover/stream:flex"
           aria-label={expandChevron.ariaLabel}
           data-testid="sidebar-stream-expand-chevron"
         >

@@ -63,7 +63,7 @@ export function resolveTopBarSectionButtonClassName(isActive: boolean, available
     return "border border-border-subtle bg-card-bg-active text-text-primary";
   }
   if (available) {
-    return "hover:bg-bg/50 text-text-muted hover:text-text-primary";
+    return "hover:bg-card-bg-active text-text-muted hover:text-text-primary";
   }
   return "text-text-muted/60 cursor-not-allowed";
 }

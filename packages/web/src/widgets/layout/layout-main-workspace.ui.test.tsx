@@ -45,12 +45,14 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     rightDrawerOpen: false,
     rightDrawerMode: "info",
     onCloseRightDrawer: vi.fn(),
+    rightDrawerTitle: "",
     rightPanelTitle: "",
     participantsCount: 0,
     onlineCount: 0,
     workspaceRightPanelInfo: null,
     onOpenSettingsDrawer: vi.fn(),
     onOpenAboutDrawer: vi.fn(),
+    onOpenBuildsDrawer: vi.fn(),
     ...overrides,
   };
 }

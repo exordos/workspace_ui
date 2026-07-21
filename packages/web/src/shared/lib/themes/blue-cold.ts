@@ -22,7 +22,8 @@ export const blueCold: ThemePalette = {
     "border-subtle": "#33384d",
 
     "sidebar-bg": "#1a1e31",
-    "sidebar-item-hover": "#282a32",
+    // Same as card-bg-active — old value equaled card-bg (#282a32), so chat-list hover vanished
+    "sidebar-item-hover": "#2c3747",
     "sidebar-sender": "#7087ff",
     "sidebar-unread": "#3d5eff",
 

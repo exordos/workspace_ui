@@ -25,7 +25,7 @@ describe("SidebarChatRowMeta action slot", () => {
     expect(badgeLayer).toHaveClass("group-hover/stream:hidden");
     expect(expandButton).toHaveClass("hidden");
     expect(expandButton).toHaveClass("group-hover/stream:flex");
-    expect(expandButton).toHaveClass("hover:bg-bg-elevated/80");
+    expect(expandButton).toHaveClass("hover:bg-sidebar-hover/80");
     expect(expandButton).not.toHaveClass("bg-bg/60");
   });
 

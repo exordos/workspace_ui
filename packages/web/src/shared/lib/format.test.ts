@@ -139,6 +139,6 @@ describe("sidebarRowClass", () => {
 
   // Inactive rows only show background on hover
   it("returns hover class when not active", () => {
-    expect(sidebarRowClass(false)).toBe("hover:bg-bg-elevated");
+    expect(sidebarRowClass(false)).toBe("hover:bg-sidebar-hover");
   });
 });

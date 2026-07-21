@@ -73,7 +73,8 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
     }, [onChange, onClear]);
 
     const iconElement = useMemo(
-      () => <Icon name="search" size={20} className="search-input-icon" />,
+      // 18px: новый search.svg заполняет viewBox целиком — в поле ввода 20 выглядел крупновато
+      () => <Icon name="search" size={18} className="search-input-icon" />,
       [],
     );
 

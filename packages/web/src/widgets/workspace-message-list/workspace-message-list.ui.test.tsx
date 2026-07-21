@@ -221,6 +221,37 @@ describe("WorkspaceMessageList", () => {
     expect(onOpenAuthorProfile).toHaveBeenCalledWith("peer-user-uuid");
   });
 
+  it("opens author profile from peer author label click", () => {
+    const onOpenAuthorProfile = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "peer-user-uuid",
+        displayName: "Bob Reed",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-message-1",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "First peer message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenAuthorProfile }}
+      />,
+    );
+
+    const authorLabel = container.querySelector("[data-peer-author-label='true']");
+    expect(authorLabel).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.click(authorLabel!);
+    expect(onOpenAuthorProfile).toHaveBeenCalledWith("peer-user-uuid");
+  });
+
   it("keeps a fallback avatar for an unknown UUID", () => {
     const { container } = render(
       <WorkspaceMessageList

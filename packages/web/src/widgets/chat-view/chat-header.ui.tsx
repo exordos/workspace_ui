@@ -7,10 +7,14 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveDmStatusText } from "./chat-header.lib";
 import type { ChatHeaderProps } from "./chat-header.types";
 
+// Клики по заголовку/аватару — курсор-«пальчик» на hover
 const TITLE_ACTION_BUTTON_CLASS =
-  "absolute inset-0 rounded-lg bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+  "absolute inset-0 cursor-pointer rounded-lg bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
 const AVATAR_ACTION_BUTTON_CLASS =
-  "relative shrink-0 rounded-full bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+  "group relative shrink-0 cursor-pointer rounded-full bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+// Иконки действий в шапке (звонок, поиск, сайдбар)
+const HEADER_ICON_BUTTON_CLASS =
+  "cursor-pointer rounded-lg p-2 text-text-muted hover:bg-card-bg-active hover:text-text-primary";
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   channelName,
@@ -63,6 +67,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             >
               <WorkspaceAvatar
                 size="md"
+                interactive
                 className="border border-border-subtle bg-bg-elevated text-text-muted"
                 avatarUrn={dmPartner.avatarUrl}
               >
@@ -175,7 +180,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             type="button"
             onClick={onCallClick}
-            className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
+            className={HEADER_ICON_BUTTON_CLASS}
             aria-label={t("nav.calls")}
           >
             <Icon name="phone" size={20} className="text-current" />
@@ -185,9 +190,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSearch}
-            className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
+            className={HEADER_ICON_BUTTON_CLASS}
             aria-label={t("search.search")}
           >
+            {/* Новый search.svg 20×20 — глиф заполняет viewBox, вес как у sidePanel */}
             <Icon name="search" size={20} className="text-current" />
           </button>
         )}
@@ -195,10 +201,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             type="button"
             onClick={onToggleRightPanel}
-            className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
+            className={HEADER_ICON_BUTTON_CLASS}
             aria-label={rightPanelOpen ? t("a11y.hidePanel") : infoLabel}
           >
-            <Icon name="moreVert" size={20} className="text-current" />
+            {/* Кнопка открытия/скрытия правой info-панели — иконка сайдбара, не троеточие */}
+            <Icon name="sidePanel" size={20} className="text-current" />
           </button>
         )}
       </div>

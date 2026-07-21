@@ -9,6 +9,13 @@ const SIZE_CLASS: Record<AvatarSize, string> = {
   lg: "w-12 h-12 text-lg",
 };
 
+/**
+ * Кликабельный аватар: кольцо на hover родителя `group` + курсор-«пальчик».
+ * Presence-бейдж рядом тоже попадает в group-hover.
+ */
+const INTERACTIVE_CLASS =
+  "cursor-pointer transition-shadow duration-150 group-hover:ring-2 group-hover:ring-accent-soft group-hover:ring-offset-1 group-hover:ring-offset-bg";
+
 const AvatarImage = React.memo<{
   baseClass: string;
   src: string;
@@ -31,10 +38,19 @@ const AvatarImage = React.memo<{
 });
 
 export const Avatar = React.memo<AvatarProps>(
-  ({ size = "md", src, imageLoading = "lazy", children, className = "", style }) => {
+  ({
+    size = "md",
+    src,
+    imageLoading = "lazy",
+    interactive = false,
+    children,
+    className = "",
+    style,
+  }) => {
     const sizeClass = SIZE_CLASS[size];
+    const interactiveClass = interactive ? INTERACTIVE_CLASS : "";
     const baseClass =
-      `flex-shrink-0 rounded-full bg-bg border border-border-subtle flex items-center justify-center overflow-hidden font-semibold text-text-primary ${sizeClass} ${className}`.trim();
+      `flex-shrink-0 rounded-full bg-bg border border-border-subtle flex items-center justify-center overflow-hidden font-semibold text-text-primary ${sizeClass} ${interactiveClass} ${className}`.trim();
     const trimmedSrc = src?.trim();
     const [imageFailed, setImageFailed] = useState(false);
 

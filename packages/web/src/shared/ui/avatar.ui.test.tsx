@@ -41,4 +41,20 @@ describe("Avatar", () => {
       "https://example.test/available.png",
     );
   });
+
+  it("adds group-hover ring and pointer cursor only when interactive is enabled", () => {
+    const { container, rerender } = render(<Avatar>A</Avatar>);
+    const staticAvatar = container.firstElementChild;
+
+    expect(staticAvatar?.className).not.toContain("group-hover:ring-2");
+    expect(staticAvatar?.className).not.toContain("cursor-pointer");
+
+    rerender(<Avatar interactive>A</Avatar>);
+    const interactiveAvatar = container.firstElementChild;
+
+    expect(interactiveAvatar?.className).toContain("group-hover:ring-2");
+    expect(interactiveAvatar?.className).toContain("group-hover:ring-accent-soft");
+    // interactive = кликабельный аватар (профиль и т.п.) → курсор «пальчик»
+    expect(interactiveAvatar?.className).toContain("cursor-pointer");
+  });
 });

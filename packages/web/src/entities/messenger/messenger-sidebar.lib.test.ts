@@ -538,6 +538,89 @@ describe("messenger sidebar selectors", () => {
     expect(rows[0]?.topics[1]?.lastMessageCreatedAt).toBe(DATE_A);
   });
 
+  it("keeps done topics at the bottom even when they have newer messages", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            name: "Done but recent",
+            isDone: true,
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            name: "Older active",
+            updatedAt: DATE_A,
+            lastMessageUuid: null,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B, TOPIC_C],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            conversationId: `topic:${STREAM_A}:${TOPIC_B}`,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_B,
+          }),
+        },
+      },
+    );
+
+    // Active topics stay ordered by activity; done topics sink below them.
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_A, TOPIC_C, TOPIC_B]);
+  });
+
+  it("sorts done topics among themselves by last activity", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({
+            name: "Done older",
+            isDone: true,
+            lastMessageUuid: MESSAGE_A,
+          }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            name: "Done newer",
+            isDone: true,
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            name: "Active",
+            updatedAt: DATE_A,
+            lastMessageUuid: null,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B, TOPIC_C],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            conversationId: `topic:${STREAM_A}:${TOPIC_B}`,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_B,
+          }),
+        },
+      },
+    );
+
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_C, TOPIC_B, TOPIC_A]);
+  });
+
   it("puts a newly created topic without messages above older topics", () => {
     const rows = selectMessengerSidebarStreams(
       state({

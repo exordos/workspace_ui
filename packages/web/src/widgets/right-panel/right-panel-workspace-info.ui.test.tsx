@@ -199,7 +199,6 @@ describe("RightPanelWorkspaceInfo", () => {
 
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
-    expect(screen.getByText("All messages")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "All messages" })).toHaveAttribute(
       "aria-checked",
       "true",

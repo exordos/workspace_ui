@@ -70,8 +70,13 @@ export interface FolderItemVisualState {
   iconColorStyle: CSSProperties | undefined;
   /** Inline label styles (user folders, active/hover). */
   labelColorStyle: CSSProperties | undefined;
-  /** Folder button surface highlight (user folders). */
+  /** Folder button surface highlight (custom folders — colored inline styles). */
   folderSurfaceStyle: CSSProperties | undefined;
+  /**
+   * Folder button surface highlight (system folders — semantic Tailwind classes).
+   * Same hover/selected affordance as custom folders, but without folder color.
+   */
+  folderSurfaceClassName: string | undefined;
   /** Label uses custom folder color. */
   labelUsesCustomColor: boolean;
   /** Label uses system-folder accent color. */

@@ -22,7 +22,8 @@ export const emeraldChat: ThemePalette = {
     "border-subtle": "#3f3f45",
 
     "sidebar-bg": "#2c2c2e",
-    "sidebar-item-hover": "#38383a",
+    // Same as card-bg-active — old #38383a disappears on left sidebar card-bg (#373737)
+    "sidebar-item-hover": "#4b4b4b",
     "sidebar-sender": "#63e09a",
     "sidebar-unread": "#2ecf72",
 
@@ -64,7 +65,8 @@ export const emeraldChat: ThemePalette = {
     bg: "#e4e4e4",
     "bg-elevated": "#ffffff",
     "card-bg": "#ffffff",
-    "card-bg-active": "#f0f0f0",
+    // Reuse accent-soft: gray #f0f0f0 was invisible on white cards in light mode
+    "card-bg-active": "#d9f1e4",
     "text-field-bg": "#f2f2f2",
 
     "text-primary": "#17231f",
@@ -78,7 +80,8 @@ export const emeraldChat: ThemePalette = {
     "border-subtle": "#d9d9d9",
 
     "sidebar-bg": "#ffffff",
-    "sidebar-item-hover": "#f0f0f0",
+    // Same as accent-soft / card-bg-active — no gray leftover from the old #f0f0f0 hover
+    "sidebar-item-hover": "#d9f1e4",
     "sidebar-sender": "#2bbf6c",
     "sidebar-unread": "#2bbf6c",
 

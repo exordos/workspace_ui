@@ -184,13 +184,14 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           <button
             type="button"
             onClick={handleAuthorClick}
-            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            className="group rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
             <span className="relative block">
               <WorkspaceAvatar
                 size="lg"
+                interactive
                 className="bg-bg-elevated text-accent-soft"
                 avatarUrn={author?.avatarUrl}
                 imageLoading="lazy"

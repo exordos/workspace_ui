@@ -159,6 +159,7 @@ describe("useLayoutRightPanelShell", () => {
       ),
     );
 
+    expect(result.current.rightDrawerTitle).toBe("Channel info");
     expect(result.current.rightPanelTitleResolved).toBe("#general");
     expect(result.current.participantsCount).toBe(1);
     expect(result.current.onlineCount).toBe(1);
@@ -190,6 +191,7 @@ describe("useLayoutRightPanelShell", () => {
       ),
     );
 
+    expect(result.current.rightDrawerTitle).toBe("Information");
     expect(result.current.rightPanelTitleResolved).toBe("Cora Lane");
     expect(result.current.participantsCount).toBe(0);
     expect(result.current.onlineCount).toBe(0);

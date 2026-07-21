@@ -1,13 +1,23 @@
+import type { WorkspaceRightPanelInfoView } from "~/entities/messenger/messenger-right-panel.lib";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 
-/** Resolves right drawer header label from mode (settings / profile / about vs chat context). */
+export type RightDrawerInfoKind = WorkspaceRightPanelInfoView["kind"];
+
+/**
+ * Resolves the right-drawer shell title (panel purpose), not the entity name.
+ * Channel/user names stay inside panel body content.
+ */
 export function resolveLayoutRightPanelTitle(
   mode: RightDrawerMode,
-  chatContextTitle: string,
   translate: (key: string) => string,
+  infoKind: RightDrawerInfoKind | null = null,
 ): string {
-  if (mode === "settings") return translate("settings.settings");
-  if (mode === "user-menu") return translate("nav.profile");
+  // Same unified panel for settings and user-menu: shell title is the whole account drawer.
+  if (mode === "settings" || mode === "user-menu") return translate("nav.account");
   if (mode === "about") return translate("settings.appVersion");
-  return chatContextTitle;
+  if (mode === "builds") return translate("settings.selectBuild");
+  if (infoKind === "directPrivate" || infoKind === "userProfile") {
+    return translate("info.information");
+  }
+  return translate("info.channelInfo");
 }

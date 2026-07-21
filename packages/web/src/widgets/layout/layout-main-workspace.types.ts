@@ -8,10 +8,13 @@ export interface LayoutMainWorkspaceProps {
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   onCloseRightDrawer: () => void;
+  /** Shell title shown next to the drawer close button. */
+  rightDrawerTitle: string;
   rightPanelTitle: string;
   participantsCount: number;
   onlineCount: number;
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
+  onOpenBuildsDrawer: () => void;
 }

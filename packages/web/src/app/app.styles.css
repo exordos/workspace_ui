@@ -427,6 +427,21 @@ body {
 
 /* ── Native-app-like behavior ────────────── */
 
+/*
+ * Tailwind v4 preflight больше не ставит cursor:pointer на button.
+ * Браузерный default — стрелка, хотя элемент кликабельный. Восстанавливаем
+ * «пальчик» для всех интерактивных кнопок (кроме disabled).
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: default;
+}
+
 /* Disable text selection on UI chrome: buttons, labels, navigation */
 button,
 [role="button"],

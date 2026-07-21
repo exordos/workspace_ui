@@ -58,6 +58,7 @@ import ReplyIcon from "../assets/icons/reply.svg?react";
 import SearchIcon from "../assets/icons/search.svg?react";
 import SelectedBookmarkIcon from "../assets/icons/selected_bookmark_icon.svg?react";
 import SendIcon from "../assets/icons/send.svg?react";
+import SidePanelIcon from "../assets/icons/side_panel.svg?react";
 import SmileIcon from "../assets/icons/smile.svg?react";
 import SparklesIcon from "../assets/icons/sparkles.svg?react";
 import StarIcon from "../assets/icons/star.svg?react";
@@ -137,6 +138,8 @@ const ICONS: Record<string, IconSvgComponent> = {
   mood: MoodIcon,
   drafts: DraftsIcon,
   moreVert: MoreVertIcon,
+  // Иконка правой панели (квадрат с боковой полосой)
+  sidePanel: SidePanelIcon,
   images: ImagesIcon,
   videos: VideosIcon,
   visibility: VisibilityIcon,

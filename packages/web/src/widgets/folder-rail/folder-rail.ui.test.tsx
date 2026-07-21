@@ -276,10 +276,8 @@ describe("FolderRail visual parity", () => {
     expect(visualWrapper).toHaveClass("scale-110");
     expect(visualWrapper).not.toHaveClass("scale-100");
     expect(customButton).toHaveClass("text-text-primary");
-    expect(customButton).toHaveStyle({
-      backgroundColor: folderColorValueToCssRgba(customColor, 0.2),
-      borderColor: folderColorValueToCssRgba(customColor, 0.4),
-    });
+    // Selected custom folders stay outline-free; color stays on icon/label.
+    expect(customButton?.getAttribute("style")).toBeNull();
     const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
     expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
     expect(customLabel).toHaveClass("text-current");
@@ -332,11 +330,46 @@ describe("FolderRail visual parity", () => {
     const allButton = allNodes.find((node) => node.tagName === "BUTTON");
     const allLabel = allNodes.find((node) => node.tagName === "SPAN");
     expect(allButton).toHaveClass("text-text-primary");
+    // Selected system folders stay outline-free; scale/icon/label carry active state.
+    expect(allButton).not.toHaveClass("bg-bg-elevated");
+    expect(allButton).not.toHaveClass("bg-sidebar-hover");
+    expect(allButton).not.toHaveClass("border-border-subtle");
+    expect(allButton).toHaveClass("cursor-pointer");
     expect(allLabel).toHaveClass("text-text-primary");
     const allIconWrapper = allButton?.querySelector("svg")?.parentElement;
     expect(allButton?.getAttribute("style")).toBeNull();
     expect(allIconWrapper?.getAttribute("style")).toBeNull();
     expect(allLabel?.getAttribute("style")).toBeNull();
+  });
+
+  it("applies neutral surface classes for hovered system folder in vertical view", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
+          {
+            id: "channels",
+            label: "Channels",
+            backgroundColor: 0xff8438,
+            systemType: "channels",
+          },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const channelNodes = screen.getAllByTitle("Channels");
+    const channelButton = channelNodes.find((node) => node.tagName === "BUTTON");
+    expect(channelButton).toBeDefined();
+    expect(channelButton).not.toHaveClass("bg-sidebar-hover");
+
+    fireEvent.mouseEnter(channelButton!);
+
+    expect(channelButton).toHaveClass("bg-sidebar-hover");
+    expect(channelButton).toHaveClass("border-border-subtle");
+    expect(channelButton).toHaveClass("cursor-pointer");
+    expect(channelButton?.getAttribute("style")).toBeNull();
   });
 
   it("uses primary text token for selected all-folder in horizontal layout", () => {
@@ -385,10 +418,10 @@ describe("FolderRail visual parity", () => {
       const customButton = customNodes.find((node) => node.tagName === "BUTTON");
       const customLabel = customNodes.find((node) => node.tagName === "SPAN");
       expect(customButton).toHaveClass("text-text-primary");
-      expect(customButton).toHaveStyle({
-        backgroundColor: folderColorValueToCssRgba(customColor, 0.2),
-        borderColor: folderColorValueToCssRgba(customColor, 0.4),
-      });
+      // Selected stays outline-free; folder color remains on icon/label across themes.
+      expect(customButton?.getAttribute("style")).toBeNull();
+      const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
+      expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
       expect(customLabel).toHaveClass("text-current");
       expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
 

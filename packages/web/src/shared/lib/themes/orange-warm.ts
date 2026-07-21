@@ -22,7 +22,8 @@ export const orangeWarm: ThemePalette = {
     "border-subtle": "#3f3f45",
 
     "sidebar-bg": "#2c2c2e",
-    "sidebar-item-hover": "#38383a",
+    // Same as card-bg-active — old #38383a disappears on left sidebar card-bg (#373737)
+    "sidebar-item-hover": "#4b4b4b",
     "sidebar-sender": "#ff8438",
     "sidebar-unread": "#ff0000",
 

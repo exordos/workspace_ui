@@ -195,6 +195,17 @@ describe("blue-cold light palette spec", () => {
   });
 });
 
+describe("blue-cold dark palette spec", () => {
+  it("matches card-bg-active for left sidebar chat-list hover", () => {
+    const dark = getPalette("blue-cold").dark;
+
+    expect(dark["card-bg"]).toBe("#282a32");
+    expect(dark["card-bg-active"]).toBe("#2c3747");
+    expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
+    expect(dark["sidebar-item-hover"]).toBe("#2c3747");
+  });
+});
+
 describe("orange-warm light palette spec", () => {
   it("matches screenshot-aligned light warm orange values", () => {
     const orangeWarm = getPalette("orange-warm");
@@ -235,6 +246,17 @@ describe("orange-warm light palette spec", () => {
     expect(light["notice-disable"]).toBe("#9a9a9a");
     expect(light["badge-bg"]).toBe("#ff8438");
     expect(light["badge-text"]).toBe("#ffffff");
+  });
+});
+
+describe("orange-warm dark palette spec", () => {
+  it("matches card-bg-active for left sidebar chat-list hover", () => {
+    const dark = getPalette("orange-warm").dark;
+
+    expect(dark["card-bg"]).toBe("#373737");
+    expect(dark["card-bg-active"]).toBe("#4b4b4b");
+    expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
+    expect(dark["sidebar-item-hover"]).toBe("#4b4b4b");
   });
 });
 
@@ -281,6 +303,17 @@ describe("blue-mist light palette spec", () => {
   });
 });
 
+describe("blue-mist dark palette spec", () => {
+  it("matches card-bg-active for left sidebar chat-list hover", () => {
+    const dark = getPalette("blue-mist").dark;
+
+    expect(dark["card-bg"]).toBe("#2a3340");
+    expect(dark["card-bg-active"]).toBe("#30465d");
+    expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
+    expect(dark["sidebar-item-hover"]).toBe("#30465d");
+  });
+});
+
 describe("emerald-chat dark palette spec", () => {
   it("uses neutral dark-gray surfaces for panel backgrounds", () => {
     const emeraldChat = getPalette("emerald-chat");
@@ -291,8 +324,25 @@ describe("emerald-chat dark palette spec", () => {
     expect(dark["card-bg"]).toBe("#373737");
     expect(dark["card-bg-active"]).toBe("#4b4b4b");
     expect(dark["sidebar-bg"]).toBe("#2c2c2e");
-    expect(dark["sidebar-item-hover"]).toBe("#38383a");
+    // Matches card-bg-active so chat-list hover matches right panel / activity
+    expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
+    expect(dark["sidebar-item-hover"]).toBe("#4b4b4b");
     expect(dark["border-subtle"]).toBe("#3f3f45");
+  });
+});
+
+describe("emerald-chat light palette spec", () => {
+  it("uses accent-soft for card and sidebar hovers instead of old gray", () => {
+    const light = getPalette("emerald-chat").light;
+
+    // Both hover tokens ← accent-soft (not the old #f0f0f0 / page-bg gray)
+    expect(light["card-bg"]).toBe("#ffffff");
+    expect(light["card-bg-active"]).toBe(light["accent-soft"]);
+    expect(light["card-bg-active"]).toBe("#d9f1e4");
+    expect(light["sidebar-bg"]).toBe("#ffffff");
+    expect(light["sidebar-item-hover"]).toBe(light["accent-soft"]);
+    expect(light["sidebar-item-hover"]).toBe("#d9f1e4");
+    expect(light["sidebar-item-hover"]).not.toBe("#f0f0f0");
   });
 });
 

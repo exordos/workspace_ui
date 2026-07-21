@@ -75,7 +75,7 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
       <button
         type="button"
         onClick={handleToggle}
-        className={`hover:bg-bg/50 relative rounded-lg p-2 text-text-muted transition-all hover:text-text-primary ${
+        className={`relative rounded-lg p-2 text-text-muted transition-all hover:bg-card-bg-active hover:text-text-primary ${
           buttonPulse ? "scale-110" : ""
         }`}
         aria-label={t("downloads.open")}

@@ -181,6 +181,9 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
       [folder, index, isHovered, isSelected],
     );
     const buttonTextColor = visualState.labelTextColor;
+    // Hover surface only (system + custom). Selected stays outline-free for both.
+    const horizontalSurfaceClass =
+      visualState.folderSurfaceClassName ?? (isSelected ? "" : "hover:bg-bg/60");
     const horizontalButtonStyle = useMemo(() => {
       const buttonColorStyle = visualState.labelUsesCustomColor
         ? { color: visualState.folderColor }
@@ -220,9 +223,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
             onKeyDown={handleKeyboardContextMenu}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-xs transition-colors ${buttonTextColor} ${
-              isSelected ? "bg-bg-elevated" : "hover:bg-bg/60"
-            }`}
+            className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-xs transition-colors ${buttonTextColor} ${horizontalSurfaceClass}`}
             title={folder.label}
             style={horizontalButtonStyle}
           >
@@ -251,7 +252,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
         handleMouseLeave,
         handleSelect,
         horizontalButtonStyle,
-        isSelected,
+        horizontalSurfaceClass,
         visualState.iconColorStyle,
         visualState.iconName,
         visualState.iconTextColor,
@@ -317,6 +318,8 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
       ? "text-current"
       : verticalToneClass;
     const verticalScaleClass = isSelected ? "scale-110" : "scale-100";
+    // System folders get the same surface treatment as custom ones, via semantic classes.
+    const verticalSurfaceClass = visualState.folderSurfaceClassName ?? "";
     const menuItems = useMemo(
       () =>
         buildFolderContextMenuItems({
@@ -351,7 +354,7 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
               onKeyDown={handleKeyboardContextMenu}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              className={`absolute left-1/2 top-[10px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-lg border border-transparent transition-colors ${verticalToneClass}`}
+              className={`absolute left-1/2 top-[10px] flex h-8 w-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-lg border border-transparent transition-colors ${verticalToneClass} ${verticalSurfaceClass}`}
               title={folder.label}
               style={visualState.folderSurfaceStyle}
             >
@@ -396,6 +399,7 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
         handleSelect,
         verticalLabelToneClass,
         verticalScaleClass,
+        verticalSurfaceClass,
         verticalToneClass,
         visualState.folderSurfaceStyle,
         visualState.iconColorStyle,

@@ -47,8 +47,8 @@ export const SIDEBAR_TOPIC_TITLE_CLASS = "truncate text-sm font-medium leading-5
  */
 export function sidebarNewTopicButtonClass(compact: boolean): string {
   return compact
-    ? "flex w-full min-w-0 items-center rounded-md py-1.5 pl-9 pr-2 text-left text-xs font-normal leading-5 text-text-secondary transition-colors hover:bg-bg-elevated"
-    : "flex w-full min-w-0 items-center rounded-lg py-2 pl-[38px] pr-2 text-left text-xs font-normal leading-5 text-text-secondary transition-colors hover:bg-bg-elevated";
+    ? "flex w-full min-w-0 items-center rounded-md py-1.5 pl-9 pr-2 text-left text-xs font-normal leading-5 text-text-secondary transition-colors hover:bg-sidebar-hover"
+    : "flex w-full min-w-0 items-center rounded-lg py-2 pl-[38px] pr-2 text-left text-xs font-normal leading-5 text-text-secondary transition-colors hover:bg-sidebar-hover";
 }
 
 /**

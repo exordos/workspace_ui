@@ -55,7 +55,6 @@ import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 const log = createLogger("right-panel-user-menu");
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
-  heading,
   onOpenAboutDrawer,
   onOpenBuildsDrawer,
 }) => {
@@ -109,7 +108,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
   const [externalAccountDialogOpen, setExternalAccountDialogOpen] = useState(false);
-  const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
     currentLocale;
@@ -334,12 +332,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      {panelHeading.length > 0 && (
-        <header className="flex flex-shrink-0 items-center justify-between border-b border-border-subtle px-4 py-4">
-          <h2 className="text-base font-semibold text-text-primary">{panelHeading}</h2>
-        </header>
-      )}
-
       <ScrollArea className="flex-1 px-2 py-2">
         <div className="space-y-3">
           <section>
@@ -558,8 +550,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                         onClick={() => selectPalette(palette.id)}
                         className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs transition-colors ${
                           currentPaletteId === palette.id
-                            ? "border-accent bg-bg"
-                            : "border-border-subtle bg-card-bg hover:bg-bg"
+                            ? "border-accent bg-card-bg-active"
+                            : "border-border-subtle bg-card-bg hover:bg-card-bg-active"
                         }`}
                       >
                         <span className="flex items-center gap-2">

@@ -22,7 +22,8 @@ export const blueMist: ThemePalette = {
     "border-subtle": "#394a61",
 
     "sidebar-bg": "#1a2434",
-    "sidebar-item-hover": "#2a3444",
+    // Same as card-bg-active — old #2a3444 disappears on left sidebar card-bg (#2a3340)
+    "sidebar-item-hover": "#30465d",
     "sidebar-sender": "#8aa8e8",
     "sidebar-unread": "#6f8fda",
 
