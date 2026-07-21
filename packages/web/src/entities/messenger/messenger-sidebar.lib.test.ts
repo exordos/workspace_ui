@@ -538,6 +538,30 @@ describe("messenger sidebar selectors", () => {
     expect(rows[0]?.topics[1]?.lastMessageCreatedAt).toBe(DATE_A);
   });
 
+  it("puts a newly created topic without messages above older topics", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({ updatedAt: DATE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            name: "New topic",
+            updatedAt: DATE_B,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {},
+      },
+    );
+
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_B, TOPIC_A]);
+  });
+
   it("keeps topic order predictable when last message bodies are missing", () => {
     const rows = selectMessengerSidebarStreams(
       state({

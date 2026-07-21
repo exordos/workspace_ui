@@ -119,7 +119,10 @@ function compareSidebarStreams(
 }
 
 function compareSidebarTopics(a: MessengerSidebarTopicItem, b: MessengerSidebarTopicItem): number {
-  return compareNullableStringsDesc(a.lastMessageCreatedAt, b.lastMessageCreatedAt);
+  return compareNullableStringsDesc(
+    a.lastMessageCreatedAt ?? a.updatedAt,
+    b.lastMessageCreatedAt ?? b.updatedAt,
+  );
 }
 
 function resolveUserDisplayName(user: User | undefined): string | undefined {

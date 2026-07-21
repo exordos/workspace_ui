@@ -246,6 +246,7 @@ function WorkspaceSidebarStreamRow({
   normalizedQuery,
   compact,
   onToggleStream,
+  onTopicCreated,
 }: Readonly<{
   stream: MessengerSidebarStreamItem;
   expanded: boolean;
@@ -254,6 +255,7 @@ function WorkspaceSidebarStreamRow({
   normalizedQuery: string;
   compact: boolean;
   onToggleStream: (streamUuid: string) => void;
+  onTopicCreated: (streamUuid: string, topicUuid: string) => void;
 }>): React.ReactElement {
   // Highlight follows the active route only — expanded is not enough.
   const isActive = isWorkspaceSidebarStreamHighlighted({
@@ -282,6 +284,7 @@ function WorkspaceSidebarStreamRow({
   const streamBlock = (
     <WorkspaceStreamContextMenu
       stream={stream}
+      onTopicCreated={onTopicCreated}
       below={
         expanded
           ? ({ onCreateTopic }) => (
@@ -555,6 +558,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
                   normalizedQuery={normalizedQuery}
                   compact={compact}
                   onToggleStream={toggleExpandedStreamUuid}
+                  onTopicCreated={handleWorkspaceTopicCreated}
                 />
               ))}
             </div>

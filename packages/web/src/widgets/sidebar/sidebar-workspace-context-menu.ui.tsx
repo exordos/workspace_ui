@@ -202,6 +202,7 @@ const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
 interface WorkspaceStreamContextMenuProps {
   stream: MessengerSidebarStreamItem;
   children: React.ReactNode;
+  onTopicCreated?: (streamUuid: string, topicUuid: string) => void;
   /**
    * Content under the stream row (topic list + quick actions).
    * Receives the same create-topic opener as the context menu item.
@@ -213,6 +214,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   stream,
   children,
   below,
+  onTopicCreated,
 }: WorkspaceStreamContextMenuProps): React.ReactElement {
   const {
     menuOpen,
@@ -316,13 +318,17 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
 
     setCreateTopicPending(true);
     void runWorkspaceCreateTopicRequest({ streamUuid: stream.streamUuid, name })
+      .then((result) => {
+        if (result.status !== "applied") return;
+        onTopicCreated?.(result.topic.streamUuid, result.topic.uuid);
+      })
       .catch((error) => reportWorkspaceMenuActionError("create-topic", error))
       .finally(() => {
         setCreateTopicPending(false);
         setCreateTopicDialogOpen(false);
         setNewTopicName("");
       });
-  }, [createTopicPending, newTopicName, stream.streamUuid]);
+  }, [createTopicPending, newTopicName, onTopicCreated, stream.streamUuid]);
 
   const notificationPickerItem = useMemo<DropdownMenuItem>(
     () => ({

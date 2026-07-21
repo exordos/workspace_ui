@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { act } from "react";
+import { act, type ReactElement } from "react";
+import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
@@ -126,19 +127,26 @@ function expectNoWorkspaceActionRequests(): void {
   expect(runWorkspaceTopicDoneToggleMock).not.toHaveBeenCalled();
 }
 
+function CurrentPath(): ReactElement {
+  return <span data-testid="current-path">{useLocation().pathname}</span>;
+}
+
 function renderWorkspaceSidebar(
   streams: MessengerSidebarStreamItem[],
   rightDrawerValue?: RightDrawerContextValue,
 ): void {
   renderWithProviders(
     rightDrawerValue == null ? (
-      <WorkspaceSidebar
-        streams={streams}
-        loading={false}
-        error={null}
-        activityCounts={{ inboxCount: null, mentionsCount: null }}
-        workspaceStreamCount={streams.length}
-      />
+      <>
+        <WorkspaceSidebar
+          streams={streams}
+          loading={false}
+          error={null}
+          activityCounts={{ inboxCount: null, mentionsCount: null }}
+          workspaceStreamCount={streams.length}
+        />
+        <CurrentPath />
+      </>
     ) : (
       <RightDrawerContext.Provider value={rightDrawerValue}>
         <WorkspaceSidebar
@@ -151,7 +159,7 @@ function renderWorkspaceSidebar(
       </RightDrawerContext.Provider>
     ),
     {
-      route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}`,
+      route: `/org/acme/project/project-a/stream/${STREAM_UUID}`,
     },
   );
 }
@@ -197,6 +205,28 @@ describe("WorkspaceSidebar context menu", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /topic name/i })).toBeInTheDocument();
     expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("opens a topic immediately after creating it from the stream", async () => {
+    const createdTopicUuid = "a65f8b8e-58e0-47e4-813b-ce8e65a88485";
+    runWorkspaceCreateTopicRequestMock.mockResolvedValue({
+      status: "applied",
+      topic: { streamUuid: STREAM_UUID, uuid: createdTopicUuid },
+    });
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([createStream()]);
+
+    fireEvent.click(screen.getByTestId("sidebar-new-topic-button"));
+    fireEvent.change(await screen.findByRole("textbox", { name: /topic name/i }), {
+      target: { value: "Roadmap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-path")).toHaveTextContent(
+        `/org/acme/project/project-a/stream/${STREAM_UUID}/topic/${createdTopicUuid}`,
+      );
+    });
   });
 
   it("opens the selected contact profile from a direct private chat", async () => {
