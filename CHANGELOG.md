@@ -6,6 +6,26 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-22
+
+### Added
+
+- Independent `workspace_ui` Exordos element with its own public load balancer and versioned `workspace-ui.tar.zst` web artifact (#225)
+
+### Changed
+
+- Public `/api/` traffic now passes through the UI-owned load balancer to the separately deployed Workspace backend (#225)
+- Workspace UI and backend can now be released and deployed independently (#225)
+
+### Fixed
+
+- Cold-start login routing no longer races before the authenticated server context is ready (#224)
+
+### Migration notes
+
+- Deploy Workspace backend `0.1.5` or newer before installing or updating `workspace_ui` `0.2.1`.
+- Deploy the `workspace_ui` element separately; the backend image no longer owns the web UI artifact or public load balancer.
+
 ## [0.2.0] — 2026-07-21
 
 ### Added
