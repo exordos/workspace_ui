@@ -7,7 +7,9 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 
-const bootstrapMessengerStoreMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const bootstrapMessengerStoreMock = vi.hoisted(() =>
+  vi.fn((): Promise<unknown> => Promise.resolve()),
+);
 const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const fetchWorkspaceServerSettingsForOrganizationMock = vi.hoisted(() =>
   vi.fn(() =>
@@ -232,6 +234,38 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
 
       expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(2);
       expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("soft-retries failed Workspace messenger catalog bootstrap", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const ownerKey = workspaceRuntimeOwnerKey(session);
+      setWorkspaceSession(session);
+      bootstrapMessengerStoreMock
+        .mockResolvedValueOnce({
+          status: "failed",
+          ownerKey,
+          error: "Messenger API GET /streams/ failed",
+        })
+        .mockResolvedValueOnce({ status: "applied", ownerKey });
+
+      renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(2);
+      expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

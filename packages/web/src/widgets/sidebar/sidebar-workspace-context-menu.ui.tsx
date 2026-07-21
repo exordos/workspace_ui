@@ -202,11 +202,17 @@ const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
 interface WorkspaceStreamContextMenuProps {
   stream: MessengerSidebarStreamItem;
   children: React.ReactNode;
+  /**
+   * Content under the stream row (topic list + quick actions).
+   * Receives the same create-topic opener as the context menu item.
+   */
+  below?: (api: { onCreateTopic: () => void }) => React.ReactNode;
 }
 
 export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamContextMenu({
   stream,
   children,
+  below,
 }: WorkspaceStreamContextMenuProps): React.ReactElement {
   const {
     menuOpen,
@@ -442,6 +448,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   return (
     <div className="relative">
       {contentWithContextMenu}
+      {below?.({ onCreateTopic: handleCreateTopic })}
       <DropdownMenu
         open={menuOpen}
         onOpenChange={handleMenuOpenChange}

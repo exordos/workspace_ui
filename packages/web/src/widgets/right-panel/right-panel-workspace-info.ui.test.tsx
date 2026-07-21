@@ -283,6 +283,24 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(channelAvatar).toHaveStyle({ backgroundColor: "#336699" });
   });
 
+  it("renders members heading without a leading profile icon and a 24px add button", () => {
+    // Зачем: на макете у блока «Участники» только заголовок + person_add 24×24, без profile слева.
+    seedWorkspaceAuth();
+
+    const { container } = renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const membersHeading = screen.getByText("Members").closest("h3");
+    expect(membersHeading).not.toBeNull();
+    expect(membersHeading!.querySelectorAll("svg")).toHaveLength(1);
+
+    const addMembersButton = screen.getByRole("button", { name: "Add members" });
+    const addIcon = addMembersButton.querySelector("svg");
+    expect(addIcon).not.toBeNull();
+    expect(addIcon).toHaveAttribute("width", "24");
+    expect(addIcon).toHaveAttribute("height", "24");
+    expect(container.querySelector('h3 svg[width="16"]')).toBeNull();
+  });
+
   it("renders workspace direct private profile without channel-only actions", () => {
     const { container } = renderWithProviders(
       <RightPanelWorkspaceInfo

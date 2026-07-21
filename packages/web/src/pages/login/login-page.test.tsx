@@ -77,7 +77,7 @@ vi.mock("~/entities/workspace-auth/workspace-auth.lib", async (importOriginal) =
 });
 
 async function moveToCredentialsStep(): Promise<void> {
-  fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+  fireEvent.change(screen.getByLabelText(/^server address$/i), {
     target: { value: "https://chat.example.com" },
   });
   fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -227,7 +227,7 @@ describe("LoginPage", () => {
     fetchWorkspaceServerSettingsForOrganization.mockRejectedValueOnce(new Error("network"));
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+    fireEvent.change(screen.getByLabelText(/^server address$/i), {
       target: { value: "https://chat.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));

@@ -188,6 +188,17 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
   });
 
+  it("opens the same create-topic dialog from the quick + New topic button", async () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([createStream({ topics: [createTopic()] })]);
+
+    fireEvent.click(screen.getByTestId("sidebar-new-topic-button"));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /topic name/i })).toBeInTheDocument();
+    expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
+  });
+
   it("opens the selected contact profile from a direct private chat", async () => {
     const openInfo = vi.fn();
     const openWorkspaceUserProfile = vi.fn();
@@ -340,7 +351,7 @@ describe("WorkspaceSidebar context menu", () => {
 
     const previewLink = screen.getByRole("link", { name: /alice:latest update/i });
     expect(previewLink).toHaveAttribute("href", previewRoute);
-    expect(previewLink).toHaveClass("hover:bg-bg-elevated");
+    expect(previewLink).toHaveClass("hover:bg-sidebar-hover");
 
     act(() => {
       fireEvent.click(previewLink);

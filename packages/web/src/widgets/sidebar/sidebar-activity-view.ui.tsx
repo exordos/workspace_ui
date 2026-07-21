@@ -42,11 +42,13 @@ const compactListItemClass = "relative h-8 w-8 shrink-0";
 const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-0.5";
 const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
 const compactIconsListClass = "flex w-max flex-nowrap items-center gap-0.5";
+// Idle/hover swapped: idle blends with sidebar (card-bg), hover uses elevated fill.
 const expandedRowBaseClass =
-  "group flex w-full items-center gap-2 rounded-lg bg-bg-elevated/60 px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
+  "group flex w-full items-center gap-2 rounded-lg bg-card-bg px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated/60";
 const expandedRowCompactClass =
-  "group flex w-full items-center gap-1.5 rounded-lg bg-bg-elevated/50 px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
-const expandedRowActiveClass = "bg-card-bg";
+  "group flex w-full items-center gap-1.5 rounded-lg bg-card-bg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated/50";
+// Keep active on the elevated fill so the selected card stays visible after the swap.
+const expandedRowActiveClass = "bg-bg-elevated/60";
 const expandedIconChipClass =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-on-accent";
 const expandedIconChipCompactClass =

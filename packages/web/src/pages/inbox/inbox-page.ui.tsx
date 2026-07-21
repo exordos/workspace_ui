@@ -198,8 +198,17 @@ export const InboxPage: React.FC = () => {
     }),
     [conversationsById, foldersById, streamIds, streamsById, topicIds, topicsById],
   );
-  const loading = useMessengerStore((state) => state.isLoading);
+  const loadingRaw = useMessengerStore((state) => state.isLoading);
   const error = useMessengerStore((state) => state.error);
+  const catalogLoaded = useMessengerStore(
+    (state) =>
+      state.lastLoadedAt != null ||
+      state.streamIds.length > 0 ||
+      state.topicIds.length > 0 ||
+      state.folderIds.length > 0 ||
+      state.conversationIds.length > 0,
+  );
+  const loading = loadingRaw || (!catalogLoaded && error == null);
   const streams = useMemo(
     () =>
       workspaceIdentity != null

@@ -12,10 +12,10 @@ describe("RightDrawer", () => {
 
     const drawer = screen.getByLabelText(/info panel/i);
     expect(drawer).toHaveClass("w-panel-right");
-    expect(drawer).toHaveClass("rounded-xl");
+    expect(drawer).toHaveClass("rounded-lg");
     expect(drawer).toHaveClass("px-2");
     expect(drawer).toHaveClass("py-5");
-    expect(drawer).toHaveClass("bg-sidebar-bg");
+    expect(drawer).toHaveClass("bg-card-bg");
     expect(drawer).toHaveClass("relative");
   });
 

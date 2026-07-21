@@ -16,6 +16,7 @@ import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 // Layout owns the temporary messenger bootstrap until a dedicated process layer exists.
 const WORKSPACE_BOOTSTRAP_REFRESH_RETRY_DELAY_MS = 5_000;
+const WORKSPACE_BOOTSTRAP_CATALOG_RETRY_LIMIT = 2;
 
 function hasWorkspaceAuthSession(accountId: string): boolean {
   return useWorkspaceAuthStore
@@ -28,8 +29,11 @@ function shouldRetryWorkspaceAuthRefreshError(error: unknown): boolean {
   return failure.reason !== "owner-mismatch";
 }
 
-export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean }): void {
-  const { enabled } = options;
+export function useLayoutWorkspaceMessengerBootstrap(options: {
+  enabled: boolean;
+  retryNonce?: number;
+}): void {
+  const { enabled, retryNonce = 0 } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(
@@ -51,6 +55,7 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
 
     const controller = new AbortController();
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let catalogRetryAttempts = 0;
 
     const scheduleRetry = (): void => {
       if (controller.signal.aborted || retryTimer != null) return;
@@ -103,11 +108,20 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
           }
         });
 
-      await bootstrapMessengerStore({
+      const result = await bootstrapMessengerStore({
         runtimeContext: latestRuntimeContext,
         getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
         signal: controller.signal,
       });
+      if (
+        result?.status === "failed" &&
+        !controller.signal.aborted &&
+        hasWorkspaceAuthSession(runtimeContext.accountId) &&
+        catalogRetryAttempts < WORKSPACE_BOOTSTRAP_CATALOG_RETRY_LIMIT
+      ) {
+        catalogRetryAttempts += 1;
+        scheduleRetry();
+      }
     };
 
     void startBootstrap().catch((error) => {
@@ -122,5 +136,5 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
         clearTimeout(retryTimer);
       }
     };
-  }, [clearMessengerStore, enabled, runtimeContext]);
+  }, [clearMessengerStore, enabled, retryNonce, runtimeContext]);
 }

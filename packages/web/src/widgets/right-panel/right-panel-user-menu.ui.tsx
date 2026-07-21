@@ -348,10 +348,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               {currentWorkspaceSession != null && (
-                <div
-                  data-testid="user-menu-current-server-item"
-                  className="flex items-center justify-between gap-3 px-2.5 py-2.5"
-                >
+                <div data-testid="user-menu-current-server-item" className="px-2.5 py-2.5">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg">
                       {currentServerIconUrl != null ? (
@@ -376,15 +373,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       </span>
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleLogoutFromCurrentOrg}
-                    className="hover:bg-notice-base/20 border-notice-base/40 bg-notice-base/10 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-notice-base transition-colors"
-                    aria-label={t("auth.logoutFromOrg")}
-                    title={t("auth.logoutFromOrg")}
-                  >
-                    <Icon name="logout" size={14} className="text-current" />
-                  </button>
                 </div>
               )}
               {currentWorkspaceSession != null && (
@@ -711,6 +699,20 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               />
             </div>
           </section>
+
+          {currentWorkspaceSession != null && (
+            <button
+              type="button"
+              onClick={handleLogoutFromCurrentOrg}
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-[#D92D20] bg-[#D92D20] px-3 py-3 text-sm font-semibold text-text-primary transition-colors hover:bg-[#B42318] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D92D20] focus-visible:ring-offset-2 focus-visible:ring-offset-card-bg"
+              aria-label={t("auth.logoutFromOrg")}
+              data-icon-hover="custom"
+              data-testid="user-menu-logout-button"
+            >
+              <Icon name="logout" size={22} className="text-current" />
+              {t("auth.logoutFromOrg")}
+            </button>
+          )}
         </div>
       </ScrollArea>
 

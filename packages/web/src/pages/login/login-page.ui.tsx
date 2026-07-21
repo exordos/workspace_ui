@@ -353,7 +353,8 @@ export const LoginPage: React.FC = () => {
     setStep("credentials");
   }, []);
 
-  const title = isAddServer ? t("auth.addServerZulip") : t("auth.connectToZulip");
+  // Нейтральные ключи без бренда Zulip: «добавить сервер» / «подключение к серверу».
+  const title = isAddServer ? t("auth.addServer") : t("auth.connectToZulip");
   const descriptionByStep: Record<LoginStep, string> = {
     organization: t("auth.organizationStepHint"),
     credentials: t("auth.authStepHint"),
@@ -391,7 +392,7 @@ export const LoginPage: React.FC = () => {
 
         {step === "organization" && (
           <form onSubmit={handleContinueToAuthStep} className="flex flex-col gap-4">
-            <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
+            <FormField label={t("auth.serverUrl")} htmlFor="realm">
               <input
                 id="realm"
                 type="url"

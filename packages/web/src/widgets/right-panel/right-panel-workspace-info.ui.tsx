@@ -747,9 +747,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
       <ScrollArea className="flex-1 space-y-4 px-4 py-3">
         <div>
-          <p className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
             {t("channel.notifications")}
-          </p>
+            <span className="font-medium normal-case text-text-muted">
+              {" "}
+              ({t("channel.notificationsForEntireChat")})
+            </span>
+          </h3>
           {info.streamUuid != null && notificationLevel != null ? (
             <>
               <StreamNotificationLevelSwitch
@@ -760,11 +764,6 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 }}
                 className="mx-2"
               />
-              <p className="mx-2 mt-2 text-[11px] text-text-muted">
-                {notificationLevel === "default" && t("channel.notificationDefault")}
-                {notificationLevel === "muted" && t("channel.notificationMuted")}
-                {notificationLevel === "subscribed" && t("channel.notificationSubscribed")}
-              </p>
               {notificationError && (
                 <p className="mx-2 mt-1 text-xs text-notice-base">{notificationError}</p>
               )}
@@ -821,11 +820,10 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
 
         <div>
+          {/* Заголовок как на макете: только текст «Участники», без иконки слева.
+              Кнопка person_add — 24×24, совпадает с hit-area h-6 w-6. */}
           <h3 className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            <span className="flex items-center gap-2">
-              <Icon name="profile" size={16} className="shrink-0 text-current" />
-              {t("channel.members")}
-            </span>
+            {t("channel.members")}
             {info.streamUuid != null && runtimeContext != null && (
               <button
                 type="button"
@@ -833,7 +831,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 onClick={handleOpenAddMembers}
                 className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
               >
-                <Icon name="person_add" size={16} className="text-current" />
+                <Icon name="person_add" size={24} className="text-current" />
               </button>
             )}
           </h3>

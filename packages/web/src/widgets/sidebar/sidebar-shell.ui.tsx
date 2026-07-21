@@ -113,8 +113,18 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceUsersById,
     ],
   );
-  const workspaceLoading = useMessengerStore((state) => state.isLoading);
+  const workspaceLoadingRaw = useMessengerStore((state) => state.isLoading);
   const workspaceError = useMessengerStore((state) => state.error);
+  const workspaceCatalogLoaded = useMessengerStore(
+    (state) =>
+      state.lastLoadedAt != null ||
+      state.streamIds.length > 0 ||
+      state.topicIds.length > 0 ||
+      state.folderIds.length > 0 ||
+      state.conversationIds.length > 0,
+  );
+  const workspaceLoading =
+    workspaceLoadingRaw || (!workspaceCatalogLoaded && workspaceError == null);
   const workspaceRailFolders = workspaceFolders.map((folder) => ({
     id: folder.folderUuid,
     label: folder.title,

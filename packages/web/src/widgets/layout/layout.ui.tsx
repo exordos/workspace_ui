@@ -62,8 +62,7 @@ export const Layout: React.FC = () => {
   const activeTopic = topicName ?? null;
 
   const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
-  const bootstrapError = null;
-  const clearBootstrapError = useCallback(() => {}, []);
+  const bootstrapError = useMessengerStore((state) => state.error);
   const currentUserId = null;
   const streamsFromStore = EMPTY_LEGACY_STREAMS;
   const dmsFromStore = EMPTY_LEGACY_DMS;
@@ -74,6 +73,7 @@ export const Layout: React.FC = () => {
   const dmUnreadCountForCurrentInstance = 0;
   const mentionsUnreadCount = workspaceActivityCounts.mentionsCount ?? 0;
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
   const closeRightDrawer = useRightDrawerStore((s) => s.close);
@@ -115,7 +115,7 @@ export const Layout: React.FC = () => {
     workspaceMessengerRoute.orgId === currentWorkspaceRuntimeContext?.organizationId &&
     workspaceMessengerRoute.projectId === currentWorkspaceRuntimeContext.projectId;
   const workspaceInstanceId = currentWorkspaceRuntimeContext?.instanceId ?? null;
-  useLayoutWorkspaceMessengerBootstrap({ enabled: true });
+  useLayoutWorkspaceMessengerBootstrap({ enabled: true, retryNonce: bootstrapRetryNonce });
   useLayoutWorkspaceRealtime({
     enabled: workspaceMessengerActive,
     pathname: location.pathname,
@@ -204,8 +204,8 @@ export const Layout: React.FC = () => {
     });
 
   const handleRetryBootstrap = useCallback(() => {
-    clearBootstrapError();
-  }, [clearBootstrapError]);
+    setBootstrapRetryNonce((value) => value + 1);
+  }, []);
   const topBannerKind = useMemo(
     () => resolveLayoutTopBannerKind(connectionBannerMessage, notificationPermission.visible),
     [connectionBannerMessage, notificationPermission.visible],
@@ -220,7 +220,10 @@ export const Layout: React.FC = () => {
           rateLimitSeconds={rateLimitSeconds}
         />
       ) : null}
-      <LayoutBootstrapErrorBanner error={bootstrapError} onRetry={handleRetryBootstrap} />
+      <LayoutBootstrapErrorBanner
+        error={shouldShowChatShell ? bootstrapError : null}
+        onRetry={handleRetryBootstrap}
+      />
       {topBannerKind === "notification-permission" ? (
         <LayoutNotificationPermissionBanner
           enabling={notificationPermission.enabling}

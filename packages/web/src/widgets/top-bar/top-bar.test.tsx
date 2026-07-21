@@ -284,7 +284,7 @@ describe("TopBar", () => {
     renderWithProviders(<TopBar />);
 
     const header = screen.getByRole("banner", { name: /top bar/i });
-    expect(header).toHaveClass("rounded-b-xl");
+    expect(header).toHaveClass("rounded-b-lg");
     expect(screen.getByTestId("topbar-toolbar-row")).toHaveClass("p-2");
   });
 

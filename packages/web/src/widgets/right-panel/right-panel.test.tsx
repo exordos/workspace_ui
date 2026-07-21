@@ -131,6 +131,14 @@ describe("RightPanelShell", () => {
     const currentServerItem = screen.getByTestId("user-menu-current-server-item");
     expect(within(currentServerItem).getByText(/workspace.example.com/i)).toBeInTheDocument();
     expect(within(currentServerItem).getByText("alice@example.com")).toBeInTheDocument();
+    expect(
+      within(currentServerItem).queryByRole("button", { name: t("auth.logoutFromOrg") }),
+    ).not.toBeInTheDocument();
+
+    const logoutButton = screen.getByTestId("user-menu-logout-button");
+    expect(logoutButton).toHaveClass("bg-[#D92D20]", "text-text-primary");
+    expect(logoutButton).toHaveAttribute("data-icon-hover", "custom");
+    expect(logoutButton.querySelector("svg")).toHaveAttribute("width", "22");
   });
 
   it("opens the external-account feature from the profile and renders its compact list", () => {

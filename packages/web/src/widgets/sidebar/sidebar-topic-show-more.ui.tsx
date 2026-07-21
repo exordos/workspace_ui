@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
+import { sidebarTopicShowMoreButtonClass } from "./sidebar-chat-row-layout.lib";
 
 export interface SidebarTopicShowMoreButtonProps {
   /** Full topic list is expanded. */
@@ -8,10 +9,12 @@ export interface SidebarTopicShowMoreButtonProps {
   /** How many topics are currently hidden (for the parenthetical label). */
   hiddenCount: number;
   onToggle: () => void;
+  /** Match topic-row density when the sidebar is compact. */
+  compact?: boolean;
 }
 
 export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonProps>(
-  function SidebarTopicShowMoreButton({ expanded, hiddenCount, onToggle }) {
+  function SidebarTopicShowMoreButton({ expanded, hiddenCount, onToggle, compact = false }) {
     const label = useMemo(() => {
       if (expanded) {
         return t("channel.hideExtraTopics");
@@ -30,14 +33,13 @@ export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonP
           e.stopPropagation();
           onToggle();
         }}
-        className="flex w-full items-center rounded-b-lg bg-sidebar-hover py-2 pr-2 text-sm font-medium text-text-primary transition-colors hover:opacity-90"
+        className={sidebarTopicShowMoreButtonClass(compact)}
         aria-expanded={expanded}
         aria-label={label}
       >
-        {/* Same indent chain as topic rows: ml-4 + pl-2 container, border-l-4, link pl-3 */}
-        <span className="ml-4 flex min-w-0 flex-1 items-center border-l-4 border-transparent pl-2">
-          <span className="truncate pl-3">{label}</span>
-        </span>
+        {/* Hug content on the left — padding lives on the button (same 38px as topic cards). */}
+        <span className="min-w-0 truncate">{label}</span>
+        {/* Figma Arrow-b: instance height 16, viewBox 20 — Icon size={16} matches the shell. */}
         {expanded ? (
           <Icon name="chevron-up" size={16} className="ml-2 shrink-0 text-text-primary" />
         ) : (

@@ -20,15 +20,25 @@ import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
-import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
+import {
+  SIDEBAR_STREAM_GROUP_RAIL_CLASS,
+  SIDEBAR_TOPIC_LIST_CLASS,
+  SIDEBAR_TOPIC_TITLE_CLASS,
+  isWorkspaceSidebarStreamHighlighted,
+  sidebarChatRowBodyClass,
+  sidebarChatRowLinkClass,
+  sidebarNewTopicButtonClass,
+  sidebarStreamGroupClass,
+  sidebarTopicRowLinkClass,
+} from "./sidebar-chat-row-layout.lib";
 import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
+import { SidebarChatTitleWithStatus } from "./sidebar-chat-title-with-status.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
-import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import {
   WorkspaceStreamContextMenu,
@@ -131,13 +141,11 @@ function WorkspaceSidebarTopicRow({
     <WorkspaceTopicContextMenu topic={topic} streamTitle={streamTitle}>
       <Link
         to={topic.route}
-        className={`flex w-full min-w-0 items-stretch gap-3 rounded-r-lg border-l-4 border-indicator-yellow py-2 pl-3 pr-2 transition-colors ${sidebarRowClass(
-          isActive,
-        )}`}
+        className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)}`}
       >
         <div className="min-w-0 flex-1">
           <div
-            className={`truncate text-sm font-medium text-text-primary ${
+            className={`${SIDEBAR_TOPIC_TITLE_CLASS} ${
               topic.isDone ? "line-through opacity-70" : ""
             }`}
           >
@@ -162,16 +170,37 @@ function WorkspaceSidebarTopicRow({
   );
 }
 
+const WorkspaceSidebarNewTopicButton = React.memo(function WorkspaceSidebarNewTopicButton({
+  compact,
+  onCreateTopic,
+}: {
+  compact: boolean;
+  onCreateTopic: () => void;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onCreateTopic}
+      className={sidebarNewTopicButtonClass(compact)}
+      data-testid="sidebar-new-topic-button"
+    >
+      {`+ ${t("channel.newTopic")}`}
+    </button>
+  );
+});
+
 const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   stream,
   activeTopicUuid,
   normalizedQuery,
   compact,
+  onCreateTopic,
 }: {
   stream: MessengerSidebarStreamItem;
   activeTopicUuid: string | null;
   normalizedQuery: string;
   compact: boolean;
+  onCreateTopic: () => void;
 }): React.ReactElement | null {
   const topics = useMemo(
     () => stream.topics.filter((topic) => workspaceTopicMatchesQuery(topic, normalizedQuery)),
@@ -181,26 +210,28 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
     useSidebarTopicCollapse(topics.length);
   const visibleTopics = topics.slice(0, visibleCount);
 
-  if (topics.length === 0) return null;
-
   return (
     <>
-      <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
-        {visibleTopics.map((topic) => (
-          <WorkspaceSidebarTopicRow
-            key={topic.id}
-            topic={topic}
-            streamTitle={stream.title}
-            activeTopicUuid={activeTopicUuid}
-            compact={compact}
-          />
-        ))}
-      </div>
+      <WorkspaceSidebarNewTopicButton compact={compact} onCreateTopic={onCreateTopic} />
+      {visibleTopics.length > 0 ? (
+        <div className={SIDEBAR_TOPIC_LIST_CLASS}>
+          {visibleTopics.map((topic) => (
+            <WorkspaceSidebarTopicRow
+              key={topic.id}
+              topic={topic}
+              streamTitle={stream.title}
+              activeTopicUuid={activeTopicUuid}
+              compact={compact}
+            />
+          ))}
+        </div>
+      ) : null}
       {showToggle && (
         <SidebarTopicShowMoreButton
           expanded={allTopicsVisible}
           hiddenCount={hiddenCount}
           onToggle={toggleAllTopics}
+          compact={compact}
         />
       )}
     </>
@@ -224,7 +255,12 @@ function WorkspaceSidebarStreamRow({
   compact: boolean;
   onToggleStream: (streamUuid: string) => void;
 }>): React.ReactElement {
-  const isActive = activeStreamUuid === stream.streamUuid && activeTopicUuid == null;
+  // Highlight follows the active route only — expanded is not enough.
+  const isActive = isWorkspaceSidebarStreamHighlighted({
+    streamUuid: stream.streamUuid,
+    activeStreamUuid,
+    activeTopicUuid,
+  });
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
   const avatarSize = compact ? "sm" : "md";
   const isDirectPrivate = stream.uiKind === "directPrivate";
@@ -240,92 +276,111 @@ function WorkspaceSidebarStreamRow({
       ? stream.statusText.trim()
       : null;
 
-  return (
-    <>
-      <WorkspaceStreamContextMenu stream={stream}>
-        <div
-          className={`${rowClass} w-full ${
-            expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
-          }`}
+  // When topics are open, a left rail groups the channel row with its topic stack.
+  const showGroupRail = expanded && stream.topics.length > 0;
+
+  const streamBlock = (
+    <WorkspaceStreamContextMenu
+      stream={stream}
+      below={
+        expanded
+          ? ({ onCreateTopic }) => (
+              <WorkspaceSidebarTopics
+                stream={stream}
+                activeTopicUuid={activeTopicUuid}
+                normalizedQuery={normalizedQuery}
+                compact={compact}
+                onCreateTopic={onCreateTopic}
+              />
+            )
+          : undefined
+      }
+    >
+      <div className={`${rowClass} w-full ${sidebarRowClass(isActive)}`}>
+        <Link
+          to={stream.route}
+          className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
+          onClick={() => {
+            if (!expanded) onToggleStream(stream.streamUuid);
+          }}
         >
+          <span className="relative shrink-0">
+            <WorkspaceAvatar
+              size={avatarSize}
+              avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
+              style={avatarStyle}
+            >
+              {avatarLabel}
+            </WorkspaceAvatar>
+            {isDirectPrivate && (
+              <PresenceIndicator
+                status={stream.presence ?? null}
+                size="sm"
+                pulse={false}
+                className="absolute bottom-0 right-0 ring-border-subtle"
+              />
+            )}
+          </span>
+        </Link>
+        <div className={sidebarChatRowBodyClass(compact)}>
           <Link
             to={stream.route}
-            className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
+            className="focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1"
             onClick={() => {
               if (!expanded) onToggleStream(stream.streamUuid);
             }}
           >
-            <span className="relative shrink-0">
-              <WorkspaceAvatar
-                size={avatarSize}
-                avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
-                style={avatarStyle}
-              >
-                {avatarLabel}
-              </WorkspaceAvatar>
-              {isDirectPrivate && (
-                <PresenceIndicator
-                  status={stream.presence ?? null}
-                  size="sm"
-                  pulse={false}
-                  className="absolute bottom-0 right-0 ring-border-subtle"
-                />
-              )}
-            </span>
+            <SidebarChatTitleWithStatus
+              title={title}
+              statusEmoji={statusEmoji}
+              statusText={statusText}
+            />
           </Link>
-          <div className={sidebarChatRowBodyClass(compact)}>
+          {!compact && stream.preview?.route != null && (
             <Link
-              to={stream.route}
-              className="focus-visible:ring-border-strong flex min-w-0 items-center gap-1 rounded-md focus-visible:outline-none focus-visible:ring-1"
-              onClick={() => {
-                if (!expanded) onToggleStream(stream.streamUuid);
-              }}
+              to={stream.preview.route}
+              className="-ml-1.5 block min-w-0 rounded-md py-0.5 pl-1.5 pr-2 transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover focus-visible:outline-none"
             >
-              <div className="truncate text-sm font-medium text-text-primary">{title}</div>
-              {statusEmoji != null ? <SidebarUserStatusEmoji statusEmoji={statusEmoji} /> : null}
-              {statusText != null ? (
-                <span className="truncate text-xs text-text-muted">{statusText}</span>
-              ) : null}
+              <SidebarMessagePreview
+                senderName={stream.preview.senderName}
+                message={stream.preview.text}
+              />
             </Link>
-            {!compact && stream.preview?.route != null && (
-              <Link
-                to={stream.preview.route}
-                className="-ml-1.5 block min-w-0 rounded-md py-0.5 pl-1.5 pr-2 transition-colors hover:bg-bg-elevated focus-visible:bg-bg-elevated focus-visible:outline-none"
-              >
-                <SidebarMessagePreview
-                  senderName={stream.preview.senderName}
-                  message={stream.preview.text}
-                />
-              </Link>
-            )}
-          </div>
-          <SidebarChatRowMeta
-            compact={compact}
-            isPinned={stream.pinnedAt != null}
-            unreadCount={stream.unreadCount}
-            hasMention={false}
-            time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
-            expandChevron={
-              stream.topics.length > 0
-                ? {
-                    expanded,
-                    onToggle: () => onToggleStream(stream.streamUuid),
-                    ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
-                  }
-                : undefined
-            }
-          />
+          )}
         </div>
-      </WorkspaceStreamContextMenu>
-      {expanded && (
-        <WorkspaceSidebarTopics
-          stream={stream}
-          activeTopicUuid={activeTopicUuid}
-          normalizedQuery={normalizedQuery}
+        <SidebarChatRowMeta
           compact={compact}
+          isPinned={stream.pinnedAt != null}
+          unreadCount={stream.unreadCount}
+          hasMention={false}
+          time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
+          expandChevron={
+            stream.topics.length > 0
+              ? {
+                  expanded,
+                  onToggle: () => onToggleStream(stream.streamUuid),
+                  ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+                }
+              : undefined
+          }
         />
-      )}
-    </>
+      </div>
+    </WorkspaceStreamContextMenu>
+  );
+
+  if (!showGroupRail) {
+    return streamBlock;
+  }
+
+  return (
+    <div className={sidebarStreamGroupClass(true)}>
+      <div
+        aria-hidden
+        className={SIDEBAR_STREAM_GROUP_RAIL_CLASS}
+        data-testid="sidebar-stream-group-rail"
+      />
+      <div className="min-w-0 flex-1">{streamBlock}</div>
+    </div>
   );
 }
 
@@ -419,7 +474,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
 
   return (
     <aside
-      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
+      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-lg bg-card-bg"
       data-focus-zone="sidebar"
       role="navigation"
       aria-label="Chat list"
