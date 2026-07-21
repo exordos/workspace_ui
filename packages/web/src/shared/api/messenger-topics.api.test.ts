@@ -144,7 +144,7 @@ describe("messenger topics API", () => {
     expect(init?.body).toBe(JSON.stringify({ name: "Incidents" }));
   });
 
-  it("toggles done through an action path without body", async () => {
+  it("toggles done through the backend topic endpoint without body", async () => {
     const fetchMock = createFetchMock({ ...topicDto, is_done: true });
 
     await expect(
@@ -152,9 +152,7 @@ describe("messenger topics API", () => {
     ).resolves.toEqual({ ...topicDto, is_done: true });
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(
-      `/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
-    );
+    expect(url).toBe(`/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}/toggle_done/`);
     expect(init?.method).toBe("POST");
     expect(init?.body).toBeUndefined();
   });

@@ -9,12 +9,12 @@ import {
   parsePaginationHeaders,
   parseStrictDtoList,
 } from "./messenger-transport.internal";
+import { isWorkspaceMessengerTopicDto } from "./messenger.types";
 import type {
   MessengerClientOptions,
   MessengerCollectionPage,
   MessengerPaginationQuery,
 } from "./messenger-transport.internal";
-import { isWorkspaceMessengerTopicDto } from "./messenger.types";
 import type {
   WorkspaceMessengerCreateTopicRequestBody,
   WorkspaceMessengerTopicDto,
@@ -104,10 +104,7 @@ export async function toggleStreamTopicDone(
   options: MessengerClientOptions,
   topicUuid: WorkspaceMessengerUuid,
 ): Promise<WorkspaceMessengerTopicDto> {
-  const data = await messengerPostJson(
-    `/stream_topics/${topicUuid}/actions/toggle_done/invoke`,
-    options,
-  );
+  const data = await messengerPostJson(`/stream_topics/${topicUuid}/toggle_done/`, options);
   return parseTopic(data);
 }
 
