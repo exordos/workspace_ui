@@ -79,6 +79,11 @@ export type WorkspaceMessageListItem =
   | WorkspaceMessageListServerItem
   | WorkspaceMessageListOutgoingItem;
 
+export interface WorkspaceMessageListPresentation {
+  topicDividers?: boolean;
+  topicLabels?: boolean;
+}
+
 export interface WorkspaceMessageListProps {
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
@@ -102,6 +107,8 @@ export interface WorkspaceMessageListProps {
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  resolveTopicLabel?: (topicUuid: MessengerUuid) => string | null | undefined;
+  presentation?: WorkspaceMessageListPresentation;
   resolveMention?: WorkspaceMessageMentionResolver;
   actions?: WorkspaceMessageListActions;
 }

@@ -176,6 +176,113 @@ describe("WorkspaceMessageList", () => {
     expect(renderedMessage).not.toHaveAttribute(["data", "message", "id"].join("-"));
   });
 
+  it("renders topic dividers and topic labels from presentation settings", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "topic-a-message", topicUuid: "topic-a" }),
+          createWorkspaceMessage({
+            uuid: "topic-a-second-message",
+            topicUuid: "topic-a",
+            createdAt: "2026-07-03T09:00:30.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "topic-b-message",
+            topicUuid: "topic-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "unknown-topic-message",
+            topicUuid: "topic-missing",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicDividers: true, topicLabels: true }}
+        resolveTopicLabel={(topicUuid) =>
+          ({ "topic-a": "Planning", "topic-b": "Releases" })[topicUuid] ?? null
+        }
+      />,
+    );
+
+    const topicDividers = container.querySelectorAll("[data-topic-divider='true']");
+    expect(topicDividers).toHaveLength(2);
+    expect(topicDividers[0]).toHaveTextContent("#Releases");
+    expect(topicDividers[1]?.querySelector("span")).toBeNull();
+    const topicLabels = container.querySelectorAll("[data-topic-label='true']");
+    expect(topicLabels).toHaveLength(2);
+    expect(
+      topicLabels[0]?.parentElement?.querySelector("[data-peer-author-label='true']"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        "[data-message-uuid='topic-a-second-message'] [data-topic-label='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("#Planning")).toBeInTheDocument();
+  });
+
+  it("can enable topic dividers without showing topic labels in bubbles", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "topic-a-message", topicUuid: "topic-a" }),
+          createWorkspaceMessage({
+            uuid: "topic-b-message",
+            topicUuid: "topic-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicDividers: true }}
+        resolveTopicLabel={() => "Topic name"}
+      />,
+    );
+
+    expect(container.querySelector("[data-topic-divider='true']")).toHaveTextContent("#Topic name");
+    expect(container.querySelector("[data-topic-label='true']")).not.toBeInTheDocument();
+  });
+
+  it("shows a topic label only in the first bubble of an own message group", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-first",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+          }),
+          createWorkspaceMessage({
+            uuid: "own-second",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicLabels: true }}
+        resolveTopicLabel={() => "Planning"}
+      />,
+    );
+
+    const topicLabel = container.querySelector(
+      "[data-message-uuid='own-first'] [data-topic-label='true']",
+    );
+    expect(container.querySelectorAll("[data-topic-label='true']")).toHaveLength(1);
+    expect(topicLabel).toHaveTextContent("#Planning");
+    // Brand accent reads on own/peer bubbles; accent-soft is a wash and fails contrast
+    expect(topicLabel).toHaveClass("text-accent");
+    expect(
+      container.querySelector("[data-message-uuid='own-second'] [data-topic-label='true']"),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector("[data-peer-author-label='true']")).not.toBeInTheDocument();
+  });
+
   it("renders one Workspace peer avatar with presence for an author group", () => {
     const onOpenAuthorProfile = vi.fn();
     useUsersStore.getState().replaceUsers([

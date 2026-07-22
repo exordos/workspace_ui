@@ -119,6 +119,7 @@ import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
+import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import { useWorkspaceTransientRenderKeys } from "./chat-page-workspace-transient-render-keys.hook";
 import {
@@ -610,6 +611,25 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
   const streamsById = useMessengerStore((state) => state.streamsById);
+  const messageListPresentation = useMemo(() => {
+    if (selection.status !== "conversation" || selection.kind !== "stream") {
+      return undefined;
+    }
+
+    return { topicDividers: true, topicLabels: true } as const;
+  }, [selection]);
+  const resolveMessageTopicLabel = useMemo<
+    ((messageTopicUuid: MessengerUuid) => string | null) | undefined
+  >(() => {
+    if (messageListPresentation == null) {
+      return undefined;
+    }
+
+    return (messageTopicUuid: MessengerUuid) => {
+      const topicName = topicsById[messageTopicUuid]?.name.trim() ?? "";
+      return topicName.length > 0 ? topicName : null;
+    };
+  }, [messageListPresentation, topicsById]);
   const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
   const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
   const conversationsById = useMessengerStore((state) => state.conversationsById);
@@ -2350,6 +2370,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         onDismissBoundaryLoadFailed={noop}
         scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         resolveAuthorLabel={resolveAuthorLabel}
+        resolveTopicLabel={resolveMessageTopicLabel}
+        presentation={messageListPresentation}
         resolveMention={resolveMention}
       />
     );
@@ -2399,46 +2421,50 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             onCancel={handleCancelDeleteMessage}
           />
         ) : null}
-        <ChatPageComposerSection
-          isDmView={false}
-          activeDmUserIds={null}
-          activeStream={stream?.name ?? conversation?.title}
-          showTopicPrompt={false}
-          streamSlug={undefined}
-          onExpandStreamTopics={noop}
-          uploadProgress={uploadProgress}
-          onSend={handleSend}
-          optimisticClearOnSend
-          onCreateCallLink={undefined}
-          onCancelUpload={handleCancelUpload}
-          activeTopic={
-            selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
-          }
-          replyQuote={activeWorkspaceReplyQuote}
-          onClearReply={handleClearReply}
-          workspaceReplySession={workspaceReplySession}
-          onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
-          onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
-          onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
-          outgoingBodyOverride={workspaceReplyOutgoingBody}
-          allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
-          focusKey={
-            workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
-          }
-          draftSessionKey={workspaceComposerDraftSessionKey}
-          draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
-          onComposerValueChange={handleWorkspaceComposerValueChange}
-          onEditLastMessage={handleEditLastMessage}
-          editSession={effectiveComposerEditSession}
-          onSubmitEdit={handleSubmitEdit}
-          onCancelEdit={handleCancelEdit}
-          composerCapabilities={workspaceComposerCapabilities}
-          resolveMention={resolveMention}
-          onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
-          aiMessagesContext={[]}
-          aiChatContext={undefined}
-          readOnlyReason={composerReadOnlyReason}
-        />
+        {selection.status === "conversation" && selection.kind === "stream" ? (
+          <ChatPageStreamTopicPrompt />
+        ) : (
+          <ChatPageComposerSection
+            isDmView={false}
+            activeDmUserIds={null}
+            activeStream={stream?.name ?? conversation?.title}
+            showTopicPrompt={false}
+            streamSlug={undefined}
+            onExpandStreamTopics={noop}
+            uploadProgress={uploadProgress}
+            onSend={handleSend}
+            optimisticClearOnSend
+            onCreateCallLink={undefined}
+            onCancelUpload={handleCancelUpload}
+            activeTopic={
+              selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
+            }
+            replyQuote={activeWorkspaceReplyQuote}
+            onClearReply={handleClearReply}
+            workspaceReplySession={workspaceReplySession}
+            onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
+            onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
+            onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
+            outgoingBodyOverride={workspaceReplyOutgoingBody}
+            allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
+            focusKey={
+              workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
+            }
+            draftSessionKey={workspaceComposerDraftSessionKey}
+            draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
+            onComposerValueChange={handleWorkspaceComposerValueChange}
+            onEditLastMessage={handleEditLastMessage}
+            editSession={effectiveComposerEditSession}
+            onSubmitEdit={handleSubmitEdit}
+            onCancelEdit={handleCancelEdit}
+            composerCapabilities={workspaceComposerCapabilities}
+            resolveMention={resolveMention}
+            onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
+            aiMessagesContext={[]}
+            aiChatContext={undefined}
+            readOnlyReason={composerReadOnlyReason}
+          />
+        )}
       </section>
     </div>
   );

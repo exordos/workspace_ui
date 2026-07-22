@@ -156,4 +156,32 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
       "local-day-end-message",
     ]);
   });
+
+  it("starts a new author group whenever neighboring messages change topic", () => {
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({ uuid: "topic-a-first", topicUuid: "topic-a" }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "topic-b",
+          topicUuid: "topic-b",
+          createdAt: "2026-07-03T09:01:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "topic-a-second",
+          topicUuid: "topic-a",
+          createdAt: "2026-07-03T09:02:00.000Z",
+        }),
+      ),
+    ]);
+
+    expect(groupedMessages[0]?.authorGroups).toMatchObject([
+      { topicUuid: "topic-a", startsTopicRun: false },
+      { topicUuid: "topic-b", startsTopicRun: true },
+      { topicUuid: "topic-a", startsTopicRun: true },
+    ]);
+  });
 });

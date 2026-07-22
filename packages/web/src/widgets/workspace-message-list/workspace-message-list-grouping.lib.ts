@@ -8,6 +8,8 @@ import type {
 
 export interface WorkspaceMessageAuthorGroup {
   authorUuid: MessengerUuid;
+  topicUuid: MessengerUuid;
+  startsTopicRun: boolean;
   messages: readonly WorkspaceMessageListItem[];
 }
 
@@ -20,6 +22,8 @@ const UNKNOWN_DATE_KEY = "unknown-date";
 
 interface MutableWorkspaceMessageAuthorGroup {
   authorUuid: MessengerUuid;
+  topicUuid: MessengerUuid;
+  startsTopicRun: boolean;
   messages: WorkspaceMessageListItem[];
 }
 
@@ -108,6 +112,7 @@ export function groupWorkspaceMessagesByDayAndAuthor(
 ): WorkspaceMessageDayGroup[] {
   const sortedMessages = [...messages].sort(compareMessagesByCreatedAtThenKey);
   const dayGroups: MutableWorkspaceMessageDayGroup[] = [];
+  let previousTopicUuid: MessengerUuid | undefined;
 
   for (const message of sortedMessages) {
     const dateKey = getWorkspaceMessageDateKey(message);
@@ -122,10 +127,14 @@ export function groupWorkspaceMessagesByDayAndAuthor(
     }
 
     let authorGroup = dayGroup.authorGroups[dayGroup.authorGroups.length - 1];
+    const topicUuid = message.message.topicUuid;
+    const startsTopicRun = previousTopicUuid != null && previousTopicUuid !== topicUuid;
 
-    if (authorGroup?.authorUuid !== message.authorUuid) {
+    if (authorGroup?.authorUuid !== message.authorUuid || authorGroup.topicUuid !== topicUuid) {
       authorGroup = {
         authorUuid: message.authorUuid,
+        topicUuid,
+        startsTopicRun,
         messages: [],
       };
       dayGroup.authorGroups.push(authorGroup);
@@ -135,6 +144,7 @@ export function groupWorkspaceMessagesByDayAndAuthor(
     // Если другой автор вклинился между двумя сообщениями, ниже появится новая
     // группа того же authorUuid. Это важно для будущих аватаров и хвостиков bubble.
     authorGroup.messages.push(message);
+    previousTopicUuid = topicUuid;
   }
 
   return dayGroups;

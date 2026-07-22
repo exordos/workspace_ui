@@ -13,6 +13,7 @@ export interface WorkspaceMessageBubbleProps {
   isSelected?: boolean;
   selectionMode?: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  topicLabel?: string | null;
   resolveMention?: WorkspaceMessageMentionResolver;
   actions?: WorkspaceMessageListActions;
 }

@@ -607,6 +607,8 @@ describe("ChatPage Workspace route", () => {
     expect(captured.headerProps?.onOpenRightPanel).toEqual(expect.any(Function));
     expect(captured.headerProps?.onCallClick).toBeUndefined();
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+    expect(captured.messageListProps?.presentation).toBeUndefined();
+    expect(captured.messageListProps?.resolveTopicLabel).toBeUndefined();
     expect(captured.messageListProps?.currentUserUuid).toBe(USER_UUID);
     expect(captured.messageListProps?.resolveAuthorLabel?.(USER_B_UUID)).toBe("Bob Reed");
     expect(captured.messageListProps?.resolveMention?.("Bob Reed")).toMatchObject({
@@ -654,6 +656,23 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("enables topic presentation settings for every stream", async () => {
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`);
+    expect(captured.messageListProps?.presentation).toEqual({
+      topicDividers: true,
+      topicLabels: true,
+    });
+    expect(captured.messageListProps?.resolveTopicLabel?.(TOPIC_UUID)).toBe("Roadmap");
+    expect(captured.messageListProps?.resolveTopicLabel?.("missing-topic")).toBeNull();
+    expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(screen.getByTestId("stream-topic-prompt")).toHaveTextContent(
+      "Select a topic to write a message",
+    );
   });
 
   it("focuses a Workspace message route from the active store without loading a window", async () => {
@@ -905,6 +924,13 @@ describe("ChatPage Workspace route", () => {
 
       await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
       expect(captured.composerProps?.onCreateCallLink).toBeUndefined();
+      expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+      expect(screen.getByTestId("stream-topic-prompt")).toBeInTheDocument();
+      expect(captured.messageListProps?.presentation).toEqual({
+        topicDividers: true,
+        topicLabels: true,
+      });
+      expect(captured.messageListProps?.resolveTopicLabel?.(DIRECT_TOPIC_UUID)).toBe("private");
 
       act(() => {
         captured.headerProps?.onCallClick?.();
@@ -1347,7 +1373,14 @@ describe("ChatPage Workspace route", () => {
     await act(async () => {
       await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
     });
-    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("stream draft"));
+    expect(await screen.findByTestId("stream-topic-prompt")).toBeInTheDocument();
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        streamConversationId,
+      )?.content.text,
+    ).toBe("stream draft");
 
     await act(async () => {
       await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
@@ -1355,7 +1388,7 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("topic draft"));
   });
 
-  it("keeps Workspace reply callbacks scoped to the current draft after switching chats", async () => {
+  it("does not expose Workspace reply controls in a stream", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     const streamConversationId = `stream:${STREAM_UUID}`;
@@ -1402,62 +1435,22 @@ describe("ChatPage Workspace route", () => {
     await act(async () => {
       await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
     });
-    await waitFor(() =>
-      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-b"),
-    );
-
-    act(() => {
-      captured.composerProps?.onSelectWorkspaceReplyTab?.("reply-tab-b");
-    });
-    await waitFor(() => {
-      expect(
-        selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          ownerKey,
-          topicConversationId,
-        )?.content.replySession.activeTabId,
-      ).toBe("reply-tab-a");
-    });
-
-    act(() => {
-      captured.composerProps?.onReorderWorkspaceReplyTab?.("reply-tab-a", 2);
-    });
-    await waitFor(() => {
-      expect(
-        selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          ownerKey,
-          topicConversationId,
-        )?.content.replySession.tabs.map((tab) => tab.id),
-      ).toEqual(["reply-tab-a", "reply-tab-b"]);
-      expect(
-        selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          ownerKey,
-          streamConversationId,
-        )?.content.replySession.tabs.map((tab) => tab.id),
-      ).toEqual(["reply-tab-b", "reply-tab-a"]);
-    });
-
-    act(() => {
-      captured.composerProps?.onRemoveWorkspaceReplyTab?.("reply-tab-a");
-    });
-    await waitFor(() => {
-      expect(
-        selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          ownerKey,
-          topicConversationId,
-        )?.content.replySession.tabs.map((tab) => tab.id),
-      ).toEqual(["reply-tab-a", "reply-tab-b"]);
-      expect(
-        selectWorkspaceComposerDraft(
-          useWorkspaceComposerDraftStore.getState(),
-          ownerKey,
-          streamConversationId,
-        )?.content.replySession.tabs.map((tab) => tab.id),
-      ).toEqual(["reply-tab-b"]);
-    });
+    expect(await screen.findByTestId("stream-topic-prompt")).toBeInTheDocument();
+    expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      )?.content.replySession.activeTabId,
+    ).toBe("reply-tab-a");
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        streamConversationId,
+      )?.content.replySession.activeTabId,
+    ).toBe("reply-tab-b");
   });
 
   it("restores the Workspace reply session from the current conversation draft", async () => {
@@ -1844,7 +1837,7 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("keeps reply drafts in both chats when editing after a route switch", async () => {
+  it("keeps reply drafts unchanged when opening a stream", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     const streamConversationId = `stream:${STREAM_UUID}`;
@@ -1887,13 +1880,7 @@ describe("ChatPage Workspace route", () => {
     await act(async () => {
       await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
     });
-    await waitFor(() =>
-      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("stream-reply"),
-    );
-
-    act(() => {
-      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
-    });
+    expect(await screen.findByTestId("stream-topic-prompt")).toBeInTheDocument();
 
     expect(
       selectWorkspaceComposerDraft(

@@ -170,6 +170,7 @@
     "generalChat": "General Chat",
     "noMessages": "No messages here yet...",
     "selectTopic": "Select a topic to send messages to the channel",
+    "selectTopicToWrite": "Select a topic to write a message",
     "typing": "Typing",
     "typingUser": "{{name}} is typing…",
     "typingUsers": "{{names}} are typing…",

@@ -11,6 +11,7 @@ import type {
 import type {
   WorkspaceMessageConversationReference,
   WorkspaceMessageMediaGalleryOpenRequest,
+  WorkspaceMessageListPresentation,
 } from "~/widgets/workspace-message-list/workspace-message-list.types";
 
 export type WorkspaceChatMessagesLoadErrorKind = "initial" | "refresh";
@@ -69,5 +70,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onDismissBoundaryLoadFailed: () => void;
   scrollToBottomAfterSendNonce: number;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  resolveTopicLabel?: (topicUuid: MessengerUuid) => string | null | undefined;
+  presentation?: WorkspaceMessageListPresentation;
   resolveMention?: WorkspaceMessageMentionResolver;
 }

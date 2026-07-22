@@ -171,6 +171,7 @@
     "generalChat": "Общий чат",
     "noMessages": "Здесь пока нет сообщений...",
     "selectTopic": "Выберите тему для отправки сообщений в канал",
+    "selectTopicToWrite": "Выберите топик, чтобы написать сообщение",
     "typing": "Печатает",
     "typingUser": "{{name}} печатает…",
     "typingUsers": "{{names}} печатают…",

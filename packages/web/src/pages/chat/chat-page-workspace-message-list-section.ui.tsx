@@ -57,6 +57,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     onDismissBoundaryLoadFailed,
     scrollToBottomAfterSendNonce,
     resolveAuthorLabel,
+    resolveTopicLabel,
+    presentation,
     resolveMention,
   }: ChatPageWorkspaceMessageListSectionProps) {
     const handleRetryClick = useCallback(() => {
@@ -202,6 +204,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           onUnreadMessagesVisible={onUnreadMessagesVisible}
           onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
           resolveAuthorLabel={resolveAuthorLabel}
+          resolveTopicLabel={resolveTopicLabel}
+          presentation={presentation}
           resolveMention={resolveMention}
           actions={messageActions}
         />
