@@ -44,6 +44,7 @@ import {
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { selectMessengerSidebarTopicsForStream } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -610,7 +611,28 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
+  const topicIds = useMessengerStore((state) => state.topicIds);
+  const allWorkspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const streamsById = useMessengerStore((state) => state.streamsById);
+  const streamPromptTopics = useMemo(() => {
+    if (
+      selection.status !== "conversation" ||
+      selection.kind !== "stream" ||
+      runtimeContext == null
+    ) {
+      return [];
+    }
+
+    return selectMessengerSidebarTopicsForStream({
+      organizationId: runtimeContext.organizationId,
+      projectId: runtimeContext.projectId,
+      state: { topicIds, topicsById },
+      streamUuid: selection.streamUuid,
+      messagesById: allWorkspaceMessagesById,
+      usersById,
+      currentUserUuid: runtimeContext.userUuid,
+    }).filter((topic) => topic.title.trim().length > 0);
+  }, [allWorkspaceMessagesById, runtimeContext, selection, topicIds, topicsById, usersById]);
   const messageListPresentation = useMemo(() => {
     if (selection.status !== "conversation" || selection.kind !== "stream") {
       return undefined;
@@ -2237,6 +2259,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [navigate, runtimeContext, topicsById],
   );
+  const handleSelectStreamPromptTopic = useCallback(
+    (topicUuid: MessengerUuid) => {
+      if (selection.status !== "conversation" || selection.kind !== "stream") {
+        return;
+      }
+
+      handleOpenWorkspaceReference({
+        kind: "topic",
+        streamUuid: selection.streamUuid,
+        topicUuid,
+      });
+    },
+    [handleOpenWorkspaceReference, selection],
+  );
 
   const headerProps = useMemo<ChatHeaderProps>(() => {
     if (headerView.kind === "directPrivate" && workspaceMeetUrl != null) {
@@ -2422,7 +2458,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           />
         ) : null}
         {selection.status === "conversation" && selection.kind === "stream" ? (
-          <ChatPageStreamTopicPrompt />
+          <ChatPageStreamTopicPrompt
+            topics={streamPromptTopics}
+            onSelectTopic={handleSelectStreamPromptTopic}
+          />
         ) : (
           <ChatPageComposerSection
             isDmView={false}

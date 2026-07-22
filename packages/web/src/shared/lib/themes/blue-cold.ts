@@ -31,7 +31,8 @@ export const blueCold: ThemePalette = {
     "composer-send": "#7087ff",
     "composer-icon": "#707070",
 
-    "msg-bg": "#333333",
+    // Peer bubbles match sidebar/header chrome (card-bg)
+    "msg-bg": "#282a32",
     "msg-own-bg": "#252942",
     "msg-time": "#999999",
     "msg-call-bg": "#1f4637",
@@ -62,11 +63,13 @@ export const blueCold: ThemePalette = {
   },
 
   light: {
-    bg: "#e0ecf0",
+    // White underlay for chat column + folder rails (chrome panels use card-bg)
+    bg: "#ffffff",
     "bg-elevated": "#ffffff",
-    "card-bg": "#ecf4f8",
+    "card-bg": "#e3effa",
     "card-bg-active": "#c9e7ff",
-    "text-field-bg": "#eef5fd",
+    // Input fields sit on white underlay like page bg (not bluish wash)
+    "text-field-bg": "#ffffff",
 
     "text-primary": "#1b1b1d",
     "text-secondary": "#707b88",
@@ -83,11 +86,12 @@ export const blueCold: ThemePalette = {
     "sidebar-sender": "#7087ff",
     "sidebar-unread": "#7087ff",
 
-    "composer-outer": "#ecf4f8",
+    "composer-outer": "#e3effa",
     "composer-send": "#7087ff",
     "composer-icon": "#8f9bab",
 
-    "msg-bg": "#ffffff",
+    // Peer bubbles match top bar / sidebar chrome (card-bg)
+    "msg-bg": "#e3effa",
     "msg-own-bg": "#cce4fc",
     "msg-time": "#97a3b2",
     "msg-call-bg": "#cfe5d6",
@@ -107,7 +111,7 @@ export const blueCold: ThemePalette = {
     "call-green": "#26c038",
     "call-red": "#f04c4c",
 
-    "search-bg": "#eef5fd",
+    "search-bg": "#ffffff",
     "search-hint": "#97a3b2",
 
     "indicator-yellow": "#ffd633",

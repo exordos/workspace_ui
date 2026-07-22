@@ -2,11 +2,13 @@ import React from "react";
 
 interface WorkspaceMessageDividerProps extends React.HTMLAttributes<HTMLDivElement> {
   label?: string | null;
+  children?: React.ReactNode;
   tone?: "muted" | "notice";
 }
 
 export const WorkspaceMessageDivider = React.memo(function WorkspaceMessageDivider({
   label,
+  children,
   tone = "muted",
   className = "",
   ...props
@@ -21,7 +23,7 @@ export const WorkspaceMessageDivider = React.memo(function WorkspaceMessageDivid
       {...props}
     >
       <div className={`${lineClassName} h-px flex-1`} />
-      {normalizedLabel.length > 0 ? <span>{normalizedLabel}</span> : null}
+      {children ?? (normalizedLabel.length > 0 ? <span>{normalizedLabel}</span> : null)}
       <div className={`${lineClassName} h-px flex-1`} />
     </div>
   );

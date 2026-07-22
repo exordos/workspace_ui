@@ -87,7 +87,9 @@ describe("Icon", () => {
       const content = readFileSync(resolve(ICONS_DIR, file), "utf8");
       const paths = [...content.matchAll(/<path\b[^>]*>/gi)].map((match) => match[0]);
 
-      expect(content).toMatch(/viewBox="0 0 \d+ \d+"/);
+      expect(content).toMatch(
+        /viewBox="-?\d+(?:\.\d+)? -?\d+(?:\.\d+)? \d+(?:\.\d+)? \d+(?:\.\d+)?"/,
+      );
       expect(content).not.toMatch(/\bstroke\s*=/i);
       expect(paths.length, `${file} should contain at least one path`).toBeGreaterThan(0);
 

@@ -31,7 +31,8 @@ export const orangeWarm: ThemePalette = {
     "composer-send": "#ff8438",
     "composer-icon": "#707070",
 
-    "msg-bg": "#333333",
+    // Peer bubbles match sidebar/header chrome (card-bg)
+    "msg-bg": "#373737",
     "msg-own-bg": "#47382b",
     "msg-time": "#999999",
     "msg-call-bg": "#31402d",
@@ -64,7 +65,8 @@ export const orangeWarm: ThemePalette = {
   light: {
     bg: "#e4e4e4",
     "bg-elevated": "#ffffff",
-    "card-bg": "#f4f4f4",
+    // Match top bar (bg-elevated) so sidebars + chat header share the same light surface
+    "card-bg": "#ffffff",
     "card-bg-active": "#fde8cd",
     "text-field-bg": "#e6e6e6",
 
@@ -83,7 +85,8 @@ export const orangeWarm: ThemePalette = {
     "sidebar-sender": "#ff8438",
     "sidebar-unread": "#ff8438",
 
-    "composer-outer": "#f4f4f4",
+    // Same white surface as card-bg / top bar
+    "composer-outer": "#ffffff",
     "composer-send": "#ff8438",
     "composer-icon": "#9a9a9a",
 

@@ -27,10 +27,12 @@ export const emeraldChat: ThemePalette = {
     "sidebar-sender": "#63e09a",
     "sidebar-unread": "#2ecf72",
 
-    "composer-outer": "#1a2a25",
+    // Match sidebar/header chrome (card-bg), not the old green-tinted surface
+    "composer-outer": "#373737",
     "composer-send": "#2ecf72",
     "composer-icon": "#7e9890",
 
+    // Emerald exception: peer bubbles stay green-tinted, not card-bg chrome
     "msg-bg": "#1f2f2a",
     "msg-own-bg": "#1f4d3e",
     "msg-time": "#97b1a9",

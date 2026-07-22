@@ -152,7 +152,7 @@ describe("blue-cold light palette spec", () => {
     const blueCold = getPalette("blue-cold");
     const light = blueCold.light;
 
-    expect(light.bg).toBe("#e0ecf0");
+    expect(light.bg).toBe("#ffffff");
     expect(light["bg-elevated"]).toBe("#ffffff");
     expect(light.accent).toBe("#7087ff");
     expect(light["on-accent"]).toBe("#1b1b1d");
@@ -166,25 +166,30 @@ describe("blue-cold light palette spec", () => {
     expect(light["icon-hover"]).toBe("#c9e7ff");
     expect(light["icon-active"]).toBe("#1b1b1d");
 
-    expect(light["msg-bg"]).toBe("#ffffff");
+    expect(light["msg-bg"]).toBe("#e3effa");
+    expect(light["msg-bg"]).toBe(light["card-bg"]);
     expect(light["msg-time"]).toBe("#97a3b2");
     expect(light["msg-own-bg"]).toBe("#cce4fc");
     expect(light["msg-call-bg"]).toBe("#cfe5d6");
     expect(light["call-bg"]).toBe("#cfe5d6");
     expect(light["msg-selected"]).toBe("#c9e7ff");
 
-    expect(light["card-bg"]).toBe("#ecf4f8");
+    // Chrome panels (top bar, sidebars, chat header) stay on card-bg blue
+    expect(light["card-bg"]).toBe("#e3effa");
     expect(light["card-bg-active"]).toBe("#c9e7ff");
     expect(light["sidebar-bg"]).toBe("#ffffff");
     expect(light["sidebar-item-hover"]).toBe("#ecf4fc");
+    expect(light["composer-outer"]).toBe(light["card-bg"]);
 
     expect(light["notice-base"]).toBe("#7087ff");
     expect(light["notice-disable"]).toBe("#9ba6b4");
     expect(light["badge-text"]).toBe("#ffffff");
     expect(light["badge-bg"]).toBe("#7087ff");
 
-    expect(light["text-field-bg"]).toBe("#eef5fd");
-    expect(light["search-bg"]).toBe("#eef5fd");
+    expect(light["text-field-bg"]).toBe("#ffffff");
+    expect(light["text-field-bg"]).toBe(light.bg);
+    expect(light["search-bg"]).toBe("#ffffff");
+    expect(light["search-bg"]).toBe(light.bg);
     expect(light["border-subtle"]).toBe("#d8e4ef");
 
     expect(light["indicator-yellow"]).toBe("#ffd633");
@@ -220,10 +225,15 @@ describe("orange-warm light palette spec", () => {
     expect(light["text-secondary"]).toBe("#7e7e7e");
     expect(light["text-muted"]).toBe("#989898");
 
-    expect(light["card-bg"]).toBe("#f4f4f4");
+    // Same white surface as top bar (bg-elevated) for sidebars + chat header
+    expect(light["card-bg"]).toBe("#ffffff");
+    expect(light["card-bg"]).toBe(light["bg-elevated"]);
     expect(light["card-bg-active"]).toBe("#fde8cd");
     expect(light["sidebar-bg"]).toBe("#fafafa");
     expect(light["sidebar-item-hover"]).toBe("#f0f0f0");
+    // Composer chrome matches the same light surface as card panels
+    expect(light["composer-outer"]).toBe("#ffffff");
+    expect(light["composer-outer"]).toBe(light["card-bg"]);
 
     expect(light["msg-bg"]).toBe("#ffffff");
     expect(light["msg-own-bg"]).toBe("#fce8d0");
@@ -274,10 +284,14 @@ describe("blue-mist light palette spec", () => {
     expect(light["text-secondary"]).toBe("#66758a");
     expect(light["text-muted"]).toBe("#8d9bae");
 
-    expect(light["card-bg"]).toBe("#eff5fb");
+    // White chrome panels (top bar, sidebars, chat header, composer)
+    expect(light["card-bg"]).toBe("#ffffff");
+    expect(light["card-bg"]).toBe(light["bg-elevated"]);
     expect(light["card-bg-active"]).toBe("#d5e5f6");
-    expect(light["sidebar-bg"]).toBe("#f9fcff");
+    expect(light["sidebar-bg"]).toBe("#ffffff");
     expect(light["sidebar-item-hover"]).toBe("#edf4fb");
+    expect(light["composer-outer"]).toBe("#ffffff");
+    expect(light["composer-outer"]).toBe(light["card-bg"]);
 
     expect(light["msg-bg"]).toBe("#ffffff");
     expect(light["msg-own-bg"]).toBe("#dbe8f8");
@@ -328,6 +342,9 @@ describe("emerald-chat dark palette spec", () => {
     expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
     expect(dark["sidebar-item-hover"]).toBe("#4b4b4b");
     expect(dark["border-subtle"]).toBe("#3f3f45");
+    // Composer chrome matches card panels (not the old green-tinted #1a2a25)
+    expect(dark["composer-outer"]).toBe(dark["card-bg"]);
+    expect(dark["composer-outer"]).toBe("#373737");
   });
 });
 
@@ -347,6 +364,25 @@ describe("emerald-chat light palette spec", () => {
 });
 
 describe("dark palette structural contract", () => {
+  it("aligns peer message bubbles with card chrome across dark palettes except emerald and blue-mist", () => {
+    for (const paletteId of ["orange-warm", "blue-cold"] as const) {
+      const dark = getPalette(paletteId).dark;
+      expect(dark["msg-bg"], `${paletteId}.dark.msg-bg`).toBe(dark["card-bg"]);
+    }
+  });
+
+  it("keeps emerald peer bubbles on the dedicated green-tinted msg-bg", () => {
+    const dark = getPalette("emerald-chat").dark;
+    expect(dark["msg-bg"]).toBe("#1f2f2a");
+    expect(dark["msg-bg"]).not.toBe(dark["card-bg"]);
+  });
+
+  it("keeps blue-mist peer bubbles on the dedicated mock msg-bg", () => {
+    const dark = getPalette("blue-mist").dark;
+    expect(dark["msg-bg"]).toBe("#323c4a");
+    expect(dark["msg-bg"]).not.toBe(dark["card-bg"]);
+  });
+
   it("keeps dark search and selection overlays aligned across palettes", () => {
     const expectedSelections = {
       "blue-cold": "rgba(112, 135, 255, 0.32)",

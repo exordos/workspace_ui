@@ -512,7 +512,11 @@ describe("FolderRail visual parity", () => {
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
     expect(addFolderButton).toHaveClass("h-8");
     expect(addFolderButton).toHaveClass("w-8");
+    // Same neutral hover surface as system folders (CSS hover:, not always-on border).
     expect(addFolderButton).not.toHaveClass("border-border-subtle");
+    expect(addFolderButton).toHaveClass("hover:bg-sidebar-hover");
+    expect(addFolderButton).toHaveClass("hover:border-border-subtle");
+    expect(addFolderButton).toHaveClass("cursor-pointer");
     const addIconPath = addFolderButton.querySelector("path");
     expect(addIconPath?.getAttribute("fill")).toBe("currentColor");
   });

@@ -22,6 +22,7 @@ import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
   SIDEBAR_STREAM_GROUP_RAIL_CLASS,
+  SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
   SIDEBAR_TOPIC_TITLE_CLASS,
   isWorkspaceSidebarStreamHighlighted,
@@ -340,10 +341,7 @@ function WorkspaceSidebarStreamRow({
             />
           </Link>
           {!compact && stream.preview?.route != null && (
-            <Link
-              to={stream.preview.route}
-              className="-ml-1.5 block min-w-0 rounded-md py-0.5 pl-1.5 pr-2 transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover focus-visible:outline-none"
-            >
+            <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
               <SidebarMessagePreview
                 senderName={stream.preview.senderName}
                 message={stream.preview.text}

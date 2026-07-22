@@ -28,6 +28,14 @@ export function sidebarStreamGroupClass(expanded: boolean): string {
 export const SIDEBAR_STREAM_GROUP_RAIL_CLASS = "w-[3px] shrink-0 self-stretch bg-sidebar-sender";
 
 /**
+ * Last-message preview link inside a stream card.
+ * Uses `bg` (page canvas), not `sidebar-hover` — the parent row already applies
+ * `hover:bg-sidebar-hover`, so the same token makes the nested target look inert.
+ */
+export const SIDEBAR_STREAM_PREVIEW_LINK_CLASS =
+  "-ml-1.5 block min-w-0 rounded-md py-0.5 pl-1.5 pr-2 transition-colors hover:bg-bg focus-visible:bg-bg focus-visible:outline-none";
+
+/**
  * Topic row shell — same card radius/padding rhythm as stream rows, without avatar.
  * Left padding aligns text under the channel title (Figma: 38px). Content stays 2 lines.
  * Title: 14/20 medium; preview stays on the shared SidebarMessagePreview (12/20 regular).

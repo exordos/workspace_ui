@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SIDEBAR_STREAM_GROUP_RAIL_CLASS,
+  SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
   isWorkspaceSidebarStreamHighlighted,
   sidebarNewTopicButtonClass,
@@ -28,6 +29,14 @@ describe("SIDEBAR_STREAM_GROUP_RAIL_CLASS", () => {
     expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).toContain("w-[3px]");
     expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).toContain("bg-sidebar-sender");
     expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).not.toContain("rounded");
+  });
+});
+
+describe("SIDEBAR_STREAM_PREVIEW_LINK_CLASS", () => {
+  it("uses page bg for nested hover so it stays visible on a hovered stream card", () => {
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("hover:bg-bg");
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("focus-visible:bg-bg");
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).not.toContain("sidebar-hover");
   });
 });
 

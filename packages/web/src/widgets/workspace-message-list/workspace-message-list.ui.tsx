@@ -20,6 +20,7 @@ import {
 } from "./workspace-message-list-grouping.lib";
 import { collectWorkspaceMessageImageGallery } from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
+import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-grouping.lib";
 import type {
   WorkspaceMessageListOutgoingItem,
@@ -478,6 +479,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                 stableFirstUnreadUuid != null &&
                 authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
               const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
+              const dividerTopicLabel = formatWorkspaceTopicLabel(
+                resolveTopicLabel?.(authorGroup.topicUuid),
+              );
+              const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
 
               return (
                 <React.Fragment key={authorGroupKey}>
@@ -486,10 +491,18 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                   )}
                   {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
                     <WorkspaceMessageDivider
-                      label={formatWorkspaceTopicLabel(resolveTopicLabel?.(authorGroup.topicUuid))}
                       data-topic-divider="true"
                       data-topic-uuid={authorGroup.topicUuid}
-                    />
+                    >
+                      {dividerTopicLabel != null && dividerStreamUuid != null ? (
+                        <WorkspaceMessageTopicLink
+                          label={dividerTopicLabel}
+                          streamUuid={dividerStreamUuid}
+                          topicUuid={authorGroup.topicUuid}
+                          onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
+                        />
+                      ) : null}
+                    </WorkspaceMessageDivider>
                   ) : null}
                   <WorkspaceMessageAuthorGroupView
                     group={authorGroup}

@@ -658,7 +658,7 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
   });
 
-  it("enables topic presentation settings for every stream", async () => {
+  it("enables topic presentation settings and opens a topic from the stream prompt", async () => {
     renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
 
     expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
@@ -670,8 +670,14 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.resolveTopicLabel?.(TOPIC_UUID)).toBe("Roadmap");
     expect(captured.messageListProps?.resolveTopicLabel?.("missing-topic")).toBeNull();
     expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
-    expect(screen.getByTestId("stream-topic-prompt")).toHaveTextContent(
-      "Select a topic to write a message",
+    expect(screen.getByTestId("stream-topic-prompt")).toHaveTextContent("Select topic:");
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /#\s*Roadmap/ }));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      ),
     );
   });
 

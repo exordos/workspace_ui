@@ -177,6 +177,7 @@ describe("WorkspaceMessageList", () => {
   });
 
   it("renders topic dividers and topic labels from presentation settings", () => {
+    const onOpenWorkspaceReference = vi.fn();
     const { container } = render(
       <WorkspaceMessageList
         messages={[
@@ -203,6 +204,7 @@ describe("WorkspaceMessageList", () => {
         resolveTopicLabel={(topicUuid) =>
           ({ "topic-a": "Planning", "topic-b": "Releases" })[topicUuid] ?? null
         }
+        actions={{ onOpenWorkspaceReference }}
       />,
     );
 
@@ -221,6 +223,22 @@ describe("WorkspaceMessageList", () => {
       ),
     ).not.toBeInTheDocument();
     expect(screen.getByText("#Planning")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("#Planning"));
+    const releasesDividerLink = topicDividers[0]?.querySelector("[data-topic-link='true']");
+    expect(releasesDividerLink).not.toBeNull();
+    fireEvent.click(releasesDividerLink as Element);
+
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(1, {
+      kind: "topic",
+      streamUuid: "stream-uuid-1",
+      topicUuid: "topic-a",
+    });
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(2, {
+      kind: "topic",
+      streamUuid: "stream-uuid-1",
+      topicUuid: "topic-b",
+    });
   });
 
   it("can enable topic dividers without showing topic labels in bubbles", () => {
@@ -1153,6 +1171,12 @@ describe("WorkspaceMessageList", () => {
 
     expect(ownArticle).toHaveAttribute("data-message-owner", "own");
     expect(peerArticle).toHaveAttribute("data-message-owner", "peer");
+    expect(ownArticle?.querySelector("[data-workspace-message-bubble='true']")).toHaveClass(
+      "bg-msg-own-bg",
+    );
+    expect(peerArticle?.querySelector("[data-workspace-message-bubble='true']")).toHaveClass(
+      "bg-msg-bg",
+    );
     expect(ownArticle?.querySelector("[data-peer-author-label='true']")).not.toBeInTheDocument();
     expect(peerArticle?.querySelector("[data-peer-author-label='true']")).toHaveTextContent(
       "Bob Reed",
@@ -3165,6 +3189,7 @@ describe("WorkspaceMessageList", () => {
     expect(bubble).toHaveClass("rounded-[18px]");
     expect(bubble).toHaveClass("rounded-bl-[6px]");
     expect(bubble).toHaveClass("bg-msg-call-bg");
+    expect(bubble).not.toHaveClass("bg-msg-bg");
     expect(bubble).not.toHaveClass("bg-bg-elevated");
     expect(jitsiCallButton).toHaveTextContent(/workspace design sync room/i);
     expect(jitsiCallButton).toHaveTextContent(/roadmap/i);

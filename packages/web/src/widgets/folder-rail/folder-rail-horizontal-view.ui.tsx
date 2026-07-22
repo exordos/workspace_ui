@@ -160,7 +160,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
           type="button"
           onClick={onOpenCreateDialog}
           data-folder-rail-action="add-folder"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent text-text-primary transition-colors hover:border-border-subtle hover:bg-sidebar-hover"
           aria-label={t("a11y.addFolder")}
         >
           <Icon name="add" size={24} className="shrink-0" />

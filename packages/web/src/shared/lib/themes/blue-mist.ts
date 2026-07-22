@@ -31,6 +31,7 @@ export const blueMist: ThemePalette = {
     "composer-send": "#7d9ddf",
     "composer-icon": "#748396",
 
+    // Blue Mist exception: peer bubbles use dedicated mock color, not card-bg
     "msg-bg": "#323c4a",
     "msg-own-bg": "#2a3a50",
     "msg-time": "#9aa8b8",
@@ -64,7 +65,8 @@ export const blueMist: ThemePalette = {
   light: {
     bg: "#e8f0f5",
     "bg-elevated": "#ffffff",
-    "card-bg": "#eff5fb",
+    // White chrome for top bar / sidebars / chat header (was bluish #eff5fb)
+    "card-bg": "#ffffff",
     "card-bg-active": "#d5e5f6",
     "text-field-bg": "#f0f6fc",
 
@@ -78,12 +80,12 @@ export const blueMist: ThemePalette = {
 
     "border-subtle": "#d3dfec",
 
-    "sidebar-bg": "#f9fcff",
+    "sidebar-bg": "#ffffff",
     "sidebar-item-hover": "#edf4fb",
     "sidebar-sender": "#6f90d8",
     "sidebar-unread": "#6f90d8",
 
-    "composer-outer": "#edf4fa",
+    "composer-outer": "#ffffff",
     "composer-send": "#6f90d8",
     "composer-icon": "#8fa0b6",
 

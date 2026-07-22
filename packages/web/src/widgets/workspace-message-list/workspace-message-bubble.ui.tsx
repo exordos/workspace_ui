@@ -18,6 +18,7 @@ import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jits
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
+import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 import type { WorkspaceMessageListItem } from "./workspace-message-list.types";
 
@@ -42,9 +43,10 @@ const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
 const BASE_BUBBLE_CLASS_NAME =
   "max-w-[min(720px,88%)] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
 const OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-own-bg`;
-const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-bg-elevated`;
+// Peer bubbles use msg-bg (aligned with card-bg chrome in dark palettes)
+const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-bg`;
 const COMPACT_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-own-bg`;
-const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-bg-elevated`;
+const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-msg-bg`;
 const JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-call-bg`;
 const JITSI_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-call-bg`;
 const COMPACT_JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-call-bg`;
@@ -404,7 +406,12 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             {normalizedTopicLabel.length > 0 ? (
               // accent (not accent-soft): soft is a wash bg and disappears on bubbles across palettes
               <span className="min-w-0 truncate text-accent" data-topic-label="true">
-                {normalizedTopicLabel}
+                <WorkspaceMessageTopicLink
+                  label={normalizedTopicLabel}
+                  streamUuid={displayMessage.streamUuid}
+                  topicUuid={displayMessage.topicUuid}
+                  onOpenWorkspaceReference={actions?.onOpenWorkspaceReference}
+                />
               </span>
             ) : null}
           </div>

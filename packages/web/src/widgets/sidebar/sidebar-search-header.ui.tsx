@@ -25,7 +25,8 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
           className="hover:bg-bg/60 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary"
           aria-label={t("nav.newChat")}
         >
-          <Icon name="newWindow" size={20} />
+          {/* The cropped viewBox lets the glyph fill the 21px layout box. */}
+          <Icon name="newWindow" size={21} />
         </button>
       ) : null}
     </div>

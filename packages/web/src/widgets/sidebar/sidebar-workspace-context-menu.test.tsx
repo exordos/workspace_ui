@@ -381,7 +381,7 @@ describe("WorkspaceSidebar context menu", () => {
 
     const previewLink = screen.getByRole("link", { name: /alice:latest update/i });
     expect(previewLink).toHaveAttribute("href", previewRoute);
-    expect(previewLink).toHaveClass("hover:bg-sidebar-hover");
+    expect(previewLink).toHaveClass("hover:bg-bg");
 
     act(() => {
       fireEvent.click(previewLink);

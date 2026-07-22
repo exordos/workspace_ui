@@ -11,11 +11,11 @@
  * They match the default product theme: Blue Cold light.
  */
 :root {
-  --color-bg: #e0ecf0;
+  --color-bg: #ffffff;
   --color-bg-elevated: #ffffff;
-  --color-card-bg: #ecf4f8;
+  --color-card-bg: #e3effa;
   --color-card-bg-active: #c9e7ff;
-  --color-text-field-bg: #eef5fd;
+  --color-text-field-bg: #ffffff;
   --color-text-primary: #1b1b1d;
   --color-text-secondary: #707b88;
   --color-text-muted: #97a3b2;
@@ -27,10 +27,10 @@
   --color-sidebar-item-hover: #ecf4fc;
   --color-sidebar-sender: #7087ff;
   --color-sidebar-unread: #7087ff;
-  --color-composer-outer: #ecf4f8;
+  --color-composer-outer: #e3effa;
   --color-composer-send: #7087ff;
   --color-composer-icon: #8f9bab;
-  --color-msg-bg: #ffffff;
+  --color-msg-bg: #e3effa;
   --color-msg-own-bg: #cce4fc;
   --color-msg-time: #97a3b2;
   --color-msg-call-bg: #e0fce8;
@@ -46,7 +46,7 @@
   --color-call-bg: #e0fce8;
   --color-call-green: #26c038;
   --color-call-red: #f04c4c;
-  --color-search-bg: #eef5fd;
+  --color-search-bg: #ffffff;
   --color-search-hint: #97a3b2;
   --color-indicator-yellow: #ffd633;
   --color-indicator-pink: #f458d2;
@@ -576,6 +576,7 @@ img {
   .hover\:bg-sidebar-hover:hover,
   .hover\:bg-card-bg:hover,
   .hover\:bg-card-bg-active:hover,
+  .hover\:bg-bg:hover,
   .hover\:text-text-primary:hover {
     background-color: unset;
     color: unset;
