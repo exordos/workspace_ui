@@ -3,6 +3,16 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 
 export type ConnectExternalAccountProvider = "zulip";
 
+export type ConnectExternalAccountError =
+  | "fill"
+  | "duplicate"
+  | "invalid-url"
+  | "invalid-email"
+  | "invalid"
+  | "forbidden"
+  | "unavailable"
+  | "connect";
+
 export interface ConnectExternalAccountDraft {
   provider: ConnectExternalAccountProvider;
   serverUrl: string;
@@ -14,7 +24,7 @@ export interface ConnectExternalAccountFormProps {
   draft: ConnectExternalAccountDraft;
   accounts: readonly ExternalAccount[];
   submitting: boolean;
-  error: string | null;
+  error: ConnectExternalAccountError | null;
   onProviderChange: (provider: ConnectExternalAccountProvider) => void;
   onServerUrlChange: (value: string) => void;
   onEmailChange: (value: string) => void;

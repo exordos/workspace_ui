@@ -21,6 +21,7 @@ function errorText(error: string | null): string | null {
   if (error === "invalid-url") return t("connectExternalAccount.errors.serverUrlInvalid");
   if (error === "invalid-email") return t("connectExternalAccount.errors.emailInvalid");
   if (error === "invalid") return t("connectExternalAccount.errors.invalidCredentials");
+  if (error === "forbidden") return t("connectExternalAccount.errors.forbidden");
   if (error === "unavailable") return t("connectExternalAccount.errors.unavailable");
   if (error === "connect") return t("connectExternalAccount.errors.requestFailed");
   return null;
