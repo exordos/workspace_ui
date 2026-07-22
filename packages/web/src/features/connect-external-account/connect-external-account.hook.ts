@@ -6,11 +6,12 @@ import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-req
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createExternalAccount } from "~/shared/api/messenger-external-accounts.api";
-import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
+import { connectExternalAccountRequestError } from "./connect-external-account-error.lib";
 import type {
   ConnectExternalAccountDraft,
+  ConnectExternalAccountError,
   ConnectExternalAccountProvider,
 } from "./connect-external-account.types";
 
@@ -32,7 +33,7 @@ export interface UseConnectExternalAccountResult {
   accounts: ExternalAccount[];
   submitting: boolean;
   loadingAccounts: boolean;
-  error: string | null;
+  error: ConnectExternalAccountError | null;
   duplicateZulip: boolean;
   setProvider: (provider: ConnectExternalAccountProvider) => void;
   setServerUrl: (value: string) => void;
@@ -48,7 +49,7 @@ export function useConnectExternalAccount({
 }: UseConnectExternalAccountOptions): UseConnectExternalAccountResult {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ConnectExternalAccountError | null>(null);
   const storedAccounts = useExternalAccountStore((state) => state.accounts);
   const accountOwnerKey = useExternalAccountStore((state) => state.ownerKey);
   const accountLoadStatus = useExternalAccountStore((state) => state.loadStatus);
@@ -132,25 +133,7 @@ export function useConnectExternalAccount({
         onCompleted?.();
       })
       .catch((requestError: unknown) => {
-        if (requestError instanceof MessengerApiError && requestError.status === 409) {
-          setError("duplicate");
-          return;
-        }
-        if (
-          requestError instanceof MessengerApiError &&
-          (requestError.status === 400 || requestError.status === 401)
-        ) {
-          setError("invalid");
-          return;
-        }
-        if (
-          requestError instanceof MessengerApiError &&
-          (requestError.status === 502 || requestError.status === 503)
-        ) {
-          setError("unavailable");
-          return;
-        }
-        setError("connect");
+        setError(connectExternalAccountRequestError(requestError));
       })
       .finally(() => setSubmitting(false));
   }, [

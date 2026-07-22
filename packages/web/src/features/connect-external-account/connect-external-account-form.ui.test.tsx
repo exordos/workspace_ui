@@ -67,4 +67,13 @@ describe("ConnectExternalAccountForm", () => {
     expect(screen.getByRole("button", { name: /connect/i })).toBeDisabled();
     expect(screen.getByText(/only one Zulip account/i)).toBeInTheDocument();
   });
+
+  it("explains a forbidden integration without exposing the backend error", () => {
+    renderForm({ error: "forbidden" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The Zulip integration is unavailable for your account",
+    );
+    expect(screen.queryByText(/ExternalResourceForbiddenError/i)).not.toBeInTheDocument();
+  });
 });
