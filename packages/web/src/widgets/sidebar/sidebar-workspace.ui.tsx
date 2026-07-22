@@ -21,14 +21,15 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
-  SIDEBAR_STREAM_GROUP_RAIL_CLASS,
   SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
+  SIDEBAR_TOPIC_BAR_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
   SIDEBAR_TOPIC_TITLE_CLASS,
+  formatSidebarTopicTitle,
   isWorkspaceSidebarStreamHighlighted,
+  resolveSidebarTopicBarColor,
   sidebarChatRowBodyClass,
   sidebarChatRowLinkClass,
-  sidebarNewTopicButtonClass,
   sidebarStreamGroupClass,
   sidebarTopicRowLinkClass,
 } from "./sidebar-chat-row-layout.lib";
@@ -130,13 +131,16 @@ function WorkspaceSidebarTopicRow({
   streamTitle,
   activeTopicUuid,
   compact,
+  barColor,
 }: Readonly<{
   topic: MessengerSidebarTopicItem;
   streamTitle: string;
   activeTopicUuid: string | null;
   compact: boolean;
+  barColor: string;
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
+  const title = formatSidebarTopicTitle(topic.title);
 
   return (
     <WorkspaceTopicContextMenu topic={topic} streamTitle={streamTitle}>
@@ -144,13 +148,19 @@ function WorkspaceSidebarTopicRow({
         to={topic.route}
         className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)}`}
       >
+        <span
+          aria-hidden
+          className={SIDEBAR_TOPIC_BAR_CLASS}
+          style={{ backgroundColor: barColor }}
+          data-testid="sidebar-topic-bar"
+        />
         <div className="min-w-0 flex-1">
           <div
             className={`${SIDEBAR_TOPIC_TITLE_CLASS} ${
               topic.isDone ? "line-through opacity-70" : ""
             }`}
           >
-            {topic.title}
+            {title}
           </div>
           {!compact && (
             <SidebarMessagePreview
@@ -171,37 +181,16 @@ function WorkspaceSidebarTopicRow({
   );
 }
 
-const WorkspaceSidebarNewTopicButton = React.memo(function WorkspaceSidebarNewTopicButton({
-  compact,
-  onCreateTopic,
-}: {
-  compact: boolean;
-  onCreateTopic: () => void;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      onClick={onCreateTopic}
-      className={sidebarNewTopicButtonClass(compact)}
-      data-testid="sidebar-new-topic-button"
-    >
-      {`+ ${t("channel.newTopic")}`}
-    </button>
-  );
-});
-
 const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   stream,
   activeTopicUuid,
   normalizedQuery,
   compact,
-  onCreateTopic,
 }: {
   stream: MessengerSidebarStreamItem;
   activeTopicUuid: string | null;
   normalizedQuery: string;
   compact: boolean;
-  onCreateTopic: () => void;
 }): React.ReactElement | null {
   const topics = useMemo(
     () => stream.topics.filter((topic) => workspaceTopicMatchesQuery(topic, normalizedQuery)),
@@ -213,18 +202,21 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
 
   return (
     <>
-      <WorkspaceSidebarNewTopicButton compact={compact} onCreateTopic={onCreateTopic} />
       {visibleTopics.length > 0 ? (
         <div className={SIDEBAR_TOPIC_LIST_CLASS}>
-          {visibleTopics.map((topic) => (
-            <WorkspaceSidebarTopicRow
-              key={topic.id}
-              topic={topic}
-              streamTitle={stream.title}
-              activeTopicUuid={activeTopicUuid}
-              compact={compact}
-            />
-          ))}
+          {visibleTopics.map((topic) => {
+            const barColor = resolveSidebarTopicBarColor({ color: topic.color });
+            return (
+              <WorkspaceSidebarTopicRow
+                key={topic.id}
+                topic={topic}
+                streamTitle={stream.title}
+                activeTopicUuid={activeTopicUuid}
+                compact={compact}
+                barColor={barColor}
+              />
+            );
+          })}
         </div>
       ) : null}
       {showToggle && (
@@ -265,6 +257,8 @@ function WorkspaceSidebarStreamRow({
     activeTopicUuid,
   });
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
+  // Highlight only the active route — never “expanded”.
+  const rowSurfaceClass = sidebarRowClass(isActive);
   const avatarSize = compact ? "sm" : "md";
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
@@ -279,8 +273,8 @@ function WorkspaceSidebarStreamRow({
       ? stream.statusText.trim()
       : null;
 
-  // When topics are open, a left rail groups the channel row with its topic stack.
-  const showGroupRail = expanded && stream.topics.length > 0;
+  // One shared card for channel + topics + show-more.
+  const showGroupShell = expanded;
 
   const streamBlock = (
     <WorkspaceStreamContextMenu
@@ -288,19 +282,18 @@ function WorkspaceSidebarStreamRow({
       onTopicCreated={onTopicCreated}
       below={
         expanded
-          ? ({ onCreateTopic }) => (
+          ? () => (
               <WorkspaceSidebarTopics
                 stream={stream}
                 activeTopicUuid={activeTopicUuid}
                 normalizedQuery={normalizedQuery}
                 compact={compact}
-                onCreateTopic={onCreateTopic}
               />
             )
           : undefined
       }
     >
-      <div className={`${rowClass} w-full ${sidebarRowClass(isActive)}`}>
+      <div className={`${rowClass} w-full ${rowSurfaceClass}`}>
         <Link
           to={stream.route}
           className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
@@ -369,20 +362,11 @@ function WorkspaceSidebarStreamRow({
     </WorkspaceStreamContextMenu>
   );
 
-  if (!showGroupRail) {
+  if (!showGroupShell) {
     return streamBlock;
   }
 
-  return (
-    <div className={sidebarStreamGroupClass(true)}>
-      <div
-        aria-hidden
-        className={SIDEBAR_STREAM_GROUP_RAIL_CLASS}
-        data-testid="sidebar-stream-group-rail"
-      />
-      <div className="min-w-0 flex-1">{streamBlock}</div>
-    </div>
-  );
+  return <div className={sidebarStreamGroupClass(true)}>{streamBlock}</div>;
 }
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
@@ -475,7 +459,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
 
   return (
     <aside
-      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-lg bg-card-bg"
+      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-lg bg-bg-elevated"
       data-focus-zone="sidebar"
       role="navigation"
       aria-label="Chat list"

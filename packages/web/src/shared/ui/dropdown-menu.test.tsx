@@ -36,8 +36,8 @@ describe("DropdownMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Add to folder" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "Pin" })).toBeInTheDocument();
     expect(screen.getByTestId("menu-custom")).toBeInTheDocument();
-    // Menu surface matches header/sidebar chrome (card-bg) across all palettes
-    expect(screen.getByRole("menu")).toHaveClass("bg-card-bg");
+    // Menu surface matches header/sidebar chrome (bg-elevated) across all palettes
+    expect(screen.getByRole("menu")).toHaveClass("bg-bg-elevated");
   });
 
   it("supports danger, disabled, and keepOpenOnSelect", () => {

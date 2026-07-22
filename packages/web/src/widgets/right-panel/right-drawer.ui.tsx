@@ -9,7 +9,7 @@ export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, title, childr
 
   return (
     <aside
-      className="relative flex min-h-0 w-panel-right flex-shrink-0 flex-col overflow-hidden rounded-lg bg-card-bg px-2 pb-5 pt-2"
+      className="relative flex min-h-0 w-panel-right flex-shrink-0 flex-col overflow-hidden rounded-lg bg-bg-elevated px-2 pb-5 pt-2"
       data-focus-zone="panel"
       aria-label={t("a11y.infoPanel")}
     >

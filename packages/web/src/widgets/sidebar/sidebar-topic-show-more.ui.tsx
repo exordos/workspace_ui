@@ -1,7 +1,10 @@
 import React, { useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { sidebarTopicShowMoreButtonClass } from "./sidebar-chat-row-layout.lib";
+import {
+  SIDEBAR_TOPIC_BAR_SPACER_CLASS,
+  sidebarTopicShowMoreButtonClass,
+} from "./sidebar-chat-row-layout.lib";
 
 export interface SidebarTopicShowMoreButtonProps {
   /** Full topic list is expanded. */
@@ -37,13 +40,16 @@ export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonP
         aria-expanded={expanded}
         aria-label={label}
       >
-        {/* Hug content on the left — padding lives on the button (same 38px as topic cards). */}
-        <span className="min-w-0 truncate">{label}</span>
+        {/* Same bar gutter as topic rows so the label lines up with titles. */}
+        <span className={`flex min-w-0 flex-1 items-center ${compact ? "gap-2" : "gap-3"}`}>
+          <span aria-hidden className={SIDEBAR_TOPIC_BAR_SPACER_CLASS} />
+          <span className="min-w-0 truncate">{label}</span>
+        </span>
         {/* Figma Arrow-b: instance height 16, viewBox 20 — Icon size={16} matches the shell. */}
         {expanded ? (
-          <Icon name="chevron-up" size={16} className="ml-2 shrink-0 text-text-primary" />
+          <Icon name="chevron-up" size={16} className="shrink-0 text-text-primary" />
         ) : (
-          <Icon name="chevron-down" size={16} className="ml-2 shrink-0 text-text-primary" />
+          <Icon name="chevron-down" size={16} className="shrink-0 text-text-primary" />
         )}
       </button>
     );

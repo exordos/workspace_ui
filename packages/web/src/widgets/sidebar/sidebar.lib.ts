@@ -68,7 +68,8 @@ export const VISIBLE_MY_ACTIVITY = MY_ACTIVITY.filter((item) =>
   VISIBLE_MY_ACTIVITY_KEYS.has(item.key),
 );
 
-export const TOPIC_BAR_COLORS = ["var(--color-indicator-yellow)", "var(--color-indicator-pink)"];
+/** Theme-aware gray when a topic has no color from the API. */
+export const TOPIC_BAR_FALLBACK_COLOR = "var(--color-icon-base)";
 export const MOCK_DMS: SidebarChat[] = [
   {
     type: "dm",

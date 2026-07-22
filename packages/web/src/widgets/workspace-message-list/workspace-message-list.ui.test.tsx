@@ -2841,6 +2841,11 @@ describe("WorkspaceMessageList", () => {
             reactions: { "👍": 1 },
             ownReactionUuidsByEmojiName: { "👍": "reaction-uuid-1" },
           }),
+          createWorkspaceMessage({
+            uuid: "peer-reaction-chip-message",
+            markdown: "Peer reacted text",
+            reactions: { "👏": 2 },
+          }),
         ]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
@@ -2854,12 +2859,18 @@ describe("WorkspaceMessageList", () => {
       "[data-workspace-message-reaction-footer='true']",
     );
     const messageTime = article?.querySelector("[data-message-time='true']");
+    const peerArticle = container.querySelector("[data-message-uuid='peer-reaction-chip-message']");
+    const peerReactionChip = peerArticle?.querySelector(
+      "[data-workspace-message-reaction-chip='true']",
+    );
 
     expect(reactionChip).toBeInTheDocument();
     expect(reactionChip).toHaveTextContent("👍");
     expect(reactionChip).toHaveTextContent("1");
     expect(reactionFooter).toContainElement(reactionChip as HTMLElement);
     expect(reactionFooter).toContainElement(messageTime as HTMLElement);
+    // Idle chips use card hover tokens so they stay visible on white peer bubbles
+    expect(peerReactionChip).toHaveClass("bg-card-bg", "hover:bg-card-bg-active");
 
     fireEvent.click(reactionChip!);
 
@@ -2896,6 +2907,8 @@ describe("WorkspaceMessageList", () => {
 
     openWorkspaceMessageMenu();
 
+    expect(screen.getByLabelText("Message menu")).toHaveClass("hover:bg-sidebar-hover");
+    expect(await screen.findByRole("menu")).toHaveClass("bg-bg-elevated");
     expect(await screen.findByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();

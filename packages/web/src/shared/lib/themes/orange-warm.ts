@@ -6,7 +6,8 @@ export const orangeWarm: ThemePalette = {
 
   dark: {
     bg: "#1b1b1d",
-    "bg-elevated": "#26262a",
+    // Figma darkSurface — chrome panels (sidebars, headers) sit below Card base
+    "bg-elevated": "#333333",
     "card-bg": "#373737",
     "card-bg-active": "#4b4b4b",
     "text-field-bg": "#3d3d3d",
@@ -21,7 +22,8 @@ export const orangeWarm: ThemePalette = {
 
     "border-subtle": "#3f3f45",
 
-    "sidebar-bg": "#2c2c2e",
+    // Same Surface as bg-elevated (token kept for theme-picker / future use)
+    "sidebar-bg": "#333333",
     // Same as card-bg-active — old #38383a disappears on left sidebar card-bg (#373737)
     "sidebar-item-hover": "#4b4b4b",
     "sidebar-sender": "#ff8438",
@@ -31,7 +33,7 @@ export const orangeWarm: ThemePalette = {
     "composer-send": "#ff8438",
     "composer-icon": "#707070",
 
-    // Peer bubbles match sidebar/header chrome (card-bg)
+    // Peer bubbles match Card base (not Surface chrome)
     "msg-bg": "#373737",
     "msg-own-bg": "#47382b",
     "msg-time": "#999999",
@@ -63,52 +65,52 @@ export const orangeWarm: ThemePalette = {
   },
 
   light: {
-    bg: "#e4e4e4",
+    // Figma light: Background / Surface / Card base
+    bg: "#e6e6e6",
     "bg-elevated": "#ffffff",
-    // Match top bar (bg-elevated) so sidebars + chat header share the same light surface
-    "card-bg": "#ffffff",
-    "card-bg-active": "#fde8cd",
+    "card-bg": "#f5f5f5",
+    "card-bg-active": "#ffe7cc",
     "text-field-bg": "#e6e6e6",
 
     "text-primary": "#1b1b1d",
-    "text-secondary": "#7e7e7e",
+    "text-secondary": "#787878",
     "text-muted": "#989898",
 
     accent: "#ff8438",
-    "accent-soft": "#fde8cd",
+    "accent-soft": "#ffe7cc",
     "on-accent": "#1b1b1d",
 
     "border-subtle": "#d9d9d9",
 
-    "sidebar-bg": "#fafafa",
-    "sidebar-item-hover": "#f0f0f0",
+    "sidebar-bg": "#ffffff",
+    // Card/background active — selected/hover fill on the chat list
+    "sidebar-item-hover": "#ffe7cc",
     "sidebar-sender": "#ff8438",
     "sidebar-unread": "#ff8438",
 
-    // Same white surface as card-bg / top bar
     "composer-outer": "#ffffff",
     "composer-send": "#ff8438",
-    "composer-icon": "#9a9a9a",
+    "composer-icon": "#989898",
 
     "msg-bg": "#ffffff",
-    "msg-own-bg": "#fce8d0",
+    "msg-own-bg": "#fff1e2",
     "msg-time": "#989898",
-    "msg-call-bg": "#d8e4c8",
-    "msg-selected": "rgba(255, 132, 56, 0.32)",
+    "msg-call-bg": "#e2ffe9",
+    "msg-selected": "#ffd9ae",
 
     "icon-base": "#989898",
-    "icon-disable": "#b0b0b0",
-    "icon-hover": "#fde8cd",
+    "icon-disable": "#474747",
+    "icon-hover": "#ffe7cc",
     "icon-active": "#1b1b1d",
 
     "notice-base": "#ff8438",
-    "notice-disable": "#9a9a9a",
+    "notice-disable": "#989898",
     "badge-bg": "#ff8438",
     "badge-text": "#ffffff",
 
-    "call-bg": "#d8e4c8",
+    "call-bg": "#e2ffe9",
     "call-green": "#26c038",
-    "call-red": "#f04c4c",
+    "call-red": "#e43535",
 
     "search-bg": "#e6e6e6",
     "search-hint": "#989898",

@@ -83,6 +83,7 @@ export function adaptMessengerTopic(dto: WorkspaceMessengerTopicDto): MessengerT
     isDefault: dto.is_default,
     isDone: dto.is_done,
     notificationMode: dto.notification_mode,
+    color: dto.color ?? null,
     lastMessageUuid: dto.last_message_uuid ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,

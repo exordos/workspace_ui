@@ -132,9 +132,9 @@ describe("getPresenceState", () => {
 
 // sidebarRowClass returns Tailwind classes for the active/hover state of sidebar items
 describe("sidebarRowClass", () => {
-  // Active (selected) row — Brand accent-soft from the design tokens
-  it("returns accent-soft when active", () => {
-    expect(sidebarRowClass(true)).toBe("bg-accent-soft");
+  // Active (selected) row shares the hover fill token
+  it("returns sidebar-hover fill when active", () => {
+    expect(sidebarRowClass(true)).toBe("bg-sidebar-hover");
   });
 
   // Inactive rows only show background on hover

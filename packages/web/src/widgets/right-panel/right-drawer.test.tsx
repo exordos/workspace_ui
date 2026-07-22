@@ -15,7 +15,7 @@ describe("RightDrawer", () => {
     expect(drawer).toHaveClass("w-panel-right");
     expect(drawer).toHaveClass("rounded-lg");
     expect(drawer).toHaveClass("px-2");
-    expect(drawer).toHaveClass("bg-card-bg");
+    expect(drawer).toHaveClass("bg-bg-elevated");
     expect(drawer).toHaveClass("relative");
   });
 

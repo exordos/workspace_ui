@@ -160,7 +160,7 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
             className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
               reactedByMe
                 ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
-                : "bg-bg-elevated/90 border-border-subtle hover:bg-bg-elevated"
+                : "border-border-subtle bg-card-bg hover:bg-card-bg-active"
             } ${
               onToggleMessageReaction == null
                 ? "cursor-default"

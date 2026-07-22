@@ -56,7 +56,9 @@ function createTopic(
     topicUuid: TOPIC_UUID,
     title: "Release",
     unreadCount: 2,
+    isDefault: false,
     isDone: false,
+    color: null,
     route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     preview: null,
     lastMessageCreatedAt: null,
@@ -196,15 +198,17 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
   });
 
-  it("opens the same create-topic dialog from the quick + New topic button", async () => {
+  it("opens the create-topic dialog from the stream context menu", async () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
     renderWorkspaceSidebar([createStream({ topics: [createTopic()] })]);
 
-    fireEvent.click(screen.getByTestId("sidebar-new-topic-button"));
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /new topic/i }));
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /topic name/i })).toBeInTheDocument();
     expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("sidebar-new-topic-button")).not.toBeInTheDocument();
   });
 
   it("opens a topic immediately after creating it from the stream", async () => {
@@ -216,7 +220,8 @@ describe("WorkspaceSidebar context menu", () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
     renderWorkspaceSidebar([createStream()]);
 
-    fireEvent.click(screen.getByTestId("sidebar-new-topic-button"));
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /new topic/i }));
     fireEvent.change(await screen.findByRole("textbox", { name: /topic name/i }), {
       target: { value: "Roadmap" },
     });
@@ -227,6 +232,40 @@ describe("WorkspaceSidebar context menu", () => {
         `/org/acme/project/project-a/stream/${STREAM_UUID}/topic/${createdTopicUuid}`,
       );
     });
+  });
+
+  it("renders topic color bars from the API RGB color, including default/general", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        topics: [
+          createTopic({
+            topicUuid: "default-topic",
+            id: `topic:${STREAM_UUID}:default-topic`,
+            title: "Общий чат",
+            isDefault: true,
+            color: 0xffd633,
+            route: `/org/acme/project/project-a/stream/${STREAM_UUID}/topic/default-topic`,
+          }),
+          createTopic({
+            topicUuid: "topic-1",
+            id: `topic:${STREAM_UUID}:topic-1`,
+            title: "Тема 1",
+            isDefault: false,
+            color: 0xf458d2,
+            route: `/org/acme/project/project-a/stream/${STREAM_UUID}/topic/topic-1`,
+          }),
+        ],
+      }),
+    ]);
+
+    expect(screen.getByText("#Общий чат")).toBeInTheDocument();
+    expect(screen.getByText("#Тема 1")).toBeInTheDocument();
+    const bars = screen.getAllByTestId("sidebar-topic-bar");
+    expect(bars).toHaveLength(2);
+    expect(bars[0]).toHaveStyle({ backgroundColor: "#ffd633" });
+    expect(bars[1]).toHaveStyle({ backgroundColor: "#f458d2" });
+    expect(screen.queryByTestId("sidebar-stream-group-rail")).not.toBeInTheDocument();
   });
 
   it("opens the selected contact profile from a direct private chat", async () => {

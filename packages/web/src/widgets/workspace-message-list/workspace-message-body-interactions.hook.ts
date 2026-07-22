@@ -133,7 +133,7 @@ function mountCodeCopyButton(codeBlock: HTMLElement): WorkspaceCodeCopyButtonMou
   copyButton.dataset.codeCopyButton = "true";
   copyButton.dataset.copyState = "idle";
   copyButton.className =
-    "message-code-copy-btn inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent bg-transparent text-composer-icon transition-colors hover:border-border-subtle hover:bg-bg-elevated/90 hover:text-icon-active focus-visible:border-border-subtle focus-visible:bg-bg-elevated/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+    "message-code-copy-btn inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent bg-transparent text-composer-icon transition-colors hover:border-border-subtle hover:bg-sidebar-hover hover:text-icon-active focus-visible:border-border-subtle focus-visible:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
 
   const iconHost = document.createElement("span");
   iconHost.className =

@@ -77,6 +77,7 @@ const topicDto = {
   is_default: false,
   is_done: false,
   notification_mode: "follow",
+  color: 0xf458d2,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -508,6 +509,15 @@ describe("Workspace messenger DTO guards", () => {
       true,
     );
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: "bad" })).toBe(false);
+  });
+
+  it("accepts optional topic color rgb int", () => {
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: undefined })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: null })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: 0 })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: 0xffffff })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: 0x1000000 })).toBe(false);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, color: -1 })).toBe(false);
   });
 
   it("accepts all documented raw REST outbox payload kinds", () => {

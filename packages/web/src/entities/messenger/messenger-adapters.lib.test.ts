@@ -71,6 +71,7 @@ const topicDto: WorkspaceMessengerTopicDto = {
   is_default: false,
   is_done: false,
   notification_mode: "follow",
+  color: 0xf458d2,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -121,6 +122,7 @@ describe("messenger adapters", () => {
       name: "Releases",
       unreadCount: 2,
       notificationMode: "follow",
+      color: 0xf458d2,
     });
   });
 

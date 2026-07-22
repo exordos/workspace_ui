@@ -293,6 +293,8 @@ describe("messenger sidebar selectors", () => {
       id: `topic:${STREAM_A}:${TOPIC_A}`,
       topicUuid: TOPIC_A,
       unreadCount: 2,
+      isDefault: false,
+      color: null,
       preview: null,
     });
     expect(rows[1]).toMatchObject({

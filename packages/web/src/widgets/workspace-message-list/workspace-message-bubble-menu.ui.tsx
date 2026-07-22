@@ -14,7 +14,7 @@ import type {
 } from "./workspace-message-bubble-menu.types";
 
 const MENU_TRIGGER_CLASS_NAME =
-  "hover:bg-bg/50 absolute -top-2 z-float rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-text-primary";
+  "hover:bg-sidebar-hover absolute -top-2 z-float rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-text-primary";
 const MENU_ITEM_CLASS_NAME =
   "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
 const REACTION_BUTTON_CLASS_NAME =

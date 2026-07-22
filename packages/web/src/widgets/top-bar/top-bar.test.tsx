@@ -286,7 +286,7 @@ describe("TopBar", () => {
     const header = screen.getByRole("banner", { name: /top bar/i });
     expect(header).toHaveClass("rounded-b-lg");
     // Matches left/right sidebars + chat header across themes
-    expect(header).toHaveClass("bg-card-bg");
+    expect(header).toHaveClass("bg-bg-elevated");
     expect(screen.getByTestId("topbar-toolbar-row")).toHaveClass("p-2");
   });
 

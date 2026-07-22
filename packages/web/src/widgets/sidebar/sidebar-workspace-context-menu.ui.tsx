@@ -204,8 +204,8 @@ interface WorkspaceStreamContextMenuProps {
   children: React.ReactNode;
   onTopicCreated?: (streamUuid: string, topicUuid: string) => void;
   /**
-   * Content under the stream row (topic list + quick actions).
-   * Receives the same create-topic opener as the context menu item.
+   * Content under the stream row (topic list).
+   * Receives create-topic opener for callers that still want a quick action.
    */
   below?: (api: { onCreateTopic: () => void }) => React.ReactNode;
 }

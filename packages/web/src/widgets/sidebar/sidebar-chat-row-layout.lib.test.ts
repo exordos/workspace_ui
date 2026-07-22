@@ -1,94 +1,115 @@
 import { describe, expect, it } from "vitest";
 import {
-  SIDEBAR_STREAM_GROUP_RAIL_CLASS,
   SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
+  SIDEBAR_TOPIC_BAR_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
+  formatSidebarTopicTitle,
   isWorkspaceSidebarStreamHighlighted,
-  sidebarNewTopicButtonClass,
+  resolveSidebarTopicBarColor,
   sidebarStreamGroupClass,
   sidebarTopicRowLinkClass,
   sidebarTopicShowMoreButtonClass,
 } from "./sidebar-chat-row-layout.lib";
+import { TOPIC_BAR_FALLBACK_COLOR } from "./sidebar.lib";
 
 describe("sidebarStreamGroupClass", () => {
   it("returns empty string when the stream is collapsed", () => {
     expect(sidebarStreamGroupClass(false)).toBe("");
   });
 
-  it("clips the rail with overflow + radius instead of rounding the bar itself", () => {
+  it("uses base card-bg for the expanded shell, not the active fill", () => {
     const classes = sidebarStreamGroupClass(true);
-    expect(classes).toContain("flex");
-    expect(classes).toContain("items-stretch");
     expect(classes).toContain("overflow-hidden");
     expect(classes).toContain("rounded-lg");
-  });
-});
-
-describe("SIDEBAR_STREAM_GROUP_RAIL_CLASS", () => {
-  it("is a straight 3px accent strip; corner curve comes from the group shell", () => {
-    expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).toContain("w-[3px]");
-    expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).toContain("bg-sidebar-sender");
-    expect(SIDEBAR_STREAM_GROUP_RAIL_CLASS).not.toContain("rounded");
+    expect(classes).toContain("bg-card-bg");
+    expect(classes).not.toContain("bg-card-bg-active");
+    expect(classes).not.toContain("items-stretch");
   });
 });
 
 describe("SIDEBAR_STREAM_PREVIEW_LINK_CLASS", () => {
-  it("uses page bg for nested hover so it stays visible on a hovered stream card", () => {
-    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("hover:bg-bg");
-    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("focus-visible:bg-bg");
+  it("uses card underlay for nested hover so it stays visible on a hovered stream row", () => {
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("hover:bg-card-bg");
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).toContain("focus-visible:bg-card-bg");
     expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).not.toContain("sidebar-hover");
+    expect(SIDEBAR_STREAM_PREVIEW_LINK_CLASS).not.toContain("hover:bg-bg");
   });
 });
 
 describe("sidebarTopicRowLinkClass", () => {
-  it("uses a full-width rounded card without a colored left stripe", () => {
+  it("uses a shared left inset then flex gap for bar + title", () => {
     const classes = sidebarTopicRowLinkClass(false);
+    expect(classes).toContain("flex");
+    expect(classes).toContain("gap-3");
     expect(classes).toContain("rounded-lg");
     expect(classes).toContain("pl-[38px]");
-    expect(classes).not.toContain("border-l");
-    expect(classes).not.toContain("indicator-yellow");
+    expect(classes).not.toContain("relative");
   });
 
   it("keeps a tighter indent in compact density", () => {
     expect(sidebarTopicRowLinkClass(true)).toContain("pl-9");
+    expect(sidebarTopicRowLinkClass(true)).toContain("gap-2");
     expect(sidebarTopicRowLinkClass(true)).toContain("rounded-md");
   });
 });
 
+describe("SIDEBAR_TOPIC_BAR_CLASS", () => {
+  it("is a flex column strip that sits with the title, not absolute on the card edge", () => {
+    expect(SIDEBAR_TOPIC_BAR_CLASS).toContain("w-[3px]");
+    expect(SIDEBAR_TOPIC_BAR_CLASS).toContain("shrink-0");
+    expect(SIDEBAR_TOPIC_BAR_CLASS).toContain("self-stretch");
+    expect(SIDEBAR_TOPIC_BAR_CLASS).not.toContain("absolute");
+    expect(SIDEBAR_TOPIC_BAR_CLASS).not.toContain("left-");
+  });
+});
+
+describe("resolveSidebarTopicBarColor", () => {
+  it("formats an API RGB int as a CSS hex color", () => {
+    expect(resolveSidebarTopicBarColor({ color: 0xffd633 })).toBe("#ffd633");
+    expect(resolveSidebarTopicBarColor({ color: 0xf458d2 })).toBe("#f458d2");
+    expect(resolveSidebarTopicBarColor({ color: 0 })).toBe("#000000");
+  });
+
+  it("uses a theme-neutral gray when color is missing or invalid", () => {
+    expect(resolveSidebarTopicBarColor({})).toBe(TOPIC_BAR_FALLBACK_COLOR);
+    expect(resolveSidebarTopicBarColor({ color: null })).toBe(TOPIC_BAR_FALLBACK_COLOR);
+    expect(resolveSidebarTopicBarColor({ color: -1 })).toBe(TOPIC_BAR_FALLBACK_COLOR);
+    expect(resolveSidebarTopicBarColor({ color: 0x1000000 })).toBe(TOPIC_BAR_FALLBACK_COLOR);
+  });
+});
+
+describe("formatSidebarTopicTitle", () => {
+  it("prefixes a hash when missing", () => {
+    expect(formatSidebarTopicTitle("Тема 1")).toBe("#Тема 1");
+  });
+
+  it("does not double-prefix an existing hash", () => {
+    expect(formatSidebarTopicTitle("#Общий чат")).toBe("#Общий чат");
+  });
+});
+
 describe("SIDEBAR_TOPIC_LIST_CLASS", () => {
-  it("spaces topic cards without the legacy indent rail", () => {
+  it("spaces topic cards without a shared indent rail", () => {
     expect(SIDEBAR_TOPIC_LIST_CLASS).toContain("space-y-1");
     expect(SIDEBAR_TOPIC_LIST_CLASS).not.toContain("border-l");
     expect(SIDEBAR_TOPIC_LIST_CLASS).not.toContain("ml-4");
   });
 });
 
-describe("sidebarNewTopicButtonClass", () => {
-  it("matches Figma: 12px regular, leading 20, secondary color", () => {
-    const classes = sidebarNewTopicButtonClass(false);
-    expect(classes).toContain("pl-[38px]");
-    expect(classes).toContain("text-xs");
-    expect(classes).toContain("font-normal");
-    expect(classes).toContain("leading-5");
-    expect(classes).toContain("text-text-secondary");
-    expect(classes).not.toContain("font-medium");
-  });
-});
-
 describe("sidebarTopicShowMoreButtonClass", () => {
-  it("matches Figma show-more strip: 38px left inset, 14/20 medium, space-between", () => {
+  it("matches Figma show-more strip: 38px left inset, 14/20 medium, inherits group fill", () => {
     const classes = sidebarTopicShowMoreButtonClass(false);
     expect(classes).toContain("pl-[38px]");
     expect(classes).toContain("pr-2");
     expect(classes).toContain("py-2");
     expect(classes).toContain("justify-between");
+    expect(classes).toContain("gap-3");
     expect(classes).toContain("text-left");
     expect(classes).toContain("text-sm");
     expect(classes).toContain("font-medium");
     expect(classes).toContain("leading-5");
-    expect(classes).toContain("bg-card-bg-active");
-    expect(classes).not.toContain("flex-1");
-    // Radius comes from the stream group shell (overflow-hidden), not this strip.
+    // Expansion must not look selected — fill comes from the group shell only.
+    expect(classes).not.toContain("bg-card-bg-active");
     expect(classes).not.toContain("rounded");
   });
 
@@ -113,7 +134,7 @@ describe("isWorkspaceSidebarStreamHighlighted", () => {
     ).toBe(true);
   });
 
-  it("does not highlight when a topic inside this stream is open", () => {
+  it("does not highlight when a topic of this stream is open", () => {
     expect(
       isWorkspaceSidebarStreamHighlighted({
         streamUuid,
@@ -123,7 +144,7 @@ describe("isWorkspaceSidebarStreamHighlighted", () => {
     ).toBe(false);
   });
 
-  it("does not highlight another stream even if this one stays expanded in the UI", () => {
+  it("does not highlight a different stream", () => {
     expect(
       isWorkspaceSidebarStreamHighlighted({
         streamUuid,

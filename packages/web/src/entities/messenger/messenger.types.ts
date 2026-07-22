@@ -104,6 +104,7 @@ export interface MessengerTopic {
   isDefault: boolean;
   isDone: boolean;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
+  color?: number | null;
   lastMessageUuid: MessengerUuid | null;
   createdAt: string;
   updatedAt: string;
@@ -225,7 +226,9 @@ export interface MessengerSidebarTopicItem {
   topicUuid: MessengerUuid;
   title: string;
   unreadCount: number;
+  isDefault: boolean;
   isDone: boolean;
+  color: number | null;
   route: string;
   preview: MessengerSidebarMessagePreview | null;
   lastMessageCreatedAt: string | null;

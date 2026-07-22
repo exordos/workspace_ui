@@ -209,7 +209,10 @@ function topicItemFromTopic(input: {
     topicUuid: input.topic.uuid,
     title: input.topic.name,
     unreadCount: input.topic.unreadCount,
+    // Default/general is still tracked for other UX; the sidebar strip has no special case.
+    isDefault: input.topic.isDefault,
     isDone: input.topic.isDone,
+    color: input.topic.color ?? null,
     route: workspaceMessengerTopicRoute({
       orgId: input.organizationId,
       projectId: input.projectId,

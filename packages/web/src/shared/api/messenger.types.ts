@@ -71,6 +71,7 @@ export interface WorkspaceMessengerTopicDto {
   is_default: boolean;
   is_done: boolean;
   notification_mode: WorkspaceMessengerTopicNotificationMode;
+  color?: number | null;
   last_message_uuid?: WorkspaceMessengerUuid | null;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
@@ -928,6 +929,9 @@ export function isWorkspaceMessengerTopicDto(value: unknown): value is Workspace
     typeof value.is_default === "boolean" &&
     typeof value.is_done === "boolean" &&
     isTopicNotificationMode(value.notification_mode) &&
+    (value.color === undefined ||
+      value.color === null ||
+      (isNonNegativeInteger(value.color) && value.color <= 0xffffff)) &&
     (value.last_message_uuid === undefined || isNullableUuid(value.last_message_uuid)) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)

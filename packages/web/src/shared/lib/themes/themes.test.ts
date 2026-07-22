@@ -148,49 +148,55 @@ describe("getResolvedMode", () => {
 });
 
 describe("blue-cold light palette spec", () => {
-  it("matches screenshot-aligned light cold blue values", () => {
+  it("matches Figma blueCold light V2 surface / bubble tokens", () => {
     const blueCold = getPalette("blue-cold");
     const light = blueCold.light;
 
-    expect(light.bg).toBe("#ffffff");
+    // Soft page underlay; white chrome panels must contrast with it
+    expect(light.bg).toBe("#e4ecf3");
     expect(light["bg-elevated"]).toBe("#ffffff");
+    expect(light["bg-elevated"]).not.toBe(light.bg);
     expect(light.accent).toBe("#7087ff");
     expect(light["on-accent"]).toBe("#1b1b1d");
 
     expect(light["text-primary"]).toBe("#1b1b1d");
-    expect(light["text-secondary"]).toBe("#707b88");
-    expect(light["text-muted"]).toBe("#97a3b2");
+    expect(light["text-secondary"]).toBe("#787878");
+    expect(light["text-muted"]).toBe("#989898");
 
-    expect(light["icon-base"]).toBe("#97a3b2");
-    expect(light["icon-disable"]).toBe("#b4bfcb");
-    expect(light["icon-hover"]).toBe("#c9e7ff");
+    expect(light["icon-base"]).toBe("#989898");
+    expect(light["icon-disable"]).toBe("#474747");
+    expect(light["icon-hover"]).toBe("#cde6ff");
     expect(light["icon-active"]).toBe("#1b1b1d");
 
-    expect(light["msg-bg"]).toBe("#e3effa");
-    expect(light["msg-bg"]).toBe(light["card-bg"]);
-    expect(light["msg-time"]).toBe("#97a3b2");
-    expect(light["msg-own-bg"]).toBe("#cce4fc");
-    expect(light["msg-call-bg"]).toBe("#cfe5d6");
-    expect(light["call-bg"]).toBe("#cfe5d6");
-    expect(light["msg-selected"]).toBe("#c9e7ff");
+    // White peer bubbles on soft page; own #AED7FF; cards #EEF5FB on white chrome
+    expect(light["msg-bg"]).toBe("#ffffff");
+    expect(light["card-bg"]).toBe("#eef5fb");
+    expect(light["card-bg"]).not.toBe(light["bg-elevated"]);
+    expect(light["msg-time"]).toBe("#989898");
+    expect(light["msg-own-bg"]).toBe("#aed7ff");
+    expect(light["msg-call-bg"]).toBe("#e2ffe9");
+    expect(light["call-bg"]).toBe("#e2ffe9");
+    expect(light["msg-selected"]).toBe("#cde6ff");
 
-    // Chrome panels (top bar, sidebars, chat header) stay on card-bg blue
-    expect(light["card-bg"]).toBe("#e3effa");
-    expect(light["card-bg-active"]).toBe("#c9e7ff");
+    expect(light["card-bg-active"]).toBe("#cde6ff");
+    expect(light["accent-soft"]).toBe("#cde6ff");
     expect(light["sidebar-bg"]).toBe("#ffffff");
-    expect(light["sidebar-item-hover"]).toBe("#ecf4fc");
-    expect(light["composer-outer"]).toBe(light["card-bg"]);
+    expect(light["sidebar-item-hover"]).toBe("#cde6ff");
+    // Composer matches white sidebar/header chrome
+    expect(light["composer-outer"]).toBe(light["bg-elevated"]);
+    expect(light["composer-outer"]).toBe("#ffffff");
+    expect(light["composer-icon"]).toBe("#989898");
 
     expect(light["notice-base"]).toBe("#7087ff");
-    expect(light["notice-disable"]).toBe("#9ba6b4");
+    expect(light["notice-disable"]).toBe("#989898");
     expect(light["badge-text"]).toBe("#ffffff");
     expect(light["badge-bg"]).toBe("#7087ff");
 
-    expect(light["text-field-bg"]).toBe("#ffffff");
-    expect(light["text-field-bg"]).toBe(light.bg);
-    expect(light["search-bg"]).toBe("#ffffff");
-    expect(light["search-bg"]).toBe(light.bg);
+    expect(light["text-field-bg"]).toBe("#eef5fb");
+    expect(light["search-bg"]).toBe("#eef5fb");
+    expect(light["search-hint"]).toBe("#989898");
     expect(light["border-subtle"]).toBe("#d8e4ef");
+    expect(light["call-red"]).toBe("#e43535");
 
     expect(light["indicator-yellow"]).toBe("#ffd633");
     expect(light["indicator-pink"]).toBe("#f458d2");
@@ -201,50 +207,59 @@ describe("blue-cold light palette spec", () => {
 });
 
 describe("blue-cold dark palette spec", () => {
-  it("matches card-bg-active for left sidebar chat-list hover", () => {
+  it("keeps Surface chrome darker than Card underlay so sidebar cards contrast", () => {
     const dark = getPalette("blue-cold").dark;
 
+    // Figma dark: Background / Surface / Card base
+    expect(dark.bg).toBe("#141517");
+    expect(dark["bg-elevated"]).toBe("#222328");
     expect(dark["card-bg"]).toBe("#282a32");
     expect(dark["card-bg-active"]).toBe("#2c3747");
+    // Chrome must not equal cards — otherwise list cards dissolve into the panel
+    expect(dark["bg-elevated"]).not.toBe(dark["card-bg"]);
+
+    expect(dark["sidebar-bg"]).toBe("#222328");
     expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
     expect(dark["sidebar-item-hover"]).toBe("#2c3747");
+    // Composer Surface matches sidebar/header chrome
+    expect(dark["composer-outer"]).toBe(dark["bg-elevated"]);
+    expect(dark["composer-outer"]).toBe("#222328");
   });
 });
 
 describe("orange-warm light palette spec", () => {
-  it("matches screenshot-aligned light warm orange values", () => {
+  it("matches Figma light Surface / Card tokens", () => {
     const orangeWarm = getPalette("orange-warm");
     const light = orangeWarm.light;
 
-    expect(light.bg).toBe("#e4e4e4");
+    expect(light.bg).toBe("#e6e6e6");
     expect(light["bg-elevated"]).toBe("#ffffff");
     expect(light.accent).toBe("#ff8438");
     expect(light["on-accent"]).toBe("#1b1b1d");
 
     expect(light["text-primary"]).toBe("#1b1b1d");
-    expect(light["text-secondary"]).toBe("#7e7e7e");
+    expect(light["text-secondary"]).toBe("#787878");
     expect(light["text-muted"]).toBe("#989898");
 
-    // Same white surface as top bar (bg-elevated) for sidebars + chat header
-    expect(light["card-bg"]).toBe("#ffffff");
-    expect(light["card-bg"]).toBe(light["bg-elevated"]);
-    expect(light["card-bg-active"]).toBe("#fde8cd");
-    expect(light["sidebar-bg"]).toBe("#fafafa");
-    expect(light["sidebar-item-hover"]).toBe("#f0f0f0");
-    // Composer chrome matches the same light surface as card panels
+    // Surface chrome vs Card/background base for sidebar cards
+    expect(light["card-bg"]).toBe("#f5f5f5");
+    expect(light["card-bg-active"]).toBe("#ffe7cc");
+    expect(light["accent-soft"]).toBe("#ffe7cc");
+    expect(light["sidebar-bg"]).toBe("#ffffff");
+    expect(light["sidebar-item-hover"]).toBe("#ffe7cc");
     expect(light["composer-outer"]).toBe("#ffffff");
-    expect(light["composer-outer"]).toBe(light["card-bg"]);
+    expect(light["composer-outer"]).toBe(light["bg-elevated"]);
 
     expect(light["msg-bg"]).toBe("#ffffff");
-    expect(light["msg-own-bg"]).toBe("#fce8d0");
-    expect(light["msg-call-bg"]).toBe("#d8e4c8");
-    expect(light["call-bg"]).toBe("#d8e4c8");
+    expect(light["msg-own-bg"]).toBe("#fff1e2");
+    expect(light["msg-call-bg"]).toBe("#e2ffe9");
+    expect(light["call-bg"]).toBe("#e2ffe9");
     expect(light["msg-time"]).toBe("#989898");
-    expect(light["msg-selected"]).toBe("rgba(255, 132, 56, 0.32)");
+    expect(light["msg-selected"]).toBe("#ffd9ae");
 
     expect(light["icon-base"]).toBe("#989898");
-    expect(light["icon-disable"]).toBe("#b0b0b0");
-    expect(light["icon-hover"]).toBe("#fde8cd");
+    expect(light["icon-disable"]).toBe("#474747");
+    expect(light["icon-hover"]).toBe("#ffe7cc");
     expect(light["icon-active"]).toBe("#1b1b1d");
 
     expect(light["text-field-bg"]).toBe("#e6e6e6");
@@ -253,20 +268,31 @@ describe("orange-warm light palette spec", () => {
     expect(light["border-subtle"]).toBe("#d9d9d9");
 
     expect(light["notice-base"]).toBe("#ff8438");
-    expect(light["notice-disable"]).toBe("#9a9a9a");
+    expect(light["notice-disable"]).toBe("#989898");
     expect(light["badge-bg"]).toBe("#ff8438");
     expect(light["badge-text"]).toBe("#ffffff");
+    expect(light["call-red"]).toBe("#e43535");
   });
 });
 
 describe("orange-warm dark palette spec", () => {
-  it("matches card-bg-active for left sidebar chat-list hover", () => {
+  it("keeps Surface chrome darker than Card underlay so sidebar cards contrast", () => {
     const dark = getPalette("orange-warm").dark;
 
+    // Figma dark: Background / Surface / Card base
+    expect(dark.bg).toBe("#1b1b1d");
+    expect(dark["bg-elevated"]).toBe("#333333");
     expect(dark["card-bg"]).toBe("#373737");
     expect(dark["card-bg-active"]).toBe("#4b4b4b");
+    // Chrome must not equal cards — otherwise list cards dissolve into the panel
+    expect(dark["bg-elevated"]).not.toBe(dark["card-bg"]);
+
+    expect(dark["sidebar-bg"]).toBe("#333333");
     expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
     expect(dark["sidebar-item-hover"]).toBe("#4b4b4b");
+    // Composer Surface matches sidebar/header chrome
+    expect(dark["composer-outer"]).toBe(dark["bg-elevated"]);
+    expect(dark["composer-outer"]).toBe("#333333");
   });
 });
 
@@ -284,13 +310,12 @@ describe("blue-mist light palette spec", () => {
     expect(light["text-secondary"]).toBe("#66758a");
     expect(light["text-muted"]).toBe("#8d9bae");
 
-    // White chrome panels (top bar, sidebars, chat header, composer)
-    expect(light["card-bg"]).toBe("#ffffff");
-    expect(light["card-bg"]).toBe(light["bg-elevated"]);
+    // Light Figma: white sidebar, darker soft-blue card underlay
+    expect(light["card-bg"]).toBe("#eff5fb");
     expect(light["card-bg-active"]).toBe("#d5e5f6");
     expect(light["sidebar-bg"]).toBe("#ffffff");
-    expect(light["sidebar-item-hover"]).toBe("#edf4fb");
-    expect(light["composer-outer"]).toBe("#ffffff");
+    expect(light["sidebar-item-hover"]).toBe("#e4edf7");
+    expect(light["composer-outer"]).toBe("#eff5fb");
     expect(light["composer-outer"]).toBe(light["card-bg"]);
 
     expect(light["msg-bg"]).toBe("#ffffff");
@@ -318,48 +343,59 @@ describe("blue-mist light palette spec", () => {
 });
 
 describe("blue-mist dark palette spec", () => {
-  it("matches card-bg-active for left sidebar chat-list hover", () => {
+  it("keeps Surface chrome darker than Card underlay so sidebar cards contrast", () => {
     const dark = getPalette("blue-mist").dark;
 
-    expect(dark["card-bg"]).toBe("#2a3340");
+    // Composer kept the real Surface; chrome was wrongly glued to card-bg
+    expect(dark["composer-outer"]).toBe("#232c38");
+    expect(dark["bg-elevated"]).toBe("#232c38");
+    expect(dark["card-bg"]).toBe("#243040");
     expect(dark["card-bg-active"]).toBe("#30465d");
+    expect(dark["bg-elevated"]).not.toBe(dark["card-bg"]);
+
+    expect(dark["sidebar-bg"]).toBe("#232c38");
     expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
     expect(dark["sidebar-item-hover"]).toBe("#30465d");
+    expect(dark["composer-outer"]).toBe(dark["bg-elevated"]);
   });
 });
 
 describe("emerald-chat dark palette spec", () => {
-  it("uses neutral dark-gray surfaces for panel backgrounds", () => {
+  it("keeps Surface chrome darker than Card underlay so sidebar cards contrast", () => {
     const emeraldChat = getPalette("emerald-chat");
     const dark = emeraldChat.dark;
 
+    // Old sidebar-bg (#2c2c2e) is the real Surface; chrome was wrongly glued to card-bg
     expect(dark.bg).toBe("#1b1b1d");
-    expect(dark["bg-elevated"]).toBe("#26262a");
+    expect(dark["bg-elevated"]).toBe("#2c2c2e");
     expect(dark["card-bg"]).toBe("#373737");
     expect(dark["card-bg-active"]).toBe("#4b4b4b");
+    expect(dark["bg-elevated"]).not.toBe(dark["card-bg"]);
+
     expect(dark["sidebar-bg"]).toBe("#2c2c2e");
-    // Matches card-bg-active so chat-list hover matches right panel / activity
     expect(dark["sidebar-item-hover"]).toBe(dark["card-bg-active"]);
     expect(dark["sidebar-item-hover"]).toBe("#4b4b4b");
     expect(dark["border-subtle"]).toBe("#3f3f45");
-    // Composer chrome matches card panels (not the old green-tinted #1a2a25)
-    expect(dark["composer-outer"]).toBe(dark["card-bg"]);
-    expect(dark["composer-outer"]).toBe("#373737");
+    // Composer matches sidebar/header Surface chrome
+    expect(dark["composer-outer"]).toBe(dark["bg-elevated"]);
+    expect(dark["composer-outer"]).toBe("#2c2c2e");
   });
 });
 
 describe("emerald-chat light palette spec", () => {
-  it("uses accent-soft for card and sidebar hovers instead of old gray", () => {
+  it("keeps a darker gray card underlay on white sidebar chrome", () => {
     const light = getPalette("emerald-chat").light;
 
-    // Both hover tokens ← accent-soft (not the old #f0f0f0 / page-bg gray)
-    expect(light["card-bg"]).toBe("#ffffff");
+    expect(light["card-bg"]).toBe("#f0f0f0");
     expect(light["card-bg-active"]).toBe(light["accent-soft"]);
     expect(light["card-bg-active"]).toBe("#d9f1e4");
     expect(light["sidebar-bg"]).toBe("#ffffff");
     expect(light["sidebar-item-hover"]).toBe(light["accent-soft"]);
     expect(light["sidebar-item-hover"]).toBe("#d9f1e4");
     expect(light["sidebar-item-hover"]).not.toBe("#f0f0f0");
+    // Composer matches white sidebar/header chrome, not gray card underlay
+    expect(light["composer-outer"]).toBe(light["bg-elevated"]);
+    expect(light["composer-outer"]).toBe("#ffffff");
   });
 });
 
@@ -405,11 +441,11 @@ describe("call message backgrounds", () => {
   it("uses pantone-like green shades for every palette and mode", () => {
     const expected = {
       "blue-cold": {
-        light: "#cfe5d6",
+        light: "#e2ffe9",
         dark: "#1f4637",
       },
       "orange-warm": {
-        light: "#d8e4c8",
+        light: "#e2ffe9",
         dark: "#31402d",
       },
       "blue-mist": {

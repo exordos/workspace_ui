@@ -42,7 +42,7 @@ const compactListItemClass = "relative h-8 w-8 shrink-0";
 const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-0.5";
 const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
 const compactIconsListClass = "flex w-max flex-nowrap items-center gap-0.5";
-// Idle/hover swapped: idle blends with sidebar (card-bg), hover uses elevated fill.
+// Idle uses Card/background base on Surface chrome; hover elevates to card-bg-active.
 const expandedRowBaseClass =
   "group flex w-full items-center gap-2 rounded-lg bg-card-bg px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
 const expandedRowCompactClass =

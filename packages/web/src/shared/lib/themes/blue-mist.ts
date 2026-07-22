@@ -6,8 +6,9 @@ export const blueMist: ThemePalette = {
 
   dark: {
     bg: "#15181d",
-    "bg-elevated": "#222a34",
-    "card-bg": "#2a3340",
+    // Surface = composer-outer — chrome was wrongly glued to card-bg
+    "bg-elevated": "#232c38",
+    "card-bg": "#243040",
     "card-bg-active": "#30465d",
     "text-field-bg": "#232c38",
 
@@ -21,8 +22,9 @@ export const blueMist: ThemePalette = {
 
     "border-subtle": "#394a61",
 
-    "sidebar-bg": "#1a2434",
-    // Same as card-bg-active — old #2a3444 disappears on left sidebar card-bg (#2a3340)
+    // Same Surface as bg-elevated / composer-outer
+    "sidebar-bg": "#232c38",
+    // Same as card-bg-active — old #2a3444 disappears on left sidebar card-bg (#243040)
     "sidebar-item-hover": "#30465d",
     "sidebar-sender": "#8aa8e8",
     "sidebar-unread": "#6f8fda",
@@ -65,8 +67,8 @@ export const blueMist: ThemePalette = {
   light: {
     bg: "#e8f0f5",
     "bg-elevated": "#ffffff",
-    // White chrome for top bar / sidebars / chat header (was bluish #eff5fb)
-    "card-bg": "#ffffff",
+    // Light Figma: soft blue card underlay, darker than white sidebar chrome
+    "card-bg": "#eff5fb",
     "card-bg-active": "#d5e5f6",
     "text-field-bg": "#f0f6fc",
 
@@ -81,11 +83,11 @@ export const blueMist: ThemePalette = {
     "border-subtle": "#d3dfec",
 
     "sidebar-bg": "#ffffff",
-    "sidebar-item-hover": "#edf4fb",
+    "sidebar-item-hover": "#e4edf7",
     "sidebar-sender": "#6f90d8",
     "sidebar-unread": "#6f90d8",
 
-    "composer-outer": "#ffffff",
+    "composer-outer": "#eff5fb",
     "composer-send": "#6f90d8",
     "composer-icon": "#8fa0b6",
 
