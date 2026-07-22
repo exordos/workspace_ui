@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveUserPresenceVisual,
+  selectSelectableWorkspaceUsers,
   selectUserDisplayName,
   selectUserStatusLabel,
   selectUsersByIds,
@@ -51,7 +52,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const userIds = useUsersStore((s) => s.userIds);
   const inputRef = useRef<HTMLInputElement>(null);
   const workspaceMode = mode === "workspace";
-  const allUsers = useMemo(() => selectUsersByIds(usersById, userIds), [userIds, usersById]);
+  const allUsers = useMemo(
+    () =>
+      workspaceMode
+        ? selectSelectableWorkspaceUsers(usersById, userIds)
+        : selectUsersByIds(usersById, userIds),
+    [userIds, usersById, workspaceMode],
+  );
 
   const userResults = useMemo<
     {

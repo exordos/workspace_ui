@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
@@ -25,10 +28,7 @@ export function useComposerMentions(options: { enabled?: boolean } = {}) {
   const mentionUsers: MentionSuggestion[] = useMemo(() => {
     const suggestions: MentionSuggestion[] = [];
 
-    userIds.forEach((userUuid) => {
-      const user = usersById[userUuid];
-      if (user == null) return;
-
+    selectSelectableWorkspaceUsers(usersById, userIds).forEach((user) => {
       suggestions.push({
         userUuid: user.uuid,
         displayName: selectUserDisplayName(user, user.uuid),

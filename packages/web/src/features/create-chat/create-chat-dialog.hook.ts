@@ -6,7 +6,10 @@ import {
 import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import {
@@ -23,7 +26,6 @@ import {
 
 const log = createLogger("create-chat:dialog");
 
-const SYSTEM_WORKSPACE_USER_UUID = "00000000-0000-0000-0000-000000000000";
 const EMPTY_ARCHIVED_CHANNELS: ArchivedChannelOption[] = [];
 const EMPTY_BROWSE_CHANNELS: [] = [];
 
@@ -235,11 +237,8 @@ export function useCreateChatDialog(options: {
   const workspaceUserOptions = useMemo<CreateChatUserOption[]>(() => {
     const normalizedQuery = userSearch.trim().toLowerCase();
     const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
-    return userIds
-      .map((userId) => usersById[userId])
-      .filter((user): user is User => user != null)
+    return selectSelectableWorkspaceUsers(usersById, userIds)
       .filter((user) => user.uuid !== currentUserUuid)
-      .filter((user) => user.uuid !== SYSTEM_WORKSPACE_USER_UUID)
       .map((user) => ({
         userKey: user.uuid,
         workspaceUserUuid: user.uuid,

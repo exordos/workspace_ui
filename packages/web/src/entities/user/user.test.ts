@@ -9,9 +9,11 @@ import type {
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
 import { createUserRealtimeApplier } from "./user-realtime-applier.lib";
 import {
+  isSelectableWorkspaceUser,
   resolveWorkspaceStatusEmojiDisplay,
   resolveUserPresenceVisual,
   selectOnlineUserCount,
+  selectSelectableWorkspaceUsers,
   selectUserDisplayName,
   selectUserStatusLabel,
   selectUsersByIds,
@@ -1058,6 +1060,25 @@ describe("user selectors", () => {
     expect(selectUsersByIds(usersById, [USER_B_UUID, USER_C_UUID, USER_A_UUID])).toEqual([
       usersById[USER_B_UUID],
       usersById[USER_A_UUID],
+    ]);
+  });
+
+  it("keeps system users available for rendering but excludes them from action candidates", () => {
+    const systemUuid = "00000000-0000-0000-0000-000000000000";
+    const systemUser = createUser({ uuid: systemUuid, username: `system-${systemUuid}` });
+    const regularUser = createUser({ uuid: USER_A_UUID });
+    const usersById = {
+      [systemUuid]: systemUser,
+      [USER_A_UUID]: regularUser,
+    };
+
+    expect(selectUsersByIds(usersById, [systemUuid, USER_A_UUID])).toEqual([
+      systemUser,
+      regularUser,
+    ]);
+    expect(isSelectableWorkspaceUser(systemUser)).toBe(false);
+    expect(selectSelectableWorkspaceUsers(usersById, [systemUuid, USER_A_UUID])).toEqual([
+      regularUser,
     ]);
   });
 

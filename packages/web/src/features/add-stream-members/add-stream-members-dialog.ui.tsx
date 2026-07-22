@@ -3,7 +3,10 @@ import React, { useCallback, useMemo, useState } from "react";
 import { addWorkspaceStreamMembers } from "~/entities/messenger/messenger-stream-member-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  isSelectableWorkspaceUser,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import {
@@ -103,13 +106,15 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
     if (!workspaceMode) {
       return [];
     }
-    return Object.values(usersById).map((user) => ({
-      userId: user.uuid,
-      fullName: selectUserDisplayName(user, user.username || user.uuid),
-      email: user.email ?? undefined,
-      presenceStatus: resolveWorkspacePickerPresence(user.status),
-      statusLabel: resolveWorkspaceStatusLabel(user.status),
-    }));
+    return Object.values(usersById)
+      .filter(isSelectableWorkspaceUser)
+      .map((user) => ({
+        userId: user.uuid,
+        fullName: selectUserDisplayName(user, user.username || user.uuid),
+        email: user.email ?? undefined,
+        presenceStatus: resolveWorkspacePickerPresence(user.status),
+        statusLabel: resolveWorkspaceStatusLabel(user.status),
+      }));
   }, [usersById, workspaceMode]);
 
   const excludedUserIds = useMemo(

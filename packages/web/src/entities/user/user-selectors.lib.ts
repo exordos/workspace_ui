@@ -1,6 +1,17 @@
 import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 import type { User, UserPresenceStatus, UsersById, UserUuid } from "./user.types";
 
+export const SYSTEM_WORKSPACE_USER_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Use this guard for user action candidates such as DM recipients, channel members,
+ * forward targets, and mentions. Keep the full user store for read-only rendering
+ * because system users can still be message authors or existing members.
+ */
+export function isSelectableWorkspaceUser(user: User | null | undefined): user is User {
+  return user != null && user.uuid !== SYSTEM_WORKSPACE_USER_UUID;
+}
+
 const LEGACY_STATUS_EMOJI_SYMBOLS: Record<string, string> = {
   speech_balloon: "💬",
   house: "🏠",
@@ -40,6 +51,13 @@ export function selectUsersByIds(usersById: UsersById, userIds: readonly UserUui
   return userIds
     .map((userUuid) => usersById[userUuid])
     .filter((user): user is User => user != null);
+}
+
+export function selectSelectableWorkspaceUsers(
+  usersById: UsersById,
+  userIds: readonly UserUuid[],
+): User[] {
+  return userIds.map((userUuid) => usersById[userUuid]).filter(isSelectableWorkspaceUser);
 }
 
 export function selectOnlineUserCount(usersById: UsersById, userIds: readonly UserUuid[]): number {

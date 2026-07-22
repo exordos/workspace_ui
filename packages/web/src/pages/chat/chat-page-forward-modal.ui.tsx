@@ -1,17 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useMemo, useState } from "react";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
 import type { ForwardMessageModalBodyProps } from "./chat-page.types";
-
-function isForwardRecipientUser(user: User | undefined): user is User {
-  return user != null;
-}
 
 export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
   function ForwardMessageModalBody({
@@ -35,9 +33,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
     );
     const userList = useMemo(() => {
       const normalizedSearch = dmSearch.trim().toLowerCase();
-      return userIds
-        .map((userUuid) => usersById[userUuid])
-        .filter(isForwardRecipientUser)
+      return selectSelectableWorkspaceUsers(usersById, userIds)
         .filter((user) => user.uuid !== currentUserUuid)
         .map((user) => {
           const displayName = selectUserDisplayName(user, user.uuid);

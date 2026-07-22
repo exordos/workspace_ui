@@ -14,6 +14,7 @@ import {
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
+  isSelectableWorkspaceUser,
   resolveUserPresenceVisual,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
@@ -148,6 +149,7 @@ function filterWorkspaceUserOptions(
   const options: WorkspaceUserPickerOption[] = [];
 
   for (const user of Object.values(usersById)) {
+    if (!isSelectableWorkspaceUser(user)) continue;
     if (existingMemberUuids.has(user.uuid)) continue;
 
     const fullName = resolveWorkspaceUserDisplayName(user);

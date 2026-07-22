@@ -11,9 +11,11 @@ import type {
   MessengerTopic,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -49,10 +51,6 @@ function isStream(value: MessengerStream | undefined): value is MessengerStream 
 }
 
 function isTopic(value: MessengerTopic | undefined): value is MessengerTopic {
-  return value != null;
-}
-
-function isUser(value: User | undefined): value is User {
   return value != null;
 }
 
@@ -117,9 +115,7 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
     );
     const userOptions = useMemo(() => {
       const normalizedSearch = directSearch.trim().toLowerCase();
-      return userIds
-        .map((userUuid) => usersById[userUuid])
-        .filter(isUser)
+      return selectSelectableWorkspaceUsers(usersById, userIds)
         .filter((user) => user.uuid !== currentUserUuid)
         .map((user) => ({
           userUuid: user.uuid,
