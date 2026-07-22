@@ -50,13 +50,7 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
                     </span>
                   </span>
                   <span className="shrink-0 text-text-muted">
-                    {account.accessStatus === "confirmed"
-                      ? t("connectExternalAccount.status.connected")
-                      : account.accessStatus === "invalid_credentials"
-                        ? t("connectExternalAccount.errors.invalidCredentials")
-                        : account.accessStatus === "unavailable"
-                          ? t("connectExternalAccount.errors.unavailable")
-                          : t("connectExternalAccount.status.checking")}
+                    {t(`connectExternalAccount.accountStatus.${account.status}`)}
                   </span>
                 </li>
               ))}
@@ -75,8 +69,8 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
             error={vm.error}
             onProviderChange={vm.setProvider}
             onServerUrlChange={vm.setServerUrl}
-            onLoginChange={vm.setLogin}
-            onTokenChange={vm.setToken}
+            onEmailChange={vm.setEmail}
+            onApiKeyChange={vm.setApiKey}
             onSubmit={vm.submit}
           />
         )}

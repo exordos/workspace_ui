@@ -24,6 +24,10 @@ vi.mock("~/features/workspace-avatar/workspace-avatar.ui", () => ({
   ),
 }));
 
+vi.mock("~/features/connect-external-account/zulip-external-account-card.ui", () => ({
+  ZulipExternalAccountCard: () => <div data-testid="zulip-external-account-card" />,
+}));
+
 const SESSION: WorkspaceAuthSession = {
   accountId: "account-1",
   instanceId: "instance-1",
@@ -91,5 +95,11 @@ describe("SettingsPersonalInfoPage Workspace avatar", () => {
     renderWorkspacePage(avatarUrn);
 
     expect(screen.getByTestId("workspace-avatar")).toHaveAttribute("data-avatar-urn", avatarUrn);
+  });
+
+  it("mounts the Zulip external-account UI for the active Workspace session", () => {
+    renderWorkspacePage("urn:image:22222222-2222-4222-8222-222222222222");
+
+    expect(screen.getByTestId("zulip-external-account-card")).toBeInTheDocument();
   });
 });

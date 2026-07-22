@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createExternalAccount } from "~/shared/api/messenger-external-accounts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
-import { isValidRealmUrl } from "~/shared/lib/validation";
+import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import type {
   ConnectExternalAccountDraft,
   ConnectExternalAccountProvider,
@@ -16,8 +17,8 @@ import type {
 const EMPTY_DRAFT: ConnectExternalAccountDraft = {
   provider: "zulip",
   serverUrl: "",
-  login: "",
-  token: "",
+  email: "",
+  apiKey: "",
 };
 
 export interface UseConnectExternalAccountOptions {
@@ -35,8 +36,8 @@ export interface UseConnectExternalAccountResult {
   duplicateZulip: boolean;
   setProvider: (provider: ConnectExternalAccountProvider) => void;
   setServerUrl: (value: string) => void;
-  setLogin: (value: string) => void;
-  setToken: (value: string) => void;
+  setEmail: (value: string) => void;
+  setApiKey: (value: string) => void;
   submit: () => void;
 }
 
@@ -48,44 +49,62 @@ export function useConnectExternalAccount({
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const accounts = useExternalAccountStore((state) => state.accounts);
-  const loadingAccounts = useExternalAccountStore((state) => state.loadStatus === "loading");
-  const duplicateZulip = useMemo(
-    () => accounts.some((account) => account.accountType === "zulip"),
-    [accounts],
-  );
+  const storedAccounts = useExternalAccountStore((state) => state.accounts);
+  const accountOwnerKey = useExternalAccountStore((state) => state.ownerKey);
+  const accountLoadStatus = useExternalAccountStore((state) => state.loadStatus);
+  const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const accounts = accountOwnerKey === runtimeOwnerKey ? storedAccounts : [];
+  const loadingAccounts =
+    runtimeOwnerKey != null &&
+    (accountOwnerKey !== runtimeOwnerKey || accountLoadStatus === "loading");
+  const duplicateZulip = accounts.some((account) => account.accountType === "zulip");
 
   useEffect(() => {
     if (!open || runtimeContext == null) return;
-    setDraft(EMPTY_DRAFT);
-    setError(null);
-    void refreshExternalAccounts({ runtimeContext }).catch(() => undefined);
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setDraft(EMPTY_DRAFT);
+      setError(null);
+      void refreshExternalAccounts({ runtimeContext, signal: controller.signal }).catch(
+        () => undefined,
+      );
+    });
+    return () => controller.abort();
   }, [open, runtimeContext]);
 
   const setProvider = useCallback((provider: ConnectExternalAccountProvider) => {
     setDraft((current) => ({ ...current, provider }));
+    setError(null);
   }, []);
   const setServerUrl = useCallback((serverUrl: string) => {
     setDraft((current) => ({ ...current, serverUrl }));
+    setError(null);
   }, []);
-  const setLogin = useCallback((login: string) => {
-    setDraft((current) => ({ ...current, login }));
+  const setEmail = useCallback((email: string) => {
+    setDraft((current) => ({ ...current, email }));
+    setError(null);
   }, []);
-  const setToken = useCallback((token: string) => {
-    setDraft((current) => ({ ...current, token }));
+  const setApiKey = useCallback((apiKey: string) => {
+    setDraft((current) => ({ ...current, apiKey }));
+    setError(null);
   }, []);
 
   const submit = useCallback(() => {
     if (runtimeContext == null || submitting) return;
     const serverUrl = normalizeServerBaseUrl(draft.serverUrl);
-    const login = draft.login.trim();
-    const token = draft.token.trim();
-    if (serverUrl.length === 0 || login.length === 0 || token.length === 0) {
+    const email = draft.email.trim();
+    const apiKey = draft.apiKey.trim();
+    if (serverUrl.length === 0 || email.length === 0 || apiKey.length === 0) {
       setError("fill");
       return;
     }
     if (!isValidRealmUrl(serverUrl)) {
       setError("invalid-url");
+      return;
+    }
+    if (!isValidEmail(email)) {
+      setError("invalid-email");
       return;
     }
     if (duplicateZulip) {
@@ -96,10 +115,15 @@ export function useConnectExternalAccount({
     setSubmitting(true);
     setError(null);
     void createExternalAccount(buildMessengerRequestOptions(runtimeContext), {
-      server_url: serverUrl,
-      account_settings: {
+      uuid: globalThis.crypto.randomUUID(),
+      settings: {
         kind: "zulip",
-        credentials: { kind: "zulip", login, token },
+        server_url: serverUrl,
+        email,
+        api_key: apiKey,
+        selection_mode: "explicit",
+        history_depth: "30_days",
+        default_project_id: runtimeContext.projectId,
       },
     })
       .then(async () => {
@@ -130,9 +154,9 @@ export function useConnectExternalAccount({
       })
       .finally(() => setSubmitting(false));
   }, [
-    draft.login,
+    draft.apiKey,
+    draft.email,
     draft.serverUrl,
-    draft.token,
     duplicateZulip,
     onCompleted,
     runtimeContext,
@@ -148,8 +172,8 @@ export function useConnectExternalAccount({
     duplicateZulip,
     setProvider,
     setServerUrl,
-    setLogin,
-    setToken,
+    setEmail,
+    setApiKey,
     submit,
   };
 }

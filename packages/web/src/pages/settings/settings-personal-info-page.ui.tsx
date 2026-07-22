@@ -8,6 +8,7 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { ZulipExternalAccountCard } from "~/features/connect-external-account/zulip-external-account-card.ui";
 import {
   fetchUserProfile,
   fetchOwnStatus,
@@ -638,6 +639,9 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        {currentWorkspaceSession != null && (
+          <ZulipExternalAccountCard runtimeContext={currentWorkspaceSession} />
+        )}
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
           <header className="border-b border-border-subtle pb-3">
             <h2 className="mb-3 text-sm font-semibold text-text-primary">

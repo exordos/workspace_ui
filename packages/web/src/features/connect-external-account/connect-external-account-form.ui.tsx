@@ -19,6 +19,7 @@ function errorText(error: string | null): string | null {
   if (error === "fill") return t("connectExternalAccount.errors.allFields");
   if (error === "duplicate") return t("connectExternalAccount.errors.alreadyConnected");
   if (error === "invalid-url") return t("connectExternalAccount.errors.serverUrlInvalid");
+  if (error === "invalid-email") return t("connectExternalAccount.errors.emailInvalid");
   if (error === "invalid") return t("connectExternalAccount.errors.invalidCredentials");
   if (error === "unavailable") return t("connectExternalAccount.errors.unavailable");
   if (error === "connect") return t("connectExternalAccount.errors.requestFailed");
@@ -33,8 +34,8 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
     error,
     onProviderChange,
     onServerUrlChange,
-    onLoginChange,
-    onTokenChange,
+    onEmailChange,
+    onApiKeyChange,
     onSubmit,
   }) {
     const handleSubmit = useCallback(
@@ -81,29 +82,29 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
           />
         </FormField>
 
-        <FormField label={t("connectExternalAccount.login")} htmlFor="external-account-login">
+        <FormField label={t("connectExternalAccount.email")} htmlFor="external-account-email">
           <input
-            id="external-account-login"
-            type="text"
+            id="external-account-email"
+            type="email"
             required
-            autoComplete="username"
-            placeholder={t("connectExternalAccount.loginHint")}
-            value={draft.login}
-            onChange={(event) => onLoginChange(event.target.value)}
+            autoComplete="email"
+            placeholder={t("connectExternalAccount.emailHint")}
+            value={draft.email}
+            onChange={(event) => onEmailChange(event.target.value)}
             disabled={submitting || duplicateZulip}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </FormField>
 
-        <FormField label={t("connectExternalAccount.token")} htmlFor="external-account-token">
+        <FormField label={t("connectExternalAccount.apiKey")} htmlFor="external-account-api-key">
           <input
-            id="external-account-token"
+            id="external-account-api-key"
             type="password"
             required
             autoComplete="new-password"
-            placeholder={t("connectExternalAccount.tokenHint")}
-            value={draft.token}
-            onChange={(event) => onTokenChange(event.target.value)}
+            placeholder={t("connectExternalAccount.apiKeyHint")}
+            value={draft.apiKey}
+            onChange={(event) => onApiKeyChange(event.target.value)}
             disabled={submitting || duplicateZulip}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />

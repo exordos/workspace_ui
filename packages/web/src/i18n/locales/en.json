@@ -109,6 +109,10 @@
     "description": "Connect a Zulip account to this Workspace profile.",
     "servicesTitle": "External integrations",
     "servicesHint": "Connect Zulip and import selected chats into Workspace.",
+    "cardTitle": "External messenger accounts",
+    "notConnected": "Zulip account not connected",
+    "add": "Add Zulip account",
+    "saved": "Zulip account connected",
     "provider": "Provider",
     "providers": {
       "zulip": "Zulip"
@@ -118,11 +122,11 @@
     "login": "Login",
     "loginHint": "Your Zulip login",
     "token": "Token",
-    "tokenHint": "Paste a Zulip API token",
-    "email": "Email",
-    "emailHint": "Your Zulip account email",
-    "apiKey": "API key",
-    "apiKeyHint": "Paste a Zulip API key",
+    "tokenHint": "Paste an API token",
+    "email": "Zulip email",
+    "emailHint": "you@example.com",
+    "apiKey": "Zulip API key",
+    "apiKeyHint": "Paste the API key from Zulip settings",
     "showToken": "Show token",
     "hideToken": "Hide token",
     "connect": "Connect",
@@ -156,6 +160,7 @@
       "changed": "The connection changed. Refresh it and try again.",
       "serverUrlRequired": "Enter the server URL",
       "serverUrlInvalid": "Enter a valid HTTPS server URL",
+      "emailInvalid": "Enter a valid Zulip email",
       "loginRequired": "Enter your login",
       "tokenRequired": "Enter your token"
     },
@@ -172,6 +177,15 @@
       "checking": "Checking…",
       "checkingShort": "Checking",
       "unsupportedProvider": "This provider is not supported yet"
+    },
+    "accountStatus": {
+      "connecting": "Connecting account…",
+      "backfill": "Importing Zulip history…",
+      "live": "Account connected",
+      "degraded": "Connection degraded",
+      "auth_required": "Zulip credentials need attention",
+      "disconnected": "Account disconnected",
+      "suspended": "Account suspended"
     }
   },
   "nav": {

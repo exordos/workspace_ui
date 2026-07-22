@@ -6,27 +6,28 @@ import {
 } from "./messenger-external-accounts.api";
 
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
-const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const ACCOUNT_UUID = "33333333-3333-4333-8333-333333333333";
 const DATE = "2026-07-10T09:30:00Z";
 
 const accountDto = {
   uuid: ACCOUNT_UUID,
-  project_id: PROJECT_UUID,
-  user_uuid: USER_UUID,
-  server_url: "https://zulip.example.com",
-  source_scope: "https://zulip.example.com",
-  account_type: "zulip",
-  status: "new",
-  access_status: "confirmed",
-  access_checked_at: DATE,
-  access_confirmed_at: DATE,
-  access_next_check_at: DATE,
-  access_last_error: null,
-  account_settings: {
+  settings: {
     kind: "zulip",
-    credentials: { kind: "zulip", login: "user@example.com", token: "secret" },
+    server_url: "https://zulip.example.com",
+    email: "user@example.com",
+    selection_mode: "explicit",
+    history_depth: "30_days",
+    default_project_id: PROJECT_UUID,
   },
+  credential_present: true,
+  status: "connecting",
+  live_ready: false,
+  capabilities: {},
+  safe_error: null,
+  desired_generation: 1,
+  applied_generation: 0,
+  last_progress_at: null,
+  revision: 1,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -87,14 +88,19 @@ describe("messenger external accounts API", () => {
     });
   });
 
-  it("posts only the backend create contract", async () => {
+  it("posts the current provider-neutral create contract", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     fetchMock.mockResolvedValue(jsonResponse(accountDto, 201));
     const body = {
-      server_url: "https://zulip.example.com",
-      account_settings: {
+      uuid: ACCOUNT_UUID,
+      settings: {
         kind: "zulip" as const,
-        credentials: { kind: "zulip" as const, login: "user@example.com", token: "secret" },
+        server_url: "https://zulip.example.com",
+        email: "user@example.com",
+        api_key: "secret",
+        selection_mode: "explicit" as const,
+        history_depth: "30_days" as const,
+        default_project_id: PROJECT_UUID,
       },
     };
 
