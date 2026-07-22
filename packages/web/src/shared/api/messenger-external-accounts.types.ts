@@ -1,51 +1,46 @@
 import type { WorkspaceMessengerUuid } from "./messenger.types";
 
 export type WorkspaceExternalAccountProvider = "zulip";
-export type WorkspaceExternalAccountStatus = "new" | "active";
-export type WorkspaceExternalAccountAccessStatus =
-  | "missing_credentials"
-  | "confirmed"
-  | "invalid_credentials"
-  | "unavailable";
+export type WorkspaceExternalAccountStatus =
+  | "connecting"
+  | "backfill"
+  | "live"
+  | "degraded"
+  | "auth_required"
+  | "disconnected"
+  | "suspended";
+export type WorkspaceExternalAccountSelectionMode = "explicit" | "all";
+export type WorkspaceExternalAccountHistoryDepth = "new" | "7_days" | "30_days" | "90_days" | "all";
 
-export interface WorkspaceExternalAccountUserInfoDto {
-  user_id?: number;
-  email?: string;
-  full_name?: string;
-  avatar_url?: string | null;
+export interface WorkspaceZulipExternalAccountSettingsDto {
+  kind: "zulip";
+  server_url: string;
+  email: string;
+  selection_mode: WorkspaceExternalAccountSelectionMode;
+  history_depth: WorkspaceExternalAccountHistoryDepth;
+  default_project_id: WorkspaceMessengerUuid;
 }
 
 export interface WorkspaceExternalAccountDto {
   uuid: WorkspaceMessengerUuid;
-  project_id: WorkspaceMessengerUuid;
-  user_uuid: WorkspaceMessengerUuid;
-  server_url: string;
-  source_scope: string | null;
-  account_type: WorkspaceExternalAccountProvider;
+  settings: WorkspaceZulipExternalAccountSettingsDto;
+  credential_present: boolean;
   status: WorkspaceExternalAccountStatus;
-  access_status: WorkspaceExternalAccountAccessStatus;
-  access_checked_at: string | null;
-  access_confirmed_at: string | null;
-  access_next_check_at: string;
-  access_last_error: string | null;
-  account_settings: {
-    kind: WorkspaceExternalAccountProvider;
-    credentials?: unknown;
-    user_info?: WorkspaceExternalAccountUserInfoDto | null;
-  };
+  live_ready: boolean;
+  capabilities: Record<string, unknown>;
+  safe_error: string | null;
+  desired_generation: number;
+  applied_generation: number;
+  last_progress_at: string | null;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
 
 export interface WorkspaceExternalAccountCreateRequestBody {
-  server_url: string;
-  account_settings: {
-    kind: "zulip";
-    credentials: {
-      kind: "zulip";
-      login: string;
-      token: string;
-    };
+  uuid: WorkspaceMessengerUuid;
+  settings: WorkspaceZulipExternalAccountSettingsDto & {
+    api_key: string;
   };
 }
 
@@ -57,37 +52,68 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isNullableString(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === "string";
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
 }
 
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isWorkspaceExternalAccountStatus(value: unknown): value is WorkspaceExternalAccountStatus {
+  return (
+    value === "connecting" ||
+    value === "backfill" ||
+    value === "live" ||
+    value === "degraded" ||
+    value === "auth_required" ||
+    value === "disconnected" ||
+    value === "suspended"
+  );
+}
+
+function isWorkspaceExternalAccountSelectionMode(
+  value: unknown,
+): value is WorkspaceExternalAccountSelectionMode {
+  return value === "explicit" || value === "all";
+}
+
+function isWorkspaceExternalAccountHistoryDepth(
+  value: unknown,
+): value is WorkspaceExternalAccountHistoryDepth {
+  return (
+    value === "new" ||
+    value === "7_days" ||
+    value === "30_days" ||
+    value === "90_days" ||
+    value === "all"
+  );
 }
 
 export function isWorkspaceExternalAccountDto(
   value: unknown,
 ): value is WorkspaceExternalAccountDto {
-  if (!isRecord(value)) return false;
-  const settings = value.account_settings;
+  if (!isRecord(value) || !isRecord(value.settings)) return false;
+  const settings = value.settings;
   return (
-    isUuid(value.uuid) &&
-    isUuid(value.project_id) &&
-    isUuid(value.user_uuid) &&
-    isNonEmptyString(value.server_url) &&
-    value.account_type === "zulip" &&
-    (value.status === "new" || value.status === "active") &&
-    (value.access_status === "missing_credentials" ||
-      value.access_status === "confirmed" ||
-      value.access_status === "invalid_credentials" ||
-      value.access_status === "unavailable") &&
-    isNullableString(value.source_scope) &&
-    isNullableString(value.access_checked_at) &&
-    isNullableString(value.access_confirmed_at) &&
-    isNullableString(value.access_next_check_at) &&
-    isNullableString(value.access_last_error) &&
-    isRecord(settings) &&
+    isNonEmptyString(value.uuid) &&
     settings.kind === "zulip" &&
+    isNonEmptyString(settings.server_url) &&
+    isNonEmptyString(settings.email) &&
+    isWorkspaceExternalAccountSelectionMode(settings.selection_mode) &&
+    isWorkspaceExternalAccountHistoryDepth(settings.history_depth) &&
+    isNonEmptyString(settings.default_project_id) &&
+    typeof value.credential_present === "boolean" &&
+    isWorkspaceExternalAccountStatus(value.status) &&
+    typeof value.live_ready === "boolean" &&
+    isRecord(value.capabilities) &&
+    isNullableString(value.safe_error) &&
+    isNonNegativeInteger(value.desired_generation) &&
+    value.desired_generation >= 1 &&
+    isNonNegativeInteger(value.applied_generation) &&
+    isNullableString(value.last_progress_at) &&
+    isNonNegativeInteger(value.revision) &&
+    value.revision >= 1 &&
     isNonEmptyString(value.created_at) &&
     isNonEmptyString(value.updated_at)
   );

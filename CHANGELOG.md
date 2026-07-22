@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Zulip external-account setup and connection status in personal settings
+
 ## [0.2.1] — 2026-07-22
 
 ### Added

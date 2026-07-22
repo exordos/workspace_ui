@@ -109,6 +109,10 @@
     "description": "Подключите аккаунт Zulip к этому профилю Workspace.",
     "servicesTitle": "Внешние интеграции",
     "servicesHint": "Подключите Zulip и перенесите выбранные чаты в Workspace.",
+    "cardTitle": "Внешние аккаунты мессенджеров",
+    "notConnected": "Аккаунт Zulip не подключён",
+    "add": "Добавить аккаунт Zulip",
+    "saved": "Аккаунт Zulip подключён",
     "provider": "Провайдер",
     "providers": {
       "zulip": "Zulip"
@@ -118,11 +122,11 @@
     "login": "Логин",
     "loginHint": "Ваш логин в Zulip",
     "token": "Токен",
-    "tokenHint": "Вставьте API-токен Zulip",
-    "email": "Электронная почта",
-    "emailHint": "Почта аккаунта Zulip",
-    "apiKey": "Ключ API",
-    "apiKeyHint": "Вставьте ключ API Zulip",
+    "tokenHint": "Вставьте API-токен",
+    "email": "Email Zulip",
+    "emailHint": "you@example.com",
+    "apiKey": "API-ключ Zulip",
+    "apiKeyHint": "Вставьте API-ключ из настроек Zulip",
     "showToken": "Показать токен",
     "hideToken": "Скрыть токен",
     "connect": "Подключить",
@@ -156,6 +160,7 @@
       "changed": "Подключение изменилось. Обновите данные и повторите попытку.",
       "serverUrlRequired": "Укажите URL сервера",
       "serverUrlInvalid": "Укажите корректный HTTPS URL сервера",
+      "emailInvalid": "Укажите корректный email Zulip",
       "loginRequired": "Укажите логин",
       "tokenRequired": "Укажите токен"
     },
@@ -172,6 +177,15 @@
       "checking": "Проверяем…",
       "checkingShort": "Проверка",
       "unsupportedProvider": "Этот провайдер пока не поддерживается"
+    },
+    "accountStatus": {
+      "connecting": "Подключаем аккаунт…",
+      "backfill": "Импортируем историю Zulip…",
+      "live": "Аккаунт подключён",
+      "degraded": "Соединение работает с ошибками",
+      "auth_required": "Нужно обновить данные Zulip",
+      "disconnected": "Аккаунт отключён",
+      "suspended": "Аккаунт приостановлен"
     }
   },
   "nav": {

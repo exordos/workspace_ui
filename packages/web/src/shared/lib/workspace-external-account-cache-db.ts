@@ -1,5 +1,5 @@
 const DB_NAME = "workspace-external-account-cache-v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_ACCOUNTS = "accounts";
 const INDEX_BY_OWNER = "byOwner";
 const ROW_ID_SEPARATOR = "\0";
@@ -7,36 +7,40 @@ const ROW_ID_SEPARATOR = "\0";
 export const WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_NAME = DB_NAME;
 export const WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_VERSION = DB_VERSION;
 
-export type WorkspaceExternalAccountCacheAccountType = "zulip" | "iam";
-export type WorkspaceExternalAccountCacheStatus = "new" | "active";
-export type WorkspaceExternalAccountCacheAccessStatus =
-  | "missing_credentials"
-  | "confirmed"
-  | "invalid_credentials"
-  | "unavailable";
-
-export interface WorkspaceExternalAccountCacheUserInfo {
-  userId: number | null;
-  email: string | null;
-  fullName: string | null;
-  avatarUrl: string | null;
-}
+export type WorkspaceExternalAccountCacheAccountType = "zulip";
+export type WorkspaceExternalAccountCacheStatus =
+  | "connecting"
+  | "backfill"
+  | "live"
+  | "degraded"
+  | "auth_required"
+  | "disconnected"
+  | "suspended";
+export type WorkspaceExternalAccountCacheSelectionMode = "explicit" | "all";
+export type WorkspaceExternalAccountCacheHistoryDepth =
+  | "new"
+  | "7_days"
+  | "30_days"
+  | "90_days"
+  | "all";
 
 export interface WorkspaceExternalAccountCacheProfile {
   uuid: string;
-  projectId: string;
-  userUuid: string;
   serverUrl: string;
-  sourceScope: string | null;
+  email: string;
   accountType: WorkspaceExternalAccountCacheAccountType;
+  selectionMode: WorkspaceExternalAccountCacheSelectionMode;
+  historyDepth: WorkspaceExternalAccountCacheHistoryDepth;
+  defaultProjectId: string;
+  credentialPresent: boolean;
   status: WorkspaceExternalAccountCacheStatus;
-  accessStatus: WorkspaceExternalAccountCacheAccessStatus;
-  accessCheckedAt: string | null;
-  accessConfirmedAt: string | null;
-  accessNextCheckAt: string;
-  accessLastError: string | null;
-  accountSettingsKind: WorkspaceExternalAccountCacheAccountType;
-  userInfo: WorkspaceExternalAccountCacheUserInfo | null;
+  liveReady: boolean;
+  capabilities: Record<string, unknown>;
+  safeError: string | null;
+  desiredGeneration: number;
+  appliedGeneration: number;
+  lastProgressAt: string | null;
+  revision: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,8 +111,11 @@ export function openWorkspaceExternalAccountCacheDb(): Promise<IDBDatabase> {
       dbPromise = null;
       reject(idbError(request.error));
     };
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
+      if (event.oldVersion > 0 && event.oldVersion < DB_VERSION) {
+        db.deleteObjectStore(STORE_ACCOUNTS);
+      }
       if (!db.objectStoreNames.contains(STORE_ACCOUNTS)) {
         const store = db.createObjectStore(STORE_ACCOUNTS, { keyPath: "id" });
         store.createIndex(INDEX_BY_OWNER, "ownerKey", { unique: false });

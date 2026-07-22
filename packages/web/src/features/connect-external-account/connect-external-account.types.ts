@@ -6,8 +6,8 @@ export type ConnectExternalAccountProvider = "zulip";
 export interface ConnectExternalAccountDraft {
   provider: ConnectExternalAccountProvider;
   serverUrl: string;
-  login: string;
-  token: string;
+  email: string;
+  apiKey: string;
 }
 
 export interface ConnectExternalAccountFormProps {
@@ -17,8 +17,8 @@ export interface ConnectExternalAccountFormProps {
   error: string | null;
   onProviderChange: (provider: ConnectExternalAccountProvider) => void;
   onServerUrlChange: (value: string) => void;
-  onLoginChange: (value: string) => void;
-  onTokenChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
+  onApiKeyChange: (value: string) => void;
   onSubmit: () => void;
 }
 

@@ -9,7 +9,6 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
-import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 
@@ -72,7 +71,7 @@ export const RightPanelExternalAccountsList: React.FC = () => {
 };
 
 function getDisplayName(account: ExternalAccount): string {
-  return account.userInfo?.fullName ?? account.userInfo?.email ?? account.serverUrl;
+  return account.email;
 }
 
 function getInitials(value: string): string {
@@ -89,39 +88,26 @@ function getStatusLabel(
   account: ExternalAccount,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
-  if (account.accessStatus === "confirmed") {
-    return t("connectExternalAccount.status.connected");
-  }
-  if (account.accessStatus === "invalid_credentials") {
-    return t("connectExternalAccount.errors.invalidCredentials");
-  }
-  if (account.accessStatus === "unavailable") {
-    return t("connectExternalAccount.errors.unavailable");
-  }
-  return t("connectExternalAccount.status.checking");
+  return t(`connectExternalAccount.accountStatus.${account.status}`);
 }
 
 function getCompactStatusLabel(
   account: ExternalAccount,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
-  if (account.accessStatus === "confirmed") {
-    return t("connectExternalAccount.status.connected");
-  }
-  if (account.accessStatus === "invalid_credentials") {
-    return t("connectExternalAccount.errors.invalidCredentialsShort");
-  }
-  if (account.accessStatus === "unavailable") {
-    return t("connectExternalAccount.errors.unavailableShort");
-  }
-  return t("connectExternalAccount.status.checkingShort");
+  return t(`connectExternalAccount.accountStatus.${account.status}`);
 }
 
 function getStatusClassName(account: ExternalAccount): string {
-  if (account.accessStatus === "confirmed") {
+  if (account.status === "live") {
     return "bg-call-green/10 text-call-green";
   }
-  if (account.accessStatus === "invalid_credentials" || account.accessStatus === "unavailable") {
+  if (
+    account.status === "auth_required" ||
+    account.status === "degraded" ||
+    account.status === "disconnected" ||
+    account.status === "suspended"
+  ) {
     return "bg-notice-base/10 text-notice-base";
   }
   return "bg-accent/10 text-accent";
@@ -130,7 +116,6 @@ function getStatusClassName(account: ExternalAccount): string {
 const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account }) => {
   const { t } = useTranslation();
   const displayName = getDisplayName(account);
-  const avatarSrc = resolveAvatarUrl(account.userInfo?.avatarUrl, account.serverUrl);
   const statusLabel = getStatusLabel(account, t);
   const compactStatusLabel = getCompactStatusLabel(account, t);
 
@@ -142,7 +127,7 @@ const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account 
           title={account.serverUrl}
         >
           <span className="flex min-w-0 items-center gap-2.5">
-            <Avatar size="sm" src={avatarSrc} className="bg-accent/15 text-accent">
+            <Avatar size="sm" className="bg-accent/15 text-accent">
               {getInitials(displayName)}
             </Avatar>
             <span className="min-w-0">
@@ -150,12 +135,12 @@ const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account 
                 {displayName}
               </span>
               <span className="mt-0.5 block truncate text-[11px] text-text-muted">
-                {account.userInfo?.email ?? account.serverUrl}
+                {account.serverUrl}
               </span>
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            {account.accessStatus !== "confirmed" && (
+            {account.status !== "live" && (
               <span
                 className={`inline-flex max-w-24 truncate rounded-full px-2 py-0.5 text-[10px] font-medium sm:max-w-28 ${getStatusClassName(account)}`}
                 title={statusLabel}
@@ -193,8 +178,8 @@ const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account 
             <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
             {statusLabel}
           </div>
-          {account.accessLastError != null && (
-            <p className="mt-2 break-words text-notice-base">{account.accessLastError}</p>
+          {account.safeError != null && (
+            <p className="mt-2 break-words text-notice-base">{account.safeError}</p>
           )}
         </div>
       </details>

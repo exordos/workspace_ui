@@ -7,27 +7,23 @@ import {
 
 const dto: WorkspaceExternalAccountDto = {
   uuid: "account-1",
-  project_id: "project-1",
-  user_uuid: "user-1",
-  server_url: "https://zulip.example.com",
-  source_scope: "https://zulip.example.com",
-  account_type: "zulip",
-  status: "active",
-  access_status: "confirmed",
-  access_checked_at: "2026-07-10T09:00:00Z",
-  access_confirmed_at: "2026-07-10T09:00:00Z",
-  access_next_check_at: "2026-07-10T10:00:00Z",
-  access_last_error: null,
-  account_settings: {
+  settings: {
     kind: "zulip",
-    credentials: { kind: "zulip", login: "user@example.com", token: "fixture-token" },
-    user_info: {
-      user_id: 7,
-      email: "user@example.com",
-      full_name: "Phoenix",
-      avatar_url: "/user_avatars/2/avatar.png",
-    },
+    server_url: "https://zulip.example.com",
+    email: "user@example.com",
+    selection_mode: "explicit",
+    history_depth: "30_days",
+    default_project_id: "project-1",
   },
+  credential_present: true,
+  status: "live",
+  live_ready: true,
+  capabilities: {},
+  safe_error: null,
+  desired_generation: 3,
+  applied_generation: 3,
+  last_progress_at: "2026-07-10T09:00:00Z",
+  revision: 2,
   created_at: "2026-07-10T08:00:00Z",
   updated_at: "2026-07-10T09:00:00Z",
 };
@@ -38,33 +34,29 @@ describe("external account adapters", () => {
 
     expect(account).toEqual({
       uuid: "account-1",
-      projectId: "project-1",
-      userUuid: "user-1",
       serverUrl: "https://zulip.example.com",
-      sourceScope: "https://zulip.example.com",
+      email: "user@example.com",
       accountType: "zulip",
-      status: "active",
-      accessStatus: "confirmed",
-      accessCheckedAt: "2026-07-10T09:00:00Z",
-      accessConfirmedAt: "2026-07-10T09:00:00Z",
-      accessNextCheckAt: "2026-07-10T10:00:00Z",
-      accessLastError: null,
-      accountSettingsKind: "zulip",
-      userInfo: {
-        userId: 7,
-        email: "user@example.com",
-        fullName: "Phoenix",
-        avatarUrl: "/user_avatars/2/avatar.png",
-      },
+      selectionMode: "explicit",
+      historyDepth: "30_days",
+      defaultProjectId: "project-1",
+      credentialPresent: true,
+      status: "live",
+      liveReady: true,
+      capabilities: {},
+      safeError: null,
+      desiredGeneration: 3,
+      appliedGeneration: 3,
+      lastProgressAt: "2026-07-10T09:00:00Z",
+      revision: 2,
       createdAt: "2026-07-10T08:00:00Z",
       updatedAt: "2026-07-10T09:00:00Z",
     });
-    expect(account).not.toHaveProperty("credentials");
+    expect(account).not.toHaveProperty("apiKey");
   });
 
   it("detects the backend duplicate rule by account type", () => {
     const account = adaptWorkspaceExternalAccountDto(dto);
     expect(isExternalAccountDuplicate([account], "zulip")).toBe(true);
-    expect(isExternalAccountDuplicate([account], "iam")).toBe(false);
   });
 });
