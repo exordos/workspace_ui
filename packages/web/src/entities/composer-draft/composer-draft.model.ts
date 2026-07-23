@@ -13,6 +13,7 @@ import {
   createWorkspaceComposerDraftUuid,
   isWorkspaceComposerDraftContentEmpty,
   normalizeWorkspaceComposerDraftContent,
+  normalizeWorkspaceComposerDraftRemoteText,
 } from "./composer-draft.lib";
 import type {
   WorkspaceComposerDraft,
@@ -223,6 +224,10 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       }
 
       const newDraftUuid = current == null ? createWorkspaceComposerDraftUuid() : null;
+      const remoteTextUnchanged =
+        current != null &&
+        normalizeWorkspaceComposerDraftRemoteText(current.content.text) ===
+          normalizeWorkspaceComposerDraftRemoteText(normalizedContent.text);
 
       const next: WorkspaceComposerDraft =
         current == null
@@ -247,7 +252,12 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
               topicUuid: target?.topicUuid ?? current.topicUuid,
               snapshotId: createWorkspaceComposerDraftSnapshotId(),
               content: normalizedContent,
-              syncStatus: current.syncStatus === "conflict" ? "conflict" : "local",
+              syncStatus:
+                current.syncStatus === "conflict"
+                  ? "conflict"
+                  : current.syncStatus === "saved" && remoteTextUnchanged
+                    ? "saved"
+                    : "local",
               updatedAt: nextDraftUpdatedAt(),
             };
       logStoreAction("workspaceComposerDraft", "setDraft", { ownerKey, conversationId });

@@ -9,7 +9,10 @@ import { createDraft, deleteDraft, updateDraft } from "~/shared/api/messenger-dr
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { isWorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
 import type { WorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
-import { normalizeWorkspaceComposerDraftContent } from "./composer-draft.lib";
+import {
+  normalizeWorkspaceComposerDraftContent,
+  normalizeWorkspaceComposerDraftRemoteText,
+} from "./composer-draft.lib";
 import { useWorkspaceComposerDraftStore } from "./composer-draft.model";
 import type { WorkspaceComposerDraft } from "./composer-draft.types";
 
@@ -139,11 +142,19 @@ async function saveLatestDraft(
       );
     }
     if (!isJobCurrent(job)) return "failed";
+    // A successful response confirms the payload that this request sent. The
+    // server may return canonicalized markdown, so comparing against its echoed
+    // content can keep the same local snapshot dirty and cause an endless PUT loop.
+    const sentContent = createPayload ?? draft.content.text;
+    const sentRemoteText = normalizeWorkspaceComposerDraftRemoteText(sentContent);
     const current = currentDraft(job);
     const syncedSnapshotId =
-      current?.content.text === server.draft.payload.content
+      current != null &&
+      normalizeWorkspaceComposerDraftRemoteText(current.content.text) === sentRemoteText
         ? current.snapshotId
-        : `server-payload:${job.draftUuid}:${server.draft.revision}`;
+        : normalizeWorkspaceComposerDraftRemoteText(draft.content.text) === sentRemoteText
+          ? draft.snapshotId
+          : `create-payload:${job.draftUuid}:${server.draft.revision}`;
     useWorkspaceComposerDraftStore
       .getState()
       .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, syncedSnapshotId, {
@@ -267,12 +278,7 @@ async function runJob(job: RemoteDraftJob): Promise<void> {
         resolveJob(job);
         return;
       }
-      if (
-        job.deleteRequested ||
-        latest.snapshotId !== draft.snapshotId ||
-        latest.syncStatus !== "saved"
-      )
-        continue;
+      if (job.deleteRequested || latest.syncStatus !== "saved") continue;
       resolveJob(job);
       return;
     }
@@ -323,6 +329,7 @@ export function syncWorkspaceComposerDraft(params: {
   getRuntimeContext: WorkspaceRuntimeContextGetter;
   draft: WorkspaceComposerDraft;
 }): void {
+  if (params.draft.syncStatus === "saved" || params.draft.syncStatus === "conflict") return;
   const job = getOrCreateJob(params);
   if (job == null || !isJobCurrent(job)) return;
   if (!job.running) scheduleJob(job, REMOTE_DRAFT_DEBOUNCE_MS);

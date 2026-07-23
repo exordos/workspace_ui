@@ -309,6 +309,84 @@ describe("workspace composer draft remote queue", () => {
     });
   });
 
+  it("does not repeat PUT when the server returns canonicalized markdown", async () => {
+    createDraft.mockResolvedValueOnce(snapshot("A", 1, "etag-1"));
+    const first = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("A"), TARGET);
+    sync(first!);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flushMicrotasks();
+
+    const local = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("local  "), TARGET);
+    updateDraft.mockResolvedValue(snapshot("local", 2, "etag-2"));
+
+    sync(local!);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flushMicrotasks();
+
+    expect(updateDraft).toHaveBeenCalledTimes(1);
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[first!.key]).toMatchObject({
+      content: { text: "local  " },
+      etag: "etag-2",
+      syncStatus: "saved",
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(updateDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not PUT when only surrounding whitespace changes after a saved draft", async () => {
+    createDraft.mockResolvedValueOnce(snapshot("local", 1, "etag-1"));
+    const first = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("local"), TARGET);
+    sync(first!);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flushMicrotasks();
+
+    const whitespaceOnly = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("  local  "), TARGET);
+    expect(whitespaceOnly).toMatchObject({
+      content: { text: "  local  " },
+      syncStatus: "saved",
+    });
+
+    sync(whitespaceOnly!);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(createDraft).toHaveBeenCalledTimes(1);
+    expect(updateDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not PUT whitespace added while the previous request is in flight", async () => {
+    const created = createDeferred<ReturnType<typeof snapshot>>();
+    createDraft.mockReturnValueOnce(created.promise);
+    const first = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("local"), TARGET);
+    sync(first!);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const whitespaceOnly = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("local  "), TARGET);
+    sync(whitespaceOnly!);
+
+    created.resolve(snapshot("local", 1, "etag-1"));
+    await flushMicrotasks();
+
+    expect(createDraft).toHaveBeenCalledTimes(1);
+    expect(updateDraft).not.toHaveBeenCalled();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[first!.key]).toMatchObject({
+      content: { text: "local  " },
+      syncStatus: "saved",
+    });
+  });
+
   it("treats a missing draft on DELETE as an already successful deletion", async () => {
     const draft = useWorkspaceComposerDraftStore
       .getState()

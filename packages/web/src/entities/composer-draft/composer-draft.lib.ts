@@ -104,6 +104,10 @@ export function isWorkspaceComposerDraftContentEmpty(
   return content.text.trim().length === 0 && content.replySession.tabs.length === 0;
 }
 
+export function normalizeWorkspaceComposerDraftRemoteText(text: string): string {
+  return text.trim();
+}
+
 export function createWorkspaceComposerDraftKey(ownerKey: string, conversationId: string): string {
   return `${ownerKey}:${conversationId}`;
 }
