@@ -24,8 +24,8 @@ vi.mock("~/features/workspace-avatar/workspace-avatar.ui", () => ({
   ),
 }));
 
-vi.mock("~/features/connect-external-account/zulip-external-account-card.ui", () => ({
-  ZulipExternalAccountCard: () => <div data-testid="zulip-external-account-card" />,
+vi.mock("~/widgets/external-account-settings/external-account-settings.ui", () => ({
+  ExternalAccountSettings: () => <div data-testid="zulip-external-account-card" />,
 }));
 
 const SESSION: WorkspaceAuthSession = {

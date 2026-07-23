@@ -8,7 +8,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Zulip external-account setup and connection status in personal settings
+- Zulip external-account setup, chat selection, history-depth controls, and connection status in personal settings
+- Permission-scoped Zulip administration for provider policy, limits, health, and emergency suspension
 
 ## [0.2.1] — 2026-07-22
 

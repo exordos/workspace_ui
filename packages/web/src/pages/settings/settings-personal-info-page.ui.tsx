@@ -8,7 +8,6 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { ZulipExternalAccountCard } from "~/features/connect-external-account/zulip-external-account-card.ui";
 import {
   fetchUserProfile,
   fetchOwnStatus,
@@ -32,6 +31,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ExternalAccountSettings } from "~/widgets/external-account-settings/external-account-settings.ui";
 
 const AVATAR_MAGIC_BYTE_VALIDATED_IMAGE_TYPES = new Set([
   "image/png",
@@ -640,7 +640,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
         {currentWorkspaceSession != null && (
-          <ZulipExternalAccountCard runtimeContext={currentWorkspaceSession} />
+          <ExternalAccountSettings runtimeContext={currentWorkspaceSession} />
         )}
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
           <header className="border-b border-border-subtle pb-3">
