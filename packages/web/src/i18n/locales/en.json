@@ -188,6 +188,86 @@
       "suspended": "Account suspended"
     }
   },
+  "externalAccountSync": {
+    "title": "Zulip synchronization",
+    "description": "Choose which chats are copied into this Workspace project and how much history to import.",
+    "manage": "Manage synchronization",
+    "selectionMode": "Chats to synchronize",
+    "selectionModes": {
+      "explicit": "Only selected chats",
+      "all": "All discovered chats"
+    },
+    "historyDepth": "History depth",
+    "historyDepths": {
+      "new": "New messages only",
+      "7_days": "Last 7 days",
+      "30_days": "Last 30 days",
+      "90_days": "Last 90 days",
+      "all": "All available history"
+    },
+    "save": "Save synchronization settings",
+    "saving": "Saving…",
+    "saved": "Synchronization settings saved",
+    "chats": "Zulip chats",
+    "selectedCount": "{{selected}} of {{total}} selected",
+    "refresh": "Refresh chats",
+    "allChatsHint": "New chats discovered in Zulip will be synchronized automatically. Switch to selected chats to manage them individually.",
+    "search": "Search chats",
+    "loadingChats": "Loading chats…",
+    "noChats": "No Zulip chats have been discovered yet. The catalog will appear after the bridge connects to this account.",
+    "noMatches": "No chats match this search.",
+    "chatTypes": {
+      "channel": "Channel",
+      "personal": "Direct message",
+      "group": "Group message"
+    },
+    "chatStatuses": {
+      "available": "Available",
+      "syncing": "Synchronization starting",
+      "live": "Synchronized",
+      "degraded": "Synchronization degraded",
+      "deselected": "Not synchronized"
+    },
+    "errors": {
+      "load": "Could not load the Zulip chat catalog.",
+      "save": "Could not save synchronization settings.",
+      "conflict": "These settings changed elsewhere. Refresh the page and try again.",
+      "chat": "Could not change this chat's synchronization state."
+    }
+  },
+  "externalIntegrationAdmin": {
+    "title": "External integration administration",
+    "description": "Realm-wide Zulip policy, limits, emergency controls, and bridge health.",
+    "loading": "Checking integration administration access…",
+    "healthUnknown": "unknown",
+    "enabled": "Allow Zulip integration",
+    "enabledHint": "Users still need the external integration role assigned through IAM.",
+    "maxAccounts": "Maximum accounts",
+    "maxChats": "Chats per account",
+    "maxFileMib": "Maximum file size (MiB)",
+    "customCaManaged": "{{count}} custom CA certificate(s) are configured. Policy limits are read-only here until the CA bundle is managed separately.",
+    "accounts": "Accounts",
+    "bridges": "Bridge instances",
+    "chats": "Chats",
+    "selectedChats": "Selected chats",
+    "synchronizedMessages": "Synchronized messages",
+    "synchronizedUsers": "Synchronized users",
+    "operations": "Operations",
+    "queueDepth": "Queue depth",
+    "suspended": "Emergency suspension is active. All Zulip synchronization is paused.",
+    "suspend": "Emergency suspend",
+    "resume": "Resume integration",
+    "refresh": "Refresh status",
+    "saving": "Saving…",
+    "saved": "Provider policy saved",
+    "errors": {
+      "load": "Could not load Zulip administration data.",
+      "save": "Could not save the Zulip provider policy.",
+      "conflict": "The provider policy changed elsewhere. Refresh and try again.",
+      "action": "Could not change the emergency suspension state.",
+      "invalid": "Enter whole numbers within the allowed limits."
+    }
+  },
   "nav": {
     "messenger": "Messenger",
     "calendar": "Calendar",

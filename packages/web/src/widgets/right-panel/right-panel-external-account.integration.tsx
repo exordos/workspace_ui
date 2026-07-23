@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
@@ -9,6 +10,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 
@@ -115,6 +117,7 @@ function getStatusClassName(account: ExternalAccount): string {
 
 const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const displayName = getDisplayName(account);
   const statusLabel = getStatusLabel(account, t);
   const compactStatusLabel = getCompactStatusLabel(account, t);
@@ -181,6 +184,13 @@ const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account 
           {account.safeError != null && (
             <p className="mt-2 break-words text-notice-base">{account.safeError}</p>
           )}
+          <button
+            type="button"
+            onClick={() => void navigate(withCurrentOrgRoute("/settings/personal-info"))}
+            className="border-accent/40 bg-accent/5 hover:bg-accent/10 mt-3 min-h-9 w-full rounded-lg border px-3 text-xs font-medium text-accent transition-colors"
+          >
+            {t("externalAccountSync.manage")}
+          </button>
         </div>
       </details>
     </li>
