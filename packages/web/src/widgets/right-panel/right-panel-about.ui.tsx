@@ -68,7 +68,7 @@ export const RightPanelAbout: React.FC = () => {
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-medium text-text-primary">{t("settings.appVersion")}</p>
-                <p className="mt-0.5 text-xs text-text-muted">
+                <p className="mt-0.5 truncate text-xs text-text-muted" title={APP_VERSION}>
                   {t("update.currentVersion", { version: APP_VERSION })}
                 </p>
               </div>

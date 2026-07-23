@@ -12,6 +12,7 @@ import { renderWithProviders } from "~/test/render";
 import { RightPanelShell } from "./right-panel-shell.ui";
 
 const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
+const LONG_APP_VERSION = vi.hoisted(() => "a".repeat(40));
 
 vi.mock("./right-panel-external-account.integration", () => ({
   RightPanelConnectExternalAccountDialog: ({ open }: { open: boolean }) =>
@@ -24,6 +25,15 @@ vi.mock("./right-panel-external-account.integration", () => ({
 vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
   updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
+
+vi.mock("./right-panel-user-menu-constants.lib", async () => {
+  const actual = await vi.importActual("./right-panel-user-menu-constants.lib");
+
+  return {
+    ...actual,
+    APP_VERSION: LONG_APP_VERSION,
+  };
+});
 
 function LocationProbe() {
   return <span data-testid="location-path">{useLocation().pathname}</span>;
@@ -139,6 +149,28 @@ describe("RightPanelShell", () => {
     expect(logoutButton).toHaveClass("bg-[#D92D20]", "text-text-primary");
     expect(logoutButton).toHaveAttribute("data-icon-hover", "custom");
     expect(logoutButton.querySelector("svg")).toHaveAttribute("width", "22");
+  });
+
+  it("renders a long app version value without breaking the user-menu button", () => {
+    setWorkspaceUserMenuSession();
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    const appVersionButton = screen.getByRole("button", { name: /app version/i });
+
+    expect(appVersionButton).toBeInTheDocument();
+    expect(appVersionButton).toHaveClass("w-full", "justify-between");
+
+    const versionValue = within(appVersionButton).getByText(LONG_APP_VERSION);
+
+    expect(versionValue).toBeInTheDocument();
+    expect(versionValue).toHaveClass("min-w-0", "truncate");
+    expect(versionValue).toHaveAttribute("title", LONG_APP_VERSION);
+
+    const rightContentWrapper = versionValue.parentElement;
+    expect(rightContentWrapper).toHaveClass("flex", "items-center", "gap-2");
+
+    expect(appVersionButton.querySelector("svg")).not.toBeNull();
   });
 
   it("opens the external-account feature from the profile and renders its compact list", () => {

@@ -669,8 +669,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 icon="info"
                 onClick={openAbout}
                 right={
-                  <span className="flex items-center gap-2 text-xs text-text-muted">
-                    <span>{APP_VERSION}</span>
+                  <span className="flex max-w-full items-center gap-2 text-xs text-text-muted">
+                    <span className="min-w-0 truncate" title={APP_VERSION}>
+                      {APP_VERSION}
+                    </span>
                     <Icon name="chevron-right" size={16} className="text-current" />
                   </span>
                 }

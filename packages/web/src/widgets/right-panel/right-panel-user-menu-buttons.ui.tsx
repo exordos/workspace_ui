@@ -26,7 +26,9 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
           {subtitle && <span className="mt-0.5 block text-[11px] text-text-muted">{subtitle}</span>}
         </span>
       </span>
-      {right}
+      <span className="ml-auto flex min-w-0 max-w-[50%] items-center justify-end gap-2 overflow-hidden">
+        {right}
+      </span>
     </button>
   );
 };
