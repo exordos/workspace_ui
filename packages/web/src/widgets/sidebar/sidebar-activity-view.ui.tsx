@@ -33,15 +33,24 @@ export interface SidebarActivityViewProps {
   favoritesError?: string | null;
 }
 
+// Figma activity rail: 28×28 hit target, ~21px glyph (Exordos Core Frame 2087327346).
 const compactRowClass =
-  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
 const compactRowActiveClass = "border border-border-subtle bg-card-bg-active text-text-primary";
 const compactBadgeClass = "pointer-events-none absolute right-0 top-0";
-const compactListItemClass = "relative h-8 w-8 shrink-0";
+const compactListItemClass = "relative h-7 w-7 shrink-0";
 /** Compact shell: icons scroll horizontally; chevron stays pinned outside the scroll viewport. */
-const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-0.5";
+// gap-2.5 (10px): compact activity icon / chevron spacing from design review
+const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-2.5";
 const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
-const compactIconsListClass = "flex w-max flex-nowrap items-center gap-0.5";
+const compactIconsListClass = "flex w-max flex-nowrap items-center gap-2.5";
+/**
+ * Optical size for Material glyphs inside the 28px compact target.
+ * Figma exports are ~21px; icons are centered in a 24 viewBox, so size 24
+ * renders the glyph at native width without the old padded-viewBox shrink.
+ */
+const COMPACT_ACTIVITY_ICON_SIZE = 24;
+const COMPACT_ACTIVITY_CHEVRON_SIZE = 16;
 // Idle uses Card/background base on Surface chrome; hover elevates to card-bg-active.
 const expandedRowBaseClass =
   "group flex w-full items-center gap-2 rounded-lg bg-card-bg px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
@@ -55,14 +64,8 @@ const expandedIconChipCompactClass =
   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-accent";
 const expandedLabelClass = "min-w-0 flex-1 truncate text-sm font-medium";
 const expandedLabelCompactClass = "min-w-0 flex-1 truncate text-sm font-medium";
-
-function getCompactActivityIconSize(key: string): number {
-  return key === "favorites" || key === "feed" ? 16 : 18;
-}
-
-function getExpandedActivityIconSize(key: string): number {
-  return key === "favorites" || key === "feed" ? 16 : 18;
-}
+/** Expanded chips keep the same optical size as compact so activity glyphs stay consistent. */
+const EXPANDED_ACTIVITY_ICON_SIZE = 24;
 
 function activityFilterForKey(key: SidebarActivityItemKey): string | null {
   switch (key) {
@@ -175,7 +178,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
         >
           {t("nav.activity")}
           <span className="rounded-md p-1 text-text-muted">
-            <Icon name="chevron-up" size={14} className="text-current" />
+            <Icon name="chevron-up" size={COMPACT_ACTIVITY_CHEVRON_SIZE} className="text-current" />
           </span>
         </button>
       )}
@@ -198,7 +201,11 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                         isPrivateNotesActive ? compactRowActiveClass : ""
                       }`}
                     >
-                      <Icon name="accountCircle" size={18} className="shrink-0 text-current" />
+                      <Icon
+                        name="accountCircle"
+                        size={COMPACT_ACTIVITY_ICON_SIZE}
+                        className="shrink-0 text-current"
+                      />
                     </Link>
                   ) : (
                     <button
@@ -208,7 +215,11 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                       title={privateNotesDisabledReason}
                       className={`${compactRowClass} opacity-60`}
                     >
-                      <Icon name="accountCircle" size={18} className="shrink-0 text-current" />
+                      <Icon
+                        name="accountCircle"
+                        size={COMPACT_ACTIVITY_ICON_SIZE}
+                        className="shrink-0 text-current"
+                      />
                     </button>
                   )}
                 </li>
@@ -238,7 +249,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                         >
                           <Icon
                             name={item.icon}
-                            size={getCompactActivityIconSize(item.key)}
+                            size={COMPACT_ACTIVITY_ICON_SIZE}
                             className="shrink-0 text-current"
                           />
                         </Link>
@@ -264,7 +275,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                         >
                           <Icon
                             name={item.icon}
-                            size={getCompactActivityIconSize(item.key)}
+                            size={COMPACT_ACTIVITY_ICON_SIZE}
                             className="shrink-0 text-current"
                           />
                         </button>
@@ -293,7 +304,11 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
             className={compactRowClass}
             data-testid="sidebar-activity-compact-toggle"
           >
-            <Icon name="chevron-down" size={14} className="text-current" />
+            <Icon
+              name="chevron-down"
+              size={COMPACT_ACTIVITY_CHEVRON_SIZE}
+              className="text-current"
+            />
           </button>
         </div>
       )}
@@ -313,7 +328,11 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                     className={`${expandedIconClass} bg-accent`}
                     data-testid="activity-icon-bg-home"
                   >
-                    <Icon name="accountCircle" size={18} className="shrink-0 text-on-accent" />
+                    <Icon
+                      name="accountCircle"
+                      size={EXPANDED_ACTIVITY_ICON_SIZE}
+                      className="shrink-0 text-on-accent"
+                    />
                   </span>
                   <span className={expandedLabel}>{t("activity.home")}</span>
                 </Link>
@@ -328,7 +347,11 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                     className={`${expandedIconClass} bg-accent`}
                     data-testid="activity-icon-bg-home"
                   >
-                    <Icon name="accountCircle" size={18} className="shrink-0 text-on-accent" />
+                    <Icon
+                      name="accountCircle"
+                      size={EXPANDED_ACTIVITY_ICON_SIZE}
+                      className="shrink-0 text-on-accent"
+                    />
                   </span>
                   <span className={expandedLabel}>{t("activity.home")}</span>
                 </button>
@@ -350,7 +373,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                 >
                   <Icon
                     name={item.icon}
-                    size={getExpandedActivityIconSize(item.key)}
+                    size={EXPANDED_ACTIVITY_ICON_SIZE}
                     className="shrink-0 text-on-accent"
                   />
                 </span>
