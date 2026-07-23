@@ -18,7 +18,7 @@ import {
   createWorkspaceMessageListServerItem,
   groupWorkspaceMessagesByDayAndAuthor,
 } from "./workspace-message-list-grouping.lib";
-import { collectWorkspaceMessageImageGallery } from "./workspace-message-list-media.lib";
+import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-grouping.lib";
@@ -351,7 +351,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       dayGroup.authorGroups.flatMap((authorGroup) => authorGroup.messages),
     );
   }, [dayGroups]);
-  const workspaceImageGallery = useMemo(() => {
+  const workspaceMediaGallery = useMemo(() => {
     const displayMessages = renderedMessages.flatMap((message) => {
       if (message.kind === "server") {
         return [message.message];
@@ -359,23 +359,23 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
       return [];
     });
-    return collectWorkspaceMessageImageGallery(displayMessages, { resolveMention });
+    return collectWorkspaceMessageMediaGallery(displayMessages, { resolveMention });
   }, [renderedMessages, resolveMention]);
   const handleOpenWorkspaceMedia = useCallback(
     (file: WorkspaceMessageFileReference) => {
       const fileUuid = file.fileUuid.trim();
-      const startIndex = workspaceImageGallery.indexByFileUuid.get(fileUuid);
+      const startIndex = workspaceMediaGallery.indexByFileUuid.get(fileUuid);
       if (startIndex == null) {
         void actions?.onOpenWorkspaceMedia?.(file);
         return;
       }
 
       void actions?.onOpenWorkspaceMedia?.(file, {
-        items: workspaceImageGallery.items,
+        items: workspaceMediaGallery.items,
         startIndex,
       });
     },
-    [actions, workspaceImageGallery],
+    [actions, workspaceMediaGallery],
   );
   const messageActions = useMemo(() => {
     if (actions?.onOpenWorkspaceMedia == null) {

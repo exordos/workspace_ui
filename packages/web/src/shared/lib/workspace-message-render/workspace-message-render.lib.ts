@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { deriveWorkspaceMediaPlaceholderLayout } from "./workspace-media-placeholder-layout.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
   WorkspaceMessageBlock,
@@ -61,6 +62,8 @@ const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "role",
   "tabindex",
   "aria-label",
+  "aria-hidden",
+  "style",
   "src",
   "alt",
   "decoding",
@@ -179,6 +182,11 @@ function renderWorkspaceFilePlaceholder(
   const { reference } = inline;
   const label = renderWorkspaceFileLabel(inline);
   const isImage = reference.kind === "media" && reference.mediaKind === "image";
+  const isVideo = reference.kind === "media" && reference.mediaKind === "video";
+  const videoLayout = isVideo ? deriveWorkspaceMediaPlaceholderLayout(reference) : null;
+  const videoPlaceholderStyle = videoLayout != null ? ` style="width:${videoLayout.width}px"` : "";
+  const videoVisualStyle =
+    videoLayout != null ? ` style="aspect-ratio:${videoLayout.aspectRatio}"` : "";
   const fileNameAttr =
     reference.name != null ? ` data-workspace-file-name="${escapeHtmlText(reference.name)}"` : "";
   const contentTypeAttr =
@@ -215,7 +223,7 @@ function renderWorkspaceFilePlaceholder(
   }
   return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(
     reference.fileUuid,
-  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr}${fileSizeAttr}${mediaWidthAttr}${mediaHeightAttr} title="${escapeHtmlText(
+  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr}${fileSizeAttr}${mediaWidthAttr}${mediaHeightAttr}${videoPlaceholderStyle} title="${escapeHtmlText(
     label,
   )}" aria-label="${escapeHtmlText(label)}">${
     isImage
@@ -223,7 +231,15 @@ function renderWorkspaceFilePlaceholder(
           AUTH_IMAGE_PLACEHOLDER_SRC,
         )}" alt="" decoding="async" loading="lazy">`
       : ""
-  }<span class="workspace-message-file-placeholder__label${isImage ? " sr-only" : ""}">${escapeHtmlText(label)}</span></span>`;
+  }${
+    isVideo
+      ? `<span class="workspace-message-file-placeholder__video-visual"${videoVisualStyle}><span class="workspace-message-file-placeholder__video-icon" aria-hidden="true"></span><span class="workspace-message-file-placeholder__label sr-only">${escapeHtmlText(label)}</span></span>`
+      : ""
+  }${
+    isVideo
+      ? ""
+      : `<span class="workspace-message-file-placeholder__label${isImage ? " sr-only" : ""}">${escapeHtmlText(label)}</span>`
+  }</span>`;
 }
 
 function renderWorkspaceConversationReference(

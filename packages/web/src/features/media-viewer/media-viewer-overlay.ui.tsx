@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo } from "react";
+import { t } from "~/i18n/i18n";
 import { isElectron } from "~/shared/lib/electron";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import {
@@ -12,6 +13,28 @@ import { MediaViewerThumbnails } from "./media-viewer-thumbnails.ui";
 import { MediaViewerToolbar } from "./media-viewer-toolbar.ui";
 import { useMediaViewerZoom } from "./media-viewer-zoom.hook";
 import { useMediaViewerStore } from "./media-viewer.model";
+import type { MediaViewerResourceState } from "./media-viewer.types";
+
+type VisibleMediaState = Exclude<MediaViewerResourceState, "ready">;
+
+function MediaViewerResourcePlaceholder({
+  state,
+  label,
+}: {
+  state: VisibleMediaState;
+  label: string;
+}) {
+  return (
+    <div
+      role={state === "loading" ? "status" : "alert"}
+      className="media-viewer-resource-placeholder"
+      data-media-viewer-resource-state={state}
+    >
+      <span className="media-viewer-resource-placeholder__icon" aria-hidden="true" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
 
 export const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
@@ -21,6 +44,7 @@ export const MediaViewerOverlay: React.FC = () => {
   const next = useMediaViewerStore((s) => s.next);
   const prev = useMediaViewerStore((s) => s.prev);
   const goTo = useMediaViewerStore((s) => s.goTo);
+  const replaceItem = useMediaViewerStore((s) => s.replaceItem);
   const { zoom, onWheel } = useMediaViewerZoom({ currentIndex });
   const item = items[currentIndex] ?? null;
   const displayUrl = useMemo(() => {
@@ -29,6 +53,11 @@ export const MediaViewerOverlay: React.FC = () => {
   }, [item?.url]);
   const hasMultipleItems = items.length > 1;
   const showOpenInNewTab = !isElectron();
+  const resourceState =
+    item?.resourceState ??
+    (displayUrl != null || (item?.type === "image" && item.previewUrl != null)
+      ? "ready"
+      : "loading");
 
   const actionsEnabled = useMemo(() => canUseMediaViewerDisplayUrl(displayUrl), [displayUrl]);
   const imageSrc = useMemo(() => {
@@ -42,6 +71,22 @@ export const MediaViewerOverlay: React.FC = () => {
   const handleNext = useCallback(() => next(), [next]);
   const handleClose = useCallback(() => close(), [close]);
   const handleSelect = useCallback((index: number) => goTo(index), [goTo]);
+  const handleVideoDisplayError = useCallback(() => {
+    if (item?.type !== "video") return;
+    const currentItem = useMediaViewerStore.getState().items[currentIndex];
+    if (currentItem !== item) return;
+    const workspaceFile =
+      item.workspaceFile == null
+        ? undefined
+        : (({ objectUrl: _objectUrl, ...file }) => file)(item.workspaceFile);
+
+    replaceItem(currentIndex, {
+      ...item,
+      url: "",
+      resourceState: "display-error",
+      ...(workspaceFile == null ? {} : { workspaceFile }),
+    });
+  }, [currentIndex, item, replaceItem]);
 
   const handleOpenInNewTab = useCallback(() => {
     if (displayUrl == null || !canUseMediaViewerDisplayUrl(displayUrl)) return;
@@ -70,7 +115,32 @@ export const MediaViewerOverlay: React.FC = () => {
           onClose={handleClose}
         />
         <div className="relative flex min-h-0 w-full flex-1 items-center justify-center px-16 pb-28 pt-14">
-          {item.type === "video" ? (
+          {resourceState === "loading" ? (
+            <MediaViewerResourcePlaceholder
+              state="loading"
+              label={
+                item.type === "video" ? t("mediaViewer.videoLoading") : t("mediaViewer.loading")
+              }
+            />
+          ) : resourceState === "load-error" ? (
+            <MediaViewerResourcePlaceholder
+              state="load-error"
+              label={
+                item.type === "video"
+                  ? t("mediaViewer.videoLoadFailed")
+                  : t("mediaViewer.unavailable")
+              }
+            />
+          ) : resourceState === "display-error" ? (
+            <MediaViewerResourcePlaceholder
+              state="display-error"
+              label={
+                item.type === "video"
+                  ? t("mediaViewer.videoDisplayFailed")
+                  : t("mediaViewer.unavailable")
+              }
+            />
+          ) : item.type === "video" ? (
             // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video may lack caption tracks
             <video
               src={displayUrl}
@@ -78,6 +148,7 @@ export const MediaViewerOverlay: React.FC = () => {
               autoPlay
               className="max-h-[calc(100vh-12rem)] max-w-full object-contain"
               onClick={(e) => e.stopPropagation()}
+              onError={handleVideoDisplayError}
             />
           ) : (
             <img

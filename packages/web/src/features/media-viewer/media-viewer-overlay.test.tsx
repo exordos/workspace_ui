@@ -51,6 +51,113 @@ describe("MediaViewerOverlay", () => {
     expect(image?.getAttribute("src")).toBe("blob:test-viewer-preview");
   });
 
+  it("shows loading state for an unresolved Workspace video", () => {
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "",
+          type: "video",
+          resourceState: "loading",
+          workspaceFile: {
+            fileUuid: "22222222-2222-4222-8222-222222222222",
+          },
+        },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Video is loading");
+    expect(status).toHaveAttribute("data-media-viewer-resource-state", "loading");
+    expect(status.querySelector(".media-viewer-resource-placeholder__icon")).not.toBeNull();
+    expect(document.querySelector("video")).toBeNull();
+  });
+
+  it("shows a distinct load error when the protected Blob request fails", () => {
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "",
+          type: "video",
+          resourceState: "load-error",
+          workspaceFile: {
+            fileUuid: "22222222-2222-4222-8222-222222222222",
+          },
+        },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load video");
+    expect(alert).toHaveAttribute("data-media-viewer-resource-state", "load-error");
+    expect(document.querySelector("video")).toBeNull();
+  });
+
+  it("renders a resolved Workspace Blob video", () => {
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "blob:workspace-video",
+          type: "video",
+          resourceState: "ready",
+          workspaceFile: {
+            fileUuid: "22222222-2222-4222-8222-222222222222",
+            objectUrl: "blob:workspace-video",
+          },
+        },
+      ],
+      0,
+    );
+
+    const { container } = render(<MediaViewerOverlay />);
+
+    expect(container.querySelector("video")?.getAttribute("src")).toBe("blob:workspace-video");
+  });
+
+  it("shows display error and releases its Object URL when a Blob video cannot be played", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "blob:unsupported-video",
+          type: "video",
+          resourceState: "ready",
+          workspaceFile: {
+            fileUuid: "22222222-2222-4222-8222-222222222222",
+            objectUrl: "blob:unsupported-video",
+          },
+        },
+      ],
+      0,
+    );
+
+    const { container } = render(<MediaViewerOverlay />);
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+
+    fireEvent.error(video as HTMLVideoElement);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("cannot be played");
+    expect(alert).toHaveAttribute("data-media-viewer-resource-state", "display-error");
+    expect(container.querySelector("video")).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:unsupported-video");
+    expect(useMediaViewerStore.getState().currentItem()).toMatchObject({
+      url: "",
+      resourceState: "display-error",
+      workspaceFile: {
+        fileUuid: "22222222-2222-4222-8222-222222222222",
+      },
+    });
+    expect(useMediaViewerStore.getState().currentItem()?.workspaceFile?.objectUrl).toBeUndefined();
+  });
+
   it("renders raster data display URLs in the main image", () => {
     useMediaViewerStore.getState().open([{ url: "data:image/png;base64,AAAA", type: "image" }], 0);
 
@@ -252,6 +359,39 @@ describe("MediaViewerOverlay", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /media 3/i }));
     expect(useMediaViewerStore.getState().currentIndex).toBe(2);
+  });
+
+  it("does not render a video Blob URL as a thumbnail image", () => {
+    useMediaViewerStore.getState().open(
+      [
+        { url: "blob:workspace-video", type: "video" },
+        { url: "https://example.com/photo.png", type: "image" },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+
+    const videoThumbnail = screen.getByRole("tab", { name: /media 1/i });
+    expect(videoThumbnail.querySelector("img")).toBeNull();
+  });
+
+  it("renders an image URL in its thumbnail", () => {
+    useMediaViewerStore.getState().open(
+      [
+        { url: "blob:workspace-video", type: "video" },
+        { url: "https://example.com/photo.png", type: "image" },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+
+    const imageThumbnail = screen.getByRole("tab", { name: /media 2/i });
+    expect(imageThumbnail.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/photo.png",
+    );
   });
 
   it("keeps navigation on the exact index when an item is still loading", () => {

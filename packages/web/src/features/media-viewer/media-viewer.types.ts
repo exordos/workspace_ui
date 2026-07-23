@@ -6,6 +6,7 @@
  */
 
 export type MediaType = "image" | "video";
+export type MediaViewerResourceState = "loading" | "ready" | "load-error" | "display-error";
 
 export interface MediaViewerWorkspaceFile {
   fileUuid: string;
@@ -18,6 +19,7 @@ export interface MediaViewerWorkspaceFile {
 export interface MediaItem {
   url: string;
   type: MediaType;
+  resourceState?: MediaViewerResourceState;
   previewUrl?: string;
   downloadFileName?: string;
   alt?: string;

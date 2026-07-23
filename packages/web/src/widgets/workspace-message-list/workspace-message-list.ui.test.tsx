@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -1921,6 +1922,345 @@ describe("WorkspaceMessageList", () => {
     revokeObjectURL.mockRestore();
   });
 
+  it("shows a translated busy video placeholder while protected preview loading is pending", async () => {
+    const fileUuid = "11111111-2222-4333-8444-555555555555";
+    let resolvePreview!: (blob: Blob) => void;
+    const previewPromise = new Promise<Blob>((resolve) => {
+      resolvePreview = resolve;
+    });
+    const onLoadWorkspaceFilePreview = vi.fn(
+      (_file: unknown, _signal: AbortSignal) => previewPromise,
+    );
+    const { unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-loading-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", { name: "Video is loading…" });
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loading");
+    expect(placeholder).toHaveAttribute("aria-busy", "true");
+    expect(placeholder.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toHaveAttribute("aria-hidden", "true");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label")?.parentElement,
+    ).toHaveClass("workspace-message-file-placeholder__video-visual");
+
+    const signal = onLoadWorkspaceFilePreview.mock.calls[0]?.[1];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(placeholder).not.toHaveAttribute("data-workspace-preview-status");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(placeholder).toHaveAttribute("aria-label", "Видео");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label"),
+    ).toHaveTextContent("Видео");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+
+    resolvePreview(new Blob(["late-video"], { type: "video/mp4" }));
+  });
+
+  it("loads protected Workspace video previews through the shared blob loader", async () => {
+    const user = userEvent.setup();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
+      expect(value).toBeInstanceOf(Blob);
+      expect((value as Blob).type).toBe("video/mp4");
+      return "blob:workspace-video-preview";
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "application/octet-stream",
+      }),
+    );
+    const onDownloadFile = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4&w=1920&h=1080)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview, onOpenWorkspaceMedia }}
+      />,
+    );
+
+    const placeholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+    expect(placeholder).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector("video[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "clip.mp4",
+        mediaKind: "video",
+        contentType: "video/mp4",
+      }),
+      expect.any(AbortSignal),
+    );
+    const video = container.querySelector<HTMLVideoElement>(
+      "video[data-workspace-file-preview='true']",
+    );
+    expect(video).toHaveAttribute("src", "blob:workspace-video-preview");
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video).not.toHaveAttribute("autoplay");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("aria-label", "clip.mp4");
+    const expandControl = container.querySelector<HTMLButtonElement>(
+      "button[data-workspace-video-expand='true']",
+    );
+    expect(expandControl).toHaveAccessibleName("Open video viewer");
+    expect(expandControl).toHaveAttribute("title", "Open video viewer");
+    expect(placeholder).toHaveStyle({ width: "320px" });
+    const videoVisual = placeholder?.querySelector<HTMLElement>(
+      ".workspace-message-file-placeholder__video-visual",
+    );
+    expect(videoVisual).toHaveStyle({ aspectRatio: `${16 / 9}` });
+    expect(videoVisual?.style.width).toBe("");
+    expect(videoVisual?.style.height).toBe("");
+    expect(videoVisual).toHaveAttribute("hidden");
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loaded");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
+    fireEvent.click(video!);
+    expect(onDownloadFile).not.toHaveBeenCalled();
+    expect(onOpenWorkspaceMedia).not.toHaveBeenCalled();
+
+    await user.click(expandControl!);
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkspaceMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileUuid, mediaKind: "video" }),
+      expect.objectContaining({ startIndex: 0 }),
+    );
+
+    onOpenWorkspaceMedia.mockClear();
+    expandControl!.focus();
+    await user.keyboard("{Enter}");
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+    onOpenWorkspaceMedia.mockClear();
+    await user.keyboard(" ");
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(expandControl?.isConnected).toBe(false);
+    expect(videoVisual).not.toHaveAttribute("hidden");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-preview");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("does not show a video error when an aborted preview rejects during cleanup", async () => {
+    const fileUuid = "11111111-2222-4333-8444-555555555556";
+    let rejectPreview!: (error: Error) => void;
+    const previewPromise = new Promise<Blob>((_resolve, reject) => {
+      rejectPreview = reject;
+    });
+    const onLoadWorkspaceFilePreview = vi.fn(() => previewPromise);
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-aborted-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", { name: "Video is loading…" });
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loading");
+
+    unmount();
+    const abortError = new Error("preview aborted");
+    abortError.name = "AbortError";
+    rejectPreview(abortError);
+    await Promise.resolve();
+
+    expect(placeholder).not.toHaveAttribute("data-workspace-preview-status");
+    expect(placeholder).toHaveAccessibleName("Видео");
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("restores the Workspace video visual when the loaded video cannot be decoded", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333334";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-video-decode-error");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "video/mp4",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-decode-error-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+    const videoVisual = placeholder?.querySelector<HTMLElement>(
+      ".workspace-message-file-placeholder__video-visual",
+    );
+    await waitFor(() => {
+      expect(container.querySelector("video[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    expect(videoVisual).toHaveAttribute("hidden");
+
+    fireEvent.error(container.querySelector("video[data-workspace-file-preview='true']")!);
+
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "display-error");
+    });
+    expect(placeholder).toHaveAccessibleName("This video cannot be played");
+    expect(placeholder?.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(videoVisual).not.toHaveAttribute("hidden");
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-decode-error");
+
+    unmount();
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("shows a display error when preparing a loaded video blob for display fails", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333335";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      throw new Error("display URL failed");
+    });
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "video/mp4",
+      }),
+    );
+    const onDownloadFile = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-display-url-error-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", {
+      name: "This video cannot be played",
+    });
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "display-error");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label"),
+    ).toHaveTextContent("This video cannot be played");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+
+    fireEvent.click(placeholder);
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({ fileUuid, mediaKind: "video" }),
+    );
+
+    createObjectURL.mockRestore();
+  });
+
+  it("keeps the downloadable video placeholder when protected preview loading fails", async () => {
+    const onDownloadFile = vi.fn();
+    const onLoadWorkspaceFilePreview = vi.fn().mockRejectedValue(new Error("preview failed"));
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-failed-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", { name: "Failed to load video" });
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
+    });
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(placeholder.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+    expect(container.querySelector("[data-workspace-video-expand='true']")).toBeNull();
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(placeholder);
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid,
+        mediaKind: "video",
+      }),
+    );
+  });
+
   it("loads Workspace image preview when download blob has octet-stream MIME", async () => {
     const fileUuid = "44444444-4444-4444-8444-444444444444";
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
@@ -2002,7 +2342,7 @@ describe("WorkspaceMessageList", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Изображение" })).toHaveAttribute(
         "data-workspace-preview-status",
-        "error",
+        "display-error",
       );
     });
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
@@ -2372,7 +2712,7 @@ describe("WorkspaceMessageList", () => {
     const placeholder = screen.getByRole("button", { name: "Изображение" });
 
     await waitFor(() => {
-      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "error");
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
     });
     expect(screen.queryByRole("img", { name: "screen.png" })).not.toBeInTheDocument();
 

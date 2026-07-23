@@ -20,10 +20,7 @@ const MediaViewerThumbnailItem = React.memo<MediaViewerThumbnailItemProps>(
       [index, onSelect],
     );
 
-    const thumbSrc =
-      item.type === "image"
-        ? (displayUrl ?? AUTH_IMAGE_PLACEHOLDER_SRC)
-        : (displayUrl ?? undefined);
+    const thumbSrc = item.type === "image" ? (displayUrl ?? AUTH_IMAGE_PLACEHOLDER_SRC) : undefined;
 
     return (
       <button

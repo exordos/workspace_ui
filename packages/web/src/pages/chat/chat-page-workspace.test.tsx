@@ -2415,7 +2415,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
-  it("downloads Workspace file attachments through the Workspace file API", async () => {
+  it("downloads Workspace file attachments through the shared file resource cache", async () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-file");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const click = vi
@@ -2437,14 +2437,18 @@ describe("ChatPage Workspace route", () => {
     });
 
     await waitFor(() => {
-      expect(captured.downloadWorkspaceFile).toHaveBeenCalledWith(
+      expect(captured.loadWorkspaceFile).toHaveBeenCalledWith(
         expect.objectContaining({
-          accessToken: "access-token",
-          devTargetOrigin: "https://org-a.example.com",
-          projectId: "project-a",
+          ownerKey: workspaceRuntimeOwnerKey(createSession()),
+          runtimeGeneration: 1,
+          fileUuid: "33333333-3333-4333-8333-333333333333",
+          requestOptions: expect.objectContaining({
+            accessToken: "access-token",
+            devTargetOrigin: "https://org-a.example.com",
+            projectId: "project-a",
+          }),
           signal: expect.any(AbortSignal),
         }),
-        "33333333-3333-4333-8333-333333333333",
       );
     });
 
@@ -2453,8 +2457,8 @@ describe("ChatPage Workspace route", () => {
         path: "workspace-file:33333333-3333-4333-8333-333333333333",
         fileName: "hint.txt",
         status: "downloaded",
-        receivedBytes: 14,
-        totalBytes: 14,
+        receivedBytes: 17,
+        totalBytes: 17,
       });
     });
     expect(click).toHaveBeenCalledTimes(1);
@@ -2465,7 +2469,7 @@ describe("ChatPage Workspace route", () => {
     click.mockRestore();
   });
 
-  it("downloads Workspace media placeholders through the same Workspace file API", async () => {
+  it("downloads Workspace media placeholders through the same shared resource cache", async () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-file");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const click = vi
@@ -2489,14 +2493,18 @@ describe("ChatPage Workspace route", () => {
     });
 
     await waitFor(() => {
-      expect(captured.downloadWorkspaceFile).toHaveBeenCalledWith(
+      expect(captured.loadWorkspaceFile).toHaveBeenCalledWith(
         expect.objectContaining({
-          accessToken: "access-token",
-          devTargetOrigin: "https://org-a.example.com",
-          projectId: "project-a",
+          ownerKey: workspaceRuntimeOwnerKey(createSession()),
+          runtimeGeneration: 1,
+          fileUuid: "44444444-4444-4444-8444-444444444444",
+          requestOptions: expect.objectContaining({
+            accessToken: "access-token",
+            devTargetOrigin: "https://org-a.example.com",
+            projectId: "project-a",
+          }),
           signal: expect.any(AbortSignal),
         }),
-        "44444444-4444-4444-8444-444444444444",
       );
     });
 
@@ -2505,8 +2513,8 @@ describe("ChatPage Workspace route", () => {
         path: "workspace-file:44444444-4444-4444-8444-444444444444",
         fileName: "screen.png",
         status: "downloaded",
-        receivedBytes: 14,
-        totalBytes: 14,
+        receivedBytes: 17,
+        totalBytes: 17,
       });
     });
     expect(click).toHaveBeenCalledTimes(1);
@@ -2591,6 +2599,63 @@ describe("ChatPage Workspace route", () => {
     ).resolves.toEqual([imageBlob, imageBlob]);
 
     expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("downloads a Workspace file from the blob cached by its preview", async () => {
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    let clickedDownloadName = "";
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clickedDownloadName = this.download;
+    });
+    const file = {
+      kind: "media" as const,
+      href: "urn:image:55555555-5555-4555-8555-555555555555?name=screen.png",
+      fileUuid: "55555555-5555-4555-8555-555555555555",
+      name: "screen.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    captured.loadWorkspaceFile.mockResolvedValueOnce({
+      blob: new Blob(["cached-image"], { type: "image/png" }),
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="server-screen.png"',
+      }),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onLoadWorkspaceFilePreview).toEqual(expect.any(Function)),
+    );
+    await act(async () => {
+      await captured.messageListProps?.onLoadWorkspaceFilePreview?.(
+        file,
+        new AbortController().signal,
+      );
+    });
+    act(() => {
+      captured.messageListProps?.onDownloadFile?.(file);
+    });
+
+    await waitFor(() =>
+      expect(useDownloadStore.getState().entries[0]).toMatchObject({
+        fileName: "screen.png",
+        status: "downloaded",
+      }),
+    );
+    expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1);
+    expect(captured.downloadWorkspaceFile).not.toHaveBeenCalled();
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(clickedDownloadName).toBe("server-screen.png");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:cached-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+    click.mockRestore();
   });
 
   it("keeps the page loader consumer alive when one DOM preview is canceled", async () => {
@@ -2828,6 +2893,132 @@ describe("ChatPage Workspace route", () => {
 
     unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-viewer-fallback");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("opens a Workspace video from the shared resource cache without a second download", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-video-first")
+      .mockReturnValueOnce("blob:workspace-video-second");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const videoFile = {
+      kind: "media" as const,
+      href: "urn:video:55555555-5555-4555-8555-555555555555?name=clip.mp4",
+      fileUuid: "55555555-5555-4555-8555-555555555555",
+      name: "clip.mp4",
+      contentType: "video/mp4",
+      mediaKind: "video" as const,
+    };
+    captured.loadWorkspaceFile.mockResolvedValue({
+      blob: new Blob(["video-bytes"], { type: "video/mp4" }),
+      headers: new Headers(),
+    });
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(videoFile);
+    });
+    await waitFor(() => expect(useMediaViewerStore.getState().isOpen).toBe(true));
+    expect(useMediaViewerStore.getState().items[0]).toMatchObject({
+      type: "video",
+      url: "blob:workspace-video-first",
+      resourceState: "ready",
+      workspaceFile: { fileUuid: videoFile.fileUuid, contentType: "video/mp4" },
+    });
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(videoFile);
+    });
+    await waitFor(() =>
+      expect(useMediaViewerStore.getState().items[0]?.url).toBe("blob:workspace-video-second"),
+    );
+    expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-first");
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-second");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("loads an unselected gallery video only after navigation to it", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-gallery-image")
+      .mockReturnValueOnce("blob:workspace-gallery-video");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const imageFile = {
+      kind: "media" as const,
+      href: "urn:image:66666666-6666-4666-8666-666666666666?name=image.png",
+      fileUuid: "66666666-6666-4666-8666-666666666666",
+      name: "image.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    const videoFile = {
+      kind: "media" as const,
+      href: "urn:video:77777777-7777-4777-8777-777777777777?name=video.mp4",
+      fileUuid: "77777777-7777-4777-8777-777777777777",
+      name: "video.mp4",
+      contentType: "video/mp4",
+      mediaKind: "video" as const,
+    };
+    captured.loadWorkspaceFile.mockImplementation((options: { fileUuid: string }) =>
+      Promise.resolve({
+        blob: new Blob([options.fileUuid], {
+          type: options.fileUuid === videoFile.fileUuid ? "video/mp4" : "image/png",
+        }),
+        headers: new Headers(),
+      }),
+    );
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(imageFile, {
+        startIndex: 0,
+        items: [
+          { messageUuid: "gallery-image-message", file: imageFile },
+          { messageUuid: "gallery-video-message", file: videoFile },
+        ],
+      });
+    });
+
+    await waitFor(() => expect(useMediaViewerStore.getState().isOpen).toBe(true));
+    expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1);
+    expect(useMediaViewerStore.getState().items[1]).toMatchObject({
+      type: "video",
+      resourceState: "loading",
+      url: "",
+    });
+
+    act(() => {
+      useMediaViewerStore.getState().goTo(1);
+    });
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(useMediaViewerStore.getState().items[1]).toMatchObject({
+        type: "video",
+        resourceState: "ready",
+        url: "blob:workspace-gallery-video",
+      }),
+    );
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-gallery-image");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-gallery-video");
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
   });

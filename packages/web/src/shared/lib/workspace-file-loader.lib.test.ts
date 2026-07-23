@@ -163,11 +163,87 @@ describe("loadWorkspaceFile", () => {
     const value = result("cached");
     downloadMock.mockResolvedValue(value);
 
-    const cached = await resourceCache.load(options());
-    expect(cached).toBe(value);
+    const first = await resourceCache.load(options());
+    const second = await resourceCache.load(options());
+
+    expect(first).toBe(value);
+    expect(second).toBe(value);
+    expect(downloadMock).toHaveBeenCalledTimes(1);
+    expect(second.headers.get("content-disposition")).toBe('attachment; filename="workspace.txt"');
+  });
+
+  it("evicts the least recently used completed result when the entry limit is exceeded", async () => {
+    const resourceCache = createWorkspaceFileResourceCache({ maxEntries: 2 });
+    downloadMock.mockImplementation((_requestOptions, fileUuid) =>
+      Promise.resolve(result(fileUuid)),
+    );
+    const fileB = "44444444-4444-4444-8444-444444444444";
+    const fileC = "55555555-5555-4555-8555-555555555555";
+
+    await resourceCache.load(options());
+    await resourceCache.load(options({ fileUuid: fileB }));
+    await resourceCache.load(options());
+    await resourceCache.load(options({ fileUuid: fileC }));
+    await resourceCache.load(options({ fileUuid: fileB }));
+
+    expect(downloadMock).toHaveBeenCalledTimes(4);
+    expect(downloadMock.mock.calls.map((call) => call[1])).toEqual([
+      FILE_UUID,
+      fileB,
+      fileC,
+      fileB,
+    ]);
+  });
+
+  it("does not retain completed blobs above the total byte limit", async () => {
+    const resourceCache = createWorkspaceFileResourceCache({
+      maxEntries: 10,
+      maxBytes: 5,
+    });
+    const fileB = "44444444-4444-4444-8444-444444444444";
+    downloadMock.mockResolvedValueOnce(result("123")).mockResolvedValueOnce(result("456"));
+
+    await resourceCache.load(options());
+    await resourceCache.load(options({ fileUuid: fileB }));
+    downloadMock.mockResolvedValueOnce(result("123"));
+    await resourceCache.load(options());
+
+    expect(downloadMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("never evicts or aborts an active request while trimming completed blobs", async () => {
+    const resourceCache = createWorkspaceFileResourceCache({ maxEntries: 1 });
+    const pendingRequest = deferred<MessengerBinaryResult>();
+    const fileB = "44444444-4444-4444-8444-444444444444";
+    downloadMock.mockReturnValueOnce(pendingRequest.promise).mockResolvedValueOnce(result("done"));
+
+    const pending = resourceCache.load(options());
+    const pendingSignal = requestSignal();
+    await resourceCache.load(options({ fileUuid: fileB }));
+
+    expect(pendingSignal.aborted).toBe(false);
+    pendingRequest.resolve(result("pending"));
+    await expect(pending).resolves.toMatchObject({ blob: expect.any(Blob) });
+    await resourceCache.load(options());
+
+    expect(downloadMock).toHaveBeenCalledTimes(2);
+    expect(pendingSignal.aborted).toBe(false);
+  });
+
+  it("joins simultaneous resource-cache consumers", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const request = deferred<MessengerBinaryResult>();
+    downloadMock.mockReturnValue(request.promise);
+
+    const first = resourceCache.load(options());
+    const second = resourceCache.load(options());
 
     expect(downloadMock).toHaveBeenCalledTimes(1);
-    expect(cached.headers.get("content-disposition")).toBe('attachment; filename="workspace.txt"');
+
+    const value = result("shared");
+    request.resolve(value);
+    await expect(first).resolves.toBe(value);
+    await expect(second).resolves.toBe(value);
   });
 
   it("does not reuse bytes cached before a realtime file mutation", async () => {
@@ -180,6 +256,26 @@ describe("loadWorkspaceFile", () => {
 
     expect(await (await resourceCache.load(options())).blob.text()).toBe("after");
     expect(downloadMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish an in-flight result invalidated by a realtime file mutation", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const staleRequest = deferred<MessengerBinaryResult>();
+    downloadMock.mockReturnValueOnce(staleRequest.promise).mockResolvedValueOnce(result("after"));
+
+    const stale = resourceCache.load(options());
+    const staleSignal = requestSignal();
+
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+    const fresh = resourceCache.load(options());
+
+    await expect(stale).rejects.toMatchObject({ name: "AbortError" });
+    expect(staleSignal.aborted).toBe(true);
+    await expect(fresh).resolves.toMatchObject({ blob: expect.any(Blob) });
+    expect(await (await fresh).blob.text()).toBe("after");
+    expect(downloadMock).toHaveBeenCalledTimes(2);
+
+    staleRequest.resolve(result("before"));
   });
 
   it.each([
@@ -235,5 +331,16 @@ describe("loadWorkspaceFile", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(sharedSignal.aborted).toBe(true);
+  });
+
+  it("starts a new request after clearing a completed resource cache", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    downloadMock.mockResolvedValueOnce(result("before")).mockResolvedValueOnce(result("after"));
+
+    expect(await (await resourceCache.load(options())).blob.text()).toBe("before");
+    resourceCache.clear();
+    expect(await (await resourceCache.load(options())).blob.text()).toBe("after");
+
+    expect(downloadMock).toHaveBeenCalledTimes(2);
   });
 });

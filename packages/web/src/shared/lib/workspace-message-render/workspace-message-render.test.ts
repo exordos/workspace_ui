@@ -328,6 +328,7 @@ describe("workspace message render core", () => {
     expect(result.html).toContain(`src="${AUTH_IMAGE_PLACEHOLDER_SRC}"`);
     expect(result.html).toContain('class="workspace-message-file-placeholder__label sr-only"');
     expect(result.html).toContain("Изображение");
+    expect(result.html).not.toContain("workspace-message-file-placeholder__video-visual");
     expect(result.html).not.toContain("<video");
     expect(result.html).not.toContain("href=");
     expect(result.html).not.toContain("blob:");
@@ -363,9 +364,71 @@ describe("workspace message render core", () => {
     expect(result.html).toContain('data-workspace-media-kind="video"');
     expect(result.html).toContain('data-workspace-media-width="1920"');
     expect(result.html).toContain('data-workspace-media-height="1080"');
+    expect(result.html).toContain('style="width:320px"');
+    expect(result.html).toContain(`style="aspect-ratio:${16 / 9}"`);
+    expect(result.html).toContain('class="workspace-message-file-placeholder__video-visual"');
+    expect(result.html).toContain(
+      'class="workspace-message-file-placeholder__video-icon" aria-hidden="true"',
+    );
+    expect(result.html).toContain(
+      'class="workspace-message-file-placeholder__label sr-only">Видео</span>',
+    );
     expect(result.html).not.toContain("<video");
     expect(result.html).not.toContain("src=");
+    expect(result.html).not.toContain(`urn:video:${fileUuid}`);
+    expect(result.html).not.toContain("/api/workspace/v1/messenger/files");
+    expect(result.html).not.toContain("<svg");
   });
+
+  it.each([
+    {
+      query: "w=1080&h=1920",
+      placeholderStyle: "width:135px",
+      visualStyle: `aspect-ratio:${9 / 16}`,
+    },
+    {
+      query: "",
+      placeholderStyle: "width:320px",
+      visualStyle: `aspect-ratio:${16 / 9}`,
+    },
+    {
+      query: "w=100000&h=100",
+      placeholderStyle: "width:320px",
+      visualStyle: "aspect-ratio:2",
+    },
+    {
+      query: "w=100&h=100000",
+      placeholderStyle: "width:120px",
+      visualStyle: "aspect-ratio:0.5",
+    },
+  ])(
+    "renders bounded video placeholder layout before preview effects for $query",
+    ({ query, placeholderStyle, visualStyle }) => {
+      const fileUuid = "77777777-7777-4777-8777-777777777777";
+      const suffix = query.length > 0 ? `&${query}` : "";
+      const document = parseWorkspaceMessageBody(
+        `[clip.mp4](urn:video:${fileUuid}?content_type=video%2Fmp4${suffix})`,
+      );
+      const result = renderWorkspaceMessageBody(document, {
+        enableMarkdown: true,
+        enableMentions: false,
+        enableQuotes: true,
+        enableEmojiShortcodes: true,
+        enableCodeHighlight: false,
+        enableCodeCopy: false,
+        enableProtectedMedia: true,
+        enableAttachments: false,
+        enableGallery: false,
+      });
+
+      expect(result.html).toContain(`style="${placeholderStyle}"`);
+      expect(result.html).toContain(`style="${visualStyle}"`);
+      expect(result.html).toContain(
+        'class="workspace-message-file-placeholder__video-icon" aria-hidden="true"',
+      );
+      expect(result.html).not.toContain("/api/workspace/v1/messenger/files");
+    },
+  );
 
   it("renders Workspace attachment references without enabling download links", () => {
     const fileUuid = "33333333-3333-4333-8333-333333333333";
@@ -400,6 +463,7 @@ describe("workspace message render core", () => {
     expect(enabled.html).toContain('title="Файл: report.pdf"');
     expect(enabled.html).toContain('class="workspace-message-file-placeholder__label"');
     expect(enabled.html).toContain("Файл: report.pdf");
+    expect(enabled.html).not.toContain("workspace-message-file-placeholder__video-visual");
     expect(enabled.html).not.toContain("href=");
     expect(enabled.html).not.toContain("download");
     expect(enabled.html).not.toContain(`urn:file:${fileUuid}`);

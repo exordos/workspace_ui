@@ -30,11 +30,21 @@ export interface WorkspaceFileResourceCache {
   clear(): void;
 }
 
+export interface WorkspaceFileResourceCacheOptions {
+  maxEntries?: number;
+  maxBytes?: number;
+}
+
 interface ResourceCacheEntry {
   abortController: AbortController;
   promise: Promise<MessengerBinaryResult>;
   invalidationVersion: number;
+  sizeBytes: number | null;
 }
+
+// Full video blobs are expensive, so retain only a small recent working set.
+export const DEFAULT_WORKSPACE_FILE_CACHE_MAX_ENTRIES = 24;
+export const DEFAULT_WORKSPACE_FILE_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 const pendingRequests = new Map<string, PendingRequest>();
 const invalidationVersionsByFileKey = new Map<string, number>();
@@ -202,8 +212,48 @@ function waitForResource(
   });
 }
 
-export function createWorkspaceFileResourceCache(): WorkspaceFileResourceCache {
+export function createWorkspaceFileResourceCache(
+  cacheOptions: WorkspaceFileResourceCacheOptions = {},
+): WorkspaceFileResourceCache {
   const entries = new Map<string, ResourceCacheEntry>();
+  const maxEntries = Math.max(
+    0,
+    cacheOptions.maxEntries ?? DEFAULT_WORKSPACE_FILE_CACHE_MAX_ENTRIES,
+  );
+  const maxBytes = Math.max(0, cacheOptions.maxBytes ?? DEFAULT_WORKSPACE_FILE_CACHE_MAX_BYTES);
+  let completedBytes = 0;
+
+  const removeEntry = (key: string, entry: ResourceCacheEntry, abort: boolean): void => {
+    if (entries.get(key) !== entry) {
+      return;
+    }
+    entries.delete(key);
+    if (entry.sizeBytes != null) {
+      completedBytes -= entry.sizeBytes;
+    }
+    if (abort) {
+      entry.abortController.abort();
+    }
+  };
+
+  const touchEntry = (key: string, entry: ResourceCacheEntry): void => {
+    if (entries.get(key) !== entry) {
+      return;
+    }
+    entries.delete(key);
+    entries.set(key, entry);
+  };
+
+  const trimCompletedEntries = (): void => {
+    for (const [key, entry] of entries) {
+      if (entries.size <= maxEntries && completedBytes <= maxBytes) {
+        return;
+      }
+      if (entry.sizeBytes != null) {
+        removeEntry(key, entry, false);
+      }
+    }
+  };
 
   return {
     load(options) {
@@ -215,37 +265,50 @@ export function createWorkspaceFileResourceCache(): WorkspaceFileResourceCache {
       let entry = entries.get(key);
       const invalidationVersion = currentInvalidationVersion(options.ownerKey, options.fileUuid);
       if (entry != null && entry.invalidationVersion !== invalidationVersion) {
-        entry.abortController.abort();
-        entries.delete(key);
+        removeEntry(key, entry, true);
         entry = undefined;
       }
       if (entry == null) {
         const abortController = new AbortController();
-        const promise = loadWorkspaceFile({
+        const requestPromise = loadWorkspaceFile({
           ...options,
           signal: abortController.signal,
-        }).catch((error: unknown) => {
-          if (entries.get(key)?.promise === promise) {
-            entries.delete(key);
-          }
-          throw error instanceof Error ? error : new Error(String(error));
         });
-        entry = {
+        const newEntry: ResourceCacheEntry = {
           abortController,
-          promise,
+          promise: requestPromise,
           invalidationVersion,
+          sizeBytes: null,
         };
-        entries.set(key, entry);
+        newEntry.promise = requestPromise.then(
+          (result) => {
+            if (entries.get(key) === newEntry) {
+              newEntry.sizeBytes = result.blob.size;
+              completedBytes += result.blob.size;
+              touchEntry(key, newEntry);
+              trimCompletedEntries();
+            }
+            return result;
+          },
+          (error: unknown) => {
+            removeEntry(key, newEntry, false);
+            throw error instanceof Error ? error : new Error(String(error));
+          },
+        );
+        entry = newEntry;
+        entries.set(key, newEntry);
+      } else {
+        touchEntry(key, entry);
       }
 
       return waitForResource(entry.promise, options.signal);
     },
 
     clear() {
-      for (const entry of entries.values()) {
-        entry.abortController.abort();
+      for (const [key, entry] of entries) {
+        removeEntry(key, entry, true);
       }
-      entries.clear();
+      completedBytes = 0;
     },
   };
 }

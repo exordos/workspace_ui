@@ -7,32 +7,35 @@ import type {
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import type { WorkspaceMessageMediaGalleryItem } from "./workspace-message-list.types";
 
-export interface WorkspaceMessageImageGallery {
+export interface WorkspaceMessageMediaGallery {
   items: readonly WorkspaceMessageMediaGalleryItem[];
   indexByFileUuid: ReadonlyMap<string, number>;
 }
 
-const EMPTY_WORKSPACE_MESSAGE_IMAGE_GALLERY: WorkspaceMessageImageGallery = {
+const EMPTY_WORKSPACE_MESSAGE_MEDIA_GALLERY: WorkspaceMessageMediaGallery = {
   items: [],
   indexByFileUuid: new Map<string, number>(),
 };
 
-function isWorkspaceImageFileReference(
+function isWorkspaceMediaFileReference(
   reference: WorkspaceMessageFileReference,
-): reference is WorkspaceMessageFileReference & { kind: "media"; mediaKind: "image" } {
+): reference is WorkspaceMessageFileReference & {
+  kind: "media";
+  mediaKind: "image" | "video";
+} {
   return (
     reference.kind === "media" &&
-    reference.mediaKind === "image" &&
+    (reference.mediaKind === "image" || reference.mediaKind === "video") &&
     reference.fileUuid.trim().length > 0
   );
 }
 
-export function collectWorkspaceMessageImageGallery(
+export function collectWorkspaceMessageMediaGallery(
   messages: readonly MessengerMessage[],
   options: { resolveMention?: WorkspaceMessageMentionResolver } = {},
-): WorkspaceMessageImageGallery {
+): WorkspaceMessageMediaGallery {
   if (messages.length === 0) {
-    return EMPTY_WORKSPACE_MESSAGE_IMAGE_GALLERY;
+    return EMPTY_WORKSPACE_MESSAGE_MEDIA_GALLERY;
   }
 
   const items: WorkspaceMessageMediaGalleryItem[] = [];
@@ -45,7 +48,7 @@ export function collectWorkspaceMessageImageGallery(
     const fileReferences = collectWorkspaceMessageFileReferences(document);
 
     for (const file of fileReferences) {
-      if (!isWorkspaceImageFileReference(file)) {
+      if (!isWorkspaceMediaFileReference(file)) {
         continue;
       }
 
@@ -63,7 +66,7 @@ export function collectWorkspaceMessageImageGallery(
   }
 
   if (items.length === 0) {
-    return EMPTY_WORKSPACE_MESSAGE_IMAGE_GALLERY;
+    return EMPTY_WORKSPACE_MESSAGE_MEDIA_GALLERY;
   }
 
   return {

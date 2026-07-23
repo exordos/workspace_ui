@@ -384,7 +384,7 @@ export function useWorkspaceMessageBodyInteractions({
       if (
         onOpenWorkspaceMedia == null ||
         workspaceFile.kind !== "media" ||
-        workspaceFile.mediaKind !== "image"
+        (workspaceFile.mediaKind !== "image" && workspaceFile.mediaKind !== "video")
       ) {
         return false;
       }
@@ -406,6 +406,12 @@ export function useWorkspaceMessageBodyInteractions({
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.target instanceof HTMLElement && (event.key === "Enter" || event.key === " ")) {
+        if (event.target.closest("video[data-workspace-file-preview='true']") != null) {
+          return;
+        }
+        if (event.target.closest("button") != null) {
+          return;
+        }
         if (toggleWorkspaceSpoiler(event.target, event.currentTarget)) {
           event.preventDefault();
           event.stopPropagation();
@@ -470,6 +476,9 @@ export function useWorkspaceMessageBodyInteractions({
       if (!(target instanceof HTMLElement)) {
         return;
       }
+      if (target.closest("video[data-workspace-file-preview='true']") != null) {
+        return;
+      }
 
       const workspaceFile = resolveWorkspaceFileReferenceFromClick(
         target,
@@ -491,8 +500,6 @@ export function useWorkspaceMessageBodyInteractions({
           // Download uses Workspace UUID from the parsed document. DOM only tells
           // where the click happened here; it does not become the source of
           // download/gallery items and does not bring back the old path-only key.
-          // Media preview can already be shown as blob-src, but viewer stays
-          // unsupported until a separate gallery adapter exists.
           return;
         }
 
