@@ -172,18 +172,10 @@ describe("TopBar", () => {
     );
   });
 
-  it("opens global search from top bar action", () => {
+  it("hides the unfinished global search action", () => {
     renderWithProviders(<TopBar />);
 
-    const searchButton = screen.getByRole("button", { name: /search/i });
-    expect(searchButton).toHaveClass("h-10");
-    expect(searchButton).toHaveClass("w-10");
-    expect(searchButton).toHaveClass("rounded-lg");
-
-    act(() => {
-      fireEvent.click(searchButton);
-    });
-    expect(useSearchModalStore.getState().open).toBe(true);
+    expect(screen.queryByRole("button", { name: /search/i })).not.toBeInTheDocument();
   });
 
   it("opens Workspace people search without legacy message filters", () => {
@@ -192,7 +184,7 @@ describe("TopBar", () => {
     });
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /search/i }));
+      useSearchModalStore.getState().openModal();
     });
 
     expect(screen.getByPlaceholderText(t("search.search"))).not.toBeDisabled();
@@ -227,7 +219,7 @@ describe("TopBar", () => {
     );
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /search/i }));
+      useSearchModalStore.getState().openModal();
     });
     fireEvent.change(screen.getByPlaceholderText(t("search.search")), {
       target: { value: "alice.workspace" },

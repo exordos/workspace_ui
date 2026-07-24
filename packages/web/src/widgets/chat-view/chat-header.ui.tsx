@@ -190,7 +190,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSearch}
-            className={HEADER_ICON_BUTTON_CLASS}
+            hidden
+            className={`hidden ${HEADER_ICON_BUTTON_CLASS}`}
             aria-label={t("search.search")}
           >
             {/* Новый search.svg 20×20 — глиф заполняет viewBox, вес как у sidePanel */}

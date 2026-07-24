@@ -259,7 +259,7 @@ describe("ChatHeader", () => {
     expect(onToggleRightPanel).not.toHaveBeenCalled();
   });
 
-  it("places chat actions button inside right controls cluster", () => {
+  it("hides the unfinished chat search action", () => {
     renderWithProviders(
       <ChatHeader
         channelName="general"
@@ -270,10 +270,10 @@ describe("ChatHeader", () => {
       />,
     );
 
-    const searchButton = screen.getByRole("button", { name: /search/i });
     const actionButton = screen.getByRole("button", { name: /hide panel/i });
-    const controlsCluster = searchButton.parentElement;
+    const controlsCluster = actionButton.parentElement;
 
+    expect(screen.queryByRole("button", { name: /search/i })).not.toBeInTheDocument();
     expect(controlsCluster).not.toBeNull();
     expect(controlsCluster).toContainElement(actionButton);
   });
