@@ -50,6 +50,8 @@ export interface GetStreamTopicsQuery extends MessengerPaginationQuery {
 export interface GetMessagesQuery extends MessengerPaginationQuery {
   streamUuid?: string;
   topicUuid?: string;
+  sortKey?: "created_at";
+  sortDir?: "asc" | "desc";
   starred?: boolean;
 }
 
@@ -162,6 +164,8 @@ export async function getMessages(
       ...paginationParams(query),
       stream_uuid: query.streamUuid,
       topic_uuid: query.topicUuid,
+      sort_key: query.sortKey,
+      sort_dir: query.sortDir,
       starred: query.starred == null ? undefined : String(query.starred),
     }),
   );
@@ -203,6 +207,8 @@ export async function getMessagesPage(
       ...paginationParams(query),
       stream_uuid: query.streamUuid,
       topic_uuid: query.topicUuid,
+      sort_key: query.sortKey,
+      sort_dir: query.sortDir,
       starred: query.starred == null ? undefined : String(query.starred),
     }),
   );

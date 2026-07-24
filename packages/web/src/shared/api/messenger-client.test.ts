@@ -396,7 +396,14 @@ describe("messenger-client", () => {
     await expect(
       getMessagesPage(
         { accessToken: "access-token", projectId: PROJECT_UUID, fetchImpl: fetchMock },
-        { streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID, pageLimit: 50, starred: true },
+        {
+          streamUuid: STREAM_UUID,
+          topicUuid: TOPIC_UUID,
+          pageLimit: 50,
+          sortKey: "created_at",
+          sortDir: "desc",
+          starred: true,
+        },
       ),
     ).resolves.toEqual({
       items: [messageDto],
@@ -406,7 +413,7 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/workspace/v1/messenger/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&starred=true`,
+      `/api/workspace/v1/messenger/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&sort_key=created_at&sort_dir=desc&starred=true`,
     );
 
     const invalidFetchMock = createFetchMock([
