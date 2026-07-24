@@ -134,7 +134,7 @@ export const RightPanelBuilds: React.FC = () => {
       <ScrollArea className="flex-1 px-4 py-3">
         <div className="space-y-3">
           <section className="rounded-xl border border-border-subtle bg-card-bg p-4">
-            <p className="text-sm text-text-muted">
+            <p className="truncate text-sm text-text-muted" title={APP_VERSION}>
               {t("update.currentVersion", { version: APP_VERSION })}
             </p>
             <p className="mt-1.5 text-sm text-text-primary">{statusText}</p>
