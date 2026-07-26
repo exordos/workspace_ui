@@ -80,6 +80,7 @@ const captured = vi.hoisted(() => ({
   downloadWorkspaceFile: vi.fn(),
   uploadWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
+  markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
   deleteWorkspaceComposerDraftFromServer: vi.fn().mockResolvedValue(true),
@@ -182,6 +183,7 @@ vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOrigi
   return {
     ...actual,
     sendMessengerMessage: captured.sendMessengerMessage,
+    markMessengerMessagesReadUpTo: captured.markMessengerMessagesReadUpTo,
   };
 });
 
@@ -539,6 +541,12 @@ describe("ChatPage Workspace route", () => {
       ownerKey: "owner-key",
       message: createMessage(),
     });
+    captured.markMessengerMessagesReadUpTo.mockReset();
+    captured.markMessengerMessagesReadUpTo.mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner-key",
+      message: createMessage(),
+    });
     captured.syncWorkspaceComposerDraft.mockReset();
     captured.syncWorkspaceComposerDraft.mockResolvedValue(undefined);
     captured.deleteWorkspaceComposerDraftFromServer.mockReset();
@@ -656,6 +664,34 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not auto-read visible messages after the Workspace window loses focus", async () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+
+      act(() => {
+        captured.messageListProps?.onUnreadMessagesVisible([MESSAGE_UUID]);
+      });
+      hasFocus.mockReturnValue(false);
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 300);
+        });
+      });
+
+      expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+    } finally {
+      hasFocus.mockRestore();
+    }
   });
 
   it("enables topic presentation settings and opens a topic from the stream prompt", async () => {

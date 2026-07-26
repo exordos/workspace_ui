@@ -852,6 +852,7 @@ export function createWorkspaceRealtimeTransportCore(
       clientOptions: withAbortSignal(options.clientOptions, activeSignal()),
       cursorStorage: options.cursorStorage,
       applier: catchUpApplier,
+      ...(lastCursor == null ? {} : { startCursor: lastCursor }),
       isOwnerCurrent: (owner) => isOwnerCurrent(owner, options, activeSignal()),
       pageLimit: options.pageLimit,
       getEpoch: options.getEpoch,

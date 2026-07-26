@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi, beforeAll, afterEach } from "vitest";
 import {
+  isWindowActive,
   isTabVisible,
   onVisibilityChange,
   onTabResume,
@@ -51,6 +52,22 @@ describe("visibility", () => {
         configurable: true,
       });
       expect(isTabVisible()).toBe(false);
+    });
+  });
+
+  describe("isWindowActive", () => {
+    it("requires both a visible tab and a focused window", () => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+      expect(isWindowActive()).toBe(false);
+
+      hasFocus.mockReturnValue(true);
+      expect(isWindowActive()).toBe(true);
+      hasFocus.mockRestore();
     });
   });
 

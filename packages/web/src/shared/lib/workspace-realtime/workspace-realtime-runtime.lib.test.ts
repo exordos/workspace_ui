@@ -585,18 +585,26 @@ describe("workspace-realtime transport runtime", () => {
     vi.useRealTimers();
   });
 
-  it("reconnects when another tab advances the durable cursor", async () => {
+  it("replays this tab's missing events when another tab advances the durable cursor", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
-    const { applier } = createApplier();
+    const { applier, appliedEpochs } = createApplier();
+    let eventsAvailable = false;
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
       cursorStorage,
       applier,
-      getEpoch: () => Promise.resolve(epoch(11)),
-      getEventsPage: () => Promise.resolve(createPage([])),
+      getEpoch: () => Promise.resolve(epoch(12)),
+      getEventsPage: (_options, query) =>
+        Promise.resolve(
+          createPage(
+            eventsAvailable && query.afterEpochVersion === 10
+              ? [createRestEventDto(11), createRestEventDto(12)]
+              : [],
+          ),
+        ),
       webSocketFactory: (url, protocols) => {
         const socket = new FakeWebSocket(url, protocols);
         sockets.push(socket);
@@ -610,12 +618,16 @@ describe("workspace-realtime transport runtime", () => {
     );
     await flushAsyncHandlers();
 
-    // Browser tabs share localStorage, but this runtime has not received epoch 11.
-    cursorStorage.write(cursorOwner, cursor(11));
+    // Browser tabs share localStorage, but this runtime has not received epochs 11 and 12.
+    eventsAvailable = true;
+    cursorStorage.write(cursorOwner, cursor(12));
     await vi.advanceTimersByTimeAsync(63_000);
+    await flushAsyncHandlers();
 
     expect(sockets).toHaveLength(2);
     expect(sockets[0]?.closed).toBe(true);
+    expect(appliedEpochs).toEqual([11, 12]);
+    expect(sockets[1]?.url).toContain("last_epoch_version=12");
     await runtime.stop();
     vi.useRealTimers();
   });

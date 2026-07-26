@@ -161,6 +161,37 @@ function removeId<TId extends string>(ids: TId[], id: TId): TId[] {
   return ids.filter((item) => item !== id);
 }
 
+function projectStreamUnreadIntoFolders(
+  foldersById: Readonly<Record<MessengerUuid, MessengerFolder>>,
+  streamUuid: MessengerUuid,
+  unreadCount: number,
+): Record<MessengerUuid, MessengerFolder> {
+  let nextFoldersById: Record<MessengerUuid, MessengerFolder> | null = null;
+
+  for (const [folderUuid, folder] of Object.entries(foldersById)) {
+    let nextItems: MessengerFolderItem[] | null = null;
+    let unreadDelta = 0;
+
+    for (const [index, item] of folder.items.entries()) {
+      if (item.streamUuid !== streamUuid || item.unreadCount === unreadCount) continue;
+
+      nextItems ??= [...folder.items];
+      nextItems[index] = { ...item, unreadCount };
+      unreadDelta += unreadCount - item.unreadCount;
+    }
+
+    if (nextItems == null) continue;
+    nextFoldersById ??= { ...foldersById };
+    nextFoldersById[folderUuid] = {
+      ...folder,
+      unreadCount: Math.max(0, folder.unreadCount + unreadDelta),
+      items: nextItems,
+    };
+  }
+
+  return nextFoldersById ?? foldersById;
+}
+
 function compareIsoDateStrings(a: string | null | undefined, b: string | null | undefined): number {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
@@ -643,6 +674,11 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           [stream.uuid]: stream,
         },
         streamIds: appendUniqueId(state.streamIds, stream.uuid),
+        foldersById: projectStreamUnreadIntoFolders(
+          state.foldersById,
+          stream.uuid,
+          stream.unreadCount,
+        ),
         ...conversationState,
       };
     });

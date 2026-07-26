@@ -88,6 +88,7 @@ import { uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
+import { isWindowActive } from "~/shared/lib/visibility";
 import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
@@ -1811,6 +1812,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const flushReadBatch = useCallback(() => {
     readBatchTimerRef.current = null;
+    if (!isWindowActive()) {
+      pendingReadUpToMessageUuidRef.current = null;
+      return;
+    }
     if (runtimeContext == null || conversationId == null) {
       pendingReadUpToMessageUuidRef.current = null;
       return;
@@ -1853,6 +1858,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const scheduleReadBatch = useCallback(
     (messageUuids: string[]) => {
       if (messageUuids.length === 0) return;
+      if (!isWindowActive()) return;
 
       const latestMessageUuid = messageUuids.at(-1);
       if (latestMessageUuid == null) return;

@@ -347,9 +347,18 @@ function applyStreamRealtimeEvent(
   }
 
   const stream = adaptMessengerStream(event.stream);
+  const previousFoldersById = store.foldersById;
   store.upsertStream(ownerKey, stream);
   if (activeCache.upsertCachedStream != null) {
     writeRealtimeCacheBestEffort(() => activeCache.upsertCachedStream?.(ownerKey, stream));
+  }
+  if (activeCache.upsertCachedFolder != null) {
+    const nextStore = useMessengerStore.getState();
+    for (const folderUuid of nextStore.folderIds) {
+      const folder = nextStore.foldersById[folderUuid];
+      if (folder == null || folder === previousFoldersById[folderUuid]) continue;
+      writeRealtimeCacheBestEffort(() => activeCache.upsertCachedFolder?.(ownerKey, folder));
+    }
   }
 }
 

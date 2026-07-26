@@ -1289,6 +1289,65 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
+  it("projects realtime stream unread snapshots into folder items and aggregate counters", () => {
+    const context = createContext();
+    const upsertCachedFolder = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: { upsertCachedFolder },
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 75,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({
+          unread_count: 9,
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_A,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_A,
+              chat_type: "stream",
+              order_index: 10,
+              pinned_at: null,
+              unread_count: 3,
+              created_at: DATE,
+              updated_at: DATE,
+            },
+          ],
+        }),
+      },
+      context,
+    );
+    upsertCachedFolder.mockClear();
+
+    applier.applyEvent(
+      {
+        epoch_version: 76,
+        type: "stream",
+        kind: "stream.updated",
+        stream: createStreamDto({
+          unread_count: 5,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    const folder = useMessengerStore.getState().foldersById[FOLDER_A];
+    expect(folder).toEqual(
+      expect.objectContaining({
+        unreadCount: 11,
+        items: [expect.objectContaining({ unreadCount: 5 })],
+      }),
+    );
+    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, folder);
+  });
+
   it("removes realtime folder item membership while preserving the backend folder counter", () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier();

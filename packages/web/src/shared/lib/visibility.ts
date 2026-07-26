@@ -30,6 +30,11 @@ export function isTabVisible(): boolean {
   return document.visibilityState === "visible";
 }
 
+export function isWindowActive(): boolean {
+  if (typeof document === "undefined") return true;
+  return isTabVisible() && document.hasFocus();
+}
+
 export function onVisibilityChange(callback: VisibilityCallback): () => void {
   visibilityListeners.add(callback);
   return () => visibilityListeners.delete(callback);

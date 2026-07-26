@@ -67,6 +67,7 @@ export interface WorkspaceRealtimeCatchUpOptions {
   clientOptions: WorkspaceClientOptions;
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeCatchUpApplier;
+  startCursor?: WorkspaceRealtimeCursor;
   isOwnerCurrent?: (owner: WorkspaceRealtimeCatchUpOwner) => boolean;
   pageLimit?: number;
   getEpoch?: (options: WorkspaceClientOptions) => Promise<WorkspaceMessengerEpochDto>;
@@ -100,6 +101,10 @@ function isCatchUpOwnerCurrent(options: WorkspaceRealtimeCatchUpOptions): boolea
 async function resolveStartCursor(
   options: WorkspaceRealtimeCatchUpOptions,
 ): Promise<WorkspaceRealtimeCursor> {
+  if (options.startCursor != null) {
+    return options.startCursor;
+  }
+
   const storedCursor = options.cursorStorage.read(options.owner);
   if (storedCursor != null) {
     return storedCursor;
@@ -122,7 +127,9 @@ function advanceCursor(
   cursor: WorkspaceRealtimeCursor,
 ): WorkspaceRealtimeCursor {
   options.cursorStorage.write(options.owner, cursor);
-  return options.cursorStorage.read(options.owner) ?? cursor;
+  // Durable storage is shared across tabs, but this catch-up must advance only
+  // through events applied to its own in-memory store.
+  return cursor;
 }
 
 export async function catchUpWorkspaceRealtime(
