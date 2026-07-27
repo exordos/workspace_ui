@@ -85,13 +85,22 @@ function removeDraft(
   return next;
 }
 
+function isComposerDraftRestorable(draft: WorkspaceComposerDraft): boolean {
+  return draft.syncStatus !== "deleting";
+}
+
 function candidatesForConversation(
   draftsByKey: Record<string, WorkspaceComposerDraft>,
   ownerKey: string,
   conversationId: string,
 ): WorkspaceComposerDraft[] {
   return Object.values(draftsByKey)
-    .filter((draft) => draft.ownerKey === ownerKey && draft.conversationId === conversationId)
+    .filter(
+      (draft) =>
+        draft.ownerKey === ownerKey &&
+        draft.conversationId === conversationId &&
+        isComposerDraftRestorable(draft),
+    )
     .sort(
       (left, right) =>
         right.updatedAt - left.updatedAt || right.draftUuid.localeCompare(left.draftUuid),
@@ -403,7 +412,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
       const activeUuid = get().activeDraftUuidByConversationKey[scopeKey];
       const active = activeUuid == null ? null : get().draftsByKey[draftKey(ownerKey, activeUuid)];
-      if (active != null) return active;
+      if (active != null && isComposerDraftRestorable(active)) return active;
       if (get().completedConversationVisits[scopeKey] != null) return null;
       const candidates = candidatesForConversation(get().draftsByKey, ownerKey, conversationId);
       const selected =
@@ -713,7 +722,10 @@ export function selectWorkspaceComposerDraft(
   const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
   if (state.completedConversationVisits[scopeKey] != null) return null;
   const activeUuid = state.activeDraftUuidByConversationKey[scopeKey];
-  if (activeUuid != null) return state.draftsByKey[draftKey(ownerKey, activeUuid)] ?? null;
+  if (activeUuid != null) {
+    const active = state.draftsByKey[draftKey(ownerKey, activeUuid)] ?? null;
+    if (active != null && isComposerDraftRestorable(active)) return active;
+  }
   return candidatesForConversation(state.draftsByKey, ownerKey, conversationId)[0] ?? null;
 }
 

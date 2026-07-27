@@ -250,6 +250,63 @@ describe("workspace composer drafts", () => {
     ).toEqual(localDraft);
   });
 
+  it("does not restore a persisted deleting draft after reload", async () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    await expect(
+      readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(OWNER),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        draftUuid: sentDraft!.draftUuid,
+        syncStatus: "deleting",
+      }),
+    );
+
+    // A reload must retain the durable deletion tombstone without putting its
+    // already-sent content back into the composer.
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toBeNull();
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+  });
+
+  it("restores the next editable draft instead of a newer deletion tombstone", async () => {
+    const editableDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Оставшийся черновик"));
+    expect(editableDraft).not.toBeNull();
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, editableDraft!.draftUuid);
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      draftUuid: editableDraft!.draftUuid,
+      content: { text: "Оставшийся черновик" },
+    });
+  });
+
   it("clears only the snapshot that was sent", async () => {
     const sentDraft = useWorkspaceComposerDraftStore
       .getState()
