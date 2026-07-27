@@ -212,6 +212,30 @@ describe("messenger store", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_A]).toBeDefined();
   });
 
+  it("preserves server folder snapshots when no items are removed", () => {
+    const store = useMessengerStore.getState();
+    store.upsertStream(OWNER_KEY, createStream());
+    const snapshotWithEmptyRemovalSet = createFolder({
+      unreadCount: 9,
+      items: [createFolderItem({ unreadCount: 1 })],
+    });
+
+    store.applyFolderSnapshot(OWNER_KEY, snapshotWithEmptyRemovalSet);
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBe(snapshotWithEmptyRemovalSet);
+
+    store.removeStream(OWNER_KEY, { uuid: STREAM_B });
+    const snapshotWithUnrelatedRemoval = createFolder({
+      unreadCount: 10,
+      items: [createFolderItem({ unreadCount: 1 })],
+      updatedAt: "2026-06-22T10:11:00Z",
+    });
+
+    store.applyFolderSnapshot(OWNER_KEY, snapshotWithUnrelatedRemoval);
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBe(snapshotWithUnrelatedRemoval);
+  });
+
   it("replaces stream bindings for one stream and removes stale bindings from that stream", () => {
     useMessengerStore
       .getState()

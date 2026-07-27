@@ -152,10 +152,7 @@ function withoutRemovedStreamProjections(
       (conversation) => !removedStreamUuids.has(conversation.streamUuid),
     ),
     folders: payload.folders.map((folder) =>
-      rebuildFolderWithItems(
-        folder,
-        folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
-      ),
+      removeDeletedStreamItemsFromFolder(folder, removedStreamUuids),
     ),
   };
 }
@@ -408,6 +405,15 @@ function rebuildFolderWithItems(
         ? folder.unreadCount
         : items.reduce((total, item) => total + item.unreadCount, 0),
   };
+}
+
+function removeDeletedStreamItemsFromFolder(
+  folder: MessengerFolder,
+  removedStreamUuids: ReadonlySet<MessengerUuid> | undefined,
+): MessengerFolder {
+  if (removedStreamUuids == null || removedStreamUuids.size === 0) return folder;
+  const items = folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid));
+  return items.length === folder.items.length ? folder : rebuildFolderWithItems(folder, items);
 }
 
 function conversationFromStream(stream: MessengerStream): MessengerConversation {
@@ -685,13 +691,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const foldersById: Record<MessengerUuid, MessengerFolder> = {};
       const folderIds: MessengerUuid[] = [];
       for (const folder of folders) {
-        foldersById[folder.uuid] =
-          removedStreamUuids == null
-            ? folder
-            : rebuildFolderWithItems(
-                folder,
-                folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
-              );
+        foldersById[folder.uuid] = removeDeletedStreamItemsFromFolder(folder, removedStreamUuids);
         folderIds.push(folder.uuid);
       }
 
@@ -995,13 +995,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
-      const safeFolder =
-        removedStreamUuids == null
-          ? folder
-          : rebuildFolderWithItems(
-              folder,
-              folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
-            );
+      const safeFolder = removeDeletedStreamItemsFromFolder(folder, removedStreamUuids);
 
       return {
         foldersById: {
