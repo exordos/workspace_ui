@@ -22,6 +22,7 @@ export interface PaletteTokens {
   accent: string;
   "accent-soft": string;
   "on-accent": string;
+  danger: string;
 
   /** Borders */
   "border-subtle": string;

@@ -1,7 +1,7 @@
 /**
  * Tests for the theme system: palette registry, token completeness, and mode resolution.
  *
- * Verifies that all registered palettes define the full set of 43 design tokens
+ * Verifies that all registered palettes define the full set of 44 design tokens
  * for both light and dark modes, that palette lookup works with fallbacks, and
  * that the "system" mode correctly resolves to light/dark. These tests protect
  * against missing tokens that would cause CSS variables to be undefined,
@@ -24,6 +24,7 @@ const ALL_TOKEN_KEYS: (keyof PaletteTokens)[] = [
   "accent",
   "accent-soft",
   "on-accent",
+  "danger",
   "border-subtle",
   "sidebar-bg",
   "sidebar-item-hover",
@@ -77,7 +78,7 @@ describe("theme palettes", () => {
   });
 
   // Missing tokens would cause undefined CSS vars — UI elements would be invisible
-  it("each palette defines all 43 tokens for light mode", () => {
+  it("each palette defines all 44 tokens for light mode", () => {
     for (const p of palettes) {
       for (const key of ALL_TOKEN_KEYS) {
         expect(p.light[key], `${p.id}.light.${key}`).toBeTruthy();
@@ -86,7 +87,7 @@ describe("theme palettes", () => {
   });
 
   // Dark mode tokens are independent — each must be explicitly defined
-  it("each palette defines all 43 tokens for dark mode", () => {
+  it("each palette defines all 44 tokens for dark mode", () => {
     for (const p of palettes) {
       for (const key of ALL_TOKEN_KEYS) {
         expect(p.dark[key], `${p.id}.dark.${key}`).toBeTruthy();

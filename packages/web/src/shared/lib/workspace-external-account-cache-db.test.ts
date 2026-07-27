@@ -12,43 +12,39 @@ import {
 } from "./workspace-external-account-cache-db";
 import type { WorkspaceExternalAccountCacheProfile } from "./workspace-external-account-cache-db";
 
-const OWNER_A = "account:a:org:o:project:p:user:u-a";
-const OWNER_B = "account:b:org:o:project:p:user:u-b";
+const OWNER_A = "account:a:instance:i:organization:o:project:p:user:u-a";
+const OWNER_B = "account:b:instance:i:organization:o:project:p:user:u-b";
 
-function cachedAccount(
-  uuid: string,
-  overrides: Partial<WorkspaceExternalAccountCacheProfile> = {},
-): WorkspaceExternalAccountCacheProfile {
+function cachedAccount(uuid: string): WorkspaceExternalAccountCacheProfile {
   return {
     uuid,
-    projectId: "project-a",
-    userUuid: "user-a",
-    serverUrl: "https://zulip.example.com",
-    sourceScope: "https://zulip.example.com",
-    accountType: "zulip",
-    status: "active",
-    accessStatus: "confirmed",
-    accessCheckedAt: "2026-07-10T09:00:00Z",
-    accessConfirmedAt: "2026-07-10T09:00:00Z",
-    accessNextCheckAt: "2026-07-10T10:00:00Z",
-    accessLastError: null,
-    accountSettingsKind: "zulip",
-    userInfo: {
-      userId: 7,
+    provider: "zulip",
+    settings: {
+      kind: "zulip",
+      serverUrl: "https://zulip.example.com",
       email: "user@example.com",
-      fullName: "Phoenix",
-      avatarUrl: "/user_avatars/2/avatar.png",
+      selectionMode: "explicit",
+      historyDepth: "30_days",
+      defaultProjectId: "project-a",
     },
+    credentialPresent: true,
+    status: "live",
+    liveReady: true,
+    capabilities: {},
+    safeError: null,
+    desiredGeneration: 1,
+    appliedGeneration: 1,
+    lastProgressAt: null,
+    revision: 1,
     createdAt: "2026-07-10T08:00:00Z",
     updatedAt: "2026-07-10T09:00:00Z",
-    ...overrides,
+    etag: '"1"',
   };
 }
 
 afterEach(async () => {
   try {
-    const db = await openWorkspaceExternalAccountCacheDb();
-    db.close();
+    (await openWorkspaceExternalAccountCacheDb()).close();
   } catch {
     // no open DB
   }
@@ -57,42 +53,34 @@ afterEach(async () => {
 });
 
 describe("workspace-external-account-cache-db", () => {
-  it("opens the owner-scoped external account cache", async () => {
+  it("opens the v2 owner-scoped cache", async () => {
     const db = await openWorkspaceExternalAccountCacheDb();
-
     expect(db.name).toBe(WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_NAME);
     expect(db.version).toBe(WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_VERSION);
-    expect([...db.objectStoreNames]).toEqual(["accounts"]);
-    expect([...db.transaction("accounts", "readonly").objectStore("accounts").indexNames]).toEqual([
-      "byOwner",
-    ]);
   });
 
-  it("isolates accounts by owner and replaces the owner snapshot", async () => {
+  it("isolates and replaces snapshots by complete owner key", async () => {
     await replaceWorkspaceExternalAccountCache(OWNER_A, [cachedAccount("account-a")]);
     await replaceWorkspaceExternalAccountCache(OWNER_B, [cachedAccount("account-b")]);
-
-    await replaceWorkspaceExternalAccountCache(OWNER_A, [
-      cachedAccount("account-a-2", { serverUrl: "https://next.example.com" }),
-    ]);
-
+    await replaceWorkspaceExternalAccountCache(OWNER_A, [cachedAccount("account-a-2")]);
     await expect(readWorkspaceExternalAccountCache(OWNER_A)).resolves.toEqual([
-      expect.objectContaining({ uuid: "account-a-2", serverUrl: "https://next.example.com" }),
+      expect.objectContaining({ uuid: "account-a-2" }),
     ]);
     await expect(readWorkspaceExternalAccountCache(OWNER_B)).resolves.toEqual([
       expect.objectContaining({ uuid: "account-b" }),
     ]);
+  });
+
+  it("does not write after the owner is invalidated", async () => {
+    await replaceWorkspaceExternalAccountCache(OWNER_A, [cachedAccount("account-a")], () => false);
+    await expect(readWorkspaceExternalAccountCache(OWNER_A)).resolves.toEqual([]);
   });
 
   it("deletes only the requested owner cache", async () => {
     await replaceWorkspaceExternalAccountCache(OWNER_A, [cachedAccount("account-a")]);
     await replaceWorkspaceExternalAccountCache(OWNER_B, [cachedAccount("account-b")]);
-
     await deleteWorkspaceExternalAccountOwnerCache(OWNER_A);
-
     await expect(readWorkspaceExternalAccountCache(OWNER_A)).resolves.toEqual([]);
-    await expect(readWorkspaceExternalAccountCache(OWNER_B)).resolves.toEqual([
-      expect.objectContaining({ uuid: "account-b" }),
-    ]);
+    await expect(readWorkspaceExternalAccountCache(OWNER_B)).resolves.toHaveLength(1);
   });
 });

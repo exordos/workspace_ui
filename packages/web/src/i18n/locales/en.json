@@ -83,6 +83,7 @@
   },
   "configureExternalChats": {
     "action": "Configure chats",
+    "compactAction": "Add chats",
     "title": "Zulip chat sync",
     "description": "Select the chats to transfer to Workspace.",
     "search": "Search chats",
@@ -130,12 +131,12 @@
     "manage": "View connection",
     "reenterCredentials": "Enter credentials again",
     "connectHint": "Link another service to this profile",
-    "connectedAccounts": "Connected external accounts",
     "noAccounts": "No external accounts connected yet.",
     "server": "Server",
     "checking": "Checking…",
     "delete": {
       "action": "Delete connection",
+      "shortAction": "Delete",
       "title": "Delete Zulip connection?",
       "description": "This action permanently removes the external account from Workspace.",
       "warning": "If chat synchronization has already started, imported chats and their history will also be deleted.",
@@ -162,7 +163,7 @@
     "status": {
       "sending": "Sending details…",
       "connecting": "Checking connection…",
-      "backfill": "Preparing chat history…",
+      "backfill": "Loading history…",
       "live": "Connection is active",
       "degraded": "Connection needs attention",
       "auth_required": "Zulip credentials need to be updated",
@@ -172,6 +173,122 @@
       "checking": "Checking…",
       "checkingShort": "Checking",
       "unsupportedProvider": "This provider is not supported yet"
+    }
+  },
+  "externalAccounts": {
+    "title": "External accounts",
+    "manageIntegrations": "Integration settings",
+    "manageIntegrationsHint": "Organization-wide external service settings"
+  },
+  "manageExternalProvider": {
+    "title": "External integration settings",
+    "description": "Organization-wide Zulip settings for all users.",
+    "provider": "Provider",
+    "loadingPolicy": "Loading integration settings…",
+    "policyLoadError": "Could not load the integration settings.",
+    "policyRefreshError": "Could not refresh the integration settings.",
+    "refresh": "Refresh",
+    "updatedAt": "Updated: {{value}}",
+    "saving": "Saving…",
+    "saveError": "Could not save the integration settings.",
+    "common": {
+      "notAvailable": "Not available"
+    },
+    "overview": {
+      "title": "Overview",
+      "health": "Technical status",
+      "policy": "Availability",
+      "emergency": "Emergency suspension"
+    },
+    "policy": {
+      "enabled": "Integration allowed",
+      "disabled": "Integration disabled"
+    },
+    "emergency": {
+      "active": "Not active",
+      "suspended": "Integration suspended"
+    },
+    "enabled": {
+      "label": "Allow the Zulip integration",
+      "description": "Allows users in this organization to connect Zulip accounts."
+    },
+    "limits": {
+      "title": "Availability and limits",
+      "description": "Limits apply to new accounts, selected chats, and transferred files.",
+      "maxAccounts": "Accounts per user",
+      "maxSelectedChats": "Chats per external account",
+      "maxFileSize": "Maximum file size",
+      "reductionHint": "Lowering these limits does not remove existing accounts or selected chats."
+    },
+    "units": {
+      "mib": "MiB"
+    },
+    "validation": {
+      "range": "Enter a value from 0 to {{maximum}}."
+    },
+    "ca": {
+      "title": "Custom certificate authority",
+      "notInstalled": "No custom certificate bundle is installed.",
+      "saveBlocked": "Availability and limits cannot be changed while a custom certificate bundle is installed. The backend cannot safely preserve it without receiving the certificates again.",
+      "certificates": "Certificates",
+      "generation": "Generation",
+      "sha256": "SHA-256 fingerprint"
+    },
+    "health": {
+      "title": "Technical status",
+      "healthy": "Operational",
+      "unavailable": "Unavailable",
+      "loading": "Loading technical status…",
+      "loadError": "Could not load the technical status.",
+      "refreshError": "Could not refresh the technical status.",
+      "noData": "No data",
+      "accounts": "Accounts",
+      "bridges": "Bridge instances",
+      "operations": "Operations",
+      "status": {
+        "account": {
+          "connecting": "Connecting",
+          "backfill": "Loading history",
+          "live": "Operational",
+          "degraded": "Degraded",
+          "auth_required": "Credentials required",
+          "disconnected": "Disconnected",
+          "suspended": "Suspended"
+        },
+        "bridge": {
+          "enrolling": "Enrolling",
+          "active": "Active",
+          "degraded": "Degraded",
+          "incompatible": "Incompatible",
+          "suspended": "Suspended",
+          "revoked": "Revoked"
+        },
+        "operation": {
+          "queued": "Queued",
+          "running": "Running",
+          "succeeded": "Succeeded",
+          "failed": "Failed",
+          "manual_reconciliation_required": "Manual reconciliation required",
+          "discarded": "Discarded"
+        }
+      }
+    },
+    "conflict": {
+      "message": "Another administrator changed these settings. Your draft is preserved in the form.",
+      "loadCurrent": "Load current settings",
+      "keepDraft": "Keep my draft"
+    },
+    "danger": {
+      "title": "Emergency controls",
+      "description": "These actions affect the Zulip integration for every user in the organization.",
+      "suspend": "Suspend integration",
+      "confirmTitle": "Suspend the Zulip integration?",
+      "confirmDescription": "Zulip connections will be suspended for every user in the organization.",
+      "confirmSuspend": "Suspend for everyone",
+      "suspending": "Suspending…",
+      "resume": "Resume integration",
+      "resuming": "Resuming…",
+      "actionError": "Could not complete the action. The form settings were not changed."
     }
   },
   "nav": {

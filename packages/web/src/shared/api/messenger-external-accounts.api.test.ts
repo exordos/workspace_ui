@@ -1,120 +1,130 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createExternalAccount,
-  getExternalAccounts,
+  deleteExternalAccount,
+  disconnectExternalAccount,
+  getExternalAccount,
   getExternalAccountsPage,
+  reconnectExternalAccount,
+  updateExternalAccount,
 } from "./messenger-external-accounts.api";
 
-const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
-const USER_UUID = "11111111-1111-4111-8111-111111111111";
-const ACCOUNT_UUID = "33333333-3333-4333-8333-333333333333";
-const DATE = "2026-07-10T09:30:00Z";
-
 const accountDto = {
-  uuid: ACCOUNT_UUID,
-  project_id: PROJECT_UUID,
-  user_uuid: USER_UUID,
-  server_url: "https://zulip.example.com",
-  source_scope: "https://zulip.example.com",
-  account_type: "zulip",
-  status: "new",
-  access_status: "confirmed",
-  access_checked_at: DATE,
-  access_confirmed_at: DATE,
-  access_next_check_at: DATE,
-  access_last_error: null,
-  account_settings: {
+  uuid: "33333333-3333-4333-8333-333333333333",
+  settings: {
     kind: "zulip",
-    credentials: { kind: "zulip", login: "user@example.com", token: "secret" },
+    server_url: "https://zulip.example.com",
+    email: "user@example.com",
+    selection_mode: "explicit",
+    history_depth: "30_days",
+    default_project_id: "22222222-2222-4222-8222-222222222222",
   },
-  created_at: DATE,
-  updated_at: DATE,
-};
+  credential_present: true,
+  status: "live",
+  live_ready: true,
+  capabilities: {},
+  safe_error: null,
+  desired_generation: 2,
+  applied_generation: 2,
+  last_progress_at: null,
+  revision: 3,
+  created_at: "2026-07-10T08:00:00Z",
+  updated_at: "2026-07-10T09:00:00Z",
+} as const;
 
 function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Response {
-  return new Response(JSON.stringify(body), {
+  return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
-function firstFetchCall(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
+function options(fetchImpl: typeof fetch) {
+  return { accessToken: "test", baseUrl: "/api/workspace/v1/messenger", fetchImpl };
+}
+
+function firstCall(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
   const call = fetchMock.mock.calls[0];
-  if (call == null) throw new Error("Expected fetch to be called");
+  if (call == null) throw new Error("Expected fetch call");
   return call;
 }
 
 describe("messenger external accounts API", () => {
-  it("gets the owner-scoped list and supports pagination headers", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
-    fetchMock.mockResolvedValueOnce(jsonResponse([accountDto]));
-
-    await expect(
-      getExternalAccounts(
-        {
-          accessToken: "access-token",
-          baseUrl: "/api/workspace/v1/messenger",
-          fetchImpl: fetchMock,
-        },
-        { pageLimit: 20, pageMarker: "account-page" },
-      ),
-    ).resolves.toEqual([accountDto]);
-
-    expect(firstFetchCall(fetchMock)[0]).toBe(
-      "/api/workspace/v1/messenger/external_accounts/?page_limit=20&page_marker=account-page",
-    );
-
-    const pageFetchMock = vi.fn<typeof fetch>();
-    pageFetchMock.mockResolvedValue(
+  it("loads the paginated sanitized contract", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse([accountDto], 200, {
-        "X-Pagination-Marker": "next-account",
+        "X-Pagination-Marker": "next",
         "X-Pagination-Limit": "20",
       }),
     );
-    await expect(
-      getExternalAccountsPage(
-        {
-          accessToken: "access-token",
-          baseUrl: "/api/workspace/v1/messenger",
-          fetchImpl: pageFetchMock,
-        },
-        { pageLimit: 20 },
-      ),
-    ).resolves.toEqual({
+    await expect(getExternalAccountsPage(options(fetchMock), { pageLimit: 20 })).resolves.toEqual({
       items: [accountDto],
-      nextPageMarker: "next-account",
+      nextPageMarker: "next",
       pageLimit: 20,
     });
   });
 
-  it("posts only the backend create contract", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
-    fetchMock.mockResolvedValue(jsonResponse(accountDto, 201));
+  it("returns strong ETags for get and create", async () => {
+    const getMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(accountDto, 200));
+    await expect(getExternalAccount(options(getMock), accountDto.uuid)).resolves.toMatchObject({
+      account: accountDto,
+      etag: '"3"',
+    });
+
+    const createMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(accountDto, 201, { ETag: '"server-etag"' }));
     const body = {
-      server_url: "https://zulip.example.com",
-      account_settings: {
-        kind: "zulip" as const,
-        credentials: { kind: "zulip" as const, login: "user@example.com", token: "secret" },
-      },
+      uuid: accountDto.uuid,
+      settings: { ...accountDto.settings, api_key: "secret" },
     };
+    await expect(createExternalAccount(options(createMock), body)).resolves.toMatchObject({
+      etag: '"server-etag"',
+    });
+    expect(firstCall(createMock)[1]?.body).toBe(JSON.stringify(body));
+  });
 
-    await expect(
-      createExternalAccount(
-        {
-          accessToken: "access-token",
-          baseUrl: "/api/workspace/v1/messenger",
-          fetchImpl: fetchMock,
+  it("sends If-Match for update and reconnect", async () => {
+    const updateMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(accountDto));
+    await updateExternalAccount(
+      options(updateMock),
+      accountDto.uuid,
+      {
+        settings: {
+          kind: "zulip",
+          selection_mode: "explicit",
+          history_depth: "90_days",
+          default_project_id: accountDto.settings.default_project_id,
         },
-        body,
-      ),
-    ).resolves.toEqual(accountDto);
+      },
+      '"3"',
+    );
+    expect(new Headers(firstCall(updateMock)[1]?.headers).get("If-Match")).toBe('"3"');
 
-    const [url, init] = firstFetchCall(fetchMock);
-    const serializedBody = typeof init?.body === "string" ? init.body : "";
-    expect(url).toBe("/api/workspace/v1/messenger/external_accounts/");
-    expect(init?.method).toBe("POST");
-    expect(serializedBody).toBe(JSON.stringify(body));
-    expect(JSON.parse(serializedBody)).not.toHaveProperty("project_id");
-    expect(JSON.parse(serializedBody)).not.toHaveProperty("user_uuid");
+    const reconnectMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(accountDto));
+    await reconnectExternalAccount(
+      options(reconnectMock),
+      accountDto.uuid,
+      {
+        settings: {
+          kind: "zulip",
+          server_url: accountDto.settings.server_url,
+          email: accountDto.settings.email,
+          api_key: "changed",
+        },
+      },
+      '"3"',
+    );
+    expect(new Headers(firstCall(reconnectMock)[1]?.headers).get("If-Match")).toBe('"3"');
+  });
+
+  it("supports disconnect and destructive delete without a precondition", async () => {
+    const disconnectMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(accountDto));
+    await disconnectExternalAccount(options(disconnectMock), accountDto.uuid);
+    expect(firstCall(disconnectMock)[0]).toContain("/actions/disconnect/invoke");
+
+    const deleteMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(null, 204));
+    await deleteExternalAccount(options(deleteMock), accountDto.uuid);
+    expect(firstCall(deleteMock)[1]?.method).toBe("DELETE");
   });
 });

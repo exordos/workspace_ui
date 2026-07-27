@@ -18,6 +18,7 @@ export const blueCold: ThemePalette = {
     accent: "#7087ff",
     "accent-soft": "#2b2d9a",
     "on-accent": "#141517",
+    danger: "#d92d20",
 
     "border-subtle": "#33384d",
 
@@ -78,6 +79,7 @@ export const blueCold: ThemePalette = {
     accent: "#7087ff",
     "accent-soft": "#cde6ff",
     "on-accent": "#1b1b1d",
+    danger: "#d92d20",
 
     "border-subtle": "#d8e4ef",
 

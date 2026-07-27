@@ -17,6 +17,7 @@ export const APP_DIALOG_CONTENT_BASE_CLASS =
   "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 z-modal w-full -translate-x-1/2 rounded-xl border border-border-subtle bg-bg-elevated shadow-xl";
 
 const DEFAULT_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} p-6`;
+const SCROLL_BODY_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} flex max-h-[92vh] flex-col overflow-hidden`;
 
 export const DIALOG_CANCEL_BUTTON_CLASS =
   "hover:bg-bg/60 rounded-lg px-4 py-2 text-sm text-text-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50";
@@ -123,9 +124,22 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   footer,
   maxWidthClassName = "max-w-md",
   positionClassName = "top-[20%]",
+  scrollBody = false,
   onCloseAutoFocus,
 }) => {
-  const contentClassName = `${DEFAULT_CONTENT_CLASS} ${maxWidthClassName} ${positionClassName}`;
+  const contentClassName = `${
+    scrollBody ? SCROLL_BODY_CONTENT_CLASS : DEFAULT_CONTENT_CLASS
+  } ${maxWidthClassName} ${positionClassName}`;
+
+  const titleNode = (
+    <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">{title}</Dialog.Title>
+  );
+  const descriptionNode =
+    description != null && description.length > 0 ? (
+      <Dialog.Description className="mb-4 text-sm text-text-secondary">
+        {description}
+      </Dialog.Description>
+    ) : null;
 
   return (
     <AppDialogShell
@@ -134,16 +148,32 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       contentClassName={contentClassName}
       onCloseAutoFocus={onCloseAutoFocus}
     >
-      <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">
-        {title}
-      </Dialog.Title>
-      {description != null && description.length > 0 ? (
-        <Dialog.Description className="mb-4 text-sm text-text-secondary">
-          {description}
-        </Dialog.Description>
-      ) : null}
-      {children}
-      {footer != null ? <div className="mt-4 flex justify-end gap-2">{footer}</div> : null}
+      {scrollBody ? (
+        <>
+          <div className="shrink-0 px-6 pt-6" data-app-dialog-header>
+            {titleNode}
+            {descriptionNode}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6" data-app-dialog-body>
+            {children}
+          </div>
+          {footer != null ? (
+            <div
+              className="flex shrink-0 justify-end gap-2 border-t border-border-subtle bg-bg-elevated px-6 py-4"
+              data-app-dialog-footer
+            >
+              {footer}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {titleNode}
+          {descriptionNode}
+          {children}
+          {footer != null ? <div className="mt-4 flex justify-end gap-2">{footer}</div> : null}
+        </>
+      )}
     </AppDialogShell>
   );
 };

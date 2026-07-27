@@ -8,6 +8,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
+import { ManageExternalProviderEntry } from "~/features/manage-external-provider/manage-external-provider-entry.ui";
 import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
@@ -370,7 +371,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {currentWorkspaceSession != null && (
                 <>
                   <RightPanelUserMenuMenuButton
-                    label={t("connectExternalAccount.connectedAccounts")}
+                    label={t("externalAccounts.title")}
                     icon="links"
                     onClick={() => setExternalAccountsOpen((open) => !open)}
                     right={
@@ -404,6 +405,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                         <Icon name="chevron-right" size={14} className="shrink-0 text-accent" />
                       </button>
                       <RightPanelExternalAccountsList />
+                      <ManageExternalProviderEntry runtimeContext={currentWorkspaceSession} />
                     </div>
                   )}
                 </>
@@ -696,7 +698,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             <button
               type="button"
               onClick={handleLogoutFromCurrentOrg}
-              className="flex w-full items-center justify-center gap-3 rounded-lg border border-[#D92D20] bg-[#D92D20] px-3 py-3 text-sm font-semibold text-text-primary transition-colors hover:bg-[#B42318] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D92D20] focus-visible:ring-offset-2 focus-visible:ring-offset-card-bg"
+              className="hover:bg-danger/90 flex w-full items-center justify-center gap-3 rounded-lg border border-danger bg-danger px-3 py-3 text-sm font-semibold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-card-bg"
               aria-label={t("auth.logoutFromOrg")}
               data-icon-hover="custom"
               data-testid="user-menu-logout-button"

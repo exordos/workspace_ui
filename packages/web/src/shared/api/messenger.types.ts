@@ -1,3 +1,12 @@
+import {
+  isWorkspaceExternalAccountDto,
+  type WorkspaceExternalAccountDto,
+} from "./messenger-external-accounts.types";
+import {
+  isWorkspaceExternalChatDto,
+  type WorkspaceExternalChatDto,
+} from "./messenger-external-chats.types";
+
 export type WorkspaceMessengerUuid = string;
 export type WorkspaceMessengerDateTime = string;
 export type WorkspaceMessengerEpochVersion = number;
@@ -376,6 +385,18 @@ export type WorkspaceMessengerUserUpdatedPayloadDto = {
   kind: "user.updated";
 } & WorkspaceMessengerUserDto;
 
+export interface WorkspaceMessengerExternalAccountEventPayloadDto {
+  kind: "external_account.created" | "external_account.updated" | "external_account.deleted";
+  uuid: WorkspaceMessengerUuid;
+  snapshot: WorkspaceExternalAccountDto;
+}
+
+export interface WorkspaceMessengerExternalChatEventPayloadDto {
+  kind: "external_chat.created" | "external_chat.updated" | "external_chat.deleted";
+  uuid: WorkspaceMessengerUuid;
+  snapshot: WorkspaceExternalChatDto;
+}
+
 // REST-события - это долговечные строки серверного outbox для догонки и reconnect.
 export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "stream.created" | "stream.updated" | "stream.read" } & WorkspaceMessengerStreamDto)
@@ -395,7 +416,9 @@ export type WorkspaceMessengerEventPayloadDto =
   | WorkspaceMessengerUuidDeletedPayloadDto
   | WorkspaceMessengerFileCreatedOrUpdatedPayloadDto
   | WorkspaceMessengerFileDeletedPayloadDto
-  | WorkspaceMessengerUserUpdatedPayloadDto;
+  | WorkspaceMessengerUserUpdatedPayloadDto
+  | WorkspaceMessengerExternalAccountEventPayloadDto
+  | WorkspaceMessengerExternalChatEventPayloadDto;
 
 export type WorkspaceMessengerEventObjectType =
   | "message"
@@ -406,7 +429,9 @@ export type WorkspaceMessengerEventObjectType =
   | "user"
   | "folder"
   | "folder_item"
-  | "file";
+  | "file"
+  | "external_account"
+  | "external_chat";
 
 export type WorkspaceMessengerEventAction = "created" | "updated" | "deleted" | "read";
 
@@ -574,6 +599,18 @@ export type WorkspaceRealtimeEvent =
       type: "user";
       kind: "user.updated";
       user: WorkspaceMessengerUserDto;
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "external_account";
+      kind: "external_account.created" | "external_account.updated" | "external_account.deleted";
+      external_account: WorkspaceExternalAccountDto;
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "external_chat";
+      kind: "external_chat.created" | "external_chat.updated" | "external_chat.deleted";
+      external_chat: WorkspaceExternalChatDto;
     };
 
 export interface WorkspaceMessengerMessageDeletedPayloadDtoWithoutKind {
@@ -714,7 +751,9 @@ function isWorkspaceMessengerEventObjectType(
     value === "user" ||
     value === "folder" ||
     value === "folder_item" ||
-    value === "file"
+    value === "file" ||
+    value === "external_account" ||
+    value === "external_chat"
   );
 }
 
@@ -780,6 +819,18 @@ function expectedWorkspaceMessengerEventMetadata(payloadKind: string): {
       return { objectType: "file", action: "updated" };
     case "file.deleted":
       return { objectType: "file", action: "deleted" };
+    case "external_account.created":
+      return { objectType: "external_account", action: "created" };
+    case "external_account.updated":
+      return { objectType: "external_account", action: "updated" };
+    case "external_account.deleted":
+      return { objectType: "external_account", action: "deleted" };
+    case "external_chat.created":
+      return { objectType: "external_chat", action: "created" };
+    case "external_chat.updated":
+      return { objectType: "external_chat", action: "updated" };
+    case "external_chat.deleted":
+      return { objectType: "external_chat", action: "deleted" };
     default:
       return null;
   }
@@ -1152,6 +1203,22 @@ export function isWorkspaceMessengerEventPayloadDto(
       return isUuid(value.uuid) && isNullableUuid(value.stream_uuid);
     case "user.updated":
       return isWorkspaceMessengerUserDto(value);
+    case "external_account.created":
+    case "external_account.updated":
+    case "external_account.deleted":
+      return (
+        isUuid(value.uuid) &&
+        isWorkspaceExternalAccountDto(value.snapshot) &&
+        value.snapshot.uuid === value.uuid
+      );
+    case "external_chat.created":
+    case "external_chat.updated":
+    case "external_chat.deleted":
+      return (
+        isUuid(value.uuid) &&
+        isWorkspaceExternalChatDto(value.snapshot) &&
+        value.snapshot.uuid === value.uuid
+      );
     default:
       return false;
   }
@@ -1342,6 +1409,20 @@ export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceReal
       return isWorkspaceRealtimeFileEvent(value);
     case "user":
       return value.kind === "user.updated" && isWorkspaceMessengerUserDto(value.user);
+    case "external_account":
+      return (
+        (value.kind === "external_account.created" ||
+          value.kind === "external_account.updated" ||
+          value.kind === "external_account.deleted") &&
+        isWorkspaceExternalAccountDto(value.external_account)
+      );
+    case "external_chat":
+      return (
+        (value.kind === "external_chat.created" ||
+          value.kind === "external_chat.updated" ||
+          value.kind === "external_chat.deleted") &&
+        isWorkspaceExternalChatDto(value.external_chat)
+      );
     default:
       return false;
   }

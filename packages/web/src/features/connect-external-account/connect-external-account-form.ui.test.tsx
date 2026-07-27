@@ -6,25 +6,31 @@ import type { ConnectExternalAccountFormProps } from "./connect-external-account
 const draft = {
   provider: "zulip" as const,
   serverUrl: "",
-  login: "",
-  token: "",
+  email: "",
+  apiKey: "",
 };
 
 const account = {
   uuid: "account-1",
-  projectId: "project-1",
-  userUuid: "user-1",
-  serverUrl: "https://zulip.example.com",
-  sourceScope: "https://zulip.example.com",
-  accountType: "zulip" as const,
-  status: "active" as const,
-  accessStatus: "confirmed" as const,
-  accessCheckedAt: null,
-  accessConfirmedAt: null,
-  accessNextCheckAt: "2026-07-10T10:00:00Z",
-  accessLastError: null,
-  accountSettingsKind: "zulip" as const,
-  userInfo: null,
+  provider: "zulip" as const,
+  settings: {
+    kind: "zulip" as const,
+    serverUrl: "https://zulip.example.com",
+    email: "user@example.com",
+    selectionMode: "explicit" as const,
+    historyDepth: "30_days" as const,
+    defaultProjectId: "project-1",
+  },
+  credentialPresent: true,
+  status: "live" as const,
+  liveReady: true,
+  capabilities: {},
+  safeError: null,
+  desiredGeneration: 1,
+  appliedGeneration: 1,
+  lastProgressAt: null,
+  revision: 1,
+  etag: '"1"',
   createdAt: "2026-07-10T08:00:00Z",
   updatedAt: "2026-07-10T09:00:00Z",
 };
@@ -32,13 +38,13 @@ const account = {
 function renderForm(overrides: Partial<ConnectExternalAccountFormProps> = {}) {
   const props: ConnectExternalAccountFormProps = {
     draft,
-    accounts: [],
+    duplicateZulip: false,
     submitting: false,
     error: null,
     onProviderChange: vi.fn(),
     onServerUrlChange: vi.fn(),
-    onLoginChange: vi.fn(),
-    onTokenChange: vi.fn(),
+    onEmailChange: vi.fn(),
+    onApiKeyChange: vi.fn(),
     onSubmit: vi.fn(),
     ...overrides,
   };
@@ -52,15 +58,15 @@ describe("ConnectExternalAccountForm", () => {
 
     expect(screen.getByRole("combobox")).toHaveValue("zulip");
     expect(screen.getByLabelText("Server URL")).toBeInTheDocument();
-    expect(screen.getByLabelText("Login")).toBeInTheDocument();
-    expect(screen.getByLabelText("Token")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
+    expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
 
     fireEvent.submit(screen.getByRole("button", { name: /connect/i }).closest("form")!);
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("blocks a second Zulip account and explains the duplicate", () => {
-    renderForm({ accounts: [account] });
+    renderForm({ duplicateZulip: account.provider === "zulip" });
 
     expect(screen.getByRole("button", { name: /connect/i })).toBeDisabled();
     expect(screen.getByText(/only one Zulip account/i)).toBeInTheDocument();

@@ -1,58 +1,60 @@
 import type { WorkspaceExternalAccountDto } from "~/shared/api/messenger-external-accounts.types";
 import type { WorkspaceExternalAccountCacheProfile } from "~/shared/lib/workspace-external-account-cache-db";
-import type { ExternalAccount, ExternalAccountType } from "./external-account.types";
-
-function trimOptional(value: string | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed != null && trimmed.length > 0 ? trimmed : null;
-}
+import type { ExternalAccount, ExternalAccountProvider } from "./external-account.types";
 
 export function adaptWorkspaceExternalAccountDto(
   dto: WorkspaceExternalAccountDto,
+  etag = `"${dto.revision}"`,
 ): ExternalAccount {
   return {
     uuid: dto.uuid,
-    projectId: dto.project_id,
-    userUuid: dto.user_uuid,
-    serverUrl: dto.server_url,
-    sourceScope: dto.source_scope ?? null,
-    accountType: dto.account_type,
+    provider: dto.settings.kind,
+    settings: {
+      kind: dto.settings.kind,
+      serverUrl: dto.settings.server_url,
+      email: dto.settings.email,
+      selectionMode: dto.settings.selection_mode,
+      historyDepth: dto.settings.history_depth,
+      defaultProjectId: dto.settings.default_project_id,
+    },
+    credentialPresent: dto.credential_present,
     status: dto.status,
-    accessStatus: dto.access_status,
-    accessCheckedAt: dto.access_checked_at ?? null,
-    accessConfirmedAt: dto.access_confirmed_at ?? null,
-    accessNextCheckAt: dto.access_next_check_at ?? dto.updated_at,
-    accessLastError: dto.access_last_error ?? null,
-    accountSettingsKind: dto.account_settings.kind,
-    userInfo:
-      dto.account_settings.user_info == null
-        ? null
-        : {
-            userId: dto.account_settings.user_info.user_id ?? null,
-            email: trimOptional(dto.account_settings.user_info.email),
-            fullName: trimOptional(dto.account_settings.user_info.full_name),
-            avatarUrl: dto.account_settings.user_info.avatar_url ?? null,
-          },
+    liveReady: dto.live_ready,
+    capabilities: { ...dto.capabilities },
+    safeError: dto.safe_error,
+    desiredGeneration: dto.desired_generation,
+    appliedGeneration: dto.applied_generation,
+    lastProgressAt: dto.last_progress_at,
+    revision: dto.revision,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+    etag,
   };
 }
 
 export function isExternalAccountDuplicate(
   accounts: readonly ExternalAccount[],
-  accountType: ExternalAccountType,
+  provider: ExternalAccountProvider,
 ): boolean {
-  return accounts.some((account) => account.accountType === accountType);
+  return accounts.some((account) => account.provider === provider);
 }
 
 export function toWorkspaceExternalAccountCacheProfile(
   account: ExternalAccount,
 ): WorkspaceExternalAccountCacheProfile {
-  return { ...account };
+  return {
+    ...account,
+    settings: { ...account.settings },
+    capabilities: { ...account.capabilities },
+  };
 }
 
 export function adaptCachedExternalAccount(
   account: WorkspaceExternalAccountCacheProfile,
 ): ExternalAccount {
-  return { ...account };
+  return {
+    ...account,
+    settings: { ...account.settings },
+    capabilities: { ...account.capabilities },
+  };
 }

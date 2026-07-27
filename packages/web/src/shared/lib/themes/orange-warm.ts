@@ -19,6 +19,7 @@ export const orangeWarm: ThemePalette = {
     accent: "#ff8438",
     "accent-soft": "#5a2f0f",
     "on-accent": "#1b1b1d",
+    danger: "#d92d20",
 
     "border-subtle": "#3f3f45",
 
@@ -79,6 +80,7 @@ export const orangeWarm: ThemePalette = {
     accent: "#ff8438",
     "accent-soft": "#ffe7cc",
     "on-accent": "#1b1b1d",
+    danger: "#d92d20",
 
     "border-subtle": "#d9d9d9",
 

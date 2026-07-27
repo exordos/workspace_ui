@@ -1,4 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
+import {
+  adaptWorkspaceExternalAccountDto,
+  toWorkspaceExternalAccountCacheProfile,
+} from "~/entities/external-account/external-account-adapters.lib";
+import { loadExternalAccounts } from "~/entities/external-account/external-account-loader.lib";
+import { createExternalAccountRealtimeApplier } from "~/entities/external-account/external-account-realtime-applier.lib";
+import { createExternalChatRealtimeApplier } from "~/entities/external-chat/external-chat-realtime-applier.lib";
+import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
 import { createMessengerReactionAggregateRevalidateHandler } from "~/entities/messenger/messenger-message-reactions-actions.lib";
@@ -20,7 +28,12 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
+import { getExternalAccounts } from "~/shared/api/messenger-external-accounts.api";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import {
+  deleteWorkspaceExternalAccountOwnerCache,
+  replaceWorkspaceExternalAccountCache,
+} from "~/shared/lib/workspace-external-account-cache-db";
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
@@ -174,25 +187,63 @@ function defaultRuntimeFactory({
     refreshSession,
     resetAuthoritativeSnapshots: async (realtimeContext) => {
       const ownerKey = workspaceRuntimeOwnerKey(realtimeContext.owner);
-      await deleteWorkspaceMessengerOwnerCache(ownerKey);
+      await Promise.all([
+        deleteWorkspaceMessengerOwnerCache(ownerKey),
+        deleteWorkspaceExternalAccountOwnerCache(ownerKey),
+      ]);
 
       const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-      if (
-        currentRuntimeContext == null ||
-        workspaceRuntimeOwnerKey(currentRuntimeContext) !== ownerKey ||
-        currentRuntimeContext.runtimeGeneration !== realtimeContext.owner.runtimeGeneration
-      ) {
+      const isActiveOwner =
+        currentRuntimeContext != null &&
+        workspaceRuntimeOwnerKey(currentRuntimeContext) === ownerKey &&
+        currentRuntimeContext.runtimeGeneration === realtimeContext.owner.runtimeGeneration;
+      const isRuntimeOwnerCurrent = (): boolean =>
+        useWorkspaceAuthStore
+          .getState()
+          .sessions.some(
+            (session) =>
+              workspaceRuntimeOwnerKey(session) === ownerKey &&
+              session.runtimeGeneration === realtimeContext.owner.runtimeGeneration,
+          );
+
+      if (!isRuntimeOwnerCurrent()) {
         return;
       }
 
-      // The message store is active-owner scoped in memory. Never clear it for a background runtime.
-      useMessengerStore.getState().clear();
-      useWorkspaceMessageStore.getState().clear();
-      await bootstrapMessengerStore({
-        runtimeContext,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        loadDrafts: false,
-      });
+      if (isActiveOwner) {
+        // Active stores are owner scoped in memory. Background recovery only refreshes its cache.
+        useMessengerStore.getState().clear();
+        useWorkspaceMessageStore.getState().clear();
+        useExternalChatsStore.getState().clear();
+        const [, externalAccountsResult] = await Promise.all([
+          bootstrapMessengerStore({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            loadDrafts: false,
+          }),
+          loadExternalAccounts({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal: realtimeContext.signal,
+          }),
+        ]);
+        if (externalAccountsResult.status === "failed") {
+          throw new Error(externalAccountsResult.error);
+        }
+        return;
+      }
+
+      const accountDtos = await getExternalAccounts(
+        buildWorkspaceRequestOptions(runtimeContext, undefined, realtimeContext.signal),
+      );
+      if (!isRuntimeOwnerCurrent()) return;
+      await replaceWorkspaceExternalAccountCache(
+        ownerKey,
+        accountDtos
+          .map((account) => adaptWorkspaceExternalAccountDto(account))
+          .map(toWorkspaceExternalAccountCacheProfile),
+        isRuntimeOwnerCurrent,
+      );
     },
     onDiagnostic: (diagnostic) => {
       onDiagnostic?.(diagnostic);
@@ -275,6 +326,14 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
         activeApplierFactory: ({ isOwnerCurrent }) =>
           applier ??
           composeWorkspaceRealtimeAppliers([
+            createExternalAccountRealtimeApplier({
+              surface: "active",
+              isOwnerCurrent,
+            }),
+            createExternalChatRealtimeApplier({
+              surface: "active",
+              isOwnerCurrent,
+            }),
             createMessengerRealtimeActiveApplier({
               isOwnerCurrent,
               onMessageCreated: (ownerKey, message, stream, eventContext) => {
@@ -312,6 +371,14 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           ]),
         backgroundApplierFactory: ({ isOwnerCurrent }) =>
           composeWorkspaceRealtimeAppliers([
+            createExternalAccountRealtimeApplier({
+              surface: "background",
+              isOwnerCurrent,
+            }),
+            createExternalChatRealtimeApplier({
+              surface: "background",
+              isOwnerCurrent,
+            }),
             createMessengerRealtimeBackgroundApplier({ isOwnerCurrent }),
             createUserRealtimeApplier({ isOwnerCurrent }),
           ]),

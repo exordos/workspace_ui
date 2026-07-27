@@ -26,6 +26,7 @@ export default {
         accent: colorVar("accent"),
         "accent-soft": colorVar("accent-soft"),
         "on-accent": colorVar("on-accent"),
+        danger: colorVar("danger"),
 
         /* Borders */
         "border-subtle": colorVar("border-subtle"),

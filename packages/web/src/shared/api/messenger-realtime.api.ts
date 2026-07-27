@@ -247,6 +247,24 @@ export function normalizeWorkspaceRestEvent(
         user,
       };
     }
+    case "external_account.created":
+    case "external_account.updated":
+    case "external_account.deleted":
+      return {
+        epoch_version: model.epoch_version,
+        type: "external_account",
+        kind: model.payload.kind,
+        external_account: model.payload.snapshot,
+      };
+    case "external_chat.created":
+    case "external_chat.updated":
+    case "external_chat.deleted":
+      return {
+        epoch_version: model.epoch_version,
+        type: "external_chat",
+        kind: model.payload.kind,
+        external_chat: model.payload.snapshot,
+      };
     // Reaction row events are intentionally not applied to message.reactions here.
     // The backend emits message.updated snapshots with the aggregate reaction counters,
     // and the active applier uses that aggregate change to revalidate own reaction rows.

@@ -1,35 +1,39 @@
+import type {
+  WorkspaceExternalAccountHistoryDepth,
+  WorkspaceExternalAccountSelectionMode,
+  WorkspaceExternalAccountStatus,
+} from "~/shared/api/messenger-external-accounts.types";
+
 export type ExternalAccountUuid = string;
-export type ExternalAccountType = "zulip" | "iam";
-export type ExternalAccountStatus = "new" | "active";
-export type ExternalAccountAccessStatus =
-  | "missing_credentials"
-  | "confirmed"
-  | "invalid_credentials"
-  | "unavailable";
+export type ExternalAccountProvider = "zulip";
+export type ExternalAccountStatus = WorkspaceExternalAccountStatus;
+export type ExternalAccountSelectionMode = WorkspaceExternalAccountSelectionMode;
+export type ExternalAccountHistoryDepth = WorkspaceExternalAccountHistoryDepth;
 export type ExternalAccountLoadStatus = "idle" | "loading" | "ready" | "error";
 
-export interface ExternalAccountUserInfo {
-  userId: number | null;
-  email: string | null;
-  fullName: string | null;
-  avatarUrl: string | null;
+export interface ExternalAccountSettings {
+  kind: "zulip";
+  serverUrl: string;
+  email: string;
+  selectionMode: ExternalAccountSelectionMode;
+  historyDepth: ExternalAccountHistoryDepth;
+  defaultProjectId: string;
 }
 
 export interface ExternalAccount {
   uuid: ExternalAccountUuid;
-  projectId: string;
-  userUuid: string;
-  serverUrl: string;
-  sourceScope: string | null;
-  accountType: ExternalAccountType;
+  provider: ExternalAccountProvider;
+  settings: ExternalAccountSettings;
+  credentialPresent: boolean;
   status: ExternalAccountStatus;
-  accessStatus: ExternalAccountAccessStatus;
-  accessCheckedAt: string | null;
-  accessConfirmedAt: string | null;
-  accessNextCheckAt: string;
-  accessLastError: string | null;
-  accountSettingsKind: ExternalAccountType;
-  userInfo: ExternalAccountUserInfo | null;
+  liveReady: boolean;
+  capabilities: Readonly<Record<string, unknown>>;
+  safeError: string | null;
+  desiredGeneration: number;
+  appliedGeneration: number;
+  lastProgressAt: string | null;
+  revision: number;
   createdAt: string;
   updatedAt: string;
+  etag: string;
 }

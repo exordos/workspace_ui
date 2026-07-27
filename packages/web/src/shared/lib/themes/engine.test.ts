@@ -145,7 +145,7 @@ describe("applyTheme", () => {
   it("sets multiple CSS variables for different tokens", () => {
     applyTheme("orange-warm", "dark");
 
-    const tokens = ["bg", "accent", "text-primary", "sidebar-bg"];
+    const tokens = ["bg", "accent", "danger", "text-primary", "sidebar-bg"];
     for (const token of tokens) {
       const val = document.documentElement.style.getPropertyValue(`--color-${token}`);
       expect(val).toBeTruthy();

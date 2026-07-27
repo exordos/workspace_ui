@@ -19,6 +19,7 @@ export const blueMist: ThemePalette = {
     accent: "#7d9ddf",
     "accent-soft": "#2f3f66",
     "on-accent": "#111823",
+    danger: "#d92d20",
 
     "border-subtle": "#394a61",
 
@@ -79,6 +80,7 @@ export const blueMist: ThemePalette = {
     accent: "#6f90d8",
     "accent-soft": "#dce8fb",
     "on-accent": "#101a28",
+    danger: "#d92d20",
 
     "border-subtle": "#d3dfec",
 

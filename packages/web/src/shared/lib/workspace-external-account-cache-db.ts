@@ -1,4 +1,4 @@
-const DB_NAME = "workspace-external-account-cache-v1";
+const DB_NAME = "workspace-external-account-cache-v2";
 const DB_VERSION = 1;
 const STORE_ACCOUNTS = "accounts";
 const INDEX_BY_OWNER = "byOwner";
@@ -7,38 +7,36 @@ const ROW_ID_SEPARATOR = "\0";
 export const WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_NAME = DB_NAME;
 export const WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_VERSION = DB_VERSION;
 
-export type WorkspaceExternalAccountCacheAccountType = "zulip" | "iam";
-export type WorkspaceExternalAccountCacheStatus = "new" | "active";
-export type WorkspaceExternalAccountCacheAccessStatus =
-  | "missing_credentials"
-  | "confirmed"
-  | "invalid_credentials"
-  | "unavailable";
-
-export interface WorkspaceExternalAccountCacheUserInfo {
-  userId: number | null;
-  email: string | null;
-  fullName: string | null;
-  avatarUrl: string | null;
-}
-
 export interface WorkspaceExternalAccountCacheProfile {
   uuid: string;
-  projectId: string;
-  userUuid: string;
-  serverUrl: string;
-  sourceScope: string | null;
-  accountType: WorkspaceExternalAccountCacheAccountType;
-  status: WorkspaceExternalAccountCacheStatus;
-  accessStatus: WorkspaceExternalAccountCacheAccessStatus;
-  accessCheckedAt: string | null;
-  accessConfirmedAt: string | null;
-  accessNextCheckAt: string;
-  accessLastError: string | null;
-  accountSettingsKind: WorkspaceExternalAccountCacheAccountType;
-  userInfo: WorkspaceExternalAccountCacheUserInfo | null;
+  provider: "zulip";
+  settings: {
+    kind: "zulip";
+    serverUrl: string;
+    email: string;
+    selectionMode: "explicit" | "all";
+    historyDepth: "new" | "7_days" | "30_days" | "90_days" | "all";
+    defaultProjectId: string;
+  };
+  credentialPresent: boolean;
+  status:
+    | "connecting"
+    | "backfill"
+    | "live"
+    | "degraded"
+    | "auth_required"
+    | "disconnected"
+    | "suspended";
+  liveReady: boolean;
+  capabilities: Readonly<Record<string, unknown>>;
+  safeError: string | null;
+  desiredGeneration: number;
+  appliedGeneration: number;
+  lastProgressAt: string | null;
+  revision: number;
   createdAt: string;
   updatedAt: string;
+  etag: string;
 }
 
 interface WorkspaceExternalAccountCacheRow {
@@ -148,13 +146,19 @@ export async function readWorkspaceExternalAccountCache(
 export async function replaceWorkspaceExternalAccountCache(
   ownerKey: string,
   accounts: readonly WorkspaceExternalAccountCacheProfile[],
+  isOwnerCurrent: () => boolean = () => true,
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable() || !isOwnerCurrent()) return;
   try {
     const db = await openWorkspaceExternalAccountCacheDb();
+    if (!isOwnerCurrent()) return;
     const transaction = db.transaction(STORE_ACCOUNTS, "readwrite");
     const store = transaction.objectStore(STORE_ACCOUNTS);
     deleteOwnerRowsInStore(store, ownerKey, () => {
+      if (!isOwnerCurrent()) {
+        transaction.abort();
+        return;
+      }
       const cacheUpdatedAt = Date.now();
       for (const account of accounts) {
         store.put({

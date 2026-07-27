@@ -19,6 +19,7 @@ export const emeraldChat: ThemePalette = {
     accent: "#2ecf72",
     "accent-soft": "#1e4a39",
     "on-accent": "#0d1714",
+    danger: "#d92d20",
 
     "border-subtle": "#3f3f45",
 
@@ -80,6 +81,7 @@ export const emeraldChat: ThemePalette = {
     accent: "#2bbf6c",
     "accent-soft": "#d9f1e4",
     "on-accent": "#0f1a17",
+    danger: "#d92d20",
 
     "border-subtle": "#d9d9d9",
 

@@ -21,6 +21,18 @@ vi.mock("./right-panel-external-account.integration", () => ({
   ),
 }));
 
+vi.mock("~/features/manage-external-provider/manage-external-provider-entry.ui", () => ({
+  ManageExternalProviderEntry: ({
+    runtimeContext,
+  }: {
+    runtimeContext: WorkspaceAuthSession | null;
+  }) => (
+    <div data-testid="manage-external-provider-entry">
+      {runtimeContext?.organizationId ?? "no-runtime"}
+    </div>
+  ),
+}));
+
 vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
   updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
@@ -136,7 +148,7 @@ describe("RightPanelShell", () => {
     ).not.toBeInTheDocument();
 
     const logoutButton = screen.getByTestId("user-menu-logout-button");
-    expect(logoutButton).toHaveClass("bg-[#D92D20]", "text-text-primary");
+    expect(logoutButton).toHaveClass("bg-danger", "text-white");
     expect(logoutButton).toHaveAttribute("data-icon-hover", "custom");
     expect(logoutButton.querySelector("svg")).toHaveAttribute("width", "22");
   });
@@ -147,9 +159,12 @@ describe("RightPanelShell", () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     expect(screen.queryByTestId("connected-external-accounts-list")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /connected external accounts/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^external accounts$/i }));
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
       "Zulip · https://zulip.example.com",
+    );
+    expect(screen.getByTestId("manage-external-provider-entry")).toHaveTextContent(
+      "workspace.example.com",
     );
     fireEvent.click(screen.getByTestId("connect-external-account-trigger"));
     expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");
