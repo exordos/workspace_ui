@@ -1,3 +1,4 @@
+import { restoreWorkspaceComposerDraftsForStream } from "~/entities/composer-draft/composer-draft.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -17,10 +18,11 @@ import {
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
-import { messengerRealtimeActiveCache } from "./messenger-cache.lib";
+import { messengerRealtimeActiveCache, restoreMessengerStreamCache } from "./messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
-import { useMessengerStore } from "./messenger.model";
+import { removeMessengerStreamProjection } from "./messenger-stream-projection-cleanup.lib";
+import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
 import type {
   MessengerConversationId,
   MessengerDeletedMessage,
@@ -108,6 +110,7 @@ export interface MessengerRealtimeActiveApplierOptions {
 
 export interface MessengerRealtimeBackgroundApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  removeProjection?: typeof removeMessengerStreamProjection;
 }
 
 const log = createLogger("realtime:workspace-messenger");
@@ -344,15 +347,21 @@ function applyStreamRealtimeEvent(
   const store = useMessengerStore.getState();
 
   if (event.kind === "stream.deleted") {
-    store.removeStream(ownerKey, { uuid: event.stream.uuid });
-    if (activeCache.deleteCachedStream != null) {
-      writeRealtimeCacheBestEffort(() =>
-        activeCache.deleteCachedStream?.(ownerKey, event.stream.uuid),
-      );
-    }
+    void removeMessengerStreamProjection({
+      ownerKey,
+      streamUuid: event.stream.uuid,
+      removeActiveProjection: true,
+      deleteCachedStream: activeCache.deleteCachedStream,
+    }).catch(() => undefined);
     return;
   }
 
+  if (event.kind === "stream.created") {
+    restoreMessengerStream(ownerKey, event.stream.uuid);
+    useWorkspaceMessageStore.getState().restoreMessagesForStream(event.stream.uuid);
+    restoreMessengerStreamCache(ownerKey, event.stream.uuid);
+    restoreWorkspaceComposerDraftsForStream(ownerKey, event.stream.uuid);
+  }
   const stream = adaptMessengerStream(event.stream);
   const previousFoldersById = store.foldersById;
   store.upsertStream(ownerKey, stream);
@@ -598,6 +607,19 @@ export function createMessengerRealtimeBackgroundApplier(
       // Background projection хранит только легкие снимки, compact preview и route-данные.
       // Побочных эффектов нотификаций и записей в messengerStore тут по-прежнему нет.
       if (isBackgroundLightweightEvent(event)) {
+        if (event.kind === "stream.created") {
+          restoreMessengerStream(context.ownerKey, event.stream.uuid);
+          restoreMessengerStreamCache(context.ownerKey, event.stream.uuid);
+          restoreWorkspaceComposerDraftsForStream(context.ownerKey, event.stream.uuid);
+        }
+        if (event.kind === "stream.deleted") {
+          void (options.removeProjection ?? removeMessengerStreamProjection)({
+            ownerKey: context.ownerKey,
+            streamUuid: event.stream.uuid,
+            removeActiveProjection: false,
+            isOwnerCurrent: () => isBackgroundCurrentOwner(context, options),
+          }).catch(() => undefined);
+        }
         store.recordAppliedEvent(context.ownerKey, event, context);
         return;
       }

@@ -1130,6 +1130,9 @@ describe("messenger background projection", () => {
     expect(projection?.streamSnapshotsById[STREAM_A]).toBeUndefined();
     expect(projection?.folderSnapshotsById[FOLDER_A]?.folderItemIds).toEqual([]);
     expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_B]).toBeUndefined();
+    expect(
+      projection?.notificationCandidates.some((candidate) => candidate.streamUuid === STREAM_A),
+    ).toBe(false);
 
     applier.applyEvent(
       {

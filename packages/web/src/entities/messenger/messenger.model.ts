@@ -30,6 +30,7 @@ const EMPTY_IDS: string[] = [];
 const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
+const removedStreamUuidsByOwnerKey = new Map<string, Set<MessengerUuid>>();
 type MessengerFreshnessState = Pick<
   MessengerDomainData,
   "streamsById" | "topicsById" | "conversationsById"
@@ -116,6 +117,46 @@ function createEmptyMessengerData(): MessengerDomainData {
     folderIds: EMPTY_IDS,
     lastEpochVersion: null,
     skippedRealtimeEvents: EMPTY_SKIPPED_REALTIME_EVENTS,
+  };
+}
+
+function removedStreamsForOwner(ownerKey: string): Set<MessengerUuid> {
+  const existing = removedStreamUuidsByOwnerKey.get(ownerKey);
+  if (existing != null) return existing;
+  const created = new Set<MessengerUuid>();
+  removedStreamUuidsByOwnerKey.set(ownerKey, created);
+  return created;
+}
+
+export function markMessengerStreamRemoved(ownerKey: string, streamUuid: MessengerUuid): void {
+  removedStreamsForOwner(ownerKey).add(streamUuid);
+}
+
+export function restoreMessengerStream(ownerKey: string, streamUuid: MessengerUuid): void {
+  removedStreamUuidsByOwnerKey.get(ownerKey)?.delete(streamUuid);
+}
+
+function withoutRemovedStreamProjections(
+  ownerKey: string,
+  payload: MessengerBootstrapPayload,
+): MessengerBootstrapPayload {
+  const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
+  if (removedStreamUuids == null || removedStreamUuids.size === 0) return payload;
+  return {
+    streams: payload.streams.filter((stream) => !removedStreamUuids.has(stream.uuid)),
+    streamBindings: payload.streamBindings.filter(
+      (binding) => !removedStreamUuids.has(binding.streamUuid),
+    ),
+    topics: payload.topics.filter((topic) => !removedStreamUuids.has(topic.streamUuid)),
+    conversations: payload.conversations.filter(
+      (conversation) => !removedStreamUuids.has(conversation.streamUuid),
+    ),
+    folders: payload.folders.map((folder) =>
+      rebuildFolderWithItems(
+        folder,
+        folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
+      ),
+    ),
   };
 }
 
@@ -604,9 +645,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
-      const nextDomainData = buildMessengerDomainData(payload);
+      const safePayload = withoutRemovedStreamProjections(ownerKey, payload);
+      const nextDomainData = buildMessengerDomainData(safePayload);
       const streamBindingsState =
-        payload.streamBindings.length > 0
+        safePayload.streamBindings.length > 0
           ? {
               streamBindingsById: nextDomainData.streamBindingsById,
               streamBindingIds: nextDomainData.streamBindingIds,
@@ -639,10 +681,17 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
+      const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
       const foldersById: Record<MessengerUuid, MessengerFolder> = {};
       const folderIds: MessengerUuid[] = [];
       for (const folder of folders) {
-        foldersById[folder.uuid] = folder;
+        foldersById[folder.uuid] =
+          removedStreamUuids == null
+            ? folder
+            : rebuildFolderWithItems(
+                folder,
+                folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
+              );
         folderIds.push(folder.uuid);
       }
 
@@ -657,6 +706,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "upsertStream", { ownerKey, streamUuid: stream.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(stream.uuid)) return state;
 
       let conversationState = upsertConversation(state, conversationFromStream(stream));
       for (const topicId of state.topicIds) {
@@ -688,6 +738,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "removeStream", { ownerKey, streamUuid: stream.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      markMessengerStreamRemoved(ownerKey, stream.uuid);
 
       const nextStreamsById = { ...state.streamsById };
       delete nextStreamsById[stream.uuid];
@@ -718,6 +769,17 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       delete nextStreamBindingIdsByStreamId[stream.uuid];
       const nextStreamBindingsLoadedByStreamId = { ...state.streamBindingsLoadedByStreamId };
       delete nextStreamBindingsLoadedByStreamId[stream.uuid];
+      let nextFoldersById = state.foldersById;
+      for (const folderId of state.folderIds) {
+        const folder = state.foldersById[folderId];
+        if (folder == null) continue;
+        const nextItems = folder.items.filter((item) => item.streamUuid !== stream.uuid);
+        if (nextItems.length === folder.items.length) continue;
+        if (nextFoldersById === state.foldersById) {
+          nextFoldersById = { ...state.foldersById };
+        }
+        nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems);
+      }
       return {
         streamsById: nextStreamsById,
         streamIds: removeId(state.streamIds, stream.uuid),
@@ -733,6 +795,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         ),
         streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
         streamBindingsLoadedByStreamId: nextStreamBindingsLoadedByStreamId,
+        foldersById: nextFoldersById,
       };
     });
   },
@@ -742,7 +805,13 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      return applyStreamBindingUpserts(state, bindings);
+      const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
+      return applyStreamBindingUpserts(
+        state,
+        removedStreamUuids == null
+          ? bindings
+          : bindings.filter((binding) => !removedStreamUuids.has(binding.streamUuid)),
+      );
     });
   },
 
@@ -754,6 +823,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(streamUuid)) return state;
 
       // Realtime-события добавляют bindings через upsert, а backend full load
       // приходит как снимок stream-а. Здесь удаляем только устаревшие bindings
@@ -799,6 +869,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "markStreamBindingsLoaded", { ownerKey, streamUuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(streamUuid)) return state;
       if (state.streamBindingsLoadedByStreamId[streamUuid] === true) return state;
 
       return {
@@ -845,6 +916,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "upsertTopic", { ownerKey, topicUuid: topic.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(topic.streamUuid)) return state;
 
       const previous = state.topicsById[topic.uuid];
       let nextConversationsById = state.conversationsById;
@@ -905,6 +977,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "applyMessagePointer", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(message.streamUuid)) return state;
       return applyMessageFreshness(state, message);
     });
   },
@@ -921,11 +994,19 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "applyFolderSnapshot", { ownerKey, folderUuid: folder.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
+      const safeFolder =
+        removedStreamUuids == null
+          ? folder
+          : rebuildFolderWithItems(
+              folder,
+              folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid)),
+            );
 
       return {
         foldersById: {
           ...state.foldersById,
-          [folder.uuid]: folder,
+          [folder.uuid]: safeFolder,
         },
         folderIds: appendUniqueId(state.folderIds, folder.uuid),
       };
@@ -955,6 +1036,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (removedStreamsForOwner(ownerKey).has(folderItem.streamUuid)) return state;
       if (state.foldersById[folderItem.folderUuid] == null) return state;
 
       const nextFoldersById = { ...state.foldersById };
@@ -1063,7 +1145,12 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
 
   clear() {
     logStoreAction("messenger", "clear", {});
-    set(createInitialState());
+    set((state) => {
+      if (state.ownerKey != null) {
+        removedStreamUuidsByOwnerKey.delete(state.ownerKey);
+      }
+      return createInitialState();
+    });
   },
 }));
 

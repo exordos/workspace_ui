@@ -1,3 +1,4 @@
+import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import {
   readWorkspaceExternalAccountCache,
@@ -17,6 +18,19 @@ import { useExternalAccountsStore } from "./external-account.model";
 import type { ExternalAccount } from "./external-account.types";
 
 type ExternalAccountRealtimeEvent = Extract<WorkspaceRealtimeEvent, { type: "external_account" }>;
+const deletedAccountUuidsByOwnerKey = new Map<string, Set<string>>();
+
+function deletedAccountsForOwner(ownerKey: string): Set<string> {
+  const existing = deletedAccountUuidsByOwnerKey.get(ownerKey);
+  if (existing != null) return existing;
+  const created = new Set<string>();
+  deletedAccountUuidsByOwnerKey.set(ownerKey, created);
+  return created;
+}
+
+export function markExternalAccountLocallyDeleted(ownerKey: string, accountUuid: string): void {
+  deletedAccountsForOwner(ownerKey).add(accountUuid);
+}
 
 export interface ExternalAccountRealtimeCache {
   read(ownerKey: string): Promise<ExternalAccount[]>;
@@ -84,8 +98,52 @@ async function persistEvent(
   const cache = options.cache ?? defaultCache;
   const accounts = await cache.read(context.ownerKey);
   if (!isCurrentContext(context, options)) return;
-  await cache.replace(context.ownerKey, applyEventToAccounts(accounts, event), () =>
-    isCurrentContext(context, options),
+  const deletedAccountUuids = deletedAccountsForOwner(context.ownerKey);
+  if (event.kind === "external_account.deleted") {
+    deletedAccountUuids.add(event.external_account.uuid);
+  } else if (event.kind === "external_account.created") {
+    deletedAccountUuids.delete(event.external_account.uuid);
+  }
+  await cache.replace(
+    context.ownerKey,
+    applyEventToAccounts(accounts, event).filter(
+      (account) => !deletedAccountUuids.has(account.uuid),
+    ),
+    () => isCurrentContext(context, options),
+  );
+}
+
+function applyActiveEvent(
+  event: ExternalAccountRealtimeEvent,
+  context: WorkspaceRealtimeEventContext,
+): void {
+  const store = useExternalAccountsStore.getState();
+  if (store.ownerKey !== context.ownerKey) return;
+
+  const current = store.accounts.find((account) => account.uuid === event.external_account.uuid);
+  if (current != null && current.revision > event.external_account.revision) return;
+
+  if (event.kind === "external_account.deleted") {
+    markExternalAccountLocallyDeleted(context.ownerKey, event.external_account.uuid);
+    store.removeAccountForOwner(context.ownerKey, event.external_account.uuid);
+    useExternalChatsStore
+      .getState()
+      .clearAccount(
+        `${context.ownerKey}:external-account:${event.external_account.uuid}`,
+        event.external_account.uuid,
+      );
+    return;
+  }
+
+  const deletedAccountUuids = deletedAccountsForOwner(context.ownerKey);
+  if (event.kind === "external_account.created") {
+    deletedAccountUuids.delete(event.external_account.uuid);
+  }
+  if (deletedAccountUuids.has(event.external_account.uuid)) return;
+
+  store.upsertAccountForOwner(
+    context.ownerKey,
+    adaptWorkspaceExternalAccountDto(event.external_account),
   );
 }
 
@@ -98,15 +156,7 @@ export function createExternalAccountRealtimeApplier(
     applyEvent(event, context) {
       if (event.type !== "external_account" || !isCurrentContext(context, options)) return;
 
-      if (options.surface === "active") {
-        const store = useExternalAccountsStore.getState();
-        if (store.ownerKey === context.ownerKey) {
-          store.replaceAccountsForOwner(
-            context.ownerKey,
-            applyEventToAccounts(store.accounts, event),
-          );
-        }
-      }
+      if (options.surface === "active") applyActiveEvent(event, context);
       persistenceQueue = persistenceQueue
         .then(() => persistEvent(event, context, options))
         .catch(() => undefined);
@@ -118,4 +168,7 @@ export function createExternalAccountRealtimeApplier(
 
 export const externalAccountRealtimeTestUtils = {
   applyEventToAccounts,
+  resetDeletionFences() {
+    deletedAccountUuidsByOwnerKey.clear();
+  },
 };

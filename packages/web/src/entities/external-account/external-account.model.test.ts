@@ -45,4 +45,15 @@ describe("external accounts store", () => {
     expect(store.setLoadStatusForOwner("owner-a", "error", "network failure")).toBe(true);
     expect(store.setLoadStatusForOwner("owner-b", "ready")).toBe(false);
   });
+
+  it("does not let an old account load restore a locally deleted account", () => {
+    const store = useExternalAccountsStore.getState();
+    const loadGeneration = store.startOwnerSync("owner-a");
+    store.removeAccountForOwner("owner-a", account.uuid);
+
+    expect(store.replaceAccountsForOwner("owner-a", [account], Date.now(), loadGeneration)).toBe(
+      false,
+    );
+    expect(useExternalAccountsStore.getState().accounts).toEqual([]);
+  });
 });

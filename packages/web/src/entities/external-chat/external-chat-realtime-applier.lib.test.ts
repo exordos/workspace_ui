@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceExternalChatDto } from "~/shared/api/messenger-external-chats.types";
 import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";
@@ -10,9 +10,14 @@ const ACCOUNT_UUID = "20000000-0000-4000-8000-000000000002";
 const OTHER_ACCOUNT_UUID = "30000000-0000-4000-8000-000000000003";
 const CHAT_UUID = "10000000-0000-4000-8000-000000000001";
 const PROJECT_UUID = "40000000-0000-4000-8000-000000000004";
+const STREAM_UUID = "60000000-0000-4000-8000-000000000006";
 const SCOPE_KEY = `${OWNER_KEY}:external-account:${ACCOUNT_UUID}`;
 
-function snapshot(revision: number, externalAccountUuid = ACCOUNT_UUID): WorkspaceExternalChatDto {
+function snapshot(
+  revision: number,
+  externalAccountUuid = ACCOUNT_UUID,
+  projectionStreamUuid: string | null = null,
+): WorkspaceExternalChatDto {
   return {
     uuid: CHAT_UUID,
     external_account_uuid: externalAccountUuid,
@@ -21,7 +26,7 @@ function snapshot(revision: number, externalAccountUuid = ACCOUNT_UUID): Workspa
     selected: true,
     project_id: PROJECT_UUID,
     history_depth: "30_days",
-    projection_stream_uuid: null,
+    projection_stream_uuid: projectionStreamUuid,
     status: "syncing",
     capabilities: {},
     safe_error: null,
@@ -117,6 +122,32 @@ describe("external chat realtime applier", () => {
     applier.applyEvent(event("external_chat.deleted", 4), context("active"));
     expect(useExternalChatsStore.getState().chats).toEqual([]);
   });
+
+  it.each(["active", "background"] as const)(
+    "purges the %s stream projection from an external chat delete event",
+    async (surface) => {
+      const removeProjection = vi.fn(() => Promise.resolve());
+      const applier = createExternalChatRealtimeApplier({
+        surface,
+        isOwnerCurrent: () => true,
+        removeProjection,
+      });
+      const deletedEvent = {
+        ...event("external_chat.deleted", 4),
+        external_chat: snapshot(4, ACCOUNT_UUID, STREAM_UUID),
+      };
+
+      applier.applyEvent(deletedEvent, context(surface));
+      await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
+
+      expect(removeProjection).toHaveBeenCalledWith({
+        ownerKey: OWNER_KEY,
+        streamUuid: STREAM_UUID,
+        removeActiveProjection: surface === "active",
+        isOwnerCurrent: expect.any(Function),
+      });
+    },
+  );
 
   it("keeps a different external account out of the active scope", () => {
     const store = useExternalChatsStore.getState();

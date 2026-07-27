@@ -2,6 +2,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
+import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
+import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
+import type { ExternalChat } from "~/entities/external-chat/external-chat.types";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useDeleteExternalAccount } from "./delete-external-account.hook";
@@ -41,6 +45,23 @@ const account: ExternalAccount = {
   createdAt: "2026-07-23T10:00:00Z",
   updatedAt: "2026-07-23T10:00:00Z",
 };
+const STREAM_UUID = "10000000-0000-4000-8000-000000000001";
+const CHAT_UUID = "20000000-0000-4000-8000-000000000002";
+
+const externalChat: ExternalChat = {
+  uuid: CHAT_UUID,
+  externalAccountUuid: account.uuid,
+  type: "channel",
+  displayName: "Support",
+  selected: true,
+  projectId: runtimeContext.projectId,
+  projectionStreamUuid: STREAM_UUID,
+  status: "live",
+  safeError: null,
+  transitionPending: false,
+  revision: 1,
+  updatedAt: "2026-07-23T10:00:00Z",
+};
 
 function seedAccount(): void {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
@@ -52,17 +73,13 @@ describe("useDeleteExternalAccount", () => {
   afterEach(() => {
     vi.clearAllMocks();
     useExternalAccountStore.getState().clear();
+    useExternalChatsStore.getState().clear();
+    useMessengerStore.getState().clear();
   });
 
-  it("unlocks creation only after DELETE and authoritative refresh remove the account", async () => {
+  it("removes the account locally after DELETE without a refresh request", async () => {
     seedAccount();
     const deleteExternalAccount = vi.fn().mockResolvedValue(undefined);
-    const refreshExternalAccounts = vi.fn().mockImplementation(() => {
-      useExternalAccountStore
-        .getState()
-        .replaceAccountsForOwner(workspaceRuntimeOwnerKey(runtimeContext), []);
-      return Promise.resolve();
-    });
     const onCompleted = vi.fn();
     const { result } = renderHook(() =>
       useDeleteExternalAccount({
@@ -71,7 +88,7 @@ describe("useDeleteExternalAccount", () => {
         accountUuid: account.uuid,
         onCompleted,
         getRuntimeContext: () => runtimeContext,
-        client: { deleteExternalAccount, refreshExternalAccounts },
+        client: { deleteExternalAccount },
       }),
     );
 
@@ -79,7 +96,6 @@ describe("useDeleteExternalAccount", () => {
 
     expect(useExternalAccountStore.getState().accounts).toEqual([account]);
     await waitFor(() => expect(deleteExternalAccount).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(refreshExternalAccounts).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
     expect(useExternalAccountStore.getState().accounts).toEqual([]);
   });
@@ -87,14 +103,13 @@ describe("useDeleteExternalAccount", () => {
   it("keeps the account and reports an error when DELETE fails", async () => {
     seedAccount();
     const deleteExternalAccount = vi.fn().mockRejectedValue(new Error("delete failed"));
-    const refreshExternalAccounts = vi.fn();
     const { result } = renderHook(() =>
       useDeleteExternalAccount({
         open: true,
         runtimeContext,
         accountUuid: account.uuid,
         getRuntimeContext: () => runtimeContext,
-        client: { deleteExternalAccount, refreshExternalAccounts },
+        client: { deleteExternalAccount },
       }),
     );
 
@@ -102,7 +117,54 @@ describe("useDeleteExternalAccount", () => {
 
     await waitFor(() => expect(result.current.error).toBe(true));
     expect(useExternalAccountStore.getState().accounts).toEqual([account]);
-    expect(refreshExternalAccounts).not.toHaveBeenCalled();
+  });
+
+  it("cleans only known current-project projections after DELETE succeeds", async () => {
+    seedAccount();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const scopeKey = externalChatScopeKey(runtimeContext, account.uuid);
+    const chatStore = useExternalChatsStore.getState();
+    const generation = chatStore.start(scopeKey, account.uuid);
+    chatStore.replace(scopeKey, account.uuid, generation, [externalChat]);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().upsertStream(ownerKey, {
+      uuid: STREAM_UUID,
+      projectId: runtimeContext.projectId,
+      ownerUuid: runtimeContext.userUuid,
+      userUuid: runtimeContext.userUuid,
+      role: "owner",
+      notificationMode: "all_messages",
+      name: "Support",
+      description: "",
+      unreadCount: 0,
+      sourceName: "zulip",
+      source: { kind: "zulip", server_url: "https://zulip.example.com", stream_id: 1 },
+      audience: "channel",
+      isPrivate: false,
+      inviteOnly: false,
+      announce: false,
+      isArchived: false,
+      directUserUuid: null,
+      lastMessageUuid: null,
+      createdAt: "2026-07-23T10:00:00Z",
+      updatedAt: "2026-07-23T10:00:00Z",
+    });
+    const { result } = renderHook(() =>
+      useDeleteExternalAccount({
+        open: true,
+        runtimeContext,
+        accountUuid: account.uuid,
+        getRuntimeContext: () => runtimeContext,
+        client: { deleteExternalAccount: vi.fn().mockResolvedValue(undefined) },
+      }),
+    );
+
+    act(() => result.current.remove());
+    await waitFor(() =>
+      expect(useMessengerStore.getState().streamsById[STREAM_UUID]).toBeUndefined(),
+    );
+
+    expect(useExternalChatsStore.getState().externalAccountUuid).toBeNull();
   });
 
   it("ignores completion after the runtime becomes stale", async () => {
@@ -115,7 +177,6 @@ describe("useDeleteExternalAccount", () => {
         }),
     );
     let currentRuntime: WorkspaceRuntimeContext | null = runtimeContext;
-    const refreshExternalAccounts = vi.fn();
     const onCompleted = vi.fn();
     const { result } = renderHook(() =>
       useDeleteExternalAccount({
@@ -124,7 +185,7 @@ describe("useDeleteExternalAccount", () => {
         accountUuid: account.uuid,
         onCompleted,
         getRuntimeContext: () => currentRuntime,
-        client: { deleteExternalAccount, refreshExternalAccounts },
+        client: { deleteExternalAccount },
       }),
     );
 
@@ -136,7 +197,6 @@ describe("useDeleteExternalAccount", () => {
       await Promise.resolve();
     });
 
-    expect(refreshExternalAccounts).not.toHaveBeenCalled();
     expect(onCompleted).not.toHaveBeenCalled();
     expect(result.current.error).toBe(false);
   });
@@ -150,7 +210,6 @@ describe("useDeleteExternalAccount", () => {
         // The request remains pending until closing the dialog aborts its signal.
       });
     });
-    const refreshExternalAccounts = vi.fn();
     const { result, rerender } = renderHook(
       ({ open }) =>
         useDeleteExternalAccount({
@@ -158,7 +217,7 @@ describe("useDeleteExternalAccount", () => {
           runtimeContext,
           accountUuid: account.uuid,
           getRuntimeContext: () => runtimeContext,
-          client: { deleteExternalAccount, refreshExternalAccounts },
+          client: { deleteExternalAccount },
         }),
       { initialProps: { open: true } },
     );
@@ -168,6 +227,5 @@ describe("useDeleteExternalAccount", () => {
     rerender({ open: false });
 
     expect(capturedSignal?.aborted).toBe(true);
-    expect(refreshExternalAccounts).not.toHaveBeenCalled();
   });
 });

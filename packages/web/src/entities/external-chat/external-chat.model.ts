@@ -36,6 +36,7 @@ interface ExternalChatsState {
     loadGeneration: number,
     error: string,
   ) => boolean;
+  clearAccount: (scopeKey: string, externalAccountUuid: string) => ExternalChat[];
   clear: () => void;
 }
 
@@ -219,6 +220,28 @@ export const useExternalChatsStore = create<ExternalChatsState>((set) => ({
     });
     return applied;
   },
+  clearAccount(scopeKey, externalAccountUuid) {
+    let removedChats: ExternalChat[] = [];
+    set((state) => {
+      if (state.scopeKey !== scopeKey || state.externalAccountUuid !== externalAccountUuid) {
+        return state;
+      }
+      removedChats = state.chats;
+      return {
+        scopeKey: null,
+        externalAccountUuid: null,
+        chats: [],
+        latestRevisions: {},
+        tombstones: {},
+        loadGeneration: state.loadGeneration + 1,
+        activeLoad: null,
+        authoritativeResetGeneration: state.authoritativeResetGeneration + 1,
+        loadStatus: "idle",
+        error: null,
+      };
+    });
+    return removedChats;
+  },
   clear() {
     set((state) => ({
       scopeKey: null,
@@ -226,6 +249,7 @@ export const useExternalChatsStore = create<ExternalChatsState>((set) => ({
       chats: [],
       latestRevisions: {},
       tombstones: {},
+      loadGeneration: state.loadGeneration + 1,
       activeLoad: null,
       authoritativeResetGeneration: state.authoritativeResetGeneration + 1,
       loadStatus: "idle",

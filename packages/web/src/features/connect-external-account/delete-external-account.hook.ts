@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { refreshExternalAccounts as defaultRefreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
+import { toWorkspaceExternalAccountCacheProfile } from "~/entities/external-account/external-account-adapters.lib";
+import { markExternalAccountLocallyDeleted } from "~/entities/external-account/external-account-realtime-applier.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
+import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
+import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { removeMessengerStreamProjections } from "~/entities/messenger/messenger-stream-projection-cleanup.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -13,13 +17,10 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { deleteExternalAccount as defaultDeleteExternalAccount } from "~/shared/api/messenger-external-accounts.api";
 import type { MessengerClientOptions } from "~/shared/api/messenger-transport.internal";
 import { isAbortError } from "~/shared/lib/abort-error";
-
-const REFRESH_RETRY_DELAY_MS = 500;
-const MAX_REFRESH_ATTEMPTS = 10;
+import { replaceWorkspaceExternalAccountCache } from "~/shared/lib/workspace-external-account-cache-db";
 
 export interface DeleteExternalAccountClient {
   deleteExternalAccount?: (options: MessengerClientOptions, accountUuid: string) => Promise<void>;
-  refreshExternalAccounts?: typeof defaultRefreshExternalAccounts;
 }
 
 export interface UseDeleteExternalAccountOptions {
@@ -38,15 +39,16 @@ export interface UseDeleteExternalAccountResult {
   reset: () => void;
 }
 
-function waitForRetry(signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const finish = () => {
-      signal.removeEventListener("abort", finish);
-      clearTimeout(timeoutId);
-      resolve();
-    };
-    const timeoutId = setTimeout(finish, REFRESH_RETRY_DELAY_MS);
-    signal.addEventListener("abort", finish, { once: true });
+function removeKnownStreamProjections(
+  ownerKey: string,
+  streamUuids: readonly string[],
+  isOwnerCurrent: () => boolean,
+): Promise<void> {
+  return removeMessengerStreamProjections({
+    ownerKey,
+    streamUuids,
+    removeActiveProjection: true,
+    isOwnerCurrent,
   });
 }
 
@@ -90,6 +92,19 @@ export function useDeleteExternalAccount({
 
     const isInvalidated = () =>
       isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal);
+    const chatScopeKey = externalChatScopeKey(runtimeContext, accountUuid);
+    const externalChatsState = useExternalChatsStore.getState();
+    const knownProjectionStreamUuids =
+      externalChatsState.scopeKey === chatScopeKey &&
+      externalChatsState.externalAccountUuid === accountUuid
+        ? externalChatsState.chats
+            .filter(
+              (chat) =>
+                chat.projectId === runtimeContext.projectId && chat.projectionStreamUuid != null,
+            )
+            .map((chat) => chat.projectionStreamUuid)
+            .filter((streamUuid): streamUuid is string => streamUuid != null)
+        : [];
 
     void (async () => {
       try {
@@ -99,26 +114,27 @@ export function useDeleteExternalAccount({
         );
         if (isInvalidated()) return;
 
-        for (let attempt = 0; attempt < MAX_REFRESH_ATTEMPTS; attempt += 1) {
-          await (client.refreshExternalAccounts ?? defaultRefreshExternalAccounts)({
-            runtimeContext,
-            signal: controller.signal,
-          });
-          if (isInvalidated()) return;
+        markExternalAccountLocallyDeleted(ownerKey, accountUuid);
+        const accountStore = useExternalAccountStore.getState();
+        accountStore.removeAccountForOwner(ownerKey, accountUuid);
+        useExternalChatsStore.getState().clearAccount(chatScopeKey, accountUuid);
+        await removeKnownStreamProjections(
+          ownerKey,
+          knownProjectionStreamUuids,
+          () => !isInvalidated(),
+        );
+        if (isInvalidated()) return;
 
-          const state = useExternalAccountStore.getState();
-          const accountStillExists =
-            state.ownerKey !== ownerKey ||
-            state.accounts.some((account) => account.uuid === accountUuid);
-          if (!accountStillExists) {
-            onCompleted?.();
-            return;
-          }
-          await waitForRetry(controller.signal);
-          if (isInvalidated()) return;
+        const nextAccountState = useExternalAccountStore.getState();
+        if (nextAccountState.ownerKey === ownerKey) {
+          await replaceWorkspaceExternalAccountCache(
+            ownerKey,
+            nextAccountState.accounts.map(toWorkspaceExternalAccountCacheProfile),
+            () => !isInvalidated() && useExternalAccountStore.getState().ownerKey === ownerKey,
+          );
         }
-
-        setError(true);
+        if (isInvalidated()) return;
+        onCompleted?.();
       } catch (requestError) {
         if (!isAbortError(requestError) && !isInvalidated()) {
           setError(true);
@@ -132,7 +148,6 @@ export function useDeleteExternalAccount({
   }, [
     accountUuid,
     client.deleteExternalAccount,
-    client.refreshExternalAccounts,
     deleting,
     getRuntimeContext,
     onCompleted,

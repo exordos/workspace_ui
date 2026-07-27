@@ -42,7 +42,11 @@ import type {
   WorkspaceMessengerOwnMessageReactionCacheRow,
   WorkspaceMessengerOwnMessageReactionCacheWrite,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import {
+  conversationIdForStream,
+  conversationIdForTopic,
+  parseMessengerConversationId,
+} from "./messenger-ids.lib";
 import type {
   MessengerBootstrapPayload,
   MessengerConversation,
@@ -68,6 +72,60 @@ export interface MessengerConversationCacheWindow {
   messages: MessengerMessage[];
   nextPageMarker: string | null;
   hasMore: boolean;
+}
+
+const removedStreamCacheKeys = new Set<string>();
+
+function streamCacheKey(ownerKey: string, streamUuid: MessengerUuid): string {
+  return `${ownerKey}\0${streamUuid}`;
+}
+
+function isStreamCacheRemoved(ownerKey: string, streamUuid: MessengerUuid): boolean {
+  return removedStreamCacheKeys.has(streamCacheKey(ownerKey, streamUuid));
+}
+
+export function markMessengerStreamCacheRemoved(ownerKey: string, streamUuid: MessengerUuid): void {
+  removedStreamCacheKeys.add(streamCacheKey(ownerKey, streamUuid));
+}
+
+export function restoreMessengerStreamCache(ownerKey: string, streamUuid: MessengerUuid): void {
+  removedStreamCacheKeys.delete(streamCacheKey(ownerKey, streamUuid));
+}
+
+function keepCachedMessage(
+  ownerKey: string,
+  message: Pick<MessengerMessage, "streamUuid">,
+): boolean {
+  return !isStreamCacheRemoved(ownerKey, message.streamUuid);
+}
+
+async function purgeRemovedStreamCaches(
+  ownerKey: string,
+  streamUuids: readonly MessengerUuid[],
+): Promise<void> {
+  const removedStreamUuids = [...new Set(streamUuids)].filter((streamUuid) =>
+    isStreamCacheRemoved(ownerKey, streamUuid),
+  );
+  await Promise.all(
+    removedStreamUuids.flatMap((streamUuid) => [
+      deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
+      deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
+    ]),
+  );
+}
+
+function withoutRemovedCachedFolderItems(
+  ownerKey: string,
+  folder: MessengerFolder,
+): MessengerFolder {
+  const items = folder.items.filter((item) => !isStreamCacheRemoved(ownerKey, item.streamUuid));
+  return items.length === folder.items.length
+    ? folder
+    : {
+        ...folder,
+        items,
+        unreadCount: items.reduce((total, item) => total + item.unreadCount, 0),
+      };
 }
 
 // Entity-слой оставляет низкоуровневую IndexedDB-схему внутри shared/lib, но
@@ -131,7 +189,22 @@ export async function writeMessengerCatalogPayloadCache(
   payload: MessengerBootstrapPayload,
   options: MessengerCatalogPayloadCacheWriteOptions = {},
 ): Promise<void> {
-  await writeMessengerCatalogCache(ownerKey, catalogWriteSnapshot(payload, options), options);
+  const safePayload: MessengerBootstrapPayload = {
+    streams: payload.streams.filter((stream) => !isStreamCacheRemoved(ownerKey, stream.uuid)),
+    streamBindings: payload.streamBindings.filter(
+      (binding) => !isStreamCacheRemoved(ownerKey, binding.streamUuid),
+    ),
+    topics: payload.topics.filter((topic) => !isStreamCacheRemoved(ownerKey, topic.streamUuid)),
+    conversations: payload.conversations.filter(
+      (conversation) => !isStreamCacheRemoved(ownerKey, conversation.streamUuid),
+    ),
+    folders: payload.folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder)),
+  };
+  await writeMessengerCatalogCache(ownerKey, catalogWriteSnapshot(safePayload, options), options);
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    payload.streams.map((stream) => stream.uuid),
+  );
 }
 
 export { createMessengerCatalogCacheReconcileFence };
@@ -183,20 +256,30 @@ export async function writeMessengerFolderSnapshotCache(
   ownerKey: string,
   folder: MessengerFolder,
 ): Promise<void> {
-  await upsertMessengerFolderSnapshotsCache(ownerKey, [folder], folder.items);
+  const safeFolder = withoutRemovedCachedFolderItems(ownerKey, folder);
+  await upsertMessengerFolderSnapshotsCache(ownerKey, [safeFolder], safeFolder.items);
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    folder.items.map((item) => item.streamUuid),
+  );
 }
 
 export async function replaceMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: MessengerFolder[],
 ): Promise<void> {
+  const safeFolders = folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder));
   await writeMessengerCatalogCache(
     ownerKey,
     {
-      folders,
-      folderItems: folders.flatMap((folder) => folder.items),
+      folders: safeFolders,
+      folderItems: safeFolders.flatMap((folder) => folder.items),
     },
     { mode: "reconcile" },
+  );
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    folders.flatMap((folder) => folder.items.map((item) => item.streamUuid)),
   );
 }
 
@@ -204,7 +287,9 @@ export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,
 ): Promise<void> {
+  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
+  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
   await Promise.all([
     upsertMessengerStreamsCache(ownerKey, [stream]),
@@ -218,12 +303,14 @@ export async function upsertMessengerStreamCache(
       ),
     ]),
   ]);
+  await purgeRemovedStreamCaches(ownerKey, [stream.uuid]);
 }
 
 export async function deleteMessengerStreamCache(
   ownerKey: string,
   streamUuid: MessengerUuid,
 ): Promise<void> {
+  markMessengerStreamCacheRemoved(ownerKey, streamUuid);
   await Promise.all([
     deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
     deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
@@ -234,7 +321,14 @@ export async function upsertMessengerStreamBindingsCache(
   ownerKey: string,
   streamBindings: readonly MessengerStreamBinding[],
 ): Promise<void> {
-  await upsertMessengerStreamBindingsCatalogCache(ownerKey, streamBindings);
+  await upsertMessengerStreamBindingsCatalogCache(
+    ownerKey,
+    streamBindings.filter((binding) => !isStreamCacheRemoved(ownerKey, binding.streamUuid)),
+  );
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    streamBindings.map((binding) => binding.streamUuid),
+  );
 }
 
 export async function deleteMessengerStreamBindingCache(
@@ -248,7 +342,9 @@ export async function upsertMessengerTopicCache(
   ownerKey: string,
   topic: MessengerTopic,
 ): Promise<void> {
+  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
+  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const stream = snapshot.streams.find((item) => item.uuid === topic.streamUuid);
   const conversations =
     stream == null
@@ -263,6 +359,7 @@ export async function upsertMessengerTopicCache(
     upsertMessengerTopicsCache(ownerKey, [topic]),
     upsertMessengerConversationsCache(ownerKey, conversations),
   ]);
+  await purgeRemovedStreamCaches(ownerKey, [topic.streamUuid]);
 }
 
 export async function deleteMessengerTopicCache(
@@ -314,7 +411,14 @@ export async function writeMessengerMessageBodyCache(
   ownerKey: string,
   messages: readonly MessengerMessage[],
 ): Promise<void> {
-  await upsertCachedMessages(ownerKey, messages);
+  await upsertCachedMessages(
+    ownerKey,
+    messages.filter((message) => keepCachedMessage(ownerKey, message)),
+  );
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    messages.map((message) => message.streamUuid),
+  );
 }
 
 export async function writeMessengerConversationWindowCache(
@@ -322,7 +426,13 @@ export async function writeMessengerConversationWindowCache(
   conversationId: MessengerConversationId,
   page: WorkspaceMessengerConversationMessagePage,
 ): Promise<void> {
-  await writeConversationMessagePage(ownerKey, conversationId, page);
+  const parsed = parseMessengerConversationId(conversationId);
+  if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
+  await writeConversationMessagePage(ownerKey, conversationId, {
+    ...page,
+    messages: page.messages.filter((message) => keepCachedMessage(ownerKey, message)),
+  });
+  await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
 }
 
 export async function writeMessengerLiveMessageCache(
@@ -330,8 +440,12 @@ export async function writeMessengerLiveMessageCache(
   conversationId: MessengerConversationId,
   page: { messages: readonly MessengerMessage[] },
 ): Promise<void> {
-  await writeConversationMessagePage(ownerKey, conversationId, page);
-  const message = page.messages.at(-1);
+  const parsed = parseMessengerConversationId(conversationId);
+  if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
+  const messages = page.messages.filter((message) => keepCachedMessage(ownerKey, message));
+  await writeConversationMessagePage(ownerKey, conversationId, { messages });
+  await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
+  const message = messages.at(-1);
   if (message != null) {
     await applyMessengerMessagePointerCache(ownerKey, message);
   }
@@ -341,7 +455,12 @@ export async function patchMessengerCachedMessage(
   ownerKey: string,
   message: MessengerMessage,
 ): Promise<void> {
+  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
   await patchCachedMessage(ownerKey, message);
+  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
+    await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
+    return;
+  }
   await applyMessengerMessagePointerCache(ownerKey, message);
 }
 

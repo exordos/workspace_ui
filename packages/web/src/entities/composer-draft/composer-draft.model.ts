@@ -43,6 +43,7 @@ const persistChains = new Map<string, Promise<void>>();
 const ownerGenerations = new Map<string, number>();
 const hydratedOwners = new Set<string>();
 const hydrationPromises = new Map<string, Promise<void>>();
+const removedStreamKeys = new Set<string>();
 let lastDraftUpdatedAt = 0;
 let storeGeneration = 0;
 
@@ -52,6 +53,14 @@ function ownerGeneration(ownerKey: string): number {
 
 function draftKey(ownerKey: string, draftUuid: string): string {
   return `${ownerKey}:${draftUuid}`;
+}
+
+function removedStreamKey(ownerKey: string, streamUuid: string): string {
+  return `${ownerKey}\0${streamUuid}`;
+}
+
+function isDraftStreamRemoved(ownerKey: string, streamUuid: string): boolean {
+  return removedStreamKeys.has(removedStreamKey(ownerKey, streamUuid));
 }
 
 function nextDraftUpdatedAt(): number {
@@ -217,6 +226,10 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const activeDraftUuid = get().activeDraftUuidByConversationKey[scopeKey];
       const current =
         activeDraftUuid == null ? null : get().draftsByKey[draftKey(ownerKey, activeDraftUuid)];
+      const targetStreamUuid = target?.streamUuid ?? current?.streamUuid ?? "";
+      if (targetStreamUuid.length > 0 && isDraftStreamRemoved(ownerKey, targetStreamUuid)) {
+        return null;
+      }
       if (isWorkspaceComposerDraftContentEmpty(normalizedContent)) {
         if (current != null)
           get().clearDraftIfSnapshotMatches(ownerKey, conversationId, current.snapshotId);
@@ -284,19 +297,21 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         if (generation !== ownerGeneration(ownerKey) || generationAtStart !== storeGeneration)
           return;
         hydratedOwners.add(ownerKey);
-        const drafts = rows.map((row) => ({
-          ...row,
-          key: draftKey(ownerKey, row.draftUuid),
-          content: normalizeWorkspaceComposerDraftContent(row.content),
-          ...(row.conflictServerContent == null
-            ? {}
-            : {
-                conflictServerContent: normalizeWorkspaceComposerDraftContent(
-                  row.conflictServerContent,
-                ),
-              }),
-          pendingCreatePayload: row.pendingCreatePayload ?? null,
-        }));
+        const drafts = rows
+          .filter((row) => !isDraftStreamRemoved(ownerKey, row.streamUuid))
+          .map((row) => ({
+            ...row,
+            key: draftKey(ownerKey, row.draftUuid),
+            content: normalizeWorkspaceComposerDraftContent(row.content),
+            ...(row.conflictServerContent == null
+              ? {}
+              : {
+                  conflictServerContent: normalizeWorkspaceComposerDraftContent(
+                    row.conflictServerContent,
+                  ),
+                }),
+            pendingCreatePayload: row.pendingCreatePayload ?? null,
+          }));
         set((state) => ({
           draftsByKey: {
             ...state.draftsByKey,
@@ -355,6 +370,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         pendingCreatePayload: null,
         updatedAt: legacy.updatedAt,
       };
+      if (isDraftStreamRemoved(ownerKey, migrated.streamUuid)) return null;
       const migratedInCache = await migrateWorkspaceComposerDraftToRecord(
         ownerKey,
         conversationId,
@@ -444,6 +460,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         }
         for (const draft of drafts) {
           if (draft.ownerKey !== ownerKey) continue;
+          if (isDraftStreamRemoved(ownerKey, draft.streamUuid)) continue;
           const current = next[draft.key];
           if (
             current?.syncStatus === "local" ||
@@ -642,6 +659,9 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       ownerGenerations.set(ownerKey, ownerGeneration(ownerKey) + 1);
       hydratedOwners.delete(ownerKey);
       hydrationPromises.delete(ownerKey);
+      for (const key of removedStreamKeys) {
+        if (key.startsWith(`${ownerKey}\0`)) removedStreamKeys.delete(key);
+      }
       const keys = [...pendingOperations.keys()].filter((key) => key.startsWith(`${ownerKey}:`));
       for (const key of keys) clearPendingOperation(key);
       await Promise.all(
@@ -705,6 +725,7 @@ export function resetWorkspaceComposerDraftStoreForTests(): void {
   ownerGenerations.clear();
   hydratedOwners.clear();
   hydrationPromises.clear();
+  removedStreamKeys.clear();
   lastDraftUpdatedAt = 0;
   storeGeneration += 1;
   useWorkspaceComposerDraftStore.setState({
@@ -712,4 +733,26 @@ export function resetWorkspaceComposerDraftStoreForTests(): void {
     activeDraftUuidByConversationKey: {},
     completedConversationVisits: {},
   });
+}
+
+export async function removeWorkspaceComposerDraftsForStream(
+  ownerKey: string,
+  streamUuid: string,
+): Promise<void> {
+  removedStreamKeys.add(removedStreamKey(ownerKey, streamUuid));
+  const store = useWorkspaceComposerDraftStore.getState();
+  const draftUuids = Object.values(store.draftsByKey)
+    .filter((draft) => draft.ownerKey === ownerKey && draft.streamUuid === streamUuid)
+    .map((draft) => draft.draftUuid);
+  for (const draftUuid of draftUuids) {
+    store.removeDraftByUuid(ownerKey, draftUuid);
+  }
+  await Promise.all(draftUuids.map((draftUuid) => store.flushDraft(ownerKey, draftUuid)));
+}
+
+export function restoreWorkspaceComposerDraftsForStream(
+  ownerKey: string,
+  streamUuid: string,
+): void {
+  removedStreamKeys.delete(removedStreamKey(ownerKey, streamUuid));
 }

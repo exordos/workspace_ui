@@ -1037,6 +1037,62 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 
+  it("runs full owner-scoped cleanup for a background stream deletion", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const removeProjection = vi.fn(() => Promise.resolve());
+    const applier = createMessengerRealtimeBackgroundApplier({ removeProjection });
+
+    applier.applyEvent(
+      {
+        epoch_version: 43,
+        type: "stream",
+        kind: "stream.deleted",
+        stream: createStreamDto(),
+      },
+      context,
+    );
+
+    await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
+    expect(removeProjection).toHaveBeenCalledWith({
+      ownerKey: context.ownerKey,
+      streamUuid: STREAM_A,
+      removeActiveProjection: false,
+      isOwnerCurrent: expect.any(Function),
+    });
+  });
+
+  it("accepts a lawful stream.created after deleting the same stream UUID", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: {
+        deleteCachedStream: vi.fn(),
+        upsertCachedStream: vi.fn(),
+      },
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 44,
+        type: "stream",
+        kind: "stream.deleted",
+        stream: createStreamDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 45,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({ name: "Recreated" }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Recreated");
+  });
+
   it("projects active owner realtime messages into the shared notification projection store", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;

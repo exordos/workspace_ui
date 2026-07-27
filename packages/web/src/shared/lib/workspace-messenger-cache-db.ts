@@ -2540,6 +2540,51 @@ export async function deleteWorkspaceComposerDraftRecord(
   }
 }
 
+export async function deleteWorkspaceComposerDraftRecordsForStream(
+  ownerKey: string,
+  streamUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const readTransaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readonly",
+    );
+    const readStore = readTransaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    const rows = readStore.indexNames.contains("byOwner")
+      ? await requestToPromise(readStore.index("byOwner").getAll(ownerKey))
+      : await requestToPromise(readStore.getAll());
+    const matchingRows = (
+      rows as {
+        id: string;
+        ownerKey: string;
+        conversationId?: string;
+        streamUuid?: string;
+      }[]
+    ).filter(
+      (row) =>
+        row.ownerKey === ownerKey &&
+        (row.streamUuid === streamUuid ||
+          row.conversationId === `stream:${streamUuid}` ||
+          row.conversationId?.startsWith(`topic:${streamUuid}:`) === true),
+    );
+    if (matchingRows.length === 0) return;
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    for (const row of matchingRows) {
+      store.delete(row.id);
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
 export async function writeMessengerSearchResults(
   ownerKey: string,
   result: WorkspaceMessengerSearchResultWrite,
@@ -2606,6 +2651,25 @@ export async function deleteExpiredMessengerSearchResults(
       cursor.delete();
       cursor.continue();
     };
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteMessengerSearchResultsForOwner(ownerKey: string): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const storeName = WORKSPACE_MESSENGER_CACHE_STORES.searchResults;
+    const rowIds = await readRowIdsByOwner(db, ownerKey, storeName);
+    if (rowIds.length === 0) return;
+    const transaction = db.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    for (const rowId of rowIds) {
+      store.delete(rowId);
+    }
     await transactionDone(transaction);
   } catch {
     return;

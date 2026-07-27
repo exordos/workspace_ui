@@ -200,6 +200,7 @@ export interface MessengerBackgroundProjectionStoreState {
     context: WorkspaceRealtimeEventContext,
   ) => void;
   recordTransportState: (state: WorkspaceRealtimeTransportState) => void;
+  removeStreamProjection: (ownerKey: string, streamUuid: WorkspaceMessengerUuid) => void;
   clearOwner: (ownerKey: string) => void;
   clear: () => void;
 }
@@ -583,14 +584,22 @@ function applyDeletedStreamProjection(
   event: WorkspaceRealtimeDeletedStreamEvent,
   observedAt: number,
 ): MessengerBackgroundProjection {
-  const streamSnapshotsById = omitRecordKey(baseProjection.streamSnapshotsById, event.stream.uuid);
+  return removeStreamProjection(baseProjection, event.stream.uuid, observedAt);
+}
+
+function removeStreamProjection(
+  baseProjection: MessengerBackgroundProjection,
+  streamUuid: WorkspaceMessengerUuid,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const streamSnapshotsById = omitRecordKey(baseProjection.streamSnapshotsById, streamUuid);
   const topicSnapshotsById = removeSnapshotsByStreamUuid(
     baseProjection.topicSnapshotsById,
-    event.stream.uuid,
+    streamUuid,
   );
   const folderItemSnapshotsById = removeFolderItemSnapshotsByStreamUuid(
     baseProjection.folderItemSnapshotsById,
-    event.stream.uuid,
+    streamUuid,
   );
   const folderSnapshotsById = filterFolderSnapshotsByExistingItems(
     baseProjection.folderSnapshotsById,
@@ -598,7 +607,7 @@ function applyDeletedStreamProjection(
   );
   const messageIdSnapshotsById = removeMessageSnapshotsByStreamUuid(
     baseProjection.messageIdSnapshotsById,
-    event.stream.uuid,
+    streamUuid,
   );
   const affectedFolderIds = new Set<WorkspaceMessengerUuid>();
   const folderItemTopologyById: Record<
@@ -607,7 +616,7 @@ function applyDeletedStreamProjection(
   > = {};
   const durableUnreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
   for (const [folderItemUuid, topology] of Object.entries(baseProjection.folderItemTopologyById)) {
-    if (topology.streamUuid === event.stream.uuid) {
+    if (topology.streamUuid === streamUuid) {
       delete durableUnreadByFolderItemId[folderItemUuid];
       if (topology.folderUuid != null) affectedFolderIds.add(topology.folderUuid);
     } else {
@@ -635,6 +644,9 @@ function applyDeletedStreamProjection(
       folderItemSnapshotsById,
       folderItemTopologyById,
       messageIdSnapshotsById,
+      notificationCandidates: baseProjection.notificationCandidates.filter(
+        (candidate) => candidate.streamUuid !== streamUuid,
+      ),
       unreadByFolderId: folderUnreadProjection.unreadByFolderId,
     },
     observedAt,
@@ -1196,6 +1208,23 @@ export const useMessengerBackgroundProjectionStore =
               ...projection,
               lastTransportState: state,
             },
+          },
+        };
+      });
+    },
+
+    removeStreamProjection(ownerKey, streamUuid) {
+      logStoreAction("messengerBackgroundProjection", "removeStreamProjection", {
+        ownerKey,
+        streamUuid,
+      });
+      set((state) => {
+        const projection = state.projectionsByOwnerKey[ownerKey];
+        if (projection == null) return state;
+        return {
+          projectionsByOwnerKey: {
+            ...state.projectionsByOwnerKey,
+            [ownerKey]: removeStreamProjection(projection, streamUuid, Date.now()),
           },
         };
       });

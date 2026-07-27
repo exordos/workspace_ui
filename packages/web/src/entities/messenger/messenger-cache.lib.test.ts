@@ -10,9 +10,11 @@ import {
   upsertMessengerStreamBindingsCache,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
+  deleteMessengerStreamCache,
   readMessengerMessageBodyCache,
   readMessengerCatalogPayloadCache,
   writeMessengerMessageBodyCache,
+  restoreMessengerStreamCache,
   writeMessengerCatalogPayloadCache,
 } from "./messenger-cache.lib";
 import type {
@@ -165,5 +167,47 @@ describe("messenger cache", () => {
     await expect(readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID])).resolves.toEqual([
       message,
     ]);
+  });
+
+  it("does not let a stale message write recreate a deleted stream cache", async () => {
+    const message: MessengerMessage = {
+      uuid: MESSAGE_UUID,
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      projectId: "project-a",
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      payload: { kind: "markdown", content: "Stale message" },
+      read: false,
+      pinned: false,
+      starred: false,
+      isOwn: false,
+      reactions: {},
+      ownReactionUuidsByEmojiName: {},
+      createdAt: DATE,
+      updatedAt: DATE,
+    };
+
+    await deleteMessengerStreamCache(OWNER_KEY, STREAM_UUID);
+    await writeMessengerMessageBodyCache(OWNER_KEY, [message]);
+
+    await expect(readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID])).resolves.toEqual([]);
+  });
+
+  it("accepts cache writes after an explicit stream restore", async () => {
+    const stream = createStream();
+    await deleteMessengerStreamCache(OWNER_KEY, STREAM_UUID);
+    restoreMessengerStreamCache(OWNER_KEY, STREAM_UUID);
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [stream],
+    });
+
+    await expect(readMessengerCatalogPayloadCache(OWNER_KEY)).resolves.toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({ streams: [stream] }),
+      }),
+    );
   });
 });

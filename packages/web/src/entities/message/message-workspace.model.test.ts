@@ -197,6 +197,68 @@ describe("workspace message store", () => {
     );
   });
 
+  it("removes every stream bucket and rejects a stale page after stream cleanup", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_A }),
+    ]);
+    store.mergeConversationMessagesPage(STREAM_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_A }),
+    ]);
+    store.setMessagesLoading(TOPIC_CONVERSATION_ID, true);
+    store.setMessagesError(TOPIC_CONVERSATION_ID, "failed");
+    store.setConversationPagination(TOPIC_CONVERSATION_ID, {
+      nextPageMarker: "next",
+      hasMore: true,
+    });
+    store.setConversationWindowMarkers(TOPIC_CONVERSATION_ID, {
+      beforePageMarker: "before",
+      afterPageMarker: "after",
+    });
+
+    store.removeMessagesForStream(STREAM_UUID);
+    store.mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_B }),
+    ]);
+    store.setMessagesLoading(TOPIC_CONVERSATION_ID, true);
+    store.setMessagesError(TOPIC_CONVERSATION_ID, "late error");
+    store.setConversationPagination(TOPIC_CONVERSATION_ID, {
+      nextPageMarker: "late",
+      hasMore: true,
+    });
+    store.setConversationWindowMarkers(TOPIC_CONVERSATION_ID, {
+      beforePageMarker: "late-before",
+      afterPageMarker: "late-after",
+    });
+
+    const state = useWorkspaceMessageStore.getState();
+    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+    expect(state.messagesById[MESSAGE_B]).toBeUndefined();
+    expect(state.messageIdsByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.messageIdsByConversationId[STREAM_CONVERSATION_ID]).toBeUndefined();
+    expect(state.messagesLoadingByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.messagesErrorByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.nextPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.hasMoreByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.beforePageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+    expect(state.afterPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBeUndefined();
+  });
+
+  it("accepts messages again after a stream is explicitly restored", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.removeMessagesForStream(STREAM_UUID);
+    store.restoreMessagesForStream(STREAM_UUID);
+    store.mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_A }),
+    ]);
+    store.setMessagesLoading(TOPIC_CONVERSATION_ID, true);
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeDefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesLoadingByConversationId[TOPIC_CONVERSATION_ID],
+    ).toBe(true);
+  });
+
   it("strictly replaces a conversation window without keeping old message ids", () => {
     const store = useWorkspaceMessageStore.getState();
     store.mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [

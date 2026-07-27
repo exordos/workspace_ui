@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { parseMessengerConversationId } from "~/entities/messenger/messenger-ids.lib";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -57,6 +58,29 @@ const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   nextPageMarker: null,
   hasMore: false,
 };
+const removedStreamUuids = new Set<MessengerUuid>();
+
+function keepMessagesOutsideRemovedStreams(
+  messages: readonly MessengerMessage[],
+): MessengerMessage[] {
+  return messages.filter((message) => !removedStreamUuids.has(message.streamUuid));
+}
+
+function isRemovedStreamConversation(conversationId: MessengerConversationId): boolean {
+  const parsed = parseMessengerConversationId(conversationId);
+  return parsed != null && removedStreamUuids.has(parsed.streamUuid);
+}
+
+function omitConversationRecords<T>(
+  record: Record<MessengerConversationId, T>,
+  removedConversationIds: ReadonlySet<MessengerConversationId>,
+): Record<MessengerConversationId, T> {
+  return Object.fromEntries(
+    Object.entries(record).filter(
+      ([conversationId]) => !removedConversationIds.has(conversationId),
+    ),
+  );
+}
 
 // Fresh backend snapshots do not always include the current user's reaction
 // projection. Preserve it across snapshot merges so UI highlighting and remove
@@ -271,7 +295,13 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       conversationId,
       messages: messages.length,
     });
-    set((state) => applyConversationMessagesPage(state, conversationId, messages));
+    set((state) =>
+      applyConversationMessagesPage(
+        state,
+        conversationId,
+        keepMessagesOutsideRemovedStreams(messages),
+      ),
+    );
   },
 
   replaceConversationMessagesWindow(conversationId, messages) {
@@ -279,7 +309,13 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       conversationId,
       messages: messages.length,
     });
-    set((state) => applyConversationMessagesWindow(state, conversationId, messages));
+    set((state) =>
+      applyConversationMessagesWindow(
+        state,
+        conversationId,
+        keepMessagesOutsideRemovedStreams(messages),
+      ),
+    );
   },
 
   mergeConversationMessagesPage(conversationId, messages) {
@@ -287,10 +323,17 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       conversationId,
       messages: messages.length,
     });
-    set((state) => applyConversationMessagesPage(state, conversationId, messages));
+    set((state) =>
+      applyConversationMessagesPage(
+        state,
+        conversationId,
+        keepMessagesOutsideRemovedStreams(messages),
+      ),
+    );
   },
 
   indexMessageIntoConversationBuckets(message, options) {
+    if (removedStreamUuids.has(message.streamUuid)) return;
     const conversationIds = conversationBucketsForWorkspaceMessage(message, options);
     logStoreAction("workspaceMessage", "indexMessageIntoConversationBuckets", {
       messageUuid: message.uuid,
@@ -300,6 +343,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   upsertMessage(message) {
+    if (removedStreamUuids.has(message.streamUuid)) return;
     logStoreAction("workspaceMessage", "upsertMessage", { messageUuid: message.uuid });
     set((state) => {
       const previousMessage = state.messagesById[message.uuid];
@@ -337,6 +381,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   upsertMessageBody(message) {
+    if (removedStreamUuids.has(message.streamUuid)) return;
     logStoreAction("workspaceMessage", "upsertMessageBody", { messageUuid: message.uuid });
     set((state) => ({
       messagesById: {
@@ -695,6 +740,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   setMessagesLoading(conversationId, loading) {
+    if (isRemovedStreamConversation(conversationId)) return;
     logStoreAction("workspaceMessage", "setMessagesLoading", { conversationId, loading });
     set((state) => ({
       messagesLoadingByConversationId: {
@@ -705,6 +751,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   setMessagesError(conversationId, error) {
+    if (isRemovedStreamConversation(conversationId)) return;
     logStoreAction("workspaceMessage", "setMessagesError", { conversationId, error });
     set((state) => ({
       messagesErrorByConversationId: {
@@ -715,6 +762,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   setConversationPagination(conversationId, pagination) {
+    if (isRemovedStreamConversation(conversationId)) return;
     logStoreAction("workspaceMessage", "setConversationPagination", {
       conversationId,
       nextPageMarker: pagination.nextPageMarker,
@@ -733,6 +781,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   setConversationWindowMarkers(conversationId, markers) {
+    if (isRemovedStreamConversation(conversationId)) return;
     logStoreAction("workspaceMessage", "setConversationWindowMarkers", {
       conversationId,
       beforePageMarker: markers.beforePageMarker,
@@ -750,8 +799,70 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     }));
   },
 
+  removeMessagesForStream(streamUuid) {
+    logStoreAction("workspaceMessage", "removeMessagesForStream", { streamUuid });
+    removedStreamUuids.add(streamUuid);
+    set((state) => {
+      const removedConversationIds = new Set(
+        [
+          ...Object.keys(state.messageIdsByConversationId),
+          ...Object.keys(state.messagesLoadingByConversationId),
+          ...Object.keys(state.messagesErrorByConversationId),
+          ...Object.keys(state.nextPageMarkerByConversationId),
+          ...Object.keys(state.hasMoreByConversationId),
+          ...Object.keys(state.beforePageMarkerByConversationId),
+          ...Object.keys(state.afterPageMarkerByConversationId),
+        ].filter(
+          (conversationId) =>
+            parseMessengerConversationId(conversationId)?.streamUuid === streamUuid,
+        ),
+      );
+      const nextMessagesById = Object.fromEntries(
+        Object.entries(state.messagesById).filter(
+          ([, message]) => message.streamUuid !== streamUuid,
+        ),
+      );
+      return {
+        messagesById: nextMessagesById,
+        messageIdsByConversationId: omitConversationRecords(
+          state.messageIdsByConversationId,
+          removedConversationIds,
+        ),
+        messagesLoadingByConversationId: omitConversationRecords(
+          state.messagesLoadingByConversationId,
+          removedConversationIds,
+        ),
+        messagesErrorByConversationId: omitConversationRecords(
+          state.messagesErrorByConversationId,
+          removedConversationIds,
+        ),
+        nextPageMarkerByConversationId: omitConversationRecords(
+          state.nextPageMarkerByConversationId,
+          removedConversationIds,
+        ),
+        hasMoreByConversationId: omitConversationRecords(
+          state.hasMoreByConversationId,
+          removedConversationIds,
+        ),
+        beforePageMarkerByConversationId: omitConversationRecords(
+          state.beforePageMarkerByConversationId,
+          removedConversationIds,
+        ),
+        afterPageMarkerByConversationId: omitConversationRecords(
+          state.afterPageMarkerByConversationId,
+          removedConversationIds,
+        ),
+      };
+    });
+  },
+
+  restoreMessagesForStream(streamUuid) {
+    removedStreamUuids.delete(streamUuid);
+  },
+
   clear() {
     logStoreAction("workspaceMessage", "clear", {});
+    removedStreamUuids.clear();
     set(createEmptyWorkspaceMessageData());
   },
 }));

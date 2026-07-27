@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
+import {
+  removeWorkspaceComposerDraftsForStream,
+  resetWorkspaceComposerDraftStoreForTests,
+  restoreWorkspaceComposerDraftsForStream,
+  useWorkspaceComposerDraftStore,
+} from "./composer-draft.model";
 
 const deleteWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 const migrateWorkspaceComposerDraftToRecord = vi.hoisted(() => vi.fn());
@@ -14,13 +21,8 @@ vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
   writeWorkspaceComposerDraftRecord,
 }));
 
-import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
-import {
-  resetWorkspaceComposerDraftStoreForTests,
-  useWorkspaceComposerDraftStore,
-} from "./composer-draft.model";
-
 const OWNER = "account:a:instance:i:organization:o:project:p:user:u";
+const STREAM = "stream-a";
 const CONVERSATION = "topic:stream-a:topic-a";
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -130,5 +132,35 @@ describe("workspace composer draft owner disposal", () => {
     await disposal;
 
     expect(disposed).toBe(true);
+  });
+
+  it("waits for pending writes and blocks stale drafts until the stream is restored", async () => {
+    const deferredWrite = createDeferred<void>();
+    writeWorkspaceComposerDraftRecord.mockReturnValueOnce(deferredWrite.promise);
+    const draft = useWorkspaceComposerDraftStore.getState().setDraft(
+      OWNER,
+      CONVERSATION,
+      {
+        text: "Черновик",
+        replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+      },
+      { streamUuid: STREAM, topicUuid: "topic-a" },
+    );
+    expect(draft).not.toBeNull();
+
+    const flush = useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, draft!.draftUuid);
+    await waitForWriteStart();
+    const removal = removeWorkspaceComposerDraftsForStream(OWNER, STREAM);
+    deferredWrite.resolve();
+    await flush;
+    await removal;
+
+    const serverDraft = { ...draft!, syncStatus: "saved" as const };
+    useWorkspaceComposerDraftStore.getState().applyServerDrafts(OWNER, [serverDraft]);
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toBeUndefined();
+
+    restoreWorkspaceComposerDraftsForStream(OWNER, STREAM);
+    useWorkspaceComposerDraftStore.getState().applyServerDrafts(OWNER, [serverDraft]);
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toEqual(serverDraft);
   });
 });

@@ -3,6 +3,8 @@ import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realt
 import { adaptWorkspaceExternalAccountDto } from "./external-account-adapters.lib";
 import {
   createExternalAccountRealtimeApplier,
+  externalAccountRealtimeTestUtils,
+  markExternalAccountLocallyDeleted,
   type ExternalAccountRealtimeCache,
 } from "./external-account-realtime-applier.lib";
 import { useExternalAccountsStore } from "./external-account.model";
@@ -76,6 +78,7 @@ function cacheWith(accounts = [adaptWorkspaceExternalAccountDto(snapshot(1))]) {
 describe("external account realtime applier", () => {
   beforeEach(() => {
     useExternalAccountsStore.getState().clear();
+    externalAccountRealtimeTestUtils.resetDeletionFences();
   });
 
   it("applies a full newer snapshot to the active owner store and cache", async () => {
@@ -107,6 +110,27 @@ describe("external account realtime applier", () => {
     });
 
     applier.applyEvent(event("external_account.updated", 2), context("active"));
+
+    expect(useExternalAccountsStore.getState().accounts[0]?.revision).toBe(3);
+  });
+
+  it("does not let a late update restore a locally deleted account", () => {
+    const store = useExternalAccountsStore.getState();
+    store.startOwnerSync(OWNER_KEY);
+    store.replaceAccountsForOwner(OWNER_KEY, [adaptWorkspaceExternalAccountDto(snapshot(1))]);
+    markExternalAccountLocallyDeleted(OWNER_KEY, ACCOUNT_UUID);
+    store.removeAccountForOwner(OWNER_KEY, ACCOUNT_UUID);
+    const applier = createExternalAccountRealtimeApplier({
+      surface: "active",
+      isOwnerCurrent: () => true,
+      cache: cacheWith([]).cache,
+    });
+
+    applier.applyEvent(event("external_account.updated", 2), context("active"));
+
+    expect(useExternalAccountsStore.getState().accounts).toEqual([]);
+
+    applier.applyEvent(event("external_account.created", 3), context("active"));
 
     expect(useExternalAccountsStore.getState().accounts[0]?.revision).toBe(3);
   });
