@@ -6,6 +6,39 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-27
+
+### Added
+
+- Zulip external-account onboarding, lifecycle management, chat selection, provider administration, realtime projection, and cached integration state (#240)
+- Protected video previews in messenger conversations (#234)
+
+### Changed
+
+- Messenger, profile, settings, and responsive UI refinements (#231)
+- Exordos element publication now uses the organization-level push configuration (#235)
+
+### Fixed
+
+- Redundant server draft updates are no longer emitted (#232)
+- Message sort parameters are preserved across messenger requests (#233)
+- Incomplete search actions remain hidden and external-account credential labels are restored (#234)
+- Unread indicators stay synchronized and deferred auto-read resumes after window focus returns (#239)
+
+### Requirements and compatibility
+
+- Requires Exordos Core `0.2.3` or newer.
+- Requires Workspace backend `0.1.18` or newer.
+- Zulip external-account synchronization requires `workspace_zulip_bridge` `0.0.11` or newer.
+
+### Migration notes
+
+1. Update Workspace backend to `0.1.18`.
+2. Update `workspace_zulip_bridge` to `0.0.11`.
+3. Update `workspace_ui` to `0.2.2`.
+
+No client or server data migration is required.
+
 ## [0.2.1] — 2026-07-22
 
 ### Added
