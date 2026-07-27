@@ -5,6 +5,7 @@ import {
   getStreamTopic,
   getStreamTopics,
   getStreamTopicsPage,
+  markStreamTopicRead,
   renameStreamTopic,
   setStreamTopicNotificationMode,
   toggleStreamTopicDone,
@@ -59,6 +60,49 @@ const topicDto = {
 };
 
 describe("messenger topics API", () => {
+  it("marks every message in a topic as read", async () => {
+    const fetchMock = createFetchMock(topicDto);
+    const abortController = new AbortController();
+
+    await expect(
+      markStreamTopicRead(
+        {
+          accessToken: "access-token",
+          baseUrl: "https://workspace.example.com/messenger",
+          fetchImpl: fetchMock,
+          projectId: PROJECT_UUID,
+          signal: abortController.signal,
+        },
+        TOPIC_UUID,
+      ),
+    ).resolves.toEqual(topicDto);
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(
+      `https://workspace.example.com/messenger/stream_topics/${TOPIC_UUID}/actions/read/invoke`,
+    );
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer access-token",
+    });
+    expect(init?.signal).toBe(abortController.signal);
+
+    const invalidFetchMock = createFetchMock({ ...topicDto, unread_count: "0" });
+    await expect(
+      markStreamTopicRead({ accessToken: "access-token", fetchImpl: invalidFetchMock }, TOPIC_UUID),
+    ).rejects.toThrow("Expected valid messenger stream topic response");
+  });
+
+  it("propagates a topic read network failure", async () => {
+    const networkError = new TypeError("network unavailable");
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(networkError));
+
+    await expect(
+      markStreamTopicRead({ accessToken: "access-token", fetchImpl: fetchMock }, TOPIC_UUID),
+    ).rejects.toBe(networkError);
+  });
+
   it("lists topics with stream and pagination query", async () => {
     const fetchMock = createFetchMock([topicDto]);
 

@@ -57,6 +57,10 @@ export interface MessengerMessageActionCacheConversationPage {
 
 export interface MessengerMessageActionCacheWriter {
   patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  markCachedMessagesRead?: (
+    ownerKey: string,
+    messageUuids: readonly MessengerUuid[],
+  ) => Promise<void> | void;
   deleteCachedMessage?: (
     ownerKey: string,
     messageUuid: MessengerUuid,
@@ -404,7 +408,21 @@ export async function markMessengerMessagesReadUpTo({
     messagesToCache.set(changedMessage.uuid, changedMessage);
   }
 
-  if (cache?.patchCachedMessage != null) {
+  if (cache?.markCachedMessagesRead != null) {
+    if (cache.patchCachedMessage != null) {
+      await writeActionCacheBestEffort(() =>
+        cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
+      );
+    }
+    const messageUuids = [...messagesToCache.keys()].filter(
+      (messageUuid) => cache.patchCachedMessage == null || messageUuid !== message.uuid,
+    );
+    if (messageUuids.length > 0) {
+      await writeActionCacheBestEffort(() =>
+        cache.markCachedMessagesRead?.(action.ownerKey, messageUuids),
+      );
+    }
+  } else if (cache?.patchCachedMessage != null) {
     for (const changedMessage of messagesToCache.values()) {
       await writeActionCacheBestEffort(() =>
         cache.patchCachedMessage?.(action.ownerKey, { ...changedMessage, read: true }),

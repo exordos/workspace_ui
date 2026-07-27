@@ -1079,6 +1079,7 @@
     "emptySearchHint": "Try a different chat or topic name.",
     "partialLoadError": "Some sidebar data could not be refreshed",
     "markAsRead": "Mark as read",
+    "markAllAsRead": "Mark all as read",
     "pin": "Pin",
     "unpin": "Unpin",
     "pinChat": "Pin",

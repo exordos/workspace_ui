@@ -1,6 +1,7 @@
 import { getStreamTopics } from "./messenger-topics.api";
 import {
   messengerGetJson,
+  messengerPostJson,
   messengerRequestJsonResult,
   paginationParams,
   parseDto,
@@ -168,6 +169,14 @@ export async function updateStreamNotifications(
     {},
     body,
   );
+  return parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
+}
+
+export async function markStreamRead(
+  options: MessengerClientOptions,
+  streamUuid: string,
+): Promise<WorkspaceMessengerStreamDto> {
+  const data = await messengerPostJson(`/streams/${streamUuid}/actions/read/invoke`, options);
   return parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
 }
 

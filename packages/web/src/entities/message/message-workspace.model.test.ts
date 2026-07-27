@@ -110,6 +110,46 @@ describe("workspace message store", () => {
     ]);
   });
 
+  it("optimistically marks one topic read and only rolls back unchanged projections", () => {
+    const topicMessage = createMessage({ uuid: MESSAGE_A });
+    const otherTopicMessage = createMessage({ uuid: MESSAGE_B, topicUuid: "other-topic" });
+    useWorkspaceMessageStore
+      .getState()
+      .mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [topicMessage, otherTopicMessage]);
+
+    const change = useWorkspaceMessageStore.getState().beginOptimisticMessagesRead({
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+    });
+
+    expect(change.previousMessages.map((message) => message.uuid)).toEqual([MESSAGE_A]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(false);
+
+    useWorkspaceMessageStore.getState().upsertMessage({
+      ...useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]!,
+      updatedAt: DATE_LATER,
+    });
+    useWorkspaceMessageStore.getState().rollbackOptimisticMessagesRead(change);
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ read: true, updatedAt: DATE_LATER }),
+    );
+  });
+
+  it("rolls back an unchanged optimistic read projection", () => {
+    useWorkspaceMessageStore
+      .getState()
+      .upsertMessage(createMessage({ uuid: MESSAGE_A, read: false }));
+
+    const change = useWorkspaceMessageStore.getState().beginOptimisticMessagesRead({
+      streamUuid: STREAM_UUID,
+    });
+    useWorkspaceMessageStore.getState().rollbackOptimisticMessagesRead(change);
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+  });
+
   it("deduplicates by uuid and stores the latest body", () => {
     useWorkspaceMessageStore
       .getState()

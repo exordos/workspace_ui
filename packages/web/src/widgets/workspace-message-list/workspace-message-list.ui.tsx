@@ -270,9 +270,11 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     ready: initialSnapshotReady,
     anchor: initialSnapshotReady ? firstUnreadUuid : undefined,
   }));
-  const stableFirstUnreadUuid = unreadDividerSession.ready
+  const sessionFirstUnreadUuid = unreadDividerSession.ready
     ? unreadDividerSession.anchor
     : firstUnreadUuid;
+  const stableFirstUnreadUuid =
+    unreadCount === 0 && firstUnreadUuid == null ? undefined : sessionFirstUnreadUuid;
 
   useEffect(() => {
     if (!initialSnapshotReady) {

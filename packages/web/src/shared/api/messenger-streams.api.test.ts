@@ -8,6 +8,7 @@ import {
   getStreamBindings,
   getStreamBindingsPage,
   getStreamsPage,
+  markStreamRead,
   unarchiveStream,
   updateStreamBinding,
   updateStreamNotifications,
@@ -99,6 +100,50 @@ const streamBindingDto = {
 };
 
 describe("messenger-streams api", () => {
+  it("marks every message in a stream as read", async () => {
+    const readStreamDto = { ...streamDto, unread_count: 0 };
+    const fetchMock = createFetchMock(readStreamDto);
+    const abortController = new AbortController();
+
+    await expect(
+      markStreamRead(
+        {
+          accessToken: "access-token",
+          baseUrl: "https://workspace.example.com/messenger",
+          fetchImpl: fetchMock,
+          projectId: PROJECT_UUID,
+          signal: abortController.signal,
+        },
+        STREAM_UUID,
+      ),
+    ).resolves.toEqual(readStreamDto);
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(
+      `https://workspace.example.com/messenger/streams/${STREAM_UUID}/actions/read/invoke`,
+    );
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer access-token",
+    });
+    expect(init?.signal).toBe(abortController.signal);
+
+    const invalidFetchMock = createFetchMock({ ...readStreamDto, unread_count: "0" });
+    await expect(
+      markStreamRead({ accessToken: "access-token", fetchImpl: invalidFetchMock }, STREAM_UUID),
+    ).rejects.toThrow("Expected valid messenger stream response");
+  });
+
+  it("propagates a stream read network failure", async () => {
+    const networkError = new TypeError("network unavailable");
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(networkError));
+
+    await expect(
+      markStreamRead({ accessToken: "access-token", fetchImpl: fetchMock }, STREAM_UUID),
+    ).rejects.toBe(networkError);
+  });
+
   it("creates a native stream without sending private", async () => {
     const fetchMock = createFetchMock(streamDto);
 

@@ -4,6 +4,10 @@ import {
   mapWorkspaceStreamNotificationModeToLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import {
+  runWorkspaceStreamRead,
+  runWorkspaceTopicRead,
+} from "~/entities/messenger/messenger-read-actions.lib";
+import {
   runWorkspaceCreateTopicRequest,
   runWorkspaceFolderAssignmentToggle,
   runWorkspaceFolderItemPinToggle,
@@ -227,6 +231,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(stream.streamUuid);
   const rightDrawer = useRightDrawer();
   const [notificationPending, setNotificationPending] = useState(false);
+  const [readPending, setReadPending] = useState(false);
   const [pinPending, setPinPending] = useState(false);
   const [createTopicDialogOpen, setCreateTopicDialogOpen] = useState(false);
   const [newTopicName, setNewTopicName] = useState("");
@@ -265,6 +270,17 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         setPinPending(false);
       });
   }, [handleMenuOpenChange, pinPending, selectedFolderItem, stream.streamUuid]);
+
+  const handleMarkRead = useCallback((): void => {
+    if (readPending) return;
+    handleMenuOpenChange(false);
+    setReadPending(true);
+    void runWorkspaceStreamRead({ streamUuid: stream.streamUuid })
+      .catch((error) => reportWorkspaceMenuActionError("stream-read", error))
+      .finally(() => {
+        setReadPending(false);
+      });
+  }, [handleMenuOpenChange, readPending, stream.streamUuid]);
 
   const handleFolderAssignmentToggle = useCallback(
     (folder: MessengerFolder, folderItem: MessengerFolderItem | null): void => {
@@ -401,6 +417,16 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [notificationPickerItem];
+    if (stream.unreadCount > 0) {
+      items.push({
+        type: "action",
+        key: "mark-read",
+        icon: "check",
+        label: t("sidebar.markAllAsRead"),
+        disabled: readPending,
+        onSelect: handleMarkRead,
+      });
+    }
     if (selectedFolderItem != null) {
       items.push({
         type: "action",
@@ -434,11 +460,14 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   }, [
     folderAssignmentsItem,
     handleCreateTopic,
+    handleMarkRead,
     handleOpenMembers,
     handlePinToggle,
     notificationPickerItem,
     pinPending,
+    readPending,
     selectedFolderItem,
+    stream.unreadCount,
     stream.uiKind,
   ]);
 
@@ -507,6 +536,7 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
   const streamNotificationMode = useWorkspaceStreamNotificationMode(topic.streamUuid);
   const isDone = useWorkspaceTopicDone(topic.topicUuid);
   const [notificationPending, setNotificationPending] = useState(false);
+  const [readPending, setReadPending] = useState(false);
   const [topicActionPending, setTopicActionPending] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameTopicName, setRenameTopicName] = useState(topic.title);
@@ -541,6 +571,20 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
     setRenameTopicName(topic.title);
     setRenameDialogOpen(true);
   }, [handleMenuOpenChange, topic.title]);
+
+  const handleMarkRead = useCallback((): void => {
+    if (readPending) return;
+    handleMenuOpenChange(false);
+    setReadPending(true);
+    void runWorkspaceTopicRead({
+      streamUuid: topic.streamUuid,
+      topicUuid: topic.topicUuid,
+    })
+      .catch((error) => reportWorkspaceMenuActionError("topic-read", error))
+      .finally(() => {
+        setReadPending(false);
+      });
+  }, [handleMenuOpenChange, readPending, topic.streamUuid, topic.topicUuid]);
 
   const handleSubmitRenameTopic = useCallback((): void => {
     const name = renameTopicName.trim();
@@ -605,9 +649,19 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
     [handleSetNotificationMode, notificationMode, notificationPending, streamNotificationMode],
   );
 
-  const menuItems = useMemo<DropdownMenuItem[]>(
-    () => [
-      topicNotificationPickerItem,
+  const menuItems = useMemo<DropdownMenuItem[]>(() => {
+    const items: DropdownMenuItem[] = [topicNotificationPickerItem];
+    if (topic.unreadCount > 0) {
+      items.push({
+        type: "action",
+        key: "mark-read",
+        icon: "check",
+        label: t("sidebar.markAsRead"),
+        disabled: readPending,
+        onSelect: handleMarkRead,
+      });
+    }
+    items.push(
       {
         type: "action",
         key: "rename-topic",
@@ -624,16 +678,19 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
         disabled: topicActionPending,
         onSelect: handleDoneToggle,
       },
-    ],
-    [
-      handleDoneToggle,
-      handleRenameTopic,
-      isDone,
-      renamePending,
-      topicActionPending,
-      topicNotificationPickerItem,
-    ],
-  );
+    );
+    return items;
+  }, [
+    handleDoneToggle,
+    handleMarkRead,
+    handleRenameTopic,
+    isDone,
+    readPending,
+    renamePending,
+    topic.unreadCount,
+    topicActionPending,
+    topicNotificationPickerItem,
+  ]);
 
   const contentWithContextMenu = useMemo(
     (): React.ReactElement =>

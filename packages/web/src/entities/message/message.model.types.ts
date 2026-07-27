@@ -28,6 +28,16 @@ export interface WorkspaceScopedMessageMutationOptions {
   conversationIds?: readonly MessengerConversationId[];
 }
 
+export interface WorkspaceMessageReadScope {
+  streamUuid: MessengerUuid;
+  topicUuid?: MessengerUuid;
+}
+
+export interface WorkspaceOptimisticMessageReadChange {
+  previousMessages: readonly MessengerMessage[];
+  projectedMessages: readonly MessengerMessage[];
+}
+
 export interface WorkspaceMessageEditPatch {
   markdown: string;
   updatedAt?: string;
@@ -112,6 +122,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,
   ) => MessengerMessage[];
+  beginOptimisticMessagesRead: (
+    scope: WorkspaceMessageReadScope,
+  ) => WorkspaceOptimisticMessageReadChange;
+  rollbackOptimisticMessagesRead: (change: WorkspaceOptimisticMessageReadChange) => void;
   setMessagesLoading: (conversationId: MessengerConversationId, loading: boolean) => void;
   setMessagesError: (conversationId: MessengerConversationId, error: string | null) => void;
   setConversationPagination: (

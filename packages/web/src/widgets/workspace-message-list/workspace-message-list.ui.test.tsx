@@ -885,6 +885,32 @@ describe("WorkspaceMessageList", () => {
     expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(initialAnchor);
   });
 
+  it("removes the unread divider after every loaded message becomes read", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "unread-anchor" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...unreadMessage, read: true }]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={0}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
   it("waits for the initial snapshot before fixing a late unread anchor", () => {
     const messages = [
       createWorkspaceMessage({

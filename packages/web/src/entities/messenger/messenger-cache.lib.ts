@@ -13,6 +13,7 @@ import {
   deleteOwnMessageReactionsForMessages,
   deleteMessengerStreamCatalogCache,
   deleteMessengerTopicCatalogCache,
+  markCachedMessagesRead,
   patchCachedMessage,
   readCachedMessagesByUuids,
   readConversationMessageWindow,
@@ -344,6 +345,14 @@ export async function patchMessengerCachedMessage(
   await applyMessengerMessagePointerCache(ownerKey, message);
 }
 
+export async function markMessengerCachedMessagesRead(
+  ownerKey: string,
+  messageUuids: readonly MessengerUuid[],
+  conversationIds: readonly MessengerConversationId[] = [],
+): Promise<void> {
+  await markCachedMessagesRead(ownerKey, messageUuids, conversationIds);
+}
+
 export async function deleteMessengerCachedMessage(
   ownerKey: string,
   messageUuid: MessengerUuid,
@@ -432,6 +441,7 @@ export async function writeMessengerRealtimeCursorCache(
 
 export const messengerMessageActionCache = {
   patchCachedMessage: patchMessengerCachedMessage,
+  markCachedMessagesRead: markMessengerCachedMessagesRead,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
 };

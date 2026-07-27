@@ -23,6 +23,7 @@ import type {
   WorkspaceConversationMessagesStatus,
   WorkspaceMessageStoreData,
   WorkspaceMessageStoreState,
+  WorkspaceOptimisticMessageReadChange,
 } from "./message.model.types";
 
 export type {
@@ -33,6 +34,8 @@ export type {
   WorkspaceMessageEditPatch,
   WorkspaceMessageStoreData,
   WorkspaceMessageStoreState,
+  WorkspaceMessageReadScope,
+  WorkspaceOptimisticMessageReadChange,
   WorkspaceScopedMessageMutationOptions,
 } from "./message.model.types";
 
@@ -629,6 +632,66 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     });
 
     return changedMessages;
+  },
+
+  beginOptimisticMessagesRead(scope) {
+    logStoreAction("workspaceMessage", "beginOptimisticMessagesRead", { ...scope });
+    const change: {
+      previousMessages: MessengerMessage[];
+      projectedMessages: MessengerMessage[];
+    } = {
+      previousMessages: [],
+      projectedMessages: [],
+    };
+
+    set((state) => {
+      const nextMessagesById = { ...state.messagesById };
+      for (const message of Object.values(state.messagesById)) {
+        if (
+          message.read ||
+          message.streamUuid !== scope.streamUuid ||
+          (scope.topicUuid != null && message.topicUuid !== scope.topicUuid)
+        ) {
+          continue;
+        }
+
+        const projectedMessage = { ...message, read: true };
+        change.previousMessages.push(message);
+        change.projectedMessages.push(projectedMessage);
+        nextMessagesById[message.uuid] = projectedMessage;
+      }
+
+      return change.projectedMessages.length === 0 ? state : { messagesById: nextMessagesById };
+    });
+
+    return change satisfies WorkspaceOptimisticMessageReadChange;
+  },
+
+  rollbackOptimisticMessagesRead(change) {
+    logStoreAction("workspaceMessage", "rollbackOptimisticMessagesRead", {
+      messages: change.previousMessages.length,
+    });
+    if (change.previousMessages.length === 0) return;
+
+    set((state) => {
+      let nextMessagesById = state.messagesById;
+      for (let index = 0; index < change.previousMessages.length; index += 1) {
+        const previousMessage = change.previousMessages[index];
+        const projectedMessage = change.projectedMessages[index];
+        if (
+          previousMessage == null ||
+          projectedMessage == null ||
+          state.messagesById[previousMessage.uuid] !== projectedMessage
+        ) {
+          continue;
+        }
+        if (nextMessagesById === state.messagesById) {
+          nextMessagesById = { ...state.messagesById };
+        }
+        nextMessagesById[previousMessage.uuid] = previousMessage;
+      }
+      return nextMessagesById === state.messagesById ? state : { messagesById: nextMessagesById };
+    });
   },
 
   setMessagesLoading(conversationId, loading) {

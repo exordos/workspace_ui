@@ -23,6 +23,9 @@ const runWorkspaceFolderAssignmentToggleMock = vi.fn();
 const runWorkspaceCreateTopicRequestMock = vi.fn();
 const runWorkspaceTopicRenameRequestMock = vi.fn();
 const runWorkspaceTopicDoneToggleMock = vi.fn();
+const runWorkspaceStreamReadMock = vi.fn();
+const runWorkspaceTopicReadMock = vi.fn();
+const reportUnexpectedErrorMock = vi.fn();
 
 vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
   runWorkspaceStreamNotificationUpdate: (...args: unknown[]) =>
@@ -38,6 +41,15 @@ vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
   runWorkspaceTopicRenameRequest: (...args: unknown[]) =>
     runWorkspaceTopicRenameRequestMock(...args),
   runWorkspaceTopicDoneToggle: (...args: unknown[]) => runWorkspaceTopicDoneToggleMock(...args),
+}));
+
+vi.mock("~/entities/messenger/messenger-read-actions.lib", () => ({
+  runWorkspaceStreamRead: (...args: unknown[]) => runWorkspaceStreamReadMock(...args),
+  runWorkspaceTopicRead: (...args: unknown[]) => runWorkspaceTopicReadMock(...args),
+}));
+
+vi.mock("~/shared/lib/unexpected-error.lib", () => ({
+  reportUnexpectedError: (...args: unknown[]) => reportUnexpectedErrorMock(...args),
 }));
 
 const OWNER_KEY = "owner:workspace-sidebar";
@@ -119,6 +131,17 @@ function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 function expectNoWorkspaceActionRequests(): void {
   expect(runWorkspaceStreamNotificationUpdateMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicNotificationUpdateMock).not.toHaveBeenCalled();
@@ -127,6 +150,8 @@ function expectNoWorkspaceActionRequests(): void {
   expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicRenameRequestMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicDoneToggleMock).not.toHaveBeenCalled();
+  expect(runWorkspaceStreamReadMock).not.toHaveBeenCalled();
+  expect(runWorkspaceTopicReadMock).not.toHaveBeenCalled();
 }
 
 function CurrentPath(): ReactElement {
@@ -179,6 +204,9 @@ describe("WorkspaceSidebar context menu", () => {
     runWorkspaceCreateTopicRequestMock.mockReset();
     runWorkspaceTopicRenameRequestMock.mockReset();
     runWorkspaceTopicDoneToggleMock.mockReset();
+    runWorkspaceStreamReadMock.mockReset();
+    runWorkspaceTopicReadMock.mockReset();
+    reportUnexpectedErrorMock.mockReset();
   });
 
   it("uses the stream color as the channel avatar background", () => {
@@ -187,7 +215,8 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
   });
 
-  it("opens the stream context menu from right click without mark-as-read", async () => {
+  it("marks every stream message read from the context menu", async () => {
+    runWorkspaceStreamReadMock.mockResolvedValue({ status: "applied" });
     renderWorkspaceSidebar([createStream()]);
 
     fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
@@ -195,7 +224,76 @@ describe("WorkspaceSidebar context menu", () => {
     expect(await screen.findByRole("radiogroup", { name: /notifications/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /members/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /new topic/i })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /mark all as read/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceStreamReadMock).toHaveBeenCalledWith({ streamUuid: STREAM_UUID });
+    });
+  });
+
+  it("marks a personal chat read through the stream action", async () => {
+    runWorkspaceStreamReadMock.mockResolvedValue({ status: "applied" });
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "directPrivate",
+        directUserUuid: "user-alice",
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark all as read/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceStreamReadMock).toHaveBeenCalledWith({ streamUuid: STREAM_UUID });
+    });
+  });
+
+  it("disables the stream read action while its request is pending", async () => {
+    const request = deferred<{ status: string }>();
+    runWorkspaceStreamReadMock.mockReturnValue(request.promise);
+    renderWorkspaceSidebar([createStream()]);
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.contextMenu(streamLink);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark all as read/i }));
+    fireEvent.contextMenu(streamLink);
+
+    const pendingItem = await screen.findByRole("menuitem", { name: /mark all as read/i });
+    expect(pendingItem).toHaveAttribute("data-disabled");
+    fireEvent.click(pendingItem);
+    expect(runWorkspaceStreamReadMock).toHaveBeenCalledTimes(1);
+
+    request.resolve({ status: "applied" });
+    await waitFor(() => {
+      expect(pendingItem).not.toHaveAttribute("data-disabled");
+    });
+  });
+
+  it("reports a stream read error through the shared handler", async () => {
+    const error = new Error("read failed");
+    runWorkspaceStreamReadMock.mockRejectedValue(error);
+    renderWorkspaceSidebar([createStream()]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark all as read/i }));
+
+    await waitFor(() => {
+      expect(reportUnexpectedErrorMock).toHaveBeenCalledWith("workspace-sidebar-menu", error, {
+        action: "stream-read",
+      });
+    });
+  });
+
+  it("hides the stream read action when there are no unread messages", async () => {
+    renderWorkspaceSidebar([createStream({ unreadCount: 0 })]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+
+    expect(await screen.findByRole("radiogroup", { name: /notifications/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark all as read/i })).not.toBeInTheDocument();
   });
 
   it("opens the create-topic dialog from the stream context menu", async () => {
@@ -356,8 +454,9 @@ describe("WorkspaceSidebar context menu", () => {
     });
   });
 
-  it("opens the topic context menu and toggles done state", async () => {
+  it("opens the topic context menu, marks it read, and toggles done state", async () => {
     runWorkspaceTopicDoneToggleMock.mockResolvedValue({ status: "applied" });
+    runWorkspaceTopicReadMock.mockResolvedValue({ status: "applied" });
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
 
     renderWorkspaceSidebar([createStream({ topics: [createTopic()] })]);
@@ -366,6 +465,16 @@ describe("WorkspaceSidebar context menu", () => {
     expect(
       await screen.findByRole("radiogroup", { name: /topic notifications/i }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /^mark as read$/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceTopicReadMock).toHaveBeenCalledWith({
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+      });
+    });
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /release/i }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /mark topic as done/i }));
 
     await waitFor(() => {
@@ -375,7 +484,18 @@ describe("WorkspaceSidebar context menu", () => {
         done: true,
       });
     });
-    expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
+  });
+
+  it("hides the topic read action when the topic is already read", async () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([createStream({ topics: [createTopic({ unreadCount: 0 })] })]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /release/i }));
+
+    expect(
+      await screen.findByRole("radiogroup", { name: /topic notifications/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^mark as read$/i })).not.toBeInTheDocument();
   });
 
   it("shows the prepared last-message time in a workspace topic row", () => {

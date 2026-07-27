@@ -11,6 +11,7 @@ import {
   deleteExpiredMessengerSearchResults,
   deleteWorkspaceMessengerCacheDatabase,
   deleteWorkspaceMessengerOwnerCache,
+  markCachedMessagesRead,
   openWorkspaceMessengerCacheDb,
   patchCachedMessage,
   readCachedMessagesByUuids,
@@ -523,6 +524,74 @@ describe("workspace-messenger-cache-db", () => {
 
     const topicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
     expect(topicWindow.messages.map((item) => item.uuid)).toEqual(["msg-b", "msg-a"]);
+  });
+
+  it("marks cached messages read in one owner without changing bucket membership", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        { ...message("msg-a", "2026-07-01T08:01:00.000Z"), read: false },
+        { ...message("msg-b", "2026-07-01T08:02:00.000Z"), read: false },
+      ],
+    });
+    await writeConversationMessagePage(OTHER_OWNER, TOPIC_CONVERSATION, {
+      messages: [{ ...message("msg-a", "2026-07-01T08:01:00.000Z"), read: false }],
+    });
+
+    await markCachedMessagesRead(OWNER, ["msg-a", "msg-b", "msg-a", "missing"]);
+
+    const ownerTopicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const ownerStreamWindow = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    const otherOwnerWindow = await readConversationMessageWindow(OTHER_OWNER, TOPIC_CONVERSATION);
+    expect(ownerTopicWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-a", read: true }),
+      expect.objectContaining({ uuid: "msg-b", read: true }),
+    ]);
+    expect(ownerStreamWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-a", read: true }),
+      expect.objectContaining({ uuid: "msg-b", read: true }),
+    ]);
+    expect(otherOwnerWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-a", read: false }),
+    ]);
+  });
+
+  it("marks every cached message in one conversation without loaded message uuids", async () => {
+    const otherTopicConversation = `topic:${STREAM}:topic-b`;
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        { ...message("msg-a", "2026-07-01T08:01:00.000Z"), read: false },
+        { ...message("msg-b", "2026-07-01T08:02:00.000Z"), read: false },
+      ],
+    });
+    await writeConversationMessagePage(OWNER, otherTopicConversation, {
+      messages: [
+        {
+          ...message("msg-c", "2026-07-01T08:03:00.000Z"),
+          conversationId: otherTopicConversation,
+          topicUuid: "topic-b",
+          read: false,
+        },
+      ],
+    });
+    await writeConversationMessagePage(OTHER_OWNER, TOPIC_CONVERSATION, {
+      messages: [{ ...message("msg-a", "2026-07-01T08:01:00.000Z"), read: false }],
+    });
+
+    await markCachedMessagesRead(OWNER, [], [TOPIC_CONVERSATION]);
+
+    const topicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const otherTopicWindow = await readConversationMessageWindow(OWNER, otherTopicConversation);
+    const otherOwnerWindow = await readConversationMessageWindow(OTHER_OWNER, TOPIC_CONVERSATION);
+    expect(topicWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-a", read: true }),
+      expect.objectContaining({ uuid: "msg-b", read: true }),
+    ]);
+    expect(otherTopicWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-c", read: false }),
+    ]);
+    expect(otherOwnerWindow.messages).toEqual([
+      expect.objectContaining({ uuid: "msg-a", read: false }),
+    ]);
   });
 
   it("deletes message bodies only after every bucket reference is removed", async () => {

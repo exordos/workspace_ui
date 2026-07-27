@@ -357,7 +357,10 @@ describe("messenger message actions", () => {
     const markMessagesReadUpTo = vi.fn(() =>
       Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
     );
-    const cache = { patchCachedMessage: vi.fn(() => Promise.resolve()) };
+    const cache = {
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+    };
 
     await markMessengerMessagesReadUpTo({
       runtimeContext,
@@ -373,8 +376,50 @@ describe("messenger message actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
     expect(cache.patchCachedMessage).toHaveBeenCalledWith(
       ownerKey,
-      expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+      expect.objectContaining({ uuid: MESSAGE_B, read: true }),
     );
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
+  });
+
+  it("includes the read_up_to anchor in a bulk-only cache update", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const earlier = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_A,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:00:00Z",
+      }),
+    );
+    const anchor = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_B,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:10:00Z",
+      }),
+    );
+    useWorkspaceMessageStore
+      .getState()
+      .mergeConversationMessagesPage(earlier.conversationId, [earlier, anchor]);
+    const cache = {
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+    };
+
+    await markMessengerMessagesReadUpTo({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      conversationIds: [earlier.conversationId],
+      client: {
+        markMessagesReadUpTo: () =>
+          Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+      },
+      cache,
+    });
+
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_B, MESSAGE_A]);
   });
 
   it("keeps the send result applied when the cache write fails", async () => {
