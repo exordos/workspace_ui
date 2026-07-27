@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -46,24 +46,66 @@ const account: ExternalAccount = {
   updatedAt: "2026-07-23T10:00:00Z",
 };
 
+function viewModel(
+  overrides: Partial<ReturnType<typeof useConfigureExternalChats>> = {},
+): ReturnType<typeof useConfigureExternalChats> {
+  return {
+    chats: [],
+    loadStatus: "ready",
+    loadError: null,
+    query: "",
+    pending: new Set(),
+    failed: new Set(),
+    submitting: false,
+    historyDepth: "30_days",
+    historyDepthDirty: false,
+    saveStatus: "clean",
+    settingsBusy: false,
+    selectionBlockedBySettings: false,
+    canSaveHistoryDepth: false,
+    unsupportedSelectionMode: false,
+    readyCount: 0,
+    selectedCount: 0,
+    setQuery: vi.fn(),
+    toggle: vi.fn(),
+    changeHistoryDepth: vi.fn(),
+    saveHistoryDepth: vi.fn(),
+    reloadAccountSettings: vi.fn(),
+    start: vi.fn(),
+    retryFailed: vi.fn(),
+    refresh: vi.fn(),
+    ...overrides,
+  };
+}
+
+function chat(
+  overrides: Partial<ReturnType<typeof viewModel>["chats"][number]> = {},
+): ReturnType<typeof viewModel>["chats"][number] {
+  return {
+    uuid: "chat-a",
+    externalAccountUuid: account.uuid,
+    type: "channel",
+    displayName: "Support",
+    selected: false,
+    projectId: null,
+    projectionStreamUuid: null,
+    status: "available",
+    safeError: null,
+    transitionPending: false,
+    revision: 1,
+    updatedAt: "2026-07-23T10:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("ConfigureExternalChatsDialog", () => {
   it("shows the catalog request error when the temporary entry gate lets the user through", () => {
-    vi.mocked(useConfigureExternalChats).mockReturnValue({
-      chats: [],
-      loadStatus: "error",
-      loadError: "forbidden",
-      query: "",
-      pending: new Set(),
-      failed: new Set(),
-      submitting: false,
-      readyCount: 0,
-      selectedCount: 0,
-      setQuery: vi.fn(),
-      toggle: vi.fn(),
-      start: vi.fn(),
-      retryFailed: vi.fn(),
-      refresh: vi.fn(),
-    });
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        loadStatus: "error",
+        loadError: "forbidden",
+      }),
+    );
 
     renderWithProviders(
       <ConfigureExternalChatsDialog
@@ -75,5 +117,162 @@ describe("ConfigureExternalChatsDialog", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load chats");
+  });
+
+  it("renders all history values as an accessible radio group without project controls", () => {
+    const changeHistoryDepth = vi.fn();
+    vi.mocked(useConfigureExternalChats).mockReturnValue(viewModel({ changeHistoryDepth }));
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const group = screen.getByRole("radiogroup", { name: "History depth" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(5);
+    expect(radios.map((radio) => radio.getAttribute("value"))).toEqual([
+      "new",
+      "7_days",
+      "30_days",
+      "90_days",
+      "all",
+    ]);
+    expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
+    expect(changeHistoryDepth).toHaveBeenCalledWith("90_days");
+    expect(screen.queryByLabelText(/project/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/project/i)).not.toBeInTheDocument();
+  });
+
+  it("warns about selected chats and blocks starting until dirty settings are saved", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        historyDepth: "90_days",
+        historyDepthDirty: true,
+        saveStatus: "dirty",
+        selectionBlockedBySettings: true,
+        canSaveHistoryDepth: true,
+        selectedCount: 2,
+        pending: new Set(["chat-a"]),
+        chats: [chat()],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByText(/restart history loading for 2 connected chats/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Support" })).toBeDisabled();
+    expect(screen.getByText(/save the history setting before starting/i)).toBeInTheDocument();
+  });
+
+  it("disables history, sync, and retry actions while settings are saving", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        saveStatus: "saving",
+        settingsBusy: true,
+        selectionBlockedBySettings: true,
+        pending: new Set(["chat-a"]),
+        failed: new Set(["chat-a"]),
+        chats: [chat()],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Retry failed" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
+    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+  });
+
+  it("offers an explicit current-version reload after a conflict", () => {
+    const reloadAccountSettings = vi.fn();
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        historyDepth: "90_days",
+        historyDepthDirty: true,
+        saveStatus: "conflict",
+        selectionBlockedBySettings: true,
+        reloadAccountSettings,
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    const loadCurrent = within(alert).getByRole("button", { name: "Load current" });
+    fireEvent.click(loadCurrent);
+    expect(reloadAccountSettings).toHaveBeenCalledOnce();
+  });
+
+  it("blocks editing for an unsupported automatic selection mode", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        unsupportedSelectionMode: true,
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
+    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+  });
+
+  it("does not add per-chat settings, move, or deselect controls", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        selectedCount: 1,
+        chats: [chat({ selected: true, status: "live", projectId: runtimeContext.projectId })],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const row = screen.getByText("Support").closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLLIElement).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(row as HTMLLIElement).getByRole("checkbox")).toBeDisabled();
   });
 });

@@ -96,6 +96,27 @@
     "retryFailed": "Retry failed",
     "requestFailed": "Could not start",
     "ready": "{{ready}} of {{total}} chats ready",
+    "historyDepth": {
+      "title": "History depth",
+      "description": "This setting applies to all chats in this Zulip account.",
+      "options": {
+        "new": "New only",
+        "7_days": "7 days",
+        "30_days": "30 days",
+        "90_days": "90 days",
+        "all": "All history"
+      },
+      "save": "Save settings",
+      "saving": "Saving…",
+      "saved": "Settings saved.",
+      "saveError": "Could not save history settings. Try again.",
+      "conflict": "These settings changed elsewhere. Load the current version before saving again.",
+      "loadCurrent": "Load current",
+      "unsupportedMode": "This account uses an unsupported automatic selection mode. History settings cannot be changed here.",
+      "selectedWarning": "Saving will restart history loading for {{count}} connected chats shown here. They will temporarily return to syncing.",
+      "selectBlockedDirty": "Save the history setting before starting new chat syncs.",
+      "selectBlockedSaving": "Wait until the history setting is saved before starting new chat syncs."
+    },
     "status": {
       "available": "Not connected",
       "syncing": "Loading history…",
