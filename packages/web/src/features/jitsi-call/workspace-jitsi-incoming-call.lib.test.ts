@@ -114,7 +114,7 @@ describe("buildWorkspaceIncomingDmCallInvite", () => {
     });
   });
 
-  it("ignores own, non-DM, and non-Jitsi messages", () => {
+  it("ignores read, own, non-DM, and non-Jitsi messages", () => {
     const baseInput = {
       ownerKey: OWNER_KEY,
       stream: createStream(),
@@ -124,6 +124,12 @@ describe("buildWorkspaceIncomingDmCallInvite", () => {
       meetUrl: MEET_URL,
     };
 
+    expect(
+      buildWorkspaceIncomingDmCallInvite({
+        ...baseInput,
+        message: createMessage({ read: true }),
+      }),
+    ).toBeNull();
     expect(
       buildWorkspaceIncomingDmCallInvite({
         ...baseInput,

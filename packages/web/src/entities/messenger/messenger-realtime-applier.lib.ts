@@ -19,6 +19,7 @@ import {
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
 import { messengerRealtimeActiveCache } from "./messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
 import { useMessengerStore } from "./messenger.model";
 import type {
   MessengerConversationId,
@@ -324,7 +325,11 @@ function applyMessageRealtimeEvent(
   }
 
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
-  if (context.notificationsEnabled === true && options.onMessageCreated != null) {
+  if (
+    context.notificationsEnabled === true &&
+    options.onMessageCreated != null &&
+    resolveMessengerMessageLiveEffectPolicy(message).liveSideEffectsEligible
+  ) {
     writeRealtimeCacheBestEffort(() =>
       options.onMessageCreated?.(ownerKey, message, stream, context),
     );

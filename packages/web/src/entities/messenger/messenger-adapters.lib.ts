@@ -148,6 +148,11 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     pinned: dto.pinned,
     starred: dto.starred,
     isOwn: dto.is_own,
+    mentioned: dto.mentioned,
+    sourceName: dto.source_name ?? "native",
+    source: dto.source ?? { kind: "native" },
+    provider: dto.provider ?? null,
+    delivery: dto.delivery ?? null,
     // Backend message snapshot уже содержит финальный aggregate счетчиков.
     // Своих reactionUuid в этом snapshot нет, поэтому adapter всегда начинает с
     // пустой локальной проекции; store/action слой обогатит ее отдельно из cache/SWR.

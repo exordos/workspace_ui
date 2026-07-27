@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerStreamBinding } from "./messenger.types";
+import type {
+  MessengerFolder,
+  MessengerFolderItem,
+  MessengerStream,
+  MessengerStreamBinding,
+} from "./messenger.types";
 
 const OWNER_KEY = "account-a:instance-a:organization-a:project-a";
 const OTHER_OWNER_KEY = "account-b:instance-b:organization-b:project-b";
@@ -11,6 +16,13 @@ const USER_A = "11111111-1111-4111-8111-111111111111";
 const BINDING_A = "dff7201e-5120-422d-ac5a-3cbe596dd71b";
 const BINDING_B = "3ba0d6e2-b7cd-4e70-90f8-89b202f8d1e7";
 const BINDING_C = "7c1ce67c-2ec3-4e1b-9380-458bd8c607f2";
+const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
+const FOLDER_B = "b0af81f7-703c-486f-b23d-cf02083aec0a";
+const FOLDER_C = "d88993ec-e109-4a98-bdd1-8ba036374ee0";
+const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
+const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
+const FOLDER_ITEM_C = "aee58fa0-8ab8-47ba-ae52-b504cfb383d9";
+const FOLDER_ITEM_D = "33a78fcf-24df-45f7-9fc5-349b10014baf";
 const DATE = "2026-06-22T10:10:00Z";
 
 function createStreamBinding(
@@ -24,6 +36,64 @@ function createStreamBinding(
     whoUuid: USER_A,
     role: "member",
     notificationMode: "all_messages",
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
+  return {
+    uuid: STREAM_A,
+    projectId: PROJECT_A,
+    ownerUuid: USER_A,
+    userUuid: USER_A,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Stream",
+    description: "",
+    unreadCount: 8,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createFolderItem(overrides: Partial<MessengerFolderItem> = {}): MessengerFolderItem {
+  return {
+    uuid: FOLDER_ITEM_A,
+    projectId: PROJECT_A,
+    folderUuid: FOLDER_A,
+    userUuid: USER_A,
+    streamUuid: STREAM_A,
+    conversationId: `stream:${STREAM_A}`,
+    chatType: "stream",
+    orderIndex: 10,
+    pinnedAt: null,
+    unreadCount: 3,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
+  return {
+    uuid: FOLDER_A,
+    title: "Folder",
+    backgroundColorValue: null,
+    unreadCount: 3,
+    systemType: "created",
+    items: [createFolderItem()],
     createdAt: DATE,
     updatedAt: DATE,
     ...overrides,
@@ -113,5 +183,113 @@ describe("messenger store", () => {
     expect(state.streamBindingIds).toEqual([]);
     expect(state.streamBindingIdsByStreamId[STREAM_A]).toEqual([]);
     expect(state.streamBindingsLoadedByStreamId[STREAM_A]).toBe(true);
+  });
+
+  it("projects a stream unread snapshot into every matching folder item", () => {
+    useMessengerStore.getState().replaceFolderSnapshots(OWNER_KEY, [
+      createFolder({
+        items: [
+          createFolderItem(),
+          createFolderItem({
+            uuid: FOLDER_ITEM_B,
+            streamUuid: STREAM_B,
+            conversationId: `stream:${STREAM_B}`,
+            unreadCount: 4,
+          }),
+        ],
+        unreadCount: 7,
+      }),
+      createFolder({
+        uuid: FOLDER_B,
+        items: [
+          createFolderItem({
+            uuid: FOLDER_ITEM_C,
+            folderUuid: FOLDER_B,
+            unreadCount: 2,
+          }),
+        ],
+        unreadCount: 2,
+      }),
+    ]);
+
+    useMessengerStore.getState().upsertStream(OWNER_KEY, createStream());
+
+    const state = useMessengerStore.getState();
+    expect(state.foldersById[FOLDER_A]?.items).toEqual([
+      expect.objectContaining({ uuid: FOLDER_ITEM_A, unreadCount: 8 }),
+      expect.objectContaining({ uuid: FOLDER_ITEM_B, unreadCount: 4 }),
+    ]);
+    expect(state.foldersById[FOLDER_A]?.unreadCount).toBe(12);
+    expect(state.foldersById[FOLDER_B]?.items).toEqual([
+      expect.objectContaining({ uuid: FOLDER_ITEM_C, unreadCount: 8 }),
+    ]);
+    expect(state.foldersById[FOLDER_B]?.unreadCount).toBe(8);
+  });
+
+  it("preserves unaffected folders and is idempotent for the same unread snapshot", () => {
+    const unaffectedFolder = createFolder({
+      uuid: FOLDER_C,
+      items: [
+        createFolderItem({
+          uuid: FOLDER_ITEM_D,
+          folderUuid: FOLDER_C,
+          streamUuid: STREAM_B,
+          conversationId: `stream:${STREAM_B}`,
+        }),
+      ],
+    });
+    useMessengerStore
+      .getState()
+      .replaceFolderSnapshots(OWNER_KEY, [createFolder(), unaffectedFolder]);
+
+    useMessengerStore.getState().upsertStream(OWNER_KEY, createStream());
+    const firstState = useMessengerStore.getState();
+    const firstMatchingFolder = firstState.foldersById[FOLDER_A];
+    const firstUnaffectedFolder = firstState.foldersById[FOLDER_C];
+
+    useMessengerStore.getState().upsertStream(OWNER_KEY, createStream());
+    const secondState = useMessengerStore.getState();
+
+    expect(secondState.foldersById[FOLDER_A]).toBe(firstMatchingFolder);
+    expect(secondState.foldersById[FOLDER_C]).toBe(firstUnaffectedFolder);
+    expect(secondState.foldersById[FOLDER_C]).toBe(unaffectedFolder);
+  });
+
+  it("projects a zero stream unread count without changing other stream items", () => {
+    useMessengerStore.getState().replaceFolderSnapshots(OWNER_KEY, [
+      createFolder({
+        items: [
+          createFolderItem(),
+          createFolderItem({
+            uuid: FOLDER_ITEM_B,
+            streamUuid: STREAM_B,
+            conversationId: `stream:${STREAM_B}`,
+            unreadCount: 4,
+          }),
+        ],
+        unreadCount: 7,
+      }),
+    ]);
+
+    useMessengerStore.getState().upsertStream(OWNER_KEY, createStream({ unreadCount: 0 }));
+
+    const folder = useMessengerStore.getState().foldersById[FOLDER_A];
+    expect(folder?.items).toEqual([
+      expect.objectContaining({ uuid: FOLDER_ITEM_A, unreadCount: 0 }),
+      expect.objectContaining({ uuid: FOLDER_ITEM_B, unreadCount: 4 }),
+    ]);
+    expect(folder?.unreadCount).toBe(4);
+  });
+
+  it("does not project a stream snapshot for another owner", () => {
+    useMessengerStore.getState().replaceFolderSnapshots(OWNER_KEY, [createFolder()]);
+    const before = useMessengerStore.getState();
+
+    useMessengerStore.getState().upsertStream(OTHER_OWNER_KEY, createStream({ unreadCount: 20 }));
+
+    const after = useMessengerStore.getState();
+    expect(after).toBe(before);
+    expect(after.foldersById[FOLDER_A]?.unreadCount).toBe(3);
+    expect(after.streamsById[STREAM_A]).toBeUndefined();
   });
 });

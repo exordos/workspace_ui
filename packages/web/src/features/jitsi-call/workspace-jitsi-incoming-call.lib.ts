@@ -37,7 +37,11 @@ function resolveCallerName(
 export function buildWorkspaceIncomingDmCallInvite(
   input: BuildWorkspaceIncomingDmCallInviteInput,
 ): IncomingDmCallInvite | null {
-  if (input.message.isOwn || input.message.authorUuid === input.currentUserUuid) {
+  if (
+    input.message.read ||
+    input.message.isOwn ||
+    input.message.authorUuid === input.currentUserUuid
+  ) {
     return null;
   }
 

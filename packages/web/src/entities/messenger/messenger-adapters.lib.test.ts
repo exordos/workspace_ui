@@ -228,6 +228,11 @@ describe("messenger adapters", () => {
       pinned: false,
       starred: false,
       isOwn: true,
+      mentioned: undefined,
+      sourceName: "native",
+      source: { kind: "native" },
+      provider: null,
+      delivery: null,
       reactions: {
         thumbs_up: 2,
         eyes: 1,
@@ -236,6 +241,51 @@ describe("messenger adapters", () => {
       createdAt: DATE,
       updatedAt: DATE,
     });
+  });
+
+  it("keeps external message provenance and backend mention state", () => {
+    expect(
+      adaptMessengerMessage({
+        ...messageDto,
+        mentioned: true,
+        source_name: "zulip",
+        source: {
+          kind: "zulip",
+          stream_id: 7,
+          message_id: 42,
+        },
+        provider: {
+          kind: "zulip",
+          account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          external_id: "message-42",
+          capabilities: {},
+          delivery_class: "backfill",
+          notification_eligible: false,
+        },
+        delivery: {
+          status: "delivered",
+          safe_error: null,
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        mentioned: true,
+        sourceName: "zulip",
+        source: {
+          kind: "zulip",
+          stream_id: 7,
+          message_id: 42,
+        },
+        provider: expect.objectContaining({
+          delivery_class: "backfill",
+          notification_eligible: false,
+        }),
+        delivery: {
+          status: "delivered",
+          safe_error: null,
+        },
+      }),
+    );
   });
 
   it("maps folder items to stream conversations", () => {

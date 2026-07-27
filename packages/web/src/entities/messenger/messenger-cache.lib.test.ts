@@ -10,11 +10,14 @@ import {
   upsertMessengerStreamBindingsCache,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
+  readMessengerMessageBodyCache,
   readMessengerCatalogPayloadCache,
+  writeMessengerMessageBodyCache,
   writeMessengerCatalogPayloadCache,
 } from "./messenger-cache.lib";
 import type {
   MessengerBootstrapPayload,
+  MessengerMessage,
   MessengerStream,
   MessengerStreamBinding,
 } from "./messenger.types";
@@ -23,6 +26,8 @@ const OWNER_KEY = "account:a:org:o:project:p:user:u";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const BINDING_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
+const TOPIC_UUID = "44444444-4444-4444-8444-444444444444";
+const MESSAGE_UUID = "55555555-5555-4555-8555-555555555555";
 const DATE = "2026-07-01T08:00:00.000Z";
 
 function createEmptyPayload(): MessengerBootstrapPayload {
@@ -121,5 +126,44 @@ describe("messenger cache", () => {
 
     const snapshot = await readMessengerCatalogCache(OWNER_KEY);
     expect(snapshot.streamBindings).toEqual([]);
+  });
+
+  it("keeps external provenance when a message is restored from cache", async () => {
+    const message: MessengerMessage = {
+      uuid: MESSAGE_UUID,
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      projectId: "project-a",
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      payload: { kind: "markdown", content: "Imported message" },
+      read: false,
+      pinned: false,
+      starred: false,
+      isOwn: false,
+      mentioned: true,
+      sourceName: "zulip",
+      source: { kind: "zulip", stream_id: 7, message_id: 42 },
+      provider: {
+        kind: "zulip",
+        account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        external_id: "message-42",
+        capabilities: {},
+        delivery_class: "backfill",
+        notification_eligible: false,
+      },
+      delivery: { status: "delivered", safe_error: null },
+      reactions: {},
+      ownReactionUuidsByEmojiName: {},
+      createdAt: DATE,
+      updatedAt: DATE,
+    };
+
+    await writeMessengerMessageBodyCache(OWNER_KEY, [message]);
+
+    await expect(readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID])).resolves.toEqual([
+      message,
+    ]);
   });
 });

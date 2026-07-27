@@ -1,14 +1,16 @@
 import type {
+  WorkspaceMessengerDeliveryDto,
   WorkspaceMessengerFolderItemChatType,
+  WorkspaceMessengerProviderDto,
   WorkspaceMessengerSourceDto,
   WorkspaceMessengerSourceName,
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 
 // These are domain types for the new path, not raw Workspace API responses.
 // Backend fields such as stream_uuid are converted here into app fields such as streamUuid.
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 
 export type MessengerUuid = string;
 export type MessengerConversationId = string;
@@ -141,6 +143,12 @@ export interface MessengerMessage {
   pinned: boolean;
   starred: boolean;
   isOwn: boolean;
+  // The fields below stay optional because durable cache rows can predate provenance.
+  mentioned?: boolean;
+  sourceName?: WorkspaceMessengerSourceName;
+  source?: WorkspaceMessengerSourceDto;
+  provider?: WorkspaceMessengerProviderDto | null;
+  delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: MessengerReactionCountsByName;
   ownReactionUuidsByEmojiName: MessengerOwnReactionUuidsByName;
   pendingOwnReactionsByEmojiName?: MessengerPendingOwnReactionsByName;

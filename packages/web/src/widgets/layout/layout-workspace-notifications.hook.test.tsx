@@ -176,6 +176,7 @@ function createProjection(
     topicSnapshotsById: options.topicSnapshotsById ?? {},
     folderSnapshotsById: {},
     folderItemSnapshotsById: {},
+    folderItemTopologyById: {},
     messageIdSnapshotsById: options.messageIdSnapshotsById ?? {},
     recentEvents: [],
     notificationCandidates: options.notificationCandidates ?? [],
@@ -583,6 +584,56 @@ describe("useLayoutWorkspaceNotifications", () => {
 
     await waitFor(() => {
       expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(1);
+    });
+    expect(showNotificationMock).not.toHaveBeenCalled();
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
+    expect(requestAttentionMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the backend notification gate to the final policy before all effects", async () => {
+    const session = createSession("provider-gate");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "provider-gate-message";
+
+    shouldWorkspaceDesktopNotifyMock.mockImplementationOnce(({ message }) => ({
+      notify: message.notificationEligible !== false,
+      trigger: "dm",
+    }));
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useSettingsStore.setState({ notificationSound: "glass" });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, messageUuid, {
+              notificationEligible: false,
+              liveEffectPolicyReason: "provider_gate_closed",
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({ notificationEligible: false }),
+        }),
+      );
     });
     expect(showNotificationMock).not.toHaveBeenCalled();
     expect(playNotificationSoundMock).not.toHaveBeenCalled();

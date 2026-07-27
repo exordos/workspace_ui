@@ -599,6 +599,39 @@ describe("messenger realtime active applier", () => {
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
+  it("stores backfill messages without running message-created live side effects", () => {
+    const context = createContext();
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        message: createMessageDto({
+          provider: {
+            kind: "zulip",
+            account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            external_id: "message-42",
+            capabilities: {},
+            delivery_class: "backfill",
+            notification_eligible: false,
+          },
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        provider: expect.objectContaining({ delivery_class: "backfill" }),
+      }),
+    );
+    expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
   it("inserts delayed live messages by created time in stream and topic buckets", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;

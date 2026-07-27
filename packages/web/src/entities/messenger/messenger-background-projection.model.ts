@@ -30,6 +30,10 @@ import type {
   WorkspaceRealtimeTransportState,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import {
+  resolveMessengerMessageLiveEffectPolicy,
+  type MessengerMessageLiveEffectPolicyReason,
+} from "./messenger-live-effects.lib";
 
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
@@ -70,6 +74,8 @@ export interface MessengerBackgroundNotificationCandidate {
   topicNotificationMode: WorkspaceMessengerTopicNotificationMode | null;
   hasCurrentUserMention?: boolean;
   hasWildcardMention?: boolean;
+  notificationEligible?: boolean;
+  liveEffectPolicyReason?: MessengerMessageLiveEffectPolicyReason;
   observedAt: number;
 }
 
@@ -158,6 +164,11 @@ export interface MessengerBackgroundMessageIdSnapshot {
   deletedAt: number | null;
 }
 
+export interface MessengerBackgroundFolderItemTopology {
+  streamUuid: WorkspaceMessengerUuid;
+  folderUuid: WorkspaceMessengerUuid | null;
+}
+
 export interface MessengerBackgroundProjection {
   ownerKey: string;
   lastEpochVersion: WorkspaceMessengerEpochVersion | null;
@@ -167,6 +178,7 @@ export interface MessengerBackgroundProjection {
   topicSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundTopicSnapshot>;
   folderSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderSnapshot>;
   folderItemSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemSnapshot>;
+  folderItemTopologyById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemTopology>;
   messageIdSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundMessageIdSnapshot>;
   recentEvents: MessengerBackgroundRecentEvent[];
   notificationCandidates: MessengerBackgroundNotificationCandidate[];
@@ -236,6 +248,7 @@ function createEmptyProjection(ownerKey: string): MessengerBackgroundProjection 
     topicSnapshotsById: {},
     folderSnapshotsById: {},
     folderItemSnapshotsById: {},
+    folderItemTopologyById: {},
     messageIdSnapshotsById: {},
     recentEvents: [],
     notificationCandidates: [],
@@ -480,6 +493,11 @@ function applyMessageProjection(
     return compactProjection(nextProjection, observedAt);
   }
 
+  const liveEffectPolicy = resolveMessengerMessageLiveEffectPolicy(event.message);
+  if (!liveEffectPolicy.notificationEligible) {
+    return compactProjection(nextProjection, observedAt);
+  }
+
   const streamNotificationMode =
     baseProjection.streamSnapshotsById[event.message.stream_uuid]?.notificationMode ?? null;
   const streamSnapshot = baseProjection.streamSnapshotsById[event.message.stream_uuid];
@@ -492,13 +510,15 @@ function applyMessageProjection(
   // Для default topic держим null, чтобы следующий слой сам собрал корректный заголовок.
   const topicName = topicSnapshot?.topicName ?? null;
   // В фоне считаем только уверенные признаки: UUID-mention текущего пользователя и простые wildcard.
-  const hasCurrentUserMention = hasWorkspaceMentionForCurrentUser({
-    kind: audience === "private" ? "dm" : "stream",
-    markdown: event.message.payload.content,
-    isOwn: event.message.is_own,
-    read: event.message.read,
-    currentUserUuid: context.owner.userUuid,
-  });
+  const hasCurrentUserMention =
+    event.message.mentioned ??
+    hasWorkspaceMentionForCurrentUser({
+      kind: audience === "private" ? "dm" : "stream",
+      markdown: event.message.payload.content,
+      isOwn: event.message.is_own,
+      read: event.message.read,
+      currentUserUuid: context.owner.userUuid,
+    });
   const hasWildcardMention = hasWorkspaceWildcardMention(event.message.payload.content);
   const candidate: MessengerBackgroundNotificationCandidate = {
     ownerKey: context.ownerKey,
@@ -541,6 +561,8 @@ function applyMessageProjection(
     topicNotificationMode,
     hasCurrentUserMention,
     hasWildcardMention,
+    notificationEligible: liveEffectPolicy.notificationEligible,
+    liveEffectPolicyReason: liveEffectPolicy.reason,
     observedAt,
   };
   return compactProjection(
@@ -578,20 +600,42 @@ function applyDeletedStreamProjection(
     baseProjection.messageIdSnapshotsById,
     event.stream.uuid,
   );
-  const unreadByFolderItemId = removeUnreadForMissingFolderItems(
-    baseProjection.unreadByFolderItemId,
-    folderItemSnapshotsById,
+  const affectedFolderIds = new Set<WorkspaceMessengerUuid>();
+  const folderItemTopologyById: Record<
+    WorkspaceMessengerUuid,
+    MessengerBackgroundFolderItemTopology
+  > = {};
+  const durableUnreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
+  for (const [folderItemUuid, topology] of Object.entries(baseProjection.folderItemTopologyById)) {
+    if (topology.streamUuid === event.stream.uuid) {
+      delete durableUnreadByFolderItemId[folderItemUuid];
+      if (topology.folderUuid != null) affectedFolderIds.add(topology.folderUuid);
+    } else {
+      folderItemTopologyById[folderItemUuid] = topology;
+    }
+  }
+  const folderUnreadProjection = projectBackgroundFolderUnreadTotals(
+    {
+      ...baseProjection,
+      folderItemTopologyById,
+      unreadByFolderItemId: durableUnreadByFolderItemId,
+      folderSnapshotsById,
+    },
+    durableUnreadByFolderItemId,
+    affectedFolderIds,
   );
 
   return compactProjection(
     {
       ...baseProjection,
-      unreadByFolderItemId,
+      unreadByFolderItemId: durableUnreadByFolderItemId,
       streamSnapshotsById,
       topicSnapshotsById,
-      folderSnapshotsById,
+      folderSnapshotsById: folderUnreadProjection.folderSnapshotsById,
       folderItemSnapshotsById,
+      folderItemTopologyById,
       messageIdSnapshotsById,
+      unreadByFolderId: folderUnreadProjection.unreadByFolderId,
     },
     observedAt,
   );
@@ -603,9 +647,16 @@ function applyStreamProjection(
   context: WorkspaceRealtimeEventContext,
   observedAt: number,
 ): MessengerBackgroundProjection {
+  const folderUnreadProjection = projectStreamUnreadIntoBackgroundFolders(
+    baseProjection,
+    event.stream.uuid,
+    event.stream.unread_count,
+  );
+
   return compactProjection(
     {
       ...baseProjection,
+      ...folderUnreadProjection,
       streamSnapshotsById: {
         ...baseProjection.streamSnapshotsById,
         [event.stream.uuid]: {
@@ -625,6 +676,120 @@ function applyStreamProjection(
     },
     observedAt,
   );
+}
+
+function projectStreamUnreadIntoBackgroundFolders(
+  projection: MessengerBackgroundProjection,
+  streamUuid: WorkspaceMessengerUuid,
+  unreadCount: number,
+): Pick<
+  MessengerBackgroundProjection,
+  "folderItemSnapshotsById" | "folderSnapshotsById" | "unreadByFolderItemId" | "unreadByFolderId"
+> {
+  const itemProjection = projectStreamUnreadIntoBackgroundFolderItems(
+    projection,
+    streamUuid,
+    unreadCount,
+  );
+  const folderProjection = projectBackgroundFolderUnreadTotals(
+    projection,
+    itemProjection.unreadByFolderItemId,
+    itemProjection.affectedFolderIds,
+  );
+
+  return {
+    folderItemSnapshotsById: itemProjection.folderItemSnapshotsById,
+    folderSnapshotsById: folderProjection.folderSnapshotsById,
+    unreadByFolderItemId: itemProjection.unreadByFolderItemId,
+    unreadByFolderId: folderProjection.unreadByFolderId,
+  };
+}
+
+function projectStreamUnreadIntoBackgroundFolderItems(
+  projection: MessengerBackgroundProjection,
+  streamUuid: WorkspaceMessengerUuid,
+  unreadCount: number,
+): {
+  affectedFolderIds: Set<WorkspaceMessengerUuid>;
+  folderItemSnapshotsById: MessengerBackgroundProjection["folderItemSnapshotsById"];
+  unreadByFolderItemId: MessengerBackgroundProjection["unreadByFolderItemId"];
+} {
+  let folderItemSnapshotsById = projection.folderItemSnapshotsById;
+  let unreadByFolderItemId = projection.unreadByFolderItemId;
+  const affectedFolderIds = new Set<WorkspaceMessengerUuid>();
+
+  for (const [folderItemUuid, topology] of Object.entries(projection.folderItemTopologyById)) {
+    if (topology.streamUuid !== streamUuid) continue;
+
+    const itemSnapshot = projection.folderItemSnapshotsById[folderItemUuid];
+    if (itemSnapshot != null && itemSnapshot.unreadCount !== unreadCount) {
+      if (folderItemSnapshotsById === projection.folderItemSnapshotsById) {
+        folderItemSnapshotsById = { ...projection.folderItemSnapshotsById };
+      }
+      folderItemSnapshotsById[folderItemUuid] = {
+        ...itemSnapshot,
+        unreadCount,
+      };
+    }
+
+    if (projection.unreadByFolderItemId[folderItemUuid] !== unreadCount) {
+      if (unreadByFolderItemId === projection.unreadByFolderItemId) {
+        unreadByFolderItemId = { ...projection.unreadByFolderItemId };
+      }
+      unreadByFolderItemId[folderItemUuid] = unreadCount;
+    }
+
+    if (topology.folderUuid != null) {
+      affectedFolderIds.add(topology.folderUuid);
+    }
+  }
+
+  return {
+    affectedFolderIds,
+    folderItemSnapshotsById,
+    unreadByFolderItemId,
+  };
+}
+
+function projectBackgroundFolderUnreadTotals(
+  projection: MessengerBackgroundProjection,
+  unreadByFolderItemId: MessengerBackgroundProjection["unreadByFolderItemId"],
+  affectedFolderIds: Set<WorkspaceMessengerUuid>,
+): Pick<MessengerBackgroundProjection, "folderSnapshotsById" | "unreadByFolderId"> {
+  let folderSnapshotsById = projection.folderSnapshotsById;
+  let unreadByFolderId = projection.unreadByFolderId;
+  for (const folderUuid of affectedFolderIds) {
+    const folderSnapshot = projection.folderSnapshotsById[folderUuid];
+    const nextFolderUnreadCount = Object.entries(projection.folderItemTopologyById).reduce(
+      (total, [folderItemUuid, topology]) =>
+        topology.folderUuid === folderUuid
+          ? total + (unreadByFolderItemId[folderItemUuid] ?? 0)
+          : total,
+      0,
+    );
+
+    if (folderSnapshot != null && folderSnapshot.unreadCount !== nextFolderUnreadCount) {
+      if (folderSnapshotsById === projection.folderSnapshotsById) {
+        folderSnapshotsById = { ...projection.folderSnapshotsById };
+      }
+      folderSnapshotsById[folderUuid] = {
+        ...folderSnapshot,
+        unreadCount: nextFolderUnreadCount,
+      };
+    }
+
+    if (projection.unreadByFolderId[folderUuid] !== nextFolderUnreadCount) {
+      if (unreadByFolderId === projection.unreadByFolderId) {
+        unreadByFolderId = { ...projection.unreadByFolderId };
+      }
+      unreadByFolderId[folderUuid] = nextFolderUnreadCount;
+    }
+  }
+
+  return {
+    folderSnapshotsById,
+    unreadByFolderId,
+  };
 }
 
 function applyDeletedTopicProjection(
@@ -688,16 +853,24 @@ function applyDeletedFolderProjection(
     baseProjection.folderItemSnapshotsById,
     event.folder.uuid,
   );
+  const folderItemTopologyById = removeFolderItemTopologyByFolderUuid(
+    baseProjection.folderItemTopologyById,
+    event.folder.uuid,
+  );
+  const unreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
+  for (const [folderItemUuid, topology] of Object.entries(baseProjection.folderItemTopologyById)) {
+    if (topology.folderUuid === event.folder.uuid) {
+      delete unreadByFolderItemId[folderItemUuid];
+    }
+  }
   return compactProjection(
     {
       ...baseProjection,
       unreadByFolderId,
-      unreadByFolderItemId: removeUnreadForMissingFolderItems(
-        baseProjection.unreadByFolderItemId,
-        folderItemSnapshotsById,
-      ),
+      unreadByFolderItemId,
       folderSnapshotsById,
       folderItemSnapshotsById,
+      folderItemTopologyById,
     },
     observedAt,
   );
@@ -711,13 +884,16 @@ function applyFolderProjection(
 ): MessengerBackgroundProjection {
   const nextUnreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
   const nextFolderItemSnapshotsById = { ...baseProjection.folderItemSnapshotsById };
-  const previousFolderItemIds =
-    baseProjection.folderSnapshotsById[event.folder.uuid]?.folderItemIds ?? [];
+  const nextFolderItemTopologyById = { ...baseProjection.folderItemTopologyById };
+  const previousFolderItemIds = Object.entries(baseProjection.folderItemTopologyById)
+    .filter(([, topology]) => topology.folderUuid === event.folder.uuid)
+    .map(([folderItemUuid]) => folderItemUuid);
   const nextFolderItemIds: WorkspaceMessengerUuid[] = [];
 
   for (const previousFolderItemId of previousFolderItemIds) {
     delete nextUnreadByFolderItemId[previousFolderItemId];
     delete nextFolderItemSnapshotsById[previousFolderItemId];
+    delete nextFolderItemTopologyById[previousFolderItemId];
   }
 
   for (const item of event.folder.folder_items) {
@@ -735,6 +911,10 @@ function applyFolderProjection(
       epochVersion: event.epoch_version,
       updatedAt: item.updated_at,
       observedAt,
+    };
+    nextFolderItemTopologyById[item.uuid] = {
+      streamUuid: item.stream_uuid,
+      folderUuid,
     };
   }
 
@@ -760,6 +940,7 @@ function applyFolderProjection(
         },
       },
       folderItemSnapshotsById: nextFolderItemSnapshotsById,
+      folderItemTopologyById: nextFolderItemTopologyById,
     },
     observedAt,
   );
@@ -778,6 +959,11 @@ function applyFolderItemProjection(
     baseProjection.folderItemSnapshotsById,
     event.folder_item.uuid,
   );
+  const removedTopology = baseProjection.folderItemTopologyById[event.folder_item.uuid];
+  const folderItemTopologyById = omitRecordKey(
+    baseProjection.folderItemTopologyById,
+    event.folder_item.uuid,
+  );
   const folderSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderSnapshot> = {};
 
   for (const folderSnapshot of Object.values(baseProjection.folderSnapshotsById)) {
@@ -788,13 +974,29 @@ function applyFolderItemProjection(
       ),
     };
   }
+  const affectedFolderIds = new Set<WorkspaceMessengerUuid>();
+  if (removedTopology?.folderUuid != null) {
+    affectedFolderIds.add(removedTopology.folderUuid);
+  }
+  const folderUnreadProjection = projectBackgroundFolderUnreadTotals(
+    {
+      ...baseProjection,
+      folderItemTopologyById,
+      unreadByFolderItemId,
+      folderSnapshotsById,
+    },
+    unreadByFolderItemId,
+    affectedFolderIds,
+  );
 
   return compactProjection(
     {
       ...baseProjection,
       unreadByFolderItemId,
-      folderSnapshotsById,
+      folderSnapshotsById: folderUnreadProjection.folderSnapshotsById,
       folderItemSnapshotsById,
+      folderItemTopologyById,
+      unreadByFolderId: folderUnreadProjection.unreadByFolderId,
     },
     observedAt,
   );
@@ -839,6 +1041,19 @@ function removeFolderItemSnapshotsByFolderUuid(
   return next;
 }
 
+function removeFolderItemTopologyByFolderUuid(
+  topologyById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemTopology>,
+  folderUuid: WorkspaceMessengerUuid,
+): Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemTopology> {
+  const next: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemTopology> = {};
+  for (const [folderItemUuid, topology] of Object.entries(topologyById)) {
+    if (topology.folderUuid !== folderUuid) {
+      next[folderItemUuid] = topology;
+    }
+  }
+  return next;
+}
+
 function removeMessageSnapshotsByStreamUuid(
   snapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundMessageIdSnapshot>,
   streamUuid: WorkspaceMessengerUuid,
@@ -860,19 +1075,6 @@ function removeMessageSnapshotsByTopicUuid(
   for (const snapshot of Object.values(snapshotsById)) {
     if (snapshot.topicUuid !== topicUuid) {
       next[snapshot.messageUuid] = snapshot;
-    }
-  }
-  return next;
-}
-
-function removeUnreadForMissingFolderItems(
-  unreadByFolderItemId: Record<WorkspaceMessengerUuid, number>,
-  folderItemSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderItemSnapshot>,
-): Record<WorkspaceMessengerUuid, number> {
-  const next: Record<WorkspaceMessengerUuid, number> = {};
-  for (const [folderItemUuid, unreadCount] of Object.entries(unreadByFolderItemId)) {
-    if (folderItemSnapshotsById[folderItemUuid] != null) {
-      next[folderItemUuid] = unreadCount;
     }
   }
   return next;

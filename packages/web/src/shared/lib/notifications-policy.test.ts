@@ -71,6 +71,23 @@ describe("notifications-policy", () => {
       });
     });
 
+    it("returns false when the backend notification gate is closed", () => {
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: {
+            kind: "dm",
+            isOwn: false,
+            read: false,
+            notificationEligible: false,
+          },
+          viewport: baseViewport,
+        }),
+      ).toEqual({
+        notify: false,
+        trigger: "dm",
+      });
+    });
+
     it("notifies for dm", () => {
       expect(
         shouldWorkspaceDesktopNotify({

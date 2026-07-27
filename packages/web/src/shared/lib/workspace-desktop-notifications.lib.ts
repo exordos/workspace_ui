@@ -26,6 +26,7 @@ export interface WorkspaceDesktopNotificationMessageContext {
   resolveMention?: WorkspaceMessageMentionResolver;
   hasCurrentUserMention?: boolean;
   hasWildcardMention?: boolean;
+  notificationEligible?: boolean;
   streamNotificationMode?: WorkspaceMessengerStreamNotificationMode | null;
   topicNotificationMode?: WorkspaceMessengerTopicNotificationMode | null;
 }
@@ -223,6 +224,7 @@ export function shouldWorkspaceDesktopNotify(
 ): ShouldWorkspaceDesktopNotifyResult {
   const trigger = classifyWorkspaceNotificationTrigger(input.message);
   const blocked =
+    input.message.notificationEligible === false ||
     input.message.isOwn ||
     input.message.read ||
     isWorkspaceDesktopNotificationMuted(input.message) ||

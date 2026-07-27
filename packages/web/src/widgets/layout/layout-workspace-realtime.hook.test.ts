@@ -55,6 +55,7 @@ const CALLER_UUID = "99999999-9999-4999-8999-999999999999";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const BACKFILL_MESSAGE_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const EXTERNAL_ACCOUNT_UUID = "88888888-8888-4888-8888-888888888888";
 const EXTERNAL_CHAT_UUID = "77777777-7777-4777-8777-777777777777";
 const DATE = "2026-06-22T10:10:00Z";
@@ -749,6 +750,44 @@ describe("useLayoutWorkspaceRealtime", () => {
     factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 9,
+        type: "message",
+        message: {
+          uuid: BACKFILL_MESSAGE_UUID,
+          project_id: PROJECT_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          author_uuid: CALLER_UUID,
+          payload: {
+            kind: "markdown",
+            content: "https://meet.workspace.example.com/old-workspace-room",
+          },
+          user_uuid: USER_UUID,
+          read: false,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          provider: {
+            kind: "zulip",
+            account_uuid: EXTERNAL_ACCOUNT_UUID,
+            external_id: "old-call-invite",
+            capabilities: {},
+            delivery_class: "backfill",
+            notification_eligible: false,
+          },
+          reactions: {},
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket", notificationsEnabled: true },
+    );
+
+    expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[BACKFILL_MESSAGE_UUID]).toBeDefined();
+
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 10,
         type: "message",
         message: {
           uuid: MESSAGE_UUID,

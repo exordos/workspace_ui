@@ -1,9 +1,6 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import {
-  useMessengerBackgroundProjectionStore,
-  type MessengerBackgroundProjection,
-} from "~/entities/messenger/messenger-background-projection.model";
+import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
@@ -21,6 +18,7 @@ import {
 import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import { getBackgroundProjectionUnreadCount } from "./top-bar-workspace-session-unread.lib";
 
 function getHostLabel(baseUrl: string, fallback: string): string {
   try {
@@ -61,25 +59,6 @@ function getWorkspaceSessionOwnerKey(session: WorkspaceAuthSession): string {
     projectId: session.projectId,
     userUuid: session.userUuid,
   });
-}
-
-function getBackgroundProjectionUnreadCount(
-  projection: MessengerBackgroundProjection | undefined,
-): number {
-  if (projection == null) return 0;
-  const unreadFromFolders = Object.values(projection.unreadByFolderId).reduce(
-    (sum, count) => sum + Math.max(0, count),
-    0,
-  );
-  if (unreadFromFolders > 0) return unreadFromFolders;
-
-  const unreadFromFolderItems = Object.values(projection.unreadByFolderItemId).reduce(
-    (sum, count) => sum + Math.max(0, count),
-    0,
-  );
-  if (unreadFromFolderItems > 0) return unreadFromFolderItems;
-
-  return projection.notificationCandidates.some((candidate) => !candidate.isOwn) ? 1 : 0;
 }
 
 const OrganizationLogo = React.memo(function OrganizationLogo({

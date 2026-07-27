@@ -260,6 +260,74 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts external message provenance and legacy provider metadata", () => {
+    const provider = {
+      kind: "zulip",
+      account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      external_id: "message-42",
+      capabilities: {},
+    } as const;
+
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        mentioned: false,
+        source_name: "zulip",
+        source: {
+          kind: "zulip",
+          stream_id: 7,
+          server_url: "https://zulip.example.test",
+          topic_name: "Release",
+          message_id: 42,
+        },
+        provider: {
+          ...provider,
+          delivery_class: "backfill",
+          notification_eligible: false,
+        },
+        delivery: {
+          status: "delivered",
+          safe_error: null,
+          can_retry: false,
+          updated_at: DATE,
+        },
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerMessageDto({ ...messageDto, provider })).toBe(true);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: null,
+        delivery: null,
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: {
+          ...provider,
+          provider_sequence: "42",
+        },
+        delivery: {
+          status: "delivered",
+          future_delivery_field: "kept-compatible",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: { ...provider, delivery_class: "archive" },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: { ...provider, notification_eligible: "false" },
+      }),
+    ).toBe(false);
+  });
+
   it("keeps a user valid when the avatar is missing or uses an unknown format", () => {
     expect(isWorkspaceMessengerUserDto({ ...userDto, avatar: undefined })).toBe(true);
     expect(

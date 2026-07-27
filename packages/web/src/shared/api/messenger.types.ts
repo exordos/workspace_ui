@@ -28,6 +28,9 @@ export interface WorkspaceMessengerNativeSourceDto {
 export interface WorkspaceMessengerZulipSourceDto {
   kind: "zulip";
   stream_id: number;
+  server_url?: string | null;
+  topic_name?: string | null;
+  message_id?: number | null;
 }
 
 export type WorkspaceMessengerSourceDto =
@@ -94,6 +97,37 @@ export interface WorkspaceMessengerMarkdownPayloadDto {
 // Keep the backend payload envelope extensible. The current Workspace API
 // supports markdown only, but new message kinds must be added here explicitly.
 export type WorkspaceMessengerMessagePayloadDto = WorkspaceMessengerMarkdownPayloadDto;
+
+export type WorkspaceMessengerDeliveryClass = "live" | "backfill";
+
+export interface WorkspaceMessengerProviderDto {
+  kind: "zulip";
+  account_uuid: WorkspaceMessengerUuid;
+  external_id: string | null;
+  capabilities: Record<string, unknown>;
+  delivery_class?: WorkspaceMessengerDeliveryClass;
+  notification_eligible?: boolean;
+}
+
+export type WorkspaceMessengerDeliveryStatus =
+  | "pending"
+  | "delivered"
+  | "failed"
+  | "manual_reconciliation_required"
+  | "discarded";
+
+export interface WorkspaceMessengerDeliveryDto {
+  external_operation_uuid?: WorkspaceMessengerUuid | null;
+  status?: WorkspaceMessengerDeliveryStatus;
+  safe_error?: string | null;
+  can_retry?: boolean;
+  can_discard?: boolean;
+  duplicate_risk?: boolean;
+  retry_requires_confirmation?: boolean;
+  original_url?: string | null;
+  reconciliation_reason?: string | null;
+  updated_at?: WorkspaceMessengerDateTime | null;
+}
 
 export interface WorkspaceMessengerDraftDto {
   uuid: WorkspaceMessengerUuid;
@@ -170,6 +204,12 @@ export interface WorkspaceMessengerMessageDto {
   pinned: boolean;
   starred: boolean;
   is_own: boolean;
+  // The fields below stay optional for snapshots created before provenance became public.
+  mentioned?: boolean;
+  source_name?: WorkspaceMessengerSourceName;
+  source?: WorkspaceMessengerSourceDto;
+  provider?: WorkspaceMessengerProviderDto | null;
+  delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: WorkspaceMessengerReactionAggregate;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
@@ -709,6 +749,20 @@ function isSourceName(value: unknown): value is WorkspaceMessengerSourceName {
   return value === "native" || value === "zulip";
 }
 
+function isDeliveryClass(value: unknown): value is WorkspaceMessengerDeliveryClass {
+  return value === "live" || value === "backfill";
+}
+
+function isDeliveryStatus(value: unknown): value is WorkspaceMessengerDeliveryStatus {
+  return (
+    value === "pending" ||
+    value === "delivered" ||
+    value === "failed" ||
+    value === "manual_reconciliation_required" ||
+    value === "discarded"
+  );
+}
+
 function isStreamNotificationMode(
   value: unknown,
 ): value is WorkspaceMessengerStreamNotificationMode {
@@ -874,7 +928,62 @@ export function isWorkspaceMessengerSourceDto(
 ): value is WorkspaceMessengerSourceDto {
   return (
     (isRecord(value) && value.kind === "native") ||
-    (isRecord(value) && value.kind === "zulip" && isNonNegativeInteger(value.stream_id))
+    (isRecord(value) &&
+      value.kind === "zulip" &&
+      isNonNegativeInteger(value.stream_id) &&
+      (value.server_url === undefined ||
+        value.server_url === null ||
+        typeof value.server_url === "string") &&
+      (value.topic_name === undefined ||
+        value.topic_name === null ||
+        typeof value.topic_name === "string") &&
+      (value.message_id === undefined ||
+        value.message_id === null ||
+        isNonNegativeInteger(value.message_id)))
+  );
+}
+
+export function isWorkspaceMessengerProviderDto(
+  value: unknown,
+): value is WorkspaceMessengerProviderDto {
+  return (
+    isRecord(value) &&
+    value.kind === "zulip" &&
+    isUuid(value.account_uuid) &&
+    (value.external_id === null || typeof value.external_id === "string") &&
+    isRecord(value.capabilities) &&
+    (value.delivery_class === undefined || isDeliveryClass(value.delivery_class)) &&
+    (value.notification_eligible === undefined || typeof value.notification_eligible === "boolean")
+  );
+}
+
+export function isWorkspaceMessengerDeliveryDto(
+  value: unknown,
+): value is WorkspaceMessengerDeliveryDto {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    (value.external_operation_uuid === undefined ||
+      value.external_operation_uuid === null ||
+      isUuid(value.external_operation_uuid)) &&
+    (value.status === undefined || isDeliveryStatus(value.status)) &&
+    (value.safe_error === undefined ||
+      value.safe_error === null ||
+      typeof value.safe_error === "string") &&
+    (value.can_retry === undefined || typeof value.can_retry === "boolean") &&
+    (value.can_discard === undefined || typeof value.can_discard === "boolean") &&
+    (value.duplicate_risk === undefined || typeof value.duplicate_risk === "boolean") &&
+    (value.retry_requires_confirmation === undefined ||
+      typeof value.retry_requires_confirmation === "boolean") &&
+    (value.original_url === undefined ||
+      value.original_url === null ||
+      typeof value.original_url === "string") &&
+    (value.reconciliation_reason === undefined ||
+      value.reconciliation_reason === null ||
+      typeof value.reconciliation_reason === "string") &&
+    (value.updated_at === undefined || isNullableDateTime(value.updated_at))
   );
 }
 
@@ -1005,6 +1114,15 @@ export function isWorkspaceMessengerMessageDto(
     typeof value.pinned === "boolean" &&
     typeof value.starred === "boolean" &&
     typeof value.is_own === "boolean" &&
+    (value.mentioned === undefined || typeof value.mentioned === "boolean") &&
+    (value.source_name === undefined || isSourceName(value.source_name)) &&
+    (value.source === undefined || isWorkspaceMessengerSourceDto(value.source)) &&
+    (value.provider === undefined ||
+      value.provider === null ||
+      isWorkspaceMessengerProviderDto(value.provider)) &&
+    (value.delivery === undefined ||
+      value.delivery === null ||
+      isWorkspaceMessengerDeliveryDto(value.delivery)) &&
     isWorkspaceMessengerReactionAggregate(value.reactions) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
