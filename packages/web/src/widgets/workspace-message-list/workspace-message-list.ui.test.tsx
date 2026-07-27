@@ -1094,6 +1094,82 @@ describe("WorkspaceMessageList", () => {
     });
   });
 
+  it("reports only sufficiently visible unread messages after focus returns", () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    const onUnreadMessagesVisible = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "focus-unread-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const message = container.querySelector<HTMLElement>(
+      "[data-message-uuid='focus-unread-message']",
+    );
+
+    if (feed == null || message == null) {
+      throw new Error("Unread focus test nodes were not found");
+    }
+
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const messageRect = vi.spyOn(message, "getBoundingClientRect");
+    messageRect.mockReturnValue({
+      top: 90,
+      bottom: 110,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 20,
+      x: 0,
+      y: 90,
+      toJSON: () => ({}),
+    });
+
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith(["focus-unread-message"]);
+
+    onUnreadMessagesVisible.mockClear();
+    messageRect.mockReturnValue({
+      top: 91,
+      bottom: 111,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 20,
+      x: 0,
+      y: 91,
+      toJSON: () => ({}),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    hasFocus.mockRestore();
+  });
+
   it("renders neighboring author groups separately", () => {
     const { container } = render(
       <WorkspaceMessageList

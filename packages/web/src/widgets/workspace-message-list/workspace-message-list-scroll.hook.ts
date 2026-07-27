@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { isWindowActive } from "~/shared/lib/visibility";
 import {
   computeWorkspaceScrollTopAfterPrepend,
   computeWorkspaceScrollTopFromRenderAnchor,
@@ -14,6 +15,7 @@ import type React from "react";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const LOAD_MORE_THRESHOLD = 100;
+const UNREAD_VISIBILITY_THRESHOLD = 0.5;
 
 interface PendingPrependScrollSnapshot extends WorkspaceScrollSnapshot {
   messageCount: number;
@@ -79,8 +81,9 @@ function collectVisibleUnreadKeys(root: HTMLElement, unreadKeys: ReadonlySet<str
     }
 
     const rect = node.getBoundingClientRect();
+    const visibleHeight = Math.min(rect.bottom, rootRect.bottom) - Math.max(rect.top, rootRect.top);
 
-    if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) {
+    if (rect.height <= 0 || visibleHeight / rect.height < UNREAD_VISIBILITY_THRESHOLD) {
       continue;
     }
 
@@ -311,6 +314,34 @@ export function useWorkspaceMessageListScroll<TMessage>({
     },
     [onUnreadMessagesVisible, sortKeysByMessageOrder, unreadCandidateKeys],
   );
+
+  useEffect(() => {
+    const dispatchVisibleUnreadAfterFocus = (): void => {
+      if (!isWindowActive()) {
+        return;
+      }
+
+      const root = scrollContainerRef.current;
+
+      if (root == null) {
+        return;
+      }
+
+      const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
+
+      if (visibleKeys.length > 0) {
+        onUnreadMessagesVisible?.(sortKeysByMessageOrder(visibleKeys));
+      }
+    };
+
+    window.addEventListener("focus", dispatchVisibleUnreadAfterFocus);
+    document.addEventListener("visibilitychange", dispatchVisibleUnreadAfterFocus);
+
+    return () => {
+      window.removeEventListener("focus", dispatchVisibleUnreadAfterFocus);
+      document.removeEventListener("visibilitychange", dispatchVisibleUnreadAfterFocus);
+    };
+  }, [onUnreadMessagesVisible, sortKeysByMessageOrder, unreadCandidateKeys]);
 
   useEffect(() => {
     viewportUnreadKeysRef.current.clear();
@@ -619,7 +650,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       },
       {
         root,
-        threshold: [0.5],
+        threshold: [UNREAD_VISIBILITY_THRESHOLD],
       },
     );
     const previousObservedNodes = observedUnreadNodesRef.current;

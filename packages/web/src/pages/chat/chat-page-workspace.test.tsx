@@ -666,7 +666,7 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
   });
 
-  it("does not auto-read visible messages after the Workspace window loses focus", async () => {
+  it("drops a pending auto-read when the Workspace window loses focus", async () => {
     const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
@@ -682,6 +682,49 @@ describe("ChatPage Workspace route", () => {
         captured.messageListProps?.onUnreadMessagesVisible([MESSAGE_UUID]);
       });
       hasFocus.mockReturnValue(false);
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 300);
+        });
+      });
+
+      expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+
+      hasFocus.mockReturnValue(true);
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 300);
+        });
+      });
+
+      expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it("does not queue auto-read for messages first reported while unfocused", async () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+
+      act(() => {
+        captured.messageListProps?.onUnreadMessagesVisible([MESSAGE_UUID]);
+      });
+      hasFocus.mockReturnValue(true);
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
       await act(async () => {
         await new Promise<void>((resolve) => {
           window.setTimeout(resolve, 300);
