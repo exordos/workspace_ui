@@ -16,9 +16,11 @@ const HISTORY_DEPTH_OPTIONS: readonly ExternalAccountHistoryDepth[] = [
   "all",
 ];
 
-function errorText(error: ConnectExternalAccountError | null): string | null {
+function errorText(error: ConnectExternalAccountError | null, providerName: string): string | null {
   if (error === "fill") return t("connectExternalAccount.errors.allFields");
-  if (error === "duplicate") return t("connectExternalAccount.errors.alreadyConnected");
+  if (error === "duplicate") {
+    return t("connectExternalAccount.errors.alreadyConnected", { provider: providerName });
+  }
   if (error === "invalid-url") return t("connectExternalAccount.errors.serverUrlInvalid");
   if (error === "invalid") return t("connectExternalAccount.errors.invalidCredentials");
   if (error === "unavailable") return t("connectExternalAccount.errors.unavailable");
@@ -50,21 +52,46 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
       },
       [onSubmit],
     );
-    const visibleError = errorText(error);
+    const providerName = t(`connectExternalAccount.providers.${draft.provider}`);
+    const visibleError = errorText(error, providerName);
+    const providerField = (
+      <FormField label={t("connectExternalAccount.provider")} htmlFor="external-account-provider">
+        <select
+          id="external-account-provider"
+          value={draft.provider}
+          onChange={(event) => onProviderChange(event.target.value as "zulip")}
+          disabled={submitting}
+          className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+        >
+          <option value="zulip">{t("connectExternalAccount.providers.zulip")}</option>
+        </select>
+      </FormField>
+    );
+
+    if (duplicateZulip) {
+      return (
+        <div className="flex flex-col gap-4">
+          {providerField}
+          <div
+            className="border-notice-base/40 bg-notice-base/10 rounded-lg border px-4 py-4 text-notice-base"
+            role="alert"
+          >
+            <p className="text-sm font-semibold">
+              {t("connectExternalAccount.errors.alreadyConnected", { provider: providerName })}
+            </p>
+            <p className="mt-1 text-sm">
+              {t("connectExternalAccount.errors.alreadyConnectedHint", {
+                provider: providerName,
+              })}
+            </p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <FormField label={t("connectExternalAccount.provider")} htmlFor="external-account-provider">
-          <select
-            id="external-account-provider"
-            value={draft.provider}
-            onChange={(event) => onProviderChange(event.target.value as "zulip")}
-            disabled={submitting}
-            className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
-          >
-            <option value="zulip">{t("connectExternalAccount.providers.zulip")}</option>
-          </select>
-        </FormField>
+        {providerField}
         <FormField
           label={t("connectExternalAccount.serverUrl")}
           htmlFor="external-account-server-url"
@@ -77,7 +104,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
             placeholder={t("connectExternalAccount.serverUrlHint")}
             value={draft.serverUrl}
             onChange={(event) => onServerUrlChange(event.target.value)}
-            disabled={submitting || duplicateZulip}
+            disabled={submitting}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </FormField>
@@ -90,7 +117,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
             placeholder={t("connectExternalAccount.emailHint")}
             value={draft.email}
             onChange={(event) => onEmailChange(event.target.value)}
-            disabled={submitting || duplicateZulip}
+            disabled={submitting}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </FormField>
@@ -103,13 +130,13 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
             placeholder={t("connectExternalAccount.apiKeyHint")}
             value={draft.apiKey}
             onChange={(event) => onApiKeyChange(event.target.value)}
-            disabled={submitting || duplicateZulip}
+            disabled={submitting}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </FormField>
         {showSyncSettings ? (
           <>
-            <fieldset disabled={submitting || duplicateZulip}>
+            <fieldset disabled={submitting}>
               <legend className="text-sm font-medium text-text-primary">
                 {t("connectExternalAccount.selectionMode.title")}
               </legend>
@@ -145,7 +172,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
               ) : null}
             </fieldset>
 
-            <fieldset disabled={submitting || duplicateZulip}>
+            <fieldset disabled={submitting}>
               <legend className="text-sm font-medium text-text-primary">
                 {t("connectExternalAccount.historyDepth.title")}
               </legend>
@@ -182,12 +209,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
             {visibleError}
           </div>
         ) : null}
-        {duplicateZulip ? (
-          <p className="text-xs text-text-muted">
-            {t("connectExternalAccount.errors.alreadyConnectedHint")}
-          </p>
-        ) : null}
-        <Button type="submit" disabled={duplicateZulip || submitting} className="w-full">
+        <Button type="submit" disabled={submitting} className="w-full">
           {submitting
             ? t("connectExternalAccount.status.sending")
             : t("connectExternalAccount.connect")}

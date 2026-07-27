@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   WorkspaceExternalProviderHealthDto,
@@ -33,9 +33,15 @@ const health: WorkspaceExternalProviderHealthDto = {
   provider: "zulip",
   status: "healthy",
   account_counts: { live: 2, unknown_account_status: 55 },
+  chat_counts: { available: 4, live: 3 },
   bridge_counts: { active: 1 },
   operation_counts: { succeeded: 8 },
-  metrics: { queue_depth: 999 },
+  metrics: {
+    queue_depth: 999,
+    selected_chats: 3,
+    synchronized_messages: 9_586,
+    synchronized_users: 25,
+  },
   updated_at: "2026-07-24T10:10:00Z",
 };
 
@@ -261,19 +267,61 @@ describe("ManageExternalProviderForm", () => {
     ).toBeDisabled();
   });
 
-  it("renders only known aggregate rows and omits queue depth", () => {
+  it("renders known aggregate and metric rows", () => {
     renderWithProviders(<ManageExternalProviderForm vm={createVm()} />);
+    const healthSection = within(
+      screen.getByRole("region", { name: "manageExternalProvider.health.title" }),
+    );
 
+    expect(healthSection.getByText("Zulip")).toBeInTheDocument();
+    expect(healthSection.getByText("manageExternalProvider.health.healthy")).toHaveClass(
+      "bg-call-green/10",
+      "text-call-green",
+    );
     expect(
       screen.getByText("manageExternalProvider.health.status.account.live"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("manageExternalProvider.health.status.chat.available"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("manageExternalProvider.health.status.chat.live")).toBeInTheDocument();
     expect(
       screen.getByText("manageExternalProvider.health.status.bridge.active"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("manageExternalProvider.health.status.operation.succeeded"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("manageExternalProvider.health.status.metric.queue_depth"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("manageExternalProvider.health.status.metric.selected_chats"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("manageExternalProvider.health.status.metric.synchronized_messages"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("manageExternalProvider.health.status.metric.synchronized_users"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("55")).not.toBeInTheDocument();
-    expect(screen.queryByText("999")).not.toBeInTheDocument();
+    expect(screen.getByText("999")).toBeInTheDocument();
+  });
+
+  it("renders an unavailable provider status as a danger badge", () => {
+    renderWithProviders(
+      <ManageExternalProviderForm
+        vm={createVm({
+          health: { ...health, status: "unavailable" },
+        })}
+      />,
+    );
+    const healthSection = within(
+      screen.getByRole("region", { name: "manageExternalProvider.health.title" }),
+    );
+
+    expect(healthSection.getByText("manageExternalProvider.health.unavailable")).toHaveClass(
+      "bg-danger/10",
+      "text-danger",
+    );
   });
 });

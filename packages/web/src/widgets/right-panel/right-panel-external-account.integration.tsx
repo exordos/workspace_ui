@@ -64,11 +64,19 @@ const ExternalAccountCard = React.memo<{
   const [reconnectOpen, setReconnectOpen] = useState(false);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Few accounts is common: show actions immediately; user can still collapse via chevron
+  const [cardOpen, setCardOpen] = useState(true);
   const canReconnect = account.status === "auth_required" || account.status === "degraded";
   const canConfigureChats = canConfigureExternalChats(account);
   return (
     <li>
-      <details className="group overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
+      <details
+        className="group overflow-hidden rounded-lg border border-border-subtle bg-card-bg"
+        open={cardOpen}
+        onToggle={(event) => {
+          setCardOpen(event.currentTarget.open);
+        }}
+      >
         <summary
           className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 hover:bg-bg-elevated"
           title={account.settings.serverUrl}

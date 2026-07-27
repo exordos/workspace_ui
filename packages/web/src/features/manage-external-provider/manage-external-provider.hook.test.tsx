@@ -53,9 +53,15 @@ function health(status: "healthy" | "unavailable" = "healthy"): WorkspaceExterna
     provider: "zulip",
     status,
     account_counts: { live: 2 },
+    chat_counts: { available: 4, live: 3 },
     bridge_counts: { active: 1 },
     operation_counts: { completed: 10 },
-    metrics: {},
+    metrics: {
+      queue_depth: 0,
+      selected_chats: 3,
+      synchronized_messages: 10,
+      synchronized_users: 4,
+    },
     updated_at: "2026-07-24T10:00:00Z",
   };
 }

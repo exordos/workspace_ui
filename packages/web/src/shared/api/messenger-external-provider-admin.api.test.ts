@@ -28,9 +28,15 @@ const healthDto = {
   provider: "zulip",
   status: "healthy",
   account_counts: { live: 3 },
+  chat_counts: { available: 19, live: 41 },
   bridge_counts: { active: 1 },
   operation_counts: { pending: 2 },
-  metrics: { queue_depth: 2 },
+  metrics: {
+    queue_depth: 2,
+    selected_chats: 41,
+    synchronized_messages: 9_586,
+    synchronized_users: 25,
+  },
   updated_at: "2026-07-24T09:00:00Z",
 } as const;
 
@@ -131,6 +137,13 @@ describe("messenger external provider admin API", () => {
     const [url, init] = firstCall(fetchMock);
     expect(url).toBe("/api/workspace/v1/messenger/external_provider_health/zulip");
     expect(init?.signal).toBe(controller.signal);
+  });
+
+  it("keeps a valid health response when the backend adds an unknown field", async () => {
+    const response = { ...healthDto, future_metric_group: { ready: 1 } };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(response));
+
+    await expect(getExternalProviderHealth(options(fetchMock))).resolves.toEqual(response);
   });
 
   it.each([

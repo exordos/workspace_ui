@@ -131,7 +131,7 @@
   "connectExternalAccount": {
     "title": "Подключить внешний аккаунт",
     "reconnectTitle": "Переподключить внешний аккаунт",
-    "description": "Подключите аккаунт Zulip к этому профилю Workspace.",
+    "description": "Подключите внешний аккаунт к этому профилю Workspace.",
     "servicesTitle": "Внешние интеграции",
     "servicesHint": "Подключите Zulip и перенесите выбранные чаты в Workspace.",
     "provider": "Провайдер",
@@ -192,8 +192,8 @@
     },
     "errors": {
       "allFields": "Заполните все поля",
-      "alreadyConnected": "Аккаунт Zulip уже подключён",
-      "alreadyConnectedHint": "К этому профилю Workspace можно подключить только один аккаунт Zulip.",
+      "alreadyConnected": "Аккаунт {{provider}} уже подключён",
+      "alreadyConnectedHint": "К этому профилю Workspace можно подключить только один аккаунт {{provider}}.",
       "invalidCredentials": "Логин или токен Zulip неверны",
       "invalidCredentialsShort": "Неверные данные",
       "unavailable": "Сервер Zulip недоступен",
@@ -289,8 +289,10 @@
       "refreshError": "Не удалось обновить техническое состояние.",
       "noData": "Нет данных",
       "accounts": "Аккаунты",
+      "chats": "Чаты",
       "bridges": "Экземпляры моста",
       "operations": "Операции",
+      "metrics": "Метрики",
       "status": {
         "account": {
           "connecting": "Подключаются",
@@ -300,6 +302,10 @@
           "auth_required": "Требуют обновления доступа",
           "disconnected": "Отключены",
           "suspended": "Приостановлены"
+        },
+        "chat": {
+          "available": "Доступны для подключения",
+          "live": "Подключены"
         },
         "bridge": {
           "enrolling": "Регистрируются",
@@ -316,6 +322,12 @@
           "failed": "Завершились с ошибкой",
           "manual_reconciliation_required": "Требуют ручной проверки",
           "discarded": "Отброшены"
+        },
+        "metric": {
+          "queue_depth": "Операции в очереди и работе",
+          "selected_chats": "Выбрано чатов",
+          "synchronized_messages": "Синхронизировано сообщений",
+          "synchronized_users": "Синхронизировано пользователей"
         }
       }
     },

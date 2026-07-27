@@ -2,11 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
+import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   createExternalAccount,
-  getExternalAccount,
   reconnectExternalAccount,
 } from "~/shared/api/messenger-external-accounts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
@@ -17,7 +17,6 @@ vi.mock("~/entities/external-account/external-account-sync.lib", () => ({
 }));
 vi.mock("~/shared/api/messenger-external-accounts.api", () => ({
   createExternalAccount: vi.fn(),
-  getExternalAccount: vi.fn(),
   reconnectExternalAccount: vi.fn(),
 }));
 
@@ -79,6 +78,13 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   };
 }
 
+function publishAccountUpdate(account: ExternalAccount, patch: Partial<ExternalAccount>): void {
+  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  const store = useExternalAccountStore.getState();
+  const loadGeneration = store.startOwnerSync(ownerKey);
+  store.replaceAccountsForOwner(ownerKey, [{ ...account, ...patch }], Date.now(), loadGeneration);
+}
+
 describe("useConnectExternalAccount", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -126,7 +132,7 @@ describe("useConnectExternalAccount", () => {
     await waitFor(() => expect(result.current.phase).toBe("chats"));
     expect(onCompleted).not.toHaveBeenCalled();
     expect(randomUuid).toHaveBeenCalledTimes(1);
-    expect(refreshExternalAccounts).toHaveBeenCalled();
+    expect(refreshExternalAccounts).toHaveBeenCalledOnce();
   });
 
   it("completes the legacy explicit flow when no embedded chat step is available", async () => {
@@ -325,17 +331,17 @@ describe("useConnectExternalAccount", () => {
     expect(randomUuid).toHaveBeenCalledOnce();
   });
 
-  it("keeps checking and starts bounded polling after an unconfirmed response", async () => {
+  it("keeps checking until realtime publishes a ready account snapshot", async () => {
     const connecting = snapshot("external-account-1", "connecting", false);
     vi.mocked(createExternalAccount).mockResolvedValue(connecting);
-    vi.mocked(getExternalAccount).mockReturnValue(
-      new Promise(() => {
-        // Keep polling pending for this assertion.
-      }),
-    );
     const onCompleted = vi.fn();
     const { result } = renderHook(() =>
-      useConnectExternalAccount({ open: true, runtimeContext, onCompleted }),
+      useConnectExternalAccount({
+        open: true,
+        runtimeContext,
+        hasChatsStep: true,
+        onCompleted,
+      }),
     );
 
     act(() => {
@@ -346,12 +352,104 @@ describe("useConnectExternalAccount", () => {
     act(() => result.current.submit());
 
     await waitFor(() => expect(result.current.phase).toBe("checking"));
-    await waitFor(() => expect(getExternalAccount).toHaveBeenCalledTimes(1));
     expect(onCompleted).not.toHaveBeenCalled();
-    expect(result.current.lifecycleAccount).toMatchObject({
-      status: "connecting",
-      liveReady: false,
+    await waitFor(() =>
+      expect(result.current.lifecycleAccount).toMatchObject({
+        status: "connecting",
+        liveReady: false,
+      }),
+    );
+
+    act(() => {
+      publishAccountUpdate(result.current.lifecycleAccount!, {
+        status: "live",
+        liveReady: true,
+        revision: 2,
+      });
     });
+
+    await waitFor(() => expect(result.current.phase).toBe("chats"));
+    expect(refreshExternalAccounts).toHaveBeenCalledOnce();
+  });
+
+  it("requires the current account generation to be ready", async () => {
+    vi.mocked(createExternalAccount).mockResolvedValue(
+      snapshot("external-account-1", "connecting", false),
+    );
+    const { result } = renderHook(() =>
+      useConnectExternalAccount({
+        open: true,
+        runtimeContext,
+        hasChatsStep: true,
+      }),
+    );
+
+    act(() => {
+      result.current.setServerUrl("https://zulip.example.com");
+      result.current.setEmail("user@example.com");
+      result.current.setApiKey("test");
+    });
+    act(() => result.current.submit());
+    await waitFor(() => expect(result.current.lifecycleAccount).not.toBeNull());
+
+    act(() => {
+      publishAccountUpdate(result.current.lifecycleAccount!, {
+        status: "live",
+        liveReady: true,
+        desiredGeneration: 2,
+        appliedGeneration: 1,
+        revision: 2,
+      });
+    });
+
+    await waitFor(() => expect(result.current.lifecycleAccount?.revision).toBe(2));
+    expect(result.current.phase).toBe("checking");
+
+    act(() => {
+      publishAccountUpdate(result.current.lifecycleAccount!, {
+        appliedGeneration: 2,
+        revision: 3,
+      });
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe("chats"));
+  });
+
+  it("ignores realtime updates for a different external account", async () => {
+    vi.mocked(createExternalAccount).mockResolvedValue(
+      snapshot("external-account-1", "connecting", false),
+    );
+    const { result } = renderHook(() =>
+      useConnectExternalAccount({
+        open: true,
+        runtimeContext,
+        hasChatsStep: true,
+      }),
+    );
+
+    act(() => {
+      result.current.setServerUrl("https://zulip.example.com");
+      result.current.setEmail("user@example.com");
+      result.current.setApiKey("test");
+    });
+    act(() => result.current.submit());
+    await waitFor(() => expect(result.current.lifecycleAccount).not.toBeNull());
+
+    act(() => {
+      publishAccountUpdate(result.current.lifecycleAccount!, {
+        uuid: "external-account-2",
+        status: "live",
+        liveReady: true,
+        revision: 2,
+      });
+    });
+
+    expect(result.current.lifecycleAccount).toMatchObject({
+      uuid: "external-account-1",
+      status: "connecting",
+      revision: 1,
+    });
+    expect(result.current.phase).toBe("checking");
   });
 
   it.each(["auth_required", "degraded"] as const)(
@@ -373,7 +471,7 @@ describe("useConnectExternalAccount", () => {
 
       await waitFor(() => expect(result.current.lifecycleAccount?.status).toBe(status));
       expect(result.current.phase).toBe("checking");
-      expect(getExternalAccount).not.toHaveBeenCalled();
+      expect(refreshExternalAccounts).toHaveBeenCalledOnce();
     },
   );
 
@@ -402,7 +500,7 @@ describe("useConnectExternalAccount", () => {
     },
   );
 
-  it("finishes automatic onboarding without opening the catalog phase", async () => {
+  it("waits for realtime readiness before finishing automatic onboarding", async () => {
     vi.mocked(createExternalAccount).mockResolvedValue(
       snapshot("external-account-1", "backfill", false, "all"),
     );
@@ -416,8 +514,25 @@ describe("useConnectExternalAccount", () => {
     });
     act(() => result.current.submit());
 
+    await waitFor(() => expect(result.current.phase).toBe("checking"));
+    await waitFor(() =>
+      expect(result.current.lifecycleAccount).toMatchObject({
+        status: "backfill",
+        liveReady: false,
+      }),
+    );
+
+    act(() => {
+      publishAccountUpdate(result.current.lifecycleAccount!, {
+        status: "live",
+        liveReady: true,
+        revision: 2,
+      });
+    });
+
     await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
     expect(vi.mocked(createExternalAccount).mock.calls[0]?.[1].settings.selection_mode).toBe("all");
+    expect(refreshExternalAccounts).toHaveBeenCalledOnce();
   });
 
   it("ignores the create response after the active runtime changes", async () => {

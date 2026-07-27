@@ -19,7 +19,6 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   createExternalAccount,
-  getExternalAccount,
   reconnectExternalAccount,
 } from "~/shared/api/messenger-external-accounts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
@@ -30,9 +29,6 @@ import type {
   ConnectExternalAccountError,
   ConnectExternalAccountProvider,
 } from "./connect-external-account.types";
-
-const POLL_INTERVAL_MS = 1_500;
-const MAX_POLL_ATTEMPTS = 20;
 
 export type ConnectExternalAccountPhase = "credentials" | "checking" | "chats" | "automaticDone";
 
@@ -49,8 +45,9 @@ function emptyDraft(account?: ExternalAccount | null): ConnectExternalAccountDra
 
 function isBridgeConfirmed(account: ExternalAccount): boolean {
   return (
-    account.appliedGeneration === account.desiredGeneration &&
-    (account.status === "backfill" || account.status === "live")
+    account.status === "live" &&
+    account.liveReady &&
+    account.appliedGeneration === account.desiredGeneration
   );
 }
 
@@ -125,7 +122,6 @@ export function useConnectExternalAccount({
   const [error, setError] = useState<ConnectExternalAccountError | null>(null);
   const [lifecycleAccount, setLifecycleAccount] = useState<ExternalAccount | null>(null);
   const [reconnectTarget, setReconnectTarget] = useState<ExternalAccount | null>(reconnectAccount);
-  const [pollAccountUuid, setPollAccountUuid] = useState<string | null>(null);
   const attemptUuidRef = useRef<string | null>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const completionReportedRef = useRef(false);
@@ -159,7 +155,6 @@ export function useConnectExternalAccount({
       setError(null);
       setLifecycleAccount(null);
       setReconnectTarget(null);
-      setPollAccountUuid(null);
       attemptUuidRef.current = null;
       completionReportedRef.current = false;
       return;
@@ -170,7 +165,6 @@ export function useConnectExternalAccount({
     setError(null);
     setLifecycleAccount(reconnectAccount);
     setReconnectTarget(reconnectAccount);
-    setPollAccountUuid(null);
     attemptUuidRef.current = null;
     completionReportedRef.current = false;
     if (runtimeContext != null) {
@@ -197,85 +191,11 @@ export function useConnectExternalAccount({
   }, [onCompleted]);
 
   useEffect(() => {
-    if (!open || runtimeContext == null || pollAccountUuid == null) return;
-    const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
-    if (requestContext == null) return;
-    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-    const controller = new AbortController();
-    let attempts = 0;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const poll = async () => {
-      attempts += 1;
-      try {
-        const snapshot = await getExternalAccount(
-          buildMessengerRequestOptions(runtimeContext, undefined, controller.signal),
-          pollAccountUuid,
-        );
-        if (
-          isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            () => runtimeRef.current,
-            controller.signal,
-          )
-        ) {
-          return;
-        }
-        const account = adaptWorkspaceExternalAccountDto(snapshot.account, snapshot.etag);
-        useExternalAccountStore.getState().upsertAccountForOwner(ownerKey, account);
-        const store = useExternalAccountStore.getState();
-        const currentAccount =
-          store.ownerKey === ownerKey
-            ? store.accounts.find((item) => item.uuid === account.uuid)
-            : undefined;
-        const effectiveAccount = currentAccount ?? account;
-        setLifecycleAccount(effectiveAccount);
-        if (effectiveAccount.status === "auth_required" || effectiveAccount.status === "degraded") {
-          setReconnectTarget(effectiveAccount);
-        }
-        if (
-          isBridgeConfirmed(effectiveAccount) ||
-          needsAttention(effectiveAccount) ||
-          attempts >= MAX_POLL_ATTEMPTS
-        ) {
-          setPollAccountUuid(null);
-          void refreshExternalAccounts({ runtimeContext, signal: controller.signal }).catch(
-            () => undefined,
-          );
-          return;
-        }
-      } catch {
-        if (
-          isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            () => runtimeRef.current,
-            controller.signal,
-          )
-        ) {
-          return;
-        }
-        if (attempts >= MAX_POLL_ATTEMPTS) {
-          setPollAccountUuid(null);
-          return;
-        }
-      }
-      timeoutId = setTimeout(() => void poll(), POLL_INTERVAL_MS);
-    };
-
-    void poll();
-    return () => {
-      controller.abort();
-      if (timeoutId != null) clearTimeout(timeoutId);
-    };
-  }, [open, pollAccountUuid, runtimeContext]);
-
-  useEffect(() => {
     if (lifecycleAccount == null || !needsAttention(lifecycleAccount)) return;
     if (lifecycleAccount.status === "auth_required" || lifecycleAccount.status === "degraded") {
       setReconnectTarget(lifecycleAccount);
     }
     if (phase === "chats" || phase === "automaticDone") {
-      setPollAccountUuid(null);
       setPhase("checking");
     }
   }, [lifecycleAccount, phase]);
@@ -283,7 +203,6 @@ export function useConnectExternalAccount({
   useEffect(() => {
     if (lifecycleAccount == null || !isBridgeConfirmed(lifecycleAccount)) return;
     setDraft((current) => ({ ...current, apiKey: "" }));
-    setPollAccountUuid(null);
     if (reconnecting) {
       reportCompleted();
       return;
@@ -402,15 +321,6 @@ export function useConnectExternalAccount({
         if (effectiveAccount.status === "auth_required" || effectiveAccount.status === "degraded") {
           setReconnectTarget(effectiveAccount);
         }
-        if (reconnectTarget != null && isBridgeConfirmed(effectiveAccount)) {
-          setPollAccountUuid(null);
-          reportCompleted();
-        } else if (!isBridgeConfirmed(effectiveAccount) && !needsAttention(effectiveAccount)) {
-          setPollAccountUuid(effectiveAccount.uuid);
-        }
-        void refreshExternalAccounts({ runtimeContext, signal: controller.signal }).catch(
-          () => undefined,
-        );
       })
       .catch((requestError: unknown) => {
         if (
@@ -444,7 +354,7 @@ export function useConnectExternalAccount({
           }
         }
       });
-  }, [draft, duplicateZulip, reconnectTarget, reportCompleted, runtimeContext, submitting]);
+  }, [draft, duplicateZulip, reconnectTarget, runtimeContext, submitting]);
 
   const resetCredentials = useCallback(() => {
     requestControllerRef.current?.abort();
@@ -452,7 +362,6 @@ export function useConnectExternalAccount({
     setSubmitting(false);
     setLifecycleAccount(null);
     setPhase("credentials");
-    setPollAccountUuid(null);
     setDraft(emptyDraft(reconnectTarget));
     setError(null);
     attemptUuidRef.current = null;

@@ -131,7 +131,7 @@
   "connectExternalAccount": {
     "title": "Connect external account",
     "reconnectTitle": "Reconnect external account",
-    "description": "Connect a Zulip account to this Workspace profile.",
+    "description": "Connect an external account to this Workspace profile.",
     "servicesTitle": "External integrations",
     "servicesHint": "Connect Zulip and import selected chats into Workspace.",
     "provider": "Provider",
@@ -192,8 +192,8 @@
     },
     "errors": {
       "allFields": "Fill in all fields",
-      "alreadyConnected": "A Zulip account is already connected",
-      "alreadyConnectedHint": "Only one Zulip account can be connected to this Workspace profile.",
+      "alreadyConnected": "A {{provider}} account is already connected",
+      "alreadyConnectedHint": "Only one {{provider}} account can be connected to this Workspace profile.",
       "invalidCredentials": "The Zulip login or token is invalid",
       "invalidCredentialsShort": "Invalid credentials",
       "unavailable": "The Zulip server is unavailable",
@@ -289,8 +289,10 @@
       "refreshError": "Could not refresh the technical status.",
       "noData": "No data",
       "accounts": "Accounts",
+      "chats": "Chats",
       "bridges": "Bridge instances",
       "operations": "Operations",
+      "metrics": "Metrics",
       "status": {
         "account": {
           "connecting": "Connecting",
@@ -300,6 +302,10 @@
           "auth_required": "Credentials required",
           "disconnected": "Disconnected",
           "suspended": "Suspended"
+        },
+        "chat": {
+          "available": "Available to connect",
+          "live": "Connected"
         },
         "bridge": {
           "enrolling": "Enrolling",
@@ -316,6 +322,12 @@
           "failed": "Failed",
           "manual_reconciliation_required": "Manual reconciliation required",
           "discarded": "Discarded"
+        },
+        "metric": {
+          "queue_depth": "Queued and running operations",
+          "selected_chats": "Selected chats",
+          "synchronized_messages": "Synchronized messages",
+          "synchronized_users": "Synchronized users"
         }
       }
     },

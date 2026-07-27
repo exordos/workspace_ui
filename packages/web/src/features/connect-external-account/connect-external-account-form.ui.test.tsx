@@ -78,11 +78,16 @@ describe("ConnectExternalAccountForm", () => {
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks a second Zulip account and explains the duplicate", () => {
+  it("hides the connection fields for a second Zulip account and explains the duplicate", () => {
     renderForm({ duplicateZulip: account.provider === "zulip" });
 
-    expect(screen.getByRole("button", { name: /connect/i })).toBeDisabled();
-    expect(screen.getByText(/only one Zulip account/i)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Zulip account is already connected/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/only one Zulip account/i);
+    expect(screen.getByLabelText(/provider/i)).toHaveValue("zulip");
+    expect(screen.queryByLabelText(/server URL/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /connect/i })).not.toBeInTheDocument();
   });
 
   it("does not expose synchronization settings while reconnecting credentials", () => {

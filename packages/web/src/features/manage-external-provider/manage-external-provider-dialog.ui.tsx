@@ -1,6 +1,6 @@
 import React, { useId, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog.ui";
+import { AppDialog } from "~/shared/ui/app-dialog.ui";
 import { Button } from "~/shared/ui/button";
 import { ManageExternalProviderForm } from "./manage-external-provider-form.ui";
 import type { UseManageExternalProviderResult } from "./manage-external-provider.hook";
@@ -25,20 +25,11 @@ export const ManageExternalProviderDialog = React.memo<ManageExternalProviderDia
         maxWidthClassName="max-w-3xl"
         positionClassName="top-1/2 -translate-y-1/2"
         scrollBody
+        // Dismiss is the header X; footer keeps only Save.
         footer={
-          <>
-            <Button
-              type="submit"
-              form={formId}
-              disabled={saveDisabled}
-              aria-disabled={saveDisabled}
-            >
-              {vm.saveStatus === "saving" ? t("manageExternalProvider.saving") : t("common.save")}
-            </Button>
-            <DialogCancelButton onClick={() => onOpenChange(false)}>
-              {t("common.close")}
-            </DialogCancelButton>
-          </>
+          <Button type="submit" form={formId} disabled={saveDisabled} aria-disabled={saveDisabled}>
+            {vm.saveStatus === "saving" ? t("manageExternalProvider.saving") : t("common.save")}
+          </Button>
         }
       >
         <ManageExternalProviderForm

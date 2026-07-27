@@ -177,6 +177,8 @@ describe("ConfigureExternalChatsDialog", () => {
       "all",
     ]);
     expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Save settings" })).toHaveClass("bg-transparent");
+    expect(screen.getByText(/save the history setting before starting/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
     expect(changeHistoryDepth).toHaveBeenCalledWith("90_days");
     expect(screen.queryByLabelText(/project/i)).not.toBeInTheDocument();
@@ -207,6 +209,10 @@ describe("ConfigureExternalChatsDialog", () => {
     );
 
     expect(screen.getByText(/restart history loading for 2 connected chats/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save settings" })).toHaveClass(
+      "bg-accent",
+      "text-black",
+    );
     expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Support" })).toBeDisabled();
     expect(screen.getByText(/save the history setting before starting/i)).toBeInTheDocument();
@@ -236,6 +242,7 @@ describe("ConfigureExternalChatsDialog", () => {
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Retry failed" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
+    expect(screen.getByText(/wait until the history setting is saved/i)).toBeInTheDocument();
     for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
   });
 
@@ -309,9 +316,14 @@ describe("ConfigureExternalChatsDialog", () => {
       />,
     );
 
+    const dialog = screen.getByRole("dialog");
+    const footer = dialog.querySelector<HTMLElement>("[data-app-dialog-footer]");
     const sync = screen.getByRole("button", { name: "Sync (1)" });
     const close = screen.getByRole("button", { name: "Close" });
     expect(screen.getByText("0 of 2 chats ready")).toBeInTheDocument();
+    expect(footer).not.toBeNull();
+    expect(footer).toHaveClass("border-t");
+    expect(footer).toContainElement(sync);
     expect(sync.parentElement).not.toContainElement(close);
     expect(close.closest("[data-app-dialog-title-row]")).not.toBeNull();
   });

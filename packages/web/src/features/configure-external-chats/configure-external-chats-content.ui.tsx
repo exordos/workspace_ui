@@ -38,7 +38,7 @@ export const ExternalChatHistorySettings = React.memo<{
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant={vm.canSaveHistoryDepth ? "primary" : "ghost"}
           disabled={!vm.canSaveHistoryDepth}
           onClick={vm.saveHistoryDepth}
         >
@@ -113,7 +113,7 @@ export const ExternalChatHistorySettings = React.memo<{
           {t("configureExternalChats.historyDepth.saved")}
         </p>
       ) : null}
-      {vm.selectionBlockedBySettings && vm.manualSelectionEnabled ? (
+      {vm.manualSelectionEnabled ? (
         <p className="mt-2 text-xs text-text-muted">
           {vm.saveStatus === "saving"
             ? t("configureExternalChats.historyDepth.selectBlockedSaving")

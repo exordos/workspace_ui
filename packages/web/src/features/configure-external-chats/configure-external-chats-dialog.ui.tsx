@@ -29,6 +29,7 @@ export const ConfigureExternalChatsDialog = React.memo<{
       }
       maxWidthClassName="max-w-2xl"
       positionClassName="top-1/2 -translate-y-1/2"
+      scrollBody
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           {/* Dismiss is the header X from AppDialog; footer keeps status + Sync only. */}

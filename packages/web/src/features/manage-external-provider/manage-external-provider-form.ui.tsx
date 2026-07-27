@@ -32,6 +32,13 @@ const ACCOUNT_STATUSES = [
   "disconnected",
   "suspended",
 ] as const;
+const CHAT_STATUSES = ["available", "live"] as const;
+const METRIC_NAMES = [
+  "queue_depth",
+  "selected_chats",
+  "synchronized_messages",
+  "synchronized_users",
+] as const;
 const BRIDGE_STATUSES = [
   "enrolling",
   "active",
@@ -99,18 +106,22 @@ function formatUpdatedAt(value: string | null): string {
 const Section = React.memo<{
   title: string;
   description?: string;
+  headerMeta?: React.ReactNode;
   children: React.ReactNode;
   danger?: boolean;
-}>(({ title, description, children, danger = false }) => (
+}>(({ title, description, headerMeta, children, danger = false }) => (
   <section
     className={`rounded-xl border p-4 ${
       danger ? "border-danger/30 bg-danger/5" : "border-border-subtle bg-bg"
     }`}
     aria-label={title}
   >
-    <h3 className={`text-sm font-semibold ${danger ? "text-danger" : "text-text-primary"}`}>
-      {title}
-    </h3>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className={`text-sm font-semibold ${danger ? "text-danger" : "text-text-primary"}`}>
+        {title}
+      </h3>
+      {headerMeta}
+    </div>
     {description == null ? null : <p className="mt-1 text-xs text-text-muted">{description}</p>}
     <div className="mt-4">{children}</div>
   </section>
@@ -168,9 +179,9 @@ const Field = React.memo<{
   </label>
 ));
 
-function renderKnownCounts(
-  counts: Record<string, number>,
-  statuses: readonly string[],
+function renderKnownCounts<Status extends string>(
+  counts: Partial<Record<Status, number>>,
+  statuses: readonly Status[],
   namespace: string,
 ): React.ReactNode {
   const known = statuses.filter((status) => counts[status] != null);
@@ -194,12 +205,18 @@ function renderKnownCounts(
 const HealthAggregates = React.memo<{
   health: WorkspaceExternalProviderHealthDto;
 }>(({ health }) => (
-  <div className="grid gap-4 sm:grid-cols-3">
+  <div className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4">
     <div>
       <h4 className="mb-2 text-xs font-semibold text-text-primary">
         {t("manageExternalProvider.health.accounts")}
       </h4>
       {renderKnownCounts(health.account_counts, ACCOUNT_STATUSES, "account")}
+    </div>
+    <div>
+      <h4 className="mb-2 text-xs font-semibold text-text-primary">
+        {t("manageExternalProvider.health.chats")}
+      </h4>
+      {renderKnownCounts(health.chat_counts, CHAT_STATUSES, "chat")}
     </div>
     <div>
       <h4 className="mb-2 text-xs font-semibold text-text-primary">
@@ -213,8 +230,39 @@ const HealthAggregates = React.memo<{
       </h4>
       {renderKnownCounts(health.operation_counts, OPERATION_STATUSES, "operation")}
     </div>
+    <div>
+      <h4 className="mb-2 text-xs font-semibold text-text-primary">
+        {t("manageExternalProvider.health.metrics")}
+      </h4>
+      {renderKnownCounts(health.metrics, METRIC_NAMES, "metric")}
+    </div>
   </div>
 ));
+
+const HealthHeaderMeta = React.memo<{
+  health: WorkspaceExternalProviderHealthDto | null;
+}>(({ health }) => {
+  if (health == null) return null;
+  const healthy = health.status === "healthy";
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-text-muted">
+        {t("manageExternalProvider.provider")}:{" "}
+        <span className="font-medium text-text-secondary">
+          {health.provider === "zulip" ? "Zulip" : health.provider}
+        </span>
+      </span>
+      <span
+        className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 ${
+          healthy ? "bg-call-green/10 text-call-green" : "bg-danger/10 text-danger"
+        }`}
+      >
+        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        {t(`manageExternalProvider.health.${health.status}`)}
+      </span>
+    </div>
+  );
+});
 
 const HealthSectionContent = React.memo<{
   vm: UseManageExternalProviderResult;
@@ -627,7 +675,10 @@ export const ManageExternalProviderForm = React.memo<ManageExternalProviderFormP
           )}
         </Section>
 
-        <Section title={t("manageExternalProvider.health.title")}>
+        <Section
+          title={t("manageExternalProvider.health.title")}
+          headerMeta={<HealthHeaderMeta health={vm.health} />}
+        >
           <HealthSectionContent vm={vm} />
         </Section>
 

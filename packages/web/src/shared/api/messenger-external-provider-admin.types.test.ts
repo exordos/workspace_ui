@@ -29,9 +29,15 @@ const healthDto = {
   provider: "zulip",
   status: "healthy",
   account_counts: { live: 3, degraded: 1 },
+  chat_counts: { available: 19, live: 41 },
   bridge_counts: { active: 1 },
   operation_counts: { pending: 2 },
-  metrics: { queue_depth: 4 },
+  metrics: {
+    queue_depth: 4,
+    selected_chats: 41,
+    synchronized_messages: 9_586,
+    synchronized_users: 25,
+  },
   updated_at: "2026-07-24T09:00:00Z",
 } as const;
 
@@ -69,13 +75,14 @@ describe("external provider admin DTO guards", () => {
     ).toBe(false);
   });
 
-  it("rejects invented health fields and non-numeric dynamic values", () => {
+  it("accepts unknown health fields and rejects non-numeric dynamic values", () => {
     expect(
       isWorkspaceExternalProviderHealthDto({
         ...healthDto,
-        chat_counts: {},
+        future_aggregate: { ready: 3 },
+        metrics: { ...healthDto.metrics, future_metric: "metadata" },
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isWorkspaceExternalProviderHealthDto({
         ...healthDto,
@@ -85,13 +92,14 @@ describe("external provider admin DTO guards", () => {
     expect(
       isWorkspaceExternalProviderHealthDto({
         ...healthDto,
-        metrics: { queue_depth: Number.NaN },
+        metrics: { ...healthDto.metrics, queue_depth: Number.NaN },
       }),
     ).toBe(false);
   });
 
   it("rejects unknown health statuses and missing aggregates", () => {
     const { bridge_counts: _bridgeCounts, ...withoutBridgeCounts } = healthDto;
+    const { chat_counts: _chatCounts, ...withoutChatCounts } = healthDto;
     expect(
       isWorkspaceExternalProviderHealthDto({
         ...healthDto,
@@ -99,5 +107,6 @@ describe("external provider admin DTO guards", () => {
       }),
     ).toBe(false);
     expect(isWorkspaceExternalProviderHealthDto(withoutBridgeCounts)).toBe(false);
+    expect(isWorkspaceExternalProviderHealthDto(withoutChatCounts)).toBe(false);
   });
 });

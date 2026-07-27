@@ -41,13 +41,21 @@ export interface WorkspaceExternalProviderPolicyUpdateRequestBody {
   };
 }
 
+export interface WorkspaceExternalProviderHealthMetricsDto {
+  queue_depth: number;
+  selected_chats: number;
+  synchronized_messages: number;
+  synchronized_users: number;
+}
+
 export interface WorkspaceExternalProviderHealthDto {
   provider: WorkspaceExternalProvider;
   status: WorkspaceExternalProviderHealthStatus;
   account_counts: Record<string, number>;
+  chat_counts: Record<string, number>;
   bridge_counts: Record<string, number>;
   operation_counts: Record<string, number>;
-  metrics: Record<string, number>;
+  metrics: WorkspaceExternalProviderHealthMetricsDto;
   updated_at: string;
 }
 
@@ -64,16 +72,6 @@ const POLICY_KEYS = [
 ] as const;
 const LIMIT_KEYS = ["max_accounts", "max_selected_chats_per_account", "max_file_bytes"] as const;
 const CUSTOM_CA_KEYS = ["uuid", "generation", "sha256", "certificate_count"] as const;
-const HEALTH_KEYS = [
-  "provider",
-  "status",
-  "account_counts",
-  "bridge_counts",
-  "operation_counts",
-  "metrics",
-  "updated_at",
-] as const;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -124,6 +122,20 @@ function isNumberRecord(value: unknown): value is Record<string, number> {
   );
 }
 
+function isHealthMetrics(value: unknown): value is WorkspaceExternalProviderHealthMetricsDto {
+  return (
+    isRecord(value) &&
+    typeof value.queue_depth === "number" &&
+    Number.isFinite(value.queue_depth) &&
+    typeof value.selected_chats === "number" &&
+    Number.isFinite(value.selected_chats) &&
+    typeof value.synchronized_messages === "number" &&
+    Number.isFinite(value.synchronized_messages) &&
+    typeof value.synchronized_users === "number" &&
+    Number.isFinite(value.synchronized_users)
+  );
+}
+
 export function isWorkspaceExternalProviderPolicyDto(
   value: unknown,
 ): value is WorkspaceExternalProviderPolicyDto {
@@ -147,13 +159,13 @@ export function isWorkspaceExternalProviderHealthDto(
 ): value is WorkspaceExternalProviderHealthDto {
   return (
     isRecord(value) &&
-    hasOnlyKeys(value, HEALTH_KEYS) &&
     value.provider === "zulip" &&
     (value.status === "healthy" || value.status === "unavailable") &&
     isNumberRecord(value.account_counts) &&
+    isNumberRecord(value.chat_counts) &&
     isNumberRecord(value.bridge_counts) &&
     isNumberRecord(value.operation_counts) &&
-    isNumberRecord(value.metrics) &&
+    isHealthMetrics(value.metrics) &&
     isNonEmptyString(value.updated_at)
   );
 }
