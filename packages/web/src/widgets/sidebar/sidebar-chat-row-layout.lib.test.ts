@@ -1,29 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  SIDEBAR_STREAM_GROUP_CLASS,
   SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
   SIDEBAR_TOPIC_BAR_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
   formatSidebarTopicTitle,
   isWorkspaceSidebarStreamHighlighted,
   resolveSidebarTopicBarColor,
-  sidebarStreamGroupClass,
   sidebarTopicRowLinkClass,
   sidebarTopicShowMoreButtonClass,
 } from "./sidebar-chat-row-layout.lib";
 import { TOPIC_BAR_FALLBACK_COLOR } from "./sidebar.lib";
 
-describe("sidebarStreamGroupClass", () => {
-  it("returns empty string when the stream is collapsed", () => {
-    expect(sidebarStreamGroupClass(false)).toBe("");
-  });
-
-  it("uses base card-bg for the expanded shell, not the active fill", () => {
-    const classes = sidebarStreamGroupClass(true);
-    expect(classes).toContain("overflow-hidden");
-    expect(classes).toContain("rounded-lg");
-    expect(classes).toContain("bg-card-bg");
-    expect(classes).not.toContain("bg-card-bg-active");
-    expect(classes).not.toContain("items-stretch");
+describe("SIDEBAR_STREAM_GROUP_CLASS", () => {
+  it("uses base card-bg for the shell in both collapsed and expanded states", () => {
+    expect(SIDEBAR_STREAM_GROUP_CLASS).toContain("overflow-hidden");
+    expect(SIDEBAR_STREAM_GROUP_CLASS).toContain("rounded-lg");
+    expect(SIDEBAR_STREAM_GROUP_CLASS).toContain("bg-card-bg");
+    expect(SIDEBAR_STREAM_GROUP_CLASS).not.toContain("bg-card-bg-active");
+    expect(SIDEBAR_STREAM_GROUP_CLASS).not.toContain("items-stretch");
   });
 });
 

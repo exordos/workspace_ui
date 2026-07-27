@@ -21,6 +21,7 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
+  SIDEBAR_STREAM_GROUP_CLASS,
   SIDEBAR_STREAM_PREVIEW_LINK_CLASS,
   SIDEBAR_TOPIC_BAR_CLASS,
   SIDEBAR_TOPIC_LIST_CLASS,
@@ -30,7 +31,6 @@ import {
   resolveSidebarTopicBarColor,
   sidebarChatRowBodyClass,
   sidebarChatRowLinkClass,
-  sidebarStreamGroupClass,
   sidebarTopicRowLinkClass,
 } from "./sidebar-chat-row-layout.lib";
 import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
@@ -273,100 +273,94 @@ function WorkspaceSidebarStreamRow({
       ? stream.statusText.trim()
       : null;
 
-  // One shared card for channel + topics + show-more.
-  const showGroupShell = expanded;
-
-  const streamBlock = (
-    <WorkspaceStreamContextMenu
-      stream={stream}
-      onTopicCreated={onTopicCreated}
-      below={
-        expanded
-          ? () => (
-              <WorkspaceSidebarTopics
-                stream={stream}
-                activeTopicUuid={activeTopicUuid}
-                normalizedQuery={normalizedQuery}
-                compact={compact}
-              />
-            )
-          : undefined
-      }
-    >
-      <div className={`${rowClass} w-full ${rowSurfaceClass}`}>
-        <Link
-          to={stream.route}
-          className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
-          onClick={() => {
-            if (!expanded) onToggleStream(stream.streamUuid);
-          }}
-        >
-          <span className="relative shrink-0">
-            <WorkspaceAvatar
-              size={avatarSize}
-              avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
-              style={avatarStyle}
-            >
-              {avatarLabel}
-            </WorkspaceAvatar>
-            {isDirectPrivate && (
-              <PresenceIndicator
-                status={stream.presence ?? null}
-                size="sm"
-                pulse={false}
-                className="absolute bottom-0 right-0 ring-border-subtle"
-              />
-            )}
-          </span>
-        </Link>
-        <div className={sidebarChatRowBodyClass(compact)}>
+  // Always wrap in the card shell so collapsed rows keep the same `card-bg` base.
+  return (
+    <div className={SIDEBAR_STREAM_GROUP_CLASS}>
+      <WorkspaceStreamContextMenu
+        stream={stream}
+        onTopicCreated={onTopicCreated}
+        below={
+          expanded
+            ? () => (
+                <WorkspaceSidebarTopics
+                  stream={stream}
+                  activeTopicUuid={activeTopicUuid}
+                  normalizedQuery={normalizedQuery}
+                  compact={compact}
+                />
+              )
+            : undefined
+        }
+      >
+        <div className={`${rowClass} w-full ${rowSurfaceClass}`}>
           <Link
             to={stream.route}
-            className="focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1"
+            className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
             onClick={() => {
               if (!expanded) onToggleStream(stream.streamUuid);
             }}
           >
-            <SidebarChatTitleWithStatus
-              title={title}
-              statusEmoji={statusEmoji}
-              statusText={statusText}
-            />
+            <span className="relative shrink-0">
+              <WorkspaceAvatar
+                size={avatarSize}
+                avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
+                style={avatarStyle}
+              >
+                {avatarLabel}
+              </WorkspaceAvatar>
+              {isDirectPrivate && (
+                <PresenceIndicator
+                  status={stream.presence ?? null}
+                  size="sm"
+                  pulse={false}
+                  className="absolute bottom-0 right-0 ring-border-subtle"
+                />
+              )}
+            </span>
           </Link>
-          {!compact && stream.preview?.route != null && (
-            <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
-              <SidebarMessagePreview
-                senderName={stream.preview.senderName}
-                message={stream.preview.text}
+          <div className={sidebarChatRowBodyClass(compact)}>
+            <Link
+              to={stream.route}
+              className="focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1"
+              onClick={() => {
+                if (!expanded) onToggleStream(stream.streamUuid);
+              }}
+            >
+              <SidebarChatTitleWithStatus
+                title={title}
+                statusEmoji={statusEmoji}
+                statusText={statusText}
               />
             </Link>
-          )}
+            {!compact && stream.preview?.route != null && (
+              <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
+                <SidebarMessagePreview
+                  senderName={stream.preview.senderName}
+                  message={stream.preview.text}
+                />
+              </Link>
+            )}
+          </div>
+          <SidebarChatRowMeta
+            compact={compact}
+            isPinned={stream.pinnedAt != null}
+            unreadCount={stream.unreadCount}
+            hasMention={false}
+            time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
+            expandChevron={
+              stream.topics.length > 0
+                ? {
+                    expanded,
+                    onToggle: () => onToggleStream(stream.streamUuid),
+                    ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+                  }
+                : undefined
+            }
+          />
         </div>
-        <SidebarChatRowMeta
-          compact={compact}
-          isPinned={stream.pinnedAt != null}
-          unreadCount={stream.unreadCount}
-          hasMention={false}
-          time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
-          expandChevron={
-            stream.topics.length > 0
-              ? {
-                  expanded,
-                  onToggle: () => onToggleStream(stream.streamUuid),
-                  ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
-                }
-              : undefined
-          }
-        />
-      </div>
-    </WorkspaceStreamContextMenu>
+      </WorkspaceStreamContextMenu>
+    </div>
   );
-
-  if (!showGroupShell) {
-    return streamBlock;
-  }
-
-  return <div className={sidebarStreamGroupClass(true)}>{streamBlock}</div>;
 }
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({

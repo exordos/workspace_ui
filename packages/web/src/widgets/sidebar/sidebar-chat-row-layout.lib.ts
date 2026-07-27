@@ -14,13 +14,11 @@ export function sidebarChatRowBodyClass(compact: boolean): string {
 }
 
 /**
- * Expanded channel + topics shell (Figma group chat/channel open).
- * Card/background base (`card-bg`) on Surface chrome (`bg-elevated`).
+ * Channel card shell (collapsed and expanded).
+ * Base fill (`card-bg`) on sidebar chrome (`bg-elevated`) — always, not only when open.
  * Expansion must not look “selected” — active route uses `sidebarRowClass`.
  */
-export function sidebarStreamGroupClass(expanded: boolean): string {
-  return expanded ? "overflow-hidden rounded-lg bg-card-bg" : "";
-}
+export const SIDEBAR_STREAM_GROUP_CLASS = "overflow-hidden rounded-lg bg-card-bg";
 
 /**
  * Last-message preview link inside a stream card.

@@ -1,5 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React from "react";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import type {
   AppDialogFormFooterProps,
@@ -24,6 +26,45 @@ export const DIALOG_CANCEL_BUTTON_CLASS =
 
 export const DIALOG_PRIMARY_BUTTON_CLASS =
   "hover:bg-accent/90 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors disabled:opacity-50";
+
+/** Shared header X — same look as create-chat / logs modals. */
+export const DIALOG_CLOSE_ICON_BUTTON_CLASS =
+  "hover:bg-bg/50 shrink-0 rounded p-1 text-text-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+
+export interface DialogCloseIconButtonProps {
+  disabled?: boolean;
+  className?: string;
+  /** When false, only fires onClick — use if close must be gated (dirty form, etc.). */
+  useDialogClose?: boolean;
+  onClick?: () => void;
+}
+
+/**
+ * Reusable header dismiss control for AppDialog and AppDialogShell consumers.
+ * Prefer this over one-off X buttons so dismiss UX stays consistent.
+ */
+export const DialogCloseIconButton: React.FC<DialogCloseIconButtonProps> = ({
+  disabled = false,
+  className = "",
+  useDialogClose = true,
+  onClick,
+}) => {
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`${DIALOG_CLOSE_ICON_BUTTON_CLASS} ${className}`.trim()}
+      aria-label={t("common.close")}
+    >
+      <Icon name="close" size={18} />
+    </button>
+  );
+  if (useDialogClose) {
+    return <Dialog.Close asChild>{button}</Dialog.Close>;
+  }
+  return button;
+};
 
 export interface DialogCancelButtonProps {
   children: React.ReactNode;
@@ -125,13 +166,25 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   maxWidthClassName = "max-w-md",
   positionClassName = "top-[20%]",
   scrollBody = false,
+  showCloseButton = true,
   onCloseAutoFocus,
 }) => {
   const contentClassName = `${
     scrollBody ? SCROLL_BODY_CONTENT_CLASS : DEFAULT_CONTENT_CLASS
   } ${maxWidthClassName} ${positionClassName}`;
 
-  const titleNode = (
+  const titleText = (
+    <Dialog.Title className="min-w-0 flex-1 text-base font-semibold text-text-primary">
+      {title}
+    </Dialog.Title>
+  );
+  // Header row: title left, optional X right. Radix Close → onOpenChange(false), no extra callback.
+  const titleNode = showCloseButton ? (
+    <div className="mb-4 flex items-start justify-between gap-3" data-app-dialog-title-row>
+      {titleText}
+      <DialogCloseIconButton />
+    </div>
+  ) : (
     <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">{title}</Dialog.Title>
   );
   const descriptionNode =

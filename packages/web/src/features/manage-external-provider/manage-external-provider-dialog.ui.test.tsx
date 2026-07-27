@@ -135,7 +135,7 @@ describe("ManageExternalProviderDialog", () => {
       "form[id^='manage-external-provider-form-']",
     );
     const save = screen.getByRole("button", { name: "common.save" });
-    const close = screen.getByRole("button", { name: "common.close" });
+    const close = within(footer as HTMLElement).getByRole("button", { name: "common.close" });
 
     expect(dialog).toHaveClass("flex", "max-h-[92vh]", "overflow-hidden");
     expect(body).toHaveClass("min-h-0", "overflow-y-auto");
@@ -143,6 +143,7 @@ describe("ManageExternalProviderDialog", () => {
     expect(footer).toContainElement(save);
     expect(footer).toContainElement(close);
     expect(within(footer as HTMLElement).getAllByRole("button")).toEqual([save, close]);
+    expect(dialog.querySelector("[data-app-dialog-title-row]")).not.toBeNull();
     expect(body).not.toContainElement(save);
     expect(form).not.toBeNull();
     expect(form?.querySelector(".sticky")).toBeNull();

@@ -15,6 +15,11 @@ export interface AppDialogProps {
   positionClassName?: string;
   /** Keep heading and footer fixed while only the body scrolls. */
   scrollBody?: boolean;
+  /**
+   * Header dismiss control (X). Uses Radix Dialog.Close → `onOpenChange(false)`.
+   * Default true so AppDialog carries a standard dismiss affordance.
+   */
+  showCloseButton?: boolean;
   onCloseAutoFocus?: (event: Event) => void;
 }
 
