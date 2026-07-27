@@ -98,6 +98,27 @@ function markConflict(
   );
 }
 
+function reconcileMatchingDeleteConflict(
+  job: RemoteDraftJob,
+  error: MessengerApiError & { data: WorkspaceMessengerDraftDto },
+): boolean {
+  const current = currentDraft(job);
+  if (
+    current?.syncStatus !== "deleting" ||
+    normalizeWorkspaceComposerDraftRemoteText(current.content.text) !==
+      normalizeWorkspaceComposerDraftRemoteText(error.data.payload.content)
+  ) {
+    return false;
+  }
+  useWorkspaceComposerDraftStore
+    .getState()
+    .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, current.snapshotId, {
+      etag: error.headers.get("ETag") ?? `"${error.data.revision}"`,
+      updatedAt: error.data.updated_at,
+    });
+  return true;
+}
+
 async function saveLatestDraft(
   job: RemoteDraftJob,
   draft: WorkspaceComposerDraft,
@@ -220,6 +241,7 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
       return "deleted";
     }
     if (isDraftConflict(error)) {
+      if (reconcileMatchingDeleteConflict(job, error)) return "created";
       markConflict(job, error);
       return "failed";
     }

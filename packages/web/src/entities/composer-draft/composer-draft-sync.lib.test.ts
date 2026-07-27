@@ -30,6 +30,7 @@ import {
 import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
+  selectWorkspaceComposerDraft,
   useWorkspaceComposerDraftStore,
 } from "./composer-draft.model";
 import type { WorkspaceComposerDraft, WorkspaceComposerDraftContent } from "./composer-draft.types";
@@ -293,6 +294,91 @@ describe("workspace composer draft remote queue", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-1");
+  });
+
+  it("does not restore sent text after leaving while a stale DELETE is reconciled", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Already sent"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .applyDraftSyncSuccess(OWNER, draft!.draftUuid, draft!.snapshotId, {
+        etag: "etag-1",
+        updatedAt: "2026-07-20T09:00:01.000Z",
+      });
+    const staleDelete = snapshot("Already sent", 2, "etag-2");
+    deleteDraft
+      .mockRejectedValueOnce(
+        new MessengerApiError(
+          "stale draft",
+          412,
+          staleDelete.draft,
+          new Headers({ ETag: staleDelete.etag }),
+        ),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: draft!,
+      }),
+    ).toBe(true);
+    useWorkspaceComposerDraftStore
+      .getState()
+      .completeDraftVisit(OWNER, CONVERSATION, draft!.draftUuid);
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(deleteDraft).toHaveBeenNthCalledWith(1, expect.anything(), draft!.draftUuid, "etag-1");
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    expect(deleteDraft).toHaveBeenNthCalledWith(2, expect.anything(), draft!.draftUuid, "etag-2");
+  });
+
+  it("preserves a real DELETE conflict when the server draft content changed", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Already sent"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .applyDraftSyncSuccess(OWNER, draft!.draftUuid, draft!.snapshotId, {
+        etag: "etag-1",
+        updatedAt: "2026-07-20T09:00:01.000Z",
+      });
+    const serverEdit = snapshot("Edited elsewhere", 2, "etag-2");
+    deleteDraft.mockRejectedValueOnce(
+      new MessengerApiError(
+        "stale draft",
+        412,
+        serverEdit.draft,
+        new Headers({ ETag: serverEdit.etag }),
+      ),
+    );
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: draft!,
+      }),
+    ).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(deleteDraft).toHaveBeenCalledOnce();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toMatchObject({
+      syncStatus: "conflict",
+      content: { text: "Already sent" },
+      conflictServerContent: { text: "Edited elsewhere" },
+      conflictServerEtag: "etag-2",
+    });
   });
 
   it("keeps local and server snapshots and stops after a 412 conflict", async () => {
