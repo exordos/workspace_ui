@@ -83,12 +83,15 @@
   },
   "configureExternalChats": {
     "action": "Configure chats",
+    "automaticAction": "Configure sync",
     "compactAction": "Add chats",
     "title": "Zulip chat sync",
     "description": "Select the chats to transfer to Workspace.",
+    "automaticDescription": "Review synchronization settings and chat statuses. Chats are connected automatically.",
     "search": "Search chats",
     "loading": "Loading chats…",
     "empty": "No available chats found yet.",
+    "preparing": "Looking for available chats…",
     "noSearchResults": "No chats match your search.",
     "loadError": "Could not load chats.",
     "start": "Sync ({{count}})",
@@ -155,6 +158,28 @@
     "noAccounts": "No external accounts connected yet.",
     "server": "Server",
     "checking": "Checking…",
+    "selectionMode": {
+      "title": "Which chats should be connected?",
+      "description": "Choose chats manually after connecting, or let Workspace connect them automatically.",
+      "options": {
+        "explicit": "Choose manually",
+        "all": "Available now and new chats automatically"
+      },
+      "allHint": "Chats will be connected automatically within the limit set by your administrator."
+    },
+    "historyDepth": {
+      "title": "How much history should be loaded?"
+    },
+    "chatsStep": {
+      "title": "Choose Zulip chats",
+      "description": "The account is connected. Now choose the chats to transfer to Workspace."
+    },
+    "done": {
+      "title": "Account connected",
+      "description": "Automatic chat synchronization is enabled.",
+      "message": "Available chats will be connected automatically within the limit set by your administrator.",
+      "action": "Done"
+    },
     "delete": {
       "action": "Delete connection",
       "shortAction": "Delete",

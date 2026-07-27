@@ -488,7 +488,7 @@ describe("useConfigureExternalChats", () => {
     });
   });
 
-  it("blocks settings updates for an unexpected all selection mode", async () => {
+  it("saves automatic mode settings and blocks manual selection", async () => {
     vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
     const allAccount: ExternalAccount = {
       ...account,
@@ -497,14 +497,33 @@ describe("useConfigureExternalChats", () => {
     const { result } = renderHook(() =>
       useConfigureExternalChats({ open: true, runtimeContext, account: allAccount }),
     );
+    vi.mocked(updateExternalAccount).mockResolvedValue({
+      account: accountDto({ historyDepth: "90_days", selectionMode: "all" }),
+      etag: '"2"',
+    });
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.toggle(CHAT_UUID));
     act(() => result.current.changeHistoryDepth("90_days"));
     act(() => result.current.saveHistoryDepth());
 
-    expect(result.current.unsupportedSelectionMode).toBe(true);
-    expect(result.current.saveStatus).toBe("error");
-    expect(updateExternalAccount).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.saveStatus).toBe("success"));
+    expect(result.current.manualSelectionEnabled).toBe(false);
+    expect(result.current.pending.size).toBe(0);
+    expect(updateExternalAccount).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT_UUID,
+      {
+        settings: {
+          kind: "zulip",
+          selection_mode: "all",
+          history_depth: "90_days",
+          default_project_id: PROJECT_UUID,
+        },
+      },
+      '"1"',
+    );
+    expect(selectExternalChat).not.toHaveBeenCalled();
   });
 
   it("ignores a save response after the active project changes", async () => {

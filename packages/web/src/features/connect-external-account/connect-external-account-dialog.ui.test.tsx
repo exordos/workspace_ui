@@ -41,9 +41,12 @@ function hookResult(): UseConnectExternalAccountResult {
       serverUrl: "",
       email: "",
       apiKey: "",
+      selectionMode: "explicit",
+      historyDepth: "30_days",
     },
     accounts: [],
     lifecycleAccount: baseAccount,
+    phase: "checking",
     submitting: false,
     loadingAccounts: false,
     error: null,
@@ -53,6 +56,8 @@ function hookResult(): UseConnectExternalAccountResult {
     setServerUrl: vi.fn(),
     setEmail: vi.fn(),
     setApiKey: vi.fn(),
+    setSelectionMode: vi.fn(),
+    setHistoryDepth: vi.fn(),
     submit: vi.fn(),
     resetCredentials: vi.fn(),
   };
@@ -60,6 +65,7 @@ function hookResult(): UseConnectExternalAccountResult {
 
 describe("ConnectExternalAccountDialog", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(useConnectExternalAccount).mockReturnValue(hookResult());
   });
 
@@ -73,10 +79,25 @@ describe("ConnectExternalAccountDialog", () => {
     expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 
+  it("shows connection checking while POST has not returned a snapshot yet", () => {
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...hookResult(),
+      lifecycleAccount: null,
+      phase: "checking",
+    });
+
+    renderWithProviders(
+      <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Checking connection");
+  });
+
   it("allows credentials to be entered again for auth_required", () => {
     vi.mocked(useConnectExternalAccount).mockReturnValue({
       ...hookResult(),
       reconnecting: true,
+      phase: "credentials",
       lifecycleAccount: {
         ...baseAccount,
         status: "auth_required",
@@ -89,5 +110,109 @@ describe("ConnectExternalAccountDialog", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Credentials expired");
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
+  });
+
+  it("keeps a late degraded error visible and allows reconnecting", () => {
+    const resetCredentials = vi.fn();
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...hookResult(),
+      reconnecting: true,
+      phase: "checking",
+      resetCredentials,
+      lifecycleAccount: {
+        ...baseAccount,
+        status: "degraded",
+        safeError: "Bridge stopped",
+      },
+    });
+
+    renderWithProviders(
+      <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Bridge stopped");
+    screen.getByRole("button", { name: "Enter credentials again" }).click();
+    expect(resetCredentials).toHaveBeenCalledOnce();
+  });
+
+  it("shows the shared chat catalog inside the same dialog for explicit onboarding", () => {
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...hookResult(),
+      phase: "chats",
+      lifecycleAccount: {
+        ...baseAccount,
+        status: "backfill",
+        appliedGeneration: 1,
+      },
+    });
+    const renderChatsStep = vi.fn(() => <div>Shared chat catalog</div>);
+
+    renderWithProviders(
+      <ConnectExternalAccountDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={{
+          accountId: "account",
+          instanceId: "instance",
+          organizationId: "organization",
+          projectId: "project-1",
+          userUuid: "user",
+          organizationOrigin: "https://workspace.example.com",
+          accessToken: "token",
+          runtimeGeneration: 1,
+        }}
+        renderChatsStep={renderChatsStep}
+      />,
+    );
+
+    expect(screen.getByRole("dialog")).toHaveTextContent("Choose Zulip chats");
+    expect(screen.getByText("Shared chat catalog")).toBeInTheDocument();
+    expect(renderChatsStep).toHaveBeenCalledOnce();
+    expect(useConnectExternalAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ hasChatsStep: true }),
+    );
+  });
+
+  it("shows automatic completion without mounting the catalog", () => {
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...hookResult(),
+      phase: "automaticDone",
+      lifecycleAccount: {
+        ...baseAccount,
+        status: "backfill",
+        appliedGeneration: 1,
+        settings: { ...baseAccount.settings, selectionMode: "all" },
+      },
+    });
+
+    renderWithProviders(
+      <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,
+    );
+
+    expect(
+      screen.getByText(/available chats will be connected automatically/i),
+    ).toBeInTheDocument();
+    expect(useConnectExternalAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ hasChatsStep: false }),
+    );
+  });
+
+  it("dismisses from the AppDialog header close control instead of a footer Close", () => {
+    const onOpenChange = vi.fn();
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...hookResult(),
+      phase: "credentials",
+      lifecycleAccount: null,
+    });
+
+    renderWithProviders(
+      <ConnectExternalAccountDialog open onOpenChange={onOpenChange} runtimeContext={null} />,
+    );
+
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close.closest("[data-app-dialog-title-row]")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /^Close$/ })).toBe(close);
+    close.click();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

@@ -98,26 +98,37 @@ export function useConfigureExternalChats(options: {
   const [submissionState, setSubmissionState] = useState<ExternalChatSubmissionState>(() =>
     emptySubmissionState(scopeKey),
   );
+  const mountedRef = useRef(false);
+  const currentScopeKeyRef = useRef(scopeKey);
+  const settingsRequestRef = useRef<AbortController | null>(null);
+  const submissionRequestRef = useRef<AbortController | null>(null);
+  const settingsSavingRef = useRef(false);
   const pending =
     submissionState.scopeKey === scopeKey ? submissionState.pending : EMPTY_CHAT_UUIDS;
   const failed = submissionState.scopeKey === scopeKey ? submissionState.failed : EMPTY_CHAT_UUIDS;
   const submitting = submissionState.scopeKey === scopeKey ? submissionState.submitting : false;
-  const mountedRef = useRef(false);
-  const currentScopeKeyRef = useRef(scopeKey);
-  const settingsRequestRef = useRef<AbortController | null>(null);
-  const settingsSavingRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       settingsRequestRef.current?.abort();
+      submissionRequestRef.current?.abort();
     };
   }, []);
 
   useEffect(() => {
     currentScopeKeyRef.current = scopeKey;
+    submissionRequestRef.current?.abort();
+    submissionRequestRef.current = null;
   }, [scopeKey]);
+
+  useEffect(() => {
+    if (open) return;
+    submissionRequestRef.current?.abort();
+    submissionRequestRef.current = null;
+    setSubmissionState(emptySubmissionState(scopeKey));
+  }, [open, scopeKey]);
 
   useEffect(() => {
     setHistoryDepthState((current) => {
@@ -154,6 +165,7 @@ export function useConfigureExternalChats(options: {
 
   const toggle = useCallback(
     (chatUuid: string) => {
+      if (account.settings.selectionMode !== "explicit") return;
       setSubmissionState((currentState) => {
         const current =
           currentState.scopeKey === scopeKey ? currentState : emptySubmissionState(scopeKey);
@@ -169,13 +181,14 @@ export function useConfigureExternalChats(options: {
         };
       });
     },
-    [scopeKey],
+    [account.settings.selectionMode, scopeKey],
   );
 
   const historyDepth = historyDepthState.draft;
   const historyDepthDirty = historyDepthState.draft !== historyDepthState.saved;
   const settingsBusy = saveStatus === "saving" || refreshingAccount;
-  const selectionBlockedBySettings = historyDepthDirty || settingsBusy;
+  const manualSelectionEnabled = account.settings.selectionMode === "explicit";
+  const selectionBlockedBySettings = historyDepthDirty || settingsBusy || !manualSelectionEnabled;
 
   const changeHistoryDepth = useCallback((value: ExternalAccountHistoryDepth) => {
     setHistoryDepthState((current) => ({ ...current, draft: value }));
@@ -185,6 +198,7 @@ export function useConfigureExternalChats(options: {
   const submitUuids = useCallback(
     async (uuids: readonly string[]) => {
       if (
+        !manualSelectionEnabled ||
         submitting ||
         settingsSavingRef.current ||
         selectionBlockedBySettings ||
@@ -192,13 +206,22 @@ export function useConfigureExternalChats(options: {
       ) {
         return;
       }
+      const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+      if (requestContext == null) return;
       setSubmissionState((currentState) => {
         const current =
           currentState.scopeKey === scopeKey ? currentState : emptySubmissionState(scopeKey);
         return { ...current, submitting: true };
       });
       const nextFailed = new Set<string>();
-      const requestOptions = buildMessengerRequestOptions(runtimeContext);
+      const controller = new AbortController();
+      submissionRequestRef.current?.abort();
+      submissionRequestRef.current = controller;
+      const requestOptions = buildMessengerRequestOptions(
+        runtimeContext,
+        undefined,
+        controller.signal,
+      );
       await runWithConcurrency(uuids, 3, async (chatUuid) => {
         try {
           const snapshot = await selectExternalChat(
@@ -206,6 +229,15 @@ export function useConfigureExternalChats(options: {
             chatUuid,
             runtimeContext.projectId,
           );
+          if (
+            isWorkspaceRuntimeRequestInvalidated(
+              requestContext,
+              currentRuntimeContext,
+              controller.signal,
+            )
+          ) {
+            return;
+          }
           useExternalChatsStore
             .getState()
             .upsert(scopeKey, account.uuid, adaptWorkspaceExternalChatDto(snapshot));
@@ -214,10 +246,16 @@ export function useConfigureExternalChats(options: {
         }
       });
       const isCurrentScope = (): boolean =>
-        mountedRef.current && currentScopeKeyRef.current === scopeKey;
+        mountedRef.current &&
+        currentScopeKeyRef.current === scopeKey &&
+        !isWorkspaceRuntimeRequestInvalidated(
+          requestContext,
+          currentRuntimeContext,
+          controller.signal,
+        );
       if (!isCurrentScope()) return;
       if (nextFailed.size > 0) {
-        await refresh();
+        await refresh(controller.signal);
       }
       if (!isCurrentScope()) return;
       const current = useExternalChatsStore.getState();
@@ -239,8 +277,19 @@ export function useConfigureExternalChats(options: {
             }
           : currentState,
       );
+      if (submissionRequestRef.current === controller) {
+        submissionRequestRef.current = null;
+      }
     },
-    [account.uuid, refresh, runtimeContext, scopeKey, selectionBlockedBySettings, submitting],
+    [
+      account.uuid,
+      manualSelectionEnabled,
+      refresh,
+      runtimeContext,
+      scopeKey,
+      selectionBlockedBySettings,
+      submitting,
+    ],
   );
 
   const start = useCallback(() => void submitUuids([...pending]), [pending, submitUuids]);
@@ -258,16 +307,7 @@ export function useConfigureExternalChats(options: {
   if (saveStatus === "dirty" && !historyDepthDirty) normalizedSaveStatus = "clean";
 
   const saveHistoryDepth = useCallback(() => {
-    if (
-      !historyDepthDirty ||
-      settingsBusy ||
-      settingsRequestRef.current != null ||
-      submitting ||
-      account.settings.selectionMode !== "explicit"
-    ) {
-      if (account.settings.selectionMode !== "explicit") {
-        setSaveStatus("error");
-      }
+    if (!historyDepthDirty || settingsBusy || settingsRequestRef.current != null || submitting) {
       return;
     }
 
@@ -285,7 +325,7 @@ export function useConfigureExternalChats(options: {
       {
         settings: {
           kind: "zulip",
-          selection_mode: "explicit",
+          selection_mode: account.settings.selectionMode,
           history_depth: historyDepth,
           default_project_id: runtimeContext.projectId,
         },
@@ -455,12 +495,8 @@ export function useConfigureExternalChats(options: {
     saveStatus: normalizedSaveStatus,
     settingsBusy,
     selectionBlockedBySettings,
-    canSaveHistoryDepth:
-      historyDepthDirty &&
-      !settingsBusy &&
-      !submitting &&
-      account.settings.selectionMode === "explicit",
-    unsupportedSelectionMode: account.settings.selectionMode !== "explicit",
+    canSaveHistoryDepth: historyDepthDirty && !settingsBusy && !submitting,
+    manualSelectionEnabled,
     readyCount,
     selectedCount: selectedChats.length,
     setQuery,
@@ -473,3 +509,5 @@ export function useConfigureExternalChats(options: {
     refresh: () => void refresh(),
   };
 }
+
+export type ConfigureExternalChatsViewModel = ReturnType<typeof useConfigureExternalChats>;

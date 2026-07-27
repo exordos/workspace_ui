@@ -1,5 +1,10 @@
-import type { ExternalAccount } from "~/entities/external-account/external-account.types";
+import type {
+  ExternalAccount,
+  ExternalAccountHistoryDepth,
+  ExternalAccountSelectionMode,
+} from "~/entities/external-account/external-account.types";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { ReactNode } from "react";
 
 export type ConnectExternalAccountProvider = "zulip";
 export type ConnectExternalAccountError =
@@ -17,6 +22,8 @@ export interface ConnectExternalAccountDraft {
   serverUrl: string;
   email: string;
   apiKey: string;
+  selectionMode: ExternalAccountSelectionMode;
+  historyDepth: ExternalAccountHistoryDepth;
 }
 
 export interface ConnectExternalAccountFormProps {
@@ -28,6 +35,9 @@ export interface ConnectExternalAccountFormProps {
   onServerUrlChange: (value: string) => void;
   onEmailChange: (value: string) => void;
   onApiKeyChange: (value: string) => void;
+  onSelectionModeChange: (value: ExternalAccountSelectionMode) => void;
+  onHistoryDepthChange: (value: ExternalAccountHistoryDepth) => void;
+  showSyncSettings: boolean;
   onSubmit: () => void;
 }
 
@@ -36,4 +46,8 @@ export interface ConnectExternalAccountDialogProps {
   onOpenChange: (open: boolean) => void;
   runtimeContext: WorkspaceRuntimeContext | null;
   reconnectAccount?: ExternalAccount | null;
+  renderChatsStep?: (
+    runtimeContext: WorkspaceRuntimeContext,
+    account: ExternalAccount,
+  ) => ReactNode;
 }

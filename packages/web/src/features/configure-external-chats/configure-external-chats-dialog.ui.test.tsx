@@ -63,7 +63,7 @@ function viewModel(
     settingsBusy: false,
     selectionBlockedBySettings: false,
     canSaveHistoryDepth: false,
-    unsupportedSelectionMode: false,
+    manualSelectionEnabled: true,
     readyCount: 0,
     selectedCount: 0,
     setQuery: vi.fn(),
@@ -117,6 +117,40 @@ describe("ConfigureExternalChatsDialog", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load chats");
+  });
+
+  it("keeps an empty backfill catalog in a preparing state and offers retry", () => {
+    const refresh = vi.fn();
+    vi.mocked(useConfigureExternalChats).mockReturnValue(viewModel({ refresh }));
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Looking for available chats");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("does not declare no search results while an empty catalog is still preparing", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(viewModel({ query: "support" }));
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Looking for available chats");
+    expect(screen.queryByText("No chats match your search.")).not.toBeInTheDocument();
   });
 
   it("renders all history values as an accessible radio group without project controls", () => {
@@ -232,10 +266,12 @@ describe("ConfigureExternalChatsDialog", () => {
     expect(reloadAccountSettings).toHaveBeenCalledOnce();
   });
 
-  it("blocks editing for an unsupported automatic selection mode", () => {
+  it("keeps history editable but disables manual chat selection in automatic mode", () => {
     vi.mocked(useConfigureExternalChats).mockReturnValue(
       viewModel({
-        unsupportedSelectionMode: true,
+        manualSelectionEnabled: false,
+        selectionBlockedBySettings: true,
+        chats: [chat()],
       }),
     );
 
@@ -248,9 +284,36 @@ describe("ConfigureExternalChatsDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
-    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeEnabled();
+    expect(screen.queryByRole("checkbox", { name: "Support" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sync/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps sync actions on the right of the footer while dismiss stays in the header", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        pending: new Set(["chat-a"]),
+        readyCount: 0,
+        selectedCount: 2,
+        chats: [chat()],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const sync = screen.getByRole("button", { name: "Sync (1)" });
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(screen.getByText("0 of 2 chats ready")).toBeInTheDocument();
+    expect(sync.parentElement).not.toContainElement(close);
+    expect(close.closest("[data-app-dialog-title-row]")).not.toBeNull();
   });
 
   it("does not add per-chat settings, move, or deselect controls", () => {

@@ -8,6 +8,8 @@ const draft = {
   serverUrl: "",
   email: "",
   apiKey: "",
+  selectionMode: "explicit" as const,
+  historyDepth: "30_days" as const,
 };
 
 const account = {
@@ -45,6 +47,9 @@ function renderForm(overrides: Partial<ConnectExternalAccountFormProps> = {}) {
     onServerUrlChange: vi.fn(),
     onEmailChange: vi.fn(),
     onApiKeyChange: vi.fn(),
+    onSelectionModeChange: vi.fn(),
+    onHistoryDepthChange: vi.fn(),
+    showSyncSettings: true,
     onSubmit: vi.fn(),
     ...overrides,
   };
@@ -60,6 +65,14 @@ describe("ConnectExternalAccountForm", () => {
     expect(screen.getByLabelText("Server URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
+    expect(
+      screen.getByRole("group", { name: "Which chats should be connected?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Choose manually" })).toBeChecked();
+    expect(
+      screen.getByRole("group", { name: "How much history should be loaded?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
 
     fireEvent.submit(screen.getByRole("button", { name: /connect/i }).closest("form")!);
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
@@ -70,5 +83,16 @@ describe("ConnectExternalAccountForm", () => {
 
     expect(screen.getByRole("button", { name: /connect/i })).toBeDisabled();
     expect(screen.getByText(/only one Zulip account/i)).toBeInTheDocument();
+  });
+
+  it("does not expose synchronization settings while reconnecting credentials", () => {
+    renderForm({ showSyncSettings: false });
+
+    expect(
+      screen.queryByRole("group", { name: "Which chats should be connected?" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "How much history should be loaded?" }),
+    ).not.toBeInTheDocument();
   });
 });

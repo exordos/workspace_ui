@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import type { ExternalAccountHistoryDepth } from "~/entities/external-account/external-account.types";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
@@ -6,6 +7,14 @@ import type {
   ConnectExternalAccountError,
   ConnectExternalAccountFormProps,
 } from "./connect-external-account.types";
+
+const HISTORY_DEPTH_OPTIONS: readonly ExternalAccountHistoryDepth[] = [
+  "new",
+  "7_days",
+  "30_days",
+  "90_days",
+  "all",
+];
 
 function errorText(error: ConnectExternalAccountError | null): string | null {
   if (error === "fill") return t("connectExternalAccount.errors.allFields");
@@ -29,6 +38,9 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
     onServerUrlChange,
     onEmailChange,
     onApiKeyChange,
+    onSelectionModeChange,
+    onHistoryDepthChange,
+    showSyncSettings,
     onSubmit,
   }) {
     const handleSubmit = useCallback(
@@ -95,6 +107,73 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </FormField>
+        {showSyncSettings ? (
+          <>
+            <fieldset disabled={submitting || duplicateZulip}>
+              <legend className="text-sm font-medium text-text-primary">
+                {t("connectExternalAccount.selectionMode.title")}
+              </legend>
+              <p className="mt-1 text-xs text-text-muted">
+                {t("connectExternalAccount.selectionMode.description")}
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {(["explicit", "all"] as const).map((value) => (
+                  <label
+                    key={value}
+                    className={`focus-within:ring-accent/40 cursor-pointer rounded-lg border px-3 py-2 text-sm focus-within:ring-2 ${
+                      draft.selectionMode === value
+                        ? "border-accent/50 bg-accent-soft text-accent"
+                        : "border-border-subtle bg-bg text-text-primary"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="external-account-selection-mode"
+                      value={value}
+                      checked={draft.selectionMode === value}
+                      onChange={() => onSelectionModeChange(value)}
+                      className="mr-2"
+                    />
+                    {t(`connectExternalAccount.selectionMode.options.${value}`)}
+                  </label>
+                ))}
+              </div>
+              {draft.selectionMode === "all" ? (
+                <p className="mt-2 text-xs text-text-muted">
+                  {t("connectExternalAccount.selectionMode.allHint")}
+                </p>
+              ) : null}
+            </fieldset>
+
+            <fieldset disabled={submitting || duplicateZulip}>
+              <legend className="text-sm font-medium text-text-primary">
+                {t("connectExternalAccount.historyDepth.title")}
+              </legend>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {HISTORY_DEPTH_OPTIONS.map((value) => (
+                  <label
+                    key={value}
+                    className={`focus-within:ring-accent/40 cursor-pointer rounded-md border px-2 py-2 text-center text-xs focus-within:ring-2 ${
+                      draft.historyDepth === value
+                        ? "border-accent/50 bg-accent-soft text-accent"
+                        : "border-border-subtle bg-bg text-text-muted"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="external-account-history-depth"
+                      value={value}
+                      checked={draft.historyDepth === value}
+                      onChange={() => onHistoryDepthChange(value)}
+                      className="sr-only"
+                    />
+                    {t(`configureExternalChats.historyDepth.options.${value}`)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </>
+        ) : null}
         {visibleError != null ? (
           <div
             className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base"

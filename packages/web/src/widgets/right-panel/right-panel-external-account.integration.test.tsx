@@ -209,4 +209,20 @@ describe("RightPanelConnectExternalAccountDialog", () => {
 
     expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
   });
+
+  it("uses synchronization wording for an automatic account", () => {
+    seedRuntime();
+    seedAccounts([
+      {
+        ...account,
+        settings: { ...account.settings, selectionMode: "all" },
+      },
+    ]);
+
+    renderWithProviders(<RightPanelExternalAccountsList />);
+    fireEvent.click(screen.getByText("user@example.com"));
+
+    expect(screen.getByRole("button", { name: "Configure sync" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
+  });
 });

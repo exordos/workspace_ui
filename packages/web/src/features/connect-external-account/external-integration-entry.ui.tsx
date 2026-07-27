@@ -74,7 +74,9 @@ export const ExternalIntegrationEntry = React.memo<{
                 onClick={() => setChatsOpen(true)}
                 className="inline-flex w-fit rounded-md border border-border-subtle px-2.5 py-1 text-xs text-text-primary"
               >
-                {t("configureExternalChats.action")}
+                {account.settings.selectionMode === "all"
+                  ? t("configureExternalChats.automaticAction")
+                  : t("configureExternalChats.action")}
               </button>
             ) : null}
             <button

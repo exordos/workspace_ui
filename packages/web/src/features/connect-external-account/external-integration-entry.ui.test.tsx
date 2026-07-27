@@ -87,4 +87,17 @@ describe("ExternalIntegrationEntry", () => {
 
     expect(screen.queryByRole("button", { name: "Configure chats" })).not.toBeInTheDocument();
   });
+
+  it("uses synchronization wording for an automatic account", () => {
+    seedAccounts([
+      {
+        ...account,
+        settings: { ...account.settings, selectionMode: "all" },
+      },
+    ]);
+    renderWithProviders(<ExternalIntegrationEntry runtimeContext={runtimeContext} />);
+
+    expect(screen.getByRole("button", { name: "Configure sync" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Configure chats" })).not.toBeInTheDocument();
+  });
 });

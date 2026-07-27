@@ -9,11 +9,19 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { ConfigureExternalChatsDialog } from "~/features/configure-external-chats/configure-external-chats-dialog.ui";
+import { ConfigureExternalChatsOnboardingStep } from "~/features/configure-external-chats/configure-external-chats-onboarding-step.ui";
 import { canConfigureExternalChats } from "~/features/configure-external-chats/configure-external-chats.lib";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { DeleteExternalAccountDialog } from "~/features/connect-external-account/delete-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
+
+function renderChatsOnboardingStep(
+  runtimeContext: WorkspaceRuntimeContext,
+  account: ExternalAccount,
+): React.ReactNode {
+  return <ConfigureExternalChatsOnboardingStep runtimeContext={runtimeContext} account={account} />;
+}
 
 export const RightPanelConnectExternalAccountDialog: React.FC<{
   open: boolean;
@@ -30,6 +38,7 @@ export const RightPanelConnectExternalAccountDialog: React.FC<{
       open={open}
       onOpenChange={onOpenChange}
       runtimeContext={runtimeContext}
+      renderChatsStep={renderChatsOnboardingStep}
     />
   );
 };
@@ -109,7 +118,9 @@ const ExternalAccountCard = React.memo<{
                 onClick={() => setChatsOpen(true)}
                 className="whitespace-nowrap rounded-md border border-border-subtle px-2 py-1 text-text-primary hover:bg-bg-elevated"
               >
-                {t("configureExternalChats.compactAction")}
+                {account.settings.selectionMode === "all"
+                  ? t("configureExternalChats.automaticAction")
+                  : t("configureExternalChats.compactAction")}
               </button>
             ) : null}
             <button
@@ -127,6 +138,7 @@ const ExternalAccountCard = React.memo<{
         onOpenChange={setReconnectOpen}
         runtimeContext={runtimeContext}
         reconnectAccount={account}
+        renderChatsStep={renderChatsOnboardingStep}
       />
       {canConfigureChats ? (
         <ConfigureExternalChatsDialog

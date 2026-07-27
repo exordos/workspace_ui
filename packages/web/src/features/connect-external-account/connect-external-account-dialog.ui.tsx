@@ -16,7 +16,7 @@ const AccountLifecycle = React.memo<{
   account: ExternalAccount;
   onReset: () => void;
 }>(({ account, onReset }) => {
-  const needsCredentials = account.status === "auth_required";
+  const needsCredentials = account.status === "auth_required" || account.status === "degraded";
   const isError = needsCredentials || account.status === "degraded";
   return (
     <div
@@ -46,37 +46,63 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
     onOpenChange,
     runtimeContext,
     reconnectAccount = null,
+    renderChatsStep,
   }) {
     const handleCompleted = useCallback(() => onOpenChange(false), [onOpenChange]);
     const vm = useConnectExternalAccount({
       open,
       runtimeContext,
       reconnectAccount,
+      hasChatsStep: renderChatsStep != null,
       onCompleted: handleCompleted,
     });
-    const showForm = vm.lifecycleAccount == null || vm.lifecycleAccount.status === "auth_required";
+    const showForm =
+      vm.phase === "credentials" &&
+      (vm.lifecycleAccount == null || vm.lifecycleAccount.status === "auth_required");
+    const showLifecycle =
+      vm.lifecycleAccount != null && vm.phase !== "chats" && vm.phase !== "automaticDone";
+    const title =
+      vm.phase === "chats"
+        ? t("connectExternalAccount.chatsStep.title")
+        : vm.phase === "automaticDone"
+          ? t("connectExternalAccount.done.title")
+          : vm.reconnecting
+            ? t("connectExternalAccount.reconnectTitle")
+            : t("connectExternalAccount.title");
+    const description =
+      vm.phase === "chats"
+        ? t("connectExternalAccount.chatsStep.description")
+        : vm.phase === "automaticDone"
+          ? t("connectExternalAccount.done.description")
+          : t("connectExternalAccount.description");
 
     return (
       <AppDialog
         open={open}
         onOpenChange={onOpenChange}
-        title={
-          vm.reconnecting
-            ? t("connectExternalAccount.reconnectTitle")
-            : t("connectExternalAccount.title")
-        }
-        description={t("connectExternalAccount.description")}
+        title={title}
+        description={description}
         positionClassName="top-1/2 -translate-y-1/2"
-        maxWidthClassName="max-w-lg"
+        maxWidthClassName={vm.phase === "chats" ? "max-w-2xl" : "max-w-lg"}
         footer={
-          <DialogCancelButton onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </DialogCancelButton>
+          vm.phase === "automaticDone" ? (
+            <DialogCancelButton onClick={() => onOpenChange(false)}>
+              {t("connectExternalAccount.done.action")}
+            </DialogCancelButton>
+          ) : undefined
         }
       >
-        {vm.lifecycleAccount != null ? (
+        {showLifecycle ? (
           <div className="mb-4">
-            <AccountLifecycle account={vm.lifecycleAccount} onReset={vm.resetCredentials} />
+            <AccountLifecycle account={vm.lifecycleAccount!} onReset={vm.resetCredentials} />
+          </div>
+        ) : null}
+        {vm.phase === "checking" && vm.lifecycleAccount == null ? (
+          <div
+            className="rounded-lg border border-border-subtle bg-bg px-3 py-3 text-sm text-text-primary"
+            role="status"
+          >
+            {t("connectExternalAccount.status.connecting")}
           </div>
         ) : null}
         {showForm ? (
@@ -85,12 +111,26 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
             duplicateZulip={vm.duplicateZulip}
             submitting={vm.submitting}
             error={vm.error}
+            showSyncSettings={!vm.reconnecting}
             onProviderChange={vm.setProvider}
             onServerUrlChange={vm.setServerUrl}
             onEmailChange={vm.setEmail}
             onApiKeyChange={vm.setApiKey}
+            onSelectionModeChange={vm.setSelectionMode}
+            onHistoryDepthChange={vm.setHistoryDepth}
             onSubmit={vm.submit}
           />
+        ) : null}
+        {vm.phase === "chats" && runtimeContext != null && vm.lifecycleAccount != null
+          ? renderChatsStep?.(runtimeContext, vm.lifecycleAccount)
+          : null}
+        {vm.phase === "automaticDone" ? (
+          <div
+            className="border-accent/30 rounded-lg border bg-accent-soft px-4 py-4 text-sm text-text-primary"
+            role="status"
+          >
+            {t("connectExternalAccount.done.message")}
+          </div>
         ) : null}
       </AppDialog>
     );
