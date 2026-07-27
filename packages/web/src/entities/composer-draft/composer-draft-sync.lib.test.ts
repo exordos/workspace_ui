@@ -241,10 +241,58 @@ describe("workspace composer draft remote queue", () => {
 
     created.resolve(snapshot("A", 1, "etag-1"));
     await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
     expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-1");
     expect(deleting).toBe(true);
     await flushMicrotasks();
     expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toBeUndefined();
+  });
+
+  it("persists a deletion tombstone before starting the server DELETE", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Already sent"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .applyDraftSyncSuccess(OWNER, draft!.draftUuid, draft!.snapshotId, {
+        etag: "etag-1",
+        updatedAt: "2026-07-20T09:00:01.000Z",
+      });
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, draft!.draftUuid);
+    vi.clearAllMocks();
+
+    // A reload while DELETE is pending must hydrate the deletion tombstone,
+    // rather than the previously saved draft that contains an already-sent message.
+    const persisted = createDeferred<void>();
+    writeWorkspaceComposerDraftRecord.mockReturnValueOnce(persisted.promise);
+    deleteDraft.mockResolvedValueOnce(undefined);
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: draft!,
+      }),
+    ).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(writeWorkspaceComposerDraftRecord).toHaveBeenCalledWith(
+      OWNER,
+      expect.objectContaining({
+        draftUuid: draft!.draftUuid,
+        syncStatus: "deleting",
+      }),
+    );
+    expect(deleteDraft).not.toHaveBeenCalled();
+
+    persisted.resolve(undefined);
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-1");
   });
 
   it("keeps local and server snapshots and stops after a 412 conflict", async () => {

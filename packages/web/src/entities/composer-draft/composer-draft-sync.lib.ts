@@ -190,6 +190,10 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
     .getState()
     .markDraftDeleting(job.ownerKey, job.draftUuid);
   if (deleting == null) return "failed";
+  // Persist the tombstone before any server request can make a reload race
+  // against the debounced IndexedDB write and restore already-sent content.
+  await useWorkspaceComposerDraftStore.getState().flushDraft(job.ownerKey, job.draftUuid);
+  if (!isJobCurrent(job)) return "failed";
 
   if (deleting.etag == null) {
     if (!isServerDraftable(deleting)) {
