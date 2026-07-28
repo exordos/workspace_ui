@@ -4,6 +4,7 @@ import { useExternalAccountsStore } from "~/entities/external-account/external-a
 import type {
   ExternalAccount,
   ExternalAccountHistoryDepth,
+  ExternalAccountSelectionMode,
 } from "~/entities/external-account/external-account.types";
 import { adaptWorkspaceExternalChatDto } from "~/entities/external-chat/external-chat-adapters.lib";
 import {
@@ -49,10 +50,18 @@ export type ExternalChatSettingsSaveStatus =
   | "conflict"
   | "success";
 
-interface HistoryDepthDraftState {
+interface ExternalAccountSettingsDraftState {
+  scopeKey: string;
   accountUuid: string;
-  saved: ExternalAccountHistoryDepth;
-  draft: ExternalAccountHistoryDepth;
+  etag: string;
+  saved: {
+    historyDepth: ExternalAccountHistoryDepth;
+    selectionMode: ExternalAccountSelectionMode;
+  };
+  draft: {
+    historyDepth: ExternalAccountHistoryDepth;
+    selectionMode: ExternalAccountSelectionMode;
+  };
 }
 
 function emptySubmissionState(scopeKey: string): ExternalChatSubmissionState {
@@ -88,10 +97,18 @@ export function useConfigureExternalChats(options: {
     (state) => state.authoritativeResetGeneration,
   );
   const [query, setQuery] = useState("");
-  const [historyDepthState, setHistoryDepthState] = useState<HistoryDepthDraftState>(() => ({
+  const [settingsState, setSettingsState] = useState<ExternalAccountSettingsDraftState>(() => ({
+    scopeKey,
     accountUuid: account.uuid,
-    saved: account.settings.historyDepth,
-    draft: account.settings.historyDepth,
+    etag: account.etag,
+    saved: {
+      historyDepth: account.settings.historyDepth,
+      selectionMode: account.settings.selectionMode,
+    },
+    draft: {
+      historyDepth: account.settings.historyDepth,
+      selectionMode: account.settings.selectionMode,
+    },
   }));
   const [saveStatus, setSaveStatus] = useState<ExternalChatSettingsSaveStatus>("clean");
   const [refreshingAccount, setRefreshingAccount] = useState(false);
@@ -119,6 +136,11 @@ export function useConfigureExternalChats(options: {
 
   useEffect(() => {
     currentScopeKeyRef.current = scopeKey;
+    settingsRequestRef.current?.abort();
+    settingsRequestRef.current = null;
+    settingsSavingRef.current = false;
+    setRefreshingAccount(false);
+    setSaveStatus("clean");
     submissionRequestRef.current?.abort();
     submissionRequestRef.current = null;
   }, [scopeKey]);
@@ -131,19 +153,42 @@ export function useConfigureExternalChats(options: {
   }, [open, scopeKey]);
 
   useEffect(() => {
-    setHistoryDepthState((current) => {
-      const incoming = account.settings.historyDepth;
-      if (current.accountUuid !== account.uuid) {
-        return { accountUuid: account.uuid, saved: incoming, draft: incoming };
+    setSettingsState((current) => {
+      const incoming = {
+        historyDepth: account.settings.historyDepth,
+        selectionMode: account.settings.selectionMode,
+      };
+      if (current.scopeKey !== scopeKey || current.accountUuid !== account.uuid) {
+        return {
+          scopeKey,
+          accountUuid: account.uuid,
+          etag: account.etag,
+          saved: incoming,
+          draft: incoming,
+        };
       }
-      const dirty = current.draft !== current.saved;
+      const historyDepthDirty = current.draft.historyDepth !== current.saved.historyDepth;
+      const selectionModeDirty = current.draft.selectionMode !== current.saved.selectionMode;
       return {
         ...current,
+        etag: account.etag,
         saved: incoming,
-        draft: dirty ? current.draft : incoming,
+        draft: {
+          historyDepth: historyDepthDirty ? current.draft.historyDepth : incoming.historyDepth,
+          selectionMode: selectionModeDirty ? current.draft.selectionMode : incoming.selectionMode,
+        },
       };
     });
-  }, [account.settings.historyDepth, account.uuid]);
+    if (account.settings.selectionMode === "all") {
+      setSubmissionState(emptySubmissionState(scopeKey));
+    }
+  }, [
+    account.etag,
+    account.settings.historyDepth,
+    account.settings.selectionMode,
+    account.uuid,
+    scopeKey,
+  ]);
 
   const refresh = useCallback(
     (signal?: AbortSignal) =>
@@ -165,7 +210,18 @@ export function useConfigureExternalChats(options: {
 
   const toggle = useCallback(
     (chatUuid: string) => {
-      if (account.settings.selectionMode !== "explicit") return;
+      const settingsDirty =
+        settingsState.draft.historyDepth !== settingsState.saved.historyDepth ||
+        settingsState.draft.selectionMode !== settingsState.saved.selectionMode;
+      if (
+        settingsState.saved.selectionMode !== "explicit" ||
+        settingsDirty ||
+        settingsSavingRef.current ||
+        refreshingAccount ||
+        submitting
+      ) {
+        return;
+      }
       setSubmissionState((currentState) => {
         const current =
           currentState.scopeKey === scopeKey ? currentState : emptySubmissionState(scopeKey);
@@ -181,19 +237,42 @@ export function useConfigureExternalChats(options: {
         };
       });
     },
-    [account.settings.selectionMode, scopeKey],
+    [refreshingAccount, scopeKey, settingsState, submitting],
   );
 
-  const historyDepth = historyDepthState.draft;
-  const historyDepthDirty = historyDepthState.draft !== historyDepthState.saved;
+  const historyDepth = settingsState.draft.historyDepth;
+  const selectionMode = settingsState.draft.selectionMode;
+  const historyDepthDirty = settingsState.draft.historyDepth !== settingsState.saved.historyDepth;
+  const selectionModeDirty =
+    settingsState.draft.selectionMode !== settingsState.saved.selectionMode;
+  const settingsDirty = historyDepthDirty || selectionModeDirty;
   const settingsBusy = saveStatus === "saving" || refreshingAccount;
-  const manualSelectionEnabled = account.settings.selectionMode === "explicit";
-  const selectionBlockedBySettings = historyDepthDirty || settingsBusy || !manualSelectionEnabled;
+  const manualSelectionEnabled = settingsState.saved.selectionMode === "explicit";
+  const selectionBlockedBySettings = settingsDirty || settingsBusy || !manualSelectionEnabled;
 
-  const changeHistoryDepth = useCallback((value: ExternalAccountHistoryDepth) => {
-    setHistoryDepthState((current) => ({ ...current, draft: value }));
-    setSaveStatus("dirty");
-  }, []);
+  const changeHistoryDepth = useCallback(
+    (value: ExternalAccountHistoryDepth) => {
+      if (settingsSavingRef.current || refreshingAccount || submitting) return;
+      setSettingsState((current) => ({
+        ...current,
+        draft: { ...current.draft, historyDepth: value },
+      }));
+      setSaveStatus("dirty");
+    },
+    [refreshingAccount, submitting],
+  );
+
+  const changeSelectionMode = useCallback(
+    (value: ExternalAccountSelectionMode) => {
+      if (settingsSavingRef.current || refreshingAccount || submitting) return;
+      setSettingsState((current) => ({
+        ...current,
+        draft: { ...current.draft, selectionMode: value },
+      }));
+      setSaveStatus("dirty");
+    },
+    [refreshingAccount, submitting],
+  );
 
   const submitUuids = useCallback(
     async (uuids: readonly string[]) => {
@@ -316,7 +395,14 @@ export function useConfigureExternalChats(options: {
     selectAllState = pendingVisibleCount === selectableVisibleChatUuids.length ? "all" : "some";
   }
   const toggleAllVisible = useCallback(() => {
-    if (account.settings.selectionMode !== "explicit" || selectableVisibleChatUuids.length === 0) {
+    if (
+      settingsState.saved.selectionMode !== "explicit" ||
+      settingsDirty ||
+      settingsSavingRef.current ||
+      refreshingAccount ||
+      submitting ||
+      selectableVisibleChatUuids.length === 0
+    ) {
       return;
     }
     setSubmissionState((currentState) => {
@@ -336,15 +422,22 @@ export function useConfigureExternalChats(options: {
         failed: nextFailed,
       };
     });
-  }, [account.settings.selectionMode, scopeKey, selectableVisibleChatUuids]);
+  }, [
+    refreshingAccount,
+    scopeKey,
+    selectableVisibleChatUuids,
+    settingsDirty,
+    settingsState.saved.selectionMode,
+    submitting,
+  ]);
   const selectedChats = chats.filter((chat) => chat.selected);
   const readyCount = selectedChats.filter((chat) => chat.status === "live").length;
   let normalizedSaveStatus = saveStatus;
-  if (saveStatus === "clean" && historyDepthDirty) normalizedSaveStatus = "dirty";
-  if (saveStatus === "dirty" && !historyDepthDirty) normalizedSaveStatus = "clean";
+  if (saveStatus === "clean" && settingsDirty) normalizedSaveStatus = "dirty";
+  if (saveStatus === "dirty" && !settingsDirty) normalizedSaveStatus = "clean";
 
-  const saveHistoryDepth = useCallback(() => {
-    if (!historyDepthDirty || settingsBusy || settingsRequestRef.current != null || submitting) {
+  const saveSettings = useCallback(() => {
+    if (!settingsDirty || settingsBusy || settingsRequestRef.current != null || submitting) {
       return;
     }
 
@@ -352,6 +445,8 @@ export function useConfigureExternalChats(options: {
     if (requestContext == null) return;
     const ownerKey = workspaceRuntimeOwnerKey(requestContext);
     const controller = new AbortController();
+    const historyDepthWasDirty = historyDepthDirty;
+    const selectionModeWasDirty = selectionModeDirty;
     settingsRequestRef.current = controller;
     settingsSavingRef.current = true;
     setSaveStatus("saving");
@@ -362,14 +457,14 @@ export function useConfigureExternalChats(options: {
       {
         settings: {
           kind: "zulip",
-          selection_mode: account.settings.selectionMode,
+          selection_mode: selectionMode,
           history_depth: historyDepth,
           default_project_id: runtimeContext.projectId,
         },
       },
-      account.etag,
+      settingsState.etag,
     )
-      .then(async (snapshot) => {
+      .then((snapshot) => {
         if (
           !mountedRef.current ||
           isWorkspaceRuntimeRequestInvalidated(
@@ -391,32 +486,51 @@ export function useConfigureExternalChats(options: {
             setSaveStatus("error");
             return;
           }
-          setHistoryDepthState({
+          const mergedDraft = {
+            historyDepth: historyDepthWasDirty
+              ? historyDepth
+              : currentAccount.settings.historyDepth,
+            selectionMode: selectionModeWasDirty
+              ? selectionMode
+              : currentAccount.settings.selectionMode,
+          };
+          setSettingsState({
+            scopeKey,
             accountUuid: currentAccount.uuid,
-            saved: currentAccount.settings.historyDepth,
-            draft: historyDepth,
+            etag: currentAccount.etag,
+            saved: {
+              historyDepth: currentAccount.settings.historyDepth,
+              selectionMode: currentAccount.settings.selectionMode,
+            },
+            draft: mergedDraft,
           });
-          setSaveStatus(
-            currentAccount.settings.historyDepth === historyDepth ? "success" : "dirty",
-          );
+          const matchesSubmitted =
+            currentAccount.settings.historyDepth === mergedDraft.historyDepth &&
+            currentAccount.settings.selectionMode === mergedDraft.selectionMode;
+          setSaveStatus(matchesSubmitted ? "success" : "dirty");
+          if (currentAccount.settings.selectionMode === "all") {
+            setSubmissionState(emptySubmissionState(scopeKey));
+          }
           return;
         }
-        setHistoryDepthState({
+        setSettingsState({
+          scopeKey,
           accountUuid: updatedAccount.uuid,
-          saved: updatedAccount.settings.historyDepth,
-          draft: updatedAccount.settings.historyDepth,
+          etag: updatedAccount.etag,
+          saved: {
+            historyDepth: updatedAccount.settings.historyDepth,
+            selectionMode: updatedAccount.settings.selectionMode,
+          },
+          draft: {
+            historyDepth: updatedAccount.settings.historyDepth,
+            selectionMode: updatedAccount.settings.selectionMode,
+          },
         });
-        await refresh(controller.signal);
-        if (
-          mountedRef.current &&
-          !isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            currentRuntimeContext,
-            controller.signal,
-          )
-        ) {
-          setSaveStatus("success");
+        if (updatedAccount.settings.selectionMode === "all") {
+          setSubmissionState(emptySubmissionState(scopeKey));
         }
+        setSaveStatus("success");
+        void refresh(controller.signal);
       })
       .catch((error: unknown) => {
         if (
@@ -443,13 +557,16 @@ export function useConfigureExternalChats(options: {
         }
       });
   }, [
-    account.etag,
-    account.settings.selectionMode,
     account.uuid,
     historyDepth,
     historyDepthDirty,
     refresh,
     runtimeContext,
+    scopeKey,
+    selectionMode,
+    selectionModeDirty,
+    settingsDirty,
+    settingsState.etag,
     settingsBusy,
     submitting,
   ]);
@@ -486,17 +603,47 @@ export function useConfigureExternalChats(options: {
           return;
         }
         const updatedAccount = adaptWorkspaceExternalAccountDto(snapshot.account, snapshot.etag);
-        if (!useExternalAccountsStore.getState().upsertAccountForOwner(ownerKey, updatedAccount)) {
-          return;
+        const accountStore = useExternalAccountsStore.getState();
+        let authoritativeAccount = updatedAccount;
+        if (!accountStore.upsertAccountForOwner(ownerKey, updatedAccount)) {
+          const currentAccount =
+            accountStore.ownerKey === ownerKey
+              ? accountStore.accounts.find((item) => item.uuid === account.uuid)
+              : undefined;
+          if (currentAccount == null) {
+            setSaveStatus("error");
+            return;
+          }
+          authoritativeAccount = currentAccount;
         }
-        setHistoryDepthState((current) => ({
-          accountUuid: updatedAccount.uuid,
-          saved: updatedAccount.settings.historyDepth,
+        setSettingsState((current) => ({
+          scopeKey,
+          accountUuid: authoritativeAccount.uuid,
+          etag: authoritativeAccount.etag,
+          saved: {
+            historyDepth: authoritativeAccount.settings.historyDepth,
+            selectionMode: authoritativeAccount.settings.selectionMode,
+          },
           draft:
-            current.accountUuid === updatedAccount.uuid
-              ? current.draft
-              : updatedAccount.settings.historyDepth,
+            current.scopeKey === scopeKey && current.accountUuid === updatedAccount.uuid
+              ? {
+                  historyDepth:
+                    current.draft.historyDepth !== current.saved.historyDepth
+                      ? current.draft.historyDepth
+                      : authoritativeAccount.settings.historyDepth,
+                  selectionMode:
+                    current.draft.selectionMode !== current.saved.selectionMode
+                      ? current.draft.selectionMode
+                      : authoritativeAccount.settings.selectionMode,
+                }
+              : {
+                  historyDepth: authoritativeAccount.settings.historyDepth,
+                  selectionMode: authoritativeAccount.settings.selectionMode,
+                },
         }));
+        if (authoritativeAccount.settings.selectionMode === "all") {
+          setSubmissionState(emptySubmissionState(scopeKey));
+        }
         setSaveStatus("dirty");
       })
       .catch(() => {
@@ -517,7 +664,7 @@ export function useConfigureExternalChats(options: {
           if (mountedRef.current) setRefreshingAccount(false);
         }
       });
-  }, [account.uuid, refreshingAccount, runtimeContext, saveStatus, submitting]);
+  }, [account.uuid, refreshingAccount, runtimeContext, saveStatus, scopeKey, submitting]);
 
   return {
     chats: visibleChats,
@@ -529,10 +676,13 @@ export function useConfigureExternalChats(options: {
     submitting,
     historyDepth,
     historyDepthDirty,
+    selectionMode,
+    selectionModeDirty,
+    settingsDirty,
     saveStatus: normalizedSaveStatus,
     settingsBusy,
     selectionBlockedBySettings,
-    canSaveHistoryDepth: historyDepthDirty && !settingsBusy && !submitting,
+    canSaveSettings: settingsDirty && !settingsBusy && !submitting,
     manualSelectionEnabled,
     selectableVisibleCount: selectableVisibleChatUuids.length,
     selectAllState,
@@ -542,7 +692,8 @@ export function useConfigureExternalChats(options: {
     toggle,
     toggleAllVisible,
     changeHistoryDepth,
-    saveHistoryDepth,
+    changeSelectionMode,
+    saveSettings,
     reloadAccountSettings,
     start,
     retryFailed,

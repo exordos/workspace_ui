@@ -70,6 +70,9 @@ describe("ConnectExternalAccountForm", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Choose manually" })).toBeChecked();
     expect(
+      screen.getByText(/After connecting, choose the chats you need from the list yourself/i),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("group", { name: "How much history should be loaded?" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
@@ -99,5 +102,49 @@ describe("ConnectExternalAccountForm", () => {
     expect(
       screen.queryByRole("group", { name: "How much history should be loaded?" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps a mode hint visible for both selection modes", () => {
+    const { rerender } = render(
+      <ConnectExternalAccountForm
+        draft={draft}
+        duplicateZulip={false}
+        submitting={false}
+        error={null}
+        onProviderChange={vi.fn()}
+        onServerUrlChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onApiKeyChange={vi.fn()}
+        onSelectionModeChange={vi.fn()}
+        onHistoryDepthChange={vi.fn()}
+        showSyncSettings
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/After connecting, choose the chats you need from the list yourself/i),
+    ).toBeInTheDocument();
+
+    rerender(
+      <ConnectExternalAccountForm
+        draft={{ ...draft, selectionMode: "all" }}
+        duplicateZulip={false}
+        submitting={false}
+        error={null}
+        onProviderChange={vi.fn()}
+        onServerUrlChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onApiKeyChange={vi.fn()}
+        onSelectionModeChange={vi.fn()}
+        onHistoryDepthChange={vi.fn()}
+        showSyncSettings
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Chats will be connected automatically within the limit/i),
+    ).toBeInTheDocument();
   });
 });

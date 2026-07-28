@@ -347,6 +347,45 @@ describe("useConfigureExternalChats", () => {
     expect(selectExternalChat).not.toHaveBeenCalled();
   });
 
+  it("does not change manual selection or settings while a chat request is submitting", async () => {
+    const secondChatUuid = "50000000-0000-4000-8000-000000000005";
+    const selection = deferred<WorkspaceExternalChatDto>();
+    vi.mocked(getExternalChats).mockResolvedValue([
+      chatSnapshot({ selected: false, project_id: null, status: "available" }),
+      chatSnapshot({
+        uuid: secondChatUuid,
+        display_name: "Development",
+        selected: false,
+        project_id: null,
+        status: "available",
+      }),
+    ]);
+    vi.mocked(selectExternalChat).mockReturnValue(selection.promise);
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.toggle(CHAT_UUID));
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.submitting).toBe(true));
+    act(() => {
+      result.current.toggle(secondChatUuid);
+      result.current.toggleAllVisible();
+      result.current.changeHistoryDepth("90_days");
+      result.current.changeSelectionMode("all");
+    });
+
+    expect(result.current.pending).toEqual(new Set([CHAT_UUID]));
+    expect(result.current.historyDepth).toBe("30_days");
+    expect(result.current.selectionMode).toBe("explicit");
+
+    await act(async () => {
+      selection.resolve(chatSnapshot({ revision: 2, selected: true, status: "syncing" }));
+      await selection.promise;
+    });
+  });
+
   it("saves the complete explicit settings and refreshes the catalog", async () => {
     vi.mocked(getExternalChats)
       .mockResolvedValueOnce([chatSnapshot()])
@@ -362,7 +401,7 @@ describe("useConfigureExternalChats", () => {
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
     await waitFor(() => expect(result.current.historyDepthDirty).toBe(true));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
 
     await waitFor(() => expect(result.current.saveStatus).toBe("success"));
     expect(updateExternalAccount).toHaveBeenCalledWith(
@@ -400,7 +439,7 @@ describe("useConfigureExternalChats", () => {
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
 
     await waitFor(() => expect(result.current.saveStatus).toBe("conflict"));
     expect(result.current.historyDepth).toBe("90_days");
@@ -421,12 +460,20 @@ describe("useConfigureExternalChats", () => {
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
 
     await waitFor(() => expect(result.current.saveStatus).toBe("error"));
     expect(result.current.historyDepth).toBe("90_days");
     expect(result.current.historyDepthDirty).toBe(true);
     expect(getExternalChats).toHaveBeenCalledTimes(1);
+
+    vi.mocked(updateExternalAccount).mockResolvedValue({
+      account: accountDto({ historyDepth: "90_days" }),
+      etag: '"2"',
+    });
+    act(() => result.current.saveSettings());
+    await waitFor(() => expect(result.current.saveStatus).toBe("success"));
+    expect(updateExternalAccount).toHaveBeenCalledTimes(2);
   });
 
   it("loads the current account explicitly after conflict and preserves the draft", async () => {
@@ -452,6 +499,100 @@ describe("useConfigureExternalChats", () => {
       etag: '"3"',
       settings: { historyDepth: "7_days" },
     });
+  });
+
+  it("reloads both current fields after conflict and retries with the new ETag", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
+    vi.mocked(getExternalAccount).mockResolvedValue({
+      account: accountDto({
+        historyDepth: "7_days",
+        selectionMode: "explicit",
+        revision: 3,
+      }),
+      etag: '"3"',
+    });
+    vi.mocked(updateExternalAccount)
+      .mockRejectedValueOnce(
+        new MessengerApiError("conflict", 412, {
+          type: "ExternalAccountRevisionConflictError",
+        }),
+      )
+      .mockResolvedValueOnce({
+        account: accountDto({
+          historyDepth: "90_days",
+          selectionMode: "all",
+          revision: 4,
+        }),
+        etag: '"4"',
+      });
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => {
+      result.current.changeHistoryDepth("90_days");
+      result.current.changeSelectionMode("all");
+    });
+    act(() => result.current.saveSettings());
+    await waitFor(() => expect(result.current.saveStatus).toBe("conflict"));
+    act(() => result.current.reloadAccountSettings());
+    await waitFor(() => expect(result.current.settingsBusy).toBe(false));
+
+    expect(result.current.historyDepth).toBe("90_days");
+    expect(result.current.selectionMode).toBe("all");
+    expect(result.current.settingsDirty).toBe(true);
+    act(() => result.current.saveSettings());
+    await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(updateExternalAccount).mock.calls[1]?.[3]).toBe('"3"');
+  });
+
+  it("uses a newer realtime account when the conflict reload response is stale", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([
+      chatSnapshot({ selected: false, project_id: null, status: "available" }),
+    ]);
+    const reload = deferred<Awaited<ReturnType<typeof getExternalAccount>>>();
+    vi.mocked(getExternalAccount).mockReturnValue(reload.promise);
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.toggle(CHAT_UUID));
+    act(() => result.current.changeHistoryDepth("90_days"));
+    act(() => result.current.reloadAccountSettings());
+    await waitFor(() => expect(getExternalAccount).toHaveBeenCalledOnce());
+
+    act(() => {
+      useExternalAccountsStore.getState().upsertAccountForOwner(OWNER_KEY, {
+        ...account,
+        revision: 4,
+        etag: '"4"',
+        settings: {
+          ...account.settings,
+          historyDepth: "7_days",
+          selectionMode: "all",
+        },
+      });
+    });
+    await act(async () => {
+      reload.resolve({
+        account: accountDto({
+          historyDepth: "30_days",
+          selectionMode: "explicit",
+          revision: 3,
+        }),
+        etag: '"3"',
+      });
+      await reload.promise;
+    });
+
+    await waitFor(() => expect(result.current.settingsBusy).toBe(false));
+    expect(result.current.historyDepth).toBe("90_days");
+    expect(result.current.selectionMode).toBe("all");
+    expect(result.current.pending.size).toBe(0);
+    expect(result.current.manualSelectionEnabled).toBe(false);
+    expect(result.current.settingsDirty).toBe(true);
   });
 
   it("tracks realtime account settings when clean and preserves a dirty draft", async () => {
@@ -495,7 +636,7 @@ describe("useConfigureExternalChats", () => {
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
     await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
 
     act(() => {
@@ -526,14 +667,56 @@ describe("useConfigureExternalChats", () => {
     });
   });
 
-  it("saves automatic mode settings and blocks manual selection", async () => {
+  it("keeps a newer realtime depth when a stale mode-only PUT response arrives", async () => {
     vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
-    const allAccount: ExternalAccount = {
-      ...account,
-      settings: { ...account.settings, selectionMode: "all" },
-    };
+    const update = deferred<Awaited<ReturnType<typeof updateExternalAccount>>>();
+    vi.mocked(updateExternalAccount).mockReturnValue(update.promise);
     const { result } = renderHook(() =>
-      useConfigureExternalChats({ open: true, runtimeContext, account: allAccount }),
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.changeSelectionMode("all"));
+    act(() => result.current.saveSettings());
+    await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
+
+    act(() => {
+      useExternalAccountsStore.getState().upsertAccountForOwner(OWNER_KEY, {
+        ...account,
+        revision: 3,
+        etag: '"3"',
+        settings: { ...account.settings, historyDepth: "7_days" },
+      });
+    });
+    await act(async () => {
+      update.resolve({
+        account: accountDto({
+          historyDepth: "30_days",
+          selectionMode: "all",
+          revision: 2,
+        }),
+        etag: '"2"',
+      });
+      await update.promise;
+    });
+
+    await waitFor(() => expect(result.current.settingsBusy).toBe(false));
+    expect(result.current.selectionMode).toBe("all");
+    expect(result.current.selectionModeDirty).toBe(true);
+    expect(result.current.historyDepth).toBe("7_days");
+    expect(result.current.historyDepthDirty).toBe(false);
+    expect(useExternalAccountsStore.getState().accounts[0]).toMatchObject({
+      revision: 3,
+      settings: { historyDepth: "7_days", selectionMode: "explicit" },
+    });
+  });
+
+  it("switches from explicit to all without per-chat requests and clears manual state", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([
+      chatSnapshot({ selected: false, project_id: null, status: "available" }),
+    ]);
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
     );
     vi.mocked(updateExternalAccount).mockResolvedValue({
       account: accountDto({ historyDepth: "90_days", selectionMode: "all" }),
@@ -543,11 +726,18 @@ describe("useConfigureExternalChats", () => {
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.toggle(CHAT_UUID));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.changeSelectionMode("all"));
+    expect(result.current.settingsDirty).toBe(true);
+    expect(result.current.selectionModeDirty).toBe(true);
+    expect(result.current.selectionBlockedBySettings).toBe(true);
+    act(() => result.current.start());
+    expect(selectExternalChat).not.toHaveBeenCalled();
+    act(() => result.current.saveSettings());
 
     await waitFor(() => expect(result.current.saveStatus).toBe("success"));
     expect(result.current.manualSelectionEnabled).toBe(false);
     expect(result.current.pending.size).toBe(0);
+    expect(result.current.failed.size).toBe(0);
     expect(updateExternalAccount).toHaveBeenCalledWith(
       expect.anything(),
       ACCOUNT_UUID,
@@ -564,6 +754,146 @@ describe("useConfigureExternalChats", () => {
     expect(selectExternalChat).not.toHaveBeenCalled();
   });
 
+  it("switches from all to explicit without changing existing selected chats", async () => {
+    const allAccount: ExternalAccount = {
+      ...account,
+      settings: { ...account.settings, selectionMode: "all" },
+    };
+    vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot({ selected: true })]);
+    vi.mocked(updateExternalAccount).mockResolvedValue({
+      account: accountDto({
+        historyDepth: "30_days",
+        selectionMode: "explicit",
+      }),
+      etag: '"2"',
+    });
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account: allAccount }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.changeSelectionMode("explicit"));
+    expect(result.current.settingsDirty).toBe(true);
+    act(() => result.current.saveSettings());
+
+    await waitFor(() => expect(result.current.saveStatus).toBe("success"));
+    expect(updateExternalAccount).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT_UUID,
+      {
+        settings: {
+          kind: "zulip",
+          selection_mode: "explicit",
+          history_depth: "30_days",
+          default_project_id: PROJECT_UUID,
+        },
+      },
+      '"1"',
+    );
+    expect(result.current.manualSelectionEnabled).toBe(true);
+    expect(useExternalChatsStore.getState().chats[0]?.selected).toBe(true);
+    expect(selectExternalChat).not.toHaveBeenCalled();
+  });
+
+  it("merges a realtime depth update into a locally dirty mode draft", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
+    vi.mocked(updateExternalAccount).mockResolvedValue({
+      account: accountDto({
+        historyDepth: "7_days",
+        selectionMode: "all",
+        revision: 4,
+      }),
+      etag: '"4"',
+    });
+    const { result, rerender } = renderHook(
+      ({ currentAccount }: { currentAccount: ExternalAccount }) =>
+        useConfigureExternalChats({ open: true, runtimeContext, account: currentAccount }),
+      { initialProps: { currentAccount: account } },
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.changeSelectionMode("all"));
+    rerender({
+      currentAccount: {
+        ...account,
+        revision: 3,
+        etag: '"3"',
+        settings: { ...account.settings, historyDepth: "7_days" },
+      },
+    });
+
+    expect(result.current.selectionMode).toBe("all");
+    expect(result.current.historyDepth).toBe("7_days");
+    expect(result.current.selectionModeDirty).toBe(true);
+    expect(result.current.historyDepthDirty).toBe(false);
+    act(() => result.current.saveSettings());
+
+    await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
+    expect(updateExternalAccount).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT_UUID,
+      {
+        settings: {
+          kind: "zulip",
+          selection_mode: "all",
+          history_depth: "7_days",
+          default_project_id: PROJECT_UUID,
+        },
+      },
+      '"3"',
+    );
+  });
+
+  it("clears failed manual state when realtime switches the saved mode to all", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([
+      chatSnapshot({ selected: false, project_id: null, status: "available" }),
+    ]);
+    vi.mocked(selectExternalChat).mockRejectedValue(new Error("failed"));
+    const { result, rerender } = renderHook(
+      ({ currentAccount }: { currentAccount: ExternalAccount }) =>
+        useConfigureExternalChats({ open: true, runtimeContext, account: currentAccount }),
+      { initialProps: { currentAccount: account } },
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.toggle(CHAT_UUID));
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.failed.has(CHAT_UUID)).toBe(true));
+
+    rerender({
+      currentAccount: {
+        ...account,
+        revision: 2,
+        etag: '"2"',
+        settings: { ...account.settings, selectionMode: "all" },
+      },
+    });
+    await waitFor(() => expect(result.current.manualSelectionEnabled).toBe(false));
+    expect(result.current.pending.size).toBe(0);
+    expect(result.current.failed.size).toBe(0);
+  });
+
+  it("keeps a successful settings save when catalog refresh fails", async () => {
+    vi.mocked(getExternalChats)
+      .mockResolvedValueOnce([chatSnapshot()])
+      .mockRejectedValueOnce(new Error("catalog unavailable"));
+    vi.mocked(updateExternalAccount).mockResolvedValue({
+      account: accountDto({ historyDepth: "90_days" }),
+      etag: '"2"',
+    });
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.changeHistoryDepth("90_days"));
+    act(() => result.current.saveSettings());
+
+    await waitFor(() => expect(result.current.saveStatus).toBe("success"));
+    await waitFor(() => expect(result.current.loadStatus).toBe("error"));
+    expect(result.current.historyDepthDirty).toBe(false);
+  });
+
   it("ignores a save response after the active project changes", async () => {
     vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
     const update = deferred<Awaited<ReturnType<typeof updateExternalAccount>>>();
@@ -574,7 +904,7 @@ describe("useConfigureExternalChats", () => {
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
     await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
 
     await act(async () => {
@@ -600,6 +930,38 @@ describe("useConfigureExternalChats", () => {
     expect(result.current.saveStatus).toBe("dirty");
   });
 
+  it("aborts a settings request and resets its state when the project scope changes", async () => {
+    vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
+    const update = deferred<Awaited<ReturnType<typeof updateExternalAccount>>>();
+    vi.mocked(updateExternalAccount).mockReturnValue(update.promise);
+    const nextRuntimeContext: WorkspaceRuntimeContext = {
+      ...runtimeContext,
+      projectId: "60000000-0000-4000-8000-000000000006",
+    };
+    const { result, rerender } = renderHook(
+      ({ currentRuntimeContext }: { currentRuntimeContext: WorkspaceRuntimeContext }) =>
+        useConfigureExternalChats({
+          open: true,
+          runtimeContext: currentRuntimeContext,
+          account,
+        }),
+      { initialProps: { currentRuntimeContext: runtimeContext } },
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    act(() => result.current.changeHistoryDepth("90_days"));
+    act(() => result.current.saveSettings());
+    await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
+    const requestSignal = vi.mocked(updateExternalAccount).mock.calls[0]?.[0].signal;
+
+    rerender({ currentRuntimeContext: nextRuntimeContext });
+
+    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
+    await waitFor(() => expect(result.current.settingsBusy).toBe(false));
+    expect(result.current.saveStatus).toBe("clean");
+    expect(result.current.historyDepth).toBe("30_days");
+  });
+
   it("aborts and ignores a save response after unmount", async () => {
     vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
     const update = deferred<Awaited<ReturnType<typeof updateExternalAccount>>>();
@@ -610,7 +972,7 @@ describe("useConfigureExternalChats", () => {
 
     await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
     act(() => result.current.changeHistoryDepth("90_days"));
-    act(() => result.current.saveHistoryDepth());
+    act(() => result.current.saveSettings());
     await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
     const requestOptions = vi.mocked(updateExternalAccount).mock.calls[0]?.[0];
 

@@ -143,7 +143,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
               <p className="mt-1 text-xs text-text-muted">
                 {t("connectExternalAccount.selectionMode.description")}
               </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="mt-2 grid gap-2">
                 {(["explicit", "all"] as const).map((value) => (
                   <label
                     key={value}
@@ -165,11 +165,12 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
                   </label>
                 ))}
               </div>
-              {draft.selectionMode === "all" ? (
-                <p className="mt-2 text-xs text-text-muted">
-                  {t("connectExternalAccount.selectionMode.allHint")}
-                </p>
-              ) : null}
+              {/* Always reserve hint space so switching modes does not jump the form. */}
+              <p className="mt-2 min-h-8 text-xs text-text-muted">
+                {draft.selectionMode === "all"
+                  ? t("connectExternalAccount.selectionMode.allHint")
+                  : t("connectExternalAccount.selectionMode.explicitHint")}
+              </p>
             </fieldset>
 
             <fieldset disabled={submitting}>

@@ -23,9 +23,9 @@ export const ConfigureExternalChatsDialog = React.memo<{
       onOpenChange={onOpenChange}
       title={t("configureExternalChats.title")}
       description={
-        account.settings.selectionMode === "all"
-          ? t("configureExternalChats.automaticDescription")
-          : t("configureExternalChats.description")
+        vm.manualSelectionEnabled
+          ? t("configureExternalChats.description")
+          : t("configureExternalChats.automaticDescription")
       }
       maxWidthClassName="max-w-2xl"
       positionClassName="top-1/2 -translate-y-1/2"

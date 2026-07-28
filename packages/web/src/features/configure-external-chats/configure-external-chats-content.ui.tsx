@@ -51,30 +51,90 @@ export const ExternalChatHistorySettings = React.memo<{
   return (
     <section
       className="mb-4 rounded-lg border border-border-subtle bg-bg-elevated p-3"
-      aria-labelledby="external-chat-history-depth-title"
+      aria-labelledby="external-chat-settings-title"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3
-            id="external-chat-history-depth-title"
-            className="text-sm font-medium text-text-primary"
-          >
-            {t("configureExternalChats.historyDepth.title")}
-          </h3>
-          <p className="mt-1 text-xs text-text-muted">
-            {t("configureExternalChats.historyDepth.description")}
-          </p>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h3 id="external-chat-settings-title" className="text-sm font-medium text-text-primary">
+          {t("configureExternalChats.settingsTitle")}
+        </h3>
         <Button
           type="button"
-          variant={vm.canSaveHistoryDepth ? "primary" : "ghost"}
-          disabled={!vm.canSaveHistoryDepth}
-          onClick={vm.saveHistoryDepth}
+          variant={vm.canSaveSettings ? "primary" : "ghost"}
+          disabled={!vm.canSaveSettings}
+          onClick={vm.saveSettings}
         >
           {vm.saveStatus === "saving"
             ? t("configureExternalChats.historyDepth.saving")
             : t("configureExternalChats.historyDepth.save")}
         </Button>
+      </div>
+      <div>
+        <h3 className="text-sm font-medium text-text-primary">
+          {t("configureExternalChats.selectionMode.title")}
+        </h3>
+        <p className="mt-1 text-xs text-text-muted">
+          {t("configureExternalChats.selectionMode.description")}
+        </p>
+        <div
+          role="radiogroup"
+          aria-label={t("configureExternalChats.selectionMode.title")}
+          className="mt-3 grid gap-2"
+        >
+          {(["explicit", "all"] as const).map((value) => {
+            const checked = vm.selectionMode === value;
+            return (
+              <label
+                key={value}
+                className={`focus-within:ring-accent/40 cursor-pointer rounded-md border px-3 py-2 transition-colors focus-within:ring-2 ${
+                  checked
+                    ? "border-accent/50 bg-accent-soft text-accent"
+                    : "border-border-subtle bg-bg text-text-muted hover:text-text-primary"
+                } ${vm.settingsBusy || vm.submitting ? "cursor-not-allowed opacity-60" : ""}`}
+              >
+                <span className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="external-chat-selection-mode"
+                    value={value}
+                    checked={checked}
+                    disabled={vm.settingsBusy || vm.submitting}
+                    onChange={() => vm.changeSelectionMode(value)}
+                  />
+                  {t(`configureExternalChats.selectionMode.options.${value}.title`)}
+                </span>
+                <span className="mt-1 block pl-5 text-xs">
+                  {t(`configureExternalChats.selectionMode.options.${value}.description`)}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {vm.selectionModeDirty && vm.selectionMode === "all" ? (
+          <p className="mt-2 text-xs text-text-muted">
+            {t("configureExternalChats.selectionMode.allHint")}
+          </p>
+        ) : vm.selectionModeDirty ? (
+          <p className="mt-2 text-xs text-text-muted">
+            {t("configureExternalChats.selectionMode.explicitHint")}
+          </p>
+        ) : !vm.manualSelectionEnabled ? (
+          <p className="mt-2 text-xs text-text-muted">
+            {t("configureExternalChats.selectionMode.automaticEnabledHint")}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="my-4 border-t border-border-subtle" />
+      <div className="min-w-0">
+        <h3
+          id="external-chat-history-depth-title"
+          className="text-sm font-medium text-text-primary"
+        >
+          {t("configureExternalChats.historyDepth.title")}
+        </h3>
+        <p className="mt-1 text-xs text-text-muted">
+          {t("configureExternalChats.historyDepth.description")}
+        </p>
       </div>
 
       <div
@@ -146,7 +206,9 @@ export const ExternalChatHistorySettings = React.memo<{
         <p className="mt-2 text-xs text-text-muted">
           {vm.saveStatus === "saving"
             ? t("configureExternalChats.historyDepth.selectBlockedSaving")
-            : t("configureExternalChats.historyDepth.selectBlockedDirty")}
+            : vm.settingsDirty
+              ? t("configureExternalChats.historyDepth.selectBlockedDirty")
+              : null}
         </p>
       ) : null}
     </section>

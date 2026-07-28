@@ -59,10 +59,13 @@ function viewModel(
     submitting: false,
     historyDepth: "30_days",
     historyDepthDirty: false,
+    selectionMode: "explicit",
+    selectionModeDirty: false,
+    settingsDirty: false,
     saveStatus: "clean",
     settingsBusy: false,
     selectionBlockedBySettings: false,
-    canSaveHistoryDepth: false,
+    canSaveSettings: false,
     manualSelectionEnabled: true,
     selectableVisibleCount: 0,
     selectAllState: "none",
@@ -72,7 +75,8 @@ function viewModel(
     toggle: vi.fn(),
     toggleAllVisible: vi.fn(),
     changeHistoryDepth: vi.fn(),
-    saveHistoryDepth: vi.fn(),
+    changeSelectionMode: vi.fn(),
+    saveSettings: vi.fn(),
     reloadAccountSettings: vi.fn(),
     start: vi.fn(),
     retryFailed: vi.fn(),
@@ -181,11 +185,73 @@ describe("ConfigureExternalChatsDialog", () => {
     ]);
     expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Save settings" })).toHaveClass("bg-transparent");
-    expect(screen.getByText(/save the history setting before starting/i)).toBeInTheDocument();
+    expect(screen.queryByText(/save the settings before starting/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
     expect(changeHistoryDepth).toHaveBeenCalledWith("90_days");
     expect(screen.queryByLabelText(/project/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/project/i)).not.toBeInTheDocument();
+  });
+
+  it("edits the account selection mode and explains both directions", () => {
+    const changeSelectionMode = vi.fn();
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({ changeSelectionMode, selectionMode: "explicit" }),
+    );
+
+    const { rerender } = renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const modeGroup = screen.getByRole("radiogroup", { name: "Connection mode" });
+    expect(within(modeGroup).getByRole("radio", { name: /choose manually/i })).toBeChecked();
+    expect(
+      screen.queryByText(/does not remove chats that are already connected/i),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(modeGroup).getByRole("radio", { name: /connect automatically/i }));
+    expect(changeSelectionMode).toHaveBeenCalledWith("all");
+
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        selectionMode: "all",
+        selectionModeDirty: true,
+        settingsDirty: true,
+        selectionBlockedBySettings: true,
+      }),
+    );
+    rerender(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+    expect(screen.getByText(/within the limit set by the administrator/i)).toBeVisible();
+    expect(screen.getByText(/manual selection will be disabled/i)).toBeVisible();
+
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        manualSelectionEnabled: false,
+        selectionMode: "explicit",
+        selectionModeDirty: true,
+        settingsDirty: true,
+        selectionBlockedBySettings: true,
+      }),
+    );
+    rerender(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+    expect(screen.getByText(/does not remove chats that are already connected/i)).toBeVisible();
   });
 
   it("warns about selected chats and blocks starting until dirty settings are saved", () => {
@@ -193,9 +259,10 @@ describe("ConfigureExternalChatsDialog", () => {
       viewModel({
         historyDepth: "90_days",
         historyDepthDirty: true,
+        settingsDirty: true,
         saveStatus: "dirty",
         selectionBlockedBySettings: true,
-        canSaveHistoryDepth: true,
+        canSaveSettings: true,
         selectedCount: 2,
         pending: new Set(["chat-a"]),
         chats: [chat()],
@@ -218,7 +285,7 @@ describe("ConfigureExternalChatsDialog", () => {
     );
     expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Support" })).toBeDisabled();
-    expect(screen.getByText(/save the history setting before starting/i)).toBeInTheDocument();
+    expect(screen.getByText(/save the settings before starting/i)).toBeInTheDocument();
   });
 
   it("disables history, sync, and retry actions while settings are saving", () => {
@@ -245,7 +312,7 @@ describe("ConfigureExternalChatsDialog", () => {
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Retry failed" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
-    expect(screen.getByText(/wait until the history setting is saved/i)).toBeInTheDocument();
+    expect(screen.getByText(/wait until the settings are saved/i)).toBeInTheDocument();
     for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
   });
 
@@ -280,6 +347,7 @@ describe("ConfigureExternalChatsDialog", () => {
     vi.mocked(useConfigureExternalChats).mockReturnValue(
       viewModel({
         manualSelectionEnabled: false,
+        selectionMode: "all",
         selectionBlockedBySettings: true,
         chats: [chat()],
       }),
@@ -295,6 +363,7 @@ describe("ConfigureExternalChatsDialog", () => {
     );
 
     expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
+    expect(screen.getByText(/automatic mode is on/i)).toBeVisible();
     for (const radio of screen.getAllByRole("radio")) expect(radio).toBeEnabled();
     expect(screen.queryByRole("checkbox", { name: "Support" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync/i })).not.toBeInTheDocument();
@@ -351,7 +420,7 @@ describe("ConfigureExternalChatsDialog", () => {
       />,
     );
 
-    const selectAll = screen.getByRole("checkbox", { name: "Select all" });
+    const selectAll = screen.getByRole("checkbox", { name: "Select all in list" });
     expect(selectAll).not.toBeChecked();
     fireEvent.click(selectAll);
     expect(toggleAllVisible).toHaveBeenCalledOnce();
@@ -375,7 +444,7 @@ describe("ConfigureExternalChatsDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: "Select all" })).toBePartiallyChecked();
+    expect(screen.getByRole("checkbox", { name: "Select all in list" })).toBePartiallyChecked();
   });
 
   it("does not add per-chat settings, move, or deselect controls", () => {

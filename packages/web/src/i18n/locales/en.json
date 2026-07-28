@@ -88,8 +88,9 @@
     "title": "Zulip chat sync",
     "description": "Select the chats to transfer to Workspace.",
     "automaticDescription": "Review synchronization settings and chat statuses. Chats are connected automatically.",
+    "settingsTitle": "Synchronization settings",
     "search": "Search chats",
-    "selectAll": "Select all",
+    "selectAll": "Select all in list",
     "loading": "Loading chats…",
     "empty": "No available chats found yet.",
     "preparing": "Looking for available chats…",
@@ -100,6 +101,23 @@
     "retryFailed": "Retry failed",
     "requestFailed": "Could not start",
     "ready": "{{ready}} of {{total}} chats ready",
+    "selectionMode": {
+      "title": "Connection mode",
+      "description": "Controls how this Zulip account connects available chats.",
+      "options": {
+        "explicit": {
+          "title": "Choose manually",
+          "description": "Select the chats you want to connect from the list."
+        },
+        "all": {
+          "title": "Connect automatically",
+          "description": "Connect all currently available and new chats within the limit set by the administrator."
+        }
+      },
+      "allHint": "After saving, manual selection will be disabled and current and new chats will connect automatically.",
+      "explicitHint": "Turning off automatic mode does not remove chats that are already connected.",
+      "automaticEnabledHint": "Automatic mode is on: current and new chats connect within the limit set by the administrator."
+    },
     "historyDepth": {
       "title": "History depth",
       "description": "This setting applies to all chats in this Zulip account.",
@@ -113,13 +131,12 @@
       "save": "Save settings",
       "saving": "Saving…",
       "saved": "Settings saved.",
-      "saveError": "Could not save history settings. Try again.",
+      "saveError": "Could not save settings. Try again.",
       "conflict": "These settings changed elsewhere. Load the current version before saving again.",
       "loadCurrent": "Load current",
-      "unsupportedMode": "This account uses an unsupported automatic selection mode. History settings cannot be changed here.",
       "selectedWarning": "Saving will restart history loading for {{count}} connected chats shown here. They will temporarily return to syncing.",
-      "selectBlockedDirty": "Save the history setting before starting new chat syncs.",
-      "selectBlockedSaving": "Wait until the history setting is saved before starting new chat syncs."
+      "selectBlockedDirty": "Save the settings before starting new chat syncs.",
+      "selectBlockedSaving": "Wait until the settings are saved before starting new chat syncs."
     },
     "status": {
       "available": "Not connected",
@@ -166,6 +183,7 @@
         "explicit": "Choose manually",
         "all": "Available now and new chats automatically"
       },
+      "explicitHint": "After connecting, choose the chats you need from the list yourself.",
       "allHint": "Chats will be connected automatically within the limit set by your administrator."
     },
     "historyDepth": {
