@@ -83,7 +83,7 @@
   },
   "configureExternalChats": {
     "action": "Configure chats",
-    "automaticAction": "Configure sync",
+    "automaticAction": "Configure",
     "compactAction": "Add chats",
     "title": "Zulip chat sync",
     "description": "Select the chats to transfer to Workspace.",

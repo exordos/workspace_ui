@@ -352,7 +352,7 @@ export const ActivityPage: React.FC = () => {
   };
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <ChatHeader
         channelName={title}
         hideTopic

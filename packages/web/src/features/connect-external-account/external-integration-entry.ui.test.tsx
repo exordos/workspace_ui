@@ -97,7 +97,7 @@ describe("ExternalIntegrationEntry", () => {
     ]);
     renderWithProviders(<ExternalIntegrationEntry runtimeContext={runtimeContext} />);
 
-    expect(screen.getByRole("button", { name: "Configure sync" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Configure" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Configure chats" })).not.toBeInTheDocument();
   });
 });

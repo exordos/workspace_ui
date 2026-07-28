@@ -83,7 +83,7 @@
   },
   "configureExternalChats": {
     "action": "Настроить чаты",
-    "automaticAction": "Настроить синхронизацию",
+    "automaticAction": "Настроить",
     "compactAction": "Добавить чаты",
     "title": "Синхронизация чатов Zulip",
     "description": "Выберите чаты, которые нужно перенести в Workspace.",

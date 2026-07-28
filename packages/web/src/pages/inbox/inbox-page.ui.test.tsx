@@ -100,8 +100,8 @@ function user(overrides: Partial<User> = {}): User {
   };
 }
 
-function renderInbox(): void {
-  render(
+function renderInbox() {
+  return render(
     <MemoryRouter initialEntries={[workspaceInboxRoute(ORGANIZATION_ID, PROJECT_ID)]}>
       <Routes>
         <Route path="/org/:orgId/project/:projectId/inbox" element={<InboxPage />} />
@@ -278,5 +278,16 @@ describe("InboxPage workspace data", () => {
         streamUuid: CHANNEL_STREAM_UUID,
       }),
     );
+  });
+
+  it("uses full-width layout container for inbox content", () => {
+    seedWorkspaceInbox();
+    const { container } = renderInbox();
+    const pageRoot = container.querySelector("header")?.parentElement;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
   });
 });

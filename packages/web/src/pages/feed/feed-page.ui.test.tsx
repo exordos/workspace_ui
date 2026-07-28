@@ -212,6 +212,16 @@ describe("FeedPage", () => {
     resetStores();
   });
 
+  it("uses full-width layout container for feed content", () => {
+    const { container } = renderFeedPage();
+    const pageRoot = container.querySelector("header")?.parentElement;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
+  });
+
   it("loads Workspace feed messages after runtime becomes available", async () => {
     const message = createFeedMessage({ markdown: "Deferred Workspace feed load" });
     fetchFeedMessages.mockResolvedValue(createPage([message]));

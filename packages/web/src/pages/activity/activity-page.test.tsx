@@ -301,6 +301,16 @@ describe("ActivityPage", () => {
     expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
   });
 
+  it("uses full-width layout container for activity content", () => {
+    const { container } = renderActivityPage("/activity/drafts");
+    const pageRoot = container.querySelector("header")?.parentElement;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
+  });
+
   it("loads drafts explicitly and keeps compact sidebar context on the card", async () => {
     setWorkspaceSession();
     seedWorkspaceMessengerContext();

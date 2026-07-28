@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace GitHub Project"
+  short_description: "Сводка и управление задачами Workspace"
+  default_prompt: "Используй $workspace-github-project, чтобы показать состояние задач и предложить порядок работы."

@@ -236,7 +236,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
 
     renderWithProviders(<RightPanelExternalAccountsList />);
 
-    expect(screen.getByRole("button", { name: "Configure sync" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Configure" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
   });
 });
