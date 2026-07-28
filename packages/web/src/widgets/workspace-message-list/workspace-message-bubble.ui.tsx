@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
@@ -10,14 +10,16 @@ import {
 } from "~/shared/lib/emoji-shortcodes.lib";
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
+import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
-import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
+import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 import type { WorkspaceMessageListItem } from "./workspace-message-list.types";
@@ -195,6 +197,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     resolveAuthorLabel,
     topicLabel,
     resolveMention,
+    quoteRenderMode,
     actions,
   }): React.ReactElement {
     const owner = resolveMessageOwner(message, currentUserUuid);
@@ -240,14 +243,20 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
       const document = parseWorkspaceMessageBody(markdown, { resolveMention });
+      const segmented = renderWorkspaceMessageBodySegments(document, {
+        ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
+        // Enable interactive mentions only when the current surface exposes a
+        // UUID-only callback. Otherwise keep `@Name` as plain text instead of
+        // swapping the action back to the old number-based direct-message/profile path.
+        enableMentions: actions?.onOpenMentionUser != null,
+      });
       return {
-        ...renderWorkspaceMessageBody(document, {
-          ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
-          // Enable interactive mentions only when the current surface exposes a
-          // UUID-only callback. Otherwise keep `@Name` as plain text instead of
-          // swapping the action back to the old number-based direct-message/profile path.
-          enableMentions: actions?.onOpenMentionUser != null,
-        }),
+        ...segmented,
+        hasQuoteSegments: segmented.segments.some((segment) => segment.kind === "quote"),
+        html: segmented.segments
+          .filter((segment) => segment.kind === "html")
+          .map((segment) => segment.html)
+          .join(""),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
     }, [actions?.onOpenMentionUser, markdown, resolveMention]);
@@ -284,6 +293,18 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         ? "row"
         : renderedBody.metadata.preferredMetaPlacement;
     const useInlineMeta = metaPlacement === "inline";
+    const renderQuote = useCallback(
+      (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode => (
+        <WorkspaceMessageQuote
+          reference={segment.reference}
+          mode={quoteRenderMode}
+          visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
+          resolveMention={resolveMention}
+          onOpenMessage={actions?.onOpenMessageInChat}
+        />
+      ),
+      [actions?.onOpenMessageInChat, quoteRenderMode, resolveMention, serverMessage],
+    );
 
     useLayoutEffect(() => {
       if (!useInlineMeta) {
@@ -334,6 +355,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       (renderedBody.metadata.hasMentions && actions?.onOpenMentionUser != null) ||
       renderedBody.metadata.hasMedia ||
       renderedBody.metadata.hasAttachments ||
+      renderedBody.hasQuoteSegments ||
       (WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy &&
         renderedBody.metadata.hasCodeBlocks);
 
@@ -441,6 +463,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           <WorkspaceMessageBody
             bodyRef={bodyRef}
             html={renderedBody.html}
+            segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
+            renderQuote={renderQuote}
             metadata={renderedBody.metadata}
             onBodyClick={handleBodyClick}
             useInlineMeta={useInlineMeta}

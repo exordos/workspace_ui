@@ -525,6 +525,7 @@
     "forwardTo": "Forward",
     "replyTo": "Reply",
     "replyQuoteWrote": "wrote",
+    "quoteUnavailable": "Message unavailable",
     "readBy": "Read by",
     "readByCount_one": "Read by {{count}} person",
     "readByCount_other": "Read by {{count}} people",

@@ -15,6 +15,72 @@ function restore(markdown: string) {
 }
 
 describe("restoreWorkspaceReplySessionFromMarkdown", () => {
+  it("restores a quote reference with source data from the resolver", () => {
+    const markdown = [
+      `[Алексей](urn:quote:${MESSAGE_A}?text=%D1%82%D0%BE%D1%87%D0%BD%D1%8B%D0%B9%20%D1%84%D1%80%D0%B0%D0%B3%D0%BC%D0%B5%D0%BD%D1%82)`,
+      "",
+      "ответ",
+    ].join("\n");
+    const restored = restoreWorkspaceReplySessionFromMarkdown(
+      markdown,
+      (index) => ({
+        id: `restored-${index}`,
+        createdAt: `2026-07-16T10:0${index}:00Z`,
+      }),
+      (messageUuid) =>
+        messageUuid === MESSAGE_A
+          ? {
+              senderUuid: USER_A,
+              senderName: "Алексей Актуальный",
+              quotedContent: "актуальное тело сообщения",
+            }
+          : null,
+    );
+
+    expect(restored?.session.tabs[0]).toEqual(
+      expect.objectContaining({
+        messageUuid: MESSAGE_A,
+        senderUuid: USER_A,
+        senderName: "Алексей Актуальный",
+        quotedContent: "актуальное тело сообщения",
+        selectedText: "точный фрагмент",
+        answer: "ответ",
+      }),
+    );
+  });
+
+  it("preserves selected text whitespace and line breaks through restore and save", () => {
+    const markdown = `[Алексей](urn:quote:${MESSAGE_A}?text=%20foo%20%0Abar%20)\n\nответ`;
+    const restored = restoreWorkspaceReplySessionFromMarkdown(
+      markdown,
+      (index) => ({
+        id: `restored-${index}`,
+        createdAt: `2026-07-16T10:0${index}:00Z`,
+      }),
+      () => ({
+        senderUuid: USER_A,
+        senderName: "Алексей",
+        quotedContent: "актуальное тело сообщения",
+      }),
+    );
+
+    expect(restored?.session.tabs[0]?.selectedText).toBe(" foo \nbar ");
+    expect(buildWorkspaceReplyMarkdown(restored?.session.tabs ?? [])).toBe(markdown);
+  });
+
+  it("leaves a new quote as ordinary markdown when its source cannot be resolved", () => {
+    expect(
+      restoreWorkspaceReplySessionFromMarkdown(
+        `[Алексей](urn:quote:${MESSAGE_A})\n\nответ`,
+        (index) => ({
+          id: `restored-${index}`,
+          createdAt: `2026-07-16T10:0${index}:00Z`,
+        }),
+        () => null,
+      ),
+    ).toBeNull();
+  });
+
   it("restores one canonical Workspace reply", () => {
     const restored = restore(
       [
@@ -70,7 +136,13 @@ describe("restoreWorkspaceReplySessionFromMarkdown", () => {
       }),
     ]);
     expect(restored?.session.activeTabId).toBe("restored-0");
-    expect(buildWorkspaceReplyMarkdown(restored?.session.tabs ?? [])).toBe(markdown);
+    const migratedMarkdown = buildWorkspaceReplyMarkdown(restored?.session.tabs ?? []);
+    expect(migratedMarkdown).toBe(
+      `[Алексей](urn:quote:${MESSAGE_A})\n\nответ А\n\n[Мария](urn:quote:${MESSAGE_B})\n\nответ Б`,
+    );
+    expect(migratedMarkdown).not.toContain("urn:user:");
+    expect(migratedMarkdown).not.toContain("urn:message:");
+    expect(migratedMarkdown).not.toMatch(/^>/m);
   });
 
   it("normalizes CRLF and preserves multiline quote content", () => {

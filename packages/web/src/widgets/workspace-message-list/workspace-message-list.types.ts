@@ -9,6 +9,7 @@ import type {
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { WorkspaceUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
+import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
 
 export type WorkspaceMessageConversationReference = Extract<
   WorkspaceUrnReference,
@@ -82,6 +83,7 @@ export type WorkspaceMessageListItem =
 export interface WorkspaceMessageListPresentation {
   topicDividers?: boolean;
   topicLabels?: boolean;
+  quoteRenderMode?: WorkspaceQuoteRenderMode;
 }
 
 export interface WorkspaceMessageListProps {

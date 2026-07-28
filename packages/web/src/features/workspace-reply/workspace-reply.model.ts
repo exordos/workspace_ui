@@ -11,8 +11,7 @@ export const EMPTY_WORKSPACE_REPLY_SESSION: WorkspaceReplySession = {
 };
 
 function normalizeOptionalText(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized == null || normalized.length === 0 ? undefined : normalized;
+  return value == null || value.trim().length === 0 ? undefined : value;
 }
 
 export function normalizeWorkspaceReplyQuote(

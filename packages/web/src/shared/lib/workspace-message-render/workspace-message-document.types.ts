@@ -134,6 +134,17 @@ export interface WorkspaceMessageQuoteBlock {
   blocks: readonly WorkspaceMessageBlock[];
 }
 
+export interface WorkspaceMessageQuoteReference {
+  messageUuid: string;
+  selectedText?: string;
+  fallbackAuthorLabel: string;
+}
+
+export interface WorkspaceMessageQuoteReferenceBlock {
+  kind: "quote-reference";
+  reference: WorkspaceMessageQuoteReference;
+}
+
 export interface WorkspaceMessageCodeBlock {
   kind: "code";
   text: string;
@@ -160,6 +171,7 @@ export interface WorkspaceMessageListBlock {
 export type WorkspaceMessageBlock =
   | WorkspaceMessageParagraphBlock
   | WorkspaceMessageQuoteBlock
+  | WorkspaceMessageQuoteReferenceBlock
   | WorkspaceMessageCodeBlock
   | WorkspaceMessageSpoilerBlock
   | WorkspaceMessageListBlock;
@@ -187,6 +199,25 @@ export interface WorkspaceMessageParseOptions {
 
 export interface WorkspaceMessageRenderResult {
   html: string;
+  metadata: WorkspaceMessageBodyMetadata;
+}
+
+export interface WorkspaceMessageBodyHtmlSegment {
+  kind: "html";
+  html: string;
+}
+
+export interface WorkspaceMessageBodyQuoteSegment {
+  kind: "quote";
+  reference: WorkspaceMessageQuoteReference;
+}
+
+export type WorkspaceMessageBodySegment =
+  | WorkspaceMessageBodyHtmlSegment
+  | WorkspaceMessageBodyQuoteSegment;
+
+export interface WorkspaceMessageSegmentRenderResult {
+  segments: readonly WorkspaceMessageBodySegment[];
   metadata: WorkspaceMessageBodyMetadata;
 }
 

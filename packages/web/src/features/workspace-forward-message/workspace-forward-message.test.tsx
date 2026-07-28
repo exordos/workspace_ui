@@ -335,7 +335,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
         expect.objectContaining({
           streamUuid: STREAM_UUID,
           topicUuid: TOPIC_UUID,
-          markdown: expect.stringContaining("full message text"),
+          markdown: `[Bob Reed](urn:quote:${MESSAGE_UUID})`,
           includeStreamConversation: false,
         }),
       );

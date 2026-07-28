@@ -12,6 +12,7 @@ import type {
   WorkspaceMessageInline,
   WorkspaceMessageListItem,
   WorkspaceMessageParseOptions,
+  WorkspaceMessageQuoteReferenceBlock,
 } from "./workspace-message-document.types";
 
 const LINE_BREAK_PATTERN = /\r\n?|\n/;
@@ -227,7 +228,9 @@ function summarizeInlineForPreview(children: readonly WorkspaceMessageInline[]):
 }
 
 function summarizeBlocksForPreview(blocks: readonly WorkspaceMessageBlock[]): string {
-  const ownBlocks = blocks.filter((block) => block.kind !== "quote");
+  const ownBlocks = blocks.filter(
+    (block) => block.kind !== "quote" && block.kind !== "quote-reference",
+  );
   const blocksForPreview = ownBlocks.length > 0 ? ownBlocks : blocks;
 
   return normalizePreviewText(
@@ -238,6 +241,8 @@ function summarizeBlocksForPreview(blocks: readonly WorkspaceMessageBlock[]): st
             return summarizeInlineForPreview(block.children);
           case "quote":
             return `Цитата: ${summarizeBlocksForPreview(block.blocks)}`;
+          case "quote-reference":
+            return "Цитата";
           case "code":
             return `Код: ${normalizePreviewText(block.text)}`;
           case "spoiler":
@@ -318,11 +323,11 @@ function createMentionInline(
   const normalizedSourceUserUuid = sourceUserUuid?.trim();
   const sourceUserUuidIsValid =
     normalizedSourceUserUuid != null && UUID_PATTERN.test(normalizedSourceUserUuid);
-  const userUuid = sourceUserUuidIsValid
-    ? normalizedSourceUserUuid
-    : resolvedUserUuid != null && resolvedUserUuid.length > 0
-      ? resolvedUserUuid
-      : undefined;
+  const userUuid = resolveMentionUserUuid(
+    sourceUserUuidIsValid,
+    normalizedSourceUserUuid,
+    resolvedUserUuid,
+  );
   const mentionIsResolved = resolution != null && resolution.unresolved !== true;
 
   context.state.hasInlineRich = true;
@@ -344,6 +349,17 @@ function createMentionInline(
   };
 }
 
+function resolveMentionUserUuid(
+  sourceUserUuidIsValid: boolean,
+  sourceUserUuid: string | undefined,
+  resolvedUserUuid: string | undefined,
+): string | undefined {
+  if (sourceUserUuidIsValid) {
+    return sourceUserUuid;
+  }
+  return resolvedUserUuid != null && resolvedUserUuid.length > 0 ? resolvedUserUuid : undefined;
+}
+
 function createKnownEmojiShortcodeInline(
   text: string,
   rawShortcode: string,
@@ -361,6 +377,118 @@ function createKnownEmojiShortcodeInline(
   };
 }
 
+interface ParsedInlinePatternMatch {
+  parts: readonly WorkspaceMessageInline[];
+  endIndex: number;
+}
+
+function prependTextBeforeMatch(
+  text: string,
+  startIndex: number,
+  lastIndex: number,
+  parts: readonly WorkspaceMessageInline[],
+): readonly WorkspaceMessageInline[] {
+  if (startIndex <= lastIndex) {
+    return parts;
+  }
+  return [{ kind: "text", text: text.slice(lastIndex, startIndex) }, ...parts];
+}
+
+function parseEmojiPatternMatch(
+  text: string,
+  fullMatch: string,
+  rawShortcode: string,
+  matchIndex: number,
+  lastIndex: number,
+  context: WorkspaceMessageParseContext,
+): ParsedInlinePatternMatch {
+  const emoji = createKnownEmojiShortcodeInline(fullMatch, rawShortcode);
+  const inline: WorkspaceMessageInline = emoji ?? {
+    // Unknown shortcodes stay readable and never receive legacy catalog URLs.
+    kind: "text",
+    text: fullMatch,
+  };
+  if (emoji != null) {
+    context.state.hasInlineRich = true;
+  }
+  return {
+    parts: prependTextBeforeMatch(text, matchIndex, lastIndex, [inline]),
+    endIndex: matchIndex + fullMatch.length,
+  };
+}
+
+function parseCanonicalMentionPatternMatch(
+  text: string,
+  fullMatch: string,
+  canonicalUserUuid: string,
+  matchIndex: number,
+  lastIndex: number,
+  context: WorkspaceMessageParseContext,
+): ParsedInlinePatternMatch {
+  return {
+    parts: prependTextBeforeMatch(text, matchIndex, lastIndex, [
+      createMentionInline(canonicalUserUuid, context, canonicalUserUuid),
+    ]),
+    endIndex: matchIndex + fullMatch.length,
+  };
+}
+
+function parseDisplayMentionPatternMatch(
+  text: string,
+  fullMatch: string,
+  separator: string,
+  displayText: string,
+  matchIndex: number,
+  lastIndex: number,
+  context: WorkspaceMessageParseContext,
+): ParsedInlinePatternMatch {
+  const mentionStart = matchIndex + separator.length;
+  const inline: WorkspaceMessageInline =
+    displayText.length > 0
+      ? createMentionInline(displayText, context)
+      : { kind: "text", text: fullMatch.slice(separator.length) };
+  return {
+    parts: prependTextBeforeMatch(text, mentionStart, lastIndex, [inline]),
+    endIndex: mentionStart + displayText.length + 1,
+  };
+}
+
+function parseInlinePatternMatch(
+  text: string,
+  match: RegExpMatchArray,
+  lastIndex: number,
+  context: WorkspaceMessageParseContext,
+): ParsedInlinePatternMatch {
+  const fullMatch = match[0] ?? "";
+  const canonicalUserUuid = match[1] ?? "";
+  const separator = match[2] ?? "";
+  const displayText = match[3] ?? "";
+  const rawShortcode = match[4] ?? "";
+  const matchIndex = match.index ?? 0;
+  if (rawShortcode.length > 0) {
+    return parseEmojiPatternMatch(text, fullMatch, rawShortcode, matchIndex, lastIndex, context);
+  }
+  if (canonicalUserUuid.length > 0) {
+    return parseCanonicalMentionPatternMatch(
+      text,
+      fullMatch,
+      canonicalUserUuid,
+      matchIndex,
+      lastIndex,
+      context,
+    );
+  }
+  return parseDisplayMentionPatternMatch(
+    text,
+    fullMatch,
+    separator,
+    displayText,
+    matchIndex,
+    lastIndex,
+    context,
+  );
+}
+
 function parseTextWithMentionsAndEmoji(
   text: string,
   context: WorkspaceMessageParseContext,
@@ -373,59 +501,9 @@ function parseTextWithMentionsAndEmoji(
   let lastIndex = 0;
 
   for (const match of text.matchAll(PLAIN_TEXT_INLINE_PATTERN)) {
-    const fullMatch = match[0] ?? "";
-    const canonicalUserUuid = match[1] ?? "";
-    const separator = match[2] ?? "";
-    const displayText = match[3] ?? "";
-    const rawShortcode = match[4] ?? "";
-    if (rawShortcode.length > 0) {
-      const shortcodeStart = match.index;
-      const shortcodeEnd = shortcodeStart + fullMatch.length;
-      if (shortcodeStart > lastIndex) {
-        parts.push({ kind: "text", text: text.slice(lastIndex, shortcodeStart) });
-      }
-
-      const emoji = createKnownEmojiShortcodeInline(fullMatch, rawShortcode);
-      if (emoji == null) {
-        // Workspace пока не имеет custom emoji resolver-а для тела сообщения.
-        // Неизвестный shortcode оставляем исходным текстом: так custom emoji не
-        // пропадает и не получает URL из старого realm catalog.
-        parts.push({ kind: "text", text: fullMatch });
-      } else {
-        context.state.hasInlineRich = true;
-        parts.push(emoji);
-      }
-
-      lastIndex = shortcodeEnd;
-      continue;
-    }
-
-    if (canonicalUserUuid.length > 0) {
-      const mentionStart = match.index;
-      const mentionEnd = mentionStart + fullMatch.length;
-
-      if (mentionStart > lastIndex) {
-        parts.push({ kind: "text", text: text.slice(lastIndex, mentionStart) });
-      }
-
-      parts.push(createMentionInline(canonicalUserUuid, context, canonicalUserUuid));
-      lastIndex = mentionEnd;
-      continue;
-    }
-
-    const mentionStart = match.index + separator.length;
-
-    if (mentionStart > lastIndex) {
-      parts.push({ kind: "text", text: text.slice(lastIndex, mentionStart) });
-    }
-
-    if (displayText.length > 0) {
-      parts.push(createMentionInline(displayText, context));
-    } else {
-      parts.push({ kind: "text", text: fullMatch.slice(separator.length) });
-    }
-
-    lastIndex = mentionStart + displayText.length + 1;
+    const parsedMatch = parseInlinePatternMatch(text, match, lastIndex, context);
+    parts.push(...parsedMatch.parts);
+    lastIndex = parsedMatch.endIndex;
   }
 
   if (lastIndex < text.length) {
@@ -597,6 +675,21 @@ function parseInlineTokens(
             ];
           }
 
+          if (workspaceReference?.kind === "quote") {
+            context.state.hasLinks = true;
+            return [
+              {
+                kind: "link",
+                href: link.href,
+                title: link.title ?? undefined,
+                workspaceMessageUuid: workspaceReference.messageUuid,
+                workspaceReference,
+                // A quote label is fallback metadata, not a mention source.
+                children: [{ kind: "text", text: link.text }],
+              },
+            ];
+          }
+
           if (workspaceReference?.kind === "stream" || workspaceReference?.kind === "topic") {
             context.state.hasLinks = true;
             return [
@@ -715,6 +808,32 @@ function parseHistoricalQuoteCodeBlock(
   };
 }
 
+function toQuoteReferenceBlock(
+  children: readonly WorkspaceMessageInline[],
+): WorkspaceMessageQuoteReferenceBlock | null {
+  if (children.length !== 1) {
+    return null;
+  }
+
+  const onlyChild = children[0];
+  if (onlyChild?.kind !== "link" || onlyChild.workspaceReference?.kind !== "quote") {
+    return null;
+  }
+
+  const fallbackAuthorLabel = normalizePreviewText(
+    onlyChild.children.map((child) => (child.kind === "text" ? child.text : "")).join(" "),
+  );
+  const reference = onlyChild.workspaceReference;
+  return {
+    kind: "quote-reference",
+    reference: {
+      messageUuid: reference.messageUuid,
+      ...(reference.text == null ? {} : { selectedText: reference.text }),
+      fallbackAuthorLabel,
+    },
+  };
+}
+
 function parseBlockTokens(
   tokens: readonly Token[],
   context: WorkspaceMessageParseContext,
@@ -725,19 +844,37 @@ function parseBlockTokens(
         return [];
       case "paragraph": {
         const paragraph = token as Tokens.Paragraph;
+        const children = parseInlineTokens(paragraph.tokens, paragraph.text, context);
+        const quoteReference = toQuoteReferenceBlock(children);
+        if (quoteReference != null) {
+          context.state.hasRichBlocks = true;
+          if (context.state.leadingKind === "text") {
+            context.state.leadingKind = "quote";
+          }
+          return [quoteReference];
+        }
         return [
           {
             kind: "paragraph",
-            children: parseInlineTokens(paragraph.tokens, paragraph.text, context),
+            children,
           },
         ];
       }
       case "text": {
         const textToken = token as Tokens.Text;
+        const children = parseInlineTokens(textToken.tokens, textToken.text, context);
+        const quoteReference = toQuoteReferenceBlock(children);
+        if (quoteReference != null) {
+          context.state.hasRichBlocks = true;
+          if (context.state.leadingKind === "text") {
+            context.state.leadingKind = "quote";
+          }
+          return [quoteReference];
+        }
         return [
           {
             kind: "paragraph",
-            children: parseInlineTokens(textToken.tokens, textToken.text, context),
+            children,
           },
         ];
       }
@@ -812,15 +949,7 @@ function buildMetadata(
   textPreview: string,
 ): WorkspaceMessageBodyMetadata {
   const hasRichBlocks = state.hasRichBlocks || blocks.length > 1;
-  const contentKind = state.hasMedia
-    ? "media"
-    : state.hasAttachments
-      ? "attachment"
-      : hasRichBlocks
-        ? "block-rich"
-        : state.hasInlineRich
-          ? "inline-rich"
-          : "plain";
+  const contentKind = resolveContentKind(state, hasRichBlocks);
   return {
     contentKind,
     hasRichBlocks,
@@ -836,6 +965,22 @@ function buildMetadata(
         : "inline",
     textPreview,
   };
+}
+
+function resolveContentKind(
+  state: WorkspaceMessageParseState,
+  hasRichBlocks: boolean,
+): WorkspaceMessageBodyMetadata["contentKind"] {
+  if (state.hasMedia) {
+    return "media";
+  }
+  if (state.hasAttachments) {
+    return "attachment";
+  }
+  if (hasRichBlocks) {
+    return "block-rich";
+  }
+  return state.hasInlineRich ? "inline-rich" : "plain";
 }
 
 export function parseWorkspaceMessageBody(

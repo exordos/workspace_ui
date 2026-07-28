@@ -25,6 +25,7 @@ import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-group
 import type {
   WorkspaceMessageListOutgoingItem,
   WorkspaceMessageListItem,
+  WorkspaceMessageListPresentation,
   WorkspaceMessageListProps,
 } from "./workspace-message-list.types";
 
@@ -86,6 +87,7 @@ interface WorkspaceMessageListRowProps {
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   topicLabel?: string | null;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
+  quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   actions?: WorkspaceMessageListProps["actions"];
 }
 
@@ -100,6 +102,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   resolveAuthorLabel,
   topicLabel,
   resolveMention,
+  quoteRenderMode,
   actions,
 }: WorkspaceMessageListRowProps): React.ReactElement {
   const serverMessageUuid = message.kind === "server" ? message.message.uuid : undefined;
@@ -128,6 +131,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         resolveAuthorLabel={resolveAuthorLabel}
         topicLabel={topicLabel}
         resolveMention={resolveMention}
+        quoteRenderMode={quoteRenderMode}
         actions={actions}
       />
     </article>
@@ -141,6 +145,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   resolveTopicLabel?: (topicUuid: MessengerUuid) => string | null | undefined;
   showTopicLabels: boolean;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
+  quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   actions?: WorkspaceMessageListProps["actions"];
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
   selectionMode: boolean;
@@ -154,6 +159,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   resolveTopicLabel,
   showTopicLabels,
   resolveMention,
+  quoteRenderMode,
   actions,
   selectedMessageUuids,
   selectionMode,
@@ -188,6 +194,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           : null
       }
       resolveMention={resolveMention}
+      quoteRenderMode={quoteRenderMode}
       actions={actions}
     />
   ));
@@ -513,6 +520,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                     resolveTopicLabel={resolveTopicLabel}
                     showTopicLabels={presentation?.topicLabels === true}
                     resolveMention={resolveMention}
+                    quoteRenderMode={presentation?.quoteRenderMode}
                     actions={messageActions}
                     selectedMessageUuids={selectedMessageUuids}
                     selectionMode={selectionMode}

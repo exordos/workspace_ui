@@ -526,6 +526,7 @@
     "forwardTo": "Переслать",
     "replyTo": "Ответить",
     "replyQuoteWrote": "писал/а",
+    "quoteUnavailable": "Сообщение недоступно",
     "readBy": "Прочитано",
     "readByCount_one": "Прочитано {{count}} человеком",
     "readByCount_few": "Прочитано {{count}} людьми",

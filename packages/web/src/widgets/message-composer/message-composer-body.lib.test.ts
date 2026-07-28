@@ -70,7 +70,7 @@ describe("message-composer-body.lib", () => {
       expect(body.endsWith("reply")).toBe(true);
     });
 
-    it("prepends a Workspace reply quote with canonical user and message URNs", () => {
+    it("prepends a Workspace quote reference without copying the source body", () => {
       const body = buildOutgoingMessageBody("clean reply", {
         id: "55555555-5555-4555-8555-555555555555",
         content: "quoted workspace text",
@@ -81,26 +81,25 @@ describe("message-composer-body.lib", () => {
       });
 
       expect(body).toBe(
-        [
-          "> [Bob Reed](urn:user:44444444-4444-4444-8444-444444444444) [wrote](urn:message:55555555-5555-4555-8555-555555555555):",
-          "> quoted workspace text",
-          "",
-          "clean reply",
-        ].join("\n"),
+        ["[Bob Reed](urn:quote:55555555-5555-4555-8555-555555555555)", "", "clean reply"].join(
+          "\n",
+        ),
       );
     });
 
     it("escapes a Workspace display name inside the mention label", () => {
       const body = buildOutgoingMessageBody("reply", {
-        id: "message-uuid",
+        id: "55555555-5555-4555-8555-555555555555",
         content: "quoted",
         sender_full_name: "A]lice * Smith",
-        sender_uuid: "user-uuid",
+        sender_uuid: "44444444-4444-4444-8444-444444444444",
         permalinkUrl: null,
         quoteFormat: "workspace",
       });
 
-      expect(body).toContain("> [A\\]lice \\* Smith](urn:user:user-uuid)");
+      expect(body).toContain(
+        "[A\\]lice \\* Smith](urn:quote:55555555-5555-4555-8555-555555555555)",
+      );
     });
   });
 

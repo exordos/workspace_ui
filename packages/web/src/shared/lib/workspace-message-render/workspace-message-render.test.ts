@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
-import { renderWorkspaceMessageBody } from "./workspace-message-render.lib";
+import {
+  renderWorkspaceMessageBody,
+  renderWorkspaceMessageBodySegments,
+} from "./workspace-message-render.lib";
 
 describe("workspace message render core", () => {
   it("parses and renders plain text as safe paragraph html", () => {
@@ -579,6 +582,112 @@ describe("workspace message render core", () => {
     expect(result.html).toContain(`href="#workspace-message-${messageUuid}"`);
     expect(result.html).not.toContain(`urn:user:${userUuid}`);
     expect(result.html).not.toContain(`urn:message:${messageUuid}`);
+  });
+
+  it("parses a standalone quote URN as a dedicated render segment", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const selectedText = "точный фрагмент & следующая строка";
+    const document = parseWorkspaceMessageBody(
+      `[Sleep](urn:quote:${messageUuid}?text=${encodeURIComponent(selectedText)})`,
+      {
+        resolveMention: () => ({
+          userUuid: "11111111-1111-4111-8111-111111111111",
+          displayText: "Wrong mention",
+        }),
+      },
+    );
+    const result = renderWorkspaceMessageBodySegments(document);
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "quote-reference",
+        reference: {
+          messageUuid,
+          selectedText,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+    expect(document.metadata).toMatchObject({
+      hasMentions: false,
+      hasLinks: true,
+      hasRichBlocks: true,
+      textPreview: "Цитата",
+    });
+    expect(result.segments).toEqual([
+      {
+        kind: "quote",
+        reference: {
+          messageUuid,
+          selectedText,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+  });
+
+  it("keeps an inline quote URN as a safe UUID message link", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(`Смотри [Sleep](urn:quote:${messageUuid}) выше`);
+    const segmented = renderWorkspaceMessageBodySegments(document);
+    const compatible = renderWorkspaceMessageBody(document);
+
+    expect(document.blocks[0]?.kind).toBe("paragraph");
+    expect(segmented.segments).toHaveLength(1);
+    expect(segmented.segments[0]?.kind).toBe("html");
+    expect(compatible.html).toContain('data-workspace-message-link="true"');
+    expect(compatible.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(compatible.html).not.toContain("urn:quote:");
+    expect(compatible.html).not.toContain('data-workspace-mention="true"');
+  });
+
+  it("preserves message order across quote and html segments", () => {
+    const firstMessageUuid = "22222222-2222-4222-8222-222222222222";
+    const secondMessageUuid = "33333333-3333-4333-8333-333333333333";
+    const document = parseWorkspaceMessageBody(
+      [
+        "Вступление",
+        "",
+        `[Alice](urn:quote:${firstMessageUuid})`,
+        "",
+        "Ответ",
+        "",
+        `[Bob](urn:quote:${secondMessageUuid})`,
+      ].join("\n"),
+    );
+
+    expect(renderWorkspaceMessageBodySegments(document).segments).toEqual([
+      { kind: "html", html: "<p>Вступление</p>" },
+      {
+        kind: "quote",
+        reference: {
+          messageUuid: firstMessageUuid,
+          fallbackAuthorLabel: "Alice",
+        },
+      },
+      { kind: "html", html: "<p>Ответ</p>" },
+      {
+        kind: "quote",
+        reference: {
+          messageUuid: secondMessageUuid,
+          fallbackAuthorLabel: "Bob",
+        },
+      },
+    ]);
+  });
+
+  it("keeps the string renderer as a sanitized quote compatibility adapter", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(
+      `[<img src=x onerror=alert(1)>](urn:quote:${messageUuid})`,
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain('data-workspace-quote-reference="true"');
+    expect(result.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(result.html).not.toContain("<img");
+    expect(result.html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(result.html).not.toContain("urn:quote:");
   });
 
   it("parses stream and topic URNs as typed internal links", () => {

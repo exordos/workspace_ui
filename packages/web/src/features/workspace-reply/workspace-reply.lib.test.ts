@@ -15,22 +15,26 @@ import type {
   WorkspaceReplyTab,
 } from "./workspace-reply.types";
 
+const MESSAGE_A = "11111111-1111-4111-8111-111111111111";
+const MESSAGE_B = "22222222-2222-4222-8222-222222222222";
+const MESSAGE_C = "33333333-3333-4333-8333-333333333333";
+
 const quoteA: WorkspaceReplyQuote = {
-  messageUuid: "message-a",
+  messageUuid: MESSAGE_A,
   senderUuid: "user-a",
   senderName: "Алексей",
   quotedContent: "текст А",
 };
 
 const quoteB: WorkspaceReplyQuote = {
-  messageUuid: "message-b",
+  messageUuid: MESSAGE_B,
   senderUuid: "user-b",
   senderName: "Мария",
   quotedContent: "текст Б",
 };
 
 const quoteC: WorkspaceReplyQuote = {
-  messageUuid: "message-c",
+  messageUuid: MESSAGE_C,
   senderUuid: "user-c",
   senderName: "Иван",
   quotedContent: "текст В",
@@ -69,7 +73,7 @@ describe("workspace-reply.lib", () => {
     expect(next.tabs).toEqual([
       {
         ...tab(quoteA, "tab-a", "ответ А"),
-        messageUuid: "message-c",
+        messageUuid: MESSAGE_C,
         senderUuid: "user-c",
         senderName: "Иван",
         quotedContent: "текст В",
@@ -244,7 +248,7 @@ describe("workspace-reply.lib", () => {
     const third = tab(quoteC, "tab-c", "ответ В");
 
     expect(buildWorkspaceReplyMarkdown([third, second, first])).toBe(
-      "> [Иван](urn:user:user-c) [wrote](urn:message:message-c):\n> текст В\n\nответ В\n\n> [Алексей](urn:user:user-a) [wrote](urn:message:message-a):\n> фрагмент А\n\n> [Алексей](urn:user:user-a) [wrote](urn:message:message-a):\n> текст А\n\nответ А",
+      `[Иван](urn:quote:${MESSAGE_C})\n\nответ В\n\n[Алексей](urn:quote:${MESSAGE_A}?text=%D1%84%D1%80%D0%B0%D0%B3%D0%BC%D0%B5%D0%BD%D1%82%20%D0%90)\n\n[Алексей](urn:quote:${MESSAGE_A})\n\nответ А`,
     );
   });
 });

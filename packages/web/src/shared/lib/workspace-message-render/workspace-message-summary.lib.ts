@@ -54,6 +54,42 @@ function isReadableLinkLabel(label: string, href: string): boolean {
   );
 }
 
+function summarizeFileInline(
+  inline: Extract<WorkspaceMessageInline, { kind: "file" }>,
+  options: WorkspaceMessageSummaryOptions,
+): SummaryBuildResult {
+  const { reference } = inline;
+  if (reference.kind === "media") {
+    const mediaLabel = reference.mediaKind === "video" ? "Видео" : "Изображение";
+    return {
+      text: options.includeMediaLabel ? mediaLabel : (reference.name ?? mediaLabel),
+      leadingKind: reference.mediaKind === "video" ? "video" : "image",
+    };
+  }
+
+  if (!options.includeAttachmentLabel) {
+    return { text: reference.name ?? "Файл", leadingKind: "file" };
+  }
+  const text = reference.name == null ? "Файл" : `Файл: ${reference.name}`;
+  return { text, leadingKind: "file" };
+}
+
+function summarizeLinkInline(
+  inline: Extract<WorkspaceMessageInline, { kind: "link" }>,
+  options: WorkspaceMessageSummaryOptions,
+): SummaryBuildResult {
+  const childSummary = summarizeInlineChildren(inline.children, options);
+  // В compact preview читаемый label важнее URL: ссылка не должна
+  // раздувать сайдбар, если человек уже написал нормальный текст.
+  if (isReadableLinkLabel(childSummary.text, inline.href)) {
+    return { text: childSummary.text, leadingKind: "link" };
+  }
+  return {
+    text: childSummary.text.length > 0 ? childSummary.text : inline.href,
+    leadingKind: "link",
+  };
+}
+
 function summarizeInline(
   inline: WorkspaceMessageInline,
   options: WorkspaceMessageSummaryOptions,
@@ -77,34 +113,10 @@ function summarizeInline(
         text: options.includeMediaLabel ? "Изображение" : inline.label,
         leadingKind: "image",
       };
-    case "file": {
-      const { reference } = inline;
-      if (reference.kind === "media") {
-        const mediaLabel = reference.mediaKind === "video" ? "Видео" : "Изображение";
-        return {
-          text: options.includeMediaLabel ? mediaLabel : (reference.name ?? mediaLabel),
-          leadingKind: reference.mediaKind === "video" ? "video" : "image",
-        };
-      }
-      return {
-        text: options.includeAttachmentLabel
-          ? `Файл${reference.name != null ? `: ${reference.name}` : ""}`
-          : (reference.name ?? "Файл"),
-        leadingKind: "file",
-      };
-    }
-    case "link": {
-      const childSummary = summarizeInlineChildren(inline.children, options);
-      // В compact preview читаемый label важнее URL: ссылка не должна
-      // раздувать сайдбар, если человек уже написал нормальный текст.
-      if (isReadableLinkLabel(childSummary.text, inline.href)) {
-        return { text: childSummary.text, leadingKind: "link" };
-      }
-      return {
-        text: childSummary.text.length > 0 ? childSummary.text : inline.href,
-        leadingKind: "link",
-      };
-    }
+    case "file":
+      return summarizeFileInline(inline, options);
+    case "link":
+      return summarizeLinkInline(inline, options);
   }
 }
 
@@ -163,6 +175,11 @@ function summarizeBlock(
         leadingKind: "quote",
       };
     }
+    case "quote-reference":
+      return {
+        text: "Цитата",
+        leadingKind: "quote",
+      };
     case "code":
       return {
         text: `Код: ${normalizePreviewText(block.text)}`,
@@ -200,7 +217,10 @@ function summarizeBlocksInternal(
     sourceKind: block.kind,
   }));
   const ownParts = parts.filter(
-    (part) => part.sourceKind !== "quote" && part.text.trim().length > 0,
+    (part) =>
+      part.sourceKind !== "quote" &&
+      part.sourceKind !== "quote-reference" &&
+      part.text.trim().length > 0,
   );
   // Если после цитаты есть собственный ответ, compact preview показывает
   // именно ответ. Иначе сайдбар забивается чужим quoted payload и перестает

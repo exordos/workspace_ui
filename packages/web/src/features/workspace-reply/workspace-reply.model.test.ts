@@ -20,7 +20,7 @@ describe("workspace-reply.model", () => {
       senderUuid: "user-a",
       senderName: "Алексей",
       quotedContent: "строка 1\nстрока 2",
-      selectedText: "выделение",
+      selectedText: "  выделение  ",
     });
   });
 
@@ -32,7 +32,7 @@ describe("workspace-reply.model", () => {
       senderUuid: "user-a",
       senderName: "Алексей",
       quotedContent: "строка 1\nстрока 2",
-      selectedText: "выделение",
+      selectedText: "  выделение  ",
       id: "tab-a",
       createdAt: "2026-07-14T10:00:00Z",
       answer: "",

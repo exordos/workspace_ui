@@ -99,6 +99,8 @@ function areWorkspaceMessageBodyPropsEqual(
 ): boolean {
   return (
     prev.html === next.html &&
+    prev.segments === next.segments &&
+    prev.renderQuote === next.renderQuote &&
     prev.useInlineMeta === next.useInlineMeta &&
     prev.bodyRef === next.bodyRef &&
     prev.onBodyClick === next.onBodyClick &&
@@ -115,9 +117,29 @@ function areWorkspaceMessageBodyPropsEqual(
   );
 }
 
+const WorkspaceMessageHtmlSegment = React.memo(function WorkspaceMessageHtmlSegment({
+  html,
+}: {
+  html: string;
+}): React.ReactElement {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const safeHtml = useMemo(() => sanitizeHtml(html), [html]);
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (element != null && element.innerHTML !== safeHtml) {
+      element.innerHTML = safeHtml;
+    }
+  }, [safeHtml]);
+
+  return <div ref={elementRef} data-workspace-message-html-segment="true" />;
+});
+
 export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.memo(
   function WorkspaceMessageBody({
     html,
+    segments,
+    renderQuote,
     metadata,
     useInlineMeta,
     bodyRef,
@@ -130,6 +152,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
       useInlineMeta ? "workspace-message-bubble-inline-text" : ""
     }`;
     const safeHtml = useMemo(() => sanitizeHtml(html), [html]);
+    const hasStructuredSegments = segments != null;
 
     const setContainerRef = useCallback(
       (node: HTMLDivElement | null) => {
@@ -141,7 +164,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
 
     useLayoutEffect(() => {
       const element = containerRef.current;
-      if (element == null) {
+      if (element == null || hasStructuredSegments) {
         lastInjectedElementRef.current = null;
         return;
       }
@@ -173,7 +196,13 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
         imagePlaceholderCount,
         replacedExistingDom: !isSameHtml,
       });
-    }, [metadata.contentKind, metadata.hasMedia, metadata.hasProtectedMedia, safeHtml]);
+    }, [
+      hasStructuredSegments,
+      metadata.contentKind,
+      metadata.hasMedia,
+      metadata.hasProtectedMedia,
+      safeHtml,
+    ]);
 
     return (
       <div
@@ -182,8 +211,18 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
         data-message-body="true"
         data-message-content-kind={metadata.contentKind}
         data-message-meta-preferred-placement={metadata.preferredMetaPlacement}
-        onClick={onBodyClick}
-      />
+        onClickCapture={onBodyClick}
+      >
+        {segments?.map((segment, index) =>
+          segment.kind === "html" ? (
+            <WorkspaceMessageHtmlSegment key={`html:${index}`} html={segment.html} />
+          ) : (
+            <React.Fragment key={`quote:${segment.reference.messageUuid}:${index}`}>
+              {renderQuote?.(segment, index)}
+            </React.Fragment>
+          ),
+        )}
+      </div>
     );
   },
   areWorkspaceMessageBodyPropsEqual,

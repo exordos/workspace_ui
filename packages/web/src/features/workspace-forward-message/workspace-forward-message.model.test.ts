@@ -23,7 +23,7 @@ describe("workspace forward message store contract", () => {
     expect(useWorkspaceForwardMessageStore.getState()).toMatchObject({
       isOpen: true,
       messageUuids: ["message-a", "message-b"],
-      selectedText: "selected fragment",
+      selectedText: " \n selected fragment \t ",
       onSuccess,
       isSubmitting: false,
       error: null,

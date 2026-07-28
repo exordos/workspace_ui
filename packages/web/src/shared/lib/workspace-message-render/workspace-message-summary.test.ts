@@ -114,6 +114,32 @@ describe("workspace message summary core", () => {
     expect(summary.text).not.toContain("Цитата: Цитата:");
   });
 
+  it("summarizes quote references without leaking their payload", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const selectedText = "чужой длинный текст";
+    const quoteOnly = parseWorkspaceMessageBody(
+      `[Sleep](urn:quote:${messageUuid}?text=${encodeURIComponent(selectedText)})`,
+    );
+    const withReply = parseWorkspaceMessageBody(
+      [
+        `[Sleep](urn:quote:${messageUuid}?text=${encodeURIComponent(selectedText)})`,
+        "",
+        "Собственный ответ",
+      ].join("\n"),
+    );
+
+    expect(summarizeWorkspaceMessageBody(quoteOnly)).toEqual({
+      text: "Цитата",
+      leadingKind: "quote",
+    });
+    expect(quoteOnly.safeTextPreview).toBe("Цитата");
+    expect(summarizeWorkspaceMessageBody(withReply)).toEqual({
+      text: "Собственный ответ",
+      leadingKind: "text",
+    });
+    expect(withReply.safeTextPreview).toBe("Собственный ответ");
+  });
+
   it("uses readable link labels instead of cluttering preview with urls", () => {
     const summary = summarizeWorkspaceMessageBody(
       parseWorkspaceMessageBody(

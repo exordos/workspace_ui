@@ -1,7 +1,4 @@
-import {
-  buildWorkspaceQuoteBlock,
-  buildWorkspaceQuoteHeader,
-} from "~/shared/lib/workspace-message-quote.lib";
+import { buildWorkspaceQuoteReference } from "~/shared/lib/workspace-message-quote.lib";
 import {
   createWorkspaceReplyTab,
   EMPTY_WORKSPACE_REPLY_SESSION,
@@ -158,28 +155,23 @@ export function reorderWorkspaceReplyTab(
 
 export function buildWorkspaceReplyMarkdown(
   tabs: readonly WorkspaceReplyTab[],
-  options?: { wroteLabel?: string },
+  _options?: { wroteLabel?: string },
 ): string {
   const normalizedSession = normalizeWorkspaceReplySession({
     tabs: [...tabs],
     activeTabId: tabs[0]?.id ?? null,
   });
-  const wroteLabel = options?.wroteLabel ?? "wrote";
-
   return normalizedSession.tabs
-    .map((tab) => {
-      const header = buildWorkspaceQuoteHeader({
+    .flatMap((tab) => {
+      const selectedText = tab.selectedText;
+      const quoteReference = buildWorkspaceQuoteReference({
         senderName: tab.senderName,
-        senderUuid: tab.senderUuid,
-        wroteLabel,
         messageUuid: tab.messageUuid,
+        ...(selectedText == null || selectedText.trim().length === 0 ? {} : { selectedText }),
       });
-      const selectedText = tab.selectedText?.trim();
-      const quoteContent =
-        selectedText != null && selectedText.length > 0 ? selectedText : tab.quotedContent;
-      const quoteBlock = buildWorkspaceQuoteBlock(header, quoteContent).trimEnd();
+      if (quoteReference == null) return [];
       const answer = tab.answer.trim();
-      return answer.length > 0 ? `${quoteBlock}\n\n${answer}` : quoteBlock;
+      return [answer.length > 0 ? `${quoteReference}\n\n${answer}` : quoteReference];
     })
     .join("\n\n")
     .trimEnd();

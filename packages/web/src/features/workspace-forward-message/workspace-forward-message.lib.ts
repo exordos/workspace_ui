@@ -1,8 +1,5 @@
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import {
-  buildWorkspaceQuoteBlock,
-  buildWorkspaceQuoteHeader,
-} from "~/shared/lib/workspace-message-quote.lib";
+import { buildWorkspaceQuoteReference } from "~/shared/lib/workspace-message-quote.lib";
 import type {
   CreateWorkspaceDirectForwardStream,
   WorkspaceForwardDirectStreamAppliedResult,
@@ -16,8 +13,7 @@ import type {
 } from "./workspace-forward-message.types";
 
 export function normalizeSelectedForwardText(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized != null && normalized.length > 0 ? normalized : undefined;
+  return value != null && value.trim().length > 0 ? value : undefined;
 }
 
 export function uniqueForwardMessageUuids(messageUuids: readonly MessengerUuid[]): MessengerUuid[] {
@@ -75,22 +71,19 @@ export function buildWorkspaceForwardMarkdown(options: {
 }): string {
   const selectedText = normalizeSelectedForwardText(options.selectedText);
   const shouldUseSelectedText = options.messages.length === 1 && selectedText != null;
-  const wroteLabel = options.wroteLabel ?? "wrote";
 
   return options.messages
-    .map((message) => {
+    .flatMap((message) => {
       const senderName =
         options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
-      const header = buildWorkspaceQuoteHeader({
+      const quoteReference = buildWorkspaceQuoteReference({
         senderName,
-        senderUuid: message.authorUuid,
-        wroteLabel,
         messageUuid: message.uuid,
+        ...(shouldUseSelectedText ? { selectedText } : {}),
       });
-      const content = shouldUseSelectedText ? selectedText : message.payload.content;
-      return buildWorkspaceQuoteBlock(header, content);
+      return quoteReference == null ? [] : [quoteReference];
     })
-    .join("")
+    .join("\n\n")
     .trimEnd();
 }
 

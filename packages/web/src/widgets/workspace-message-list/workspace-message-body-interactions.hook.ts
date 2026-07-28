@@ -60,13 +60,13 @@ export interface UseWorkspaceMessageBodyInteractionsResult {
 
 function resolveSelectionInsideBody(bodyElement: HTMLDivElement | null): string | undefined {
   const selection = window.getSelection();
-  const selectedText = selection?.toString().trim();
+  const selectedText = selection?.toString();
   const anchorNode = selection?.anchorNode;
   const focusNode = selection?.focusNode;
 
   if (
     selectedText == null ||
-    selectedText.length === 0 ||
+    selectedText.trim().length === 0 ||
     bodyElement == null ||
     anchorNode == null ||
     focusNode == null ||

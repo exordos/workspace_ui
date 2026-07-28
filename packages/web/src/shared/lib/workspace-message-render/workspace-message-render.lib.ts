@@ -5,10 +5,13 @@ import { deriveWorkspaceMediaPlaceholderLayout } from "./workspace-media-placeho
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
   WorkspaceMessageBlock,
+  WorkspaceMessageBodySegment,
   WorkspaceMessageDocument,
   WorkspaceMessageInline,
+  WorkspaceMessageQuoteReference,
   WorkspaceMessageRenderOptions,
   WorkspaceMessageRenderResult,
+  WorkspaceMessageSegmentRenderResult,
 } from "./workspace-message-document.types";
 
 const workspaceMessageRenderLog = createLogger("workspace-message-render");
@@ -43,6 +46,7 @@ const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "data-workspace-user-uuid",
   "data-workspace-message-link",
   "data-workspace-message-uuid",
+  "data-workspace-quote-reference",
   "data-workspace-reference",
   "data-workspace-reference-kind",
   "data-workspace-stream-uuid",
@@ -221,25 +225,40 @@ function renderWorkspaceFilePlaceholder(
       height: reference.height ?? null,
     });
   }
+  const imageHtml = isImage
+    ? `<img class="workspace-message-file-placeholder__image" src="${escapeHtmlText(
+        AUTH_IMAGE_PLACEHOLDER_SRC,
+      )}" alt="" decoding="async" loading="lazy">`
+    : "";
+  const videoHtml = isVideo
+    ? `<span class="workspace-message-file-placeholder__video-visual"${videoVisualStyle}><span class="workspace-message-file-placeholder__video-icon" aria-hidden="true"></span><span class="workspace-message-file-placeholder__label sr-only">${escapeHtmlText(label)}</span></span>`
+    : "";
+  const labelClass = isImage
+    ? "workspace-message-file-placeholder__label sr-only"
+    : "workspace-message-file-placeholder__label";
+  const labelHtml = isVideo ? "" : `<span class="${labelClass}">${escapeHtmlText(label)}</span>`;
   return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(
     reference.fileUuid,
   )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr}${fileSizeAttr}${mediaWidthAttr}${mediaHeightAttr}${videoPlaceholderStyle} title="${escapeHtmlText(
     label,
-  )}" aria-label="${escapeHtmlText(label)}">${
-    isImage
-      ? `<img class="workspace-message-file-placeholder__image" src="${escapeHtmlText(
-          AUTH_IMAGE_PLACEHOLDER_SRC,
-        )}" alt="" decoding="async" loading="lazy">`
-      : ""
-  }${
-    isVideo
-      ? `<span class="workspace-message-file-placeholder__video-visual"${videoVisualStyle}><span class="workspace-message-file-placeholder__video-icon" aria-hidden="true"></span><span class="workspace-message-file-placeholder__label sr-only">${escapeHtmlText(label)}</span></span>`
-      : ""
-  }${
-    isVideo
-      ? ""
-      : `<span class="workspace-message-file-placeholder__label${isImage ? " sr-only" : ""}">${escapeHtmlText(label)}</span>`
-  }</span>`;
+  )}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
+}
+
+function resolveWorkspaceConversationFragment(
+  reference: Extract<
+    NonNullable<Extract<WorkspaceMessageInline, { kind: "link" }>["workspaceReference"]>,
+    { kind: "stream" | "topic" }
+  >,
+  streamUuid: string | undefined,
+  topicUuid: string | undefined,
+): string {
+  if (reference.kind === "stream") {
+    return `#workspace-reference-stream-${streamUuid}`;
+  }
+  if (reference.streamUuid == null) {
+    return `#workspace-reference-topic-${topicUuid}`;
+  }
+  return `#workspace-reference-topic-${streamUuid}-${topicUuid}`;
 }
 
 function renderWorkspaceConversationReference(
@@ -264,14 +283,78 @@ function renderWorkspaceConversationReference(
     reference.kind === "topic" && reference.streamUuid == null
       ? ""
       : ` data-workspace-stream-uuid="${streamUuid}"`;
-  const fragment =
-    reference.kind === "stream"
-      ? `#workspace-reference-stream-${streamUuid}`
-      : reference.streamUuid == null
-        ? `#workspace-reference-topic-${topicUuid}`
-        : `#workspace-reference-topic-${streamUuid}-${topicUuid}`;
+  const fragment = resolveWorkspaceConversationFragment(reference, streamUuid, topicUuid);
+  const topicUuidAttr = topicUuid == null ? "" : ` data-workspace-topic-uuid="${topicUuid}"`;
 
-  return `<a href="${fragment}"${titleAttr} data-workspace-reference="true" data-workspace-reference-kind="${referenceKind}"${streamUuidAttr}${topicUuid == null ? "" : ` data-workspace-topic-uuid="${topicUuid}"`}>${labelHtml}</a>`;
+  return `<a href="${fragment}"${titleAttr} data-workspace-reference="true" data-workspace-reference-kind="${referenceKind}"${streamUuidAttr}${topicUuidAttr}>${labelHtml}</a>`;
+}
+
+function renderFileInline(
+  inline: Extract<WorkspaceMessageInline, { kind: "file" }>,
+  options: WorkspaceMessageRenderOptions,
+): string {
+  const enabled =
+    inline.reference.kind === "media" ? options.enableProtectedMedia : options.enableAttachments;
+  return enabled
+    ? renderWorkspaceFilePlaceholder(inline)
+    : escapeHtmlText(renderWorkspaceFileLabel(inline));
+}
+
+function renderMentionInline(
+  inline: Extract<WorkspaceMessageInline, { kind: "mention" }>,
+  options: WorkspaceMessageRenderOptions,
+): string {
+  const mentionText = `@${inline.displayText}`;
+  if (!options.enableMentions || inline.userUuid == null || inline.userUuid.trim().length === 0) {
+    return escapeHtmlText(mentionText);
+  }
+  // The button carries only a Workspace UUID. Click handling must use UUIDs
+  // or treat the action as unsupported for the current surface.
+  return `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${escapeHtmlText(
+    inline.userUuid,
+  )}">${escapeHtmlText(mentionText)}</button>`;
+}
+
+function renderLinkInline(
+  inline: Extract<WorkspaceMessageInline, { kind: "link" }>,
+  options: WorkspaceMessageRenderOptions,
+): string {
+  const workspaceConversationReference = renderWorkspaceConversationReference(inline, options);
+  if (workspaceConversationReference != null) {
+    return workspaceConversationReference;
+  }
+  const labelHtml = renderInlineChildren(inline.children, options);
+  const titleAttr =
+    inline.title != null && inline.title.trim().length > 0
+      ? ` title="${escapeHtmlText(inline.title)}"`
+      : "";
+  if (inline.workspaceMessageUuid != null) {
+    // URN links are a content contract, not browser URLs. Use a harmless
+    // fragment and let the UUID-only message action handle navigation.
+    return `<a href="#workspace-message-${escapeHtmlText(
+      inline.workspaceMessageUuid,
+    )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
+      inline.workspaceMessageUuid,
+    )}">${labelHtml}</a>`;
+  }
+  if (!isSafeLinkHref(inline.href)) {
+    return labelHtml;
+  }
+  const workspaceMessageUuid = resolveWorkspaceMessageRouteUuid(inline.href);
+  if (workspaceMessageUuid != null) {
+    // Workspace message links are allowed only through the project/message
+    // route with UUID. Old `/message/:id`, `?msg=`, and Zulip narrow are not
+    // emitted as `<a>`, so the bubble does not send users to a legacy path.
+    return `<a href="${escapeHtmlText(
+      inline.href,
+    )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
+      workspaceMessageUuid,
+    )}">${labelHtml}</a>`;
+  }
+  if (isUnsupportedLegacyMessageLink(inline.href)) {
+    return labelHtml;
+  }
+  return `<a href="${escapeHtmlText(inline.href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
 }
 
 function renderInline(
@@ -297,74 +380,13 @@ function renderInline(
     case "unsupported-media":
       return escapeHtmlText(inline.label || "Изображение");
     case "file":
-      if (inline.reference.kind === "media") {
-        if (!options.enableProtectedMedia) {
-          return escapeHtmlText(renderWorkspaceFileLabel(inline));
-        }
-        return renderWorkspaceFilePlaceholder(inline);
-      }
-      if (!options.enableAttachments) {
-        return escapeHtmlText(renderWorkspaceFileLabel(inline));
-      }
-      return renderWorkspaceFilePlaceholder(inline);
+      return renderFileInline(inline, options);
     case "emoji":
-      if (!options.enableEmojiShortcodes) {
-        return escapeHtmlText(inline.text);
-      }
-      return escapeHtmlText(inline.unicode);
-    case "mention": {
-      const mentionText = `@${inline.displayText}`;
-      if (
-        !options.enableMentions ||
-        inline.userUuid == null ||
-        inline.userUuid.trim().length === 0
-      ) {
-        return escapeHtmlText(mentionText);
-      }
-      // The button carries only a Workspace UUID. Click handling must use UUIDs
-      // or treat the action as unsupported for the current surface.
-      return `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${escapeHtmlText(
-        inline.userUuid,
-      )}">${escapeHtmlText(mentionText)}</button>`;
-    }
-    case "link": {
-      const workspaceConversationReference = renderWorkspaceConversationReference(inline, options);
-      if (workspaceConversationReference != null) {
-        return workspaceConversationReference;
-      }
-      const labelHtml = renderInlineChildren(inline.children, options);
-      const titleAttr =
-        inline.title != null && inline.title.trim().length > 0
-          ? ` title="${escapeHtmlText(inline.title)}"`
-          : "";
-      if (inline.workspaceMessageUuid != null) {
-        // URN links are a content contract, not browser URLs. Use a harmless
-        // fragment and let the UUID-only message action handle navigation.
-        return `<a href="#workspace-message-${escapeHtmlText(
-          inline.workspaceMessageUuid,
-        )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
-          inline.workspaceMessageUuid,
-        )}">${labelHtml}</a>`;
-      }
-      if (!isSafeLinkHref(inline.href)) {
-        return labelHtml;
-      }
-      const workspaceMessageUuid = resolveWorkspaceMessageRouteUuid(inline.href);
-      if (workspaceMessageUuid != null) {
-        // Workspace message links are allowed only through the project/message
-        // route with UUID. Old `/message/:id`, `?msg=`, and Zulip narrow are not
-        // emitted as `<a>`, so the bubble does not send users to a legacy path.
-        return `<a href="${escapeHtmlText(
-          inline.href,
-        )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
-          workspaceMessageUuid,
-        )}">${labelHtml}</a>`;
-      }
-      if (isUnsupportedLegacyMessageLink(inline.href)) {
-        return labelHtml;
-      }
-      return `<a href="${escapeHtmlText(inline.href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
-    }
+      return escapeHtmlText(options.enableEmojiShortcodes ? inline.unicode : inline.text);
+    case "mention":
+      return renderMentionInline(inline, options);
+    case "link":
+      return renderLinkInline(inline, options);
   }
 }
 
@@ -373,6 +395,17 @@ function renderBlocks(
   options: WorkspaceMessageRenderOptions,
 ): string {
   return blocks.map((block) => renderBlock(block, options)).join("");
+}
+
+function renderQuoteReferenceFallback(reference: WorkspaceMessageQuoteReference): string {
+  const label = reference.fallbackAuthorLabel.trim() || "Цитата";
+  return `<blockquote class="workspace-message-quote workspace-message-quote-reference" data-workspace-quote-reference="true" data-workspace-message-uuid="${escapeHtmlText(
+    reference.messageUuid,
+  )}"><a href="#workspace-message-${escapeHtmlText(
+    reference.messageUuid,
+  )}" data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
+    reference.messageUuid,
+  )}">${escapeHtmlText(label)}</a></blockquote>`;
 }
 
 function renderBlock(block: WorkspaceMessageBlock, options: WorkspaceMessageRenderOptions): string {
@@ -387,6 +420,8 @@ function renderBlock(block: WorkspaceMessageBlock, options: WorkspaceMessageRend
         block.blocks,
         options,
       )}</blockquote>`;
+    case "quote-reference":
+      return renderQuoteReferenceFallback(block.reference);
     case "code": {
       const language = block.language?.trim();
       const codeClass =
@@ -417,17 +452,63 @@ function renderPlainText(document: WorkspaceMessageDocument): string {
   return escapeHtmlText(document.sourceMarkdown).replace(/\n/g, "<br>");
 }
 
+export function renderWorkspaceMessageBodySegments(
+  document: WorkspaceMessageDocument,
+  options: WorkspaceMessageRenderOptions = DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+): WorkspaceMessageSegmentRenderResult {
+  if (!options.enableMarkdown) {
+    return {
+      segments: [{ kind: "html", html: sanitizeWorkspaceMessageHtml(renderPlainText(document)) }],
+      metadata: document.metadata,
+    };
+  }
+
+  const segments: WorkspaceMessageBodySegment[] = [];
+  let pendingBlocks: WorkspaceMessageBlock[] = [];
+  const flushHtml = (): void => {
+    if (pendingBlocks.length === 0) {
+      return;
+    }
+    segments.push({
+      kind: "html",
+      html: sanitizeWorkspaceMessageHtml(renderBlocks(pendingBlocks, options)),
+    });
+    pendingBlocks = [];
+  };
+
+  for (const block of document.blocks) {
+    if (block.kind !== "quote-reference") {
+      pendingBlocks.push(block);
+      continue;
+    }
+
+    flushHtml();
+    segments.push({ kind: "quote", reference: block.reference });
+  }
+  flushHtml();
+
+  return {
+    segments,
+    metadata: document.metadata,
+  };
+}
+
 export function renderWorkspaceMessageBody(
   document: WorkspaceMessageDocument,
   options: WorkspaceMessageRenderOptions = DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
 ): WorkspaceMessageRenderResult {
-  // Even our own renderer goes through the sanitize boundary: this protects
-  // against future markdown subset growth and link allowlist mistakes.
-  const html = options.enableMarkdown
-    ? renderBlocks(document.blocks, options)
-    : renderPlainText(document);
+  const segmented = renderWorkspaceMessageBodySegments(document, options);
+  // Compatibility adapter for callers that still mount one sanitized HTML
+  // string. New UI should render quote segments with a dedicated component.
+  const html = segmented.segments
+    .map((segment) =>
+      segment.kind === "html"
+        ? segment.html
+        : sanitizeWorkspaceMessageHtml(renderQuoteReferenceFallback(segment.reference)),
+    )
+    .join("");
   return {
-    html: sanitizeWorkspaceMessageHtml(html),
-    metadata: document.metadata,
+    html,
+    metadata: segmented.metadata,
   };
 }

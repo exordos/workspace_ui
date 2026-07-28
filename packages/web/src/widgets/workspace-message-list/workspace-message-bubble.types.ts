@@ -4,6 +4,7 @@ import type {
   WorkspaceMessageListActions,
   WorkspaceMessageListItem,
 } from "./workspace-message-list.types";
+import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
 
 export interface WorkspaceMessageBubbleProps {
   message: WorkspaceMessageListItem;
@@ -15,5 +16,6 @@ export interface WorkspaceMessageBubbleProps {
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   topicLabel?: string | null;
   resolveMention?: WorkspaceMessageMentionResolver;
+  quoteRenderMode?: WorkspaceQuoteRenderMode;
   actions?: WorkspaceMessageListActions;
 }

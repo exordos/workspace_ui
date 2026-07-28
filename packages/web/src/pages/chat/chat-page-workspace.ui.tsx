@@ -67,7 +67,7 @@ import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jit
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
 import { useWorkspaceMediaViewer } from "~/features/media-viewer/workspace-media-viewer.hook";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
-import { restoreWorkspaceReplySessionFromMarkdown } from "~/features/workspace-reply/workspace-reply-restore.lib";
+import { createWorkspaceReplyEditRestoreController } from "~/features/workspace-reply/workspace-reply-edit-restore.lib";
 import {
   addWorkspaceReplyTab,
   buildWorkspaceReplyMarkdown,
@@ -98,6 +98,7 @@ import type {
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import {
+  workspaceMessengerMessageRoute,
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
   type WorkspaceMessengerRouteMatch,
@@ -277,6 +278,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     content: WorkspaceComposerDraftContent;
   } | null>(null);
   const workspaceReplyTabSequenceRef = useRef(0);
+  const workspaceReplyEditRestoreController = useMemo(
+    () => createWorkspaceReplyEditRestoreController(),
+    [],
+  );
   const workspaceFileResourceCache = useMemo<WorkspaceFileResourceCache>(
     () => createWorkspaceFileResourceCache(),
     [],
@@ -344,6 +349,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  useEffect(
+    () => () => {
+      workspaceReplyEditRestoreController.cancel();
+    },
+    [conversationId, runtimeContext, workspaceReplyEditRestoreController],
+  );
   const workspaceComposerDraftScopeKey =
     ownerKey == null || conversationId == null
       ? null
@@ -1370,24 +1381,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         return;
       }
 
-      const restoredReplySession = restoreWorkspaceReplySessionFromMarkdown(
-        message.payload.content,
-        () => createWorkspaceReplyTabIdentity(),
-      );
-      setRestoredWorkspaceReplySession(restoredReplySession?.session ?? null);
-      setComposerEditMessageUuid(message.uuid);
-      setComposerEditSession({
-        messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-        initialMarkdown: restoredReplySession?.activeAnswer ?? message.payload.content,
-        ...(restoredReplySession == null
-          ? {}
-          : {
-              preserveWorkspaceReplyContext: true,
-              sessionKey: `reply:${restoredReplySession.session.activeTabId ?? ""}`,
-            }),
-      });
+      void workspaceReplyEditRestoreController
+        .restore({
+          markdown: message.payload.content,
+          runtimeContext,
+          createIdentity: () => createWorkspaceReplyTabIdentity(),
+        })
+        .then((result) => {
+          if (result.status === "stale") return;
+
+          const restoredReplySession = result.restored;
+          setRestoredWorkspaceReplySession(restoredReplySession?.session ?? null);
+          setComposerEditMessageUuid(message.uuid);
+          setComposerEditSession({
+            messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
+            initialMarkdown: restoredReplySession?.activeAnswer ?? message.payload.content,
+            ...(restoredReplySession == null
+              ? {}
+              : {
+                  preserveWorkspaceReplyContext: true,
+                  sessionKey: `reply:${restoredReplySession.session.activeTabId ?? ""}`,
+                }),
+          });
+        });
     },
-    [createWorkspaceReplyTabIdentity],
+    [createWorkspaceReplyTabIdentity, runtimeContext, workspaceReplyEditRestoreController],
   );
 
   const handleRequestDeleteMessage = useCallback((messageUuid: string) => {
@@ -1458,11 +1476,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         return null;
       }
 
-      const normalizedSelectedText = selectedText?.trim();
-      const quoteSource =
-        normalizedSelectedText != null && normalizedSelectedText.length > 0
-          ? normalizedSelectedText
-          : message.payload.content.trim();
+      const selectedQuoteText =
+        selectedText != null && selectedText.trim().length > 0 ? selectedText : undefined;
+      const quoteSource = selectedQuoteText ?? message.payload.content.trim();
       if (quoteSource.length === 0) return null;
       const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
       return {
@@ -1470,9 +1486,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         senderUuid: message.authorUuid,
         senderName: authorLabel,
         quotedContent: message.payload.content.trim(),
-        ...(normalizedSelectedText == null || normalizedSelectedText.length === 0
-          ? {}
-          : { selectedText: normalizedSelectedText }),
+        ...(selectedQuoteText == null ? {} : { selectedText: selectedQuoteText }),
       };
     },
     [effectiveRoute, resolveAuthorLabel, selection.status],
@@ -2023,6 +2037,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [openWorkspaceUserProfile],
   );
+  const handleOpenMessageInChat = useCallback(
+    (messageUuid: MessengerUuid) => {
+      if (runtimeContext == null) return;
+
+      void navigate(
+        workspaceMessengerMessageRoute({
+          orgId: runtimeContext.organizationId,
+          projectId: runtimeContext.projectId,
+          messageUuid,
+        }),
+      );
+    },
+    [navigate, runtimeContext],
+  );
   const handleOpenWorkspaceReference = useCallback(
     (reference: WorkspaceMessageConversationReference) => {
       if (runtimeContext == null) {
@@ -2184,6 +2212,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           workspaceReplySession.tabs.length === 0 ? undefined : handleAddReplyMessage
         }
         onForwardMessage={handleForwardMessage}
+        onOpenMessageInChat={handleOpenMessageInChat}
         onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
         onOpenWorkspaceReference={handleOpenWorkspaceReference}
         onToggleMessageSelection={handleToggleMessageSelection}

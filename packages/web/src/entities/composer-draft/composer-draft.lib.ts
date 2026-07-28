@@ -25,8 +25,7 @@ function normalizeRequiredText(value: unknown): string {
 }
 
 function normalizeOptionalText(value: unknown): string | undefined {
-  const normalized = normalizeRequiredText(value);
-  return normalized.length === 0 ? undefined : normalized;
+  return typeof value !== "string" || value.trim().length === 0 ? undefined : value;
 }
 
 function normalizeText(value: unknown): string {

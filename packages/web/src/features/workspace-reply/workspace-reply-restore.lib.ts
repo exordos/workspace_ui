@@ -1,11 +1,17 @@
+import { parseWorkspaceReferenceUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { createWorkspaceReplyTab, normalizeWorkspaceReplySession } from "./workspace-reply.model";
-import type { WorkspaceReplySession, WorkspaceReplyTabIdentity } from "./workspace-reply.types";
+import type {
+  WorkspaceReplyQuote,
+  WorkspaceReplySession,
+  WorkspaceReplyTabIdentity,
+} from "./workspace-reply.types";
 
 const UUID_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const WORKSPACE_REPLY_HEADER_PATTERN = new RegExp(
   String.raw`^\[((?:\\.|[^\]])*)\]\(urn:user:(${UUID_SOURCE})\)\s+\[(?:\\.|[^\]])*\]\(urn:message:(${UUID_SOURCE})\):\s*$`,
   "i",
 );
+const WORKSPACE_QUOTE_REFERENCE_PATTERN = /^\[((?:\\.|[^\]])*)\]\((urn:quote:[^)]+)\)\s*$/i;
 
 export interface RestoredWorkspaceReplySession {
   session: WorkspaceReplySession;
@@ -13,12 +19,18 @@ export interface RestoredWorkspaceReplySession {
 }
 
 interface ParsedWorkspaceReplyQuote {
-  senderName: string;
-  senderUuid: string;
+  format: "reference" | "legacy";
+  fallbackSenderName: string;
+  senderUuid?: string;
   messageUuid: string;
   quotedContent: string;
+  selectedText?: string;
   endLineIndex: number;
 }
+
+export type ResolveRestoredWorkspaceReplyQuote = (
+  messageUuid: string,
+) => Pick<WorkspaceReplyQuote, "senderUuid" | "senderName" | "quotedContent"> | null;
 
 function normalizeMarkdown(markdown: string): string {
   return markdown.replace(/\r\n?/g, "\n").trim();
@@ -36,7 +48,32 @@ function quoteLineContent(line: string): string {
   return line.startsWith("> ") ? line.slice(2) : line.slice(1);
 }
 
-function parseWorkspaceReplyQuote(
+function parseWorkspaceQuoteReference(
+  lines: readonly string[],
+  startLineIndex: number,
+): ParsedWorkspaceReplyQuote | null {
+  const line = lines[startLineIndex];
+  if (line == null) return null;
+
+  const match = WORKSPACE_QUOTE_REFERENCE_PATTERN.exec(line);
+  if (match == null) return null;
+  const fallbackSenderName = unescapeWorkspaceMarkdownInline(match[1] ?? "").trim();
+  const reference = parseWorkspaceReferenceUrn(match[2]);
+  if (fallbackSenderName.length === 0 || reference?.kind !== "quote") return null;
+
+  return {
+    format: "reference",
+    fallbackSenderName,
+    messageUuid: reference.messageUuid,
+    quotedContent: "",
+    ...(reference.text == null ? {} : { selectedText: reference.text }),
+    endLineIndex: startLineIndex + 1,
+  };
+}
+
+// TODO: Keep edit support for persisted replies; remove this parser after the backend/client
+// contract migration is complete and persisted old-format messages are no longer supported.
+function parseLegacyWorkspaceReplyQuote(
   lines: readonly string[],
   startLineIndex: number,
 ): ParsedWorkspaceReplyQuote | null {
@@ -61,12 +98,23 @@ function parseWorkspaceReplyQuote(
   if (senderName.length === 0 || senderUuid.length === 0 || messageUuid.length === 0) return null;
 
   return {
-    senderName,
+    format: "legacy",
+    fallbackSenderName: senderName,
     senderUuid,
     messageUuid,
     quotedContent: quotedLines.join("\n").trim(),
     endLineIndex,
   };
+}
+
+function parseWorkspaceReplyQuote(
+  lines: readonly string[],
+  startLineIndex: number,
+): ParsedWorkspaceReplyQuote | null {
+  return (
+    parseWorkspaceQuoteReference(lines, startLineIndex) ??
+    parseLegacyWorkspaceReplyQuote(lines, startLineIndex)
+  );
 }
 
 /**
@@ -76,6 +124,7 @@ function parseWorkspaceReplyQuote(
 export function restoreWorkspaceReplySessionFromMarkdown(
   markdown: string,
   createIdentity: (index: number) => WorkspaceReplyTabIdentity,
+  resolveQuote?: ResolveRestoredWorkspaceReplyQuote,
 ): RestoredWorkspaceReplySession | null {
   const normalizedMarkdown = normalizeMarkdown(markdown);
   if (normalizedMarkdown.length === 0) return null;
@@ -108,17 +157,30 @@ export function restoreWorkspaceReplySessionFromMarkdown(
   }
 
   const tabs = parsedQuotes.flatMap((quote, index) => {
+    const resolvedQuote = quote.format === "reference" ? resolveQuote?.(quote.messageUuid) : null;
+    if (quote.format === "reference" && resolvedQuote == null) {
+      return [];
+    }
+    const senderUuid = resolvedQuote?.senderUuid ?? quote.senderUuid;
+    const senderName = resolvedQuote?.senderName ?? quote.fallbackSenderName;
+    const quotedContent = resolvedQuote?.quotedContent ?? quote.quotedContent;
+    if (senderUuid == null) return [];
+
     const tab = createWorkspaceReplyTab(
       {
         messageUuid: quote.messageUuid,
-        senderUuid: quote.senderUuid,
-        senderName: quote.senderName,
-        quotedContent: quote.quotedContent,
+        senderUuid,
+        senderName,
+        quotedContent,
+        ...(quote.selectedText == null ? {} : { selectedText: quote.selectedText }),
       },
       createIdentity(index),
     );
     return tab == null ? [] : [{ ...tab, answer: quote.answer }];
   });
+  if (tabs.length !== parsedQuotes.length) {
+    return null;
+  }
   const session = normalizeWorkspaceReplySession({
     tabs,
     activeTabId: tabs[0]?.id ?? null,

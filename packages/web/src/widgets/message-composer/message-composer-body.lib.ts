@@ -4,8 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
 import {
-  buildWorkspaceQuoteBlock,
-  buildWorkspaceQuoteHeader,
+  buildWorkspaceQuoteReference,
   buildWorkspaceUserMention,
 } from "~/shared/lib/workspace-message-quote.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
@@ -39,13 +38,14 @@ export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote 
   let body = value.trim();
   if (replyQuote) {
     if (replyQuote.quoteFormat === "workspace") {
-      const header = buildWorkspaceQuoteHeader({
+      const quoteReference = buildWorkspaceQuoteReference({
         senderName: replyQuote.sender_full_name,
-        senderUuid: replyQuote.sender_uuid,
-        wroteLabel: t("message.replyQuoteWrote"),
         messageUuid: replyQuote.id,
       });
-      return buildWorkspaceQuoteBlock(header, replyQuote.content) + body;
+      if (quoteReference == null || body.length === 0) {
+        return quoteReference ?? body;
+      }
+      return `${quoteReference}\n\n${body}`;
     }
 
     if (replyQuote.sender_id == null) {

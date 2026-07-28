@@ -1,8 +1,16 @@
+import { buildWorkspaceQuoteUrn } from "./workspace-reference-urn.lib";
+
 export interface WorkspaceQuoteHeaderInput {
   senderName: string;
   senderUuid: string;
   wroteLabel: string;
   messageUuid: string;
+}
+
+export interface WorkspaceQuoteReferenceInput {
+  senderName: string;
+  messageUuid: string;
+  selectedText?: string;
 }
 
 export function escapeWorkspaceMarkdownInline(value: string): string {
@@ -13,6 +21,19 @@ export function escapeWorkspaceMarkdownInline(value: string): string {
 
 export function buildWorkspaceUserMention(senderName: string, senderUuid: string): string {
   return `[${escapeWorkspaceMarkdownInline(senderName.trim())}](urn:user:${senderUuid})`;
+}
+
+export function buildWorkspaceQuoteReference({
+  senderName,
+  messageUuid,
+  selectedText,
+}: WorkspaceQuoteReferenceInput): string | null {
+  const quoteUrn = buildWorkspaceQuoteUrn(messageUuid, selectedText);
+  const authorLabel = escapeWorkspaceMarkdownInline(senderName.trim());
+  if (quoteUrn == null || authorLabel.length === 0) {
+    return null;
+  }
+  return `[${authorLabel}](${quoteUrn})`;
 }
 
 function normalizeQuoteMarkdown(value: string): string {
@@ -34,5 +55,8 @@ export function buildWorkspaceQuoteHeader({
 export function buildWorkspaceQuoteBlock(header: string, content: string): string {
   const normalizedContent = normalizeQuoteMarkdown(content);
   const lines = [header, ...normalizedContent.split("\n")];
-  return `${lines.map((line) => (line.length === 0 ? ">" : `> ${line}`)).join("\n")}\n\n`;
+  const quotedLines = lines.map((line) => {
+    return line.length === 0 ? ">" : `> ${line}`;
+  });
+  return `${quotedLines.join("\n")}\n\n`;
 }

@@ -10,10 +10,12 @@ interface ForwardMessage {
 }
 
 const LIB_MODULE = "./workspace-forward-message.lib";
+const MESSAGE_A = "11111111-1111-4111-8111-111111111111";
+const MESSAGE_B = "22222222-2222-4222-8222-222222222222";
 
 function createForwardMessage(overrides: Partial<ForwardMessage> = {}): ForwardMessage {
   return {
-    uuid: "message-a",
+    uuid: MESSAGE_A,
     streamUuid: "stream-a",
     topicUuid: "topic-a",
     authorUuid: "user-a",
@@ -40,7 +42,9 @@ describe("workspace forward message lib contract", () => {
   it("normalizes selected text to a meaningful optional value", async () => {
     const { normalizeSelectedForwardText } = await import(LIB_MODULE);
 
-    expect(normalizeSelectedForwardText(" \n selected fragment \t ")).toBe("selected fragment");
+    expect(normalizeSelectedForwardText(" \n selected fragment \t ")).toBe(
+      " \n selected fragment \t ",
+    );
     expect(normalizeSelectedForwardText("\n\t ")).toBeUndefined();
     expect(normalizeSelectedForwardText(undefined)).toBeUndefined();
   });
@@ -63,8 +67,20 @@ describe("workspace forward message lib contract", () => {
       resolveAuthorLabel: vi.fn(() => "Alice"),
     });
 
-    expect(markdown).toContain("selected fragment");
+    expect(markdown).toContain("text=selected%20fragment");
     expect(markdown).not.toContain("full message text");
+  });
+
+  it("preserves selected text whitespace and line breaks in the quote URN", async () => {
+    const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
+
+    const markdown = buildWorkspaceForwardMarkdown({
+      messages: [createForwardMessage()],
+      selectedText: " foo \nbar ",
+      resolveAuthorLabel: vi.fn(() => "Alice"),
+    });
+
+    expect(markdown).toBe(`[Alice](urn:quote:${MESSAGE_A}?text=%20foo%20%0Abar%20)`);
   });
 
   it("does not replace several messages with one selected text", async () => {
@@ -73,11 +89,11 @@ describe("workspace forward message lib contract", () => {
     const markdown = buildWorkspaceForwardMarkdown({
       messages: [
         createForwardMessage({
-          uuid: "message-a",
+          uuid: MESSAGE_A,
           payload: { kind: "markdown", content: "first full text" },
         }),
         createForwardMessage({
-          uuid: "message-b",
+          uuid: MESSAGE_B,
           payload: { kind: "markdown", content: "second full text" },
         }),
       ],
@@ -85,12 +101,14 @@ describe("workspace forward message lib contract", () => {
       resolveAuthorLabel: vi.fn(() => "Alice"),
     });
 
-    expect(markdown).toContain("first full text");
-    expect(markdown).toContain("second full text");
+    expect(markdown).toContain(`urn:quote:${MESSAGE_A}`);
+    expect(markdown).toContain(`urn:quote:${MESSAGE_B}`);
+    expect(markdown).not.toContain("first full text");
+    expect(markdown).not.toContain("second full text");
     expect(markdown).not.toContain("selected fragment");
   });
 
-  it("uses canonical Workspace user and message links in the forwarded quote", async () => {
+  it("uses a canonical Workspace quote reference", async () => {
     const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
 
     const markdown = buildWorkspaceForwardMarkdown({
@@ -99,9 +117,7 @@ describe("workspace forward message lib contract", () => {
       wroteLabel: "said",
     });
 
-    expect(markdown).toContain(
-      "> [Alice \\[Admin\\]](urn:user:user-a) [said](urn:message:message-a):",
-    );
+    expect(markdown).toBe(`[Alice \\[Admin\\]](urn:quote:${MESSAGE_A})`);
   });
 
   it("reuses an existing private stream with default topic for a direct target", async () => {
