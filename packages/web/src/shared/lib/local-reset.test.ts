@@ -4,6 +4,8 @@ import { performApplicationColdStart } from "./local-reset";
 
 function clearTestStorage(): void {
   for (const key of [
+    "workspace-auth-sessions",
+    "workspace-auth-current-account",
     "workspace-runtime-instances",
     "workspace-runtime-current-instance",
     "workspace-palette",
@@ -36,9 +38,11 @@ describe("performApplicationColdStart", () => {
     clearTestStorage();
   });
 
-  it("preserves auth keys while removing preferences, caches, and misc localStorage", async () => {
-    localStorage.setItem("workspace-runtime-instances", '[{"id":"1"}]');
-    localStorage.setItem("workspace-runtime-current-instance", "1");
+  it("preserves current auth keys while removing legacy auth, preferences, and caches", async () => {
+    localStorage.setItem("workspace-auth-sessions", '[{"accountId":"account-1"}]');
+    localStorage.setItem("workspace-auth-current-account", "account-1");
+    localStorage.setItem("workspace-runtime-instances", '[{"id":"legacy"}]');
+    localStorage.setItem("workspace-runtime-current-instance", "legacy");
     localStorage.setItem("workspace-palette", "blue-cold");
     localStorage.setItem("workspace-theme-mode", "light");
     localStorage.setItem("workspace-settings", '{"prioritizePersonalUnread":true}');
@@ -56,8 +60,10 @@ describe("performApplicationColdStart", () => {
 
     await performApplicationColdStart();
 
-    expect(localStorage.getItem("workspace-runtime-instances")).toBe('[{"id":"1"}]');
-    expect(localStorage.getItem("workspace-runtime-current-instance")).toBe("1");
+    expect(localStorage.getItem("workspace-auth-sessions")).toBe('[{"accountId":"account-1"}]');
+    expect(localStorage.getItem("workspace-auth-current-account")).toBe("account-1");
+    expect(localStorage.getItem("workspace-runtime-instances")).toBeNull();
+    expect(localStorage.getItem("workspace-runtime-current-instance")).toBeNull();
 
     expect(localStorage.getItem("workspace-palette")).toBeNull();
     expect(localStorage.getItem("workspace-theme-mode")).toBeNull();

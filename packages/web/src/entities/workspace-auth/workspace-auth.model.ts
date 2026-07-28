@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { logStoreAction } from "~/shared/lib/logger";
-
-const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
-const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
+import {
+  WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY,
+  WORKSPACE_AUTH_STORAGE_KEY,
+} from "~/shared/lib/workspace-auth-storage.lib";
 
 export interface WorkspaceAuthProfile {
   uuid: string;

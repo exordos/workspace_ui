@@ -6,12 +6,10 @@
  *   await performApplicationColdStart();
  *   window.location.reload();
  */
+import { WORKSPACE_AUTH_STORAGE_KEYS } from "~/shared/lib/workspace-auth-storage.lib";
 import { deleteWorkspaceMessengerCacheDatabase } from "~/shared/lib/workspace-messenger-cache-db";
 
-const PRESERVED_AUTH_STORAGE_KEYS = [
-  "workspace-runtime-instances",
-  "workspace-runtime-current-instance",
-] as const;
+const PRESERVED_AUTH_STORAGE_KEYS = WORKSPACE_AUTH_STORAGE_KEYS;
 
 function isPreservedAuthStorageKey(key: string): boolean {
   return (PRESERVED_AUTH_STORAGE_KEYS as readonly string[]).includes(key);
