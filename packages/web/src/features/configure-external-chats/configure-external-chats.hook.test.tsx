@@ -238,6 +238,44 @@ describe("useConfigureExternalChats", () => {
     });
   });
 
+  it("selects and clears all available chats visible through the current search", async () => {
+    const secondChatUuid = "50000000-0000-4000-8000-000000000005";
+    vi.mocked(getExternalChats).mockResolvedValue([
+      chatSnapshot({
+        selected: false,
+        project_id: null,
+        status: "available",
+      }),
+      chatSnapshot({
+        uuid: secondChatUuid,
+        display_name: "Development",
+        selected: false,
+        project_id: null,
+        status: "available",
+      }),
+    ]);
+    const { result } = renderHook(() =>
+      useConfigureExternalChats({ open: true, runtimeContext, account }),
+    );
+
+    await waitFor(() => expect(result.current.loadStatus).toBe("ready"));
+    expect(result.current.selectAllState).toBe("none");
+
+    act(() => result.current.toggleAllVisible());
+
+    expect(result.current.pending).toEqual(new Set([CHAT_UUID, secondChatUuid]));
+    expect(result.current.selectAllState).toBe("all");
+
+    act(() => result.current.setQuery("Support"));
+    expect(result.current.selectableVisibleCount).toBe(1);
+    expect(result.current.selectAllState).toBe("all");
+
+    act(() => result.current.toggleAllVisible());
+
+    expect(result.current.pending).toEqual(new Set([secondChatUuid]));
+    expect(result.current.selectAllState).toBe("none");
+  });
+
   it("rehydrates exactly once when authoritative realtime state is reset", async () => {
     vi.mocked(getExternalChats).mockResolvedValue([chatSnapshot()]);
     renderHook(() => useConfigureExternalChats({ open: true, runtimeContext, account }));

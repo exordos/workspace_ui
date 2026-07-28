@@ -16,6 +16,35 @@ function statusText(status: string): string {
   return t(`configureExternalChats.status.${status}`);
 }
 
+const SelectAllChatsCheckbox = React.memo<{
+  state: "none" | "some" | "all";
+  disabled: boolean;
+  onChange: () => void;
+}>(function SelectAllChatsCheckbox({ state, disabled, onChange }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (inputRef.current != null) inputRef.current.indeterminate = state === "some";
+  }, [state]);
+
+  return (
+    <label
+      className={`mb-2 flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="checkbox"
+        checked={state === "all"}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <span>{t("configureExternalChats.selectAll")}</span>
+    </label>
+  );
+});
+
 export const ExternalChatHistorySettings = React.memo<{
   vm: ConfigureExternalChatsViewModel;
 }>(function ExternalChatHistorySettings({ vm }) {
@@ -165,42 +194,51 @@ export const ExternalChatCatalogContent = React.memo<{
           ) : null}
         </div>
       ) : (
-        <ul className="max-h-[50vh] space-y-2 overflow-auto">
-          {vm.chats.map((chat) => {
-            const canChoose =
-              vm.manualSelectionEnabled && !chat.selected && !chat.transitionPending;
-            return (
-              <li
-                key={chat.uuid}
-                className="flex items-center gap-3 rounded-lg border border-border-subtle px-3 py-2"
-              >
-                {vm.manualSelectionEnabled ? (
-                  <input
-                    type="checkbox"
-                    checked={chat.selected || vm.pending.has(chat.uuid)}
-                    disabled={!canChoose || vm.submitting || vm.selectionBlockedBySettings}
-                    onChange={() => vm.toggle(chat.uuid)}
-                    aria-label={chat.displayName}
-                  />
-                ) : (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-text-primary">{chat.displayName}</p>
-                  <p className="text-xs text-text-muted">{statusText(chat.status)}</p>
-                  {chat.safeError != null ? (
-                    <p className="mt-1 break-words text-xs text-danger">{chat.safeError}</p>
+        <>
+          {vm.manualSelectionEnabled && vm.selectableVisibleCount > 0 ? (
+            <SelectAllChatsCheckbox
+              state={vm.selectAllState}
+              disabled={vm.submitting || vm.selectionBlockedBySettings}
+              onChange={vm.toggleAllVisible}
+            />
+          ) : null}
+          <ul className="max-h-[50vh] space-y-2 overflow-auto">
+            {vm.chats.map((chat) => {
+              const canChoose =
+                vm.manualSelectionEnabled && !chat.selected && !chat.transitionPending;
+              return (
+                <li
+                  key={chat.uuid}
+                  className="flex items-center gap-3 rounded-lg border border-border-subtle px-3 py-2"
+                >
+                  {vm.manualSelectionEnabled ? (
+                    <input
+                      type="checkbox"
+                      checked={chat.selected || vm.pending.has(chat.uuid)}
+                      disabled={!canChoose || vm.submitting || vm.selectionBlockedBySettings}
+                      onChange={() => vm.toggle(chat.uuid)}
+                      aria-label={chat.displayName}
+                    />
+                  ) : (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-text-primary">{chat.displayName}</p>
+                    <p className="text-xs text-text-muted">{statusText(chat.status)}</p>
+                    {chat.safeError != null ? (
+                      <p className="mt-1 break-words text-xs text-danger">{chat.safeError}</p>
+                    ) : null}
+                  </div>
+                  {vm.failed.has(chat.uuid) ? (
+                    <span className="text-xs text-danger">
+                      {t("configureExternalChats.requestFailed")}
+                    </span>
                   ) : null}
-                </div>
-                {vm.failed.has(chat.uuid) ? (
-                  <span className="text-xs text-danger">
-                    {t("configureExternalChats.requestFailed")}
-                  </span>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </>
   );

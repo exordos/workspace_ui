@@ -300,6 +300,43 @@ export function useConfigureExternalChats(options: {
     if (normalized.length === 0) return chats;
     return chats.filter((chat) => chat.displayName.toLocaleLowerCase().includes(normalized));
   }, [chats, query]);
+  const selectableVisibleChatUuids = useMemo(
+    () =>
+      visibleChats
+        .filter((chat) => !chat.selected && !chat.transitionPending)
+        .map((chat) => chat.uuid),
+    [visibleChats],
+  );
+  const pendingVisibleCount = selectableVisibleChatUuids.reduce(
+    (count, chatUuid) => count + (pending.has(chatUuid) ? 1 : 0),
+    0,
+  );
+  let selectAllState: "none" | "some" | "all" = "none";
+  if (pendingVisibleCount > 0) {
+    selectAllState = pendingVisibleCount === selectableVisibleChatUuids.length ? "all" : "some";
+  }
+  const toggleAllVisible = useCallback(() => {
+    if (account.settings.selectionMode !== "explicit" || selectableVisibleChatUuids.length === 0) {
+      return;
+    }
+    setSubmissionState((currentState) => {
+      const current =
+        currentState.scopeKey === scopeKey ? currentState : emptySubmissionState(scopeKey);
+      const nextPending = new Set(current.pending);
+      const nextFailed = new Set(current.failed);
+      const shouldClear = selectableVisibleChatUuids.every((chatUuid) => nextPending.has(chatUuid));
+      for (const chatUuid of selectableVisibleChatUuids) {
+        if (shouldClear) nextPending.delete(chatUuid);
+        else nextPending.add(chatUuid);
+        nextFailed.delete(chatUuid);
+      }
+      return {
+        ...current,
+        pending: nextPending,
+        failed: nextFailed,
+      };
+    });
+  }, [account.settings.selectionMode, scopeKey, selectableVisibleChatUuids]);
   const selectedChats = chats.filter((chat) => chat.selected);
   const readyCount = selectedChats.filter((chat) => chat.status === "live").length;
   let normalizedSaveStatus = saveStatus;
@@ -497,10 +534,13 @@ export function useConfigureExternalChats(options: {
     selectionBlockedBySettings,
     canSaveHistoryDepth: historyDepthDirty && !settingsBusy && !submitting,
     manualSelectionEnabled,
+    selectableVisibleCount: selectableVisibleChatUuids.length,
+    selectAllState,
     readyCount,
     selectedCount: selectedChats.length,
     setQuery,
     toggle,
+    toggleAllVisible,
     changeHistoryDepth,
     saveHistoryDepth,
     reloadAccountSettings,

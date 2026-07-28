@@ -89,6 +89,7 @@
     "description": "Select the chats to transfer to Workspace.",
     "automaticDescription": "Review synchronization settings and chat statuses. Chats are connected automatically.",
     "search": "Search chats",
+    "selectAll": "Select all",
     "loading": "Loading chats…",
     "empty": "No available chats found yet.",
     "preparing": "Looking for available chats…",

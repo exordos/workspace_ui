@@ -64,10 +64,13 @@ function viewModel(
     selectionBlockedBySettings: false,
     canSaveHistoryDepth: false,
     manualSelectionEnabled: true,
+    selectableVisibleCount: 0,
+    selectAllState: "none",
     readyCount: 0,
     selectedCount: 0,
     setQuery: vi.fn(),
     toggle: vi.fn(),
+    toggleAllVisible: vi.fn(),
     changeHistoryDepth: vi.fn(),
     saveHistoryDepth: vi.fn(),
     reloadAccountSettings: vi.fn(),
@@ -326,6 +329,53 @@ describe("ConfigureExternalChatsDialog", () => {
     expect(footer).toContainElement(sync);
     expect(sync.parentElement).not.toContainElement(close);
     expect(close.closest("[data-app-dialog-title-row]")).not.toBeNull();
+  });
+
+  it("shows a select-all checkbox and forwards the group selection", () => {
+    const toggleAllVisible = vi.fn();
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        selectableVisibleCount: 2,
+        selectAllState: "none",
+        toggleAllVisible,
+        chats: [chat(), chat({ uuid: "chat-b", displayName: "Development" })],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    const selectAll = screen.getByRole("checkbox", { name: "Select all" });
+    expect(selectAll).not.toBeChecked();
+    fireEvent.click(selectAll);
+    expect(toggleAllVisible).toHaveBeenCalledOnce();
+  });
+
+  it("shows the mixed state when only some visible chats are selected", () => {
+    vi.mocked(useConfigureExternalChats).mockReturnValue(
+      viewModel({
+        selectableVisibleCount: 2,
+        selectAllState: "some",
+        chats: [chat(), chat({ uuid: "chat-b", displayName: "Development" })],
+      }),
+    );
+
+    renderWithProviders(
+      <ConfigureExternalChatsDialog
+        open
+        onOpenChange={vi.fn()}
+        runtimeContext={runtimeContext}
+        account={account}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Select all" })).toBePartiallyChecked();
   });
 
   it("does not add per-chat settings, move, or deselect controls", () => {
