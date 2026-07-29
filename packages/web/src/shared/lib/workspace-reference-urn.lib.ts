@@ -13,6 +13,7 @@ const WORKSPACE_QUOTE_URN_PATTERN = new RegExp(
   `^urn:quote:(${WORKSPACE_UUID_PATTERN_SOURCE})(?:\\?(.*))?$`,
   "i",
 );
+const WORKSPACE_URL_URN_PREFIX = "urn:url:";
 
 export type WorkspaceTopicUrnReference =
   | { kind: "topic"; streamUuid: string; topicUuid: string }
@@ -181,4 +182,38 @@ export function parseWorkspaceReferenceUrn(value: unknown): WorkspaceUrnReferenc
     default:
       return null;
   }
+}
+
+export function parseWorkspaceUrlUrn(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+  if (
+    normalizedValue.slice(0, WORKSPACE_URL_URN_PREFIX.length).toLowerCase() !==
+    WORKSPACE_URL_URN_PREFIX
+  ) {
+    return null;
+  }
+
+  const urlValue = normalizedValue.slice(WORKSPACE_URL_URN_PREFIX.length);
+  if (urlValue.length === 0 || /\s/.test(urlValue)) {
+    return null;
+  }
+
+  try {
+    const url = new URL(urlValue);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username.length > 0 ||
+      url.password.length > 0
+    ) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return urlValue;
 }

@@ -7,6 +7,7 @@ import {
   buildWorkspaceTopicUrn,
   buildWorkspaceUserUrn,
   parseWorkspaceReferenceUrn,
+  parseWorkspaceUrlUrn,
 } from "./workspace-reference-urn.lib";
 
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
@@ -129,5 +130,31 @@ describe("Workspace reference URNs", () => {
       kind: "topic",
       topicUuid: TOPIC_UUID,
     });
+  });
+
+  it("unwraps safe canonical external URL URNs without changing query or fragment", () => {
+    expect(
+      parseWorkspaceUrlUrn("urn:url:https://example.com/docs/path?first=one&second=two#section"),
+    ).toBe("https://example.com/docs/path?first=one&second=two#section");
+    expect(parseWorkspaceUrlUrn("urn:url:http://example.org/plain")).toBe(
+      "http://example.org/plain",
+    );
+  });
+
+  it("rejects malformed, credentialed, and unsafe external URL URNs", () => {
+    const invalidValues = [
+      "urn:url:",
+      "urn:url:not-a-url",
+      "urn:url:javascript:alert",
+      "urn:url:data:text/html,hello",
+      "urn:url:file:///etc/passwd",
+      "urn:url://example.com/path",
+      "urn:url:https://user:secret@example.com/path",
+      "urn:url:urn:url:https://example.com/path",
+    ];
+
+    for (const value of invalidValues) {
+      expect(parseWorkspaceUrlUrn(value)).toBeNull();
+    }
   });
 });

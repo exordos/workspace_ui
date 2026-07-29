@@ -144,6 +144,47 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("//evil.example");
   });
 
+  it("renders safe canonical external URL URNs as exact clickable links", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "[External docs](urn:url:https://example.com/docs?x=1#section)",
+        "[HTTP fallback](urn:url:http://example.org/path?y=2#fragment)",
+        "`[inline code](urn:url:https://example.net/inline)`",
+        "```md",
+        "[fenced code](urn:url:https://example.net/fenced)",
+        "```",
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain(
+      '<a href="https://example.com/docs?x=1#section" target="_blank" rel="noopener noreferrer">External docs</a>',
+    );
+    expect(result.html).toContain(
+      '<a href="http://example.org/path?y=2#fragment" target="_blank" rel="noopener noreferrer">HTTP fallback</a>',
+    );
+    expect(result.html).toContain("<code>[inline code](urn:url:https://example.net/inline)</code>");
+    expect(result.html).toContain(
+      '<pre><code class="hljs language-md">[fenced code](urn:url:https://example.net/fenced)</code></pre>',
+    );
+    expect(document.metadata.hasLinks).toBe(true);
+  });
+
+  it("renders unsafe canonical external URL URNs as labels without anchors", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "[script](urn:url:javascript:alert)",
+        "[credentials](urn:url:https://user:secret@example.com/path)",
+        "[nested](urn:url:urn:url:https://example.com/path)",
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toBe("<p>script credentials nested</p>");
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain("urn:url:");
+  });
+
   it("renders non-Workspace markdown images as labels, not media tags", () => {
     const document = parseWorkspaceMessageBody("![screen.png](https://cdn.example/screen.png)");
     const result = renderWorkspaceMessageBody(document);

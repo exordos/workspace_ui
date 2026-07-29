@@ -3,7 +3,7 @@ import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
-import { parseWorkspaceReferenceUrn } from "../workspace-reference-urn.lib";
+import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
 import type {
   WorkspaceMessageBlock,
   WorkspaceMessageBodyMetadata,
@@ -656,6 +656,19 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
+          const workspaceUrl = parseWorkspaceUrlUrn(link.href);
+          if (workspaceUrl != null) {
+            context.state.hasLinks = true;
+            return [
+              {
+                kind: "link",
+                href: workspaceUrl,
+                title: link.title ?? undefined,
+                children: parseInlineTokens(link.tokens, link.text, context),
+              },
+            ];
+          }
+
           const workspaceReference = parseWorkspaceReferenceUrn(link.href);
           if (workspaceReference?.kind === "user") {
             return [createMentionInline(link.text, context, workspaceReference.userUuid)];
