@@ -6,6 +6,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop application identifies itself as Exordos Workspace instead of Electron: window class, taskbar entry, Linux desktop entry and package name now use `exordos-workspace`, and application data moves from `~/.config/Electron` to `~/.config/exordos-workspace`. An existing profile is carried over on first start, so accounts and sessions survive the rename.
+- The menu bar is hidden on Windows and Linux, where it only repeated the tray menu and the window controls. Keyboard shortcuts (copy/paste, reload, developer tools, zoom, full screen, quit) are unchanged, and the macOS menu bar is untouched.
+
 ## [0.3.0] — 2026-07-28
 
 ### Added
