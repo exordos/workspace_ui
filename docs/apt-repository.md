@@ -267,6 +267,13 @@ exported key.
 The `publish-apt` job in `.github/workflows/ci.yml` runs on every release tag, after
 `build-electron`, and pipes the built `.deb` files into the host over SSH.
 
+It runs on the self-hosted runner (`[self-hosted, vm]`), like the Exordos element
+publication: the repository host is reached from inside the network, and a GitHub-hosted
+runner would depend on port 22 staying open to the internet. That runner keeps its
+workspace between runs, so the job wipes the download directories first — leftover
+packages from an earlier release would otherwise be uploaded again and could resurrect a
+version retention already dropped.
+
 | Secret | Value |
 | --- | --- |
 | `APT_REPO_SSH_TARGET` | `aptly@repo.exordos.com` |

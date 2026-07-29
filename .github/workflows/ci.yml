@@ -182,11 +182,20 @@ jobs:
   publish-apt:
     name: Publish apt repository
     needs: build-electron
-    runs-on: ubuntu-latest
+    # Self-hosted: the repository host is reached from inside the network, the same
+    # way the Exordos element is published. A GitHub-hosted runner depends on port 22
+    # staying open to the internet.
+    runs-on: [self-hosted, vm]
     if: github.ref_type == 'tag'
     timeout-minutes: 10
 
     steps:
+      # This runner keeps its workspace between runs. Leftovers from an earlier
+      # release would be uploaded again, which can resurrect a version that
+      # retention already dropped on the host.
+      - name: Reset workspace
+        run: rm -rf artifacts debs
+
       - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
@@ -222,7 +231,8 @@ jobs:
 
       # The repository host holds the pool, the aptly database and the signing
       # key; this job only hands it the new packages. The deploy key is bound to
-      # a forced command there, so it cannot do anything else.
+      # a forced command there, and to this project's package names, so it cannot
+      # do anything else.
       - name: Upload to repository host
         if: steps.select.outputs.publish == 'true'
         env:
@@ -237,20 +247,27 @@ jobs:
             exit 0
           fi
 
+          # Credentials go to RUNNER_TEMP, not the workspace: the runner wipes it
+          # per job, while the workspace outlives the run.
           umask 077
-          printf '%s\n' "${SSH_KEY}" > deploy_key
-          printf '%s\n' "${SSH_KNOWN_HOSTS}" > known_hosts
+          printf '%s\n' "${SSH_KEY}" > "${RUNNER_TEMP}/deploy_key"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${RUNNER_TEMP}/known_hosts"
 
-          tar -C debs -c . | ssh -T \
-            -i deploy_key \
-            -o IdentitiesOnly=yes \
-            -o UserKnownHostsFile=known_hosts \
-            -o StrictHostKeyChecking=yes \
-            "${SSH_TARGET}"
+          # Only the .deb files, listed explicitly: the repository host rejects an
+          # upload carrying anything else, and `release` now waits for that upload,
+          # so a stray file in this directory would block the whole release.
+          find debs -maxdepth 1 -name '*.deb' -printf '%P\0' \
+            | tar -C debs --null --files-from=- -c \
+            | ssh -T \
+              -i "${RUNNER_TEMP}/deploy_key" \
+              -o IdentitiesOnly=yes \
+              -o UserKnownHostsFile="${RUNNER_TEMP}/known_hosts" \
+              -o StrictHostKeyChecking=yes \
+              "${SSH_TARGET}"
 
       - name: Clean up credentials
         if: always()
-        run: rm -f deploy_key known_hosts
+        run: rm -f "${RUNNER_TEMP}/deploy_key" "${RUNNER_TEMP}/known_hosts"
 
   release:
     name: Create GitHub Release
