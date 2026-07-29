@@ -17,6 +17,7 @@ import {
   loadMessengerConversationMessages,
   loadMessengerMessageWindowAroundMessage,
   loadMessengerMessageWindowPage,
+  type MessengerMessagesOwnReactionSyncDeps,
 } from "./messenger-messages-loader.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -119,12 +120,15 @@ function createMessageWindow({
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
 } {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject: (reason?: unknown) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
@@ -166,10 +170,12 @@ describe("messenger conversation messages loader", () => {
     const replaceOrMergeConversationMessagesPage = vi.fn();
     const replaceConversationMessagesWindow = vi.fn();
     const mergeConversationMessagesPage = vi.fn();
+    const upsertMessage = vi.fn();
     const setMessagesLoading = vi.fn();
     const setMessagesError = vi.fn();
     const setConversationPagination = vi.fn();
     const setConversationWindowMarkers = vi.fn();
+    const setConversationMessageWindowState = vi.fn();
     const beforePageMarkerByConversationId = {};
     const afterPageMarkerByConversationId = {};
 
@@ -187,10 +193,12 @@ describe("messenger conversation messages loader", () => {
             replaceOrMergeConversationMessagesPage,
             replaceConversationMessagesWindow,
             mergeConversationMessagesPage,
+            upsertMessage,
             setMessagesLoading,
             setMessagesError,
             setConversationPagination,
             setConversationWindowMarkers,
+            setConversationMessageWindowState,
             beforePageMarkerByConversationId,
             afterPageMarkerByConversationId,
           }),
@@ -220,6 +228,7 @@ describe("messenger conversation messages loader", () => {
         beforeLimit: 10,
         afterLimit: 12,
       },
+      { onAnchor: expect.any(Function) },
     );
     expect(replaceConversationMessagesWindow).toHaveBeenCalledWith(`topic:${STREAM_A}:${TOPIC_A}`, [
       expect.objectContaining({ uuid: MESSAGE_A }),
@@ -373,6 +382,7 @@ describe("messenger conversation messages loader", () => {
         beforeLimit: 7,
         afterLimit: 9,
       },
+      { onAnchor: expect.any(Function) },
     );
   });
 
@@ -439,6 +449,7 @@ describe("messenger conversation messages loader", () => {
         beforeLimit: 3,
         afterLimit: 4,
       },
+      { onAnchor: expect.any(Function) },
     );
     expect(
       selectWorkspaceMessagesForConversation(
@@ -452,6 +463,624 @@ describe("messenger conversation messages loader", () => {
     expect(useWorkspaceMessageStore.getState().afterPageMarkerByConversationId).toMatchObject({
       [derivedConversationId]: "derived-after",
     });
+  });
+
+  it("applies a direct-route anchor before the surrounding message window resolves", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const anchor = createMessageDto({
+      uuid: MESSAGE_B,
+      stream_uuid: STREAM_B,
+      topic_uuid: TOPIC_B,
+      created_at: DATE_LATER,
+      updated_at: DATE_LATER,
+    });
+    const before = createMessageDto({
+      uuid: MESSAGE_A,
+      stream_uuid: STREAM_B,
+      topic_uuid: TOPIC_B,
+    });
+    const after = createMessageDto({
+      uuid: MESSAGE_C,
+      stream_uuid: STREAM_B,
+      topic_uuid: TOPIC_B,
+      created_at: DATE_LATEST,
+      updated_at: DATE_LATEST,
+    });
+    const windowRequest = createDeferred<MessengerMessageWindow>();
+    const getMessageWindowAroundMessage = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _query: unknown,
+        hooks?: { onAnchor?: (message: WorkspaceMessengerMessageDto) => void },
+      ) => {
+        hooks?.onAnchor?.(anchor);
+        return windowRequest.promise;
+      },
+    );
+    const onAnchorApplied = vi.fn();
+    const derivedConversationId = `topic:${STREAM_B}:${TOPIC_B}`;
+    useWorkspaceMessageStore.getState().upsertMessage(adaptMessengerMessage(before));
+
+    const loading = loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      onAnchorApplied,
+      client: { getMessageWindowAroundMessage },
+    });
+
+    expect(onAnchorApplied).toHaveBeenCalledWith({
+      conversationId: derivedConversationId,
+      anchorUuid: MESSAGE_B,
+    });
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        derivedConversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        derivedConversationId,
+      ).loading,
+    ).toBe(true);
+    expect(
+      useWorkspaceMessageStore.getState().messageWindowStateByConversationId[derivedConversationId],
+    ).toBe("staged");
+
+    windowRequest.resolve(
+      createMessageWindow({
+        anchor,
+        before: [before],
+        after: [after],
+      }),
+    );
+
+    await expect(loading).resolves.toMatchObject({
+      status: "applied",
+      ownerKey,
+      conversationId: derivedConversationId,
+      anchorUuid: MESSAGE_B,
+    });
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        derivedConversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B, MESSAGE_C]);
+    expect(
+      useWorkspaceMessageStore.getState().messageWindowStateByConversationId[derivedConversationId],
+    ).toBe("complete");
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "does not let an aborted older window %s clear a newer same-topic loading state",
+    async (olderOutcome) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const firstAnchor = createMessageDto({ uuid: MESSAGE_A });
+      const secondAnchor = createMessageDto({
+        uuid: MESSAGE_B,
+        created_at: DATE_LATER,
+        updated_at: DATE_LATER,
+      });
+      const firstRequest = createDeferred<MessengerMessageWindow>();
+      const secondRequest = createDeferred<MessengerMessageWindow>();
+      const firstController = new AbortController();
+      const firstLoading = loadMessengerMessageWindowAroundMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_A,
+        onAnchorApplied: vi.fn(),
+        signal: firstController.signal,
+        client: {
+          getMessageWindowAroundMessage: (_options, _query, hooks) => {
+            hooks?.onAnchor?.(firstAnchor);
+            return firstRequest.promise;
+          },
+        },
+      });
+      const secondLoading = loadMessengerMessageWindowAroundMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_B,
+        onAnchorApplied: vi.fn(),
+        client: {
+          getMessageWindowAroundMessage: (_options, _query, hooks) => {
+            hooks?.onAnchor?.(secondAnchor);
+            return secondRequest.promise;
+          },
+        },
+      });
+
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(true);
+
+      firstController.abort();
+      if (olderOutcome === "resolve") {
+        firstRequest.resolve(createMessageWindow({ anchor: firstAnchor, before: [], after: [] }));
+      } else {
+        firstRequest.reject(new DOMException("Aborted", "AbortError"));
+      }
+
+      await expect(firstLoading).resolves.toMatchObject({
+        status: "skipped",
+        reason: "stale-owner",
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(true);
+
+      secondRequest.resolve(createMessageWindow({ anchor: secondAnchor, before: [], after: [] }));
+      await expect(secondLoading).resolves.toMatchObject({
+        status: "applied",
+        conversationId,
+        anchorUuid: MESSAGE_B,
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(false);
+    },
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "keeps a newer conversation-history load in control when the old staged permalink %s",
+    async (olderOutcome) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const anchor = createMessageDto({ uuid: MESSAGE_A });
+      const windowRequest = createDeferred<MessengerMessageWindow>();
+      const historyRequest =
+        createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const windowController = new AbortController();
+      const windowLoading = loadMessengerMessageWindowAroundMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_A,
+        onAnchorApplied: vi.fn(),
+        signal: windowController.signal,
+        client: {
+          getMessageWindowAroundMessage: (_options, _query, hooks) => {
+            hooks?.onAnchor?.(anchor);
+            return windowRequest.promise;
+          },
+        },
+      });
+      const getMessagesPage = vi.fn(() => historyRequest.promise);
+      const historyLoading = loadMessengerConversationMessages({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        conversationId,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+          writeConversationMessagePage: () => undefined,
+        },
+        client: { getMessagesPage },
+      });
+
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+      windowController.abort();
+      if (olderOutcome === "resolve") {
+        windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
+      } else {
+        windowRequest.reject(new DOMException("Aborted", "AbortError"));
+      }
+
+      await expect(windowLoading).resolves.toMatchObject({
+        status: "skipped",
+        reason: "stale-owner",
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(true);
+
+      historyRequest.resolve(createMessagesPage([anchor]));
+      await expect(historyLoading).resolves.toMatchObject({
+        status: "applied",
+        conversationId,
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(false);
+    },
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "does not let an aborted conversation-history request %s clear a newer permalink loading state",
+    async (olderOutcome) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const anchor = createMessageDto({ uuid: MESSAGE_A });
+      const historyRequest =
+        createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const windowRequest = createDeferred<MessengerMessageWindow>();
+      const historyController = new AbortController();
+      const getMessagesPage = vi.fn(() => historyRequest.promise);
+      const historyLoading = loadMessengerConversationMessages({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        conversationId,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+          writeConversationMessagePage: () => undefined,
+        },
+        signal: historyController.signal,
+        client: { getMessagesPage },
+      });
+
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+      const windowLoading = loadMessengerMessageWindowAroundMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_A,
+        onAnchorApplied: vi.fn(),
+        client: {
+          getMessageWindowAroundMessage: (_options, _query, hooks) => {
+            hooks?.onAnchor?.(anchor);
+            return windowRequest.promise;
+          },
+        },
+      });
+
+      historyController.abort();
+      if (olderOutcome === "resolve") {
+        historyRequest.resolve(createMessagesPage([anchor]));
+      } else {
+        historyRequest.reject(new DOMException("Aborted", "AbortError"));
+      }
+
+      await expect(historyLoading).resolves.toMatchObject({
+        status: "skipped",
+        reason: "stale-owner",
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(true);
+
+      windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
+      await expect(windowLoading).resolves.toMatchObject({
+        status: "applied",
+        conversationId,
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(false);
+    },
+  );
+
+  it("does not apply a stale history cache after a newer permalink claims the conversation", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const cachedMessage = adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_A }));
+    const anchor = createMessageDto({
+      uuid: MESSAGE_B,
+      created_at: DATE_LATER,
+      updated_at: DATE_LATER,
+    });
+    const cacheRequest = createDeferred<{
+      messages: ReturnType<typeof adaptMessengerMessage>[];
+      nextPageMarker: string | null;
+      hasMore: boolean;
+    }>();
+    const getMessagesPage = vi.fn(() =>
+      Promise.resolve(createMessagesPage([createMessageDto({ uuid: MESSAGE_A })])),
+    );
+    const historyController = new AbortController();
+    const historyLoading = loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId,
+      cache: {
+        readConversationMessageWindow: () => cacheRequest.promise,
+        writeConversationMessagePage: () => undefined,
+      },
+      client: { getMessagesPage },
+      signal: historyController.signal,
+    });
+    const windowRequest = createDeferred<MessengerMessageWindow>();
+    const windowLoading = loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      onAnchorApplied: vi.fn(),
+      client: {
+        getMessageWindowAroundMessage: (_options, _query, hooks) => {
+          hooks?.onAnchor?.(anchor);
+          return windowRequest.promise;
+        },
+      },
+    });
+
+    historyController.abort();
+    cacheRequest.resolve({
+      messages: [cachedMessage],
+      nextPageMarker: "cached-next",
+      hasMore: true,
+    });
+
+    await expect(historyLoading).resolves.toMatchObject({
+      status: "skipped",
+      reason: "stale-owner",
+    });
+    expect(getMessagesPage).not.toHaveBeenCalled();
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_B]);
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).loading,
+    ).toBe(true);
+
+    windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
+    await expect(windowLoading).resolves.toMatchObject({
+      status: "applied",
+      conversationId,
+      anchorUuid: MESSAGE_B,
+    });
+  });
+
+  it("releases history loading ownership when the conversation cache read fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const getMessagesPage = vi.fn(() => Promise.resolve(createMessagesPage([])));
+
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        conversationId,
+        cache: {
+          readConversationMessageWindow: () => Promise.reject(new Error("cache unavailable")),
+          writeConversationMessagePage: () => undefined,
+        },
+        client: { getMessagesPage },
+      }),
+    ).rejects.toThrow("cache unavailable");
+
+    expect(getMessagesPage).not.toHaveBeenCalled();
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).loading,
+    ).toBe(false);
+  });
+
+  it("does not let stale history reclaim ownership after cached reaction hydration", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const cachedMessage = adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_A }));
+    const anchor = createMessageDto({
+      uuid: MESSAGE_B,
+      created_at: DATE_LATER,
+      updated_at: DATE_LATER,
+    });
+    const hydrationRequest =
+      createDeferred<
+        Awaited<ReturnType<NonNullable<MessengerMessagesOwnReactionSyncDeps["hydrateFromCache"]>>>
+      >();
+    const hydrateFromCache = vi.fn(() => hydrationRequest.promise);
+    const syncOwner = vi.fn(() =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_A],
+        reactions: 1,
+      }),
+    );
+    const getMessagesPage = vi.fn(() =>
+      Promise.resolve(createMessagesPage([createMessageDto({ uuid: MESSAGE_A })])),
+    );
+    const historyController = new AbortController();
+    const historyLoading = loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [cachedMessage],
+            nextPageMarker: "cached-next",
+            hasMore: true,
+          }),
+        writeConversationMessagePage: () => undefined,
+      },
+      client: { getMessagesPage },
+      ownReactionSync: { hydrateFromCache, syncOwner },
+      signal: historyController.signal,
+    });
+
+    await vi.waitFor(() => expect(hydrateFromCache).toHaveBeenCalledOnce());
+    const windowRequest = createDeferred<MessengerMessageWindow>();
+    const windowLoading = loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      onAnchorApplied: vi.fn(),
+      client: {
+        getMessageWindowAroundMessage: (_options, _query, hooks) => {
+          hooks?.onAnchor?.(anchor);
+          return windowRequest.promise;
+        },
+      },
+    });
+
+    historyController.abort();
+    hydrationRequest.resolve({
+      status: "applied",
+      ownerKey,
+      messageUuids: [MESSAGE_A],
+      reactions: 1,
+    });
+
+    await expect(historyLoading).resolves.toMatchObject({
+      status: "skipped",
+      reason: "stale-owner",
+    });
+    expect(getMessagesPage).not.toHaveBeenCalled();
+    expect(syncOwner).not.toHaveBeenCalled();
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).loading,
+    ).toBe(true);
+
+    windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
+    await expect(windowLoading).resolves.toMatchObject({
+      status: "applied",
+      conversationId,
+      anchorUuid: MESSAGE_B,
+    });
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "does not let an aborted boundary-page request %s clear a newer permalink loading state",
+    async (olderOutcome) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const anchor = createMessageDto({ uuid: MESSAGE_A });
+      const pageRequest = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const windowRequest = createDeferred<MessengerMessageWindow>();
+      const pageController = new AbortController();
+      const pageLoading = loadMessengerMessageWindowPage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        conversationId,
+        direction: "before",
+        pageMarker: "older-cursor",
+        signal: pageController.signal,
+        client: { getMessagesPage: () => pageRequest.promise },
+      });
+      const windowLoading = loadMessengerMessageWindowAroundMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_A,
+        onAnchorApplied: vi.fn(),
+        client: {
+          getMessageWindowAroundMessage: (_options, _query, hooks) => {
+            hooks?.onAnchor?.(anchor);
+            return windowRequest.promise;
+          },
+        },
+      });
+
+      pageController.abort();
+      if (olderOutcome === "resolve") {
+        pageRequest.resolve(createMessagesPage([anchor]));
+      } else {
+        pageRequest.reject(new DOMException("Aborted", "AbortError"));
+      }
+
+      await expect(pageLoading).resolves.toMatchObject({
+        status: "skipped",
+        reason: "stale-owner",
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(true);
+
+      windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
+      await expect(windowLoading).resolves.toMatchObject({
+        status: "applied",
+        conversationId,
+      });
+      expect(
+        selectWorkspaceMessageStatusForConversation(
+          useWorkspaceMessageStore.getState(),
+          conversationId,
+        ).loading,
+      ).toBe(false);
+    },
+  );
+
+  it("clears previous window markers when a new staged anchor context fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const anchor = createMessageDto({
+      uuid: MESSAGE_B,
+      created_at: DATE_LATER,
+      updated_at: DATE_LATER,
+    });
+    const windowRequest = createDeferred<MessengerMessageWindow>();
+    useWorkspaceMessageStore.getState().setConversationWindowMarkers(conversationId, {
+      beforePageMarker: "previous-before",
+      afterPageMarker: "previous-after",
+    });
+
+    const loading = loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      onAnchorApplied: vi.fn(),
+      client: {
+        getMessageWindowAroundMessage: (_options, _query, hooks) => {
+          hooks?.onAnchor?.(anchor);
+          return windowRequest.promise;
+        },
+      },
+    });
+
+    expect(
+      useWorkspaceMessageStore.getState().beforePageMarkerByConversationId[conversationId],
+    ).toBeNull();
+    expect(
+      useWorkspaceMessageStore.getState().afterPageMarkerByConversationId[conversationId],
+    ).toBeNull();
+
+    windowRequest.reject(new Error("Context request failed"));
+    await expect(loading).resolves.toMatchObject({
+      status: "failed",
+      conversationId,
+      error: "Context request failed",
+    });
+    const state = useWorkspaceMessageStore.getState();
+    expect(state.messageWindowStateByConversationId[conversationId]).toBe("staged");
+    expect(state.beforePageMarkerByConversationId[conversationId]).toBeNull();
+    expect(state.afterPageMarkerByConversationId[conversationId]).toBeNull();
+    expect(selectWorkspaceMessageStatusForConversation(state, conversationId).loading).toBe(false);
   });
 
   it("skips invalid provided message window conversation ids without calling the API", async () => {

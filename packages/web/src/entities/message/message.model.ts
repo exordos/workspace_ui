@@ -21,6 +21,7 @@ import {
   removeWorkspaceMessageId,
 } from "./message-workspace-order.lib";
 import type {
+  WorkspaceConversationMessageWindowState,
   WorkspaceConversationMessagesStatus,
   WorkspaceMessageStoreData,
   WorkspaceMessageStoreState,
@@ -28,6 +29,7 @@ import type {
 } from "./message.model.types";
 
 export type {
+  WorkspaceConversationMessageWindowState,
   WorkspaceConversationMessagesStatus,
   WorkspaceConversationPagination,
   WorkspaceConversationWindowMarkers,
@@ -42,6 +44,9 @@ export type {
 
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 const EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID: Record<MessengerConversationId, MessengerUuid[]> = {};
+const EMPTY_MESSAGE_WINDOW_STATE_BY_CONVERSATION_ID: Partial<
+  Record<MessengerConversationId, WorkspaceConversationMessageWindowState>
+> = {};
 const EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
 const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> = {};
 const EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
@@ -160,6 +165,7 @@ function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
   return {
     messagesById: EMPTY_MESSAGES_BY_ID,
     messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
+    messageWindowStateByConversationId: EMPTY_MESSAGE_WINDOW_STATE_BY_CONVERSATION_ID,
     messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
     messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
     nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
@@ -799,6 +805,20 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     }));
   },
 
+  setConversationMessageWindowState(conversationId, windowState) {
+    if (isRemovedStreamConversation(conversationId)) return;
+    logStoreAction("workspaceMessage", "setConversationMessageWindowState", {
+      conversationId,
+      windowState,
+    });
+    set((state) => ({
+      messageWindowStateByConversationId: {
+        ...state.messageWindowStateByConversationId,
+        [conversationId]: windowState,
+      },
+    }));
+  },
+
   removeMessagesForStream(streamUuid) {
     logStoreAction("workspaceMessage", "removeMessagesForStream", { streamUuid });
     removedStreamUuids.add(streamUuid);
@@ -806,6 +826,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       const removedConversationIds = new Set(
         [
           ...Object.keys(state.messageIdsByConversationId),
+          ...Object.keys(state.messageWindowStateByConversationId),
           ...Object.keys(state.messagesLoadingByConversationId),
           ...Object.keys(state.messagesErrorByConversationId),
           ...Object.keys(state.nextPageMarkerByConversationId),
@@ -826,6 +847,10 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
         messagesById: nextMessagesById,
         messageIdsByConversationId: omitConversationRecords(
           state.messageIdsByConversationId,
+          removedConversationIds,
+        ),
+        messageWindowStateByConversationId: omitConversationRecords(
+          state.messageWindowStateByConversationId,
           removedConversationIds,
         ),
         messagesLoadingByConversationId: omitConversationRecords(
@@ -901,6 +926,13 @@ export function selectWorkspaceMessagesForConversation(
     result: messages,
   });
   return messages;
+}
+
+export function selectWorkspaceMessageWindowStateForConversation(
+  state: WorkspaceMessageStoreState,
+  conversationId: MessengerConversationId,
+): WorkspaceConversationMessageWindowState | null {
+  return state.messageWindowStateByConversationId[conversationId] ?? null;
 }
 
 interface ConversationStatusCacheEntry {

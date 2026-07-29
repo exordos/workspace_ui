@@ -284,6 +284,9 @@ describe("messenger messages API", () => {
       "2026-06-22T10:11:00Z",
     );
     const anchorResponse = deferredResponse();
+    const beforeResponse = deferredResponse();
+    const afterResponse = deferredResponse();
+    const onAnchor = vi.fn();
     const fetchMock = vi.fn<typeof fetch>();
 
     fetchMock.mockImplementation((input) => {
@@ -294,11 +297,9 @@ describe("messenger messages API", () => {
       if (url.pathname === "/api/workspace/v1/messenger/messages/") {
         expect(url.searchParams.get("stream_uuid")).toBe(STREAM_UUID);
         expect(url.searchParams.get("topic_uuid")).toBe(TOPIC_UUID);
-        return Promise.resolve(
-          jsonResponse(
-            url.searchParams.get("sort_dir") === "desc" ? [beforeMessage] : [afterMessage],
-          ),
-        );
+        return url.searchParams.get("sort_dir") === "desc"
+          ? beforeResponse.promise
+          : afterResponse.promise;
       }
       return Promise.reject(new Error(`Unexpected URL: ${url.toString()}`));
     });
@@ -308,6 +309,7 @@ describe("messenger messages API", () => {
       {
         messageUuid: MESSAGE_UUID,
       },
+      { onAnchor },
     );
 
     await Promise.resolve();
@@ -318,6 +320,25 @@ describe("messenger messages API", () => {
     );
 
     anchorResponse.resolve(jsonResponse(messageDto));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    expect(onAnchor).toHaveBeenCalledTimes(1);
+    expect(onAnchor).toHaveBeenCalledWith(messageDto);
+
+    let windowSettled = false;
+    void windowPromise.then(
+      () => {
+        windowSettled = true;
+      },
+      () => {
+        windowSettled = true;
+      },
+    );
+    await Promise.resolve();
+    expect(windowSettled).toBe(false);
+
+    beforeResponse.resolve(jsonResponse([beforeMessage]));
+    afterResponse.resolve(jsonResponse([afterMessage]));
 
     await expect(windowPromise).resolves.toEqual({
       anchor: messageDto,

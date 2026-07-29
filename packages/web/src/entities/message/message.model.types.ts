@@ -11,6 +11,9 @@ import type {
 export interface WorkspaceMessageStoreData {
   messagesById: Record<MessengerUuid, MessengerMessage>;
   messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
+  messageWindowStateByConversationId: Partial<
+    Record<MessengerConversationId, WorkspaceConversationMessageWindowState>
+  >;
   messagesLoadingByConversationId: Record<MessengerConversationId, boolean>;
   messagesErrorByConversationId: Record<MessengerConversationId, string | null>;
   nextPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
@@ -52,6 +55,8 @@ export interface WorkspaceConversationWindowMarkers {
   beforePageMarker: string | null;
   afterPageMarker: string | null;
 }
+
+export type WorkspaceConversationMessageWindowState = "staged" | "complete";
 
 export interface WorkspaceConversationMessagesStatus {
   loading: boolean;
@@ -135,6 +140,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   setConversationWindowMarkers: (
     conversationId: MessengerConversationId,
     markers: WorkspaceConversationWindowMarkers,
+  ) => void;
+  setConversationMessageWindowState: (
+    conversationId: MessengerConversationId,
+    state: WorkspaceConversationMessageWindowState,
   ) => void;
   removeMessagesForStream: (streamUuid: MessengerUuid) => void;
   restoreMessagesForStream: (streamUuid: MessengerUuid) => void;

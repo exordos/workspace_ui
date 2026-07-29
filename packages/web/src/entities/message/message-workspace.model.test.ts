@@ -11,6 +11,7 @@ import type {
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageStatusForConversation,
+  selectWorkspaceMessageWindowStateForConversation,
   useWorkspaceMessageStore,
 } from "./message.model";
 
@@ -411,6 +412,33 @@ describe("workspace message store", () => {
     expect(state.afterPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBe("after-1");
     expect(state.nextPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBe("next-1");
     expect(state.hasMoreByConversationId[TOPIC_CONVERSATION_ID]).toBe(true);
+  });
+
+  it("tracks whether a direct message window is staged or complete", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.setConversationMessageWindowState(TOPIC_CONVERSATION_ID, "staged");
+    expect(
+      selectWorkspaceMessageWindowStateForConversation(
+        useWorkspaceMessageStore.getState(),
+        TOPIC_CONVERSATION_ID,
+      ),
+    ).toBe("staged");
+
+    store.setConversationMessageWindowState(TOPIC_CONVERSATION_ID, "complete");
+    expect(
+      selectWorkspaceMessageWindowStateForConversation(
+        useWorkspaceMessageStore.getState(),
+        TOPIC_CONVERSATION_ID,
+      ),
+    ).toBe("complete");
+
+    store.clear();
+    expect(
+      selectWorkspaceMessageWindowStateForConversation(
+        useWorkspaceMessageStore.getState(),
+        TOPIC_CONVERSATION_ID,
+      ),
+    ).toBeNull();
   });
 
   it("clears before and after window markers with the existing store reset", () => {

@@ -42,6 +42,10 @@ export interface GetMessageWindowAroundMessageQuery {
   afterLimit?: number;
 }
 
+export interface GetMessageWindowAroundMessageHooks {
+  onAnchor?: (anchor: WorkspaceMessengerMessageDto) => void;
+}
+
 export interface MessengerMessageWindow {
   anchor: WorkspaceMessengerMessageDto;
   before: WorkspaceMessengerMessageDto[];
@@ -174,13 +178,18 @@ export async function getMessage(
 export async function getMessageWindowAroundMessage(
   options: MessengerClientOptions,
   query: GetMessageWindowAroundMessageQuery,
+  hooks: GetMessageWindowAroundMessageHooks = {},
 ): Promise<MessengerMessageWindow> {
   const beforeLimit = query.beforeLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
   const afterLimit = query.afterLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
+  const anchorPromise = getMessage(options, query.messageUuid).then((anchor) => {
+    hooks.onAnchor?.(anchor);
+    return anchor;
+  });
 
   if (query.streamUuid != null && query.topicUuid != null) {
     const [anchor, beforeDescPage, afterAscPage] = await Promise.all([
-      getMessage(options, query.messageUuid),
+      anchorPromise,
       getMessagesPage(options, {
         streamUuid: query.streamUuid,
         topicUuid: query.topicUuid,
@@ -202,7 +211,7 @@ export async function getMessageWindowAroundMessage(
     return buildMessageWindow(anchor, beforeDescPage, afterAscPage);
   }
 
-  const anchor = await getMessage(options, query.messageUuid);
+  const anchor = await anchorPromise;
   const streamUuid = query.streamUuid ?? anchor.stream_uuid;
   const topicUuid = query.topicUuid ?? anchor.topic_uuid;
   const [beforeDescPage, afterAscPage] = await Promise.all([

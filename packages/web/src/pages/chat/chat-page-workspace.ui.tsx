@@ -20,6 +20,7 @@ import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
   selectWorkspaceMessageStatusForConversation,
+  selectWorkspaceMessageWindowStateForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
@@ -725,22 +726,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
     const messageUuid = routeSelection.messageUuid;
     const messageStoreState = useWorkspaceMessageStore.getState();
-    if (activeMessageConversationId != null && activeFocusedMessageUuid === messageUuid) {
-      return;
-    }
-    if (activeMessageConversationId != null) {
-      const activeMessages = selectWorkspaceMessagesForConversation(
-        messageStoreState,
-        activeMessageConversationId,
-      );
-      if (activeMessages.some((message) => message.uuid === messageUuid)) {
-        setMessageRouteUuid(messageUuid);
-        setFocusedMessageUuid(messageUuid);
-        return;
-      }
-    }
-
     const existingMessage = selectWorkspaceMessageById(messageStoreState, messageUuid);
+    let stagedConversationId: MessengerConversationId | undefined;
     if (existingMessage != null) {
       const existingConversationMessages = selectWorkspaceMessagesForConversation(
         messageStoreState,
@@ -750,7 +737,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         setMessageRouteUuid(messageUuid);
         setResolvedMessageConversationId(existingMessage.conversationId);
         setFocusedMessageUuid(messageUuid);
-        return;
+        if (
+          selectWorkspaceMessageWindowStateForConversation(
+            messageStoreState,
+            existingMessage.conversationId,
+          ) !== "staged"
+        ) {
+          return;
+        }
+        stagedConversationId = existingMessage.conversationId;
       }
     }
 
@@ -759,7 +754,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     setActionError(null);
     void loadMessengerMessageWindowAroundMessage({
       runtimeContext,
+      conversationId: stagedConversationId,
       messageUuid,
+      onAnchorApplied: ({ conversationId, anchorUuid }) => {
+        if (controller.signal.aborted) return;
+        setMessageRouteUuid(messageUuid);
+        setResolvedMessageConversationId(conversationId);
+        setFocusedMessageUuid(anchorUuid);
+        setActionError(null);
+      },
       getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
       signal: controller.signal,
     })
@@ -789,7 +792,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     return () => {
       controller.abort();
     };
-  }, [activeFocusedMessageUuid, activeMessageConversationId, routeSelection, runtimeContext]);
+  }, [retryNonce, routeSelection, runtimeContext]);
 
   useEffect(() => {
     return () => {

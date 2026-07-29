@@ -79,11 +79,13 @@ export interface MessengerMessagesStoreApi {
     ReturnType<typeof useWorkspaceMessageStore.getState>,
     | "setMessagesLoading"
     | "setMessagesError"
+    | "upsertMessage"
     | "replaceOrMergeConversationMessagesPage"
     | "replaceConversationMessagesWindow"
     | "mergeConversationMessagesPage"
     | "setConversationPagination"
     | "setConversationWindowMarkers"
+    | "setConversationMessageWindowState"
     | "beforePageMarkerByConversationId"
     | "afterPageMarkerByConversationId"
   >;
@@ -171,12 +173,18 @@ export interface LoadMessengerConversationMessagesOptions {
   store?: MessengerMessagesStoreApi;
 }
 
+export interface MessengerMessageWindowAnchorApplied {
+  conversationId: MessengerConversationId;
+  anchorUuid: MessengerUuid;
+}
+
 export interface LoadMessengerMessageWindowAroundMessageOptions {
   runtimeContext: WorkspaceRuntimeContext;
   conversationId?: MessengerConversationId;
   messageUuid: MessengerUuid;
   beforeLimit?: number;
   afterLimit?: number;
+  onAnchorApplied?: (anchor: MessengerMessageWindowAnchorApplied) => void;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
   ownReactionSync?: MessengerMessagesOwnReactionSyncDeps;
@@ -227,6 +235,196 @@ function conversationIdFromMessageAnchor(
     return conversationIdForTopic(anchor.stream_uuid, anchor.topic_uuid);
   }
   return conversationIdForStream(anchor.stream_uuid);
+}
+
+const messageLoadingRequestOwners = new WeakMap<
+  MessengerMessagesStoreApi,
+  Map<MessengerConversationId, symbol>
+>();
+
+function messageLoadingRequestOwnerMap(
+  store: MessengerMessagesStoreApi,
+): Map<MessengerConversationId, symbol> {
+  const existing = messageLoadingRequestOwners.get(store);
+  if (existing != null) return existing;
+
+  const created = new Map<MessengerConversationId, symbol>();
+  messageLoadingRequestOwners.set(store, created);
+  return created;
+}
+
+function claimMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): void {
+  messageLoadingRequestOwnerMap(store).set(conversationId, requestToken);
+}
+
+function claimMessageLoadingRequestIfAvailable(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): boolean {
+  const owners = messageLoadingRequestOwnerMap(store);
+  const currentOwner = owners.get(conversationId);
+  if (currentOwner != null && currentOwner !== requestToken) return false;
+  owners.set(conversationId, requestToken);
+  return true;
+}
+
+function ownsMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): boolean {
+  return messageLoadingRequestOwners.get(store)?.get(conversationId) === requestToken;
+}
+
+function finishMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+  error: string | null | undefined,
+): boolean {
+  const owners = messageLoadingRequestOwners.get(store);
+  if (owners?.get(conversationId) !== requestToken) return false;
+
+  owners.delete(conversationId);
+  if (owners.size === 0) {
+    messageLoadingRequestOwners.delete(store);
+  }
+  const messageStore = store.getState();
+  messageStore.setMessagesLoading(conversationId, false);
+  if (error !== undefined) {
+    messageStore.setMessagesError(conversationId, error);
+  }
+  return true;
+}
+
+function isMessageLoadingRequestStale({
+  conversationId,
+  isInvalidated,
+  requestToken,
+  store,
+}: {
+  conversationId: MessengerConversationId;
+  isInvalidated: () => boolean;
+  requestToken: symbol;
+  store: MessengerMessagesStoreApi;
+}): boolean {
+  if (isInvalidated()) {
+    finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+    return true;
+  }
+  return !ownsMessageLoadingRequest(store, conversationId, requestToken);
+}
+
+function applyStagedMessageWindowAnchor({
+  anchorDto,
+  enabled,
+  isInvalidated,
+  onAnchorApplied,
+  requestToken,
+  store,
+}: {
+  anchorDto: WorkspaceMessengerMessageDto;
+  enabled: boolean;
+  isInvalidated: () => boolean;
+  onAnchorApplied: ((anchor: MessengerMessageWindowAnchorApplied) => void) | undefined;
+  requestToken: symbol;
+  store: MessengerMessagesStoreApi;
+}): MessengerConversationId | null {
+  if (!enabled || onAnchorApplied == null || isInvalidated()) {
+    return null;
+  }
+
+  const conversationId = conversationIdFromMessageAnchor(anchorDto);
+  if (conversationId == null) {
+    return null;
+  }
+
+  const anchor = adaptMessengerMessage(anchorDto);
+  const messageStore = store.getState();
+  claimMessageLoadingRequest(store, conversationId, requestToken);
+  messageStore.upsertMessage(anchor);
+  messageStore.setConversationWindowMarkers(conversationId, {
+    beforePageMarker: null,
+    afterPageMarker: null,
+  });
+  messageStore.setConversationMessageWindowState(conversationId, "staged");
+  messageStore.setMessagesLoading(conversationId, true);
+  messageStore.setMessagesError(conversationId, null);
+  onAnchorApplied({ conversationId, anchorUuid: anchor.uuid });
+  return conversationId;
+}
+
+function buildMessageWindowQuery({
+  parsedConversationId,
+  messageUuid,
+  beforeLimit,
+  afterLimit,
+}: {
+  parsedConversationId: ReturnType<typeof parseMessengerConversationId>;
+  messageUuid: MessengerUuid;
+  beforeLimit: number | undefined;
+  afterLimit: number | undefined;
+}) {
+  const query = { messageUuid, beforeLimit, afterLimit };
+  if (parsedConversationId == null) {
+    return query;
+  }
+  if (parsedConversationId.kind === "stream") {
+    return {
+      ...query,
+      streamUuid: parsedConversationId.streamUuid,
+    };
+  }
+  return {
+    ...query,
+    streamUuid: parsedConversationId.streamUuid,
+    topicUuid: parsedConversationId.topicUuid,
+  };
+}
+
+function messageWindowFailureResult({
+  conversationId,
+  error,
+  isInvalidated,
+  ownerKey,
+  requestToken,
+  stagedConversationId,
+  store,
+}: {
+  conversationId: MessengerConversationId | undefined;
+  error: unknown;
+  isInvalidated: () => boolean;
+  ownerKey: string;
+  requestToken: symbol;
+  stagedConversationId: MessengerConversationId | null;
+  store: MessengerMessagesStoreApi;
+}): MessengerMessageWindowResult {
+  const failedConversationId = conversationId ?? stagedConversationId;
+  if (isInvalidated()) {
+    if (failedConversationId != null) {
+      finishMessageLoadingRequest(store, failedConversationId, requestToken, undefined);
+    }
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const message = normalizeMessagesError(error);
+  if (failedConversationId != null) {
+    if (!ownsMessageLoadingRequest(store, failedConversationId, requestToken)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    finishMessageLoadingRequest(store, failedConversationId, requestToken, message);
+  }
+  return {
+    status: "failed",
+    ownerKey,
+    conversationId: failedConversationId,
+    error: message,
+  };
 }
 
 function messageUuidsForOwnReactionSync(messages: readonly MessengerMessage[]): MessengerUuid[] {
@@ -341,6 +539,71 @@ async function syncVisibleOwnReactionsFromCacheThenServer({
   });
 }
 
+async function restoreCachedConversationMessages({
+  ownerKey,
+  conversationId,
+  runtimeContext,
+  getRuntimeContext,
+  signal,
+  cache,
+  ownReactionSync,
+  clientOptions,
+  store,
+  isRequestStale,
+  onCacheReadError,
+}: {
+  ownerKey: string;
+  conversationId: MessengerConversationId;
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  signal: AbortSignal | undefined;
+  cache: MessengerMessagesCacheDeps;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  store: MessengerMessagesStoreApi;
+  isRequestStale: () => boolean;
+  onCacheReadError: () => void;
+}): Promise<MessengerConversationCacheWindow | null> {
+  let cachedWindow: MessengerConversationCacheWindow;
+  try {
+    cachedWindow = await (
+      cache.readConversationMessageWindow ?? defaultReadMessengerConversationWindowCache
+    )(ownerKey, conversationId);
+  } catch (error) {
+    if (isRequestStale()) return null;
+    onCacheReadError();
+    throw error;
+  }
+  if (isRequestStale()) return null;
+  if (cachedWindow.messages.length === 0) return cachedWindow;
+
+  const cachedStore = store.getState();
+  cachedStore.replaceOrMergeConversationMessagesPage(conversationId, cachedWindow.messages);
+  cachedStore.setConversationPagination(conversationId, {
+    nextPageMarker: cachedWindow.nextPageMarker,
+    hasMore: cachedWindow.hasMore,
+  });
+  const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
+    runtimeContext,
+    getRuntimeContext,
+    signal,
+    ownReactionSync,
+    messages: cachedWindow.messages,
+  });
+  if (isRequestStale()) return null;
+  if (cachedOwnReactionSyncUuids.length > 0) {
+    scheduleVisibleOwnReactionSync({
+      runtimeContext,
+      getRuntimeContext,
+      clientOptions,
+      signal,
+      ownReactionSync,
+      messageUuids: cachedOwnReactionSyncUuids,
+    });
+  }
+  return cachedWindow;
+}
+
 // Stream conversations load by stream UUID; topic conversations add topic UUID.
 export async function loadMessengerConversationMessages({
   runtimeContext,
@@ -373,40 +636,36 @@ export async function loadMessengerConversationMessages({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
-  const cachedWindow = await (
-    cache.readConversationMessageWindow ?? defaultReadMessengerConversationWindowCache
-  )(ownerKey, conversationId);
-  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-    return { status: "skipped", ownerKey, reason: "stale-owner" };
-  }
-  if (cachedWindow.messages.length > 0) {
-    const cachedStore = store.getState();
-    cachedStore.replaceOrMergeConversationMessagesPage(conversationId, cachedWindow.messages);
-    cachedStore.setConversationPagination(conversationId, {
-      nextPageMarker: cachedWindow.nextPageMarker,
-      hasMore: cachedWindow.hasMore,
-    });
-    const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
-      runtimeContext,
-      getRuntimeContext,
-      signal,
-      ownReactionSync,
-      messages: cachedWindow.messages,
-    });
-    if (cachedOwnReactionSyncUuids.length > 0) {
-      scheduleVisibleOwnReactionSync({
-        runtimeContext,
-        getRuntimeContext,
-        clientOptions,
-        signal,
-        ownReactionSync,
-        messageUuids: cachedOwnReactionSyncUuids,
-      });
-    }
-  }
-
+  const requestToken = Symbol("conversation-messages-request");
+  claimMessageLoadingRequest(store, conversationId, requestToken);
   store.getState().setMessagesLoading(conversationId, true);
   store.getState().setMessagesError(conversationId, null);
+  const isRequestStale = (): boolean =>
+    isMessageLoadingRequestStale({
+      conversationId,
+      isInvalidated: () =>
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+      requestToken,
+      store,
+    });
+
+  const cachedWindow = await restoreCachedConversationMessages({
+    ownerKey,
+    conversationId,
+    runtimeContext,
+    getRuntimeContext,
+    signal,
+    cache,
+    ownReactionSync,
+    clientOptions,
+    store,
+    isRequestStale,
+    onCacheReadError: () =>
+      finishMessageLoadingRequest(store, conversationId, requestToken, undefined),
+  });
+  if (cachedWindow == null || isRequestStale()) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query =
@@ -430,8 +689,7 @@ export async function loadMessengerConversationMessages({
   try {
     const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
 
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().setMessagesLoading(conversationId, false);
+    if (isRequestStale()) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
@@ -456,10 +714,14 @@ export async function loadMessengerConversationMessages({
           ownReactionSync,
           messages,
         });
+        if (isRequestStale()) {
+          return { status: "skipped", ownerKey, reason: "stale-owner" };
+        }
       }
     }
-    messageStore.setMessagesLoading(conversationId, false);
-    messageStore.setMessagesError(conversationId, null);
+    if (isRequestStale()) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
     messageStore.setConversationPagination(conversationId, { nextPageMarker, hasMore });
     writeMessagesCacheBestEffort(() =>
       (cache.writeConversationMessagePage ?? defaultWriteMessengerConversationWindowCache)(
@@ -472,6 +734,7 @@ export async function loadMessengerConversationMessages({
         },
       ),
     );
+    finishMessageLoadingRequest(store, conversationId, requestToken, null);
     return {
       status: "applied",
       ownerKey,
@@ -481,14 +744,12 @@ export async function loadMessengerConversationMessages({
       pageLimit: page.pageLimit,
     };
   } catch (error) {
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().setMessagesLoading(conversationId, false);
+    if (isRequestStale()) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
     const message = normalizeMessagesError(error);
-    store.getState().setMessagesLoading(conversationId, false);
-    store.getState().setMessagesError(conversationId, message);
+    finishMessageLoadingRequest(store, conversationId, requestToken, message);
     return {
       status: "failed",
       ownerKey,
@@ -504,6 +765,7 @@ export async function loadMessengerMessageWindowAroundMessage({
   messageUuid,
   beforeLimit,
   afterLimit,
+  onAnchorApplied,
   getRuntimeContext = () => runtimeContext,
   client = {},
   ownReactionSync,
@@ -527,48 +789,60 @@ export async function loadMessengerMessageWindowAroundMessage({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
+  const requestToken = Symbol("message-window-request");
   if (conversationId != null) {
+    claimMessageLoadingRequest(store, conversationId, requestToken);
     store.getState().setMessagesLoading(conversationId, true);
     store.getState().setMessagesError(conversationId, null);
   }
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
-  const query =
-    parsedConversationId == null
-      ? {
-          messageUuid,
-          beforeLimit,
-          afterLimit,
-        }
-      : parsedConversationId.kind === "stream"
-        ? {
-            messageUuid,
-            streamUuid: parsedConversationId.streamUuid,
-            beforeLimit,
-            afterLimit,
-          }
-        : {
-            messageUuid,
-            streamUuid: parsedConversationId.streamUuid,
-            topicUuid: parsedConversationId.topicUuid,
-            beforeLimit,
-            afterLimit,
-          };
+  const query = buildMessageWindowQuery({
+    parsedConversationId,
+    messageUuid,
+    beforeLimit,
+    afterLimit,
+  });
+
+  let stagedConversationId: MessengerConversationId | null = null;
+  const applyAnchor = (anchorDto: WorkspaceMessengerMessageDto): void => {
+    stagedConversationId =
+      applyStagedMessageWindowAnchor({
+        anchorDto,
+        enabled: conversationId == null,
+        isInvalidated: () =>
+          isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+        onAnchorApplied,
+        requestToken,
+        store,
+      }) ?? stagedConversationId;
+  };
 
   try {
     const window = await (
       client.getMessageWindowAroundMessage ?? defaultGetMessageWindowAroundMessage
-    )(requestOptions, query);
+    )(requestOptions, query, { onAnchor: applyAnchor });
     const appliedConversationId = conversationId ?? conversationIdFromMessageAnchor(window.anchor);
     if (appliedConversationId == null) {
       throw new TypeError("Expected message window anchor with valid stream uuid");
     }
     const messages = window.items.map(adaptMessengerMessage);
+    if (
+      stagedConversationId == null &&
+      conversationId == null &&
+      !claimMessageLoadingRequestIfAvailable(store, appliedConversationId, requestToken)
+    ) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      if (conversationId != null) {
-        store.getState().setMessagesLoading(appliedConversationId, false);
+      const loadingConversationId = conversationId ?? stagedConversationId;
+      if (loadingConversationId != null) {
+        finishMessageLoadingRequest(store, loadingConversationId, requestToken, undefined);
       }
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (!ownsMessageLoadingRequest(store, appliedConversationId, requestToken)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
@@ -578,6 +852,7 @@ export async function loadMessengerMessageWindowAroundMessage({
       beforePageMarker: window.beforePageMarker,
       afterPageMarker: window.afterPageMarker,
     });
+    messageStore.setConversationMessageWindowState(appliedConversationId, "complete");
     await syncVisibleOwnReactionsFromCacheThenServer({
       runtimeContext,
       getRuntimeContext,
@@ -586,8 +861,7 @@ export async function loadMessengerMessageWindowAroundMessage({
       ownReactionSync,
       messages,
     });
-    messageStore.setMessagesLoading(appliedConversationId, false);
-    messageStore.setMessagesError(appliedConversationId, null);
+    finishMessageLoadingRequest(store, appliedConversationId, requestToken, null);
 
     return {
       status: "applied",
@@ -600,24 +874,16 @@ export async function loadMessengerMessageWindowAroundMessage({
       afterLimit: afterLimit ?? null,
     };
   } catch (error) {
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      if (conversationId != null) {
-        store.getState().setMessagesLoading(conversationId, false);
-      }
-      return { status: "skipped", ownerKey, reason: "stale-owner" };
-    }
-
-    const message = normalizeMessagesError(error);
-    if (conversationId != null) {
-      store.getState().setMessagesLoading(conversationId, false);
-      store.getState().setMessagesError(conversationId, message);
-    }
-    return {
-      status: "failed",
+    return messageWindowFailureResult({
+      conversationId,
+      error,
+      isInvalidated: () =>
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
       ownerKey,
-      conversationId: conversationId ?? null,
-      error: message,
-    };
+      requestToken,
+      stagedConversationId,
+      store,
+    });
   }
 }
 
@@ -649,6 +915,8 @@ export async function loadMessengerMessageWindowPage({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
+  const requestToken = Symbol("message-window-page-request");
+  claimMessageLoadingRequest(store, conversationId, requestToken);
   store.getState().setMessagesLoading(conversationId, true);
   store.getState().setMessagesError(conversationId, null);
 
@@ -675,7 +943,10 @@ export async function loadMessengerMessageWindowPage({
     const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().setMessagesLoading(conversationId, false);
+      finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
@@ -702,8 +973,10 @@ export async function loadMessengerMessageWindowPage({
       ownReactionSync,
       messages,
     });
-    messageStore.setMessagesLoading(conversationId, false);
-    messageStore.setMessagesError(conversationId, null);
+    if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    finishMessageLoadingRequest(store, conversationId, requestToken, null);
 
     return {
       status: "applied",
@@ -715,13 +988,15 @@ export async function loadMessengerMessageWindowPage({
     };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().setMessagesLoading(conversationId, false);
+      finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
     const message = normalizeMessagesError(error);
-    store.getState().setMessagesLoading(conversationId, false);
-    store.getState().setMessagesError(conversationId, message);
+    finishMessageLoadingRequest(store, conversationId, requestToken, message);
     return {
       status: "failed",
       ownerKey,
