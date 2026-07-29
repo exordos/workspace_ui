@@ -23,7 +23,7 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
     │   └── SidebarStreamList
     ├── <Outlet> (routed content)
     │   ├── pages/chat/ChatPage (stream/DM chat)
-    │   │   ├── widgets/chat-view/ChatHeader
+    │   │   ├── widgets/chat-view/ChatChannelHeader | ChatDirectHeader
     │   │   │   └── features/chat-info/ (channel/DM info panel)
     │   │   ├── widgets/message-list/MessageList
     │   │   │   └── widgets/message-list/MessageBubble (per message)
@@ -357,23 +357,46 @@ interface FolderRailProps {
 
 ### widgets/chat-view
 
-**Import**: `import { ChatHeader } from '~/widgets/chat-view'`
+Two headers share one shell: channels/topics and direct chats have different content and different click targets.
+
+**Import**:
+
+```typescript
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
+import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
+```
 
 **Props**:
 
 ```typescript
-interface ChatHeaderProps {
+interface ChatChannelHeaderProps {
   channelName: string;
   topic?: string;
+  systemTopic?: boolean;
   participantsCount?: number;
   onlineCount?: number;
+  hideTopic?: boolean;
+  hideParticipants?: boolean;
+  onOpenRightPanel?: () => void; // title click → channel info
+  onCallClick?: () => void;
   onOpenSearch?: () => void;
   onToggleRightPanel?: () => void;
   rightPanelOpen?: boolean;
+  rightPanelLabel?: string;
+}
+
+interface ChatDirectHeaderProps {
+  partner: { avatarUrl?; name; presenceState; lastSeen?; customStatus?; isTyping? };
+  onOpenPartnerProfile?: () => void; // header click → user profile panel
   onCallClick?: () => void;
-  dmPartner?: { avatarUrl?; name; presenceState; lastSeen? };
+  onOpenSearch?: () => void;
+  onToggleRightPanel?: () => void;
+  rightPanelOpen?: boolean;
+  rightPanelLabel?: string;
 }
 ```
+
+The direct header never shows participant counters — it shows only the partner's status line.
 
 ### widgets/message-list
 
@@ -463,7 +486,7 @@ All pages are lazy-loaded via `React.lazy()` in `app/app.tsx`.
 ### ActivityPage
 
 **Params**: `filter` — `"starred"`, `"mentions"`, `"reactions"`
-**Layout**: ChatHeader (reused) → scrollable message list
+**Layout**: ChatChannelHeader (reused) → scrollable message list
 
 ### LoginPage
 

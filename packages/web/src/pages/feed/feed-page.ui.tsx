@@ -28,7 +28,7 @@ import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-r
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
-import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
 
 const log = createLogger("feed-page");
@@ -336,7 +336,7 @@ export const FeedPage: React.FC = () => {
 
   return (
     <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      <ChatHeader
+      <ChatChannelHeader
         channelName={t("feed.title")}
         hideTopic
         hideParticipants

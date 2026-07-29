@@ -20,7 +20,7 @@ import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
-import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
 const INBOX_STATE_CARD_CLASS =
@@ -244,7 +244,7 @@ export const InboxPage: React.FC = () => {
 
   return (
     <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      <ChatHeader
+      <ChatChannelHeader
         channelName={t("inbox.title")}
         hideTopic
         hideParticipants

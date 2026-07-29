@@ -319,6 +319,87 @@ describe("selectWorkspaceChatHeaderView", () => {
     });
   });
 
+  it("projects a private two-member stream without direct user as dm partner", () => {
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+      currentUserUuid: USER_A_UUID,
+    });
+
+    expect(view).toEqual({
+      kind: "channel",
+      channelName: "#general",
+      hideTopic: true,
+      participantsCount: 2,
+      onlineCount: 1,
+      topic: undefined,
+    });
+
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [createStream({ audience: "private", isPrivate: true })],
+      }),
+    );
+
+    const privateView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+      currentUserUuid: USER_A_UUID,
+    });
+
+    expect(privateView).toEqual({
+      kind: "directPrivate",
+      directUserUuid: USER_B_UUID,
+      dmPartner: {
+        name: "Bob Reed",
+        avatarUrl: "/bob.png",
+        presenceState: "offline",
+      },
+    });
+  });
+
+  it("keeps a private two-member stream as a channel without a signed-in user", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [createStream({ audience: "private", isPrivate: true })],
+      }),
+    );
+
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(view).toMatchObject({ kind: "channel", participantsCount: 2 });
+  });
+
   it("uses direct private stream title while the user profile is still loading", () => {
     useMessengerStore.getState().clear();
     useMessengerStore.getState().startBootstrap(OWNER_KEY);

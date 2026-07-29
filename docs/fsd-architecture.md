@@ -102,7 +102,7 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 | `components/ChatPage.tsx`            | pages             | `pages/chat/`                                                                  |
 | `components/ActivityPage.tsx`        | pages             | `pages/activity/`                                                              |
 | `components/LoginPage.tsx`           | pages             | `pages/login/`                                                                 |
-| `components/ChatHeader.tsx`          | widgets           | `widgets/chat-view/`                                                           |
+| `components/ChatHeader.tsx`          | widgets           | `widgets/chat-view/` (channel + direct)                                        |
 | `components/MessageList.tsx`         | widgets           | `widgets/message-list/`                                                        |
 | `components/ui/MessageBubble.tsx`    | widgets           | `widgets/message-list/`                                                        |
 | `components/ui/MessageComposer.tsx`  | widgets           | `widgets/message-composer/`                                                    |

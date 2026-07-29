@@ -9,7 +9,7 @@ import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { Icon } from "~/shared/ui/icon";
-import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import {
   AUTH_IDLE_TIMEOUT_LABEL_KEYS,
   NOTIFICATION_SOUND_LABEL_KEYS,
@@ -106,7 +106,7 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      <ChatHeader channelName={t("settings.settings")} hideTopic hideParticipants />
+      <ChatChannelHeader channelName={t("settings.settings")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
         {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
           <button

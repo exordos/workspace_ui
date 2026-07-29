@@ -6,10 +6,7 @@ import {
 import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
-import {
-  selectWorkspaceConversationUiKind,
-  selectWorkspaceStreamConversationUiKind,
-} from "./messenger-conversation-ui-kind.lib";
+import { resolveWorkspaceDirectPartnerUuid } from "./messenger-direct-partner.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerUuid } from "./messenger.types";
@@ -53,6 +50,8 @@ export interface SelectWorkspaceChatHeaderViewOptions {
   usersById: UsersById;
   fallbackTitle: string;
   missingDirectUserTitle: string;
+  /** Identifies a direct chat by its second member when `direct_user_uuid` is missing. */
+  currentUserUuid?: MessengerUuid | null;
 }
 
 function resolveDirectPrivateFallbackTitle(
@@ -65,7 +64,13 @@ function resolveDirectPrivateFallbackTitle(
 
 export function selectWorkspaceChatHeaderView(
   state: WorkspaceChatHeaderState,
-  { route, usersById, fallbackTitle, missingDirectUserTitle }: SelectWorkspaceChatHeaderViewOptions,
+  {
+    route,
+    usersById,
+    fallbackTitle,
+    missingDirectUserTitle,
+    currentUserUuid = null,
+  }: SelectWorkspaceChatHeaderViewOptions,
 ): WorkspaceChatHeaderView {
   const selection = selectMessengerConversationFromWorkspaceRoute(route);
 
@@ -83,36 +88,6 @@ export function selectWorkspaceChatHeaderView(
   const stream = state.streamsById[selection.streamUuid];
   const topic = selection.kind === "topic" ? state.topicsById[selection.topicUuid] : undefined;
 
-  const routeUiKind =
-    stream != null
-      ? selectWorkspaceStreamConversationUiKind(stream)
-      : conversation != null
-        ? selectWorkspaceConversationUiKind(conversation)
-        : "channel";
-  const routeDirectUserUuid = stream?.directUserUuid ?? conversation?.directUserUuid ?? null;
-
-  if (routeUiKind === "directPrivate") {
-    const directUserUuid = routeDirectUserUuid;
-    if (directUserUuid != null) {
-      const user = usersById[directUserUuid];
-      const directFallbackTitle = resolveDirectPrivateFallbackTitle(
-        stream?.name ?? conversation?.title,
-        missingDirectUserTitle,
-      );
-
-      return {
-        kind: "directPrivate",
-        directUserUuid,
-        dmPartner: {
-          name: selectUserDisplayName(user, directFallbackTitle),
-          avatarUrl: user?.avatarUrl ?? null,
-          presenceState: resolveUserPresenceVisual(user?.status),
-        },
-      };
-    }
-  }
-
-  const title = stream?.name ?? conversation?.title ?? fallbackTitle;
   const bindingIds = state.streamBindingIdsByStreamId[selection.streamUuid] ?? [];
   let participantsCount = 0;
   const memberUserUuids: MessengerUuid[] = [];
@@ -124,6 +99,32 @@ export function selectWorkspaceChatHeaderView(
     participantsCount += 1;
     memberUserUuids.push(binding.userUuid);
   }
+
+  const directUserUuid = resolveWorkspaceDirectPartnerUuid({
+    source: stream ?? conversation,
+    memberUserUuids,
+    currentUserUuid,
+  });
+
+  if (directUserUuid != null) {
+    const user = usersById[directUserUuid];
+    const directFallbackTitle = resolveDirectPrivateFallbackTitle(
+      stream?.name ?? conversation?.title,
+      missingDirectUserTitle,
+    );
+
+    return {
+      kind: "directPrivate",
+      directUserUuid,
+      dmPartner: {
+        name: selectUserDisplayName(user, directFallbackTitle),
+        avatarUrl: user?.avatarUrl ?? null,
+        presenceState: resolveUserPresenceVisual(user?.status),
+      },
+    };
+  }
+
+  const title = stream?.name ?? conversation?.title ?? fallbackTitle;
   const onlineCount = selectOnlineUserCount(usersById, memberUserUuids);
 
   return {

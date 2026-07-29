@@ -1,49 +1,57 @@
-/** DM partner data for the chat header: avatar, name, online status */
+/** Direct chat partner data shown in the header. */
 export interface ChatHeaderDmPartner {
   avatarUrl?: string | null;
   name: string;
-  /** active = online, idle = away, offline = offline, null = no data */
+  /** `null` means presence data is unavailable. */
   presenceState: "active" | "idle" | "offline" | null;
-  /** "last seen N ago" text when offline */
+  /** Last-seen text shown while the partner is offline. */
   lastSeen?: string;
-  /** Custom Zulip status (emoji + text). */
+  /** Custom status with emoji and text. */
   customStatus?: string;
-  /** Raw custom status text or emoji from the active user source. */
+  /** Raw status text or emoji from the active user source. */
   status?: string | null;
-  /** When true, Zulip directory reports the partner account as deactivated (`is_active === false`). */
+  /** Whether the user directory reports a deactivated account. */
   isAccountDeactivated?: boolean;
-  /** Shows transient typing status in DM header when true. */
+  /** Shows a temporary typing state instead of presence. */
   isTyping?: boolean;
 }
 
-/** Group DM summary for the chat header. */
-export interface ChatHeaderDmGroup {
-  name: string;
-  participantsCount: number;
+/** Actions shared by channel and direct chat headers. */
+export interface ChatHeaderActionsProps {
+  /** The call action is hidden when no handler is provided. */
+  onCallClick?: () => void;
+  onOpenSearch?: () => void;
+  onToggleRightPanel?: () => void;
+  rightPanelOpen?: boolean;
+  /** Label for the right panel action while the panel is closed. */
+  infoLabel: string;
 }
 
-export interface ChatHeaderProps {
+/** Props shared by channel and direct chat headers. */
+export interface ChatHeaderCommonProps {
+  onCallClick?: () => void;
+  onOpenSearch?: () => void;
+  onToggleRightPanel?: () => void;
+  rightPanelOpen?: boolean;
+  /** Overrides the right panel action label. */
+  rightPanelLabel?: string;
+}
+
+export interface ChatChannelHeaderProps extends ChatHeaderCommonProps {
   channelName: string;
   topic?: string;
   systemTopic?: boolean;
   participantsCount?: number;
   onlineCount?: number;
-  onOpenSearch?: () => void;
-  onToggleRightPanel?: () => void;
-  /** Opens right info panel from header content clicks (channel/group title or DM name block). */
-  onOpenRightPanel?: () => void;
-  rightPanelOpen?: boolean;
-  /** Button label for the panel (e.g. "Contact info" in a DM) */
-  rightPanelLabel?: string;
   hideTopic?: boolean;
-  /** Hide the "N members, M online" line (for DMs) */
+  /** Hides the member and online counts. */
   hideParticipants?: boolean;
-  /** "Call" button (DM only). On click, a Jitsi link is created and sent as a message. */
-  onCallClick?: () => void;
-  /** For DMs: show avatar, name and presence status instead of channelName */
-  dmPartner?: ChatHeaderDmPartner;
-  /** For group DMs: show conversation name and participant count. */
-  dmGroup?: ChatHeaderDmGroup;
-  /** Opens DM partner profile in the right info panel when avatar is clicked. */
-  onDmPartnerClick?: () => void;
+  /** Opens channel information from the title. */
+  onOpenRightPanel?: () => void;
+}
+
+export interface ChatDirectHeaderProps extends ChatHeaderCommonProps {
+  partner: ChatHeaderDmPartner;
+  /** Opens the partner profile from the header. */
+  onOpenPartnerProfile?: () => void;
 }

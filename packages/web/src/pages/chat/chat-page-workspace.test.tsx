@@ -35,7 +35,10 @@ import {
 } from "~/shared/lib/workspace-messenger-cache-db";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
-import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
+import type {
+  ChatChannelHeaderProps,
+  ChatDirectHeaderProps,
+} from "~/widgets/chat-view/chat-header.types";
 import { ChatPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
 import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
@@ -53,7 +56,8 @@ const STREAM_BINDING_B_UUID = "77777777-7777-4777-8777-777777777777";
 
 const captured = vi.hoisted(() => ({
   composerProps: null as ChatPageComposerSectionProps | null,
-  headerProps: null as ChatHeaderProps | null,
+  channelHeaderProps: null as ChatChannelHeaderProps | null,
+  directHeaderProps: null as ChatDirectHeaderProps | null,
   messageListProps: null as ChatPageWorkspaceMessageListSectionProps | null,
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
   loadWorkspaceMessageWindowAroundMessage: vi.fn().mockResolvedValue({
@@ -201,13 +205,24 @@ vi.mock("~/entities/composer-draft/composer-draft-sync.lib", () => ({
   deleteWorkspaceComposerDraftFromServer: captured.deleteWorkspaceComposerDraftFromServer,
 }));
 
-vi.mock("~/widgets/chat-view/chat-header.ui", () => ({
-  ChatHeader: (props: ChatHeaderProps) => {
-    captured.headerProps = props;
+vi.mock("~/widgets/chat-view/chat-header-channel.ui", () => ({
+  ChatChannelHeader: (props: ChatChannelHeaderProps) => {
+    captured.channelHeaderProps = props;
     return (
       <header data-testid="chat-header">
         <span>{props.channelName}</span>
         {props.topic != null ? <span>{props.topic}</span> : null}
+      </header>
+    );
+  },
+}));
+
+vi.mock("~/widgets/chat-view/chat-header-direct.ui", () => ({
+  ChatDirectHeader: (props: ChatDirectHeaderProps) => {
+    captured.directHeaderProps = props;
+    return (
+      <header data-testid="chat-header">
+        <span>{props.partner.name}</span>
       </header>
     );
   },
@@ -497,7 +512,8 @@ describe("ChatPage Workspace route", () => {
     await useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
     captured.composerProps = null;
-    captured.headerProps = null;
+    captured.channelHeaderProps = null;
+    captured.directHeaderProps = null;
     captured.messageListProps = null;
     captured.loadWorkspaceMessages.mockClear();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReset();
@@ -609,7 +625,7 @@ describe("ChatPage Workspace route", () => {
     expect(screen.getByText("workspace message")).toBeInTheDocument();
     expect(screen.getByText("#general")).toBeInTheDocument();
     expect(screen.getByText("Roadmap")).toBeInTheDocument();
-    expect(captured.headerProps).toMatchObject({
+    expect(captured.channelHeaderProps).toMatchObject({
       channelName: "#general",
       topic: "Roadmap",
       hideTopic: false,
@@ -617,10 +633,11 @@ describe("ChatPage Workspace route", () => {
       onlineCount: 1,
       rightPanelOpen: false,
     });
-    expect(captured.headerProps?.onOpenSearch).toEqual(expect.any(Function));
-    expect(captured.headerProps?.onToggleRightPanel).toEqual(expect.any(Function));
-    expect(captured.headerProps?.onOpenRightPanel).toEqual(expect.any(Function));
-    expect(captured.headerProps?.onCallClick).toBeUndefined();
+    expect(captured.directHeaderProps).toBeNull();
+    expect(captured.channelHeaderProps?.onOpenSearch).toEqual(expect.any(Function));
+    expect(captured.channelHeaderProps?.onToggleRightPanel).toEqual(expect.any(Function));
+    expect(captured.channelHeaderProps?.onOpenRightPanel).toEqual(expect.any(Function));
+    expect(captured.channelHeaderProps?.onCallClick).toBeUndefined();
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     expect(captured.messageListProps?.presentation).toBeUndefined();
     expect(captured.messageListProps?.resolveTopicLabel).toBeUndefined();
@@ -1014,7 +1031,9 @@ describe("ChatPage Workspace route", () => {
         `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
       );
 
-      await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+      await waitFor(() =>
+        expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+      );
       expect(captured.composerProps?.onCreateCallLink).toBeUndefined();
       expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
       expect(screen.getByTestId("stream-topic-prompt")).toBeInTheDocument();
@@ -1025,7 +1044,7 @@ describe("ChatPage Workspace route", () => {
       expect(captured.messageListProps?.resolveTopicLabel?.(DIRECT_TOPIC_UUID)).toBe("private");
 
       act(() => {
-        captured.headerProps?.onCallClick?.();
+        captured.directHeaderProps?.onCallClick?.();
       });
 
       const expectedUrl = `https://meet.workspace.example.com/workspace-org-a-project-a-${DIRECT_STREAM_UUID}-${DIRECT_TOPIC_UUID}-123`;
@@ -1078,9 +1097,11 @@ describe("ChatPage Workspace route", () => {
       `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
     );
 
-    await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+    await waitFor(() =>
+      expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
     act(() => {
-      captured.headerProps?.onCallClick?.();
+      captured.directHeaderProps?.onCallClick?.();
     });
 
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
@@ -1111,10 +1132,12 @@ describe("ChatPage Workspace route", () => {
         `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
       );
 
-      await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+      await waitFor(() =>
+        expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+      );
       act(() => {
-        captured.headerProps?.onCallClick?.();
-        captured.headerProps?.onCallClick?.();
+        captured.directHeaderProps?.onCallClick?.();
+        captured.directHeaderProps?.onCallClick?.();
       });
 
       expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
@@ -1165,9 +1188,11 @@ describe("ChatPage Workspace route", () => {
       `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
     );
 
-    await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+    await waitFor(() =>
+      expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
     act(() => {
-      captured.headerProps?.onCallClick?.();
+      captured.directHeaderProps?.onCallClick?.();
     });
     await waitFor(() => {
       expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
@@ -3824,7 +3849,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.downloadWorkspaceFile).not.toHaveBeenCalled();
   });
 
-  it("maps Workspace direct private header view to old dmPartner header props", async () => {
+  it("maps Workspace direct private header view to the direct header props", async () => {
     const session = createSession();
     const ownerKey = workspaceRuntimeOwnerKey(session);
     useMessengerStore.getState().clear();
@@ -3838,15 +3863,59 @@ describe("ChatPage Workspace route", () => {
     );
 
     expect(await screen.findByTestId("chat-header")).toBeInTheDocument();
-    expect(captured.headerProps?.dmPartner).toEqual({
+    expect(captured.channelHeaderProps).toBeNull();
+    expect(captured.directHeaderProps?.partner).toEqual({
       name: "Bob Reed",
       avatarUrl: null,
       presenceState: "idle",
     });
-    expect(captured.headerProps?.rightPanelLabel).toBe(t("info.partnerInfo"));
-    expect(captured.headerProps?.hideParticipants).toBe(true);
-    expect(captured.headerProps).not.toHaveProperty("participantsCount");
-    expect(captured.headerProps).not.toHaveProperty("onlineCount");
+    expect(captured.directHeaderProps?.rightPanelLabel).toBe(t("info.partnerInfo"));
+    expect(captured.directHeaderProps?.onOpenPartnerProfile).toEqual(expect.any(Function));
+    expect(captured.directHeaderProps).not.toHaveProperty("participantsCount");
+    expect(captured.directHeaderProps).not.toHaveProperty("onlineCount");
+  });
+
+  it("shows the direct header for a private two-member stream without a direct user", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const payload = createBootstrapPayload();
+    const stream = payload.streams[0]!;
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      ...payload,
+      streams: [{ ...stream, audience: "private", isPrivate: true, directUserUuid: null }],
+    });
+
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+
+    expect(await screen.findByTestId("chat-header")).toBeInTheDocument();
+    expect(captured.channelHeaderProps).toBeNull();
+    expect(captured.directHeaderProps?.partner).toMatchObject({ name: "Bob Reed" });
+  });
+
+  it("opens the partner profile in the right panel from the direct header", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const openWorkspaceUserProfile = vi.fn();
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+      { openWorkspaceUserProfile },
+    );
+
+    expect(await screen.findByTestId("chat-header")).toBeInTheDocument();
+
+    act(() => {
+      captured.directHeaderProps?.onOpenPartnerProfile?.();
+    });
+
+    expect(openWorkspaceUserProfile).toHaveBeenCalledWith(USER_B_UUID);
   });
 
   it("keeps old chat routes in a controlled Workspace state", () => {

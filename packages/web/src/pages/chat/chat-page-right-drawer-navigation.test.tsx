@@ -3,7 +3,7 @@ import React, { useCallback } from "react";
 import { describe, expect, it } from "vitest";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { renderWithProviders } from "~/test/render";
-import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 
 const RightDrawerHeaderHarness: React.FC = () => {
@@ -26,7 +26,7 @@ const RightDrawerHeaderHarness: React.FC = () => {
         openUserProfile: openRightDrawerUserProfile,
       }}
     >
-      <ChatHeader
+      <ChatChannelHeader
         channelName="#engineering"
         topic="sprint-planning"
         hideTopic={false}

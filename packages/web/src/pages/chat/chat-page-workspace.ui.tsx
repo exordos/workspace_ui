@@ -105,8 +105,9 @@ import {
   type WorkspaceMessengerRouteMatch,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Spinner } from "~/shared/ui/spinner.ui";
-import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
-import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
+import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
+import type { ChatHeaderCommonProps } from "~/widgets/chat-view/chat-header.types";
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
@@ -596,11 +597,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           usersById,
           fallbackTitle: t("nav.messenger"),
           missingDirectUserTitle: t("workspaceMessenger.directPrivateUserUnavailable"),
+          currentUserUuid: runtimeContext?.userUuid ?? null,
         },
       ),
     [
       conversationsById,
       route,
+      runtimeContext?.userUuid,
       streamBindingIdsByStreamId,
       streamBindingsById,
       streamsById,
@@ -608,25 +611,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       usersById,
     ],
   );
-  const chatHeaderContentProps = useMemo<ChatHeaderProps>(() => {
-    if (headerView.kind === "directPrivate") {
-      return {
-        channelName: headerView.dmPartner.name,
-        hideTopic: true,
-        hideParticipants: true,
-        dmPartner: headerView.dmPartner,
-        rightPanelLabel: t("info.partnerInfo"),
-      };
-    }
-
-    return {
-      channelName: headerView.channelName,
-      topic: headerView.topic,
-      hideTopic: headerView.hideTopic,
-      participantsCount: headerView.participantsCount,
-      onlineCount: headerView.onlineCount,
-    };
-  }, [headerView]);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
   const resolveAuthorLabel = useCallback(
     (authorUuid: string): string | null => {
@@ -2141,16 +2125,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [handleOpenWorkspaceReference, selection],
   );
 
-  const headerProps = useMemo<ChatHeaderProps>(() => {
-    if (headerView.kind === "directPrivate" && workspaceMeetUrl != null) {
-      return {
-        ...chatHeaderContentProps,
-        onCallClick: handleStartWorkspaceHeaderCall,
-      };
-    }
+  const directPartnerUuid = headerView.kind === "directPrivate" ? headerView.directUserUuid : null;
+  // A direct header click opens the same profile as a message author avatar.
+  const handleOpenDirectPartnerProfile = useCallback(() => {
+    if (directPartnerUuid == null) return;
+    openWorkspaceUserProfile?.(directPartnerUuid);
+  }, [directPartnerUuid, openWorkspaceUserProfile]);
 
-    return chatHeaderContentProps;
-  }, [chatHeaderContentProps, handleStartWorkspaceHeaderCall, headerView.kind, workspaceMeetUrl]);
+  const commonHeaderProps = useMemo<ChatHeaderCommonProps>(
+    () => ({
+      onOpenSearch: openSearch ?? undefined,
+      onToggleRightPanel: rightDrawer == null ? undefined : handleToggleRightPanel,
+      rightPanelOpen: rightDrawer?.open ?? false,
+    }),
+    [handleToggleRightPanel, openSearch, rightDrawer],
+  );
 
   const activeWorkspaceReplyTab = workspaceReplySession.tabs.find(
     (tab) => tab.id === workspaceReplySession.activeTabId,
@@ -2189,6 +2178,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const workspaceReplyHasAnswer = workspaceReplySession.tabs.some(
     (tab) => tab.answer.trim().length > 0,
   );
+
+  // Direct chats omit member counters and open the partner profile from the header.
+  const header =
+    headerView.kind === "directPrivate" ? (
+      <ChatDirectHeader
+        {...commonHeaderProps}
+        partner={headerView.dmPartner}
+        rightPanelLabel={t("info.partnerInfo")}
+        onOpenPartnerProfile={
+          openWorkspaceUserProfile == null ? undefined : handleOpenDirectPartnerProfile
+        }
+        onCallClick={workspaceMeetUrl == null ? undefined : handleStartWorkspaceHeaderCall}
+      />
+    ) : (
+      <ChatChannelHeader
+        {...commonHeaderProps}
+        channelName={headerView.channelName}
+        topic={headerView.topic}
+        hideTopic={headerView.hideTopic}
+        participantsCount={headerView.participantsCount}
+        onlineCount={headerView.onlineCount}
+        onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}
+      />
+    );
 
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {
@@ -2293,13 +2306,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       className="flex max-h-full min-h-0 min-w-chat-page flex-1 flex-col overflow-hidden"
       data-testid="chat-page"
     >
-      <ChatHeader
-        {...headerProps}
-        onOpenSearch={openSearch ?? undefined}
-        onToggleRightPanel={rightDrawer == null ? undefined : handleToggleRightPanel}
-        onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}
-        rightPanelOpen={rightDrawer?.open ?? false}
-      />
+      {header}
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}
         <ChatPageSelectionBar

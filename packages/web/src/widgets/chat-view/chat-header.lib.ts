@@ -1,9 +1,7 @@
 import { t } from "~/i18n/i18n";
-import type { ChatHeaderProps } from "./chat-header.types";
+import type { ChatHeaderDmPartner } from "./chat-header.types";
 
-export function resolveDmPresenceText(
-  dmPartner: NonNullable<ChatHeaderProps["dmPartner"]>,
-): string {
+export function resolveDmPresenceText(dmPartner: ChatHeaderDmPartner): string {
   if (dmPartner.presenceState === "active") {
     return t("presence.online");
   }
@@ -19,7 +17,7 @@ export function resolveDmPresenceText(
   return t("presence.lastSeen", { time: dmPartner.lastSeen });
 }
 
-export function resolveDmStatusText(dmPartner: NonNullable<ChatHeaderProps["dmPartner"]>): string {
+export function resolveDmStatusText(dmPartner: ChatHeaderDmPartner): string {
   if (dmPartner.isAccountDeactivated) {
     return t("dm.partnerBlocked");
   }
