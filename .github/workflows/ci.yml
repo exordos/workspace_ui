@@ -179,9 +179,86 @@ jobs:
           path: upload/*
           retention-days: 14
 
+  publish-apt:
+    name: Publish apt repository
+    needs: build-electron
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    timeout-minutes: 10
+
+    steps:
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-ubuntu-latest
+          path: artifacts
+
+      # Prereleases stay out of the repository: in a deb version everything after
+      # the last hyphen is the revision, so 0.4.0-rc1 sorts ABOVE 0.4.0 and apt
+      # would offer the release candidate as the newest stable build.
+      - name: Select packages
+        id: select
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::warning::${GITHUB_REF_NAME} is a prerelease tag — not published to the apt repository"
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          mkdir -p debs
+          find artifacts -maxdepth 1 -name '*.deb' -exec cp {} debs/ \;
+          count=$(find debs -name '*.deb' | wc -l)
+          echo "Packages to publish: ${count}"
+          ls -la debs/
+
+          if [[ "${count}" -eq 0 ]]; then
+            echo "::error::no .deb artifacts found for tag ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+          echo "publish=true" >> "${GITHUB_OUTPUT}"
+
+      # The repository host holds the pool, the aptly database and the signing
+      # key; this job only hands it the new packages. The deploy key is bound to
+      # a forced command there, so it cannot do anything else.
+      - name: Upload to repository host
+        if: steps.select.outputs.publish == 'true'
+        env:
+          SSH_TARGET: ${{ secrets.APT_REPO_SSH_TARGET }}
+          SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.APT_REPO_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SSH_TARGET}" ]]; then
+            echo "::warning::APT_REPO_SSH_TARGET is not configured — skipping apt publication"
+            exit 0
+          fi
+
+          umask 077
+          printf '%s\n' "${SSH_KEY}" > deploy_key
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > known_hosts
+
+          tar -C debs -c . | ssh -T \
+            -i deploy_key \
+            -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile=known_hosts \
+            -o StrictHostKeyChecking=yes \
+            "${SSH_TARGET}"
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f deploy_key known_hosts
+
   release:
     name: Create GitHub Release
-    needs: build-electron
+    # Waits for the apt publication as well: announcing a release that never reached
+    # the repository leaves `apt upgrade` users without the version the release notes
+    # promise. The remaining ordering risk is the mirror image — packages published
+    # while this job fails — which is recoverable by re-running it.
+    needs: [build-electron, publish-apt]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
 

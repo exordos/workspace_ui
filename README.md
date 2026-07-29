@@ -110,6 +110,7 @@ workspace_ui/
 - `docs/INTEGRATION_GUIDE.md`
 - `docs/USE_CASES.md`
 - `docs/MACOS_SIGNING.md`
+- `docs/apt-repository.md`
 - `docs/SECURITY_ARCHITECTURE.md`
 
 ## Development Rules (Short)

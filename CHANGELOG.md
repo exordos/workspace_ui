@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Debian and Ubuntu packages are published to the shared Exordos apt repository on every release, so the desktop application updates through `apt upgrade`. Setup instructions are in `docs/apt-repository.md`.
+
 ## [0.4.0] — 2026-07-29
 
 ### Added
