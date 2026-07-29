@@ -13,6 +13,13 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import {
+  APP_DISPLAY_NAME,
+  APP_ID,
+  APP_SLUG,
+  getUserDataDirName,
+  pickLegacyUserDataDirName,
+} from "./app-identity.lib";
 import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
@@ -31,6 +38,50 @@ const IS_AUTO_UPDATE_DISABLED = __ELECTRON_DISABLE_AUTO_UPDATE__;
 const DEV_SERVER_URL = "http://localhost:5173";
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const RESOURCES_PATH = path.join(__dirname, "..", "resources");
+
+// ---------------------------------------------------------------------------
+// Application identity
+//
+// Runs at import time, before anything reads `userData` and before the app is
+// ready: both the profile path and the window class are frozen at first use.
+// ---------------------------------------------------------------------------
+
+app.setName(APP_DISPLAY_NAME);
+
+if (process.platform === "win32") {
+  // Groups taskbar windows and notifications under the installed app, not "electron.exe".
+  app.setAppUserModelId(APP_ID);
+}
+
+if (process.platform === "linux") {
+  // X11 WM_CLASS / Wayland app_id. Matches `linux.desktop.StartupWMClass` in
+  // electron-builder.yml so the taskbar maps the window onto our .desktop entry.
+  app.commandLine.appendSwitch("class", APP_SLUG);
+}
+
+applyUserDataDirectory();
+
+/** Points `userData` at a branded directory, carrying an older profile over once. */
+function applyUserDataDirectory(): void {
+  const appDataPath = app.getPath("appData");
+  const userDataPath = path.join(appDataPath, getUserDataDirName(app.isPackaged));
+
+  try {
+    const fs = require("node:fs") as typeof import("node:fs");
+    if (app.isPackaged && !fs.existsSync(userDataPath)) {
+      const legacyDirName = pickLegacyUserDataDirName((dirName) =>
+        fs.existsSync(path.join(appDataPath, dirName)),
+      );
+      if (legacyDirName) {
+        fs.renameSync(path.join(appDataPath, legacyDirName), userDataPath);
+      }
+    }
+  } catch {
+    // Best-effort migration: a failed rename costs the user a re-login, nothing more.
+  }
+
+  app.setPath("userData", userDataPath);
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;

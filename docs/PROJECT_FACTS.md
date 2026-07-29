@@ -6,10 +6,10 @@ Single source of truth for volatile repository facts, important module paths, an
 
 ## Monorepo packages
 
-| Package        | Path                 | Role             |
-| -------------- | -------------------- | ---------------- |
-| `web`          | `packages/web/`      | React SPA (Vite) |
-| `electron-app` | `packages/electron/` | Desktop shell    |
+| Package             | Path                 | Role             |
+| ------------------- | -------------------- | ---------------- |
+| `web`               | `packages/web/`      | React SPA (Vite) |
+| `exordos-workspace` | `packages/electron/` | Desktop shell    |
 
 ## Stack versions
 

@@ -104,6 +104,14 @@ dmg:
 
 # ──────────────────────────── Linux ────────────────────────────
 linux:
+  # Binary, .desktop Exec= and deb/rpm package name. Must match APP_SLUG in
+  # src/app-identity.lib.ts: the app pins the same value as its X11 WM_CLASS,
+  # which is what StartupWMClass below matches against.
+  executableName: exordos-workspace
+  # No `syncDesktopName`: in this monorepo it overwrites the workspace root
+  # package.json with the app metadata. The entry is already named after
+  # `executableName`, and `desktopName` in packages/electron/package.json is what
+  # Electron reports as its app_id.
   target:
     # Ubuntu 24
     - target: deb
