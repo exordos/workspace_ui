@@ -119,20 +119,43 @@ describe("sidebarTopicShowMoreButtonClass", () => {
 describe("isWorkspaceSidebarStreamHighlighted", () => {
   const streamUuid = "stream-a";
 
-  it("highlights only when this stream is the active route without a topic", () => {
+  it("highlights when this stream is the active route without a topic", () => {
     expect(
       isWorkspaceSidebarStreamHighlighted({
         streamUuid,
+        expanded: false,
+        activeStreamUuid: streamUuid,
+        activeTopicUuid: null,
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceSidebarStreamHighlighted({
+        streamUuid,
+        expanded: true,
         activeStreamUuid: streamUuid,
         activeTopicUuid: null,
       }),
     ).toBe(true);
   });
 
-  it("does not highlight when a topic of this stream is open", () => {
+  it("highlights a collapsed stream when one of its topics is the active route", () => {
+    // Topics are hidden while collapsed — promote highlight to the stream card.
     expect(
       isWorkspaceSidebarStreamHighlighted({
         streamUuid,
+        expanded: false,
+        activeStreamUuid: streamUuid,
+        activeTopicUuid: "topic-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not highlight an expanded stream when a topic is the active route", () => {
+    // Expanded: the topic row itself carries the active highlight.
+    expect(
+      isWorkspaceSidebarStreamHighlighted({
+        streamUuid,
+        expanded: true,
         activeStreamUuid: streamUuid,
         activeTopicUuid: "topic-1",
       }),
@@ -143,8 +166,17 @@ describe("isWorkspaceSidebarStreamHighlighted", () => {
     expect(
       isWorkspaceSidebarStreamHighlighted({
         streamUuid,
+        expanded: false,
         activeStreamUuid: "stream-b",
         activeTopicUuid: null,
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceSidebarStreamHighlighted({
+        streamUuid,
+        expanded: false,
+        activeStreamUuid: "stream-b",
+        activeTopicUuid: "topic-1",
       }),
     ).toBe(false);
   });

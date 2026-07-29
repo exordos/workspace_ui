@@ -250,9 +250,10 @@ function WorkspaceSidebarStreamRow({
   onToggleStream: (streamUuid: string) => void;
   onTopicCreated: (streamUuid: string, topicUuid: string) => void;
 }>): React.ReactElement {
-  // Highlight follows the active route only — expanded is not enough.
+  // Highlight follows the visible active location (collapsed topic → stream card).
   const isActive = isWorkspaceSidebarStreamHighlighted({
     streamUuid: stream.streamUuid,
+    expanded,
     activeStreamUuid,
     activeTopicUuid,
   });

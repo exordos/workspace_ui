@@ -21,7 +21,7 @@ const WHITESPACE_PATTERN = /\s+/g;
 const URL_ONLY_PATTERN = /^(?:https?:\/\/|mailto:)[^\s]+$/i;
 const UUID_PATTERN_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const UUID_PATTERN = new RegExp(`^${UUID_PATTERN_SOURCE}$`, "i");
-const POSITIVE_INTEGER_PATTERN = /^[0-9]+$/;
+const POSITIVE_INTEGER_PATTERN = /^\d+$/;
 const WORKSPACE_FILE_URN_PATTERN = new RegExp(
   `^urn:(image|video|file):(${UUID_PATTERN_SOURCE})(?:\\?([\\s\\S]*))?$`,
   "i",

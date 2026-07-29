@@ -88,14 +88,21 @@ export function sidebarTopicShowMoreButtonClass(compact: boolean): string {
 export const SIDEBAR_TOPIC_LIST_CLASS = "mt-0.5 space-y-1";
 
 /**
- * Only the active route card is highlighted — never “expanded”.
- * A stream may stay open with topics visible while another chat is selected;
- * glowing every open stream makes the current location ambiguous.
+ * Stream card highlight follows the visible active location.
+ * - Active stream route (no topic) → highlight the stream.
+ * - Active topic while the stream is collapsed → highlight the stream
+ *   (topics are not visible, so the channel carries location).
+ * - Active topic while expanded → do not highlight the stream
+ *   (the topic row is highlighted instead).
+ * Never highlight merely because the stream is expanded.
  */
 export function isWorkspaceSidebarStreamHighlighted(input: {
   streamUuid: string;
+  expanded: boolean;
   activeStreamUuid: string | null;
   activeTopicUuid: string | null;
 }): boolean {
-  return input.activeStreamUuid === input.streamUuid && input.activeTopicUuid == null;
+  if (input.activeStreamUuid !== input.streamUuid) return false;
+  if (input.activeTopicUuid == null) return true;
+  return !input.expanded;
 }

@@ -3271,6 +3271,42 @@ describe("WorkspaceMessageList", () => {
     );
   });
 
+  // Regression: empty reaction row returned null, so justify-between left the lone meta at the start.
+  it("keeps row meta right-aligned when the message has no reaction chips", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-row-meta-no-reactions",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "First line\nSecond line",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-row-meta-no-reactions",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            isOwn: false,
+            markdown: "> quoted reply\n\nand a follow-up",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    for (const messageUuid of ["own-row-meta-no-reactions", "peer-row-meta-no-reactions"]) {
+      const article = container.querySelector(`[data-message-uuid='${messageUuid}']`);
+      const footer = article?.querySelector("[data-workspace-message-reaction-footer='true']");
+      const meta = footer?.querySelector("[data-message-meta-placement='row']");
+
+      expect(meta).toBeInTheDocument();
+      expect(meta).toHaveClass("ml-auto");
+      expect(article?.querySelector("[data-workspace-message-reaction-chip='true']")).toBeNull();
+    }
+  });
+
   it("renders Workspace reaction chips inside the message bubble", () => {
     const onToggleMessageReaction = vi.fn();
 
