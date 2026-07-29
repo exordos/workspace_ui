@@ -11,6 +11,7 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import {
   getOwnAvatarCapabilities,
@@ -22,11 +23,13 @@ import { t } from "~/i18n/i18n";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
+import { buildWorkspaceDefaultAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";
 import {
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { resolvePresenceStatusTextClass } from "~/shared/ui/presence-status-text.lib";
@@ -41,6 +44,47 @@ import type {
 } from "./right-panel-user-profile.types";
 
 const log = createLogger("right-panel-user-profile");
+const WORKSPACE_AVATAR_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const WORKSPACE_AVATAR_ACCEPT = [...WORKSPACE_AVATAR_MIME_TYPES].join(",");
+
+type PendingAvatarChange =
+  | {
+      kind: "upload";
+      file: File;
+      previewUrl: string;
+    }
+  | {
+      kind: "reset";
+    };
+
+interface ProfileAvatarProps {
+  avatarUrn: string | null | undefined;
+  resetAvatarUrn: string;
+  pendingChange: PendingAvatarChange | null;
+  interactive?: boolean;
+  children: React.ReactNode;
+}
+
+const ProfileAvatar = React.memo<ProfileAvatarProps>(
+  ({ avatarUrn, resetAvatarUrn, pendingChange, interactive = false, children }) => {
+    const commonProps = {
+      size: "xl" as const,
+      interactive,
+      className: "bg-bg-elevated text-text-secondary",
+      children,
+    };
+
+    if (pendingChange?.kind === "upload") {
+      return <Avatar {...commonProps} src={pendingChange.previewUrl} />;
+    }
+    if (pendingChange?.kind === "reset") {
+      return <WorkspaceAvatar {...commonProps} avatarUrn={resetAvatarUrn} />;
+    }
+    return <WorkspaceAvatar {...commonProps} avatarUrn={avatarUrn} />;
+  },
+);
+
+ProfileAvatar.displayName = "ProfileAvatar";
 
 function resolveProfileUserUuid(
   info: RightPanelUserProfileProps["info"],
@@ -103,8 +147,10 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [pendingAvatarChange, setPendingAvatarChange] = useState<PendingAvatarChange | null>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const avatarRequestRef = useRef<AbortController | null>(null);
 
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -112,31 +158,49 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],
   );
-  const upsertUser = useUsersStore((state) => state.upsertUser);
-  const getUser = useUsersStore((state) => state.getUser);
+  const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
   // Custom status (emoji + text) — same signal as top-bar / chat header, live from users store.
   const profileUser = useUsersStore((state) => state.usersById[profile.userUuid]);
   const customStatusLabel = useMemo(() => selectUserStatusLabel(profileUser), [profileUser]);
   const resolvedAvatarUrl = profileUser?.avatarUrl ?? profile.avatarUrl;
-  const hasAvatar = resolvedAvatarUrl != null && resolvedAvatarUrl.trim().length > 0;
+  const resetAvatarUrn = useMemo(
+    () => buildWorkspaceDefaultAvatarUrn(profileUser?.email, profile.userUuid),
+    [profile.userUuid, profileUser?.email],
+  );
+  const hasAvatar =
+    pendingAvatarChange?.kind === "reset"
+      ? false
+      : pendingAvatarChange?.kind === "upload" ||
+        (resolvedAvatarUrl != null && resolvedAvatarUrl.trim().length > 0);
   const currentMessengerRoute = useMemo(
     () => parseWorkspaceMessengerRoute(location.pathname),
     [location.pathname],
   );
 
   useEffect(() => {
+    avatarRequestRef.current?.abort();
+    avatarRequestRef.current = null;
     setIsEditing(false);
     setShareCopied(false);
     setAvatarDialogOpen(false);
+    setAvatarBusy(false);
     setAvatarError(null);
-  }, [profile.userUuid]);
+    setPendingAvatarChange(null);
+  }, [profile.userUuid, runtimeContext?.runtimeGeneration, runtimeOwnerKey]);
 
   useEffect(() => {
-    if (!isEditing) {
-      setAvatarDialogOpen(false);
-      setAvatarError(null);
-    }
-  }, [isEditing]);
+    if (pendingAvatarChange?.kind !== "upload") return;
+    const previewUrl = pendingAvatarChange.previewUrl;
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [pendingAvatarChange]);
+
+  useEffect(() => {
+    return () => {
+      avatarRequestRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!shareCopied) return;
@@ -180,19 +244,18 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [shareLink]);
 
   const handleCancelEdit = useCallback(() => {
+    if (avatarBusy) return;
+    setAvatarDialogOpen(false);
+    setAvatarError(null);
+    setPendingAvatarChange(null);
     setIsEditing(false);
-  }, []);
-
-  // Name / nickname cannot be updated via Workspace API yet (IAM-owned, read-only).
-  // Save only closes edit chrome until a writable field (e.g. avatar) is wired.
-  const handleSaveEdit = useCallback(() => {
-    setIsEditing(false);
-  }, []);
+  }, [avatarBusy]);
 
   const resolveAvatarMutationError = useCallback(
     (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallback: string): string => {
       if (kind === "unsupported") return t("settings.avatarUnsupported");
       if (kind === "forbidden") return t("settings.avatarChangesDisabled");
+      if (kind === "invalid") return t("settings.avatarInvalidFile");
       return fallback;
     },
     [],
@@ -215,7 +278,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
   const handleAvatarFileSelected = useCallback(
     (file: File | undefined) => {
-      if (file == null || avatarBusy) return;
+      if (file == null || avatarBusy || runtimeContext == null) return;
 
       const capabilities = getOwnAvatarCapabilities();
       if (capabilities.avatarChangesDisabled) {
@@ -234,47 +297,24 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
         );
         return;
       }
-      if (!file.type.startsWith("image/")) {
+      if (!WORKSPACE_AVATAR_MIME_TYPES.has(file.type.toLowerCase())) {
         setAvatarError(t("settings.avatarInvalidFile"));
         return;
       }
 
-      setAvatarBusy(true);
       setAvatarError(null);
-      void uploadOwnAvatar(file)
-        .then((result) => {
-          if (!result.ok) {
-            setAvatarError(
-              resolveAvatarMutationError(result.kind, t("settings.avatarUpdateError")),
-            );
-            return;
-          }
-
-          const existing = getUser(profile.userUuid);
-          if (existing != null) {
-            upsertUser({
-              ...existing,
-              avatarUrl: result.avatarUrl,
-              updatedAt: new Date().toISOString(),
-            });
-          }
-          setAvatarDialogOpen(false);
-        })
-        .catch((error) => {
-          log.error("Failed to upload own avatar", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          setAvatarError(t("settings.avatarUpdateError"));
-        })
-        .finally(() => {
-          setAvatarBusy(false);
-        });
+      setPendingAvatarChange({
+        kind: "upload",
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+      setAvatarDialogOpen(false);
     },
-    [avatarBusy, getUser, profile.userUuid, resolveAvatarMutationError, upsertUser],
+    [avatarBusy, runtimeContext],
   );
 
   const handleRemoveCurrentPhoto = useCallback(() => {
-    if (avatarBusy) return;
+    if (avatarBusy || runtimeContext == null) return;
 
     const capabilities = getOwnAvatarCapabilities();
     if (capabilities.avatarChangesDisabled) {
@@ -282,35 +322,69 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       return;
     }
 
+    setAvatarError(null);
+    setPendingAvatarChange({ kind: "reset" });
+    setAvatarDialogOpen(false);
+  }, [avatarBusy, runtimeContext]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (avatarBusy) return;
+    if (pendingAvatarChange == null) {
+      setAvatarDialogOpen(false);
+      setAvatarError(null);
+      setIsEditing(false);
+      return;
+    }
+    if (runtimeContext == null) {
+      setAvatarError(t("settings.avatarUpdateError"));
+      setAvatarDialogOpen(true);
+      return;
+    }
+
     setAvatarBusy(true);
     setAvatarError(null);
-    void removeOwnAvatar()
+    const controller = new AbortController();
+    avatarRequestRef.current = controller;
+    const mutation =
+      pendingAvatarChange.kind === "upload"
+        ? uploadOwnAvatar(runtimeContext, pendingAvatarChange.file, controller.signal)
+        : removeOwnAvatar(runtimeContext, controller.signal);
+
+    void mutation
       .then((result) => {
+        if (controller.signal.aborted) return;
         if (!result.ok) {
-          setAvatarError(resolveAvatarMutationError(result.kind, t("settings.avatarRemoveError")));
+          const fallback =
+            pendingAvatarChange.kind === "upload"
+              ? t("settings.avatarUpdateError")
+              : t("settings.avatarRemoveError");
+          setAvatarError(resolveAvatarMutationError(result.kind, fallback));
+          setAvatarDialogOpen(true);
           return;
         }
 
-        const existing = getUser(profile.userUuid);
-        if (existing != null) {
-          upsertUser({
-            ...existing,
-            avatarUrl: null,
-            updatedAt: new Date().toISOString(),
-          });
-        }
+        setPendingAvatarChange(null);
         setAvatarDialogOpen(false);
+        setIsEditing(false);
       })
       .catch((error) => {
-        log.error("Failed to remove own avatar", {
+        if (controller.signal.aborted) return;
+        log.error("Failed to save own avatar", {
           error: error instanceof Error ? error.message : String(error),
         });
-        setAvatarError(t("settings.avatarRemoveError"));
+        setAvatarError(
+          pendingAvatarChange.kind === "upload"
+            ? t("settings.avatarUpdateError")
+            : t("settings.avatarRemoveError"),
+        );
+        setAvatarDialogOpen(true);
       })
       .finally(() => {
+        if (avatarRequestRef.current !== controller) return;
+        avatarRequestRef.current = null;
         setAvatarBusy(false);
       });
-  }, [avatarBusy, getUser, profile.userUuid, resolveAvatarMutationError, upsertUser]);
+  }, [avatarBusy, pendingAvatarChange, resolveAvatarMutationError, runtimeContext]);
 
   const navigateToDefaultTopic = useCallback(
     (streamUuid: string, topicUuid: string) => {
@@ -476,18 +550,19 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleOpenAvatarDialog}
+                disabled={avatarBusy}
                 className="group relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 aria-label={t("settings.editAvatarAria")}
                 data-testid="right-panel-profile-edit-avatar"
               >
-                <WorkspaceAvatar
-                  size="xl"
+                <ProfileAvatar
                   avatarUrn={resolvedAvatarUrl}
+                  resetAvatarUrn={resetAvatarUrn}
+                  pendingChange={pendingAvatarChange}
                   interactive
-                  className="bg-bg-elevated text-text-secondary"
                 >
                   {profile.title.slice(0, 1)}
-                </WorkspaceAvatar>
+                </ProfileAvatar>
                 {/* Figma: серый круг 20×20 + белая stylus в правом нижнем углу */}
                 <span
                   className="pointer-events-none absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-icon-base text-white"
@@ -499,13 +574,13 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               </button>
             ) : (
               <div className="relative shrink-0">
-                <WorkspaceAvatar
-                  size="xl"
+                <ProfileAvatar
                   avatarUrn={resolvedAvatarUrl}
-                  className="bg-bg-elevated text-text-secondary"
+                  resetAvatarUrn={resetAvatarUrn}
+                  pendingChange={pendingAvatarChange}
                 >
                   {profile.title.slice(0, 1)}
-                </WorkspaceAvatar>
+                </ProfileAvatar>
                 {profile.status != null && (
                   <span className="absolute -bottom-0.5 -right-0.5">
                     <PresenceIndicator status={presence} size="sm" />
@@ -588,6 +663,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleCancelEdit}
+                disabled={avatarBusy}
                 className="inline-flex h-10 w-[110px] shrink-0 items-center justify-center rounded-lg bg-card-bg-active px-4 text-sm font-medium leading-5 text-accent transition-colors hover:opacity-90"
                 data-testid="right-panel-profile-cancel"
               >
@@ -596,6 +672,8 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleSaveEdit}
+                disabled={avatarBusy}
+                aria-busy={avatarBusy}
                 className="inline-flex h-10 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-lg bg-accent px-4 text-sm font-medium leading-5 text-on-accent transition-colors hover:opacity-90"
                 data-testid="right-panel-profile-save"
               >
@@ -610,7 +688,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       <input
         ref={cameraInputRef}
         type="file"
-        accept="image/*"
+        accept={WORKSPACE_AVATAR_ACCEPT}
         capture="user"
         className="hidden"
         data-testid="right-panel-edit-avatar-camera-input"
@@ -623,7 +701,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/*"
+        accept={WORKSPACE_AVATAR_ACCEPT}
         className="hidden"
         data-testid="right-panel-edit-avatar-gallery-input"
         onChange={(event) => {

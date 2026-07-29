@@ -11,6 +11,9 @@ import { RightPanelShell } from "./right-panel-shell.ui";
 
 const updateOwnProfileMock = vi.hoisted(() => vi.fn());
 const writeTextMock = vi.hoisted(() => vi.fn());
+const avatarCapabilitiesMock = vi.hoisted(() => vi.fn());
+const removeOwnAvatarMock = vi.hoisted(() => vi.fn());
+const uploadOwnAvatarMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/lib/clipboard", () => ({
   writeText: (...args: unknown[]) => writeTextMock(...args),
@@ -31,14 +34,11 @@ vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
 
 vi.mock("~/features/user-profile/user-profile.api", () => ({
   updateOwnProfile: (...args: unknown[]) => updateOwnProfileMock(...args),
-  getOwnAvatarCapabilities: () => ({
-    maxAvatarFileSizeMib: 25,
-    avatarChangesDisabled: true,
-  }),
+  getOwnAvatarCapabilities: () => avatarCapabilitiesMock(),
   fetchUserProfile: vi.fn(),
   fetchOwnStatus: vi.fn(),
-  removeOwnAvatar: vi.fn(),
-  uploadOwnAvatar: vi.fn(),
+  removeOwnAvatar: (...args: unknown[]) => removeOwnAvatarMock(...args),
+  uploadOwnAvatar: (...args: unknown[]) => uploadOwnAvatarMock(...args),
   updateOwnStatus: vi.fn(),
   clearRealmProfileFieldsCache: vi.fn(),
   fetchRealmProfileFieldDefinitions: vi.fn(),
@@ -98,6 +98,23 @@ describe("RightPanelShell personal-info subview", () => {
     });
     writeTextMock.mockReset();
     writeTextMock.mockResolvedValue(true);
+    avatarCapabilitiesMock.mockReset();
+    avatarCapabilitiesMock.mockReturnValue({
+      maxAvatarFileSizeMib: 25,
+      avatarChangesDisabled: false,
+    });
+    removeOwnAvatarMock.mockReset();
+    removeOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "urn:gravatar:0123456789abcdef0123456789abcdef",
+    });
+    uploadOwnAvatarMock.mockReset();
+    uploadOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "urn:image:33333333-3333-4333-8333-333333333333",
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:avatar-preview");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     setWorkspaceSession();
   });
 
@@ -108,6 +125,7 @@ describe("RightPanelShell personal-info subview", () => {
       runtimeGeneration: 0,
     });
     useUsersStore.getState().clear();
+    vi.restoreAllMocks();
   });
 
   it("opens personal info inside the right panel without changing the route", () => {
@@ -189,9 +207,8 @@ describe("RightPanelShell personal-info subview", () => {
     fireEvent.click(screen.getByTestId("right-panel-profile-edit-avatar"));
 
     expect(screen.getByTestId("right-panel-edit-avatar-dialog")).toBeInTheDocument();
-    expect(screen.getByTestId("right-panel-edit-avatar-take-photo")).toHaveTextContent(
-      t("settings.takePhoto"),
-    );
+    // Keep the camera action hidden until taking photos is supported.
+    expect(screen.queryByTestId("right-panel-edit-avatar-take-photo")).not.toBeInTheDocument();
     expect(screen.getByTestId("right-panel-edit-avatar-choose-gallery")).toHaveTextContent(
       t("settings.chooseFromGallery"),
     );
@@ -201,6 +218,10 @@ describe("RightPanelShell personal-info subview", () => {
   });
 
   it("shows avatar-disabled error when removing photo while changes are disabled", () => {
+    avatarCapabilitiesMock.mockReturnValue({
+      maxAvatarFileSizeMib: 25,
+      avatarChangesDisabled: true,
+    });
     useUsersStore.getState().upsertUser({
       uuid: workspaceUserUuid,
       username: "alice",
@@ -227,6 +248,101 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.getByTestId("right-panel-edit-avatar-error")).toHaveTextContent(
       t("settings.avatarChangesDisabled"),
     );
+  });
+
+  it("previews a selected avatar and uploads it only after save", async () => {
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit-avatar"));
+    fireEvent.click(screen.getByTestId("right-panel-edit-avatar-choose-gallery"));
+
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("right-panel-edit-avatar-gallery-input"), {
+      target: { files: [file] },
+    });
+
+    const editAvatar = screen.getByTestId("right-panel-profile-edit-avatar");
+    expect(editAvatar.querySelector("img")).toHaveAttribute("src", "blob:avatar-preview");
+    expect(uploadOwnAvatarMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("right-panel-edit-avatar-dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+
+    await waitFor(() => {
+      expect(uploadOwnAvatarMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuid: workspaceUserUuid }),
+        file,
+        expect.any(AbortSignal),
+      );
+      expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute(
+        "data-editing",
+        "false",
+      );
+    });
+  });
+
+  it("resets the current avatar only after save", async () => {
+    const existingUser = useUsersStore.getState().usersById[workspaceUserUuid];
+    if (existingUser == null) {
+      throw new Error("Expected current Workspace user");
+    }
+    useUsersStore.getState().upsertUser({
+      ...existingUser,
+      avatarUrl: "urn:image:33333333-3333-4333-8333-333333333333",
+      updatedAt: "2026-07-01T10:01:00Z",
+    });
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit-avatar"));
+    fireEvent.click(screen.getByTestId("right-panel-edit-avatar-remove"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("right-panel-profile-edit-avatar").querySelector("img"),
+      ).toHaveAttribute(
+        "src",
+        "https://secure.gravatar.com/avatar/c160f8cc69a4f0bf2b0362752353d060?d=identicon&s=500",
+      );
+    });
+    expect(removeOwnAvatarMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("right-panel-edit-avatar-dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+
+    await waitFor(() => {
+      expect(removeOwnAvatarMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuid: workspaceUserUuid }),
+        expect.any(AbortSignal),
+      );
+      expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute(
+        "data-editing",
+        "false",
+      );
+    });
+  });
+
+  it("discards the selected avatar when profile editing is cancelled", async () => {
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit-avatar"));
+
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("right-panel-edit-avatar-gallery-input"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByTestId("right-panel-profile-cancel"));
+
+    expect(uploadOwnAvatarMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute("data-editing", "false");
+    await waitFor(() => {
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-preview");
+    });
   });
 
   it("exits edit chrome from cancel and save without calling profile update API", () => {

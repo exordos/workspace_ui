@@ -1,3 +1,6 @@
+import { md5 } from "@noble/hashes/legacy.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+
 const WORKSPACE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORKSPACE_GRAVATAR_HASH_PATTERN = /^[0-9a-f]{32}$/i;
 const WORKSPACE_GAVATAR_PREFIX = "urn:gavatar:";
@@ -24,6 +27,17 @@ function resolveGravatarUrl(hash: string): string | null {
   return WORKSPACE_GRAVATAR_HASH_PATTERN.test(normalizedHash)
     ? `${WORKSPACE_GAVATAR_URL}${normalizedHash}?d=identicon&s=500`
     : null;
+}
+
+export function buildWorkspaceDefaultAvatarUrn(
+  email: string | null | undefined,
+  userUuid: string,
+): string {
+  const normalizedEmail = email?.trim().toLowerCase() ?? "";
+  const seed = normalizedEmail.length > 0 ? normalizedEmail : userUuid;
+  // MD5 is required only for compatibility with the Gravatar address format.
+  const hash = bytesToHex(md5(utf8ToBytes(seed)));
+  return `${WORKSPACE_GRAVATAR_PREFIX}${hash}`;
 }
 
 export function resolveWorkspaceAvatarSource(

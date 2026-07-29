@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.internal";
-import { isWorkspaceAvatarUrn, resolveWorkspaceAvatarSource } from "./workspace-avatar-urn.lib";
+import {
+  buildWorkspaceDefaultAvatarUrn,
+  isWorkspaceAvatarUrn,
+  resolveWorkspaceAvatarSource,
+} from "./workspace-avatar-urn.lib";
 import { loadWorkspaceAvatar } from "./workspace-avatar.lib";
 
 vi.mock("~/shared/api/messenger-files.api", () => ({
@@ -37,6 +41,18 @@ beforeEach(() => {
 });
 
 describe("Workspace avatar resolution", () => {
+  it("builds the same default Gravatar URN as the Workspace backend", () => {
+    expect(
+      buildWorkspaceDefaultAvatarUrn(
+        " MyEmailAddress@example.com ",
+        "a225223c-637c-4afa-918f-5f2798b9305f",
+      ),
+    ).toBe("urn:gravatar:0bc83cb571cd1c50ba6f3e8a78ef1346");
+    expect(buildWorkspaceDefaultAvatarUrn(null, "a225223c-637c-4afa-918f-5f2798b9305f")).toBe(
+      "urn:gravatar:a62015bc6e3423354e6073cb8aef7a48",
+    );
+  });
+
   it("resolves Gravatar hash URNs to the secure Gravatar URL", () => {
     const hash = "7ec7606c46a14a7ef514d1f1f9038823";
     const avatarUrn = `urn:gravatar:${hash}`;

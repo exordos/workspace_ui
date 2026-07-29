@@ -5,6 +5,26 @@
  * uuid-based user store cutover.
  */
 
+import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
+import { writeUsersToCacheForOwner } from "~/entities/user/user-sync.lib";
+import { useUsersStore } from "~/entities/user/user.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestInvalidated,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
+import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+import {
+  resetUserAvatar as resetWorkspaceUserAvatar,
+  uploadUserAvatar as uploadWorkspaceUserAvatar,
+} from "~/shared/api/workspace-client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
@@ -20,9 +40,8 @@ import type {
 const log = createLogger("user-profile:api");
 const UNSUPPORTED_PROFILE_MESSAGE =
   "Profile updates are read-only until Workspace profile write API is available";
-const UNSUPPORTED_AVATAR_MESSAGE =
-  "Avatar changes are read-only until Workspace avatar API is available";
-const FALLBACK_MAX_AVATAR_FILE_SIZE_MIB = 25;
+const WORKSPACE_MAX_AVATAR_FILE_SIZE_MIB = 25;
+const STALE_AVATAR_MUTATION_MESSAGE = "Avatar response belongs to an inactive Workspace session";
 
 export function clearRealmProfileFieldsCache(): void {
   // Kept as a no-op for callers that clear all profile-side caches after logout.
@@ -87,23 +106,107 @@ export function updateOwnStatus(_params: UpdateOwnStatusParams): Promise<OwnStat
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
   return {
-    maxAvatarFileSizeMib: FALLBACK_MAX_AVATAR_FILE_SIZE_MIB,
-    avatarChangesDisabled: true,
+    maxAvatarFileSizeMib: WORKSPACE_MAX_AVATAR_FILE_SIZE_MIB,
+    avatarChangesDisabled: false,
   };
 }
 
-export function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
-  return Promise.resolve({
-    ok: false,
-    kind: "unsupported",
-    message: UNSUPPORTED_AVATAR_MESSAGE,
-  });
+function getCurrentRuntimeContext(): WorkspaceRuntimeContext | null {
+  return selectCurrentWorkspaceRuntimeContext(useWorkspaceAuthStore.getState());
 }
 
-export function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
-  return Promise.resolve({
+function classifyAvatarMutationError(error: unknown): OwnAvatarMutationResult {
+  if (error instanceof MessengerApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return { ok: false, kind: "forbidden", message: error.message };
+    }
+    if ([400, 413, 415, 422].includes(error.status)) {
+      return { ok: false, kind: "invalid", message: error.message };
+    }
+    if ([404, 405, 501].includes(error.status)) {
+      return { ok: false, kind: "unsupported", message: error.message };
+    }
+  }
+
+  return {
     ok: false,
-    kind: "unsupported",
-    message: UNSUPPORTED_AVATAR_MESSAGE,
-  });
+    kind: "transient",
+    message: error instanceof Error ? error.message : "Workspace avatar update failed",
+  };
+}
+
+function applyOwnAvatarResponse(
+  runtimeContext: WorkspaceRuntimeContext,
+  userDto: WorkspaceMessengerUserDto,
+): OwnAvatarMutationResult {
+  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  const user = adaptWorkspaceMessengerUserDto(userDto);
+  const state = useUsersStore.getState();
+  let applied = true;
+  if (state.ownerKey == null) {
+    state.upsertUser(user);
+  } else {
+    applied = state.upsertUserForOwner(ownerKey, user);
+  }
+
+  if (!applied) {
+    return {
+      ok: false,
+      kind: "transient",
+      message: STALE_AVATAR_MUTATION_MESSAGE,
+    };
+  }
+
+  writeUsersToCacheForOwner(ownerKey, [user]);
+  return { ok: true, avatarUrl: user.avatarUrl };
+}
+
+async function mutateOwnAvatar(
+  runtimeContext: WorkspaceRuntimeContext,
+  signal: AbortSignal | undefined,
+  request: (
+    options: ReturnType<typeof buildWorkspaceRequestOptions>,
+    userUuid: string,
+  ) => Promise<WorkspaceMessengerUserDto>,
+): Promise<OwnAvatarMutationResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+
+  try {
+    const userDto = await request(
+      buildWorkspaceRequestOptions(runtimeContext, undefined, signal),
+      runtimeContext.userUuid,
+    );
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getCurrentRuntimeContext, signal)) {
+      return {
+        ok: false,
+        kind: "transient",
+        message: STALE_AVATAR_MUTATION_MESSAGE,
+      };
+    }
+    return applyOwnAvatarResponse(runtimeContext, userDto);
+  } catch (error) {
+    if (signal?.aborted !== true) {
+      log.warn("Workspace avatar mutation failed", {
+        status: error instanceof MessengerApiError ? error.status : undefined,
+      });
+    }
+    return classifyAvatarMutationError(error);
+  }
+}
+
+export function uploadOwnAvatar(
+  runtimeContext: WorkspaceRuntimeContext,
+  file: File,
+  signal?: AbortSignal,
+): Promise<OwnAvatarMutationResult> {
+  return mutateOwnAvatar(runtimeContext, signal, (options, userUuid) =>
+    uploadWorkspaceUserAvatar(options, userUuid, file),
+  );
+}
+
+export function removeOwnAvatar(
+  runtimeContext: WorkspaceRuntimeContext,
+  signal?: AbortSignal,
+): Promise<OwnAvatarMutationResult> {
+  return mutateOwnAvatar(runtimeContext, signal, resetWorkspaceUserAvatar);
 }

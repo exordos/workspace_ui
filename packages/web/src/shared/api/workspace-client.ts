@@ -2,6 +2,7 @@ import {
   DEFAULT_WORKSPACE_API_BASE,
   messengerGetJson,
   messengerPostJson,
+  messengerRequestFormDataResult,
   messengerRequestJsonResult,
   paginationParams,
   parseDto,
@@ -142,6 +143,33 @@ export async function invokeUserPresence(
     body,
   );
   return parseDto(data, isWorkspaceMessengerUserDto, "workspace user presence response");
+}
+
+export async function uploadUserAvatar(
+  options: WorkspaceClientOptions,
+  userUuid: string,
+  file: File,
+): Promise<WorkspaceMessengerUserDto> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await messengerRequestFormDataResult(
+    `/users/${encodeURIComponent(userUuid)}/actions/avatar_upload/invoke`,
+    withWorkspaceApiBase(options),
+    form,
+  );
+  return parseDto(data, isWorkspaceMessengerUserDto, "workspace user avatar upload response");
+}
+
+export async function resetUserAvatar(
+  options: WorkspaceClientOptions,
+  userUuid: string,
+): Promise<WorkspaceMessengerUserDto> {
+  const data = await messengerPostJson(
+    `/users/${encodeURIComponent(userUuid)}/actions/avatar_reset/invoke`,
+    withWorkspaceApiBase(options),
+    {},
+  );
+  return parseDto(data, isWorkspaceMessengerUserDto, "workspace user avatar reset response");
 }
 
 export async function getEvents(

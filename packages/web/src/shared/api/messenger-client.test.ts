@@ -17,6 +17,8 @@ import {
   getUsers,
   getUsersPage,
   invokeUserPresence,
+  resetUserAvatar,
+  uploadUserAvatar,
 } from "./workspace-client";
 
 // Phase 1 client tests cover the small bootstrap API facade.
@@ -518,6 +520,50 @@ describe("messenger-client", () => {
 
     const [, init] = firstFetchCall(fetchMock);
     expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: null, text: null }));
+  });
+
+  it("uploads the current user avatar as multipart data", async () => {
+    const avatar = `urn:image:33333333-3333-4333-8333-333333333333`;
+    const fetchMock = createFetchMock({ ...userDto, avatar });
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+
+    await expect(
+      uploadUserAvatar({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID, file),
+    ).resolves.toEqual({ ...userDto, avatar });
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/workspace/v1/users/${USER_UUID}/actions/avatar_upload/invoke`);
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer access-token",
+    });
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+    expect(init?.body).toBeInstanceOf(FormData);
+    const body = init?.body;
+    if (!(body instanceof FormData)) {
+      throw new Error("Expected avatar upload multipart body");
+    }
+    expect(body.get("file")).toBe(file);
+  });
+
+  it("resets the current user avatar to the server-provided default", async () => {
+    const avatar = "urn:gravatar:0123456789abcdef0123456789abcdef";
+    const fetchMock = createFetchMock({ ...userDto, avatar });
+
+    await expect(
+      resetUserAvatar({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID),
+    ).resolves.toEqual({ ...userDto, avatar });
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/workspace/v1/users/${USER_UUID}/actions/avatar_reset/invoke`);
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer access-token",
+      "Content-Type": "application/json",
+    });
+    expect(init?.body).toBe("{}");
   });
 
   it("filters invalid user rows", async () => {

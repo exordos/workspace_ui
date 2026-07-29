@@ -10,7 +10,6 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
         open
         onOpenChange={vi.fn()}
         hasAvatar
-        onTakePhoto={vi.fn()}
         onChooseFromGallery={vi.fn()}
         onRemoveCurrentPhoto={vi.fn()}
       />,
@@ -31,14 +30,13 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
     );
     expect(dialog).not.toHaveClass("shadow-xl");
 
-    const takePhoto = screen.getByTestId("right-panel-edit-avatar-take-photo");
-    expect(takePhoto).toHaveTextContent(t("settings.takePhoto"));
-    // Ряд 32px, Regular 14/20, gap иконка→текст 12.
-    expect(takePhoto).toHaveClass("h-8", "gap-3", "text-sm", "font-normal", "leading-5");
+    // Keep "Take photo" hidden until camera support is implemented.
+    expect(screen.queryByTestId("right-panel-edit-avatar-take-photo")).not.toBeInTheDocument();
 
-    expect(screen.getByTestId("right-panel-edit-avatar-choose-gallery")).toHaveTextContent(
-      t("settings.chooseFromGallery"),
-    );
+    const chooseGallery = screen.getByTestId("right-panel-edit-avatar-choose-gallery");
+    expect(chooseGallery).toHaveTextContent(t("settings.chooseFromGallery"));
+    // Match the 32px action row and 12px icon gap from the design.
+    expect(chooseGallery).toHaveClass("h-8", "gap-3", "text-sm", "font-normal", "leading-5");
 
     const remove = screen.getByTestId("right-panel-edit-avatar-remove");
     expect(remove).toHaveTextContent(t("settings.removeCurrentPhoto"));
@@ -64,7 +62,6 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
         open
         onOpenChange={vi.fn()}
         hasAvatar={false}
-        onTakePhoto={vi.fn()}
         onChooseFromGallery={vi.fn()}
         onRemoveCurrentPhoto={vi.fn()}
       />,
@@ -74,7 +71,6 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
   });
 
   it("invokes action callbacks on click", () => {
-    const onTakePhoto = vi.fn();
     const onChooseFromGallery = vi.fn();
     const onRemoveCurrentPhoto = vi.fn();
 
@@ -83,17 +79,14 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
         open
         onOpenChange={vi.fn()}
         hasAvatar
-        onTakePhoto={onTakePhoto}
         onChooseFromGallery={onChooseFromGallery}
         onRemoveCurrentPhoto={onRemoveCurrentPhoto}
       />,
     );
 
-    fireEvent.click(screen.getByTestId("right-panel-edit-avatar-take-photo"));
     fireEvent.click(screen.getByTestId("right-panel-edit-avatar-choose-gallery"));
     fireEvent.click(screen.getByTestId("right-panel-edit-avatar-remove"));
 
-    expect(onTakePhoto).toHaveBeenCalledTimes(1);
     expect(onChooseFromGallery).toHaveBeenCalledTimes(1);
     expect(onRemoveCurrentPhoto).toHaveBeenCalledTimes(1);
   });
@@ -105,7 +98,6 @@ describe("RightPanelUserProfileEditAvatarDialog", () => {
         onOpenChange={vi.fn()}
         hasAvatar
         error={t("settings.avatarUnsupported")}
-        onTakePhoto={vi.fn()}
         onChooseFromGallery={vi.fn()}
         onRemoveCurrentPhoto={vi.fn()}
       />,

@@ -65,7 +65,7 @@ export const RightPanelUserProfileEditAvatarDialog: React.FC<
   hasAvatar,
   busy = false,
   error = null,
-  onTakePhoto,
+  // Keep the callback in the contract while the camera action is hidden.
   onChooseFromGallery,
   onRemoveCurrentPhoto,
 }) => {
@@ -77,15 +77,8 @@ export const RightPanelUserProfileEditAvatarDialog: React.FC<
 
       {/* Outer pad 12×20; между блоком actions и Cancel — 20px. */}
       <div className="flex flex-col gap-5 px-3 py-5" data-testid="right-panel-edit-avatar-dialog">
-        {/* Три действия с вертикальным gap 8. */}
+        {/* Restore the camera action here when taking photos is supported. */}
         <div className="flex flex-col gap-2">
-          <AvatarActionRow
-            icon="photo_camera"
-            label={t("settings.takePhoto")}
-            onClick={onTakePhoto}
-            disabled={busy}
-            testId="right-panel-edit-avatar-take-photo"
-          />
           <AvatarActionRow
             icon="images"
             label={t("settings.chooseFromGallery")}

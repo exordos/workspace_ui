@@ -1120,6 +1120,13 @@
     "publisher": "Artem Zakharchenko"
   },
   {
+    "name": "@noble/hashes",
+    "version": "2.2.0",
+    "license": "MIT",
+    "repository": "https://github.com/paulmillr/noble-hashes",
+    "publisher": "Paul Miller"
+  },
+  {
     "name": "@nodelib/fs.scandir",
     "version": "2.1.5",
     "license": "MIT",
