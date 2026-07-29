@@ -19,6 +19,8 @@ export interface WorkspaceComposerDraftContent {
   replySession: WorkspaceComposerDraftReplySession;
 }
 
+export type WorkspaceComposerDraftDisposition = "editable" | "consumed";
+
 export interface WorkspaceComposerDraft {
   key: string;
   draftUuid: string;
@@ -29,6 +31,7 @@ export interface WorkspaceComposerDraft {
   snapshotId: string;
   content: WorkspaceComposerDraftContent;
   etag: string | null;
+  disposition: WorkspaceComposerDraftDisposition;
   syncStatus: "local" | "saving" | "saved" | "failed" | "conflict" | "deleting";
   serverUpdatedAt: string | null;
   conflictServerContent?: WorkspaceComposerDraftContent;

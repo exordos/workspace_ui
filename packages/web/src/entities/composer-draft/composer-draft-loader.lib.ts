@@ -30,6 +30,7 @@ function toComposerDraft(
       replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
     },
     etag,
+    disposition: "editable",
     syncStatus: "saved",
     serverUpdatedAt: draft.updated_at,
     pendingCreatePayload: null,

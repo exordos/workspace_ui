@@ -35,6 +35,27 @@ function channelAvatarStyle(color: number | null | undefined): React.CSSProperti
   return { backgroundColor: `#${color.toString(16).padStart(6, "0")}` };
 }
 
+function draftSyncStatusText(draft: WorkspaceComposerDraft): string {
+  if (draft.disposition === "consumed" && draft.syncStatus === "failed") {
+    return t("workspaceDrafts.deleteFailed");
+  }
+
+  switch (draft.syncStatus) {
+    case "local":
+      return t("workspaceDrafts.local");
+    case "saving":
+      return t("workspaceDrafts.saving");
+    case "failed":
+      return t("workspaceDrafts.failed");
+    case "conflict":
+      return t("workspaceDrafts.conflict");
+    case "saved":
+      return "";
+    case "deleting":
+      return t("workspaceDrafts.deleting");
+  }
+}
+
 function DraftCard({
   draft,
   onOpen,
@@ -59,16 +80,32 @@ function DraftCard({
   const isDirect = directUserUuid != null;
   const avatarUrn = directUser?.avatarUrl ?? null;
   const avatarStyle = isDirect ? undefined : channelAvatarStyle(stream?.color);
-  const syncStatusText =
-    draft.syncStatus === "local"
-      ? t("workspaceDrafts.local")
-      : draft.syncStatus === "saving"
-        ? t("workspaceDrafts.saving")
-        : draft.syncStatus === "failed"
-          ? t("workspaceDrafts.failed")
-          : draft.syncStatus === "conflict"
-            ? t("workspaceDrafts.conflict")
-            : t("workspaceDrafts.deleting");
+  const isConsumed = draft.disposition === "consumed";
+  const canOpen = !isConsumed;
+  const hasConflictActions = draft.syncStatus === "conflict";
+  const canRetryDeletion = isConsumed && draft.syncStatus === "failed";
+  const hasBottomActions = hasConflictActions || canRetryDeletion;
+  const syncStatusText = draftSyncStatusText(draft);
+  const contentClassName = `min-w-0 flex-1 text-left${hasBottomActions ? " pb-8" : ""}`;
+  const cardContent = (
+    <>
+      <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+        <span className="rounded bg-bg-elevated px-1.5 py-0.5">
+          {isDirect ? t("workspaceDrafts.direct") : t("workspaceDrafts.channel")}
+        </span>
+        <span className="truncate">{isDirect ? streamName : `#${streamName}`}</span>
+        <span>·</span>
+        <span className="truncate">{topicName}</span>
+        <span className="ml-auto shrink-0">{draftTime(draft.updatedAt)}</span>
+      </div>
+      <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-text-primary">
+        {draftPreview(draft.content.text)}
+      </p>
+      {draft.syncStatus !== "saved" ? (
+        <p className="mt-1 text-[11px] text-text-muted">{syncStatusText}</p>
+      ) : null}
+    </>
+  );
 
   return (
     <li className="bg-bg-elevated/40 group relative flex gap-3 rounded-xl border border-border-subtle p-3 transition-colors hover:bg-card-bg">
@@ -77,40 +114,26 @@ function DraftCard({
           {isDirect ? streamName.slice(0, 1) : "#"}
         </WorkspaceAvatar>
       </div>
-      <button
-        type="button"
-        onClick={() => onOpen(draft)}
-        className={`min-w-0 flex-1 text-left${draft.syncStatus === "conflict" ? "pb-8" : ""}`}
-      >
-        <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
-          <span className="rounded bg-bg-elevated px-1.5 py-0.5">
-            {isDirect ? t("workspaceDrafts.direct") : t("workspaceDrafts.channel")}
-          </span>
-          <span className="truncate">{isDirect ? streamName : `#${streamName}`}</span>
-          <span>·</span>
-          <span className="truncate">{topicName}</span>
-          <span className="ml-auto shrink-0">{draftTime(draft.updatedAt)}</span>
-        </div>
-        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-text-primary">
-          {draftPreview(draft.content.text)}
-        </p>
-        {draft.syncStatus !== "saved" ? (
-          <p className="mt-1 text-[11px] text-text-muted">{syncStatusText}</p>
-        ) : null}
-      </button>
-      {draft.syncStatus === "conflict" ? (
+      {canOpen ? (
+        <button type="button" onClick={() => onOpen(draft)} className={contentClassName}>
+          {cardContent}
+        </button>
+      ) : (
+        <div className={contentClassName}>{cardContent}</div>
+      )}
+      {hasConflictActions ? (
         <div className="absolute bottom-3 left-12 flex flex-wrap gap-1.5">
           <button
             type="button"
             onClick={() => onAcceptServer(draft)}
-            className="hover:bg-bg-hover rounded bg-bg-elevated px-2 py-1 text-[11px] text-text-primary"
+            className="rounded bg-bg-elevated px-2 py-1 text-[11px] text-text-primary hover:bg-card-bg"
           >
             {t("workspaceDrafts.conflictAcceptServer")}
           </button>
           <button
             type="button"
             onClick={() => onKeepLocal(draft)}
-            className="hover:bg-bg-hover rounded bg-bg-elevated px-2 py-1 text-[11px] text-text-primary"
+            className="rounded bg-bg-elevated px-2 py-1 text-[11px] text-text-primary hover:bg-card-bg"
           >
             {t("workspaceDrafts.conflictKeepLocal")}
           </button>
@@ -123,28 +146,41 @@ function DraftCard({
           </button>
         </div>
       ) : null}
-      <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={() => onOpen(draft)}
-          className="rounded p-1 text-text-muted hover:bg-bg-elevated hover:text-text-primary"
-          aria-label={t("activity.editDraft")}
-          title={t("activity.editDraft")}
-        >
-          <Icon name="newWindow" size={16} />
-        </button>
-        {draft.syncStatus !== "conflict" ? (
+      {canRetryDeletion ? (
+        <div className="absolute bottom-3 left-12">
           <button
             type="button"
             onClick={() => onDelete(draft)}
-            className="hover:text-danger-base rounded p-1 text-text-muted hover:bg-bg-elevated"
-            aria-label={t("activity.deleteDraft")}
-            title={t("activity.deleteDraft")}
+            className="rounded bg-bg-elevated px-2 py-1 text-[11px] text-text-primary hover:bg-card-bg"
           >
-            <Icon name="delete" size={16} />
+            {t("workspaceDrafts.retryDeletion")}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {canOpen ? (
+        <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() => onOpen(draft)}
+            className="rounded p-1 text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+            aria-label={t("activity.editDraft")}
+            title={t("activity.editDraft")}
+          >
+            <Icon name="newWindow" size={16} />
+          </button>
+          {!hasConflictActions ? (
+            <button
+              type="button"
+              onClick={() => onDelete(draft)}
+              className="hover:text-danger-base rounded p-1 text-text-muted hover:bg-bg-elevated"
+              aria-label={t("activity.deleteDraft")}
+              title={t("activity.deleteDraft")}
+            >
+              <Icon name="delete" size={16} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   );
 }

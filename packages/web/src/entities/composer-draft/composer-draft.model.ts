@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { logStoreAction } from "~/shared/lib/logger";
+import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import {
   deleteWorkspaceComposerDraftRecord,
   migrateWorkspaceComposerDraftToRecord,
@@ -22,6 +22,7 @@ import type {
 } from "./composer-draft.types";
 
 const COMPOSER_DRAFT_DEBOUNCE_MS = 400;
+const draftPersistenceLog = createLogger("composer-draft:persistence");
 
 type ScheduledOperation =
   | {
@@ -86,7 +87,7 @@ function removeDraft(
 }
 
 function isComposerDraftRestorable(draft: WorkspaceComposerDraft): boolean {
-  return draft.syncStatus !== "deleting";
+  return draft.disposition === "editable" && draft.syncStatus !== "deleting";
 }
 
 function candidatesForConversation(
@@ -223,6 +224,30 @@ export interface WorkspaceComposerDraftStoreState {
   clear: () => Promise<void>;
 }
 
+type WorkspaceComposerDraftSelectionState = Pick<
+  WorkspaceComposerDraftStoreState,
+  "draftsByKey" | "activeDraftUuidByConversationKey" | "completedConversationVisits"
+>;
+
+function findWorkspaceComposerDraft(
+  state: WorkspaceComposerDraftSelectionState,
+  ownerKey: string,
+  conversationId: string,
+  requestedDraftUuid?: string | null,
+): WorkspaceComposerDraft | null {
+  const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
+  const activeUuid = state.activeDraftUuidByConversationKey[scopeKey];
+  if (activeUuid != null) {
+    const active = state.draftsByKey[draftKey(ownerKey, activeUuid)] ?? null;
+    if (active != null && isComposerDraftRestorable(active)) return active;
+  }
+  if (state.completedConversationVisits[scopeKey] != null) return null;
+  const candidates = candidatesForConversation(state.draftsByKey, ownerKey, conversationId);
+  return requestedDraftUuid == null
+    ? (candidates[0] ?? null)
+    : (candidates.find((draft) => draft.draftUuid === requestedDraftUuid) ?? null);
+}
+
 export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStoreState>(
   (set, get) => ({
     draftsByKey: {},
@@ -233,8 +258,10 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
       const normalizedContent = normalizeWorkspaceComposerDraftContent(content);
       const activeDraftUuid = get().activeDraftUuidByConversationKey[scopeKey];
-      const current =
+      const activeDraft =
         activeDraftUuid == null ? null : get().draftsByKey[draftKey(ownerKey, activeDraftUuid)];
+      const current =
+        activeDraft != null && isComposerDraftRestorable(activeDraft) ? activeDraft : null;
       const targetStreamUuid = target?.streamUuid ?? current?.streamUuid ?? "";
       if (targetStreamUuid.length > 0 && isDraftStreamRemoved(ownerKey, targetStreamUuid)) {
         return null;
@@ -263,6 +290,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
               snapshotId: createWorkspaceComposerDraftSnapshotId(),
               content: normalizedContent,
               etag: null,
+              disposition: "editable",
               syncStatus: "local",
               serverUpdatedAt: null,
               updatedAt: nextDraftUpdatedAt(),
@@ -374,6 +402,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         snapshotId: legacy.snapshotId,
         content: normalizeWorkspaceComposerDraftContent(legacy.content),
         etag: null,
+        disposition: "editable",
         syncStatus: "local",
         serverUpdatedAt: null,
         pendingCreatePayload: null,
@@ -391,6 +420,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
           snapshotId: migrated.snapshotId,
           content: migrated.content,
           etag: migrated.etag,
+          disposition: migrated.disposition,
           syncStatus: migrated.syncStatus,
           updatedAt: migrated.updatedAt,
           serverUpdatedAt: migrated.serverUpdatedAt,
@@ -410,16 +440,14 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
 
     selectDraftForConversation(ownerKey, conversationId, requestedDraftUuid) {
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
-      const activeUuid = get().activeDraftUuidByConversationKey[scopeKey];
-      const active = activeUuid == null ? null : get().draftsByKey[draftKey(ownerKey, activeUuid)];
-      if (active != null && isComposerDraftRestorable(active)) return active;
-      if (get().completedConversationVisits[scopeKey] != null) return null;
-      const candidates = candidatesForConversation(get().draftsByKey, ownerKey, conversationId);
-      const selected =
-        requestedDraftUuid == null
-          ? (candidates[0] ?? null)
-          : (candidates.find((draft) => draft.draftUuid === requestedDraftUuid) ?? null);
+      const selected = findWorkspaceComposerDraft(
+        get(),
+        ownerKey,
+        conversationId,
+        requestedDraftUuid,
+      );
       if (selected == null) return null;
+      if (get().activeDraftUuidByConversationKey[scopeKey] === selected.draftUuid) return selected;
       set((state) => ({
         activeDraftUuidByConversationKey: {
           ...state.activeDraftUuidByConversationKey,
@@ -542,7 +570,11 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const key = draftKey(ownerKey, draftUuid);
       const current = get().draftsByKey[key];
       if (current == null || current.syncStatus === "conflict") return null;
-      const next = { ...current, syncStatus: "deleting" as const };
+      const next = {
+        ...current,
+        disposition: "consumed" as const,
+        syncStatus: "deleting" as const,
+      };
       set((state) => ({ draftsByKey: { ...state.draftsByKey, [key]: next } }));
       scheduleWrite(next);
       logStoreAction("workspaceComposerDraft", "deletePending", { ownerKey });
@@ -578,6 +610,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         content: conflictServerContent,
         etag: conflictServerEtag,
         snapshotId: createWorkspaceComposerDraftSnapshotId(),
+        disposition: "editable",
         syncStatus: "saved",
         pendingCreatePayload: null,
         updatedAt: nextDraftUpdatedAt(),
@@ -594,6 +627,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const next: WorkspaceComposerDraft = {
         ...current,
         etag: current.conflictServerEtag,
+        disposition: "editable",
         syncStatus: "local",
         updatedAt: nextDraftUpdatedAt(),
       };
@@ -611,6 +645,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const next: WorkspaceComposerDraft = {
         ...current,
         etag: current.conflictServerEtag,
+        disposition: "consumed",
         syncStatus: "deleting",
         pendingCreatePayload: null,
       };
@@ -642,7 +677,13 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       const chain = previous
         .catch(() => undefined)
         .then(() => persist(operation))
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          draftPersistenceLog.error("Draft cache operation failed", {
+            draftUuid: operation.kind === "write" ? operation.draft.draftUuid : operation.draftUuid,
+            operation: operation.kind,
+            errorType: error instanceof Error ? error.name : typeof error,
+          });
+        });
       persistChains.set(key, chain);
       await chain;
       if (persistChains.get(key) === chain) persistChains.delete(key);
@@ -711,22 +752,12 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
 );
 
 export function selectWorkspaceComposerDraft(
-  state: Pick<
-    WorkspaceComposerDraftStoreState,
-    "draftsByKey" | "activeDraftUuidByConversationKey" | "completedConversationVisits"
-  >,
+  state: WorkspaceComposerDraftSelectionState,
   ownerKey: string | null | undefined,
   conversationId: string | null | undefined,
 ): WorkspaceComposerDraft | null {
   if (ownerKey == null || conversationId == null) return null;
-  const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
-  if (state.completedConversationVisits[scopeKey] != null) return null;
-  const activeUuid = state.activeDraftUuidByConversationKey[scopeKey];
-  if (activeUuid != null) {
-    const active = state.draftsByKey[draftKey(ownerKey, activeUuid)] ?? null;
-    if (active != null && isComposerDraftRestorable(active)) return active;
-  }
-  return candidatesForConversation(state.draftsByKey, ownerKey, conversationId)[0] ?? null;
+  return findWorkspaceComposerDraft(state, ownerKey, conversationId);
 }
 
 export function resetWorkspaceComposerDraftStoreForTests(): void {

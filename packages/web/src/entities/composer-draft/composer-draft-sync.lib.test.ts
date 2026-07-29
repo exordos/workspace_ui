@@ -21,6 +21,7 @@ vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
 
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
+import { clearLogHistory, getLogHistory } from "~/shared/lib/logger";
 import {
   deleteWorkspaceComposerDraftFromServer,
   resetWorkspaceComposerDraftSyncForTests,
@@ -100,6 +101,7 @@ beforeEach(() => {
   resetWorkspaceComposerDraftSyncForTests();
   resetWorkspaceComposerDraftStoreForTests();
   vi.clearAllMocks();
+  clearLogHistory();
   writeWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
   deleteWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
 });
@@ -277,23 +279,102 @@ describe("workspace composer draft remote queue", () => {
         draft: draft!,
       }),
     ).toBe(true);
-    await vi.advanceTimersByTimeAsync(0);
     await flushMicrotasks();
 
-    expect(writeWorkspaceComposerDraftRecord).toHaveBeenCalledWith(
-      OWNER,
-      expect.objectContaining({
-        draftUuid: draft!.draftUuid,
-        syncStatus: "deleting",
-      }),
+    const persistedBeforeNetworkTimer = writeWorkspaceComposerDraftRecord.mock.calls.some(
+      ([ownerKey, record]) =>
+        ownerKey === OWNER &&
+        record.draftUuid === draft!.draftUuid &&
+        record.disposition === "consumed" &&
+        record.syncStatus === "deleting",
     );
-    expect(deleteDraft).not.toHaveBeenCalled();
+    const deleteStartedBeforePersistence = deleteDraft.mock.calls.length > 0;
 
     persisted.resolve(undefined);
     await flushMicrotasks();
     await vi.advanceTimersByTimeAsync(0);
 
+    expect(persistedBeforeNetworkTimer).toBe(true);
+    expect(deleteStartedBeforePersistence).toBe(false);
     expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-1");
+  });
+
+  it("reports a cache write failure and still sends the server DELETE", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Already sent"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .applyDraftSyncSuccess(OWNER, draft!.draftUuid, draft!.snapshotId, {
+        etag: "etag-1",
+        updatedAt: "2026-07-20T09:00:01.000Z",
+      });
+    writeWorkspaceComposerDraftRecord.mockRejectedValueOnce(new Error("IndexedDB unavailable"));
+    deleteDraft.mockResolvedValueOnce(undefined);
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: draft!,
+      }),
+    ).toBe(true);
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-1");
+    expect(getLogHistory()).toContainEqual(
+      expect.objectContaining({
+        level: "error",
+        scope: "composer-draft:persistence",
+        message: "Draft cache operation failed",
+        data: expect.objectContaining({
+          draftUuid: draft!.draftUuid,
+          operation: "write",
+        }),
+      }),
+    );
+  });
+
+  it("deletes a conflicted draft publicly with the latest server ETag", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Local version"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .markDraftConflict(OWNER, draft!.draftUuid, content("Server version"), "etag-server");
+    const conflicted = useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key];
+    expect(conflicted).toMatchObject({
+      syncStatus: "conflict",
+      disposition: "editable",
+      conflictServerEtag: "etag-server",
+    });
+    deleteDraft.mockResolvedValueOnce(undefined);
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: conflicted!,
+      }),
+    ).toBe(true);
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toMatchObject({
+      etag: "etag-server",
+      syncStatus: "deleting",
+      disposition: "consumed",
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft!.draftUuid, "etag-server");
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
   });
 
   it("does not restore sent text after leaving while a stale DELETE is reconciled", async () => {
@@ -341,6 +422,44 @@ describe("workspace composer draft remote queue", () => {
     expect(deleteDraft).toHaveBeenNthCalledWith(2, expect.anything(), draft!.draftUuid, "etag-2");
   });
 
+  it("does not restore or repeatedly delete a consumed draft after a final DELETE error", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Already sent"), TARGET);
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .applyDraftSyncSuccess(OWNER, draft!.draftUuid, draft!.snapshotId, {
+        etag: "etag-1",
+        updatedAt: "2026-07-20T09:00:01.000Z",
+      });
+    deleteDraft.mockRejectedValueOnce(new MessengerApiError("forbidden", 403, undefined));
+
+    expect(
+      deleteWorkspaceComposerDraftFromServer({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        draft: draft!,
+      }),
+    ).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    expect(deleteDraft).toHaveBeenCalledOnce();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toMatchObject({
+      syncStatus: "failed",
+      disposition: "consumed",
+    });
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await flushMicrotasks();
+    expect(deleteDraft).toHaveBeenCalledOnce();
+  });
+
   it("preserves a real DELETE conflict when the server draft content changed", async () => {
     const draft = useWorkspaceComposerDraftStore
       .getState()
@@ -375,10 +494,15 @@ describe("workspace composer draft remote queue", () => {
     expect(deleteDraft).toHaveBeenCalledOnce();
     expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft!.key]).toMatchObject({
       syncStatus: "conflict",
+      disposition: "consumed",
       content: { text: "Already sent" },
       conflictServerContent: { text: "Edited elsewhere" },
       conflictServerEtag: "etag-2",
     });
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
   });
 
   it("keeps local and server snapshots and stops after a 412 conflict", async () => {

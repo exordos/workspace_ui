@@ -100,6 +100,25 @@ describe("workspace composer drafts", () => {
     );
   });
 
+  it("selects a new active draft after an earlier draft completed the same visit", () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Первое сообщение"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore
+      .getState()
+      .completeDraftVisit(OWNER, CONVERSATION, sentDraft!.draftUuid);
+    const nextDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Второе сообщение"));
+    expect(nextDraft).not.toBeNull();
+
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toEqual(nextDraft);
+  });
+
   it("hydrates persisted reply tabs together with ordinary composer text", async () => {
     await seedLegacyComposerDraft(OWNER, CONVERSATION, {
       snapshotId: "snapshot-a",
@@ -269,6 +288,7 @@ describe("workspace composer drafts", () => {
       expect.objectContaining({
         draftUuid: sentDraft!.draftUuid,
         syncStatus: "deleting",
+        disposition: "consumed",
       }),
     );
 
@@ -282,6 +302,76 @@ describe("workspace composer drafts", () => {
     expect(
       selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
     ).toBeNull();
+  });
+
+  it.each(["failed", "conflict"] as const)(
+    "restores an editable %s draft after leaving the conversation",
+    (syncStatus) => {
+      const draft = useWorkspaceComposerDraftStore
+        .getState()
+        .setDraft(OWNER, CONVERSATION, content("Неотправленный черновик"));
+      expect(draft).not.toBeNull();
+
+      if (syncStatus === "failed") {
+        useWorkspaceComposerDraftStore.getState().markDraftSyncFailed(OWNER, draft!.draftUuid);
+      } else {
+        useWorkspaceComposerDraftStore
+          .getState()
+          .markDraftConflict(OWNER, draft!.draftUuid, content("Версия сервера"), "etag-server");
+      }
+      useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          OWNER,
+          CONVERSATION,
+        ),
+      ).toMatchObject({
+        draftUuid: draft!.draftUuid,
+        syncStatus,
+        disposition: "editable",
+      });
+    },
+  );
+
+  it("keeps a consumed failed draft hidden after leaving and IndexedDB hydration", async () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+    useWorkspaceComposerDraftStore.getState().markDraftSyncFailed(OWNER, sentDraft!.draftUuid);
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    await expect(
+      readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(OWNER),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        draftUuid: sentDraft!.draftUuid,
+        syncStatus: "failed",
+        disposition: "consumed",
+      }),
+    );
+
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toBeNull();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey).toEqual(
+      expect.objectContaining({
+        [sentDraft!.key]: expect.objectContaining({
+          syncStatus: "failed",
+          disposition: "consumed",
+        }),
+      }),
+    );
   });
 
   it("restores the next editable draft instead of a newer deletion tombstone", async () => {
@@ -381,6 +471,7 @@ describe("workspace composer drafts", () => {
     expect(accepted).toMatchObject({
       content: { text: "Версия сервера" },
       etag: "etag-server",
+      disposition: "editable",
       syncStatus: "saved",
     });
     expect(accepted).not.toHaveProperty("conflictServerContent");
@@ -403,6 +494,7 @@ describe("workspace composer drafts", () => {
     expect(retried).toMatchObject({
       content: { text: "Локальная версия" },
       etag: "etag-server",
+      disposition: "editable",
       syncStatus: "local",
     });
     expect(retried).not.toHaveProperty("conflictServerContent");

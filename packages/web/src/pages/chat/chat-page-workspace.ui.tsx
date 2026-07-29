@@ -158,6 +158,7 @@ const EMPTY_USERS_BY_ID: UsersById = {};
 const READ_BATCH_DELAY_MS = 250;
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
+const workspaceComposerDraftLog = createLogger("chat-page:workspace-composer-draft");
 
 const noop = () => undefined;
 
@@ -423,11 +424,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         // recorded a conflict. Removing it here would lose the ETag needed
         // after an in-flight POST/PUT.
         if (runtimeContext != null) {
-          void deleteWorkspaceComposerDraftFromServer({
+          const deletionQueued = deleteWorkspaceComposerDraftFromServer({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             draft: currentDraft,
           });
+          if (!deletionQueued) {
+            workspaceComposerDraftLog.warn("Draft deletion was rejected after composer clear", {
+              draftUuid: currentDraft.draftUuid,
+              syncStatus: currentDraft.syncStatus,
+              disposition: currentDraft.disposition,
+            });
+          }
           useWorkspaceComposerDraftStore
             .getState()
             .completeDraftVisit(ownerKey, conversationId, currentDraft.draftUuid);
@@ -1176,14 +1184,25 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           // The message is already sent. Deleting its draft must not delay
           // clearing the composer and must wait for an in-flight POST/PUT.
           // The queue retains conflict data if the DELETE receives 412.
-          void deleteWorkspaceComposerDraftFromServer({
+          const deletionQueued = deleteWorkspaceComposerDraftFromServer({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             draft: currentDraft,
           });
+          if (!deletionQueued) {
+            workspaceComposerDraftLog.warn("Draft deletion was rejected after message send", {
+              draftUuid: currentDraft.draftUuid,
+              syncStatus: currentDraft.syncStatus,
+              disposition: currentDraft.disposition,
+            });
+          }
           useWorkspaceComposerDraftStore
             .getState()
             .completeDraftVisit(sendOwnerKey, conversationId, currentDraft.draftUuid);
+        } else if (content.trim().length > 0) {
+          workspaceComposerDraftLog.warn("Message was sent without an active draft", {
+            reason: "draft-delete-not-queued",
+          });
         }
       });
     },

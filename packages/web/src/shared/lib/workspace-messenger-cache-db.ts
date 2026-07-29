@@ -273,6 +273,7 @@ export interface WorkspaceMessengerComposerDraftRecordCacheRow<TContent = unknow
   snapshotId: string;
   content: TContent;
   etag: string | null;
+  disposition: "editable" | "consumed";
   syncStatus: "local" | "saving" | "saved" | "failed" | "conflict" | "deleting";
   updatedAt: number;
   serverUpdatedAt: string | null;
@@ -289,12 +290,21 @@ export interface WorkspaceMessengerComposerDraftRecordCacheWrite<TContent> {
   snapshotId: string;
   content: TContent;
   etag: string | null;
+  disposition: WorkspaceMessengerComposerDraftRecordCacheRow["disposition"];
   syncStatus: WorkspaceMessengerComposerDraftRecordCacheRow["syncStatus"];
   updatedAt: number;
   serverUpdatedAt: string | null;
   conflictServerContent?: TContent;
   conflictServerEtag?: string;
   pendingCreatePayload?: string | null;
+}
+
+function normalizeComposerDraftDisposition(
+  disposition: unknown,
+  syncStatus: WorkspaceMessengerComposerDraftRecordCacheRow["syncStatus"],
+): WorkspaceMessengerComposerDraftRecordCacheRow["disposition"] {
+  if (disposition === "editable" || disposition === "consumed") return disposition;
+  return syncStatus === "deleting" ? "consumed" : "editable";
 }
 
 export interface WorkspaceMessengerCatalogCacheSnapshot {
@@ -2457,9 +2467,12 @@ export async function readWorkspaceComposerDraftRecords<TContent>(
     const rows = store.indexNames.contains("byOwner")
       ? await requestToPromise(store.index("byOwner").getAll(ownerKey))
       : await requestToPromise(store.getAll());
-    return (rows as WorkspaceMessengerComposerDraftRecordCacheRow<TContent>[]).filter(
-      (row) => row.ownerKey === ownerKey && typeof row.draftUuid === "string",
-    );
+    return (rows as WorkspaceMessengerComposerDraftRecordCacheRow<TContent>[])
+      .filter((row) => row.ownerKey === ownerKey && typeof row.draftUuid === "string")
+      .map((row) => ({
+        ...row,
+        disposition: normalizeComposerDraftDisposition(row.disposition, row.syncStatus),
+      }));
   } catch {
     return [];
   }

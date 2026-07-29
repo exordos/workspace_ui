@@ -54,10 +54,5 @@ export function deleteWorkspaceComposerDraft(
   const store = useWorkspaceComposerDraftStore.getState();
   const existing = store.draftsByKey[`${ownerKey}:${draftUuid}`];
   if (existing == null) return false;
-  const draft =
-    existing.syncStatus === "conflict"
-      ? store.deleteDraftConflictWithServerVersion(ownerKey, draftUuid)
-      : existing;
-  if (draft == null) return false;
-  return deleteWorkspaceComposerDraftFromServer({ ...context, draft });
+  return deleteWorkspaceComposerDraftFromServer({ ...context, draft: existing });
 }

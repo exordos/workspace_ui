@@ -30,6 +30,7 @@ interface RemoteDraftJob {
   timer: ReturnType<typeof setTimeout> | null;
   running: boolean;
   deleteRequested: boolean;
+  deleteFlush: Promise<void> | null;
 }
 
 const remoteJobs = new Map<string, RemoteDraftJob>();
@@ -44,6 +45,18 @@ function isJobCurrent(job: RemoteDraftJob): boolean {
 
 function currentDraft(job: RemoteDraftJob): WorkspaceComposerDraft | null {
   return useWorkspaceComposerDraftStore.getState().draftsByKey[job.key] ?? null;
+}
+
+function prepareDraftForDeletion(
+  ownerKey: string,
+  draftUuid: string,
+): WorkspaceComposerDraft | null {
+  const store = useWorkspaceComposerDraftStore.getState();
+  const draft = store.draftsByKey[remoteJobKey(ownerKey, draftUuid)];
+  if (draft?.syncStatus === "conflict") {
+    return store.deleteDraftConflictWithServerVersion(ownerKey, draftUuid);
+  }
+  return store.markDraftDeleting(ownerKey, draftUuid);
 }
 
 function isServerDraftable(draft: WorkspaceComposerDraft): boolean {
@@ -207,9 +220,7 @@ async function saveLatestDraft(
 
 async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
   if (!isJobCurrent(job)) return "failed";
-  const deleting = useWorkspaceComposerDraftStore
-    .getState()
-    .markDraftDeleting(job.ownerKey, job.draftUuid);
+  const deleting = prepareDraftForDeletion(job.ownerKey, job.draftUuid);
   if (deleting == null) return "failed";
   // Persist the tombstone before any server request can make a reload race
   // against the debounced IndexedDB write and restore already-sent content.
@@ -262,12 +273,21 @@ async function runJob(job: RemoteDraftJob): Promise<void> {
         return;
       }
       const draft = currentDraft(job);
-      if (draft == null || draft.syncStatus === "conflict") {
+      if (draft == null) {
         resolveJob(job);
         return;
       }
 
       if (job.deleteRequested) {
+        const deleteFlush = job.deleteFlush;
+        if (deleteFlush != null) {
+          await deleteFlush;
+          if (job.deleteFlush === deleteFlush) job.deleteFlush = null;
+          if (!isJobCurrent(job) || remoteJobs.get(job.key) !== job) {
+            resolveJob(job);
+            return;
+          }
+        }
         const outcome = await deleteLatestDraft(job);
         if (outcome === "retry" && remoteJobs.get(job.key) === job) {
           scheduleJob(job, REMOTE_DRAFT_DEBOUNCE_MS);
@@ -286,11 +306,17 @@ async function runJob(job: RemoteDraftJob): Promise<void> {
         continue;
       }
 
+      if (draft.syncStatus === "conflict") {
+        resolveJob(job);
+        return;
+      }
+
       if (!isServerDraftable(draft)) {
         resolveJob(job);
         return;
       }
       const outcome = await saveLatestDraft(job, draft);
+      if (job.deleteRequested && remoteJobs.get(job.key) === job) continue;
       if (outcome === "retry" && remoteJobs.get(job.key) === job) {
         scheduleJob(job, REMOTE_DRAFT_DEBOUNCE_MS);
         return;
@@ -343,6 +369,7 @@ function getOrCreateJob(params: {
     timer: null,
     running: false,
     deleteRequested: false,
+    deleteFlush: null,
   };
   remoteJobs.set(key, job);
   return job;
@@ -368,9 +395,27 @@ export function deleteWorkspaceComposerDraftFromServer(params: {
 }): boolean {
   const job = getOrCreateJob(params);
   if (job == null || !isJobCurrent(job)) return false;
+  const deleting = prepareDraftForDeletion(job.ownerKey, job.draftUuid);
+  if (deleting == null) return false;
   job.deleteRequested = true;
-  useWorkspaceComposerDraftStore.getState().markDraftDeleting(job.ownerKey, job.draftUuid);
-  if (!job.running) scheduleJob(job, 0);
+  const deleteFlush = useWorkspaceComposerDraftStore
+    .getState()
+    .flushDraft(job.ownerKey, job.draftUuid);
+  job.deleteFlush = deleteFlush;
+  if (!job.running) {
+    if (job.timer != null) clearTimeout(job.timer);
+    job.timer = null;
+    void deleteFlush.then(() => {
+      if (
+        remoteJobs.get(job.key) === job &&
+        job.deleteRequested &&
+        !job.running &&
+        isJobCurrent(job)
+      ) {
+        scheduleJob(job, 0);
+      }
+    });
+  }
   return true;
 }
 

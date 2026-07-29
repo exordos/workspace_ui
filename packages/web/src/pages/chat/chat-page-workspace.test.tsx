@@ -84,7 +84,7 @@ const captured = vi.hoisted(() => ({
   markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
-  deleteWorkspaceComposerDraftFromServer: vi.fn().mockResolvedValue(true),
+  deleteWorkspaceComposerDraftFromServer: vi.fn().mockReturnValue(true),
 }));
 
 function createTestWorkspaceFileResourceCache() {
@@ -562,7 +562,7 @@ describe("ChatPage Workspace route", () => {
         useWorkspaceComposerDraftStore
           .getState()
           .removeDraftByUuid(params.draft.ownerKey, params.draft.draftUuid);
-        return Promise.resolve(true);
+        return true;
       },
     );
     useWorkspaceForwardMessageStore.getState().reset();
@@ -1741,6 +1741,38 @@ describe("ChatPage Workspace route", () => {
       }),
     );
     await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+  });
+
+  it("queues deletion for a second draft created without leaving the conversation", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    act(() => {
+      captured.composerProps?.onComposerValueChange("first draft");
+    });
+    await act(async () => {
+      await expect(onSend("first draft", "")).resolves.toBeUndefined();
+    });
+
+    act(() => {
+      captured.composerProps?.onComposerValueChange("second draft");
+    });
+    await act(async () => {
+      await expect(onSend("second draft", "")).resolves.toBeUndefined();
+    });
+
+    expect(captured.deleteWorkspaceComposerDraftFromServer).toHaveBeenCalledTimes(2);
+    expect(captured.deleteWorkspaceComposerDraftFromServer).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        draft: expect.objectContaining({
+          content: expect.objectContaining({ text: "second draft" }),
+        }),
+      }),
+    );
   });
 
   it("keeps a newer draft when an earlier send succeeds", async () => {

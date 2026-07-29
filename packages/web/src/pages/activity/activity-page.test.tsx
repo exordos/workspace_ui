@@ -2,10 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ComposerDraftActions from "~/entities/composer-draft/composer-draft-actions.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
   useWorkspaceComposerDraftStore,
 } from "~/entities/composer-draft/composer-draft.model";
+import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -22,6 +24,7 @@ const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const openWorkspaceForward = vi.hoisted(() => vi.fn());
 const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
+const deleteWorkspaceComposerDraft = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -38,6 +41,14 @@ vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
 vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
   loadWorkspaceComposerDrafts,
 }));
+
+vi.mock("~/entities/composer-draft/composer-draft-actions.lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof ComposerDraftActions>();
+  return {
+    ...actual,
+    deleteWorkspaceComposerDraft,
+  };
+});
 
 vi.mock("~/features/workspace-forward-message/workspace-forward-message.model", () => ({
   useWorkspaceForwardMessageStore: (
@@ -175,6 +186,33 @@ function seedWorkspaceMessengerContext(): void {
   });
 }
 
+function seedWorkspaceDraft(overrides: Partial<WorkspaceComposerDraft> = {}): void {
+  const ownerKey = workspaceRuntimeOwnerKey(WORKSPACE_SESSION);
+  const draft: WorkspaceComposerDraft = {
+    key: `${ownerKey}:draft-1`,
+    draftUuid: "draft-1",
+    ownerKey,
+    conversationId: "topic:stream-1:topic-1",
+    streamUuid: "stream-1",
+    topicUuid: "topic-1",
+    snapshotId: "snapshot-1",
+    content: {
+      text: "Review the release notes",
+      replySession: { tabs: [], activeTabId: null },
+    },
+    etag: '"1"',
+    disposition: "editable",
+    syncStatus: "saved",
+    serverUpdatedAt: "2026-06-22T10:10:00Z",
+    updatedAt: Date.parse("2026-06-22T10:10:00Z"),
+    ...overrides,
+  };
+
+  useWorkspaceComposerDraftStore.setState({
+    draftsByKey: { [draft.key]: draft },
+  });
+}
+
 function mockWorkspaceStarredPage(messages: WorkspaceMessengerMessageDto[]): void {
   fetchWorkspaceStarredMessages.mockResolvedValue({
     messages,
@@ -194,6 +232,8 @@ describe("ActivityPage", () => {
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
     loadWorkspaceComposerDrafts.mockResolvedValue(undefined);
+    deleteWorkspaceComposerDraft.mockReset();
+    deleteWorkspaceComposerDraft.mockReturnValue(true);
     navigateSpy.mockReset();
   });
 
@@ -205,6 +245,7 @@ describe("ActivityPage", () => {
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
+    deleteWorkspaceComposerDraft.mockReset();
     navigateSpy.mockReset();
   });
 
@@ -337,6 +378,7 @@ describe("ActivityPage", () => {
               replySession: { tabs: [], activeTabId: null },
             },
             etag: '"1"',
+            disposition: "editable",
             syncStatus: "saved",
             serverUpdatedAt: "2026-06-22T10:10:00Z",
             updatedAt: Date.parse("2026-06-22T10:10:00Z"),
@@ -359,6 +401,57 @@ describe("ActivityPage", () => {
     expect(screen.getByText("bugs")).toBeInTheDocument();
     expect(screen.getByText("Review the release notes")).toBeInTheDocument();
     expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.getByRole("button", { name: "Edit draft" })).toBeInTheDocument();
+  });
+
+  it("shows only deletion retry for a failed consumed draft", () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    seedWorkspaceDraft({ disposition: "consumed", syncStatus: "failed" });
+
+    renderActivityPage("/org/acme/project/project-1/activity/drafts");
+
+    expect(screen.getByText("Could not delete")).toBeInTheDocument();
+    expect(screen.getByText("Review the release notes").closest("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit draft" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry deletion" }));
+
+    expect(deleteWorkspaceComposerDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({ projectId: WORKSPACE_SESSION.projectId }),
+      }),
+      "draft-1",
+    );
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows no actions for a consumed draft being deleted", () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    seedWorkspaceDraft({ disposition: "consumed", syncStatus: "deleting" });
+
+    renderActivityPage("/org/acme/project/project-1/activity/drafts");
+
+    expect(screen.getByText("Deleting")).toBeInTheDocument();
+    expect(screen.getByText("Review the release notes").closest("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit draft" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry deletion" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete draft" })).not.toBeInTheDocument();
+  });
+
+  it("keeps conflict actions without opening a consumed draft", () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    seedWorkspaceDraft({ disposition: "consumed", syncStatus: "conflict" });
+
+    renderActivityPage("/org/acme/project/project-1/activity/drafts");
+
+    expect(screen.getByText("Review the release notes").closest("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit draft" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use server version" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep my version" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete draft" })).toBeInTheDocument();
   });
 
   it("does not apply stale Workspace starred load after runtime changes", async () => {

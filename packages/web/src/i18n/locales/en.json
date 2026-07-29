@@ -461,6 +461,8 @@
     "local": "Waiting to save",
     "saving": "Saving",
     "failed": "Could not save",
+    "deleteFailed": "Could not delete",
+    "retryDeletion": "Retry deletion",
     "conflict": "Conflict: remote version was kept",
     "deleting": "Deleting",
     "conflictAcceptServer": "Use server version",
