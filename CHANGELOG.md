@@ -6,9 +6,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-07-29
+
 ### Added
 
 - Debian and Ubuntu packages are published to the shared Exordos apt repository on every release, so the desktop application updates through `apt upgrade`. Setup instructions are in `docs/apt-repository.md`.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.0`: Exordos Core `0.2.3` or newer and Workspace backend `0.1.18` or newer.
+- No application code changes: this release only adds package publication.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.1`.
+
+No client or server data migration is required.
 
 ## [0.4.0] — 2026-07-29
 
