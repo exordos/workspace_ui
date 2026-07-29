@@ -9,6 +9,10 @@ describe("resolveLayoutRightPanelTitle", () => {
     expect(resolveLayoutRightPanelTitle("user-menu", tr)).toBe("t:nav.account");
   });
 
+  it("returns personal info label for personal-info mode", () => {
+    expect(resolveLayoutRightPanelTitle("personal-info", tr)).toBe("t:settings.personalInfo");
+  });
+
   it("returns app version label for about mode", () => {
     expect(resolveLayoutRightPanelTitle("about", tr)).toBe("t:settings.appVersion");
   });

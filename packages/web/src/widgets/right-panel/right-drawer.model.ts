@@ -2,7 +2,13 @@ import { create } from "zustand";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
-export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "builds";
+export type RightDrawerMode =
+  | "info"
+  | "settings"
+  | "user-menu"
+  | "about"
+  | "builds"
+  | "personal-info";
 
 interface RightDrawerState {
   open: boolean;
@@ -17,6 +23,8 @@ interface RightDrawerState {
   openUserMenu: () => void;
   openAbout: () => void;
   openBuilds: () => void;
+  /** Own profile card opened from the account menu (shell title + back). */
+  openPersonalInfo: () => void;
   openUserProfile: (userId: number) => void;
   openWorkspaceUserProfile: (userUuid: MessengerUuid) => void;
   /** Clears nested user profile (from members list / message author) while keeping the drawer open on chat info. */
@@ -66,6 +74,15 @@ export const useRightDrawerStore = create<RightDrawerState>((set) => ({
   openBuilds() {
     logStoreAction("rightDrawer", "openBuilds", {});
     set({ open: true, mode: "builds", userIdOverride: null, workspaceUserUuidOverride: null });
+  },
+  openPersonalInfo() {
+    logStoreAction("rightDrawer", "openPersonalInfo", {});
+    set({
+      open: true,
+      mode: "personal-info",
+      userIdOverride: null,
+      workspaceUserUuidOverride: null,
+    });
   },
   openUserProfile(userId) {
     logStoreAction("rightDrawer", "openUserProfile", { userId });

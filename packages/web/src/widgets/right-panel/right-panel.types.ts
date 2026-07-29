@@ -3,7 +3,7 @@ import type { WorkspaceRightPanelInfoView as MessengerWorkspaceRightPanelInfoVie
 export type WorkspaceRightPanelInfoView = MessengerWorkspaceRightPanelInfoView;
 
 export interface RightPanelProps {
-  mode?: "info" | "settings" | "user-menu" | "about" | "builds";
+  mode?: "info" | "settings" | "user-menu" | "about" | "builds" | "personal-info";
   /** For channels: name and counters */
   title: string;
   participantsCount?: number;
@@ -14,6 +14,8 @@ export interface RightPanelProps {
   onOpenAboutDrawer?: () => void;
   /** Optional callback used by authenticated user menu mode */
   onOpenBuildsDrawer?: () => void;
+  /** Opens personal-info as a dedicated drawer mode (shell title + back). */
+  onOpenPersonalInfoDrawer?: () => void;
   /** Workspace-native info data; when present, the info panel avoids legacy Zulip stores. */
   workspaceInfo?: WorkspaceRightPanelInfoView | null;
 }

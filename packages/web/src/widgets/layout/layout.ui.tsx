@@ -88,6 +88,8 @@ export const Layout: React.FC = () => {
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
   const openRightDrawerBuilds = useRightDrawerStore((s) => s.openBuilds);
+  const openRightDrawerPersonalInfo = useRightDrawerStore((s) => s.openPersonalInfo);
+  const openRightDrawerUserMenu = useRightDrawerStore((s) => s.openUserMenu);
 
   const online = useLayoutOnlineStatus();
   const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
@@ -136,6 +138,13 @@ export const Layout: React.FC = () => {
   const handleCloseRightDrawer = useCallback(() => {
     closeRightDrawer();
   }, [closeRightDrawer]);
+
+  // Personal-info is a nested account subview: back returns to the account menu, X still closes all.
+  const handleBackRightDrawer = useCallback(() => {
+    if (rightDrawerMode === "personal-info") {
+      openRightDrawerUserMenu();
+    }
+  }, [openRightDrawerUserMenu, rightDrawerMode]);
 
   useLayoutResetRightDrawerOnInstanceChange({
     currentInstanceId: workspaceInstanceId,
@@ -255,6 +264,9 @@ export const Layout: React.FC = () => {
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}
             onCloseRightDrawer={handleCloseRightDrawer}
+            onBackRightDrawer={
+              rightDrawerMode === "personal-info" ? handleBackRightDrawer : undefined
+            }
             rightDrawerTitle={rightDrawerTitle}
             rightPanelTitle={rightPanelTitleResolved}
             participantsCount={participantsCount}
@@ -263,6 +275,7 @@ export const Layout: React.FC = () => {
             onOpenSettingsDrawer={openRightDrawerSettings}
             onOpenAboutDrawer={openRightDrawerAbout}
             onOpenBuildsDrawer={openRightDrawerBuilds}
+            onOpenPersonalInfoDrawer={openRightDrawerPersonalInfo}
           />
         </LayoutLoadingGate>
       </div>

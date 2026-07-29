@@ -85,6 +85,17 @@ describe("useRightDrawerStore", () => {
     });
   });
 
+  it("openPersonalInfo opens the nested personal-info mode", () => {
+    useRightDrawerStore.getState().openPersonalInfo();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      mode: "personal-info",
+      userIdOverride: null,
+      workspaceUserUuidOverride: null,
+    });
+  });
+
   it("clearUserProfileOverride is a no-op when override is already null", () => {
     useRightDrawerStore.setState({
       open: true,

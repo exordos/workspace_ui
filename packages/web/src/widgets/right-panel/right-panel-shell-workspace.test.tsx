@@ -14,6 +14,7 @@ describe("RightPanelShell Workspace info", () => {
           title: "Workspace Alice",
           avatarUrl: null,
           status: "active",
+          isOwnProfile: false,
           details: [
             {
               id: "email",
@@ -33,6 +34,8 @@ describe("RightPanelShell Workspace info", () => {
     expect(screen.getByText("Workspace Alice")).toBeInTheDocument();
     expect(screen.getByText("workspace-alice@example.com")).toBeInTheDocument();
     expect(screen.queryByText("Legacy Alice")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Message" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-message")).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-call")).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-share")).toBeInTheDocument();
   });
 });

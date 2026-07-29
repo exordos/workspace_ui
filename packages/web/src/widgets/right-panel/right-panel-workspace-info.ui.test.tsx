@@ -7,6 +7,7 @@ import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
@@ -309,6 +310,7 @@ describe("RightPanelWorkspaceInfo", () => {
           title: "Alice Adams",
           avatarUrl: "urn:url:https://cdn.example/alice.png",
           status: "do_not_disturb",
+          isOwnProfile: false,
           details: [
             {
               id: "email",
@@ -327,13 +329,45 @@ describe("RightPanelWorkspaceInfo", () => {
 
     expect(screen.getByText("Alice Adams")).toBeInTheDocument();
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    expect(screen.getByText("do not disturb")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "away" })).toHaveAttribute("data-presence", "idle");
+    expect(screen.getByText(/do not disturb/i)).toBeInTheDocument();
     expect(container.querySelector('img[src="https://cdn.example/alice.png"]')).not.toBeNull();
-    expect(screen.getAllByText("Temporarily not connected")).toHaveLength(2);
+    expect(screen.getByText("Temporarily not connected")).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-message")).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-call")).toHaveTextContent(t("call.call"));
+    expect(screen.getByTestId("right-panel-profile-share")).toBeInTheDocument();
+    expect(screen.queryByTestId("right-panel-profile-edit")).not.toBeInTheDocument();
     expect(screen.queryByText("Channel info")).not.toBeInTheDocument();
     expect(screen.queryByText("Topics")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
+  });
+
+  it("renders own-profile actions for the signed-in user", () => {
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "userProfile",
+          userUuid: CURRENT_USER_UUID,
+          title: "Current User",
+          avatarUrl: null,
+          status: "active",
+          isOwnProfile: true,
+          details: [
+            {
+              id: "userId",
+              value: CURRENT_USER_UUID,
+              isTemporarilyUnavailable: false,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("right-panel-profile-favorites")).toHaveTextContent(
+      t("common.favorites"),
+    );
+    expect(screen.getByTestId("right-panel-profile-edit")).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-share")).toBeInTheDocument();
+    expect(screen.queryByTestId("right-panel-profile-message")).not.toBeInTheDocument();
   });
 
   it("renders workspace user profile fallback for a missing user", () => {
@@ -347,6 +381,7 @@ describe("RightPanelWorkspaceInfo", () => {
           title: missingUserUuid,
           avatarUrl: null,
           status: null,
+          isOwnProfile: false,
           details: [
             {
               id: "email",
@@ -354,7 +389,7 @@ describe("RightPanelWorkspaceInfo", () => {
               isTemporarilyUnavailable: true,
             },
             {
-              id: "username",
+              id: "phone",
               value: "Profile field unavailable",
               isTemporarilyUnavailable: true,
             },

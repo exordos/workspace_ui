@@ -58,6 +58,7 @@ const log = createLogger("right-panel-user-menu");
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   onOpenAboutDrawer,
   onOpenBuildsDrawer,
+  onOpenPersonalInfo,
 }) => {
   const navigate = useNavigate();
   const rightDrawer = useRightDrawer();
@@ -205,8 +206,11 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
-    void navigate(withCurrentOrgRoute("/settings/personal-info"));
-  }, [navigate]);
+    if (onOpenPersonalInfo != null) {
+      onOpenPersonalInfo();
+      return;
+    }
+  }, [onOpenPersonalInfo]);
 
   const openDiagnostics = useCallback(() => {
     void navigate(withCurrentOrgRoute("/settings/logs"));

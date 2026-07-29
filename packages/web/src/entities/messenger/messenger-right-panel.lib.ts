@@ -4,6 +4,7 @@ import {
 } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
+import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import {
   type WorkspaceMessengerRouteMatch,
   workspaceMessengerTopicRoute,
@@ -47,12 +48,17 @@ export interface WorkspaceRightPanelMemberView {
 }
 
 export type WorkspaceRightPanelDirectPrivateDetailId =
+  | "userId"
   | "email"
-  | "username"
   | "phone"
   | "jobTitle"
   | "manager"
+  | "role"
+  | "accountType"
+  | "accountStatus"
   | "timezone"
+  | "localTime"
+  | "joined"
   | "birthday";
 
 export interface WorkspaceRightPanelDirectPrivateDetailView {
@@ -80,6 +86,8 @@ export interface WorkspaceRightPanelDirectPrivateInfoView {
   title: string;
   avatarUrl: string | null;
   status: User["status"] | null;
+  /** True when the panel shows the signed-in user's own profile. */
+  isOwnProfile: boolean;
   details: WorkspaceRightPanelDirectPrivateDetailView[];
 }
 
@@ -89,6 +97,8 @@ export interface WorkspaceRightPanelUserProfileInfoView {
   title: string;
   avatarUrl: string | null;
   status: User["status"] | null;
+  /** True when the panel shows the signed-in user's own profile. */
+  isOwnProfile: boolean;
   details: WorkspaceRightPanelDirectPrivateDetailView[];
 }
 
@@ -160,33 +170,60 @@ function createWorkspaceRightPanelUnsupportedDetail(
   };
 }
 
+function resolveIsOwnProfile(
+  profileUserUuid: MessengerUuid,
+  currentUserUuid: MessengerUuid | null | undefined,
+): boolean {
+  const normalizedCurrent = currentUserUuid?.trim() ?? "";
+  return normalizedCurrent.length > 0 && normalizedCurrent === profileUserUuid;
+}
+
 function createWorkspaceRightPanelUserDetails(
   user: User | undefined,
+  userUuid: MessengerUuid,
   temporarilyNotConnectedText: string,
 ): WorkspaceRightPanelDirectPrivateDetailView[] {
+  const joined = formatDateJoined(user?.createdAt);
   return [
+    createWorkspaceRightPanelDetail("userId", userUuid, temporarilyNotConnectedText),
     createWorkspaceRightPanelDetail("email", user?.email, temporarilyNotConnectedText),
-    createWorkspaceRightPanelDetail("username", user?.username, temporarilyNotConnectedText),
     createWorkspaceRightPanelUnsupportedDetail("phone", temporarilyNotConnectedText),
     createWorkspaceRightPanelUnsupportedDetail("jobTitle", temporarilyNotConnectedText),
     createWorkspaceRightPanelUnsupportedDetail("manager", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("role", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("accountType", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("accountStatus", temporarilyNotConnectedText),
     createWorkspaceRightPanelUnsupportedDetail("timezone", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("localTime", temporarilyNotConnectedText),
+    createWorkspaceRightPanelDetail("joined", joined, temporarilyNotConnectedText),
     createWorkspaceRightPanelUnsupportedDetail("birthday", temporarilyNotConnectedText),
   ];
 }
 
-function createWorkspaceRightPanelUserProfileInfoView(
-  userUuid: MessengerUuid,
-  user: User | undefined,
-  temporarilyNotConnectedText: string,
-): WorkspaceRightPanelUserProfileInfoView {
+/**
+ * Builds a user-profile right-panel view without requiring an open conversation route.
+ * Used by the account menu "Personal info" subview.
+ */
+export function createWorkspaceRightPanelUserProfileView(options: {
+  userUuid: MessengerUuid;
+  usersById: UsersById;
+  currentUserUuid?: MessengerUuid | null;
+  temporarilyNotConnectedText: string;
+}): WorkspaceRightPanelUserProfileInfoView {
+  const userUuid = options.userUuid.trim();
+  const user = options.usersById[userUuid];
   return {
     kind: "userProfile",
     userUuid,
     title: resolveWorkspaceRightPanelDirectUserName(user, userUuid),
     avatarUrl: user?.avatarUrl ?? null,
     status: user?.status ?? null,
-    details: createWorkspaceRightPanelUserDetails(user, temporarilyNotConnectedText),
+    isOwnProfile: resolveIsOwnProfile(userUuid, options.currentUserUuid),
+    details: createWorkspaceRightPanelUserDetails(
+      user,
+      userUuid,
+      options.temporarilyNotConnectedText,
+    ),
   };
 }
 
@@ -216,11 +253,12 @@ export function selectWorkspaceRightPanelInfoView(
 
   const normalizedWorkspaceUserUuidOverride = workspaceUserUuidOverride?.trim() ?? "";
   if (normalizedWorkspaceUserUuidOverride.length > 0) {
-    return createWorkspaceRightPanelUserProfileInfoView(
-      normalizedWorkspaceUserUuidOverride,
-      usersById[normalizedWorkspaceUserUuidOverride],
+    return createWorkspaceRightPanelUserProfileView({
+      userUuid: normalizedWorkspaceUserUuidOverride,
+      usersById,
+      currentUserUuid,
       temporarilyNotConnectedText,
-    );
+    });
   }
 
   const stream = state.streamsById[selection.streamUuid];
@@ -246,7 +284,12 @@ export function selectWorkspaceRightPanelInfoView(
       title: resolveWorkspaceRightPanelDirectUserName(user, directFallbackTitle),
       avatarUrl: user?.avatarUrl ?? null,
       status: user?.status ?? null,
-      details: createWorkspaceRightPanelUserDetails(user, temporarilyNotConnectedText),
+      isOwnProfile: resolveIsOwnProfile(routeDirectUserUuid, currentUserUuid),
+      details: createWorkspaceRightPanelUserDetails(
+        user,
+        routeDirectUserUuid,
+        temporarilyNotConnectedText,
+      ),
     };
   }
 

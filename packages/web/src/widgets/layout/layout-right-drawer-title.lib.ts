@@ -14,6 +14,8 @@ export function resolveLayoutRightPanelTitle(
 ): string {
   // Same unified panel for settings and user-menu: shell title is the whole account drawer.
   if (mode === "settings" || mode === "user-menu") return translate("nav.account");
+  // Nested account subview: shell shows personal-info title + back (Figma right menu).
+  if (mode === "personal-info") return translate("settings.personalInfo");
   if (mode === "about") return translate("settings.appVersion");
   if (mode === "builds") return translate("settings.selectBuild");
   if (infoKind === "directPrivate" || infoKind === "userProfile") {

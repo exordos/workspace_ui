@@ -9,7 +9,7 @@ export const CallsPage: React.FC = () => {
   const callsTitle = t("call.recentCalls");
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 pb-2 pt-3">
           <Icon name="phone" size={18} className="text-text-muted" />

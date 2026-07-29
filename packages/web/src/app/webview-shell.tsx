@@ -66,11 +66,6 @@ const LoginPage = React.lazy(() =>
 const ChatPage = React.lazy(() =>
   import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
 );
-const SettingsPersonalInfoPage = React.lazy(() =>
-  import("~/pages/settings/settings-personal-info-page.ui").then((m) => ({
-    default: m.SettingsPersonalInfoPage,
-  })),
-);
 
 function resolveWebviewWorkspaceMessengerRoot(params: {
   sessions: WorkspaceAuthSession[];
@@ -175,7 +170,6 @@ export const WebViewShell: React.FC = () => {
               <Route path="/mail" element={<MailPage />} />
               <Route path="/call" element={<CallsPage />} />
               <Route path="/calls" element={<CallsPage />} />
-              <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
               <Route path="/settings/logs" element={diagnosticsRouteElement} />
               <Route path="/settings/build" element={<UpdatePage />} />
               <Route path="/settings/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
@@ -210,10 +204,6 @@ export const WebViewShell: React.FC = () => {
               <Route path="/org/:orgId/mail" element={<MailPage />} />
               <Route path="/org/:orgId/call" element={<CallsPage />} />
               <Route path="/org/:orgId/calls" element={<CallsPage />} />
-              <Route
-                path="/org/:orgId/settings/personal-info"
-                element={<SettingsPersonalInfoPage />}
-              />
               <Route path="/org/:orgId/settings/logs" element={diagnosticsRouteElement} />
               <Route path="/org/:orgId/settings/build" element={<UpdatePage />} />
               <Route

@@ -1,37 +1,37 @@
 /**
  * Bridge from profile / mention UI to ChatPage for starting a 1:1 Jitsi call.
- * ChatPage registers the invoke handler; optional pending partner id defers call until DM route is active.
+ * ChatPage watches pending partner uuid and starts the call once the DM route is active.
  */
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 
-export type InvokeDmCallFromProfileHandler = (partnerUserId: number) => void;
+export type InvokeDmCallFromProfileHandler = (partnerUserUuid: string) => void;
 
 interface ChatDmCallBridgeState {
-  pendingDmCallPartnerUserId: number | null;
+  pendingDmCallPartnerUserUuid: string | null;
   invokeDmCallFromProfileHandler: InvokeDmCallFromProfileHandler | null;
 
-  setPendingDmCallPartnerUserId: (userId: number | null) => void;
+  setPendingDmCallPartnerUserUuid: (userUuid: string | null) => void;
   clearPendingDmCallPartner: () => void;
   setInvokeDmCallFromProfileHandler: (handler: InvokeDmCallFromProfileHandler | null) => void;
-  invokeDmCallFromProfile: (partnerUserId: number) => void;
+  invokeDmCallFromProfile: (partnerUserUuid: string) => void;
 }
 
 export const useChatDmCallBridgeStore = create<ChatDmCallBridgeState>((set, get) => ({
-  pendingDmCallPartnerUserId: null,
+  pendingDmCallPartnerUserUuid: null,
   invokeDmCallFromProfileHandler: null,
 
-  setPendingDmCallPartnerUserId(userId) {
-    logStoreAction("chatDmCallBridge", "setPendingDmCallPartnerUserId", {
-      userId: userId ?? null,
+  setPendingDmCallPartnerUserUuid(userUuid) {
+    logStoreAction("chatDmCallBridge", "setPendingDmCallPartnerUserUuid", {
+      userUuid: userUuid ?? null,
     });
-    set({ pendingDmCallPartnerUserId: userId });
+    set({ pendingDmCallPartnerUserUuid: userUuid });
   },
 
   clearPendingDmCallPartner() {
-    if (get().pendingDmCallPartnerUserId == null) return;
+    if (get().pendingDmCallPartnerUserUuid == null) return;
     logStoreAction("chatDmCallBridge", "clearPendingDmCallPartner", {});
-    set({ pendingDmCallPartnerUserId: null });
+    set({ pendingDmCallPartnerUserUuid: null });
   },
 
   setInvokeDmCallFromProfileHandler(handler) {
@@ -41,9 +41,9 @@ export const useChatDmCallBridgeStore = create<ChatDmCallBridgeState>((set, get)
     set({ invokeDmCallFromProfileHandler: handler });
   },
 
-  invokeDmCallFromProfile(partnerUserId) {
+  invokeDmCallFromProfile(partnerUserUuid) {
     const fn = get().invokeDmCallFromProfileHandler;
     if (fn == null) return;
-    fn(partnerUserId);
+    fn(partnerUserUuid);
   },
 }));

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { User, UsersById } from "~/entities/user/user.types";
 import { selectWorkspaceChatHeaderView } from "./messenger-chat-header.lib";
-import { selectWorkspaceRightPanelInfoView } from "./messenger-right-panel.lib";
+import {
+  createWorkspaceRightPanelUserProfileView,
+  selectWorkspaceRightPanelInfoView,
+} from "./messenger-right-panel.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerBootstrapPayload } from "./messenger.types";
 
@@ -497,15 +500,16 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       title: "Cora Lane",
       avatarUrl: "/cora.png",
       status: "idle",
+      isOwnProfile: false,
       details: [
         {
-          id: "email",
-          value: "cora@example.com",
+          id: "userId",
+          value: DIRECT_USER_UUID,
           isTemporarilyUnavailable: false,
         },
         {
-          id: "username",
-          value: "cora",
+          id: "email",
+          value: "cora@example.com",
           isTemporarilyUnavailable: false,
         },
         {
@@ -524,9 +528,34 @@ describe("selectWorkspaceRightPanelInfoView", () => {
           isTemporarilyUnavailable: true,
         },
         {
+          id: "role",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "accountType",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "accountStatus",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
           id: "timezone",
           value: "Temporarily not connected",
           isTemporarilyUnavailable: true,
+        },
+        {
+          id: "localTime",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "joined",
+          value: "Jun 30, 2026",
+          isTemporarilyUnavailable: false,
         },
         {
           id: "birthday",
@@ -535,6 +564,31 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         },
       ],
     });
+  });
+
+  it("marks a user profile override as own when UUID matches current user", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_A_UUID,
+      workspaceUserUuidOverride: USER_A_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view).toEqual(
+      expect.objectContaining({
+        kind: "userProfile",
+        userUuid: USER_A_UUID,
+        isOwnProfile: true,
+        title: "Alice Stone",
+      }),
+    );
   });
 
   it("projects a Workspace user profile override by UUID with missing-user fallback", () => {
@@ -559,17 +613,18 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         title: USER_B_UUID,
         avatarUrl: null,
         status: null,
+        isOwnProfile: false,
       }),
     );
     expect(view?.kind === "userProfile" ? view.details : []).toEqual(
       expect.arrayContaining([
         {
-          id: "email",
-          value: "Temporarily not connected",
-          isTemporarilyUnavailable: true,
+          id: "userId",
+          value: USER_B_UUID,
+          isTemporarilyUnavailable: false,
         },
         {
-          id: "username",
+          id: "email",
           value: "Temporarily not connected",
           isTemporarilyUnavailable: true,
         },
@@ -657,21 +712,43 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         kind: "directPrivate",
         title: "alice-and-cora",
         status: null,
+        isOwnProfile: false,
       }),
     );
     expect(view?.kind === "directPrivate" ? view.details : []).toEqual(
       expect.arrayContaining([
         {
-          id: "email",
-          value: "Temporarily not connected",
-          isTemporarilyUnavailable: true,
+          id: "userId",
+          value: DIRECT_USER_UUID,
+          isTemporarilyUnavailable: false,
         },
         {
-          id: "username",
+          id: "email",
           value: "Temporarily not connected",
           isTemporarilyUnavailable: true,
         },
       ]),
     );
+  });
+});
+
+describe("createWorkspaceRightPanelUserProfileView", () => {
+  it("builds an own-profile view without a conversation route", () => {
+    const usersById = createUsersById();
+    const view = createWorkspaceRightPanelUserProfileView({
+      userUuid: USER_A_UUID,
+      usersById,
+      currentUserUuid: USER_A_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view.kind).toBe("userProfile");
+    expect(view.isOwnProfile).toBe(true);
+    expect(view.title).toBe("Alice Stone");
+    expect(view.details[0]).toEqual({
+      id: "userId",
+      value: USER_A_UUID,
+      isTemporarilyUnavailable: false,
+    });
   });
 });

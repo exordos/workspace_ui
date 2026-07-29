@@ -42,6 +42,14 @@ describe("Avatar", () => {
     );
   });
 
+  it("applies xl size classes for the 64px profile avatar", () => {
+    const { container } = render(<Avatar size="xl">A</Avatar>);
+    const el = container.firstElementChild;
+
+    expect(el?.className).toContain("w-16");
+    expect(el?.className).toContain("h-16");
+  });
+
   it("adds group-hover ring and pointer cursor only when interactive is enabled", () => {
     const { container, rerender } = render(<Avatar>A</Avatar>);
     const staticAvatar = container.firstElementChild;

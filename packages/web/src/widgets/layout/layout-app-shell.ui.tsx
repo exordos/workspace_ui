@@ -21,6 +21,8 @@ export interface LayoutAppShellProps {
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   onCloseRightDrawer: () => void;
+  /** Shell back control for nested drawer modes (e.g. personal-info → user-menu). */
+  onBackRightDrawer?: () => void;
   /** Shell title shown next to the drawer close button. */
   rightDrawerTitle: string;
   rightPanelTitle: string;
@@ -30,6 +32,7 @@ export interface LayoutAppShellProps {
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
   onOpenBuildsDrawer: () => void;
+  onOpenPersonalInfoDrawer?: () => void;
 }
 
 export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutAppShell({
@@ -44,6 +47,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   sidebarOpen,
   rightDrawerMode,
   onCloseRightDrawer,
+  onBackRightDrawer,
   rightDrawerTitle,
   rightPanelTitle,
   participantsCount,
@@ -52,6 +56,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
   onOpenBuildsDrawer,
+  onOpenPersonalInfoDrawer,
 }) {
   return (
     <OpenSearchContext.Provider value={openSearch}>
@@ -79,6 +84,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerMode={rightDrawerMode}
             onCloseRightDrawer={onCloseRightDrawer}
+            onBackRightDrawer={onBackRightDrawer}
             rightDrawerTitle={rightDrawerTitle}
             rightPanelTitle={rightPanelTitle}
             participantsCount={participantsCount}
@@ -87,6 +93,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
             onOpenBuildsDrawer={onOpenBuildsDrawer}
+            onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
           />
         </div>
       </RightDrawerContext.Provider>

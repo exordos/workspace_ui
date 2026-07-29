@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-export type AvatarSize = "xs" | "sm" | "md" | "lg";
+/** xs=36, sm=32, md=40, lg=48, xl=64 (profile header / Figma profile block). */
+export type AvatarSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 export interface AvatarProps {
   size?: AvatarSize;

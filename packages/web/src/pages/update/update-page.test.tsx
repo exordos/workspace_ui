@@ -18,6 +18,22 @@ describe("UpdatePage", () => {
     useAppUpdateMock.mockReset();
   });
 
+  it("uses full-width layout container for update content", () => {
+    useAppUpdateMock.mockReturnValue({
+      status: "idle",
+      check: checkSpy,
+      install: installSpy,
+    });
+
+    const { container } = renderWithProviders(<UpdatePage />);
+    const pageRoot = container.querySelector("header")?.parentElement;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
+  });
+
   it("checks updates on mount", () => {
     useAppUpdateMock.mockReturnValue({
       status: "idle",

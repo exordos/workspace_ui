@@ -62,6 +62,7 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
@@ -347,6 +348,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
   const workspaceMeetUrl = useWorkspaceJitsiSettingsStore((state) =>
     ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
+  );
+  // Подписка нужна: если уже в этом ЛС, pending меняется без смены route/headerView.
+  const pendingDmCallPartnerUserUuid = useChatDmCallBridgeStore(
+    (state) => state.pendingDmCallPartnerUserUuid,
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
   useEffect(
@@ -1301,6 +1306,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     usersById,
     workspaceMeetUrl,
   ]);
+
+  // Звонок из чужого профиля: pending uuid → ждём активный DM → стартуем как из хедера.
+  useEffect(() => {
+    if (headerView.kind !== "directPrivate") return;
+    if (workspaceMeetUrl == null) return;
+    if (
+      pendingDmCallPartnerUserUuid == null ||
+      pendingDmCallPartnerUserUuid !== headerView.directUserUuid
+    ) {
+      return;
+    }
+
+    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+    handleStartWorkspaceHeaderCall();
+  }, [handleStartWorkspaceHeaderCall, headerView, pendingDmCallPartnerUserUuid, workspaceMeetUrl]);
 
   const handleCancelUpload = useCallback(() => {
     const controller = uploadAbortControllerRef.current;

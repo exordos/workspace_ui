@@ -241,7 +241,6 @@ const webViewPages: WebViewPageDef[] = [
   { path: "/call", label: "Call" },
   { path: "/calls", label: "Calls" },
   { path: "/settings", label: "Settings" },
-  { path: "/settings/personal-info", label: "Personal Info" },
   { path: "/settings/build", label: "Settings Build" },
   ...(IS_CONNECTION_DIAGNOSTICS_ENABLED
     ? ([

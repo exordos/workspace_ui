@@ -5,6 +5,7 @@ import { Icon } from "./icon";
 import type { CopyableProps } from "./copyable.types";
 
 const RESET_STATE_TIMEOUT_MS = 2000;
+const DEFAULT_ICON_SIZE = 14;
 
 const joinClasses = (...classes: (string | false | null | undefined)[]): string =>
   classes.filter(Boolean).join(" ");
@@ -17,9 +18,11 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
   className,
   contentClassName,
   buttonClassName,
+  iconSize = DEFAULT_ICON_SIZE,
 }) {
   const [copyState, setCopyState] = useState<"idle" | "success" | "error">("idle");
   const keepVisibleDuringSuccess = showOnHover && copyState === "success";
+  const hasContent = children != null;
 
   const actionLabel = useMemo(() => {
     if (copyState === "success") return t("message.copied");
@@ -60,27 +63,39 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
       : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100";
   }
 
+  // Keep the previous compact hit area for the default 14px glyph; larger icons fill a matching box.
+  const buttonSizeClass = iconSize <= DEFAULT_ICON_SIZE ? "h-5 w-5" : "h-6 w-6";
+
+  const copyButton = (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label={actionLabel}
+      title={actionLabel}
+      data-copy-state={copyState}
+      className={joinClasses(
+        "inline-flex shrink-0 items-center justify-center rounded text-text-muted transition-opacity hover:bg-bg-elevated hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
+        buttonSizeClass,
+        copyButtonVisibilityClass,
+        buttonClassName,
+      )}
+    >
+      <Icon
+        name={copyState === "success" ? "check" : "copy"}
+        size={iconSize}
+        className="text-current"
+      />
+    </button>
+  );
+
+  if (!hasContent) {
+    return <span className={joinClasses("inline-flex shrink-0", className)}>{copyButton}</span>;
+  }
+
   return (
     <span className={joinClasses("group flex min-w-0 items-center gap-1.5", className)}>
       <span className={joinClasses("min-w-0 max-w-full", contentClassName)}>{children}</span>
-      <button
-        type="button"
-        onClick={handleCopy}
-        aria-label={actionLabel}
-        title={actionLabel}
-        data-copy-state={copyState}
-        className={joinClasses(
-          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted transition-opacity hover:bg-bg-elevated hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
-          copyButtonVisibilityClass,
-          buttonClassName,
-        )}
-      >
-        <Icon
-          name={copyState === "success" ? "check" : "copy"}
-          size={14}
-          className="text-current"
-        />
-      </button>
+      {copyButton}
     </span>
   );
 });

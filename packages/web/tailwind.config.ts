@@ -79,7 +79,7 @@ export default {
       spacing: {
         sidebar: "299px",
         header: "123px",
-        "panel-right": "299px",
+        "panel-right": "315px",
       },
       /* Mirror layout constants in `src/shared/config/constants.ts` (main / narrow / shell min). */
       maxWidth: {

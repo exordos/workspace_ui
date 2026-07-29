@@ -16,10 +16,16 @@ describe("Icon", () => {
   it.each([
     "accountCircle",
     "businessCenter",
+    "calendar_month",
+    "celebration",
+    "globe_location_pin",
     "handshake",
     "info",
     "language",
     "logout",
+    "photo_camera",
+    "schedule",
+    "stylus",
     "volumeUp",
   ])("renders migrated Flutter icon '%s'", (iconName) => {
     const { container } = render(<Icon name={iconName} />);
@@ -74,6 +80,54 @@ describe("Icon", () => {
     expect(svg?.getAttribute("stroke")).toBeNull();
     expect(path?.getAttribute("stroke")).toBeNull();
     expect(path?.getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("uses tight Figma viewBoxes for edit-avatar camera/gallery/delete glyphs", () => {
+    // Figma 12719:27019 / 12719:27025 / 12719:27525 — glyphs without 32px artboard padding,
+    // otherwise size={24} draws icons noticeably smaller/heavier than neighbors.
+    const camera = readFileSync(resolve(ICONS_DIR, "photo_camera.svg"), "utf8");
+    const gallery = readFileSync(resolve(ICONS_DIR, "images.svg"), "utf8");
+    const trash = readFileSync(resolve(ICONS_DIR, "delete.svg"), "utf8");
+    expect(camera).toMatch(/viewBox="0 0 24 22"/);
+    expect(gallery).toMatch(/viewBox="0 0 22 22"/);
+    expect(gallery).not.toMatch(/viewBox="0 0 32 32"/);
+    expect(trash).toMatch(/viewBox="0 0 19 22"/);
+    expect(trash).not.toMatch(/viewBox="0 0 24 24"/);
+  });
+
+  it("keeps profile-detail icons on square optically-normalized viewBoxes", () => {
+    // Figma 12697:37391 — 32×32 boxes; oversized Material canvases (36/40/32) made
+    // some glyphs look tiny next to already-cropped ones. Square crop + ~8% pad →
+    // uniform fill so a single size={24} matches across the list.
+    const profileDetailIcons = [
+      "alternate_email",
+      "mail",
+      "phone",
+      "business_center",
+      "handshake",
+      "account_circle",
+      "group",
+      "info",
+      "globe_location_pin",
+      "schedule",
+      "calendar_month",
+      "celebration",
+    ] as const;
+
+    for (const name of profileDetailIcons) {
+      const content = readFileSync(resolve(ICONS_DIR, `${name}.svg`), "utf8");
+      const match =
+        /viewBox="(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(
+          content,
+        );
+      expect(match, `${name} viewBox`).not.toBeNull();
+      const width = Number(match?.[3]);
+      const height = Number(match?.[4]);
+      expect(width).toBeCloseTo(height, 3);
+      // Must not keep the oversized source artboards that caused the size mismatch.
+      expect(content).not.toMatch(/viewBox="0 0 36 36"/);
+      expect(content).not.toMatch(/viewBox="0 0 40 40"/);
+    }
   });
 
   it("keeps all SVG icon assets in one contract", () => {

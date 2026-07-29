@@ -46,11 +46,6 @@ const FeedPage = React.lazy(() =>
 const UpdatePage = React.lazy(() =>
   import("~/pages/update/update-page.ui").then((m) => ({ default: m.UpdatePage })),
 );
-const SettingsPersonalInfoPage = React.lazy(() =>
-  import("~/pages/settings/settings-personal-info-page.ui").then((m) => ({
-    default: m.SettingsPersonalInfoPage,
-  })),
-);
 
 function resolveWorkspaceMessengerRootFromSessions(params: {
   sessions: WorkspaceAuthSession[];
@@ -129,7 +124,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="/mail" element={<MailPage />} />
         <Route path="/call" element={<CallsPage />} />
         <Route path="/calls" element={<CallsPage />} />
-        <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="/settings/logs" element={diagnosticsRouteElement} />
         <Route path="/settings/build" element={<UpdatePage />} />
         <Route path="/settings/*" element={<Navigate to={defaultMessengerRoute} replace />} />
@@ -165,7 +159,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="mail" element={<MailPage />} />
         <Route path="call" element={<CallsPage />} />
         <Route path="calls" element={<CallsPage />} />
-        <Route path="settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="settings/logs" element={diagnosticsRouteElement} />
         <Route path="settings/build" element={<UpdatePage />} />
         <Route path="settings/*" element={<WorkspaceMessengerRootRedirect />} />

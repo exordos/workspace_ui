@@ -19,6 +19,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   rightDrawerOpen,
   rightDrawerMode,
   onCloseRightDrawer,
+  onBackRightDrawer,
   rightDrawerTitle,
   rightPanelTitle,
   participantsCount,
@@ -27,6 +28,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
   onOpenBuildsDrawer,
+  onOpenPersonalInfoDrawer,
 }: LayoutMainWorkspaceProps) {
   const showRightPanel =
     rightDrawerOpen &&
@@ -34,6 +36,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
       rightDrawerMode === "user-menu" ||
       rightDrawerMode === "about" ||
       rightDrawerMode === "builds" ||
+      rightDrawerMode === "personal-info" ||
       shouldShowChatShell);
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
@@ -164,7 +167,11 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
           <Outlet />
         </main>
         {showRightPanel && (
-          <RightDrawer onClose={onCloseRightDrawer} title={rightDrawerTitle}>
+          <RightDrawer
+            onClose={onCloseRightDrawer}
+            onBack={onBackRightDrawer}
+            title={rightDrawerTitle}
+          >
             <RightPanel
               mode={rightDrawerMode}
               title={rightPanelTitle}
@@ -174,6 +181,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
               onOpenBuildsDrawer={onOpenBuildsDrawer}
+              onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
             />
           </RightDrawer>
         )}

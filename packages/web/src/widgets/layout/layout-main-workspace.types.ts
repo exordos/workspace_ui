@@ -8,6 +8,8 @@ export interface LayoutMainWorkspaceProps {
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   onCloseRightDrawer: () => void;
+  /** Shell back control for nested drawer modes (e.g. personal-info → user-menu). */
+  onBackRightDrawer?: () => void;
   /** Shell title shown next to the drawer close button. */
   rightDrawerTitle: string;
   rightPanelTitle: string;
@@ -17,4 +19,5 @@ export interface LayoutMainWorkspaceProps {
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
   onOpenBuildsDrawer: () => void;
+  onOpenPersonalInfoDrawer?: () => void;
 }

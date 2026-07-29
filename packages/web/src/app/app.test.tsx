@@ -16,10 +16,6 @@ vi.mock("~/pages/licenses/licenses-page.ui", () => ({
   LicensesPage: () => <div>licenses-page</div>,
 }));
 
-vi.mock("~/pages/settings/settings-personal-info-page.ui", () => ({
-  SettingsPersonalInfoPage: () => <div>settings-personal-info-page</div>,
-}));
-
 vi.mock("~/pages/chat/chat-page.ui", () => ({
   ChatPage: () => <div data-testid="chat-page">chat-page</div>,
 }));
@@ -154,15 +150,14 @@ describe("App default routing", () => {
     expect(screen.queryByTestId("layout-shell")).not.toBeInTheDocument();
   });
 
-  it("opens personal info settings route instead of redirecting to inbox", async () => {
+  it("redirects removed personal-info settings route to messenger root", async () => {
     setAuthorizedSession();
 
     renderWithProviders(<App />, {
       route: "/org/zulip.example.com/settings/personal-info",
     });
 
-    expect(await screen.findByText("settings-personal-info-page")).toBeInTheDocument();
-    expect(screen.queryByText("inbox-page")).not.toBeInTheDocument();
+    expect(await screen.findByText("inbox-page")).toBeInTheDocument();
   });
 
   it("redirects unknown org routes to project Inbox", async () => {

@@ -49,7 +49,6 @@ export const SettingsPage: React.FC = () => {
   const [chatSortingSettingsOpen, setChatSortingSettingsOpen] = useState(false);
   const [folderLayoutSettingsOpen, setFolderLayoutSettingsOpen] = useState(false);
   const [authIdleTimeoutSettingsOpen, setAuthIdleTimeoutSettingsOpen] = useState(false);
-  const openPersonalInfo = useCallback(() => navigate("/settings/personal-info"), [navigate]);
   const openLogs = useCallback(() => navigate("/settings/logs"), [navigate]);
   const openBuilds = useCallback(() => navigate("/settings/build"), [navigate]);
   const toggleThemeSettings = useCallback(() => {
@@ -106,22 +105,9 @@ export const SettingsPage: React.FC = () => {
   }, [prioritizeUnmutedUnreadChannels, setPrioritizeUnmutedUnreadChannels]);
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.settings")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
-        <button
-          type="button"
-          onClick={openPersonalInfo}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-card-bg-active"
-        >
-          <span className="flex items-center gap-3">
-            <Icon name="profile" size={20} className="text-accent" />
-            <span className="text-sm font-medium text-text-primary">
-              {t("settings.personalInfo")}
-            </span>
-          </span>
-          <Icon name="chevron-right" size={16} className="text-text-muted" />
-        </button>
         {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
           <button
             type="button"

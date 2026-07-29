@@ -60,6 +60,25 @@ describe("RightDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("renders optional back control in the shell header", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+
+    render(
+      <RightDrawer onClose={vi.fn()} onBack={onBack} title="Personal info">
+        <div>Content</div>
+      </RightDrawer>,
+    );
+
+    const backButton = screen.getByTestId("right-drawer-back");
+    const title = screen.getByRole("heading", { name: "Personal info" });
+    const header = title.closest("header");
+
+    expect(header).toContainElement(backButton);
+    await user.click(backButton);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it("uses semantic token classes for close button", () => {
     render(
       <RightDrawer onClose={vi.fn()} title="Profile">

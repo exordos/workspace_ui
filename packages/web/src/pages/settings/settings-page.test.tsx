@@ -33,16 +33,24 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("routes to personal info/diagnostics/build sections", () => {
+  it("uses full-width layout container for settings content", () => {
+    const { container } = renderWithProviders(<SettingsPage />);
+    const pageRoot = container.querySelector("header")?.parentElement;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
+  });
+
+  it("routes to diagnostics/build sections", () => {
     renderWithProviders(<SettingsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: /personal info/i }));
     fireEvent.click(screen.getByRole("button", { name: /^diagnostics$/i }));
     fireEvent.click(screen.getByRole("button", { name: /select build/i }));
 
-    expect(navigateSpy).toHaveBeenNthCalledWith(1, "/settings/personal-info");
-    expect(navigateSpy).toHaveBeenNthCalledWith(2, "/settings/logs");
-    expect(navigateSpy).toHaveBeenNthCalledWith(3, "/settings/build");
+    expect(navigateSpy).toHaveBeenNthCalledWith(1, "/settings/logs");
+    expect(navigateSpy).toHaveBeenNthCalledWith(2, "/settings/build");
   });
 
   it("does not render service catalog entry in settings menu", () => {

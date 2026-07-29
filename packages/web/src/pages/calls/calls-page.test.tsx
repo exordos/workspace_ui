@@ -19,6 +19,22 @@ describe("CallsPage", () => {
     navigateSpy.mockReset();
   });
 
+  it("uses full-width layout container for calls content", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/calls"]}>
+        <Routes>
+          <Route path="/calls" element={<CallsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const pageRoot = container.firstElementChild;
+
+    expect(pageRoot).not.toBeNull();
+    expect(pageRoot).toHaveClass("w-full");
+    expect(pageRoot).toHaveClass("flex-1");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
+  });
+
   it("renders calls title and empty state without loading legacy history", () => {
     render(
       <MemoryRouter initialEntries={["/calls"]}>

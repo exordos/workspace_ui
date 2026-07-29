@@ -125,7 +125,6 @@ describe("WebView page registry", () => {
     expect(pages.length).toBeGreaterThan(0);
     expect(pages.some((p) => p.path === "/licenses")).toBe(true);
     expect(pages.some((p) => p.path === "/updates")).toBe(true);
-    expect(pages.some((p) => p.path === "/settings/personal-info")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/build")).toBe(true);

@@ -1,29 +1,36 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatDmCallBridgeStore } from "./chat-dm-call-bridge.model";
 
-describe("chatDmCallBridge", () => {
+describe("useChatDmCallBridgeStore", () => {
   afterEach(() => {
     useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
     useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
   });
 
-  it("invoke delegates to registered handler", () => {
+  it("invokes registered handler with partner user uuid", () => {
     const handler = vi.fn();
     useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(handler);
-    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(42);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(42);
+    useChatDmCallBridgeStore
+      .getState()
+      .invokeDmCallFromProfile("a225223c-637c-4afa-918f-5f2798b9305f");
+    expect(handler).toHaveBeenCalledWith("a225223c-637c-4afa-918f-5f2798b9305f");
   });
 
-  it("invoke is no-op when handler is not registered", () => {
-    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(42);
+  it("no-ops invoke when handler is missing", () => {
+    useChatDmCallBridgeStore
+      .getState()
+      .invokeDmCallFromProfile("a225223c-637c-4afa-918f-5f2798b9305f");
     expect(useChatDmCallBridgeStore.getState().invokeDmCallFromProfileHandler).toBeNull();
   });
 
-  it("clears pending partner id", () => {
-    useChatDmCallBridgeStore.getState().setPendingDmCallPartnerUserId(99);
-    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserId).toBe(99);
+  it("stores and clears pending partner uuid", () => {
+    useChatDmCallBridgeStore
+      .getState()
+      .setPendingDmCallPartnerUserUuid("b225223c-637c-4afa-918f-5f2798b9305f");
+    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserUuid).toBe(
+      "b225223c-637c-4afa-918f-5f2798b9305f",
+    );
     useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
-    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserId).toBeNull();
+    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserUuid).toBeNull();
   });
 });
