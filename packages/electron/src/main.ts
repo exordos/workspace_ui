@@ -345,10 +345,14 @@ function createWindow(): void {
     ...(process.platform === "linux" && {
       icon: getIconPath("icon.png"),
     }),
-    ...(process.platform === "win32" && {
-      autoHideMenuBar: true,
-    }),
   });
+
+  if (process.platform !== "darwin") {
+    // The menu bar only repeats the tray menu and the window controls, so keep it
+    // out of the frame. The menu itself stays registered — that is what binds the
+    // editing, reload, zoom and quit accelerators (see buildNativeMenu).
+    mainWindow.setMenuBarVisibility(false);
+  }
 
   if (saved.isMaximized) {
     mainWindow.maximize();
@@ -773,6 +777,13 @@ app.whenReady().then(() => {
 // Native application menu
 // ---------------------------------------------------------------------------
 
+/**
+ * Builds the application menu.
+ *
+ * macOS draws it in the system menu bar, where it is mandatory (About, Hide,
+ * Quit live nowhere else). Windows and Linux hide the bar in `createWindow` and
+ * keep this menu only for its accelerators.
+ */
 function buildNativeMenu(): void {
   const isMac = process.platform === "darwin";
 
