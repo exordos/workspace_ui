@@ -177,7 +177,6 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onReplyMessage,
   onAddReplyMessage,
   onForwardMessage,
-  onOpenMessageInChat,
   onToggleMessageSelection,
   onEditMessage,
   onRequestDeleteMessage,
@@ -288,18 +287,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
-    if (onOpenMessageInChat != null) {
-      primaryActionItems.push({
-        type: "action",
-        key: "open-in-chat",
-        icon: "newWindow",
-        label: t("message.openInChat"),
-        onSelect: () => {
-          onOpenMessageInChat(message.uuid);
-          closeMenu();
-        },
-      });
-    }
+    // "Open in chat" belongs in Activity/Feed/search/quotes — not in the in-chat bubble
+    // menu, where the message is already shown in its conversation.
     pushActionSection(primaryActionItems);
 
     const secondaryActionItems: DropdownMenuItem[] = [
@@ -376,7 +365,6 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onCopyMessageText,
     onEditMessage,
     onForwardMessage,
-    onOpenMessageInChat,
     onReplyMessage,
     onRequestDeleteMessage,
     onToggleMessageSelection,

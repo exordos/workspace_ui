@@ -384,7 +384,6 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             onReplyMessage={actions?.onReplyMessage}
             onAddReplyMessage={actions?.onAddReplyMessage}
             onForwardMessage={actions?.onForwardMessage}
-            onOpenMessageInChat={actions?.onOpenMessageInChat}
             onToggleMessageSelection={actions?.onToggleMessageSelection}
             onEditMessage={actions?.onEditMessage}
             onRequestDeleteMessage={actions?.onRequestDeleteMessage}

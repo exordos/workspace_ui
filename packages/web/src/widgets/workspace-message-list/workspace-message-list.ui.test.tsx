@@ -3601,11 +3601,11 @@ describe("WorkspaceMessageList", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Forward" }));
     expect(onForwardMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
 
+    // In-chat bubble menu must not offer "Open in chat" — the message is already here.
+    // onOpenMessageInChat stays wired for quotes and in-body message links only.
     openWorkspaceMessageMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in chat" }));
-    expect(onOpenMessageInChat).toHaveBeenCalledWith("uuid-callback-message");
-
-    openWorkspaceMessageMenu();
+    expect(screen.queryByRole("menuitem", { name: "Open in chat" })).not.toBeInTheDocument();
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy text" }));
     expect(onCopyMessageText).toHaveBeenCalledWith("uuid-callback-message", "Callback body");
 
