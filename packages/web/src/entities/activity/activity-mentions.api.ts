@@ -1,7 +1,9 @@
+import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "~/entities/messenger/messenger-request-options.lib";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,
@@ -12,74 +14,74 @@ import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types"
 import { isAbortError } from "~/shared/lib/abort-error";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 
-const log = createLogger("activity:workspace-starred");
+const log = createLogger("activity:mentions");
+const DEFAULT_MENTIONS_PAGE_SIZE = 50;
 
-export interface WorkspaceStarredMessagesPageResult {
-  messages: WorkspaceMessengerMessageDto[];
-  nextPageMarker: string | null;
+export interface MyMentionsPageResult {
+  messages: MessengerMessage[];
+  nextCursor: string | null;
   hasMore: boolean;
-  pageLimit: number | null;
 }
 
-export interface FetchWorkspaceStarredMessagesOptions {
+export interface FetchMyMentionsPageOptions {
   runtimeContext: WorkspaceRuntimeContext;
-  pageLimit?: number;
-  pageMarker?: string;
+  cursor?: string;
+  pageSize?: number;
   signal?: AbortSignal;
   clientOptions?: MessengerRequestOptionsOverrides;
   client?: {
     getMessagesPage?: (
       options: MessengerClientOptions,
       query: {
-        pageLimit?: number;
+        pageLimit: number;
         pageMarker?: string;
-        starred?: boolean;
-        sortKey?: "created_at";
-        sortDir?: "asc" | "desc";
+        mentioned: boolean;
+        sortKey: "created_at";
+        sortDir: "desc";
       },
     ) => Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>>;
   };
 }
 
-export async function fetchWorkspaceStarredMessages({
+export async function fetchMyMentionsPage({
   runtimeContext,
-  pageLimit,
-  pageMarker,
+  cursor,
+  pageSize = DEFAULT_MENTIONS_PAGE_SIZE,
   signal,
   clientOptions,
   client,
-}: FetchWorkspaceStarredMessagesOptions): Promise<WorkspaceStarredMessagesPageResult> {
+}: FetchMyMentionsPageOptions): Promise<MyMentionsPageResult> {
   const start = performance.now();
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+
   try {
     const page = await (client?.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, {
-      ...(pageLimit == null ? {} : { pageLimit }),
-      ...(pageMarker == null ? {} : { pageMarker }),
-      starred: true,
+      pageLimit: pageSize,
+      ...(cursor == null ? {} : { pageMarker: cursor }),
+      mentioned: true,
       sortKey: "created_at",
       sortDir: "desc",
     });
     const durationMs = Math.round(performance.now() - start);
-    logApiCall("GET", "workspace-messages-starred", {
+    logApiCall("GET", "workspace-messages-mentioned", {
       status: 200,
       durationMs,
     });
     return {
-      messages: page.items,
-      nextPageMarker: page.nextPageMarker,
+      messages: page.items.map(adaptMessengerMessage),
+      nextCursor: page.nextPageMarker,
       hasMore: page.nextPageMarker != null,
-      pageLimit: page.pageLimit,
     };
-  } catch (err) {
+  } catch (error) {
     const durationMs = Math.round(performance.now() - start);
-    const aborted = isAbortError(err) || signal?.aborted === true;
-    logApiCall("GET", "workspace-messages-starred", {
+    const aborted = isAbortError(error) || signal?.aborted === true;
+    logApiCall("GET", "workspace-messages-mentioned", {
       durationMs,
-      ...(aborted ? { aborted: true } : { error: String(err) }),
+      ...(aborted ? { aborted: true } : { error: String(error) }),
     });
     if (!aborted) {
-      log.error("Failed to fetch Workspace starred messages", { error: String(err) });
+      log.error("Failed to fetch Workspace mentions", { error: String(error) });
     }
-    throw err;
+    throw error;
   }
 }

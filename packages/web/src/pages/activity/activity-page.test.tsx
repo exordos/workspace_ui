@@ -8,6 +8,7 @@ import {
   useWorkspaceComposerDraftStore,
 } from "~/entities/composer-draft/composer-draft.model";
 import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
+import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -21,6 +22,7 @@ import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
+const fetchMyMentionsPage = vi.hoisted(() => vi.fn());
 const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const openWorkspaceForward = vi.hoisted(() => vi.fn());
 const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
@@ -36,6 +38,10 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
   fetchWorkspaceStarredMessages,
+}));
+
+vi.mock("~/entities/activity/activity-mentions.api", () => ({
+  fetchMyMentionsPage,
 }));
 
 vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
@@ -97,6 +103,8 @@ const WORKSPACE_SESSION: WorkspaceAuthSession = {
     email: "alice@example.com",
   },
 };
+const MESSAGE_STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const MESSAGE_TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 
 function renderActivityPage(path: string) {
   return render(
@@ -123,8 +131,8 @@ function createWorkspaceMessage(
   return {
     uuid: "message-1",
     project_id: WORKSPACE_SESSION.projectId,
-    stream_uuid: "stream-1",
-    topic_uuid: "topic-1",
+    stream_uuid: MESSAGE_STREAM_UUID,
+    topic_uuid: MESSAGE_TOPIC_UUID,
     author_uuid: "user-2",
     payload: { kind: "markdown", content: "Workspace starred message" },
     user_uuid: WORKSPACE_SESSION.userUuid,
@@ -198,7 +206,7 @@ function seedWorkspaceDraft(overrides: Partial<WorkspaceComposerDraft> = {}): vo
     snapshotId: "snapshot-1",
     content: {
       text: "Review the release notes",
-      replySession: { tabs: [], activeTabId: null },
+      replyTarget: null,
     },
     etag: '"1"',
     disposition: "editable",
@@ -222,12 +230,31 @@ function mockWorkspaceStarredPage(messages: WorkspaceMessengerMessageDto[]): voi
   });
 }
 
+function mockMentionsPage(
+  messages: WorkspaceMessengerMessageDto[],
+  nextCursor: string | null = null,
+): void {
+  fetchMyMentionsPage.mockResolvedValue({
+    messages: messages.map(adaptMessengerMessage),
+    nextCursor,
+    hasMore: nextCursor != null,
+  });
+}
+
+function activityMessageOrder(container: HTMLElement, labels: readonly string[]): string[] {
+  return Array.from(container.querySelectorAll("ul > li")).flatMap((row) => {
+    const label = labels.find((candidate) => row.textContent?.includes(candidate) === true);
+    return label == null ? [] : [label];
+  });
+}
+
 describe("ActivityPage", () => {
   beforeEach(() => {
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     resetWorkspaceComposerDraftStoreForTests();
+    fetchMyMentionsPage.mockReset();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
@@ -242,6 +269,7 @@ describe("ActivityPage", () => {
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     resetWorkspaceComposerDraftStoreForTests();
+    fetchMyMentionsPage.mockReset();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
@@ -255,6 +283,7 @@ describe("ActivityPage", () => {
     mockWorkspaceStarredPage([
       createWorkspaceMessage({
         uuid: "message-55",
+        author_uuid: "unknown-author-uuid",
         payload: { kind: "markdown", content: "Starred message" },
       }),
     ]);
@@ -275,8 +304,9 @@ describe("ActivityPage", () => {
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(fetchWorkspaceStarredMessages.mock.calls[0]?.[0]).not.toHaveProperty("pageLimit");
+    expect(fetchWorkspaceStarredMessages.mock.calls[0]?.[0]).toHaveProperty("pageLimit", 50);
     expect(screen.queryByRole("button", { name: /unstar/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("unknown-author-uuid")).not.toBeInTheDocument();
   });
 
   it("opens Workspace starred message in the Workspace messenger route", async () => {
@@ -324,14 +354,190 @@ describe("ActivityPage", () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["mentions", "Mentions are not connected to Workspace messaging yet."],
-    ["reactions", "Reactions are not connected to Workspace messaging yet."],
-  ] as const)("shows an explicit unsupported state for /activity/%s", (filter, message) => {
-    renderActivityPage(`/activity/${filter}`);
+  it("shows an explicit unsupported state for reactions", () => {
+    renderActivityPage("/activity/reactions");
 
-    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(
+      screen.getByText("Reactions are not connected to Workspace messaging yet."),
+    ).toBeInTheDocument();
     expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+    expect(fetchMyMentionsPage).not.toHaveBeenCalled();
+  });
+
+  it("loads mentions, including an own message that mentions the current user", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    mockMentionsPage([
+      createWorkspaceMessage({
+        uuid: "message-self-mention",
+        author_uuid: WORKSPACE_SESSION.userUuid,
+        is_own: true,
+        mentioned: true,
+        starred: false,
+        payload: { kind: "markdown", content: "Own mention stays visible" },
+      }),
+    ]);
+
+    renderActivityPage("/activity/mentions");
+
+    await waitFor(() => {
+      expect(screen.getByText("Own mention stays visible")).toBeInTheDocument();
+    });
+    expect(fetchMyMentionsPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({
+          organizationId: WORKSPACE_SESSION.organizationId,
+          projectId: WORKSPACE_SESSION.projectId,
+          userUuid: WORKSPACE_SESSION.userUuid,
+        }),
+        pageSize: 50,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+  });
+
+  it("shows the mentions empty state", async () => {
+    setWorkspaceSession();
+    mockMentionsPage([]);
+
+    renderActivityPage("/activity/mentions");
+
+    expect(await screen.findByText("No mentions yet")).toBeInTheDocument();
+  });
+
+  it("shows a retry action when mentions fail to load", async () => {
+    setWorkspaceSession();
+    fetchMyMentionsPage.mockRejectedValueOnce(new Error("request failed"));
+
+    renderActivityPage("/activity/mentions");
+
+    expect(await screen.findByText("Could not load activity messages.")).toBeInTheDocument();
+    mockMentionsPage([
+      createWorkspaceMessage({
+        mentioned: true,
+        payload: { kind: "markdown", content: "Mention after retry" },
+      }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Mention after retry")).toBeInTheDocument();
+    expect(fetchMyMentionsPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads older mentions at the top and preserves both pages", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    fetchMyMentionsPage
+      .mockResolvedValueOnce({
+        messages: [
+          adaptMessengerMessage(
+            createWorkspaceMessage({
+              uuid: "message-new",
+              mentioned: true,
+              created_at: "2026-06-22T10:10:00Z",
+              payload: { kind: "markdown", content: "New mention" },
+            }),
+          ),
+        ],
+        nextCursor: "older-cursor",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          adaptMessengerMessage(
+            createWorkspaceMessage({
+              uuid: "message-old",
+              mentioned: true,
+              created_at: "2026-06-22T09:10:00Z",
+              payload: { kind: "markdown", content: "Old mention" },
+            }),
+          ),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+    const { container } = renderActivityPage("/activity/mentions");
+    expect(await screen.findByText("New mention")).toBeInTheDocument();
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+
+    expect(await screen.findByText("Old mention")).toBeInTheDocument();
+    expect(screen.getByText("New mention")).toBeInTheDocument();
+    expect(fetchMyMentionsPage).toHaveBeenCalledTimes(2);
+    expect(fetchMyMentionsPage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: "older-cursor",
+        pageSize: 50,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("orders newest-first starred pages oldest to newest and prepends older messages", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    const labels = ["Oldest starred", "Older starred", "Recent starred", "Newest starred"] as const;
+    fetchWorkspaceStarredMessages
+      .mockResolvedValueOnce({
+        messages: [
+          createWorkspaceMessage({
+            uuid: "starred-newest",
+            created_at: "2026-06-22T10:30:00Z",
+            payload: { kind: "markdown", content: "Newest starred" },
+          }),
+          createWorkspaceMessage({
+            uuid: "starred-recent",
+            created_at: "2026-06-22T10:20:00Z",
+            payload: { kind: "markdown", content: "Recent starred" },
+          }),
+        ],
+        nextPageMarker: "older-starred",
+        hasMore: true,
+        pageLimit: 50,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          createWorkspaceMessage({
+            uuid: "starred-older",
+            created_at: "2026-06-22T10:10:00Z",
+            payload: { kind: "markdown", content: "Older starred" },
+          }),
+          createWorkspaceMessage({
+            uuid: "starred-oldest",
+            created_at: "2026-06-22T10:00:00Z",
+            payload: { kind: "markdown", content: "Oldest starred" },
+          }),
+        ],
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: 50,
+      });
+
+    const { container } = renderActivityPage("/activity/starred");
+    expect(await screen.findByText("Newest starred")).toBeInTheDocument();
+    expect(activityMessageOrder(container, labels)).toEqual(["Recent starred", "Newest starred"]);
+
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+
+    expect(await screen.findByText("Oldest starred")).toBeInTheDocument();
+    expect(activityMessageOrder(container, labels)).toEqual(labels);
+    expect(fetchWorkspaceStarredMessages).toHaveBeenCalledTimes(2);
+    expect(fetchWorkspaceStarredMessages).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        pageLimit: 50,
+        pageMarker: "older-starred",
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("opens the native Workspace drafts page", () => {
@@ -375,7 +581,7 @@ describe("ActivityPage", () => {
             snapshotId: "snapshot-1",
             content: {
               text: "Review the release notes",
-              replySession: { tabs: [], activeTabId: null },
+              replyTarget: null,
             },
             etag: '"1"',
             disposition: "editable",
@@ -454,7 +660,7 @@ describe("ActivityPage", () => {
     expect(screen.getByRole("button", { name: "Delete draft" })).toBeInTheDocument();
   });
 
-  it("does not apply stale Workspace starred load after runtime changes", async () => {
+  it("does not apply a stale Workspace load after an A to B to A runtime switch", async () => {
     let resolveFirstLoad:
       | ((value: {
           messages: WorkspaceMessengerMessageDto[];
@@ -471,6 +677,10 @@ describe("ActivityPage", () => {
       projectId: "project-2",
       userUuid: "user-9",
       runtimeGeneration: 2,
+    };
+    const returnedSession: WorkspaceAuthSession = {
+      ...WORKSPACE_SESSION,
+      runtimeGeneration: 3,
     };
 
     setWorkspaceSession();
@@ -489,6 +699,17 @@ describe("ActivityPage", () => {
             project_id: nextSession.projectId,
             user_uuid: nextSession.userUuid,
             payload: { kind: "markdown", content: "Org B starred message" },
+          }),
+        ],
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: null,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          createWorkspaceMessage({
+            uuid: "message-a-fresh",
+            payload: { kind: "markdown", content: "Fresh Org A starred message" },
           }),
         ],
         nextPageMarker: null,
@@ -518,6 +739,21 @@ describe("ActivityPage", () => {
     });
 
     act(() => {
+      setWorkspaceSession(returnedSession);
+    });
+    rerender(
+      <MemoryRouter initialEntries={["/activity/starred"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Fresh Org A starred message")).toBeInTheDocument();
+    });
+
+    await act(async () => {
       resolveFirstLoad?.({
         messages: [
           createWorkspaceMessage({
@@ -529,10 +765,13 @@ describe("ActivityPage", () => {
         hasMore: false,
         pageLimit: null,
       });
+      await Promise.resolve();
     });
 
-    expect(screen.getByText("Org B starred message")).toBeInTheDocument();
-    expect(screen.queryByText("Org A starred message")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Fresh Org A starred message")).toBeInTheDocument();
+      expect(screen.queryByText("Org A starred message")).not.toBeInTheDocument();
+    });
   });
 
   it("initializes Workspace starred list at the latest messages", async () => {

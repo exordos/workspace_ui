@@ -13,7 +13,12 @@ import {
 
 describe("VISIBLE_MY_ACTIVITY", () => {
   it("keeps only the available activity navigation items", () => {
-    expect(VISIBLE_MY_ACTIVITY.map((item) => item.key)).toEqual(["inbox", "drafts", "favorites"]);
+    expect(VISIBLE_MY_ACTIVITY.map((item) => item.key)).toEqual([
+      "inbox",
+      "mentions",
+      "drafts",
+      "favorites",
+    ]);
   });
 });
 

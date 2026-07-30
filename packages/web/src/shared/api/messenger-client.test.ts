@@ -235,8 +235,11 @@ describe("messenger-client", () => {
     ]);
 
     await expect(
-      getMessages({ accessToken: "access-token", fetchImpl: fetchMock }),
+      getMessages({ accessToken: "access-token", fetchImpl: fetchMock }, { mentioned: true }),
     ).resolves.toEqual([messageDto]);
+    expect(firstFetchCall(fetchMock)[0]).toBe(
+      "/api/workspace/v1/messenger/messages/?mentioned=true",
+    );
   });
 
   it("returns an empty message UUID batch without fetch", async () => {
@@ -405,6 +408,7 @@ describe("messenger-client", () => {
           sortKey: "created_at",
           sortDir: "desc",
           starred: true,
+          mentioned: true,
         },
       ),
     ).resolves.toEqual({
@@ -415,7 +419,7 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/workspace/v1/messenger/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&sort_key=created_at&sort_dir=desc&starred=true`,
+      `/api/workspace/v1/messenger/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}&sort_key=created_at&sort_dir=desc&starred=true&mentioned=true`,
     );
 
     const invalidFetchMock = createFetchMock([

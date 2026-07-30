@@ -27,7 +27,6 @@ export const WorkspaceSidebarActivity: React.FC<WorkspaceSidebarActivityProps> =
         favorites: null,
       }}
       disabledItems={{
-        mentions: t("workspaceMessenger.mentionsUnsupported"),
         reactions: t("workspaceMessenger.reactionsUnsupported"),
         feed: t("workspaceMessenger.feedUnsupported"),
       }}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
-import { fetchWorkspaceStarredMessages } from "./activity-workspace-starred.api";
+import { fetchMyMentionsPage } from "./activity-mentions.api";
 
 const runtimeContext: WorkspaceRuntimeContext = {
   accountId: "account-1",
@@ -15,43 +15,49 @@ const runtimeContext: WorkspaceRuntimeContext = {
   runtimeGeneration: 1,
 };
 
-const message: WorkspaceMessengerMessageDto = {
+const ownMentionMessage: WorkspaceMessengerMessageDto = {
   uuid: "message-1",
   project_id: "project-1",
-  stream_uuid: "stream-1",
-  topic_uuid: "topic-1",
-  author_uuid: "user-2",
-  payload: { kind: "markdown", content: "Starred message" },
+  stream_uuid: "11111111-1111-4111-8111-111111111111",
+  topic_uuid: "22222222-2222-4222-8222-222222222222",
+  author_uuid: "user-1",
+  payload: { kind: "markdown", content: "Self mention" },
   user_uuid: "user-1",
   read: true,
   pinned: false,
-  starred: true,
-  is_own: false,
+  starred: false,
+  is_own: true,
+  mentioned: true,
   reactions: {},
   created_at: "2026-06-22T10:10:00Z",
   updated_at: "2026-06-22T10:10:00Z",
 };
 
-describe("fetchWorkspaceStarredMessages", () => {
-  it("requests Workspace messages with the starred filter", async () => {
+describe("fetchMyMentionsPage", () => {
+  it("requests current-user mentions and keeps an own mentioned message", async () => {
     const getMessagesPage = vi.fn().mockResolvedValue({
-      items: [message],
+      items: [ownMentionMessage],
       nextPageMarker: "next-message",
       pageLimit: 50,
     });
 
     await expect(
-      fetchWorkspaceStarredMessages({
+      fetchMyMentionsPage({
         runtimeContext,
-        pageLimit: 50,
-        pageMarker: "cursor",
+        cursor: "cursor",
         client: { getMessagesPage },
       }),
     ).resolves.toEqual({
-      messages: [message],
-      nextPageMarker: "next-message",
+      messages: [
+        expect.objectContaining({
+          uuid: ownMentionMessage.uuid,
+          authorUuid: runtimeContext.userUuid,
+          isOwn: true,
+          mentioned: true,
+        }),
+      ],
+      nextCursor: "next-message",
       hasMore: true,
-      pageLimit: 50,
     });
 
     expect(getMessagesPage).toHaveBeenCalledWith(
@@ -62,35 +68,37 @@ describe("fetchWorkspaceStarredMessages", () => {
       {
         pageLimit: 50,
         pageMarker: "cursor",
-        starred: true,
+        mentioned: true,
         sortKey: "created_at",
         sortDir: "desc",
       },
     );
   });
 
-  it("does not apply a default page limit", async () => {
+  it("allows overriding the page size without exposing message filters", async () => {
     const getMessagesPage = vi.fn().mockResolvedValue({
-      items: [message],
+      items: [],
       nextPageMarker: null,
-      pageLimit: null,
+      pageLimit: 25,
     });
 
-    await fetchWorkspaceStarredMessages({
-      runtimeContext,
-      client: { getMessagesPage },
-    });
-
-    expect(getMessagesPage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accessToken: runtimeContext.accessToken,
-        projectId: runtimeContext.projectId,
+    await expect(
+      fetchMyMentionsPage({
+        runtimeContext,
+        pageSize: 25,
+        client: { getMessagesPage },
       }),
-      {
-        starred: true,
-        sortKey: "created_at",
-        sortDir: "desc",
-      },
-    );
+    ).resolves.toEqual({
+      messages: [],
+      nextCursor: null,
+      hasMore: false,
+    });
+
+    expect(getMessagesPage).toHaveBeenCalledWith(expect.any(Object), {
+      pageLimit: 25,
+      mentioned: true,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
   });
 });

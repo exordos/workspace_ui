@@ -59,6 +59,7 @@ export const MY_ACTIVITY = [
 
 const VISIBLE_MY_ACTIVITY_KEYS: ReadonlySet<(typeof MY_ACTIVITY)[number]["key"]> = new Set([
   "inbox",
+  "mentions",
   "drafts",
   "favorites",
 ]);
