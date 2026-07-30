@@ -25,6 +25,7 @@ export function replyToWorkspaceReply(
   session: WorkspaceReplySession,
   quote: WorkspaceReplyQuote,
   identity: WorkspaceReplyTabIdentity,
+  initialAnswer = "",
 ): WorkspaceReplySession {
   const normalizedSession = normalizeWorkspaceReplySession(session);
   const normalizedQuote = normalizeWorkspaceReplyQuote(quote);
@@ -35,7 +36,7 @@ export function replyToWorkspaceReply(
     const firstTab = createWorkspaceReplyTab(normalizedQuote, identity);
     return firstTab == null
       ? EMPTY_WORKSPACE_REPLY_SESSION
-      : { tabs: [firstTab], activeTabId: firstTab.id };
+      : { tabs: [{ ...firstTab, answer: initialAnswer }], activeTabId: firstTab.id };
   }
 
   const activeTab = normalizedSession.tabs[activeIndex];

@@ -83,6 +83,7 @@ import { EMPTY_WORKSPACE_REPLY_SESSION } from "~/features/workspace-reply/worksp
 import type {
   WorkspaceReplyQuote,
   WorkspaceReplySession,
+  WorkspaceReplyTab,
 } from "~/features/workspace-reply/workspace-reply.types";
 import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
@@ -1522,16 +1523,29 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     (messageUuid: string, selectedText?: string) => {
       const quote = resolveWorkspaceReplyQuote(messageUuid, selectedText);
       if (quote == null) return;
+      const identity = createWorkspaceReplyTabIdentity();
 
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
       setRestoredWorkspaceReplySession(null);
       setWorkspaceReplyTabFocusKeySuppressed(false);
-      setWorkspaceReplySession((current) =>
-        replyToWorkspaceReply(current, quote, createWorkspaceReplyTabIdentity()),
-      );
+      updateWorkspaceComposerDraft((content) => {
+        const nextReplySession = replyToWorkspaceReply(
+          content.replySession,
+          quote,
+          identity,
+          content.text,
+        );
+        const startedReply =
+          content.replySession.tabs.length === 0 && nextReplySession.tabs.length > 0;
+        return {
+          ...content,
+          text: startedReply ? "" : content.text,
+          replySession: nextReplySession,
+        };
+      });
     },
-    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, setWorkspaceReplySession],
+    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, updateWorkspaceComposerDraft],
   );
 
   const handleAddReplyMessage = useCallback(
@@ -1568,9 +1582,28 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       return;
     }
-    setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
+    updateWorkspaceComposerDraft((content) => {
+      const initialTab = content.replySession.tabs.reduce<WorkspaceReplyTab | undefined>(
+        (earliest, tab) => {
+          if (earliest == null || tab.createdAt < earliest.createdAt) return tab;
+          if (
+            tab.createdAt === earliest.createdAt &&
+            tab.id.localeCompare(earliest.id, undefined, { numeric: true }) < 0
+          ) {
+            return tab;
+          }
+          return earliest;
+        },
+        undefined,
+      );
+      return {
+        ...content,
+        text: content.text.length > 0 ? content.text : (initialTab?.answer ?? ""),
+        replySession: EMPTY_WORKSPACE_REPLY_SESSION,
+      };
+    });
     setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, setWorkspaceReplySession]);
+  }, [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft]);
 
   const handleSelectWorkspaceReplyTab = useCallback(
     (tabId: string, source?: WorkspaceReplyTabSelectSource) => {
@@ -1594,9 +1627,22 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         );
         return;
       }
-      setWorkspaceReplySession((current) => removeWorkspaceReplyTab(current, tabId));
+      updateWorkspaceComposerDraft((content) => {
+        const removedTab = content.replySession.tabs.find((tab) => tab.id === tabId);
+        const nextReplySession = removeWorkspaceReplyTab(content.replySession, tabId);
+        return {
+          ...content,
+          text:
+            nextReplySession.tabs.length === 0
+              ? content.text.length > 0
+                ? content.text
+                : (removedTab?.answer ?? "")
+              : content.text,
+          replySession: nextReplySession,
+        };
+      });
     },
-    [isRestoredWorkspaceReplyEdit, setWorkspaceReplySession],
+    [isRestoredWorkspaceReplyEdit, updateWorkspaceComposerDraft],
   );
 
   const handleReorderWorkspaceReplyTab = useCallback(

@@ -63,6 +63,23 @@ describe("workspace-reply.lib", () => {
     ).toEqual({ tabs: [tab(quoteA, "tab-a", "")], activeTabId: "tab-a" });
   });
 
+  it("moves an existing composer answer into the first Reply tab", () => {
+    expect(
+      replyToWorkspaceReply(
+        { tabs: [], activeTabId: null },
+        quoteA,
+        {
+          id: "tab-a",
+          createdAt: "2026-07-14T10:00:00Z",
+        },
+        "draft before reply",
+      ),
+    ).toEqual({
+      tabs: [tab(quoteA, "tab-a", "draft before reply")],
+      activeTabId: "tab-a",
+    });
+  });
+
   it("replaces only the active quote and keeps answer, id, and position", () => {
     const current = session(tab(quoteA, "tab-a", "ответ А"), tab(quoteB, "tab-b", "ответ Б"));
     const next = replyToWorkspaceReply(current, quoteC, {

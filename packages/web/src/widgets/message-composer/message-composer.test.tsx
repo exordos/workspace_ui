@@ -1766,6 +1766,43 @@ describe("MessageComposer focus key", () => {
 });
 
 describe("MessageComposer draft session", () => {
+  it("keeps attached files when the draft session changes to a reply tab", async () => {
+    const onSend = vi.fn();
+    const { container, rerender } = renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        draftSessionKey="workspace-chat:text"
+        initialValue="draft before reply"
+      />,
+    );
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const file = new File(["attachment"], "reply-attachment.txt", { type: "text/plain" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("reply-attachment.txt")).toBeInTheDocument();
+    });
+
+    rerender(
+      <MessageComposer
+        onSend={onSend}
+        draftSessionKey="workspace-chat:reply:tab-a"
+        initialValue="draft before reply"
+      />,
+    );
+
+    expect(screen.getByRole("textbox")).toHaveValue("draft before reply");
+    expect(screen.getByText("reply-attachment.txt")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("draft before reply", "", [file]);
+    });
+  });
+
   it("applies the initial value when the draft session changes", () => {
     const { rerender } = renderWithProviders(
       <MessageComposer

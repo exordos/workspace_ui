@@ -1613,7 +1613,8 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("opens Workspace reply mode as a tab without injecting quote into the draft", async () => {
+  it("moves existing composer text into the first Workspace reply tab", async () => {
+    seedSecondMessage();
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -1621,6 +1622,7 @@ describe("ChatPage Workspace route", () => {
     await screen.findByTestId("workspace-message-list-section");
 
     act(() => {
+      captured.composerProps?.onComposerValueChange("draft before reply");
       captured.messageListProps?.onReplyMessage?.(
         "55555555-5555-4555-8555-555555555555",
         "  selected excerpt  ",
@@ -1636,7 +1638,7 @@ describe("ChatPage Workspace route", () => {
             senderUuid: USER_B_UUID,
             senderName: "Bob Reed",
             selectedText: "  selected excerpt  ",
-            answer: "",
+            answer: "draft before reply",
           },
         ],
       });
@@ -1650,10 +1652,25 @@ describe("ChatPage Workspace route", () => {
       sender_uuid: USER_B_UUID,
       quoteFormat: "workspace",
     });
-    expect(captured.composerProps?.draftInitialValue).toBe("");
+    expect(captured.composerProps?.draftInitialValue).toBe("draft before reply");
     expect(captured.composerProps?.focusKey).toBe(
       captured.composerProps?.workspaceReplySession?.activeTabId,
     );
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        workspaceRuntimeOwnerKey(createSession()),
+        `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      )?.content.text,
+    ).toBe("");
+
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(SECOND_MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(2);
+      expect(captured.composerProps?.draftInitialValue).toBe("");
+    });
 
     act(() => {
       captured.composerProps?.onClearReply();
@@ -1661,6 +1678,48 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => {
       expect(captured.composerProps?.replyQuote).toBeNull();
+      expect(captured.composerProps?.draftInitialValue).toBe("draft before reply");
+    });
+  });
+
+  it("preserves ordinary text from a saved draft when clearing its reply session", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "existing ordinary draft",
+      replySession: {
+        activeTabId: "reply-tab-a",
+        tabs: [
+          {
+            id: "reply-tab-a",
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "",
+          },
+        ],
+      },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-a"),
+    );
+
+    act(() => {
+      captured.composerProps?.onClearReply();
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toEqual({
+        tabs: [],
+        activeTabId: null,
+      });
+      expect(captured.composerProps?.draftInitialValue).toBe("existing ordinary draft");
     });
   });
 
@@ -2744,6 +2803,7 @@ describe("ChatPage Workspace route", () => {
 
     await screen.findByTestId("workspace-message-list-section");
     act(() => {
+      captured.composerProps?.onComposerValueChange("draft before removing reply");
       captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
     });
     const tabId = captured.composerProps?.workspaceReplySession?.activeTabId;
@@ -2757,6 +2817,7 @@ describe("ChatPage Workspace route", () => {
         activeTabId: null,
       });
       expect(captured.composerProps?.outgoingBodyOverride).toBeUndefined();
+      expect(captured.composerProps?.draftInitialValue).toBe("draft before removing reply");
     });
   });
 

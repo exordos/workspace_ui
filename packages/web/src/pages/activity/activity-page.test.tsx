@@ -206,7 +206,7 @@ function seedWorkspaceDraft(overrides: Partial<WorkspaceComposerDraft> = {}): vo
     snapshotId: "snapshot-1",
     content: {
       text: "Review the release notes",
-      replyTarget: null,
+      replySession: { tabs: [], activeTabId: null },
     },
     etag: '"1"',
     disposition: "editable",
@@ -581,7 +581,7 @@ describe("ActivityPage", () => {
             snapshotId: "snapshot-1",
             content: {
               text: "Review the release notes",
-              replyTarget: null,
+              replySession: { tabs: [], activeTabId: null },
             },
             etag: '"1"',
             disposition: "editable",
