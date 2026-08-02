@@ -43,6 +43,7 @@ export interface WorkspaceMessengerStreamCacheRow {
   ownerKey: string;
   streamUuid: string;
   stream: WorkspaceMessengerCachedStream;
+  lastMessageCreatedAt?: string | null;
   updatedAt: string;
   cacheUpdatedAt: number;
 }
@@ -60,6 +61,7 @@ export interface WorkspaceMessengerTopicCacheRow {
   topicUuid: string;
   streamUuid: string;
   topic: WorkspaceMessengerCachedTopic;
+  lastMessageCreatedAt?: string | null;
   updatedAt: string;
   cacheUpdatedAt: number;
 }
@@ -85,6 +87,7 @@ export interface WorkspaceMessengerConversationCacheRow {
   unreadCount: number;
   lastMessageUuid: string | null;
   conversation: WorkspaceMessengerCachedConversation;
+  lastMessageCreatedAt?: string | null;
   updatedAt: string;
   cacheUpdatedAt: number;
 }
@@ -966,14 +969,34 @@ function buildWindowRow(
   };
 }
 
+interface CatalogUpsertOptions {
+  force?: boolean;
+  reconcileFence?: number;
+}
+
 function shouldUpsertCatalogRow(
-  previous: { updatedAt: string } | undefined,
+  previous: { updatedAt: string; cacheUpdatedAt?: number } | undefined,
   incomingUpdatedAt: string | null | undefined,
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): boolean {
   if (options.force === true || previous == null) return true;
+  if (options.reconcileFence != null) {
+    // A full response owns rows that predate its request. Realtime writes made
+    // after that request keep precedence over the eventually arriving snapshot.
+    return (previous.cacheUpdatedAt ?? 0) <= options.reconcileFence;
+  }
   if (incomingUpdatedAt == null) return false;
   return incomingUpdatedAt >= previous.updatedAt;
+}
+
+function shouldApplyMessagePointer(
+  row: { updatedAt: string; lastMessageCreatedAt?: string | null },
+  messageCreatedAt: string,
+): boolean {
+  // Message activity has its own chronology and must not make catalog metadata
+  // look newer than a later authoritative topic or stream snapshot.
+  const currentPointerCreatedAt = row.lastMessageCreatedAt ?? row.updatedAt;
+  return messageCreatedAt >= currentPointerCreatedAt;
 }
 
 async function deleteMissingCatalogRows(
@@ -1006,7 +1029,7 @@ async function upsertStreams(
   db: IDBDatabase,
   ownerKey: string,
   streams: readonly WorkspaceMessengerCachedStream[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (streams.length === 0) return;
 
@@ -1039,7 +1062,7 @@ async function upsertTopics(
   db: IDBDatabase,
   ownerKey: string,
   topics: readonly WorkspaceMessengerCachedTopic[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (topics.length === 0) return;
 
@@ -1066,7 +1089,7 @@ async function upsertConversations(
   db: IDBDatabase,
   ownerKey: string,
   conversations: readonly WorkspaceMessengerCachedConversation[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (conversations.length === 0) return;
 
@@ -1095,7 +1118,7 @@ async function upsertFolders(
   db: IDBDatabase,
   ownerKey: string,
   folders: readonly WorkspaceMessengerCachedFolder[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (folders.length === 0) return;
 
@@ -1122,7 +1145,7 @@ async function upsertFolderItems(
   db: IDBDatabase,
   ownerKey: string,
   folderItems: readonly WorkspaceMessengerCachedFolderItem[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (folderItems.length === 0) return;
 
@@ -1151,7 +1174,7 @@ async function upsertUsers(
   db: IDBDatabase,
   ownerKey: string,
   users: readonly WorkspaceMessengerCachedUser[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (users.length === 0) return;
 
@@ -1178,7 +1201,7 @@ async function upsertStreamBindings(
   db: IDBDatabase,
   ownerKey: string,
   streamBindings: readonly WorkspaceMessengerCachedStreamBinding[],
-  options: { force?: boolean } = {},
+  options: CatalogUpsertOptions = {},
 ): Promise<void> {
   if (streamBindings.length === 0) return;
 
@@ -1208,14 +1231,19 @@ async function writeCatalogCollection<TItem>(
   ownerKey: string,
   storeName: string,
   items: readonly TItem[] | undefined,
-  upsert: (db: IDBDatabase, ownerKey: string, items: readonly TItem[]) => Promise<void>,
+  upsert: (
+    db: IDBDatabase,
+    ownerKey: string,
+    items: readonly TItem[],
+    options?: CatalogUpsertOptions,
+  ) => Promise<void>,
   getCacheId: (ownerKey: string, item: TItem) => string,
   options: WorkspaceMessengerCatalogCacheWriteOptions,
   reconcileFence: number,
 ): Promise<void> {
   if (items === undefined) return;
 
-  await upsert(db, ownerKey, items);
+  await upsert(db, ownerKey, items, options.mode === "reconcile" ? { reconcileFence } : undefined);
   if (options.mode !== "reconcile") return;
 
   await deleteMissingCatalogRows(
@@ -1834,44 +1862,41 @@ export async function applyMessengerMessagePointerCache(
     );
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const streamRow = streamRows.get(streamId);
-    if (streamRow != null && shouldUpsertCatalogRow(streamRow, message.createdAt)) {
+    if (streamRow != null && shouldApplyMessagePointer(streamRow, message.createdAt)) {
       transaction.objectStore(stores.streams).put({
         ...streamRow,
         stream: {
           ...streamRow.stream,
           lastMessageUuid: message.uuid,
-          updatedAt: message.createdAt,
         },
-        updatedAt: message.createdAt,
+        lastMessageCreatedAt: message.createdAt,
         cacheUpdatedAt,
       });
     }
     const topicRow = topicRows.get(topicId);
-    if (topicRow != null && shouldUpsertCatalogRow(topicRow, message.createdAt)) {
+    if (topicRow != null && shouldApplyMessagePointer(topicRow, message.createdAt)) {
       transaction.objectStore(stores.topics).put({
         ...topicRow,
         topic: {
           ...topicRow.topic,
           lastMessageUuid: message.uuid,
-          updatedAt: message.createdAt,
         },
-        updatedAt: message.createdAt,
+        lastMessageCreatedAt: message.createdAt,
         cacheUpdatedAt,
       });
     }
     const conversationStore = transaction.objectStore(stores.conversations);
     for (const conversationId of new Set(conversationIds)) {
       const row = conversationRows.get(cacheRowId(ownerKey, conversationId));
-      if (row == null || !shouldUpsertCatalogRow(row, message.createdAt)) continue;
+      if (row == null || !shouldApplyMessagePointer(row, message.createdAt)) continue;
       conversationStore.put({
         ...row,
         conversation: {
           ...row.conversation,
           lastMessageUuid: message.uuid,
-          updatedAt: message.createdAt,
         },
         lastMessageUuid: message.uuid,
-        updatedAt: message.createdAt,
+        lastMessageCreatedAt: message.createdAt,
         cacheUpdatedAt,
       });
     }
@@ -1899,7 +1924,6 @@ export async function clearMessengerMessagePointerCache(
       [stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
-    const now = nowIso();
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const streamStore = transaction.objectStore(stores.streams);
     for (const row of streamRows) {
@@ -1909,8 +1933,8 @@ export async function clearMessengerMessagePointerCache(
       if (stream.lastMessageUuid !== messageUuid) continue;
       streamStore.put({
         ...row,
-        stream: { ...stream, lastMessageUuid: null, updatedAt: now },
-        updatedAt: now,
+        stream: { ...stream, lastMessageUuid: null },
+        lastMessageCreatedAt: null,
         cacheUpdatedAt,
       });
     }
@@ -1922,8 +1946,8 @@ export async function clearMessengerMessagePointerCache(
       if (topic.lastMessageUuid !== messageUuid) continue;
       topicStore.put({
         ...row,
-        topic: { ...topic, lastMessageUuid: null, updatedAt: now },
-        updatedAt: now,
+        topic: { ...topic, lastMessageUuid: null },
+        lastMessageCreatedAt: null,
         cacheUpdatedAt,
       });
     }
@@ -1938,9 +1962,8 @@ export async function clearMessengerMessagePointerCache(
         conversation: {
           ...row.conversation,
           lastMessageUuid: null,
-          updatedAt: now,
         },
-        updatedAt: now,
+        lastMessageCreatedAt: null,
         cacheUpdatedAt,
       });
     }

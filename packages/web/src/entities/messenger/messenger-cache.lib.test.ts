@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
   deleteMessengerStreamBindingCatalogCache,
   deleteWorkspaceMessengerCacheDatabase,
@@ -22,6 +23,7 @@ import type {
   MessengerMessage,
   MessengerStream,
   MessengerStreamBinding,
+  MessengerTopic,
 } from "./messenger.types";
 
 const OWNER_KEY = "account:a:org:o:project:p:user:u";
@@ -82,6 +84,24 @@ function createStream(): MessengerStream {
   };
 }
 
+function createTopic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
+  return {
+    uuid: TOPIC_UUID,
+    projectId: "project-a",
+    streamUuid: STREAM_UUID,
+    userUuid: USER_UUID,
+    name: "general chat",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
 afterEach(async () => {
   try {
     const db = await openWorkspaceMessengerCacheDb();
@@ -119,6 +139,71 @@ describe("messenger cache", () => {
 
     const snapshot = await readMessengerCatalogCache(OWNER_KEY);
     expect(snapshot.streamBindings.map((binding) => binding.uuid)).toEqual([BINDING_UUID]);
+  });
+
+  it("reconciles a fresh topic name after a newer message pointer touched stale cache", async () => {
+    const staleTopic = createTopic();
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [staleTopic],
+    });
+    await applyMessengerMessagePointerCache(OWNER_KEY, {
+      uuid: MESSAGE_UUID,
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      payload: { kind: "markdown", content: "New activity" },
+      createdAt: "2026-07-01T08:20:00.000Z",
+    });
+
+    const touchedByMessage = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(touchedByMessage?.payload.topics[0]).toMatchObject({
+      name: "general chat",
+      lastMessageUuid: MESSAGE_UUID,
+      updatedAt: DATE,
+    });
+
+    const reconcileFence = createMessengerCatalogCacheReconcileFence();
+    await writeMessengerCatalogPayloadCache(
+      OWNER_KEY,
+      {
+        ...createEmptyPayload(),
+        streams: [createStream()],
+        topics: [createTopic({ name: "UI", updatedAt: "2026-07-01T08:10:00.000Z" })],
+      },
+      { mode: "reconcile", reconcileFence },
+    );
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.topics[0]?.name).toBe("UI");
+  });
+
+  it("keeps a topic update written after catalog reconciliation started", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic()],
+    });
+    const reconcileFence = createMessengerCatalogCacheReconcileFence();
+
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic({ name: "UI", updatedAt: "2026-07-01T08:10:00.000Z" })],
+    });
+    await writeMessengerCatalogPayloadCache(
+      OWNER_KEY,
+      {
+        ...createEmptyPayload(),
+        streams: [createStream()],
+        topics: [createTopic()],
+      },
+      { mode: "reconcile", reconcileFence },
+    );
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.topics[0]?.name).toBe("UI");
   });
 
   it("removes a realtime-deleted stream binding without touching other catalog rows", async () => {

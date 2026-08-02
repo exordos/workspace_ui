@@ -221,7 +221,12 @@ export async function bootstrapMessengerStore({
     });
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
-    currentState.replaceBootstrapState(ownerKey, cached.payload);
+    const stateAfterMessageHydrate = store.getState();
+    if (stateAfterMessageHydrate.ownerKey !== ownerKey || !stateAfterMessageHydrate.isLoading) {
+      return;
+    }
+
+    stateAfterMessageHydrate.replaceBootstrapState(ownerKey, cached.payload);
     if (cached.epochVersion != null) {
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
     }
