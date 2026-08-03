@@ -238,6 +238,7 @@ export interface MessengerSidebarTopicItem {
   hasUnreadPersonalMention?: boolean;
   isDefault: boolean;
   isDone: boolean;
+  notificationMode: WorkspaceMessengerTopicNotificationMode;
   color: number | null;
   route: string;
   preview: MessengerSidebarMessagePreview | null;
@@ -253,6 +254,7 @@ export interface MessengerSidebarStreamItem {
   audience: MessengerAudience;
   isPrivate: boolean;
   uiKind: WorkspaceConversationUiKind;
+  notificationMode: WorkspaceMessengerStreamNotificationMode | null;
   unreadCount: number;
   /** Best-effort flag computed from unread messages currently known to the client. */
   hasUnreadPersonalMention?: boolean;

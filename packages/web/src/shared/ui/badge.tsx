@@ -2,12 +2,12 @@ import React from "react";
 import type { BadgeProps, BadgeSize, BadgeTextTone, BadgeVariant } from "./badge.types";
 
 const VARIANT_BG_CLASS: Record<BadgeVariant, string> = {
-  muted: "bg-bg-elevated border-0",
+  muted: "bg-notice-disable border-0",
   unread: "bg-sidebar-unread border-0",
 };
 
 const VARIANT_TEXT_CLASS: Record<BadgeVariant, string> = {
-  muted: "text-text-muted",
+  muted: "text-badge-text",
   unread: "text-badge-text",
 };
 

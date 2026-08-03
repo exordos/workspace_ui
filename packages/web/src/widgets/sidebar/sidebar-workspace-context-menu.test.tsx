@@ -70,6 +70,7 @@ function createTopic(
     unreadCount: 2,
     isDefault: false,
     isDone: false,
+    notificationMode: "default",
     color: null,
     route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     preview: null,
@@ -90,6 +91,7 @@ function createStream(
     audience: "channel",
     isPrivate: false,
     uiKind: "channel",
+    notificationMode: "mentions_only",
     unreadCount: 3,
     pinnedAt: null,
     orderIndex: null,
@@ -213,6 +215,73 @@ describe("WorkspaceSidebar context menu", () => {
     renderWorkspaceSidebar([createStream({ color: 0x2563eb })]);
 
     expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+  });
+
+  it("hides non-muted channel and inherited topic notification modes", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+
+    renderWorkspaceSidebar([
+      createStream({ notificationMode: "mentions_only", topics: [createTopic()] }),
+    ]);
+
+    expect(screen.queryByLabelText("Mentions only")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Default")).not.toBeInTheDocument();
+  });
+
+  it("shows explicit notification modes in channel and topic rows", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+
+    renderWorkspaceSidebar([
+      createStream({
+        notificationMode: "muted",
+        topics: [createTopic({ notificationMode: "mute" })],
+      }),
+    ]);
+
+    expect(screen.getByLabelText("Muted")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mute")).toBeInTheDocument();
+  });
+
+  it("uses gray unread badges for muted streams and topics", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+
+    renderWorkspaceSidebar([
+      createStream({
+        notificationMode: "muted",
+        unreadCount: 3,
+        topics: [
+          createTopic({ unreadCount: 2, notificationMode: "default" }),
+          createTopic({
+            id: "topic:muted",
+            topicUuid: "29e59899-1ad1-4c7c-a643-c3b9c513ce4d",
+            title: "Muted topic",
+            unreadCount: 4,
+            notificationMode: "mute",
+          }),
+          createTopic({
+            id: "topic:unmuted",
+            topicUuid: "7f9b3bce-2f2c-4cc9-8c08-0353c324751d",
+            title: "Unmuted topic",
+            unreadCount: 5,
+            notificationMode: "unmute",
+          }),
+        ],
+      }),
+    ]);
+
+    expect(screen.getByText("3")).toHaveClass("bg-notice-disable", "text-badge-text");
+    expect(screen.getByText("2")).toHaveClass("bg-notice-disable", "text-badge-text");
+    expect(screen.getByText("4")).toHaveClass("bg-notice-disable", "text-badge-text");
+    expect(screen.getByText("5")).toHaveClass("bg-sidebar-unread");
+  });
+
+  it("dims muted topic cards without striking their titles through", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+
+    renderWorkspaceSidebar([createStream({ topics: [createTopic({ notificationMode: "mute" })] })]);
+
+    expect(screen.getByRole("link", { name: /release/i })).toHaveClass("opacity-70");
+    expect(screen.getByText("#Release")).not.toHaveClass("line-through");
   });
 
   it("marks every stream message read from the context menu", async () => {

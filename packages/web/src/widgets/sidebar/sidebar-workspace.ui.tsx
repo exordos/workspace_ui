@@ -6,6 +6,10 @@ import type {
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
+import {
+  WorkspaceStreamNotificationModeIndicator,
+  WorkspaceTopicNotificationModeIndicator,
+} from "~/features/mute-chat/workspace-notification-mode-indicator.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
@@ -128,25 +132,32 @@ function resolveWorkspaceSidebarEmptyState(input: {
 
 function WorkspaceSidebarTopicRow({
   topic,
+  streamNotificationMode,
   streamTitle,
   activeTopicUuid,
   compact,
   barColor,
 }: Readonly<{
   topic: MessengerSidebarTopicItem;
+  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"];
   streamTitle: string;
   activeTopicUuid: string | null;
   compact: boolean;
   barColor: string;
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
+  const isMuted =
+    topic.notificationMode === "mute" ||
+    (topic.notificationMode === "default" && streamNotificationMode === "muted");
   const title = formatSidebarTopicTitle(topic.title);
 
   return (
     <WorkspaceTopicContextMenu topic={topic} streamTitle={streamTitle}>
       <Link
         to={topic.route}
-        className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)}`}
+        className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)} ${
+          isMuted ? "opacity-70" : ""
+        }`}
       >
         <span
           aria-hidden
@@ -173,8 +184,12 @@ function WorkspaceSidebarTopicRow({
           compact={compact}
           isPinned={false}
           unreadCount={topic.unreadCount}
+          unreadBadgeVariant={isMuted ? "muted" : "unread"}
           hasMention={topic.hasUnreadPersonalMention}
           time={formatWorkspaceMessageTime(topic.lastMessageCreatedAt)}
+          notificationIndicator={
+            <WorkspaceTopicNotificationModeIndicator mode={topic.notificationMode} />
+          }
         />
       </Link>
     </WorkspaceTopicContextMenu>
@@ -210,6 +225,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
               <WorkspaceSidebarTopicRow
                 key={topic.id}
                 topic={topic}
+                streamNotificationMode={stream.notificationMode}
                 streamTitle={stream.title}
                 activeTopicUuid={activeTopicUuid}
                 compact={compact}
@@ -273,6 +289,7 @@ function WorkspaceSidebarStreamRow({
     isDirectPrivate && stream.statusText != null && stream.statusText.trim().length > 0
       ? stream.statusText.trim()
       : null;
+  const isMuted = stream.notificationMode === "muted";
 
   // Always wrap in the card shell so collapsed rows keep the same `card-bg` base.
   return (
@@ -346,8 +363,14 @@ function WorkspaceSidebarStreamRow({
             compact={compact}
             isPinned={stream.pinnedAt != null}
             unreadCount={stream.unreadCount}
+            unreadBadgeVariant={isMuted ? "muted" : "unread"}
             hasMention={stream.hasUnreadPersonalMention}
             time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
+            notificationIndicator={
+              stream.notificationMode == null ? null : (
+                <WorkspaceStreamNotificationModeIndicator mode={stream.notificationMode} />
+              )
+            }
             expandChevron={
               stream.topics.length > 0
                 ? {

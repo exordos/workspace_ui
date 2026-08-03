@@ -285,6 +285,7 @@ describe("messenger sidebar selectors", () => {
       title: "Engineering",
       isPrivate: false,
       uiKind: "channel",
+      notificationMode: "all_messages",
       unreadCount: 3,
       color: null,
       preview: null,
@@ -294,6 +295,7 @@ describe("messenger sidebar selectors", () => {
       topicUuid: TOPIC_A,
       unreadCount: 2,
       isDefault: false,
+      notificationMode: "default",
       color: null,
       preview: null,
     });
@@ -302,6 +304,7 @@ describe("messenger sidebar selectors", () => {
       title: "Alice",
       isPrivate: true,
       uiKind: "directPrivate",
+      notificationMode: "all_messages",
       unreadCount: 4,
       presence: "active",
       avatarUrl: "/direct-alice.png",
@@ -892,6 +895,7 @@ describe("messenger sidebar selectors", () => {
       title: "Alice",
       isPrivate: true,
       uiKind: "directPrivate",
+      notificationMode: "mentions_only",
       unreadCount: 1,
       preview: {
         messageUuid: MESSAGE_A,

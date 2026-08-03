@@ -14,6 +14,7 @@ function createTopic(
     unreadCount: 0,
     isDefault: false,
     isDone: false,
+    notificationMode: "default",
     color: null,
     route: "/stream/stream-1/topic/topic-1",
     preview: null,

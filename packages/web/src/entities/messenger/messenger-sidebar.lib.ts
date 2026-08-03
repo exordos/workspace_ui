@@ -241,6 +241,7 @@ function topicItemFromTopic(input: {
     // Default/general is still tracked for other UX; the sidebar strip has no special case.
     isDefault: input.topic.isDefault,
     isDone: input.topic.isDone,
+    notificationMode: input.topic.notificationMode,
     color: input.topic.color ?? null,
     route: workspaceMessengerTopicRoute({
       orgId: input.organizationId,
@@ -294,6 +295,7 @@ function streamItemFromStream(input: {
     audience: input.stream.audience,
     isPrivate: input.stream.isPrivate,
     uiKind,
+    notificationMode: input.stream.notificationMode,
     unreadCount: input.unreadCount ?? input.stream.unreadCount,
     hasUnreadPersonalMention: input.unreadMentionIndex.streamUuids.has(input.stream.uuid),
     pinnedAt: input.pinnedAt ?? null,
@@ -356,6 +358,12 @@ function streamItemFromConversation(input: {
     audience: input.conversation.audience,
     isPrivate: input.conversation.isPrivate,
     uiKind,
+    notificationMode:
+      input.conversation.notificationMode === "all_messages" ||
+      input.conversation.notificationMode === "mentions_only" ||
+      input.conversation.notificationMode === "muted"
+        ? input.conversation.notificationMode
+        : null,
     unreadCount: input.unreadCount ?? input.conversation.unreadCount,
     hasUnreadPersonalMention: input.unreadMentionIndex.streamUuids.has(
       input.conversation.streamUuid,

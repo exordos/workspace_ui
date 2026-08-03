@@ -26,22 +26,44 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
+const STREAM_NOTIFICATION_OPTION_BY_LEVEL: Record<NotificationLevel, NotificationLevelOption> = {
+  default: { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
+  muted: { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },
+  subscribed: {
+    level: "subscribed",
+    icon: "bell",
+    labelKey: "channel.notificationSubscribed",
+  },
+};
+
 export const STREAM_NOTIFICATION_LEVEL_OPTIONS: readonly NotificationLevelOption[] = [
-  { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
-  { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },
-  { level: "subscribed", icon: "bell", labelKey: "channel.notificationSubscribed" },
+  STREAM_NOTIFICATION_OPTION_BY_LEVEL.default,
+  STREAM_NOTIFICATION_OPTION_BY_LEVEL.muted,
+  STREAM_NOTIFICATION_OPTION_BY_LEVEL.subscribed,
 ];
 
 const TOPIC_VISIBILITY_OPTION_BY_LEVEL: Record<TopicVisibilityLevel, TopicVisibilityLevelOption> = {
   muted: { level: "muted", icon: "topic_mute", labelKey: "channel.topicVisibilityMuted" },
   inherit: { level: "inherit", icon: "topic_inherit", labelKey: "channel.topicVisibilityDefault" },
-  unmuted: { level: "unmuted", icon: "topic_unmute", labelKey: "channel.topicVisibilityUnmuted" },
+  unmuted: { level: "unmuted", icon: "at", labelKey: "channel.topicVisibilityUnmuted" },
   followed: {
     level: "followed",
     icon: "topic_follow",
     labelKey: "channel.topicVisibilityFollowed",
   },
 };
+
+export function getStreamNotificationLevelOption(
+  level: NotificationLevel,
+): NotificationLevelOption {
+  return STREAM_NOTIFICATION_OPTION_BY_LEVEL[level];
+}
+
+export function getTopicVisibilityLevelOption(
+  level: TopicVisibilityLevel,
+): TopicVisibilityLevelOption {
+  return TOPIC_VISIBILITY_OPTION_BY_LEVEL[level];
+}
 
 export function shouldShowTopicUnmuteOption(
   streamMuted: boolean,
