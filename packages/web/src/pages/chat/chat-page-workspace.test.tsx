@@ -39,7 +39,7 @@ import type {
   ChatChannelHeaderProps,
   ChatDirectHeaderProps,
 } from "~/widgets/chat-view/chat-header.types";
-import { ChatPage } from "./chat-page.ui";
+import { ChatPage, FavoritesPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
 import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
 
@@ -378,6 +378,20 @@ function createDirectPrivateBootstrapPayload(): MessengerBootstrapPayload {
   };
 }
 
+function createSelfChatBootstrapPayload(): MessengerBootstrapPayload {
+  const payload = createDirectPrivateBootstrapPayload();
+  return {
+    ...payload,
+    streams: payload.streams.map((stream) => ({
+      ...stream,
+      name: "Personal notes",
+      ownerUuid: USER_UUID,
+      userUuid: USER_UUID,
+      directUserUuid: USER_UUID,
+    })),
+  };
+}
+
 function createMessage(): MessengerMessage {
   return {
     uuid: MESSAGE_UUID,
@@ -448,6 +462,7 @@ function WorkspaceNavigationProbe() {
 function renderWorkspaceChatPageWithShellContexts(
   route: string,
   rightDrawerOverrides: Partial<RightDrawerContextValue> = {},
+  page: "chat" | "favorites" = "chat",
 ) {
   return render(
     <MemoryRouter initialEntries={[route]}>
@@ -464,7 +479,7 @@ function renderWorkspaceChatPageWithShellContexts(
             ...rightDrawerOverrides,
           }}
         >
-          <ChatPage />
+          {page === "favorites" ? <FavoritesPage /> : <ChatPage />}
         </RightDrawerContext.Provider>
       </OpenSearchContext.Provider>
     </MemoryRouter>,
@@ -688,6 +703,49 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("renders Favorites as the self chat with a title-only header", async () => {
+    const session = createSession();
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(workspaceRuntimeOwnerKey(session), createSelfChatBootstrapPayload());
+
+    renderWorkspaceChatPageWithShellContexts(
+      "/org/org-a/project/project-a/activity/favorites",
+      {},
+      "favorites",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: t("activity.favorites") }),
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(screen.getByTestId("old-composer-section")).toBeInTheDocument();
+    expect(captured.channelHeaderProps).toBeNull();
+    expect(captured.directHeaderProps).toBeNull();
+    expect(captured.messageListProps?.conversationId).toBe(
+      `topic:${DIRECT_STREAM_UUID}:${DIRECT_TOPIC_UUID}`,
+    );
+  });
+
+  it("uses the Favorites presentation for a direct self-chat route", async () => {
+    const session = createSession();
+    const setRightDrawerOpen = vi.fn();
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(workspaceRuntimeOwnerKey(session), createSelfChatBootstrapPayload());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`,
+      { open: true, setOpen: setRightDrawerOpen },
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: t("activity.favorites") }),
+    ).toBeInTheDocument();
+    expect(captured.directHeaderProps).toBeNull();
+    expect(setRightDrawerOpen).toHaveBeenCalledWith(false);
   });
 
   it("drops a pending auto-read when the Workspace window loses focus", async () => {

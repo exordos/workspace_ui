@@ -78,7 +78,7 @@ describe("app-shortcuts", () => {
     setWorkspaceRuntime("project-a", "inst-1");
 
     expect(resolveGlobalNavigationRoute("mod+shift+a", "engineering")).toBe(
-      "/org/chat.example.com/project/project-a/activity/starred",
+      "/org/chat.example.com/project/project-a/activity/favorites",
     );
   });
 

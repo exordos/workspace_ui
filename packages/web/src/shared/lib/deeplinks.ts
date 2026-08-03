@@ -114,7 +114,7 @@ export function toDm(_dmId: number | string, workspace?: WorkspaceDeepLinkScope)
 }
 
 export function toActivity(
-  filter: "starred" | "mentions" | "reactions",
+  filter: "favorites" | "starred" | "mentions" | "reactions",
   workspace?: Pick<WorkspaceDeepLinkScope, "orgId" | "projectId">,
 ): string {
   const orgId = normalizeNonEmpty(workspace?.orgId);

@@ -466,6 +466,34 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     });
   });
 
+  it("offers Favorites as a self-chat forwarding target", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);
+
+    useWorkspaceForwardMessageStore.getState().open({ messageUuids: [MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+
+    await waitForForwardMessageInStore();
+    fireEvent.click(screen.getByRole("button", { name: "DM" }));
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => {
+      expect(mocks.createWorkspaceDirectStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          directUserUuid: USER_A_UUID,
+          runtimeContext: expect.objectContaining({ projectId: PROJECT_UUID }),
+        }),
+      );
+      expect(mocks.sendMessengerMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          streamUuid: CREATED_STREAM_UUID,
+          topicUuid: CREATED_TOPIC_UUID,
+        }),
+      );
+    });
+  });
+
   it("keeps dialog open and shows error when sending fails", async () => {
     const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
     const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);

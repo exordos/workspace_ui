@@ -227,7 +227,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       workspaceActivityRoute({
         orgId: runtimeContext.organizationId,
         projectId: runtimeContext.projectId,
-        filter: "starred",
+        filter: "favorites",
       }),
     );
   }, [navigate, runtimeContext]);

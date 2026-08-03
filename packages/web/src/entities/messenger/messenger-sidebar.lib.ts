@@ -13,6 +13,7 @@ import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
+import { isWorkspaceSelfChat } from "./messenger-self-chat.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
@@ -411,6 +412,7 @@ export function selectMessengerSidebarStreams(
         .map((item) => {
           const stream = state.streamsById[item.streamUuid];
           if (stream != null) {
+            if (isWorkspaceSelfChat(stream, currentUserUuid)) return null;
             return streamItemFromStream({
               organizationId: options.organizationId,
               projectId: options.projectId,
@@ -435,6 +437,7 @@ export function selectMessengerSidebarStreams(
 
           const conversation = state.conversationsById[item.conversationId];
           if (conversation == null) return null;
+          if (isWorkspaceSelfChat(conversation, currentUserUuid)) return null;
           return streamItemFromConversation({
             organizationId: options.organizationId,
             projectId: options.projectId,
@@ -452,7 +455,10 @@ export function selectMessengerSidebarStreams(
         .sort(compareSidebarStreams)
     : state.streamIds
         .map((streamId) => state.streamsById[streamId])
-        .filter((stream): stream is MessengerStream => stream != null)
+        .filter(
+          (stream): stream is MessengerStream =>
+            stream != null && !isWorkspaceSelfChat(stream, currentUserUuid),
+        )
         .map((stream) =>
           streamItemFromStream({
             organizationId: options.organizationId,

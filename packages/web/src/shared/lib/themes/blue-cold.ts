@@ -62,6 +62,8 @@ export const blueCold: ThemePalette = {
     "indicator-purple": "#8d6dff",
     "indicator-green": "#26c038",
     "indicator-orange": "#ff8900",
+    "indicator-blue": "#4b98e6",
+    "indicator-red": "#f04c4c",
   },
 
   light: {
@@ -122,5 +124,7 @@ export const blueCold: ThemePalette = {
     "indicator-purple": "#8d6dff",
     "indicator-green": "#26c038",
     "indicator-orange": "#ff8900",
+    "indicator-blue": "#4b98e6",
+    "indicator-red": "#f04c4c",
   },
 };

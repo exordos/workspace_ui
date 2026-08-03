@@ -17,7 +17,7 @@ export interface SidebarActivityCounts {
   inbox: number | null;
   mentions: number | null;
   drafts: number | null;
-  favorites: number | null;
+  markedMessages: number | null;
 }
 
 export type SidebarActivityDisabledItems = Partial<Record<SidebarActivityItemKey, string>>;
@@ -27,10 +27,8 @@ export interface SidebarActivityViewProps {
   onToggle: () => void;
   counts: SidebarActivityCounts;
   disabledItems?: SidebarActivityDisabledItems;
-  showPrivateNotes: boolean;
-  privateNotesDisabledReason?: string;
   isCompactDensity: boolean;
-  favoritesError?: string | null;
+  markedMessagesError?: string | null;
 }
 
 // Figma activity rail: 28×28 hit target, ~21px glyph (Exordos Core Frame 2087327346).
@@ -45,26 +43,26 @@ const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-2.5";
 const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
 const compactIconsListClass = "flex w-max flex-nowrap items-center gap-2.5";
 /**
- * Optical size for Material glyphs inside the 28px compact target.
- * Figma exports are ~21px; icons are centered in a 24 viewBox, so size 24
- * renders the glyph at native width without the old padded-viewBox shrink.
+ * Glyph size inside the 28px compact hit target.
+ * Keep inset (~5px) so cropped/solid glyphs are not flush with the button edge.
  */
-const COMPACT_ACTIVITY_ICON_SIZE = 24;
+const COMPACT_ACTIVITY_ICON_SIZE_FALLBACK = 18;
 const COMPACT_ACTIVITY_CHEVRON_SIZE = 16;
-// Idle uses Card/background base on Surface chrome; hover elevates to card-bg-active.
+// Figma card: padding 8, gap 12, radius 8. Idle Card/base; hover → card-bg-active.
 const expandedRowBaseClass =
-  "group flex w-full items-center gap-2 rounded-lg bg-card-bg px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
+  "group flex w-full items-center gap-3 rounded-lg bg-card-bg p-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
 const expandedRowCompactClass =
-  "group flex w-full items-center gap-1.5 rounded-lg bg-card-bg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
+  "group flex w-full items-center gap-2 rounded-lg bg-card-bg px-2 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
 // Keep active on the elevated fill so the selected card stays visible after the swap.
 const expandedRowActiveClass = "bg-bg-elevated/60";
+// Figma icon circle is 30×30; glyphs stay white on colored chips in every theme.
 const expandedIconChipClass =
-  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-on-accent";
+  "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white";
 const expandedIconChipCompactClass =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-accent";
-const expandedLabelClass = "min-w-0 flex-1 truncate text-sm font-medium";
-const expandedLabelCompactClass = "min-w-0 flex-1 truncate text-sm font-medium";
-/** Expanded chips keep the same optical size as compact so activity glyphs stay consistent. */
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white";
+const expandedLabelClass = "min-w-0 flex-1 truncate text-sm font-normal";
+const expandedLabelCompactClass = "min-w-0 flex-1 truncate text-sm font-normal";
+/** Glyph frame inside the 30px chip matches Figma 24×24 icon slots. */
 const EXPANDED_ACTIVITY_ICON_SIZE = 24;
 
 function activityFilterForKey(key: SidebarActivityItemKey): string | null {
@@ -74,6 +72,8 @@ function activityFilterForKey(key: SidebarActivityItemKey): string | null {
     case "reactions":
       return key;
     case "favorites":
+      return "favorites";
+    case "markedMessages":
       return "starred";
     case "inbox":
     case "feed":
@@ -92,8 +92,9 @@ function countForActivityKey(
       return counts.mentions;
     case "drafts":
       return counts.drafts;
+    case "markedMessages":
+      return counts.markedMessages;
     case "favorites":
-      return counts.favorites;
     case "feed":
     case "reactions":
       return null;
@@ -109,25 +110,18 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
   onToggle,
   counts,
   disabledItems = {},
-  showPrivateNotes,
-  privateNotesDisabledReason,
   isCompactDensity,
-  favoritesError = null,
+  markedMessagesError = null,
 }) => {
   const { pathname } = useLocation();
   const workspaceRoute = React.useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
   const workspaceOrgId = workspaceRoute?.orgId ?? null;
   const workspaceProjectId = workspaceRoute?.projectId ?? null;
   const activityListId = "sidebar-activity-list";
-  const isPrivateNotesActive = false;
   const expandedListClass = "mt-2 space-y-1";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;
   const expandedIconClass = isCompactDensity ? expandedIconChipCompactClass : expandedIconChipClass;
   const expandedLabel = isCompactDensity ? expandedLabelCompactClass : expandedLabelClass;
-  const inboxRoute =
-    workspaceOrgId != null && workspaceProjectId != null
-      ? workspaceInboxRoute(workspaceOrgId, workspaceProjectId)
-      : "/";
   const resolveActivityRoute = React.useCallback(
     (key: SidebarActivityItemKey): string => {
       if (workspaceOrgId == null || workspaceProjectId == null) {
@@ -167,7 +161,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
   );
 
   return (
-    <div className="min-w-0 px-3 pb-2 pt-0">
+    <div className="min-w-0 px-2 pb-2 pt-0">
       {open && (
         <button
           type="button"
@@ -190,40 +184,6 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
               className={compactIconsListClass}
               aria-label={t("nav.activity")}
             >
-              {showPrivateNotes && (
-                <li className={compactListItemClass}>
-                  {privateNotesDisabledReason == null ? (
-                    <Link
-                      to={inboxRoute}
-                      aria-label={t("activity.home")}
-                      aria-current={isPrivateNotesActive ? "page" : undefined}
-                      className={`${compactRowClass} ${
-                        isPrivateNotesActive ? compactRowActiveClass : ""
-                      }`}
-                    >
-                      <Icon
-                        name="accountCircle"
-                        size={COMPACT_ACTIVITY_ICON_SIZE}
-                        className="shrink-0 text-current"
-                      />
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      aria-label={t("activity.home")}
-                      aria-disabled="true"
-                      title={privateNotesDisabledReason}
-                      className={`${compactRowClass} opacity-60`}
-                    >
-                      <Icon
-                        name="accountCircle"
-                        size={COMPACT_ACTIVITY_ICON_SIZE}
-                        className="shrink-0 text-current"
-                      />
-                    </button>
-                  )}
-                </li>
-              )}
               {VISIBLE_MY_ACTIVITY.map((item) => {
                 const route = resolveActivityRoute(item.key);
                 const disabledReason = disabledItems[item.key];
@@ -233,7 +193,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                 const canShowCount =
                   count != null &&
                   count > 0 &&
-                  (item.key !== "favorites" || favoritesError == null);
+                  (item.key !== "markedMessages" || markedMessagesError == null);
                 return (
                   <li
                     key={`compact-${item.key}`}
@@ -248,8 +208,8 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                           className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
                         >
                           <Icon
-                            name={item.icon}
-                            size={COMPACT_ACTIVITY_ICON_SIZE}
+                            name={item.compactIcon}
+                            size={item.compactIconSize ?? COMPACT_ACTIVITY_ICON_SIZE_FALLBACK}
                             className="shrink-0 text-current"
                           />
                         </Link>
@@ -274,8 +234,8 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                           className={`${compactRowClass} ${disabledReason != null ? "opacity-60" : ""}`}
                         >
                           <Icon
-                            name={item.icon}
-                            size={COMPACT_ACTIVITY_ICON_SIZE}
+                            name={item.compactIcon}
+                            size={item.compactIconSize ?? COMPACT_ACTIVITY_ICON_SIZE_FALLBACK}
                             className="shrink-0 text-current"
                           />
                         </button>
@@ -314,57 +274,15 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
       )}
       {open && (
         <ul id={activityListId} className={expandedListClass}>
-          {showPrivateNotes && (
-            <li>
-              {privateNotesDisabledReason == null ? (
-                <Link
-                  to={inboxRoute}
-                  className={`${expandedRowClass} ${
-                    isPrivateNotesActive ? expandedRowActiveClass : ""
-                  }`}
-                  aria-current={isPrivateNotesActive ? "page" : undefined}
-                >
-                  <span
-                    className={`${expandedIconClass} bg-accent`}
-                    data-testid="activity-icon-bg-home"
-                  >
-                    <Icon
-                      name="accountCircle"
-                      size={EXPANDED_ACTIVITY_ICON_SIZE}
-                      className="shrink-0 text-on-accent"
-                    />
-                  </span>
-                  <span className={expandedLabel}>{t("activity.home")}</span>
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className={`${expandedRowClass} opacity-70`}
-                  aria-disabled="true"
-                  title={privateNotesDisabledReason}
-                >
-                  <span
-                    className={`${expandedIconClass} bg-accent`}
-                    data-testid="activity-icon-bg-home"
-                  >
-                    <Icon
-                      name="accountCircle"
-                      size={EXPANDED_ACTIVITY_ICON_SIZE}
-                      className="shrink-0 text-on-accent"
-                    />
-                  </span>
-                  <span className={expandedLabel}>{t("activity.home")}</span>
-                </button>
-              )}
-            </li>
-          )}
           {VISIBLE_MY_ACTIVITY.map((item) => {
             const route = resolveActivityRoute(item.key);
             const disabledReason = disabledItems[item.key];
             const isActive = disabledReason == null && isActivityRouteActive(item.key);
             const count = countForActivityKey(item.key, counts);
             const canShowCount =
-              count != null && count > 0 && (item.key !== "favorites" || favoritesError == null);
+              count != null &&
+              count > 0 &&
+              (item.key !== "markedMessages" || markedMessagesError == null);
             const content = (
               <>
                 <span
@@ -374,7 +292,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                   <Icon
                     name={item.icon}
                     size={EXPANDED_ACTIVITY_ICON_SIZE}
-                    className="shrink-0 text-on-accent"
+                    className="text-white"
                   />
                 </span>
                 <span className={expandedLabel}>{t(item.labelKey)}</span>

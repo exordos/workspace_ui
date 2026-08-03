@@ -355,6 +355,26 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("keeps the current user's self chat out of general and folder projections", () => {
+    const base = state();
+    const commonOptions = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      currentUserUuid: "alice",
+      usersById: createUsersById(),
+    };
+
+    expect(selectMessengerSidebarStreams(base, commonOptions).map((row) => row.streamUuid)).toEqual(
+      [STREAM_A],
+    );
+    expect(
+      selectMessengerSidebarStreams(base, {
+        ...commonOptions,
+        selectedFolderUuid: FOLDER_A,
+      }).map((row) => row.streamUuid),
+    ).toEqual([STREAM_A]);
+  });
+
   it("sorts folder rows by cached last message time instead of stream updatedAt", () => {
     const newerMessageAt = "2026-06-22T12:10:00Z";
     const rows = selectMessengerSidebarStreams(

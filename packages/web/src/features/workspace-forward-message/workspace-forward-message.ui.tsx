@@ -130,6 +130,9 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
           );
         });
     }, [currentUserUuid, directSearch, userIds, usersById]);
+    const showFavoritesOption =
+      directSearch.trim().length === 0 ||
+      t("activity.favorites").toLowerCase().includes(directSearch.trim().toLowerCase());
 
     const submitDisabled =
       tab === "channel"
@@ -215,43 +218,63 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
                 disabled={isSubmitting}
               />
               <div className="max-h-48 overflow-y-auto rounded-lg border border-border-subtle">
-                {userOptions.length === 0 ? (
+                {showFavoritesOption ? (
+                  <button
+                    type="button"
+                    aria-label={t("activity.favorites")}
+                    disabled={isSubmitting}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                      selectedUserUuid === currentUserUuid
+                        ? "bg-accent/20 text-text-primary"
+                        : "text-text-primary hover:bg-bg-elevated"
+                    }`}
+                    onClick={() => setSelectedUserUuid(currentUserUuid)}
+                  >
+                    <Icon name="star_outline" size={18} className="shrink-0 text-accent" />
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {t("activity.favorites")}
+                    </span>
+                    {selectedUserUuid === currentUserUuid ? (
+                      <Icon name="check" size={14} className="ml-auto text-accent" />
+                    ) : null}
+                  </button>
+                ) : null}
+                {userOptions.length === 0 && !showFavoritesOption ? (
                   <p className="px-3 py-4 text-center text-sm text-text-muted">
                     {t("search.noResults")}
                   </p>
-                ) : (
-                  userOptions.map((user) => (
-                    <button
-                      type="button"
-                      key={user.userUuid}
-                      aria-label={user.displayName}
-                      disabled={isSubmitting}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                        selectedUserUuid === user.userUuid
-                          ? "bg-accent/20 text-text-primary"
-                          : "text-text-primary hover:bg-bg-elevated"
-                      }`}
-                      onClick={() => setSelectedUserUuid(user.userUuid)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{user.displayName}</span>
-                        {user.email.length > 0 ? (
-                          <span className="block truncate text-[11px] text-text-secondary">
-                            {user.email}
-                          </span>
-                        ) : null}
-                      </span>
-                      {selectedUserUuid === user.userUuid ? (
-                        <Icon name="check" size={14} className="ml-auto text-accent" />
+                ) : null}
+                {userOptions.map((user) => (
+                  <button
+                    type="button"
+                    key={user.userUuid}
+                    aria-label={user.displayName}
+                    disabled={isSubmitting}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                      selectedUserUuid === user.userUuid
+                        ? "bg-accent/20 text-text-primary"
+                        : "text-text-primary hover:bg-bg-elevated"
+                    }`}
+                    onClick={() => setSelectedUserUuid(user.userUuid)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{user.displayName}</span>
+                      {user.email.length > 0 ? (
+                        <span className="block truncate text-[11px] text-text-secondary">
+                          {user.email}
+                        </span>
                       ) : null}
-                    </button>
-                  ))
-                )}
+                    </span>
+                    {selectedUserUuid === user.userUuid ? (
+                      <Icon name="check" size={14} className="ml-auto text-accent" />
+                    ) : null}
+                  </button>
+                ))}
               </div>
             </>
           )}
           {error != null ? (
-            <p role="alert" className="bg-danger/10 text-danger rounded-lg px-3 py-2 text-sm">
+            <p role="alert" className="bg-danger/10 rounded-lg px-3 py-2 text-sm text-danger">
               {error}
             </p>
           ) : null}
@@ -488,7 +511,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
       </div>
       {runtimeContext == null ? (
         <div className="p-4">
-          <p role="alert" className="bg-danger/10 text-danger rounded-lg px-3 py-2 text-sm">
+          <p role="alert" className="bg-danger/10 rounded-lg px-3 py-2 text-sm text-danger">
             {t("app.noInstance")}
           </p>
         </div>

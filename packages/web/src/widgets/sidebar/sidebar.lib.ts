@@ -1,10 +1,9 @@
+import { isDmRouteSlugActive, parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 import { isSidebarSystemFolderId } from "./sidebar-folder.constants";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
-import { isDmRouteSlugActive, parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
-
 export { isDmRouteSlugActive, parseDmRouteParticipantIds };
 
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
@@ -15,53 +14,84 @@ export function isSidebarSystemFolderScope(folderId: string | undefined): boolea
 
 /**
  * Sidebar activity metadata.
+ * Order matches Exordos Core Figma (`my details` / Property 1=open).
  * iconBgClass uses semantic Tailwind tokens only (no hardcoded HEX),
  * so activity chips adapt to theme and palette changes.
+ *
+ * `icon` — expanded list on colored chips (filled / chip glyphs).
+ * `compactIcon` — collapsed horizontal rail; outline (unfilled) glyphs.
+ * `compactIconSize` — glyph px inside the 28×28 hit target (leave inset, not flush).
  */
 export const MY_ACTIVITY = [
   {
     key: "inbox",
     labelKey: "nav.inbox" as const,
-    icon: "mail" as const,
-    iconBgClass: "bg-accent",
-  },
-  {
-    key: "mentions",
-    labelKey: "activity.mentions" as const,
-    icon: "at" as const,
-    iconBgClass: "bg-indicator-yellow",
-  },
-  {
-    key: "drafts",
-    labelKey: "activity.drafts" as const,
-    icon: "files" as const,
+    // Padded envelope for expanded chips; compact uses cropped mail_activity_compact.
+    icon: "mail_activity" as const,
+    compactIcon: "mail_activity_compact" as const,
+    compactIconSize: 20,
     iconBgClass: "bg-indicator-purple",
   },
   {
     key: "favorites",
+    labelKey: "activity.favorites" as const,
+    // Filled house from Figma; outline `home` remains for profile actions
+    icon: "home_filled" as const,
+    compactIcon: "home" as const,
+    compactIconSize: 18,
+    iconBgClass: "bg-indicator-blue",
+  },
+  {
+    key: "markedMessages",
     labelKey: "activity.starred" as const,
-    icon: "star_outline" as const,
-    iconBgClass: "bg-accent",
+    icon: "marker" as const,
+    // Figma thin outline bookmark (5905:27795); filled `marker` stays for chips.
+    compactIcon: "marker_outline" as const,
+    compactIconSize: 18,
+    iconBgClass: "bg-indicator-red",
+  },
+  {
+    key: "mentions",
+    labelKey: "activity.mentions" as const,
+    icon: "alternate_email" as const,
+    compactIcon: "alternate_email" as const,
+    compactIconSize: 20,
+    iconBgClass: "bg-indicator-yellow",
   },
   {
     key: "reactions",
     labelKey: "activity.reactions" as const,
     icon: "mood" as const,
+    compactIcon: "mood" as const,
+    compactIconSize: 18,
     iconBgClass: "bg-indicator-green",
+  },
+  {
+    key: "drafts",
+    labelKey: "activity.drafts" as const,
+    // Outline pencil (Figma) for expanded chips; solid tip = drafts_compact.
+    icon: "drafts" as const,
+    compactIcon: "drafts_compact" as const,
+    compactIconSize: 18,
+    iconBgClass: "bg-indicator-pink",
   },
   {
     key: "feed",
     labelKey: "nav.feed" as const,
     icon: "chat_bubble_outline" as const,
-    iconBgClass: "bg-indicator-green",
+    compactIcon: "chat_bubble_outline" as const,
+    compactIconSize: 18,
+    iconBgClass: "bg-indicator-orange",
   },
 ] as const;
 
+/** Only items with live Workspace routes are shown in the rail. */
 const VISIBLE_MY_ACTIVITY_KEYS: ReadonlySet<(typeof MY_ACTIVITY)[number]["key"]> = new Set([
   "inbox",
+  "favorites",
+  "markedMessages",
   "mentions",
   "drafts",
-  "favorites",
 ]);
 
 /** UI-only navigation list. Keep hidden items available for their routes. */

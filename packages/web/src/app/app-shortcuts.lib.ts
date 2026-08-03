@@ -41,7 +41,7 @@ export function resolveGlobalNavigationRoute(
       return workspaceActivityRoute({
         orgId: runtimeContext.organizationId,
         projectId: runtimeContext.projectId,
-        filter: "starred",
+        filter: "favorites",
       });
     }
     return withCurrentOrgRoute("/");

@@ -55,7 +55,7 @@ interface ActivityMessagesState {
 function getActivityTitle(filter: ActivityPageFilter): string {
   const item = MY_ACTIVITY.find(
     (i) =>
-      (filter === "starred" && i.key === "favorites") ||
+      (filter === "starred" && i.key === "markedMessages") ||
       (filter === "mentions" && i.key === "mentions") ||
       (filter === "reactions" && i.key === "reactions") ||
       (filter === "drafts" && i.key === "drafts"),

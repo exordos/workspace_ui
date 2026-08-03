@@ -391,7 +391,8 @@
   },
   "activity": {
     "home": "Private notes",
-    "starred": "Starred",
+    "favorites": "Favorites",
+    "starred": "Marked messages",
     "flagged": "Flagged messages",
     "mentions": "Mentions",
     "mentionsEmpty": "No mentions yet",
@@ -406,6 +407,9 @@
     "noDrafts": "No drafts yet",
     "editDraft": "Edit draft",
     "deleteDraft": "Delete draft"
+  },
+  "favorites": {
+    "loadError": "Could not open Favorites."
   },
   "chat": {
     "sendPlaceholder": "Write a message...",

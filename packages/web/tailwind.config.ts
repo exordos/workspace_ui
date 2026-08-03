@@ -75,6 +75,8 @@ export default {
         "indicator-purple": colorVar("indicator-purple"),
         "indicator-green": colorVar("indicator-green"),
         "indicator-orange": colorVar("indicator-orange"),
+        "indicator-blue": colorVar("indicator-blue"),
+        "indicator-red": colorVar("indicator-red"),
       },
       spacing: {
         sidebar: "299px",

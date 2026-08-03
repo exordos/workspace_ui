@@ -16,6 +16,9 @@ const LoginPage = React.lazy(() =>
 const ChatPage = React.lazy(() =>
   import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
 );
+const FavoritesPage = React.lazy(() =>
+  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.FavoritesPage })),
+);
 const ActivityPage = React.lazy(() =>
   import("~/pages/activity/activity-page.ui").then((m) => ({ default: m.ActivityPage })),
 );
@@ -138,6 +141,10 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           element={<WorkspaceMessengerDefaultRedirect />}
         />
         <Route path="project/:projectId/inbox" element={<InboxPage />} />
+        <Route
+          path="project/:projectId/activity/favorites"
+          element={<FavoritesPage key={location.pathname} />}
+        />
         <Route
           path="project/:projectId/activity/:filter"
           element={<ActivityPage key={location.pathname} />}

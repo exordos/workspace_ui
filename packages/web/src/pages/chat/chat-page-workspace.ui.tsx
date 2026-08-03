@@ -45,6 +45,7 @@ import {
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
 import { selectMessengerSidebarTopicsForStream } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
@@ -52,6 +53,7 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerConversationId,
   MessengerMessage,
+  MessengerStream,
   MessengerTopic,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
@@ -109,6 +111,7 @@ import {
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
+import { ChatFavoritesHeader } from "~/widgets/chat-view/chat-header-favorites.ui";
 import type { ChatHeaderCommonProps } from "~/widgets/chat-view/chat-header.types";
 import type {
   ComposerEditSession,
@@ -139,6 +142,7 @@ import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-m
 
 interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
+  presentation?: "default" | "favorites";
 }
 
 interface WorkspaceFilePreviewResource {
@@ -239,7 +243,82 @@ function WorkspaceChatBlockingLoader(): React.ReactElement {
   );
 }
 
-export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
+function shouldPresentWorkspaceFavorites({
+  presentation,
+  selection,
+  streamsById,
+  currentUserUuid,
+}: {
+  presentation: WorkspaceChatPageProps["presentation"];
+  selection: ReturnType<typeof selectMessengerConversationFromWorkspaceRoute>;
+  streamsById: Readonly<Record<string, MessengerStream>>;
+  currentUserUuid: string | undefined;
+}): boolean {
+  if (presentation === "favorites") return true;
+  if (selection.status !== "conversation") return false;
+
+  return isWorkspaceSelfChat(streamsById[selection.streamUuid], currentUserUuid);
+}
+
+type WorkspaceConversationHeaderProps = Readonly<{
+  isFavoritesConversation: boolean;
+  headerView: ReturnType<typeof selectWorkspaceChatHeaderView>;
+  commonHeaderProps: ChatHeaderCommonProps;
+  onOpenPartnerProfile?: () => void;
+  onCallClick?: () => void;
+  onOpenRightPanel?: () => void;
+}>;
+
+function WorkspaceConversationHeader({
+  isFavoritesConversation,
+  headerView,
+  commonHeaderProps,
+  onOpenPartnerProfile,
+  onCallClick,
+  onOpenRightPanel,
+}: WorkspaceConversationHeaderProps): React.ReactElement {
+  if (isFavoritesConversation) return <ChatFavoritesHeader />;
+
+  if (headerView.kind === "directPrivate") {
+    return (
+      <ChatDirectHeader
+        {...commonHeaderProps}
+        partner={headerView.dmPartner}
+        rightPanelLabel={t("info.partnerInfo")}
+        onOpenPartnerProfile={onOpenPartnerProfile}
+        onCallClick={onCallClick}
+      />
+    );
+  }
+
+  return (
+    <ChatChannelHeader
+      {...commonHeaderProps}
+      channelName={headerView.channelName}
+      topic={headerView.topic}
+      hideTopic={headerView.hideTopic}
+      participantsCount={headerView.participantsCount}
+      onlineCount={headerView.onlineCount}
+      onOpenRightPanel={onOpenRightPanel}
+    />
+  );
+}
+
+function useCloseFavoritesRightDrawer(
+  isFavoritesConversation: boolean,
+  setOpen: ((open: boolean) => void) | undefined,
+): void {
+  useEffect(() => {
+    if (isFavoritesConversation) {
+      setOpen?.(false);
+    }
+  }, [isFavoritesConversation, setOpen]);
+}
+
+export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
+  route,
+  presentation = "default",
+}) => {
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -543,6 +622,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const topicIds = useMessengerStore((state) => state.topicIds);
   const allWorkspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const streamsById = useMessengerStore((state) => state.streamsById);
+  const isFavoritesConversation = shouldPresentWorkspaceFavorites({
+    presentation,
+    selection,
+    streamsById,
+    currentUserUuid: runtimeContext?.userUuid,
+  });
+  useCloseFavoritesRightDrawer(isFavoritesConversation, rightDrawer?.setOpen);
   const streamPromptTopics = useMemo(() => {
     if (
       selection.status !== "conversation" ||
@@ -1316,6 +1402,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   // Звонок из чужого профиля: pending uuid → ждём активный DM → стартуем как из хедера.
   useEffect(() => {
+    if (isFavoritesConversation) return;
     if (headerView.kind !== "directPrivate") return;
     if (workspaceMeetUrl == null) return;
     if (
@@ -1327,7 +1414,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
     useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
     handleStartWorkspaceHeaderCall();
-  }, [handleStartWorkspaceHeaderCall, headerView, pendingDmCallPartnerUserUuid, workspaceMeetUrl]);
+  }, [
+    handleStartWorkspaceHeaderCall,
+    headerView,
+    pendingDmCallPartnerUserUuid,
+    isFavoritesConversation,
+    workspaceMeetUrl,
+  ]);
 
   const handleCancelUpload = useCallback(() => {
     const controller = uploadAbortControllerRef.current;
@@ -2229,28 +2322,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   // Direct chats omit member counters and open the partner profile from the header.
-  const header =
-    headerView.kind === "directPrivate" ? (
-      <ChatDirectHeader
-        {...commonHeaderProps}
-        partner={headerView.dmPartner}
-        rightPanelLabel={t("info.partnerInfo")}
-        onOpenPartnerProfile={
-          openWorkspaceUserProfile == null ? undefined : handleOpenDirectPartnerProfile
-        }
-        onCallClick={workspaceMeetUrl == null ? undefined : handleStartWorkspaceHeaderCall}
-      />
-    ) : (
-      <ChatChannelHeader
-        {...commonHeaderProps}
-        channelName={headerView.channelName}
-        topic={headerView.topic}
-        hideTopic={headerView.hideTopic}
-        participantsCount={headerView.participantsCount}
-        onlineCount={headerView.onlineCount}
-        onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}
-      />
-    );
+  const header = (
+    <WorkspaceConversationHeader
+      isFavoritesConversation={isFavoritesConversation}
+      headerView={headerView}
+      commonHeaderProps={commonHeaderProps}
+      onOpenPartnerProfile={
+        openWorkspaceUserProfile == null ? undefined : handleOpenDirectPartnerProfile
+      }
+      onCallClick={workspaceMeetUrl == null ? undefined : handleStartWorkspaceHeaderCall}
+      onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}
+    />
+  );
 
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {

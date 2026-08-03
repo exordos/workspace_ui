@@ -56,6 +56,8 @@ const ALL_TOKEN_KEYS: (keyof PaletteTokens)[] = [
   "indicator-purple",
   "indicator-green",
   "indicator-orange",
+  "indicator-blue",
+  "indicator-red",
 ];
 
 // Validates the palette registry and token completeness for all palettes
@@ -204,6 +206,8 @@ describe("blue-cold light palette spec", () => {
     expect(light["indicator-purple"]).toBe("#8d6dff");
     expect(light["indicator-orange"]).toBe("#ff8900");
     expect(light["indicator-green"]).toBe("#26c038");
+    expect(light["indicator-blue"]).toBe("#4b98e6");
+    expect(light["indicator-red"]).toBe("#f04c4c");
   });
 });
 

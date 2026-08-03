@@ -24,6 +24,7 @@ import CopyIcon from "../assets/icons/copy.svg?react";
 import DeleteIcon from "../assets/icons/delete.svg?react";
 import DownloadIcon from "../assets/icons/download.svg?react";
 import DraftsIcon from "../assets/icons/drafts.svg?react";
+import DraftsCompactIcon from "../assets/icons/drafts_compact.svg?react";
 import FilesIcon from "../assets/icons/files.svg?react";
 import FlagIcon from "../assets/icons/flag.svg?react";
 import FolderIcon from "../assets/icons/folder.svg?react";
@@ -38,6 +39,7 @@ import GroupIcon from "../assets/icons/group.svg?react";
 import HandshakeIcon from "../assets/icons/handshake.svg?react";
 import HeartIcon from "../assets/icons/heart.svg?react";
 import HomeIcon from "../assets/icons/home.svg?react";
+import HomeFilledIcon from "../assets/icons/home_filled.svg?react";
 import ImagesIcon from "../assets/icons/images.svg?react";
 import InfoIcon from "../assets/icons/info.svg?react";
 import LanguageIcon from "../assets/icons/language.svg?react";
@@ -46,8 +48,11 @@ import ListBulletedIcon from "../assets/icons/list_bulleted.svg?react";
 import LogoutIcon from "../assets/icons/logout.svg?react";
 import MagicWandIcon from "../assets/icons/magic_wand.svg?react";
 import MailIcon from "../assets/icons/mail.svg?react";
+import MailActivityIcon from "../assets/icons/mail_activity.svg?react";
+import MailActivityCompactIcon from "../assets/icons/mail_activity_compact.svg?react";
 import MailOutlineIcon from "../assets/icons/mail_outline.svg?react";
 import MarkerIcon from "../assets/icons/marker.svg?react";
+import MarkerOutlineIcon from "../assets/icons/marker_outline.svg?react";
 import MoodIcon from "../assets/icons/mood.svg?react";
 import MoreIcon from "../assets/icons/more.svg?react";
 import MoreVertIcon from "../assets/icons/more_vert.svg?react";
@@ -85,6 +90,8 @@ export type { IconSvgComponent } from "./icon.types";
 const ICONS: Record<string, IconSvgComponent> = {
   accountCircle: AccountCircleIcon,
   home: HomeIcon,
+  // Solid home for activity Favorites chip (outline `home` stays for profile actions)
+  home_filled: HomeFilledIcon,
   flag: FlagIcon,
   attach: AttachIcon,
   search: SearchIcon,
@@ -137,6 +144,10 @@ const ICONS: Record<string, IconSvgComponent> = {
   calendar_month: CalendarMonthIcon,
   celebration: CelebrationIcon,
   mail: MailIcon,
+  // Activity Inbox envelope — padded 24×24 for expanded chips.
+  mail_activity: MailActivityIcon,
+  // Same envelope, cropped viewBox for compact activity rail optical size.
+  mail_activity_compact: MailActivityCompactIcon,
   mail_outline: MailOutlineIcon,
   magic_wand: MagicWandIcon,
   info: InfoIcon,
@@ -150,9 +161,13 @@ const ICONS: Record<string, IconSvgComponent> = {
   volumeUp: VolumeUpIcon,
   newWindow: NewWindowIcon,
   marker: MarkerIcon,
+  // Thin outline bookmark — Figma 5905:27795 (compact activity starred).
+  marker_outline: MarkerOutlineIcon,
   alternate_email: AlternateEmailIcon,
   mood: MoodIcon,
   drafts: DraftsIcon,
+  // Solid filled-tip pencil — compact activity rail only.
+  drafts_compact: DraftsCompactIcon,
   moreVert: MoreVertIcon,
   // Иконка правой панели (квадрат с боковой полосой)
   sidePanel: SidePanelIcon,

@@ -72,6 +72,8 @@ export interface PaletteTokens {
   "indicator-purple": string;
   "indicator-green": string;
   "indicator-orange": string;
+  "indicator-blue": string;
+  "indicator-red": string;
 }
 
 export interface ThemePalette {

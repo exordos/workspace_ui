@@ -12,12 +12,43 @@ import {
 } from "./sidebar.lib";
 
 describe("VISIBLE_MY_ACTIVITY", () => {
-  it("keeps only the available activity navigation items", () => {
+  it("keeps only the available activity navigation items in Figma order", () => {
     expect(VISIBLE_MY_ACTIVITY.map((item) => item.key)).toEqual([
       "inbox",
+      "favorites",
+      "markedMessages",
       "mentions",
       "drafts",
-      "favorites",
+    ]);
+  });
+
+  it("maps visible activity chips to Figma icons and indicator colors", () => {
+    expect(VISIBLE_MY_ACTIVITY.map((item) => [item.key, item.icon, item.iconBgClass])).toEqual([
+      ["inbox", "mail_activity", "bg-indicator-purple"],
+      ["favorites", "home_filled", "bg-indicator-blue"],
+      ["markedMessages", "marker", "bg-indicator-red"],
+      ["mentions", "alternate_email", "bg-indicator-yellow"],
+      ["drafts", "drafts", "bg-indicator-pink"],
+    ]);
+  });
+
+  it("maps compact activity rail to outline icon variants", () => {
+    expect(VISIBLE_MY_ACTIVITY.map((item) => [item.key, item.compactIcon])).toEqual([
+      ["inbox", "mail_activity_compact"],
+      ["favorites", "home"],
+      ["markedMessages", "marker_outline"],
+      ["mentions", "alternate_email"],
+      ["drafts", "drafts_compact"],
+    ]);
+  });
+
+  it("keeps compact activity glyphs inset inside the 28px hit target", () => {
+    expect(VISIBLE_MY_ACTIVITY.map((item) => [item.key, item.compactIconSize])).toEqual([
+      ["inbox", 20],
+      ["favorites", 18],
+      ["markedMessages", 18],
+      ["mentions", 20],
+      ["drafts", 18],
     ]);
   });
 });

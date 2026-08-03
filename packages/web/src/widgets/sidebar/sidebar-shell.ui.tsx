@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
 import {
   selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
@@ -91,7 +92,10 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceFolders[0] ??
       null);
   const workspaceEffectiveFolderId = workspaceEffectiveFolder?.folderUuid ?? null;
-  const workspaceTotalStreamCount = workspaceStreamIds.length;
+  const workspaceTotalStreamCount = workspaceStreamIds.filter((streamUuid) => {
+    const stream = workspaceStreamsById[streamUuid];
+    return stream != null && !isWorkspaceSelfChat(stream, currentUserUuid);
+  }).length;
   const workspaceStreams = useMemo(
     () =>
       sidebarWorkspaceIdentity != null
