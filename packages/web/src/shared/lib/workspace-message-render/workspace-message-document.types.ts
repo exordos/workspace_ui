@@ -10,6 +10,12 @@ export type WorkspaceMessageContentKind =
 
 export type WorkspaceMessageMetaPlacement = "inline" | "row";
 
+/**
+ * Kind of the last renderable top-level block.
+ * Inline meta needs a text paragraph at the tail, everything else keeps the row footer.
+ */
+export type WorkspaceMessageLastBlockKind = "paragraph" | "quote-reference" | "block" | "none";
+
 export interface WorkspaceMessageRenderOptions {
   enableMarkdown: boolean;
   enableMentions: boolean;

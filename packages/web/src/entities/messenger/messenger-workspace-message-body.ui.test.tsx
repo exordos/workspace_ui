@@ -129,4 +129,32 @@ describe("WorkspaceMessageBody", () => {
     expect(quote?.previousElementSibling?.querySelector(".workspace-message-gap")).toBeNull();
     expect(quote?.nextElementSibling?.querySelector(".workspace-message-gap")).toBeNull();
   });
+
+  it("drops the injected DOM when an edit switches the body to quote segments", () => {
+    const messageUuid = "44444444-4444-4444-8444-444444444444";
+    const plain = renderWorkspaceMessageBody(parseWorkspaceMessageBody("Same tail"));
+    const withQuote = renderWorkspaceMessageBodySegments(
+      parseWorkspaceMessageBody(`[Alice](urn:quote:${messageUuid})\n\nSame tail`),
+    );
+    const { container, rerender } = render(
+      <WorkspaceMessageBody html={plain.html} metadata={plain.metadata} useInlineMeta={false} />,
+    );
+
+    rerender(
+      <WorkspaceMessageBody
+        html=""
+        segments={withQuote.segments}
+        renderQuote={(segment) => (
+          <aside data-rendered-workspace-quote={segment.reference.messageUuid}>Quote</aside>
+        )}
+        metadata={withQuote.metadata}
+        useInlineMeta={false}
+      />,
+    );
+
+    const body = container.querySelector<HTMLElement>("[data-message-body='true']");
+
+    expect(body?.querySelectorAll("p")).toHaveLength(1);
+    expect(body?.firstElementChild).toHaveAttribute("data-rendered-workspace-quote", messageUuid);
+  });
 });

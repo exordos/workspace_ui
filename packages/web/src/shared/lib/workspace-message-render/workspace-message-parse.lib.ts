@@ -8,6 +8,7 @@ import {
   createWorkspaceMarkdownLexer,
   inspectWorkspaceMarkdownTokens,
   prepareWorkspaceMarkdownTokens,
+  resolveWorkspaceMarkdownLastBlockKind,
 } from "./workspace-message-marked.lib";
 import type {
   WorkspaceMessageBlock,
@@ -15,6 +16,7 @@ import type {
   WorkspaceMessageDocument,
   WorkspaceMessageFileReference,
   WorkspaceMessageInline,
+  WorkspaceMessageLastBlockKind,
   WorkspaceMessageListItem,
   WorkspaceMessageMentionResolution,
   WorkspaceMessageParseOptions,
@@ -22,7 +24,6 @@ import type {
 } from "./workspace-message-document.types";
 import type { Token, Tokens, TokensList } from "marked";
 
-const LINE_BREAK_PATTERN = /\r\n?|\n/;
 const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
 const WHITESPACE_PATTERN = /\s+/g;
 const URL_ONLY_PATTERN = /^(?:https?:\/\/|mailto:)[^\s]+$/i;
@@ -59,10 +60,6 @@ function normalizeLineBreaks(value: string): string {
 
 function normalizePreviewText(value: string): string {
   return value.replace(WHITESPACE_PATTERN, " ").trim();
-}
-
-function hasLineBreak(markdown: string): boolean {
-  return LINE_BREAK_PATTERN.test(markdown);
 }
 
 function createParseState(): WorkspaceMessageParseState {
@@ -906,9 +903,9 @@ function parseBlockTokens(
 }
 
 function buildMetadata(
-  markdown: string,
   blocks: readonly WorkspaceMessageBlock[],
   state: WorkspaceMessageParseState,
+  lastBlockKind: WorkspaceMessageLastBlockKind,
   textPreview: string,
 ): WorkspaceMessageBodyMetadata {
   const hasRichBlocks = state.hasRichBlocks || blocks.length > 1;
@@ -922,10 +919,9 @@ function buildMetadata(
     hasMedia: state.hasMedia,
     hasProtectedMedia: state.hasProtectedMedia,
     hasAttachments: state.hasAttachments,
-    preferredMetaPlacement:
-      hasRichBlocks || state.hasMedia || state.hasAttachments || hasLineBreak(markdown)
-        ? "row"
-        : "inline",
+    // Only the tail matters: earlier lists, quotes or media do not stop the meta
+    // from sharing the last text line. The widget still verifies the real DOM.
+    preferredMetaPlacement: lastBlockKind === "paragraph" ? "inline" : "row",
     textPreview,
   };
 }
@@ -963,6 +959,7 @@ export function parseWorkspaceMessageBody(
     parseOptions,
     lexBlocks,
   });
+  const lastBlockKind = resolveWorkspaceMarkdownLastBlockKind(markdownTokens);
   const markdownFacts = inspectWorkspaceMarkdownTokens(markdownTokens);
   state.hasInlineRich ||= markdownFacts.hasInlineRich;
   state.hasRichBlocks ||= markdownFacts.hasRichBlocks;
@@ -980,7 +977,7 @@ export function parseWorkspaceMessageBody(
     sourceMarkdown,
     markdownTokens,
     blocks,
-    metadata: buildMetadata(sourceMarkdown, blocks, state, safeTextPreview),
+    metadata: buildMetadata(blocks, state, lastBlockKind, safeTextPreview),
     safeTextPreview,
   };
 }

@@ -7,6 +7,7 @@ import { parseWorkspaceReferenceUrn } from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
 import type {
   WorkspaceMessageFileReference,
+  WorkspaceMessageLastBlockKind,
   WorkspaceMessageMentionResolution,
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReference,
@@ -453,6 +454,77 @@ export function getStandaloneWorkspaceQuoteReference(
     ...(reference.text == null ? {} : { selectedText: reference.text }),
     fallbackAuthorLabel,
   };
+}
+
+export function trimBlockBoundaryTokens(tokens: readonly Token[]): Token[] {
+  const firstContentIndex = tokens.findIndex(
+    (token) => token.type !== "space" && token.type !== "def",
+  );
+  if (firstContentIndex < 0) {
+    return [];
+  }
+
+  let lastContentIndex = tokens.length - 1;
+  while (
+    lastContentIndex > firstContentIndex &&
+    (tokens[lastContentIndex]?.type === "space" || tokens[lastContentIndex]?.type === "def")
+  ) {
+    lastContentIndex -= 1;
+  }
+  return tokens.slice(firstContentIndex, lastContentIndex + 1);
+}
+
+function findNearestVisualToken(
+  tokens: readonly Token[],
+  startIndex: number,
+  step: -1 | 1,
+): Token | undefined {
+  for (let index = startIndex; index >= 0 && index < tokens.length; index += step) {
+    const token = tokens[index];
+    if (token != null && token.type !== "space" && token.type !== "def") {
+      return token;
+    }
+  }
+  return undefined;
+}
+
+export function removeStandaloneQuoteAdjacentSpaces(tokens: readonly Token[]): Token[] {
+  const isStandaloneQuote = (token: Token | undefined): boolean =>
+    token != null && getStandaloneWorkspaceQuoteReference(token) != null;
+
+  return tokens.filter(
+    (token, index) =>
+      token.type !== "space" ||
+      (!isStandaloneQuote(findNearestVisualToken(tokens, index - 1, -1)) &&
+        !isStandaloneQuote(findNearestVisualToken(tokens, index + 1, 1))),
+  );
+}
+
+/** Top-level tokens in the same shape the renderer turns into DOM blocks. */
+export function selectRenderableWorkspaceBlockTokens(tokens: readonly Token[]): Token[] {
+  return removeStandaloneQuoteAdjacentSpaces(trimBlockBoundaryTokens(tokens));
+}
+
+export function resolveWorkspaceMarkdownLastBlockKind(
+  tokens: readonly Token[],
+): WorkspaceMessageLastBlockKind {
+  const renderableTokens = selectRenderableWorkspaceBlockTokens(tokens);
+  const lastToken = renderableTokens[renderableTokens.length - 1];
+  if (lastToken == null) {
+    return "none";
+  }
+  if (getStandaloneWorkspaceQuoteReference(lastToken) != null) {
+    return "quote-reference";
+  }
+  // Only a paragraph renders as a plain text flow container the meta can share a line with.
+  if (lastToken.type !== "paragraph") {
+    return "block";
+  }
+
+  // A trailing file placeholder is a fixed-size box, not text flow.
+  const fileReferences: WorkspaceMessageFileReference[] = [];
+  collectFiles([lastToken], fileReferences);
+  return fileReferences.length > 0 ? "block" : "paragraph";
 }
 
 function createEmptyFacts(): WorkspaceMarkdownFacts {

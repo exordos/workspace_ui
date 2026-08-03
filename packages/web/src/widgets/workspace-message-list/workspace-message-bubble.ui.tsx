@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
@@ -15,6 +15,7 @@ import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
+import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
@@ -257,6 +258,13 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           .filter((segment) => segment.kind === "html")
           .map((segment) => segment.html)
           .join(""),
+        // Concatenated html alone cannot tell "tail" from "quote + same tail",
+        // while React replaces the tail paragraph between those two variants.
+        structureKey: segmented.segments
+          .map((segment) =>
+            segment.kind === "html" ? `h:${segment.html}` : `q:${segment.reference.messageUuid}`,
+          )
+          .join("\u0000"),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
     }, [actions?.onOpenMentionUser, markdown, resolveMention]);
@@ -288,11 +296,16 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       fileReferences: renderedBody.fileReferences,
       onLoadWorkspaceFilePreview: actions?.onLoadWorkspaceFilePreview,
     });
-    const metaPlacement =
-      isJitsiCall || (serverMessage != null && hasWorkspaceReactions(serverMessage))
-        ? "row"
-        : renderedBody.metadata.preferredMetaPlacement;
-    const useInlineMeta = metaPlacement === "inline";
+    const preferInlineMeta =
+      !isJitsiCall &&
+      !(serverMessage != null && hasWorkspaceReactions(serverMessage)) &&
+      renderedBody.metadata.preferredMetaPlacement === "inline";
+    const useInlineMeta = useWorkspaceMessageInlineMeta({
+      bodyRef,
+      metaRef,
+      preferInline: preferInlineMeta,
+      contentKey: renderedBody.structureKey,
+    });
     const renderQuote = useCallback(
       (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode => (
         <WorkspaceMessageQuote
@@ -306,49 +319,6 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       [actions?.onOpenMessageInChat, quoteRenderMode, resolveMention, serverMessage],
     );
 
-    useLayoutEffect(() => {
-      if (!useInlineMeta) {
-        return;
-      }
-
-      const bodyElement = bodyRef.current;
-      const metaElement = metaRef.current;
-      if (bodyElement == null || metaElement == null) {
-        return;
-      }
-
-      const updateMetaReserve = () => {
-        const rect = metaElement.getBoundingClientRect();
-        bodyElement.style.setProperty(
-          "--workspace-message-bubble-meta-width",
-          `${Math.ceil(rect.width)}px`,
-        );
-        bodyElement.style.setProperty(
-          "--workspace-message-bubble-meta-height",
-          `${Math.ceil(rect.height)}px`,
-        );
-      };
-
-      updateMetaReserve();
-
-      if (typeof ResizeObserver === "undefined") {
-        window.addEventListener("resize", updateMetaReserve);
-        return () => {
-          window.removeEventListener("resize", updateMetaReserve);
-          bodyElement.style.removeProperty("--workspace-message-bubble-meta-width");
-          bodyElement.style.removeProperty("--workspace-message-bubble-meta-height");
-        };
-      }
-
-      const resizeObserver = new ResizeObserver(updateMetaReserve);
-      resizeObserver.observe(metaElement);
-
-      return () => {
-        resizeObserver.disconnect();
-        bodyElement.style.removeProperty("--workspace-message-bubble-meta-width");
-        bodyElement.style.removeProperty("--workspace-message-bubble-meta-height");
-      };
-    }, [time, useInlineMeta]);
     const containsInteractiveBody =
       isJitsiCall ||
       renderedBody.metadata.hasLinks ||

@@ -35,7 +35,8 @@ describe("workspace message render core", () => {
 
     expect(document.sourceMarkdown).toBe("Hello\nworkspace\nagain");
     expect(result.html).toBe("<p>Hello<br>workspace<br>again</p>");
-    expect(result.metadata.preferredMetaPlacement).toBe("row");
+    // Soft breaks stay inside one paragraph, so the meta can still share the last line.
+    expect(result.metadata.preferredMetaPlacement).toBe("inline");
     expect(document.safeTextPreview).toBe("Hello workspace again");
   });
 
@@ -1196,7 +1197,8 @@ describe("workspace message render core", () => {
     expect(document.metadata).toMatchObject({
       contentKind: "block-rich",
       hasRichBlocks: true,
-      preferredMetaPlacement: "row",
+      // The reply text is the last block, so the meta stays on its line.
+      preferredMetaPlacement: "inline",
       textPreview: "Own reply",
     });
   });

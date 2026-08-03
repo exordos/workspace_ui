@@ -12,6 +12,8 @@ import {
   WORKSPACE_MENTION_TOKEN_TYPE,
   WORKSPACE_UNSUPPORTED_MEDIA_TOKEN_TYPE,
   getStandaloneWorkspaceQuoteReference,
+  selectRenderableWorkspaceBlockTokens,
+  trimBlockBoundaryTokens,
   type WorkspaceBlockSpoilerMarkedToken,
   type WorkspaceEmojiMarkedToken,
   type WorkspaceFileMarkedToken,
@@ -51,50 +53,6 @@ function escapeHtmlText(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function trimBlockBoundaryTokens(tokens: readonly Token[]): Token[] {
-  const firstContentIndex = tokens.findIndex(
-    (token) => token.type !== "space" && token.type !== "def",
-  );
-  if (firstContentIndex < 0) {
-    return [];
-  }
-
-  let lastContentIndex = tokens.length - 1;
-  while (
-    lastContentIndex > firstContentIndex &&
-    (tokens[lastContentIndex]?.type === "space" || tokens[lastContentIndex]?.type === "def")
-  ) {
-    lastContentIndex -= 1;
-  }
-  return tokens.slice(firstContentIndex, lastContentIndex + 1);
-}
-
-function findNearestVisualToken(
-  tokens: readonly Token[],
-  startIndex: number,
-  step: -1 | 1,
-): Token | undefined {
-  for (let index = startIndex; index >= 0 && index < tokens.length; index += step) {
-    const token = tokens[index];
-    if (token != null && token.type !== "space" && token.type !== "def") {
-      return token;
-    }
-  }
-  return undefined;
-}
-
-function removeStandaloneQuoteAdjacentSpaces(tokens: readonly Token[]): Token[] {
-  const isStandaloneQuote = (token: Token | undefined): boolean =>
-    token != null && getStandaloneWorkspaceQuoteReference(token) != null;
-
-  return tokens.filter(
-    (token, index) =>
-      token.type !== "space" ||
-      (!isStandaloneQuote(findNearestVisualToken(tokens, index - 1, -1)) &&
-        !isStandaloneQuote(findNearestVisualToken(tokens, index + 1, 1))),
-  );
 }
 
 function renderNestedBlockTokens(parser: RendererThis["parser"], tokens: readonly Token[]): string {
@@ -513,9 +471,7 @@ export function renderWorkspaceMessageBodySegments(
     pendingTokens = [];
   };
 
-  const renderableTokens = removeStandaloneQuoteAdjacentSpaces(
-    trimBlockBoundaryTokens(document.markdownTokens),
-  );
+  const renderableTokens = selectRenderableWorkspaceBlockTokens(document.markdownTokens);
   for (const token of renderableTokens) {
     const quoteReference = getStandaloneWorkspaceQuoteReference(token);
     if (quoteReference == null) {

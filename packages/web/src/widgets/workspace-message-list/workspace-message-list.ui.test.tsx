@@ -3201,6 +3201,7 @@ describe("WorkspaceMessageList", () => {
 
     expect(time).toHaveAttribute("data-message-meta-placement", "inline");
     expect(body).toHaveClass("workspace-message-bubble-inline-text");
+    expect(body?.querySelector("[data-workspace-message-meta-anchor='true']")?.tagName).toBe("P");
   });
 
   it("renders multiline plain message time inline inside the Workspace bubble", () => {
@@ -3224,6 +3225,100 @@ describe("WorkspaceMessageList", () => {
     expect(time).toHaveAttribute("data-message-meta-placement", "inline");
     expect(body).toHaveClass("workspace-message-bubble-inline-text");
     expect(body?.textContent).toBe("First lineSecond line");
+  });
+
+  it("keeps inline meta for the paragraph that follows a quote card", () => {
+    const quotedMessageUuid = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "quote-then-text-message",
+            markdown: [
+              `[Old Bob](urn:quote:${quotedMessageUuid})`,
+              "",
+              "это нормально. сервер закрыл сокет на своей стороне",
+            ].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='quote-then-text-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const anchor = body?.querySelector("[data-workspace-message-meta-anchor='true']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "inline",
+    );
+    expect(body).toHaveClass("workspace-message-bubble-inline-text");
+    expect(anchor?.tagName.toLowerCase()).toBe("p");
+    expect(anchor).toHaveTextContent("сервер закрыл сокет");
+    expect(article?.querySelector("[data-workspace-message-reaction-footer='true']")).toBeNull();
+  });
+
+  it("moves the inline meta anchor when an edit adds or removes a leading quote", () => {
+    const quotedMessageUuid = "33333333-3333-4333-8333-333333333333";
+    const renderList = (markdown: string): React.ReactElement => (
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "edited-quote-message", markdown })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />
+    );
+    const readAnchors = (): HTMLElement[] => [
+      ...container.querySelectorAll<HTMLElement>("[data-workspace-message-meta-anchor='true']"),
+    ];
+
+    // The tail HTML stays `<p>Same tail</p>` in both variants, so only the segment
+    // structure tells the bubble that React swapped the paragraph node.
+    const { container, rerender } = render(renderList("Same tail"));
+
+    expect(readAnchors()).toHaveLength(1);
+
+    rerender(renderList(`[Old Bob](urn:quote:${quotedMessageUuid})\n\nSame tail`));
+
+    const quotedAnchors = readAnchors();
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(quotedAnchors).toHaveLength(1);
+    expect(quotedAnchors[0]).toHaveTextContent("Same tail");
+    expect(body).toContainElement(quotedAnchors[0] ?? null);
+    expect(body?.querySelectorAll("p")).toHaveLength(1);
+
+    rerender(renderList("Same tail"));
+
+    const restoredAnchors = readAnchors();
+
+    expect(restoredAnchors).toHaveLength(1);
+    expect(restoredAnchors[0]).toHaveTextContent("Same tail");
+  });
+
+  it("falls back to row meta when the message ends with a quote card", () => {
+    const quotedMessageUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "text-then-quote-message",
+            markdown: ["смотри тут", "", `[Old Bob](urn:quote:${quotedMessageUuid})`].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='text-then-quote-message']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "row",
+    );
+    expect(article?.querySelector("[data-workspace-message-meta-anchor='true']")).toBeNull();
   });
 
   it("uses render metadata for long plain message meta placement", () => {
@@ -3272,7 +3367,7 @@ describe("WorkspaceMessageList", () => {
   });
 
   // Regression: empty reaction row returned null, so justify-between left the lone meta at the start.
-  // Use rich blocks (list / quote) so placement stays "row" without reaction chips.
+  // The last block must not be a paragraph, otherwise placement switches to inline.
   it("keeps row meta right-aligned when the message has no reaction chips", () => {
     const { container } = render(
       <WorkspaceMessageList
@@ -3289,7 +3384,7 @@ describe("WorkspaceMessageList", () => {
             authorUuid: "peer-user-uuid",
             userUuid: "peer-user-uuid",
             isOwn: false,
-            markdown: "> quoted reply\n\nand a follow-up",
+            markdown: "a follow-up\n\n> quoted tail",
           }),
         ]}
         currentUserUuid="current-user-uuid"

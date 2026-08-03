@@ -1,4 +1,9 @@
-.workspace-message-bubble-inline-text > :last-child::after {
+/*
+ * Trailing reserve for inline meta. The anchor attribute is set by
+ * `useWorkspaceMessageInlineMeta` on the paragraph that actually ends the body,
+ * so the reserve also works when the tail sits inside an html segment wrapper.
+ */
+.workspace-message-bubble-inline-text [data-workspace-message-meta-anchor="true"]::after {
   content: "";
   display: inline-block;
   width: calc(var(--workspace-message-bubble-meta-width, 0px) + 0.5rem);

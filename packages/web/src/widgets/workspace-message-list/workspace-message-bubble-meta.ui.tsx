@@ -1,11 +1,11 @@
 import React from "react";
-import type { WorkspaceMessageBubbleMetaPlacement } from "./workspace-message-bubble-meta-placement.lib";
+import type { WorkspaceMessageMetaPlacement } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import "./workspace-message-bubble-meta.css";
 
 interface WorkspaceMessageBubbleMetaProps {
   time: string;
   createdAt: string;
-  placement?: WorkspaceMessageBubbleMetaPlacement;
+  placement?: WorkspaceMessageMetaPlacement;
   className?: string;
   after?: React.ReactNode;
 }

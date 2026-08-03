@@ -148,6 +148,9 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     const containerRef = useRef<HTMLDivElement | null>(null);
     const lastInjectedHtmlRef = useRef<string | null>(null);
     const lastInjectedElementRef = useRef<HTMLDivElement | null>(null);
+    // Nodes injected through innerHTML are invisible to React, so switching to
+    // segment rendering has to drop them by hand.
+    const injectedNodesRef = useRef<ChildNode[]>([]);
     const className = `${BASE_BODY_CLASS_NAME} ${
       useInlineMeta ? "workspace-message-bubble-inline-text" : ""
     }`;
@@ -164,7 +167,15 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
 
     useLayoutEffect(() => {
       const element = containerRef.current;
-      if (element == null || hasStructuredSegments) {
+      if (element == null) {
+        return;
+      }
+      if (hasStructuredSegments) {
+        for (const node of injectedNodesRef.current) {
+          node.remove();
+        }
+        injectedNodesRef.current = [];
+        lastInjectedHtmlRef.current = null;
         lastInjectedElementRef.current = null;
         return;
       }
@@ -181,6 +192,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
       }
 
       element.innerHTML = safeHtml;
+      injectedNodesRef.current = [...element.childNodes];
       lastInjectedHtmlRef.current = safeHtml;
       lastInjectedElementRef.current = element;
 
