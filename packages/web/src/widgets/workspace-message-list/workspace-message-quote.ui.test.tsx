@@ -96,6 +96,7 @@ describe("WorkspaceMessageQuote", () => {
 
     expect(document.querySelectorAll("[data-workspace-quote='true']")).toHaveLength(2);
     expect(screen.getByText("First message")).toBeInTheDocument();
+    expect(document.querySelector(".workspace-message-gap")).toBeNull();
 
     rerender(
       <WorkspaceMessageQuote
@@ -107,6 +108,7 @@ describe("WorkspaceMessageQuote", () => {
     expect(document.querySelectorAll("[data-workspace-quote='true']")).toHaveLength(1);
     expect(screen.queryByText("First message")).not.toBeInTheDocument();
     expect(screen.getByText("Second message")).toBeInTheDocument();
+    expect(document.querySelector(".workspace-message-gap")).toBeNull();
   });
 
   it("uses selected text as a fixed plain-text snapshot and current author name", () => {
@@ -167,5 +169,60 @@ describe("WorkspaceMessageQuote", () => {
     );
 
     expect(screen.getByText("Saved Bob")).toBeInTheDocument();
+  });
+
+  it("renders resolved quote content through the shared GFM renderer", () => {
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        [
+          "## Quote status",
+          "",
+          "| Item | Result |",
+          "|---|---|",
+          "| Parser | Ready |",
+          "",
+          "~~old~~",
+        ].join("\n"),
+      ),
+    });
+
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Old Bob" }}
+      />,
+    );
+
+    const quote = container.querySelector("[data-workspace-quote='true']");
+    expect(quote?.querySelector("h2")).toHaveTextContent("Quote status");
+    expect(quote?.querySelector(".workspace-message-table-scroll > table")).not.toBeNull();
+    expect(quote?.querySelector("del")).toHaveTextContent("old");
+  });
+
+  it("keeps intentional spacing inside resolved quote content", () => {
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        ["Quote start", "", "", "", "", "", "", "", "Quote end"].join("\n"),
+      ),
+    });
+
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Old Bob" }}
+      />,
+    );
+
+    const quote = container.querySelector("[data-workspace-quote='true']");
+    const gap = quote?.querySelector(".workspace-message-gap--5");
+    expect(gap).not.toBeNull();
+    expect(gap).toHaveClass("workspace-message-gap");
+    expect(quote?.querySelectorAll(".workspace-message-gap")).toHaveLength(1);
+    expect(quote).toHaveTextContent("Quote start");
+    expect(quote).toHaveTextContent("Quote end");
   });
 });

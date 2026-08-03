@@ -6,21 +6,22 @@ describe("resolveWorkspaceBubbleMetaPlacement", () => {
     expect(resolveWorkspaceBubbleMetaPlacement({ text: "Simple workspace text" })).toBe("inline");
   });
 
-  it("uses row placement for multiline text", () => {
-    expect(resolveWorkspaceBubbleMetaPlacement({ text: "First line\nSecond line" })).toBe("row");
+  it("uses inline placement for multiline plain text", () => {
+    expect(resolveWorkspaceBubbleMetaPlacement({ text: "First line\nSecond line" })).toBe("inline");
   });
 
-  it("uses row placement for a very long word", () => {
+  it("uses inline placement for a very long word", () => {
     expect(
       resolveWorkspaceBubbleMetaPlacement({
         text: "word-without-breaks-abcdefghijklmnopqrstuvwxyz",
       }),
-    ).toBe("row");
+    ).toBe("inline");
   });
 
   it("uses row placement for non-text surfaces", () => {
     expect(resolveWorkspaceBubbleMetaPlacement({ text: "Text", attachmentsCount: 1 })).toBe("row");
     expect(resolveWorkspaceBubbleMetaPlacement({ text: "Text", hasReactions: true })).toBe("row");
     expect(resolveWorkspaceBubbleMetaPlacement({ text: "Text", hasLinkPreview: true })).toBe("row");
+    expect(resolveWorkspaceBubbleMetaPlacement({ text: "Text", hasRichBlocks: true })).toBe("row");
   });
 });

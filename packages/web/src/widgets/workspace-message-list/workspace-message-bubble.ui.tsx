@@ -43,7 +43,7 @@ const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
 } as const;
 
 const BASE_BUBBLE_CLASS_NAME =
-  "max-w-[min(720px,88%)] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
+  "max-w-[88%] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
 const OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-own-bg`;
 // Peer bubbles use msg-bg (aligned with card-bg chrome in dark palettes)
 const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-bg`;

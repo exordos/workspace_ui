@@ -19,6 +19,22 @@ describe("workspace message summary core", () => {
     });
   });
 
+  it("keeps the legacy block projection stable when the rich renderer is invoked", () => {
+    const document = parseWorkspaceMessageBody(
+      ["Intro **bold**", "", "- first", "- second", "", "> quoted"].join("\n"),
+    );
+    const blocksBeforeRender = structuredClone(document.blocks);
+
+    renderWorkspaceMessageBody(document);
+
+    expect(document.blocks).toEqual(blocksBeforeRender);
+    expect(summarizeWorkspaceMessageBody(document)).toEqual({
+      text: "Intro bold • first • second",
+      leadingKind: "text",
+    });
+    expect(document.safeTextPreview).toBe("Intro bold • first • second");
+  });
+
   it("summarizes markdown through the shared compact helper", () => {
     const imageUuid = "11111111-1111-4111-8111-111111111111";
     const summary = summarizeWorkspaceMessageMarkdown(
@@ -282,5 +298,18 @@ describe("workspace message summary core", () => {
       text: "Файл: report.pdf",
       leadingKind: "file",
     });
+  });
+
+  it("keeps legacy blocks and compact summaries independent from intentional gap size", () => {
+    const oneEmptyLine = parseWorkspaceMessageBody(["Before", "", "After"].join("\n"));
+    const manyEmptyLines = parseWorkspaceMessageBody(
+      ["Before", "", "", "", "", "", "", "", "After"].join("\n"),
+    );
+
+    expect(manyEmptyLines.blocks).toEqual(oneEmptyLine.blocks);
+    expect(manyEmptyLines.safeTextPreview).toBe(oneEmptyLine.safeTextPreview);
+    expect(summarizeWorkspaceMessageBody(manyEmptyLines)).toEqual(
+      summarizeWorkspaceMessageBody(oneEmptyLine),
+    );
   });
 });

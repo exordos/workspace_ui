@@ -1,4 +1,5 @@
 import type { WorkspaceUrnReference } from "../workspace-reference-urn.lib";
+import type { TokensList } from "marked";
 
 export type WorkspaceMessageContentKind =
   | "plain"
@@ -178,6 +179,11 @@ export type WorkspaceMessageBlock =
 
 export interface WorkspaceMessageDocument {
   sourceMarkdown: string;
+  /**
+   * Full Marked token list. Parsing preserves its reference-definition `links`
+   * map, while rendering consumes the already resolved inline link tokens.
+   */
+  markdownTokens: TokensList;
   blocks: readonly WorkspaceMessageBlock[];
   metadata: WorkspaceMessageBodyMetadata;
   safeTextPreview: string;

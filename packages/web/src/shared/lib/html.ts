@@ -1,92 +1,36 @@
 import DOMPurify from "dompurify";
-
-let messageSanitizeHooksInstalled = false;
-
-function ensureMessageLinkTargetHooks(): void {
-  if (messageSanitizeHooksInstalled) return;
-  messageSanitizeHooksInstalled = true;
-  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    // Open all message links in a new browsing context (external and internal).
-    if (node.tagName !== "A" || !node.hasAttribute("href")) return;
-    const href = node.getAttribute("href")?.trim() ?? "";
-    if (href === "") return;
-    if (node.hasAttribute("data-workspace-message-link")) return;
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  });
-}
+import {
+  ensureMessageSanitizeHooks,
+  WORKSPACE_MESSAGE_ALLOWED_ATTR,
+  WORKSPACE_MESSAGE_ALLOWED_TAGS,
+  WORKSPACE_MESSAGE_FORBID_ATTR,
+} from "./workspace-message-render/workspace-message-sanitize.lib";
 
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
 }
 
 const MESSAGE_ALLOWED_TAGS = [
-  "p",
-  "br",
-  "strong",
+  ...WORKSPACE_MESSAGE_ALLOWED_TAGS,
   "b",
-  "del",
-  "em",
   "i",
-  "a",
-  "ul",
-  "ol",
-  "li",
-  "blockquote",
-  "code",
-  "pre",
-  "span",
-  "div",
   "picture",
-  "img",
   "audio",
   "video",
   "source",
-  "button",
   "details",
   "summary",
-  "table",
-  "thead",
-  "tbody",
-  "tr",
-  "th",
-  "td",
 ];
 
 // Event handlers are never allowlisted; message rendering also depends on selected data attrs.
 const MESSAGE_ADD_ATTR = [
-  "src",
-  "alt",
-  "width",
-  "height",
-  "title",
-  "class",
+  ...WORKSPACE_MESSAGE_ALLOWED_ATTR,
   "controls",
   "preload",
   "poster",
-  "type",
-  "role",
-  "tabindex",
-  "aria-label",
-  "data-inline-spoiler",
   "data-original-url",
   "data-original-dimensions",
   "data-original-content-type",
-  "data-workspace-mention",
-  "data-workspace-user-uuid",
-  "data-workspace-message-link",
-  "data-workspace-message-uuid",
-  "data-workspace-file",
-  "data-workspace-file-uuid",
-  "data-workspace-file-kind",
-  "data-workspace-media-kind",
-  "data-workspace-file-name",
-  "data-workspace-file-content-type",
-  "data-workspace-file-size",
-  "data-workspace-media-width",
-  "data-workspace-media-height",
-  "data-workspace-spoiler-toggle",
-  "data-workspace-spoiler-inline",
   "colspan",
   "rowspan",
   "data-user-id",
@@ -94,7 +38,7 @@ const MESSAGE_ADD_ATTR = [
   "data-user-group-id",
 ];
 
-const MESSAGE_FORBID_ATTR = ["data-auth-src", "data-auth-poster", "data-auth-background-image"];
+const MESSAGE_FORBID_ATTR = [...WORKSPACE_MESSAGE_FORBID_ATTR];
 
 export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
   const trimmedBase = baseUrl.trim();
@@ -113,7 +57,7 @@ export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
 }
 
 export function sanitizeHtml(html: string, _baseUrl?: string): string {
-  ensureMessageLinkTargetHooks();
+  ensureMessageSanitizeHooks();
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: MESSAGE_ALLOWED_TAGS,
     ADD_ATTR: MESSAGE_ADD_ATTR,
@@ -125,7 +69,7 @@ export function sanitizeHtmlToFragment(html: string, _baseUrl?: string): Documen
   if (typeof document === "undefined") {
     return null;
   }
-  ensureMessageLinkTargetHooks();
+  ensureMessageSanitizeHooks();
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: MESSAGE_ALLOWED_TAGS,
     ADD_ATTR: MESSAGE_ADD_ATTR,

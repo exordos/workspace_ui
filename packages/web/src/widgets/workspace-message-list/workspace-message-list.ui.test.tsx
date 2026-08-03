@@ -3203,12 +3203,12 @@ describe("WorkspaceMessageList", () => {
     expect(body).toHaveClass("workspace-message-bubble-inline-text");
   });
 
-  it("renders multiline message time as a row fallback", () => {
+  it("renders multiline plain message time inline inside the Workspace bubble", () => {
     const { container } = render(
       <WorkspaceMessageList
         messages={[
           createWorkspaceMessage({
-            uuid: "multiline-row-message",
+            uuid: "multiline-inline-message",
             markdown: "First line\nSecond line",
           }),
         ]}
@@ -3217,12 +3217,12 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const article = container.querySelector("[data-message-uuid='multiline-row-message']");
+    const article = container.querySelector("[data-message-uuid='multiline-inline-message']");
     const body = article?.querySelector("[data-message-body='true']");
     const time = article?.querySelector("[data-message-time='true']");
 
-    expect(time).toHaveAttribute("data-message-meta-placement", "row");
-    expect(body).not.toHaveClass("workspace-message-bubble-inline-text");
+    expect(time).toHaveAttribute("data-message-meta-placement", "inline");
+    expect(body).toHaveClass("workspace-message-bubble-inline-text");
     expect(body?.textContent).toBe("First lineSecond line");
   });
 
@@ -3272,6 +3272,7 @@ describe("WorkspaceMessageList", () => {
   });
 
   // Regression: empty reaction row returned null, so justify-between left the lone meta at the start.
+  // Use rich blocks (list / quote) so placement stays "row" without reaction chips.
   it("keeps row meta right-aligned when the message has no reaction chips", () => {
     const { container } = render(
       <WorkspaceMessageList
@@ -3281,7 +3282,7 @@ describe("WorkspaceMessageList", () => {
             authorUuid: "current-user-uuid",
             userUuid: "current-user-uuid",
             isOwn: true,
-            markdown: "First line\nSecond line",
+            markdown: "- first item\n- second item",
           }),
           createWorkspaceMessage({
             uuid: "peer-row-meta-no-reactions",

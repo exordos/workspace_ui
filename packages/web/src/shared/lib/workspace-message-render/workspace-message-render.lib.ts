@@ -1,13 +1,31 @@
-import DOMPurify from "dompurify";
+import { Marked, type RendererExtension, type RendererThis, type Token, type Tokens } from "marked";
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
 import { deriveWorkspaceMediaPlaceholderLayout } from "./workspace-media-placeholder-layout.lib";
+import {
+  WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE,
+  WORKSPACE_EMOJI_TOKEN_TYPE,
+  WORKSPACE_FILE_TOKEN_TYPE,
+  WORKSPACE_HISTORICAL_QUOTE_TOKEN_TYPE,
+  WORKSPACE_INLINE_SPOILER_TOKEN_TYPE,
+  WORKSPACE_MENTION_TOKEN_TYPE,
+  WORKSPACE_UNSUPPORTED_MEDIA_TOKEN_TYPE,
+  getStandaloneWorkspaceQuoteReference,
+  type WorkspaceBlockSpoilerMarkedToken,
+  type WorkspaceEmojiMarkedToken,
+  type WorkspaceFileMarkedToken,
+  type WorkspaceHistoricalQuoteMarkedToken,
+  type WorkspaceInlineSpoilerMarkedToken,
+  type WorkspaceMentionMarkedToken,
+  type WorkspaceUnsupportedMediaMarkedToken,
+} from "./workspace-message-marked.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
+import { sanitizeWorkspaceMessageHtml } from "./workspace-message-sanitize.lib";
 import type {
-  WorkspaceMessageBlock,
   WorkspaceMessageBodySegment,
   WorkspaceMessageDocument,
-  WorkspaceMessageInline,
+  WorkspaceMessageFileReference,
   WorkspaceMessageQuoteReference,
   WorkspaceMessageRenderOptions,
   WorkspaceMessageRenderResult,
@@ -16,63 +34,6 @@ import type {
 
 const workspaceMessageRenderLog = createLogger("workspace-message-render");
 
-const WORKSPACE_MESSAGE_ALLOWED_TAGS = [
-  "p",
-  "div",
-  "span",
-  "br",
-  "button",
-  "strong",
-  "em",
-  "a",
-  "ul",
-  "ol",
-  "li",
-  "blockquote",
-  "code",
-  "pre",
-  "img",
-];
-
-const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
-  "href",
-  "title",
-  "target",
-  "rel",
-  "start",
-  "class",
-  "type",
-  "data-workspace-mention",
-  "data-workspace-user-uuid",
-  "data-workspace-message-link",
-  "data-workspace-message-uuid",
-  "data-workspace-quote-reference",
-  "data-workspace-reference",
-  "data-workspace-reference-kind",
-  "data-workspace-stream-uuid",
-  "data-workspace-topic-uuid",
-  "data-workspace-file",
-  "data-workspace-file-uuid",
-  "data-workspace-file-kind",
-  "data-workspace-media-kind",
-  "data-workspace-file-name",
-  "data-workspace-file-content-type",
-  "data-workspace-file-size",
-  "data-workspace-media-width",
-  "data-workspace-media-height",
-  "data-workspace-spoiler-toggle",
-  "data-workspace-spoiler-inline",
-  "data-inline-spoiler",
-  "role",
-  "tabindex",
-  "aria-label",
-  "aria-hidden",
-  "style",
-  "src",
-  "alt",
-  "decoding",
-  "loading",
-];
 const SAFE_LINK_PROTOCOL_PATTERN = /^(?:https?:|mailto:)/i;
 const WORKSPACE_MESSAGE_ROUTE_PATTERN =
   /^(?:\/org\/[^/?#]+)?\/project\/[^/?#]+\/message\/([^/?#]+)\/?$/;
@@ -81,6 +42,7 @@ const WORKSPACE_MESSAGE_UUID_PATTERN =
 const LEGACY_NUMERIC_MESSAGE_ROUTE_PATTERN = /^\/message\/\d+\/?$/;
 const LEGACY_NUMERIC_CHAT_MESSAGE_ROUTE_PATTERN = /^\/(?:stream\/\d+|dm\/\d)/;
 const ZULIP_NARROW_MESSAGE_LINK_PATTERN = /#narrow\/.+\/near\/\d+(?:$|[/?#])/i;
+const MAX_WORKSPACE_MESSAGE_GAP_LINES = 5;
 
 function escapeHtmlText(value: string): string {
   return value
@@ -91,15 +53,68 @@ function escapeHtmlText(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function sanitizeWorkspaceMessageHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: WORKSPACE_MESSAGE_ALLOWED_TAGS,
-    ALLOWED_ATTR: WORKSPACE_MESSAGE_ALLOWED_ATTR,
-  });
+function trimBlockBoundaryTokens(tokens: readonly Token[]): Token[] {
+  const firstContentIndex = tokens.findIndex(
+    (token) => token.type !== "space" && token.type !== "def",
+  );
+  if (firstContentIndex < 0) {
+    return [];
+  }
+
+  let lastContentIndex = tokens.length - 1;
+  while (
+    lastContentIndex > firstContentIndex &&
+    (tokens[lastContentIndex]?.type === "space" || tokens[lastContentIndex]?.type === "def")
+  ) {
+    lastContentIndex -= 1;
+  }
+  return tokens.slice(firstContentIndex, lastContentIndex + 1);
+}
+
+function findNearestVisualToken(
+  tokens: readonly Token[],
+  startIndex: number,
+  step: -1 | 1,
+): Token | undefined {
+  for (let index = startIndex; index >= 0 && index < tokens.length; index += step) {
+    const token = tokens[index];
+    if (token != null && token.type !== "space" && token.type !== "def") {
+      return token;
+    }
+  }
+  return undefined;
+}
+
+function removeStandaloneQuoteAdjacentSpaces(tokens: readonly Token[]): Token[] {
+  const isStandaloneQuote = (token: Token | undefined): boolean =>
+    token != null && getStandaloneWorkspaceQuoteReference(token) != null;
+
+  return tokens.filter(
+    (token, index) =>
+      token.type !== "space" ||
+      (!isStandaloneQuote(findNearestVisualToken(tokens, index - 1, -1)) &&
+        !isStandaloneQuote(findNearestVisualToken(tokens, index + 1, 1))),
+  );
+}
+
+function renderNestedBlockTokens(parser: RendererThis["parser"], tokens: readonly Token[]): string {
+  return parser.parse(trimBlockBoundaryTokens(tokens));
+}
+
+function renderWorkspaceMessageGap(token: Tokens.Space): string {
+  const newlineCount = token.raw.match(/\n/g)?.length ?? 0;
+  if (newlineCount < 2) {
+    return "";
+  }
+  const blankLineCount = Math.min(MAX_WORKSPACE_MESSAGE_GAP_LINES, Math.max(1, newlineCount - 1));
+  return `<span class="workspace-message-gap workspace-message-gap--${blankLineCount}" aria-hidden="true"></span>`;
 }
 
 function isSafeLinkHref(href: string): boolean {
   const trimmed = href.trim();
+  if (trimmed.includes("\\")) {
+    return false;
+  }
   return (
     SAFE_LINK_PROTOCOL_PATTERN.test(trimmed) ||
     (trimmed.startsWith("/") && !trimmed.startsWith("//")) ||
@@ -127,23 +142,18 @@ function resolveWorkspaceMessageRouteUuid(href: string): string | null {
   if (url == null) {
     return null;
   }
-
   const match = WORKSPACE_MESSAGE_ROUTE_PATTERN.exec(url.pathname);
-  const messageUuid = (() => {
-    if (match?.[1] == null) {
-      return null;
-    }
-    try {
-      return decodeURIComponent(match[1]);
-    } catch {
-      return null;
-    }
-  })();
-  if (messageUuid == null || !WORKSPACE_MESSAGE_UUID_PATTERN.test(messageUuid)) {
+  const encodedUuid = match?.[1];
+  if (encodedUuid == null) {
     return null;
   }
-
-  return messageUuid;
+  let messageUuid: string;
+  try {
+    messageUuid = decodeURIComponent(encodedUuid);
+  } catch {
+    return null;
+  }
+  return WORKSPACE_MESSAGE_UUID_PATTERN.test(messageUuid) ? messageUuid : null;
 }
 
 function isUnsupportedLegacyMessageLink(href: string): boolean {
@@ -151,72 +161,48 @@ function isUnsupportedLegacyMessageLink(href: string): boolean {
   if (ZULIP_NARROW_MESSAGE_LINK_PATTERN.test(trimmed)) {
     return true;
   }
-
   const url = parseSafeUrlForRoute(trimmed);
-  if (url == null) {
-    return false;
-  }
-
   return (
-    LEGACY_NUMERIC_MESSAGE_ROUTE_PATTERN.test(url.pathname) ||
-    (url.searchParams.has("msg") && LEGACY_NUMERIC_CHAT_MESSAGE_ROUTE_PATTERN.test(url.pathname))
+    url != null &&
+    (LEGACY_NUMERIC_MESSAGE_ROUTE_PATTERN.test(url.pathname) ||
+      (url.searchParams.has("msg") && LEGACY_NUMERIC_CHAT_MESSAGE_ROUTE_PATTERN.test(url.pathname)))
   );
 }
 
-function renderInlineChildren(
-  children: readonly WorkspaceMessageInline[],
-  options: WorkspaceMessageRenderOptions,
-): string {
-  return children.map((child) => renderInline(child, options)).join("");
-}
-
-function renderWorkspaceFileLabel(
-  inline: Extract<WorkspaceMessageInline, { kind: "file" }>,
-): string {
-  const { reference } = inline;
+function renderWorkspaceFileLabel(reference: WorkspaceMessageFileReference): string {
   if (reference.kind === "media") {
     return reference.mediaKind === "video" ? "Видео" : "Изображение";
   }
   return reference.name != null ? `Файл: ${reference.name}` : "Файл";
 }
 
-function renderWorkspaceFilePlaceholder(
-  inline: Extract<WorkspaceMessageInline, { kind: "file" }>,
-): string {
-  const { reference } = inline;
-  const label = renderWorkspaceFileLabel(inline);
+function renderWorkspaceFilePlaceholder(reference: WorkspaceMessageFileReference): string {
+  const label = renderWorkspaceFileLabel(reference);
   const isImage = reference.kind === "media" && reference.mediaKind === "image";
   const isVideo = reference.kind === "media" && reference.mediaKind === "video";
   const videoLayout = isVideo ? deriveWorkspaceMediaPlaceholderLayout(reference) : null;
   const videoPlaceholderStyle = videoLayout != null ? ` style="width:${videoLayout.width}px"` : "";
   const videoVisualStyle =
     videoLayout != null ? ` style="aspect-ratio:${videoLayout.aspectRatio}"` : "";
-  const fileNameAttr =
-    reference.name != null ? ` data-workspace-file-name="${escapeHtmlText(reference.name)}"` : "";
-  const contentTypeAttr =
-    reference.contentType != null
-      ? ` data-workspace-file-content-type="${escapeHtmlText(reference.contentType)}"`
-      : "";
-  const mediaKindAttr =
-    reference.mediaKind != null
-      ? ` data-workspace-media-kind="${escapeHtmlText(reference.mediaKind)}"`
-      : "";
-  const fileSizeAttr =
-    reference.sizeBytes != null
-      ? ` data-workspace-file-size="${escapeHtmlText(String(reference.sizeBytes))}"`
-      : "";
-  const mediaWidthAttr =
-    reference.width != null
-      ? ` data-workspace-media-width="${escapeHtmlText(String(reference.width))}"`
-      : "";
-  const mediaHeightAttr =
-    reference.height != null
-      ? ` data-workspace-media-height="${escapeHtmlText(String(reference.height))}"`
-      : "";
+  const optionalAttributes = [
+    reference.mediaKind == null
+      ? ""
+      : ` data-workspace-media-kind="${escapeHtmlText(reference.mediaKind)}"`,
+    reference.name == null ? "" : ` data-workspace-file-name="${escapeHtmlText(reference.name)}"`,
+    reference.contentType == null
+      ? ""
+      : ` data-workspace-file-content-type="${escapeHtmlText(reference.contentType)}"`,
+    reference.sizeBytes == null
+      ? ""
+      : ` data-workspace-file-size="${escapeHtmlText(String(reference.sizeBytes))}"`,
+    reference.width == null
+      ? ""
+      : ` data-workspace-media-width="${escapeHtmlText(String(reference.width))}"`,
+    reference.height == null
+      ? ""
+      : ` data-workspace-media-height="${escapeHtmlText(String(reference.height))}"`,
+  ].join("");
 
-  // Workspace download currently needs bearer access and returns an attachment
-  // response. Until there is a safe inline-src contract, full render leaves only
-  // an explicit UUID placeholder; a separate preview layer must add blob/viewer loading.
   if (isImage) {
     workspaceMessageRenderLog.debug("render image placeholder", {
       fileUuid: reference.fileUuid,
@@ -226,9 +212,7 @@ function renderWorkspaceFilePlaceholder(
     });
   }
   const imageHtml = isImage
-    ? `<img class="workspace-message-file-placeholder__image" src="${escapeHtmlText(
-        AUTH_IMAGE_PLACEHOLDER_SRC,
-      )}" alt="" decoding="async" loading="lazy">`
+    ? `<img class="workspace-message-file-placeholder__image" src="${escapeHtmlText(AUTH_IMAGE_PLACEHOLDER_SRC)}" alt="" decoding="async" loading="lazy">`
     : "";
   const videoHtml = isVideo
     ? `<span class="workspace-message-file-placeholder__video-visual"${videoVisualStyle}><span class="workspace-message-file-placeholder__video-icon" aria-hidden="true"></span><span class="workspace-message-file-placeholder__label sr-only">${escapeHtmlText(label)}</span></span>`
@@ -237,219 +221,275 @@ function renderWorkspaceFilePlaceholder(
     ? "workspace-message-file-placeholder__label sr-only"
     : "workspace-message-file-placeholder__label";
   const labelHtml = isVideo ? "" : `<span class="${labelClass}">${escapeHtmlText(label)}</span>`;
-  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(
-    reference.fileUuid,
-  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr}${fileSizeAttr}${mediaWidthAttr}${mediaHeightAttr}${videoPlaceholderStyle} title="${escapeHtmlText(
-    label,
-  )}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
+  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${videoPlaceholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
 }
 
-function resolveWorkspaceConversationFragment(
-  reference: Extract<
-    NonNullable<Extract<WorkspaceMessageInline, { kind: "link" }>["workspaceReference"]>,
-    { kind: "stream" | "topic" }
-  >,
-  streamUuid: string | undefined,
-  topicUuid: string | undefined,
-): string {
-  if (reference.kind === "stream") {
-    return `#workspace-reference-stream-${streamUuid}`;
-  }
-  if (reference.streamUuid == null) {
-    return `#workspace-reference-topic-${topicUuid}`;
-  }
-  return `#workspace-reference-topic-${streamUuid}-${topicUuid}`;
-}
-
-function renderWorkspaceConversationReference(
-  inline: Extract<WorkspaceMessageInline, { kind: "link" }>,
-  options: WorkspaceMessageRenderOptions,
-): string | null {
-  const reference = inline.workspaceReference;
-  if (reference?.kind !== "stream" && reference?.kind !== "topic") {
-    return null;
-  }
-
-  const labelHtml = renderInlineChildren(inline.children, options);
-  const titleAttr =
-    inline.title != null && inline.title.trim().length > 0
-      ? ` title="${escapeHtmlText(inline.title)}"`
-      : "";
-  const referenceKind = reference.kind;
-  const streamUuid =
-    reference.streamUuid == null ? undefined : escapeHtmlText(reference.streamUuid);
-  const topicUuid = reference.kind === "topic" ? escapeHtmlText(reference.topicUuid) : undefined;
-  const streamUuidAttr =
-    reference.kind === "topic" && reference.streamUuid == null
-      ? ""
-      : ` data-workspace-stream-uuid="${streamUuid}"`;
-  const fragment = resolveWorkspaceConversationFragment(reference, streamUuid, topicUuid);
-  const topicUuidAttr = topicUuid == null ? "" : ` data-workspace-topic-uuid="${topicUuid}"`;
-
-  return `<a href="${fragment}"${titleAttr} data-workspace-reference="true" data-workspace-reference-kind="${referenceKind}"${streamUuidAttr}${topicUuidAttr}>${labelHtml}</a>`;
-}
-
-function renderFileInline(
-  inline: Extract<WorkspaceMessageInline, { kind: "file" }>,
+function renderFileReference(
+  reference: WorkspaceMessageFileReference,
   options: WorkspaceMessageRenderOptions,
 ): string {
   const enabled =
-    inline.reference.kind === "media" ? options.enableProtectedMedia : options.enableAttachments;
+    reference.kind === "media" ? options.enableProtectedMedia : options.enableAttachments;
   return enabled
-    ? renderWorkspaceFilePlaceholder(inline)
-    : escapeHtmlText(renderWorkspaceFileLabel(inline));
+    ? renderWorkspaceFilePlaceholder(reference)
+    : escapeHtmlText(renderWorkspaceFileLabel(reference));
 }
 
-function renderMentionInline(
-  inline: Extract<WorkspaceMessageInline, { kind: "mention" }>,
+function renderMentionToken(
+  token: WorkspaceMentionMarkedToken,
   options: WorkspaceMessageRenderOptions,
 ): string {
-  const mentionText = `@${inline.displayText}`;
-  if (!options.enableMentions || inline.userUuid == null || inline.userUuid.trim().length === 0) {
+  const mentionText = `@${token.displayText}`;
+  if (!options.enableMentions || token.userUuid == null || token.userUuid.trim().length === 0) {
     return escapeHtmlText(mentionText);
   }
-  // The button carries only a Workspace UUID. Click handling must use UUIDs
-  // or treat the action as unsupported for the current surface.
-  return `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${escapeHtmlText(
-    inline.userUuid,
-  )}">${escapeHtmlText(mentionText)}</button>`;
+  return `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${escapeHtmlText(token.userUuid)}">${escapeHtmlText(mentionText)}</button>`;
 }
 
-function renderLinkInline(
-  inline: Extract<WorkspaceMessageInline, { kind: "link" }>,
+function renderWorkspaceMessageReference(
+  reference: Extract<ReturnType<typeof parseWorkspaceReferenceUrn>, { kind: "message" | "quote" }>,
+  labelHtml: string,
+  titleAttribute: string,
+): string {
+  return `<a href="#workspace-message-${escapeHtmlText(reference.messageUuid)}"${titleAttribute} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(reference.messageUuid)}">${labelHtml}</a>`;
+}
+
+function renderWorkspaceConversationReference(
+  reference: Extract<ReturnType<typeof parseWorkspaceReferenceUrn>, { kind: "stream" | "topic" }>,
+  labelHtml: string,
+  titleAttribute: string,
+): string {
+  if (reference.kind === "stream") {
+    const streamUuid = escapeHtmlText(reference.streamUuid);
+    return `<a href="#workspace-reference-stream-${streamUuid}"${titleAttribute} data-workspace-reference="true" data-workspace-reference-kind="stream" data-workspace-stream-uuid="${streamUuid}">${labelHtml}</a>`;
+  }
+
+  const topicUuid = escapeHtmlText(reference.topicUuid);
+  const streamUuid =
+    reference.streamUuid == null ? undefined : escapeHtmlText(reference.streamUuid);
+  const fragment =
+    streamUuid == null
+      ? `#workspace-reference-topic-${topicUuid}`
+      : `#workspace-reference-topic-${streamUuid}-${topicUuid}`;
+  const streamAttribute = streamUuid == null ? "" : ` data-workspace-stream-uuid="${streamUuid}"`;
+  return `<a href="${fragment}"${titleAttribute} data-workspace-reference="true" data-workspace-reference-kind="topic"${streamAttribute} data-workspace-topic-uuid="${topicUuid}">${labelHtml}</a>`;
+}
+
+function renderLinkToken(
+  token: Tokens.Link,
+  labelHtml: string,
   options: WorkspaceMessageRenderOptions,
 ): string {
-  const workspaceConversationReference = renderWorkspaceConversationReference(inline, options);
-  if (workspaceConversationReference != null) {
-    return workspaceConversationReference;
-  }
-  const labelHtml = renderInlineChildren(inline.children, options);
-  const titleAttr =
-    inline.title != null && inline.title.trim().length > 0
-      ? ` title="${escapeHtmlText(inline.title)}"`
+  const titleAttribute =
+    token.title != null && token.title.trim().length > 0
+      ? ` title="${escapeHtmlText(token.title)}"`
       : "";
-  if (inline.workspaceMessageUuid != null) {
-    // URN links are a content contract, not browser URLs. Use a harmless
-    // fragment and let the UUID-only message action handle navigation.
-    return `<a href="#workspace-message-${escapeHtmlText(
-      inline.workspaceMessageUuid,
-    )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
-      inline.workspaceMessageUuid,
-    )}">${labelHtml}</a>`;
+  const workspaceUrl = parseWorkspaceUrlUrn(token.href);
+  const href = workspaceUrl ?? token.href;
+  const reference = parseWorkspaceReferenceUrn(token.href);
+  if (reference?.kind === "user") {
+    return renderMentionToken(
+      {
+        type: WORKSPACE_MENTION_TOKEN_TYPE,
+        raw: token.raw,
+        displayText: token.text,
+        userUuid: reference.userUuid,
+      },
+      options,
+    );
   }
-  if (!isSafeLinkHref(inline.href)) {
+  if (reference?.kind === "message" || reference?.kind === "quote") {
+    return renderWorkspaceMessageReference(reference, labelHtml, titleAttribute);
+  }
+  if (reference?.kind === "stream" || reference?.kind === "topic") {
+    return renderWorkspaceConversationReference(reference, labelHtml, titleAttribute);
+  }
+  if (!isSafeLinkHref(href)) {
     return labelHtml;
   }
-  const workspaceMessageUuid = resolveWorkspaceMessageRouteUuid(inline.href);
+  const workspaceMessageUuid = resolveWorkspaceMessageRouteUuid(href);
   if (workspaceMessageUuid != null) {
-    // Workspace message links are allowed only through the project/message
-    // route with UUID. Old `/message/:id`, `?msg=`, and Zulip narrow are not
-    // emitted as `<a>`, so the bubble does not send users to a legacy path.
-    return `<a href="${escapeHtmlText(
-      inline.href,
-    )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
-      workspaceMessageUuid,
-    )}">${labelHtml}</a>`;
+    return `<a href="${escapeHtmlText(href)}"${titleAttribute} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(workspaceMessageUuid)}">${labelHtml}</a>`;
   }
-  if (isUnsupportedLegacyMessageLink(inline.href)) {
+  if (isUnsupportedLegacyMessageLink(href)) {
     return labelHtml;
   }
-  return `<a href="${escapeHtmlText(inline.href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
+  return `<a href="${escapeHtmlText(href)}"${titleAttribute} target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
 }
 
-function renderInline(
-  inline: WorkspaceMessageInline,
+function createWorkspaceRendererExtensions(
   options: WorkspaceMessageRenderOptions,
-): string {
-  switch (inline.kind) {
-    case "text":
-      return escapeHtmlText(inline.text);
-    case "break":
-      return "<br>";
-    case "emphasis":
-      return `<em>${renderInlineChildren(inline.children, options)}</em>`;
-    case "strong":
-      return `<strong>${renderInlineChildren(inline.children, options)}</strong>`;
-    case "code":
-      return `<code>${escapeHtmlText(inline.text)}</code>`;
-    case "spoiler":
-      return `<span class="inline-spoiler" data-inline-spoiler="true" data-workspace-spoiler-inline="true">${renderInlineChildren(
-        inline.children,
-        options,
-      )}</span>`;
-    case "unsupported-media":
-      return escapeHtmlText(inline.label || "Изображение");
-    case "file":
-      return renderFileInline(inline, options);
-    case "emoji":
-      return escapeHtmlText(options.enableEmojiShortcodes ? inline.unicode : inline.text);
-    case "mention":
-      return renderMentionInline(inline, options);
-    case "link":
-      return renderLinkInline(inline, options);
+): RendererExtension[] {
+  return [
+    {
+      name: WORKSPACE_MENTION_TOKEN_TYPE,
+      renderer(token) {
+        return renderMentionToken(token as WorkspaceMentionMarkedToken, options);
+      },
+    },
+    {
+      name: WORKSPACE_EMOJI_TOKEN_TYPE,
+      renderer(token) {
+        const emoji = token as WorkspaceEmojiMarkedToken;
+        return escapeHtmlText(options.enableEmojiShortcodes ? emoji.unicode : emoji.text);
+      },
+    },
+    {
+      name: WORKSPACE_FILE_TOKEN_TYPE,
+      renderer(token) {
+        return renderFileReference((token as WorkspaceFileMarkedToken).reference, options);
+      },
+    },
+    {
+      name: WORKSPACE_UNSUPPORTED_MEDIA_TOKEN_TYPE,
+      renderer(token) {
+        const media = token as WorkspaceUnsupportedMediaMarkedToken;
+        return escapeHtmlText(media.label || "Изображение");
+      },
+    },
+    {
+      name: WORKSPACE_INLINE_SPOILER_TOKEN_TYPE,
+      renderer(this: RendererThis, token) {
+        const spoiler = token as WorkspaceInlineSpoilerMarkedToken;
+        return `<span class="inline-spoiler" data-inline-spoiler="true" data-workspace-spoiler-inline="true">${this.parser.parseInline(spoiler.tokens)}</span>`;
+      },
+    },
+    {
+      name: WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE,
+      renderer(this: RendererThis, token) {
+        const spoiler = token as WorkspaceBlockSpoilerMarkedToken;
+        return `<div class="spoiler-block"><div class="spoiler-header" role="button" tabindex="0" data-workspace-spoiler-toggle="true">${this.parser.parseInline(spoiler.headerTokens)}</div><div class="spoiler-content">${renderNestedBlockTokens(this.parser, spoiler.tokens)}</div></div>`;
+      },
+    },
+    {
+      name: WORKSPACE_HISTORICAL_QUOTE_TOKEN_TYPE,
+      renderer(this: RendererThis, token) {
+        const quote = token as WorkspaceHistoricalQuoteMarkedToken;
+        const content = renderNestedBlockTokens(this.parser, quote.tokens);
+        return options.enableQuotes
+          ? `<blockquote class="workspace-message-quote">${content}</blockquote>`
+          : content;
+      },
+    },
+  ];
+}
+
+function renderTableCell(cell: Tokens.TableCell, parser: RendererThis["parser"]): string {
+  const tag = cell.header ? "th" : "td";
+  const align = cell.align == null ? "" : ` align="${cell.align}"`;
+  return `<${tag}${align}>${parser.parseInline(cell.tokens)}</${tag}>`;
+}
+
+function renderTableToken(token: Tokens.Table, parser: RendererThis["parser"]): string {
+  const header = token.header.map((cell) => renderTableCell(cell, parser)).join("");
+  const rows = token.rows
+    .map((row) => `<tr>${row.map((cell) => renderTableCell(cell, parser)).join("")}</tr>`)
+    .join("");
+  const body = rows.length > 0 ? `<tbody>${rows}</tbody>` : "";
+  return `<div class="workspace-message-table-scroll"><table><thead><tr>${header}</tr></thead>${body}</table></div>`;
+}
+
+function renderListItem(item: Tokens.ListItem, parser: RendererThis["parser"]): string {
+  const classAttribute = item.task ? ' class="task-list-item"' : "";
+  if (item.task) {
+    return `<li${classAttribute}>${renderNestedBlockTokens(parser, item.tokens)}</li>`;
   }
-}
-
-function renderBlocks(
-  blocks: readonly WorkspaceMessageBlock[],
-  options: WorkspaceMessageRenderOptions,
-): string {
-  return blocks.map((block) => renderBlock(block, options)).join("");
-}
-
-function renderQuoteReferenceFallback(reference: WorkspaceMessageQuoteReference): string {
-  const label = reference.fallbackAuthorLabel.trim() || "Цитата";
-  return `<blockquote class="workspace-message-quote workspace-message-quote-reference" data-workspace-quote-reference="true" data-workspace-message-uuid="${escapeHtmlText(
-    reference.messageUuid,
-  )}"><a href="#workspace-message-${escapeHtmlText(
-    reference.messageUuid,
-  )}" data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
-    reference.messageUuid,
-  )}">${escapeHtmlText(label)}</a></blockquote>`;
-}
-
-function renderBlock(block: WorkspaceMessageBlock, options: WorkspaceMessageRenderOptions): string {
-  switch (block.kind) {
-    case "paragraph":
-      return `<p>${renderInlineChildren(block.children, options)}</p>`;
-    case "quote":
-      if (!options.enableQuotes) {
-        return renderBlocks(block.blocks, options);
+  const content = trimBlockBoundaryTokens(item.tokens)
+    .map((token) => {
+      if (token.type !== "text") {
+        return parser.parse([token]);
       }
-      return `<blockquote class="workspace-message-quote">${renderBlocks(
-        block.blocks,
-        options,
-      )}</blockquote>`;
-    case "quote-reference":
-      return renderQuoteReferenceFallback(block.reference);
-    case "code": {
-      const language = block.language?.trim();
-      const codeClass =
-        language != null && language.length > 0
-          ? ` class="hljs language-${escapeHtmlText(language)}"`
-          : ' class="hljs"';
-      return `<pre><code${codeClass}>${escapeHtmlText(block.text)}</code></pre>`;
-    }
-    case "spoiler": {
-      return `<div class="spoiler-block"><div class="spoiler-header" role="button" tabindex="0" data-workspace-spoiler-toggle="true">${renderInlineChildren(
-        block.header,
-        options,
-      )}</div><div class="spoiler-content">${renderBlocks(block.blocks, options)}</div></div>`;
-    }
-    case "list": {
-      const tag = block.ordered ? "ol" : "ul";
-      const startAttr =
-        block.ordered && block.start != null && block.start > 1 ? ` start="${block.start}"` : "";
-      const itemsHtml = block.items
-        .map((item) => `<li>${renderBlocks(item.blocks, options)}</li>`)
-        .join("");
-      return `<${tag}${startAttr}>${itemsHtml}</${tag}>`;
-    }
-  }
+      return `<p>${parser.parseInline(token.tokens ?? [token])}</p>`;
+    })
+    .join("");
+  return `<li${classAttribute}>${content}</li>`;
+}
+
+function renderListToken(token: Tokens.List, parser: RendererThis["parser"]): string {
+  const tag = token.ordered ? "ol" : "ul";
+  const startAttribute =
+    token.ordered && token.start !== "" && token.start !== 1 ? ` start="${token.start}"` : "";
+  const classAttribute = token.items.some((item) => item.task) ? ' class="contains-task-list"' : "";
+  return `<${tag}${startAttribute}${classAttribute}>${token.items
+    .map((item) => renderListItem(item, parser))
+    .join("")}</${tag}>`;
+}
+
+function createWorkspaceMarkdownRenderer(options: WorkspaceMessageRenderOptions): Marked {
+  return new Marked({
+    async: false,
+    breaks: true,
+    gfm: true,
+    extensions: createWorkspaceRendererExtensions(options),
+    renderer: {
+      space(token) {
+        return renderWorkspaceMessageGap(token);
+      },
+      html(token) {
+        return escapeHtmlText(token.text);
+      },
+      paragraph(this: { parser: RendererThis["parser"] }, token) {
+        return `<p>${this.parser.parseInline(token.tokens)}</p>`;
+      },
+      heading(this: { parser: RendererThis["parser"] }, token) {
+        return `<h${token.depth}>${this.parser.parseInline(token.tokens)}</h${token.depth}>`;
+      },
+      hr() {
+        return "<hr>";
+      },
+      link(this: { parser: RendererThis["parser"] }, token) {
+        return renderLinkToken(token, this.parser.parseInline(token.tokens), options);
+      },
+      image(token) {
+        return escapeHtmlText(token.text || "Изображение");
+      },
+      blockquote(this: { parser: RendererThis["parser"] }, token) {
+        const content = renderNestedBlockTokens(this.parser, token.tokens);
+        return options.enableQuotes
+          ? `<blockquote class="workspace-message-quote">${content}</blockquote>`
+          : content;
+      },
+      table(this: { parser: RendererThis["parser"] }, token) {
+        return renderTableToken(token, this.parser);
+      },
+      list(this: { parser: RendererThis["parser"] }, token) {
+        return renderListToken(token, this.parser);
+      },
+      code(token) {
+        const language = token.lang?.trim().split(/\s+/, 1)[0];
+        const codeClass =
+          language != null && language.length > 0
+            ? ` class="hljs language-${escapeHtmlText(language)}"`
+            : ' class="hljs"';
+        return `<pre><code${codeClass}>${escapeHtmlText(token.text)}</code></pre>`;
+      },
+      checkbox(token) {
+        const symbol = token.checked ? "✓" : "";
+        return `<span class="workspace-message-task-marker" aria-hidden="true">${symbol}</span>`;
+      },
+    },
+  });
 }
 
 function renderPlainText(document: WorkspaceMessageDocument): string {
   return escapeHtmlText(document.sourceMarkdown).replace(/\n/g, "<br>");
+}
+
+function renderQuoteReferenceFallback(reference: WorkspaceMessageQuoteReference): string {
+  const label = reference.fallbackAuthorLabel.trim() || "Цитата";
+  return `<blockquote class="workspace-message-quote workspace-message-quote-reference" data-workspace-quote-reference="true" data-workspace-message-uuid="${escapeHtmlText(reference.messageUuid)}"><a href="#workspace-message-${escapeHtmlText(reference.messageUuid)}" data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(reference.messageUuid)}">${escapeHtmlText(label)}</a></blockquote>`;
+}
+
+function renderTokenGroup(
+  tokens: readonly Token[],
+  options: WorkspaceMessageRenderOptions,
+): string {
+  if (tokens.length === 0) {
+    return "";
+  }
+  const renderer = createWorkspaceMarkdownRenderer(options);
+  const html = renderer.parser([...tokens]);
+  return sanitizeWorkspaceMessageHtml(typeof html === "string" ? html.trim() : "");
 }
 
 export function renderWorkspaceMessageBodySegments(
@@ -464,33 +504,30 @@ export function renderWorkspaceMessageBodySegments(
   }
 
   const segments: WorkspaceMessageBodySegment[] = [];
-  let pendingBlocks: WorkspaceMessageBlock[] = [];
+  let pendingTokens: Token[] = [];
   const flushHtml = (): void => {
-    if (pendingBlocks.length === 0) {
-      return;
+    const html = renderTokenGroup(pendingTokens, options);
+    if (html.length > 0) {
+      segments.push({ kind: "html", html });
     }
-    segments.push({
-      kind: "html",
-      html: sanitizeWorkspaceMessageHtml(renderBlocks(pendingBlocks, options)),
-    });
-    pendingBlocks = [];
+    pendingTokens = [];
   };
 
-  for (const block of document.blocks) {
-    if (block.kind !== "quote-reference") {
-      pendingBlocks.push(block);
+  const renderableTokens = removeStandaloneQuoteAdjacentSpaces(
+    trimBlockBoundaryTokens(document.markdownTokens),
+  );
+  for (const token of renderableTokens) {
+    const quoteReference = getStandaloneWorkspaceQuoteReference(token);
+    if (quoteReference == null) {
+      pendingTokens.push(token);
       continue;
     }
-
     flushHtml();
-    segments.push({ kind: "quote", reference: block.reference });
+    segments.push({ kind: "quote", reference: quoteReference });
   }
   flushHtml();
 
-  return {
-    segments,
-    metadata: document.metadata,
-  };
+  return { segments, metadata: document.metadata };
 }
 
 export function renderWorkspaceMessageBody(
@@ -498,8 +535,6 @@ export function renderWorkspaceMessageBody(
   options: WorkspaceMessageRenderOptions = DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
 ): WorkspaceMessageRenderResult {
   const segmented = renderWorkspaceMessageBodySegments(document, options);
-  // Compatibility adapter for callers that still mount one sanitized HTML
-  // string. New UI should render quote segments with a dedicated component.
   const html = segmented.segments
     .map((segment) =>
       segment.kind === "html"
@@ -507,8 +542,5 @@ export function renderWorkspaceMessageBody(
         : sanitizeWorkspaceMessageHtml(renderQuoteReferenceFallback(segment.reference)),
     )
     .join("");
-  return {
-    html,
-    metadata: segmented.metadata,
-  };
+  return { html, metadata: segmented.metadata };
 }

@@ -9,6 +9,11 @@ const WORKSPACE_COMPACT_SUMMARY_FILES = [
   resolve(SRC_ROOT, "entities/messenger/messenger-sidebar.lib.ts"),
   resolve(SRC_ROOT, "pages/feed/feed-page.ui.tsx"),
 ] as const;
+const WORKSPACE_RICH_RENDER_SURFACE_FILES = [
+  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-bubble.ui.tsx"),
+  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-quote.ui.tsx"),
+  resolve(SRC_ROOT, "widgets/message-composer/message-composer-preview.hook.ts"),
+] as const;
 const LEGACY_MESSAGE_LIST_PATH = ["widgets", "message-list"].join("/");
 const LEGACY_MESSAGE_LIST_IMPORT_PATTERN = new RegExp(
   `(?:~/${LEGACY_MESSAGE_LIST_PATH}|${LEGACY_MESSAGE_LIST_PATH}|/message-list/message-)`,
@@ -87,6 +92,21 @@ describe("Workspace message render boundaries", () => {
       expect(source(filePath), relativeFile(filePath)).toContain(
         "summarizeWorkspaceMessageMarkdown",
       );
+    }
+  });
+
+  it("keeps rich Workspace surfaces on the shared render API", () => {
+    for (const filePath of WORKSPACE_RICH_RENDER_SURFACE_FILES) {
+      expect(source(filePath), relativeFile(filePath)).toMatch(
+        /renderWorkspaceMessageBody(?:Segments)?/,
+      );
+      expect(source(filePath), relativeFile(filePath)).not.toMatch(/from ["']marked["']/);
+    }
+  });
+
+  it("does not switch compact Workspace previews to the rich renderer", () => {
+    for (const filePath of WORKSPACE_COMPACT_SUMMARY_FILES) {
+      expect(source(filePath), relativeFile(filePath)).not.toContain("renderWorkspaceMessageBody");
     }
   });
 });

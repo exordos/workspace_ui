@@ -103,6 +103,67 @@ describe("MessageComposerPreviewBody", () => {
     expect(className).toContain("[&_ol+p]:mt-1");
   });
 
+  it("keeps shared GFM table and task markup after mounting the preview body", () => {
+    const preview = renderWorkspacePreview(
+      [
+        "## Preview",
+        "",
+        "| Item | Result |",
+        "|---|---|",
+        "| Parser | Ready |",
+        "",
+        "- [x] checked",
+        "",
+        "~~old~~",
+        "",
+        "---",
+      ].join("\n"),
+    );
+
+    const { container } = render(
+      <MessageComposerPreviewBody
+        outgoingBodyTrim="preview"
+        previewLoading={false}
+        previewError={null}
+        previewHtml={preview.html}
+        previewMetadata={preview.metadata}
+        fileReferences={preview.fileReferences}
+      />,
+    );
+
+    const body = container.querySelector(".workspace-message-body");
+    expect(body?.querySelector("h2")).toHaveTextContent("Preview");
+    expect(body?.querySelector(".workspace-message-table-scroll > table")).not.toBeNull();
+    expect(body?.querySelector("del")).toHaveTextContent("old");
+    expect(body?.querySelector("hr")).not.toBeNull();
+    expect(body?.querySelector("ul.contains-task-list")).not.toBeNull();
+    expect(body?.querySelector("li.task-list-item")).toHaveTextContent("checked");
+    expect(body?.querySelector(".workspace-message-task-marker")).not.toBeNull();
+    expect(body?.querySelector("input[type='checkbox']")).toBeNull();
+  });
+
+  it("keeps intentional multi-line spacing in the shared preview body", () => {
+    const preview = renderWorkspacePreview(["Before", "", "", "", "", "After"].join("\n"));
+
+    const { container } = render(
+      <MessageComposerPreviewBody
+        outgoingBodyTrim="preview"
+        previewLoading={false}
+        previewError={null}
+        previewHtml={preview.html}
+        previewMetadata={preview.metadata}
+        fileReferences={preview.fileReferences}
+      />,
+    );
+
+    const body = container.querySelector(".workspace-message-body");
+    const gap = body?.querySelector(".workspace-message-gap--4");
+    expect(gap).not.toBeNull();
+    expect(gap).toHaveClass("workspace-message-gap");
+    expect(gap).toHaveAttribute("aria-hidden", "true");
+    expect(body?.querySelectorAll(".workspace-message-gap")).toHaveLength(1);
+  });
+
   it("loads Workspace image URNs through the preview loader", async () => {
     const fileUuid = "11111111-1111-4111-8111-111111111111";
     const createObjectURL = vi

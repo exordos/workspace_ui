@@ -87,4 +87,41 @@ describe("useMessageComposerPreview", () => {
       mediaKind: "image",
     });
   });
+
+  it("uses the shared GFM renderer and Workspace overrides inside a table", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const resolveMention = vi.fn(() => ({ userUuid, displayText: "Alice" }));
+
+    const { result } = renderHook(() =>
+      useMessageComposerPreview({
+        mode: "preview",
+        outgoingBody: [
+          "## Preview",
+          "",
+          "| User | File |",
+          "|---|---|",
+          `| [Alice](urn:user:${userUuid}) | [report.pdf](urn:file:${fileUuid}?name=report.pdf) |`,
+          "",
+          "~~ready~~",
+        ].join("\n"),
+        resolveMention,
+      }),
+    );
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.html).toContain("<h2>Preview</h2>");
+    expect(result.current.html).toContain('<div class="workspace-message-table-scroll">');
+    expect(result.current.html).toContain("<table>");
+    expect(result.current.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.current.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.current.html).toContain("<del>ready</del>");
+    expect(result.current.fileReferences).toEqual([
+      expect.objectContaining({
+        kind: "attachment",
+        fileUuid,
+        name: "report.pdf",
+      }),
+    ]);
+  });
 });

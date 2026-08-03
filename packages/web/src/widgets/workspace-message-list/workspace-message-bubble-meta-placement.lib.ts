@@ -5,31 +5,23 @@ interface ResolveWorkspaceBubbleMetaPlacementOptions {
   attachmentsCount?: number;
   hasReactions?: boolean;
   hasLinkPreview?: boolean;
+  hasRichBlocks?: boolean;
 }
 
-const LONG_WORD_MIN_LENGTH = 32;
-const LINE_BREAK_PATTERN = /\r|\n/;
-const WHITESPACE_PATTERN = /\s+/;
-
-function hasLongWord(value: string): boolean {
-  return value.split(WHITESPACE_PATTERN).some((word) => word.length >= LONG_WORD_MIN_LENGTH);
-}
-
-function isSimplePlainText(value: string): boolean {
-  const trimmed = value.trim();
-
-  return trimmed.length > 0 && !LINE_BREAK_PATTERN.test(trimmed) && !hasLongWord(trimmed);
-}
-
+/**
+ * Widget-level mirror of parse metadata placement rules.
+ * Prefer `metadata.preferredMetaPlacement` from the render pipeline when available.
+ */
 export function resolveWorkspaceBubbleMetaPlacement({
   text,
   attachmentsCount = 0,
   hasReactions = false,
   hasLinkPreview = false,
+  hasRichBlocks = false,
 }: ResolveWorkspaceBubbleMetaPlacementOptions): WorkspaceMessageBubbleMetaPlacement {
-  if (attachmentsCount > 0 || hasReactions || hasLinkPreview) {
+  if (attachmentsCount > 0 || hasReactions || hasLinkPreview || hasRichBlocks) {
     return "row";
   }
 
-  return isSimplePlainText(text) ? "inline" : "row";
+  return text.trim().length > 0 ? "inline" : "row";
 }

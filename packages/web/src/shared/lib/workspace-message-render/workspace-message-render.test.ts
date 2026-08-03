@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import {
   renderWorkspaceMessageBody,
   renderWorkspaceMessageBodySegments,
 } from "./workspace-message-render.lib";
+import { sanitizeWorkspaceMessageHtml } from "./workspace-message-sanitize.lib";
+
+function markdownWithEmptyLines(emptyLineCount: number): string {
+  return ["Before", ...Array.from({ length: emptyLineCount }, () => ""), "After"].join("\n");
+}
 
 describe("workspace message render core", () => {
   it("parses and renders plain text as safe paragraph html", () => {
@@ -71,6 +76,136 @@ describe("workspace message render core", () => {
       hasCodeBlocks: true,
       preferredMetaPlacement: "row",
     });
+  });
+
+  it("delegates standard GFM blocks and inline nodes to the default Markdown renderer", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "## Delivery status",
+        "",
+        "| Topic | State |",
+        "|:--|--:|",
+        "| Renderer | Ready |",
+        "",
+        "- [x] parsed",
+        "- [ ] rendered",
+        "",
+        "~~obsolete~~ and [documentation][guide]",
+        "",
+        "---",
+        "",
+        "[guide]: https://example.com/guide",
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain("<h2>Delivery status</h2>");
+    expect(result.html).toContain('<div class="workspace-message-table-scroll">');
+    expect(result.html).toContain("<table>");
+    expect(result.html).toContain('<th align="left">Topic</th>');
+    expect(result.html).toContain('<th align="right">State</th>');
+    expect(result.html).toContain('<td align="left">Renderer</td>');
+    expect(result.html).toContain('<td align="right">Ready</td>');
+    expect(result.html).toContain('<ul class="contains-task-list">');
+    expect(result.html.match(/class="task-list-item"/g)).toHaveLength(2);
+    expect(result.html.match(/class="workspace-message-task-marker"/g)).toHaveLength(2);
+    expect(result.html).not.toContain("<input");
+    expect(result.html).toContain("<del>obsolete</del>");
+    expect(result.html).toContain("<hr>");
+    expect(result.html).toContain(
+      '<a href="https://example.com/guide" target="_blank" rel="noopener noreferrer">documentation</a>',
+    );
+    expect(result.html).not.toContain("[guide]:");
+  });
+
+  it("applies Workspace overrides inside standard table, list, heading, and deletion nodes", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const streamUuid = "44444444-4444-4444-8444-444444444444";
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    const document = parseWorkspaceMessageBody(
+      [
+        `## [Open message](urn:message:${messageUuid})`,
+        "",
+        "| User | Attachment |",
+        "|---|---|",
+        `| [Alice](urn:user:${userUuid}) | [report.pdf](urn:file:${fileUuid}?name=report.pdf) |`,
+        "",
+        `- [General](urn:stream:${streamUuid}) and ![screen.png](urn:image:${imageUuid}?name=screen.png)`,
+        "",
+        `~~[Archived message](urn:message:${messageUuid})~~`,
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: true,
+      enableEmojiShortcodes: true,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: true,
+      enableAttachments: true,
+      enableGallery: false,
+    });
+
+    expect(result.html).toContain("<table>");
+    expect(result.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(result.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.html).toContain(`data-workspace-file-uuid="${imageUuid}"`);
+    expect(result.html).toContain('data-workspace-media-kind="image"');
+    expect(result.html).toContain(`data-workspace-stream-uuid="${streamUuid}"`);
+    expect(result.html).toContain("<del>");
+    expect(result.html).not.toContain("urn:user:");
+    expect(result.html).not.toContain("urn:message:");
+    expect(result.html).not.toContain("urn:file:");
+    expect(result.html).not.toContain("urn:image:");
+    expect(result.html).not.toContain("urn:stream:");
+  });
+
+  it("keeps allowed-looking raw HTML inert while rendering neighboring Markdown", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "**before**",
+        "",
+        '<table><tbody><tr><td data-workspace-file="true">raw cell</td></tr></tbody></table>',
+        "",
+        "<details open><summary>raw summary</summary>raw body</details>",
+        "",
+        "_after_",
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain("<strong>before</strong>");
+    expect(result.html).toContain("<em>after</em>");
+    expect(result.html).toContain("&lt;table&gt;");
+    expect(result.html).toContain("&lt;details open&gt;");
+    expect(result.html).not.toContain("<details");
+    expect(result.html).toContain('&lt;td data-workspace-file="true"&gt;raw cell&lt;/td&gt;');
+  });
+
+  it("renders malformed Workspace URNs and dangerous protocols as inert labels", () => {
+    const unsafeProtocol = ["java", "script:alert(1)"].join("");
+    const document = parseWorkspaceMessageBody(
+      [
+        "[bad user](urn:user:not-a-uuid)",
+        "[bad file](urn:file:11111111-1111-1111-1111-111111111111)",
+        `[script](${unsafeProtocol})`,
+        "[relative](//evil.example/path)",
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain("bad user");
+    expect(result.html).toContain("bad file");
+    expect(result.html).toContain("script");
+    expect(result.html).toContain("relative");
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain("urn:");
+    expect(result.html).not.toContain(unsafeProtocol.slice(0, 11));
+    expect(result.html).not.toContain("//evil.example");
   });
 
   it("keeps ordinary https links separate from Workspace file placeholders", () => {
@@ -142,6 +277,16 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("file://");
     expect(result.html).not.toContain("blob:");
     expect(result.html).not.toContain("//evil.example");
+  });
+
+  it("blocks authority-like relative links that use a backslash after the first slash", () => {
+    const authorityLikePath = ["/", "\\", "evil.example/path"].join("");
+    const document = parseWorkspaceMessageBody(`[bad](${authorityLikePath})`);
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toBe("<p>bad</p>");
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain("evil.example");
   });
 
   it("renders safe canonical external URL URNs as exact clickable links", () => {
@@ -545,6 +690,71 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("data-user-id");
   });
 
+  it("resolves one mention once and keeps legacy blocks aligned with the rich render", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const resolveMention = vi.fn(() => ({
+      userUuid,
+      displayText: "Alice Reed",
+    }));
+    const document = parseWorkspaceMessageBody("Привет @**Alice Reed**", {
+      resolveMention,
+    });
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: false,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(resolveMention).toHaveBeenCalledTimes(1);
+    expect(resolveMention).toHaveBeenCalledWith("Alice Reed");
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          { kind: "text", text: "Привет " },
+          { kind: "mention", displayText: "Alice Reed", userUuid },
+        ],
+      },
+    ]);
+    expect(result.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.html).toContain("@Alice Reed");
+    expect(result.html).not.toContain("@**Alice Reed**");
+  });
+
+  it("keeps only the two validated internal media style formats", () => {
+    const sanitized = sanitizeWorkspaceMessageHtml(
+      [
+        '<span class="arbitrary" style="color:red;width:9999px">unsafe</span>',
+        '<span class="workspace-message-file-placeholder" style="width:320px">video</span>',
+        '<span class="workspace-message-file-placeholder__video-visual" style="aspect-ratio:1.7777777777777777">visual</span>',
+        '<span class="workspace-message-file-placeholder" style="aspect-ratio:2">wrong class</span>',
+        '<span class="workspace-message-file-placeholder__video-visual" style="width:320px">wrong format</span>',
+      ].join(""),
+    );
+
+    expect(sanitized).toContain('<span class="arbitrary">unsafe</span>');
+    expect(sanitized).toContain(
+      '<span class="workspace-message-file-placeholder" style="width:320px">video</span>',
+    );
+    expect(sanitized).toContain(
+      '<span class="workspace-message-file-placeholder__video-visual" style="aspect-ratio:1.7777777777777777">visual</span>',
+    );
+    expect(sanitized).toContain(
+      '<span class="workspace-message-file-placeholder">wrong class</span>',
+    );
+    expect(sanitized).toContain(
+      '<span class="workspace-message-file-placeholder__video-visual">wrong format</span>',
+    );
+    expect(sanitized).not.toContain("color:red");
+    expect(sanitized).not.toContain("width:9999px");
+  });
+
   it("parses canonical Workspace UUID mentions and renders resolved display names", () => {
     const userUuid = "11111111-1111-4111-8111-111111111111";
     const document = parseWorkspaceMessageBody(`Привет <@${userUuid}>`, {
@@ -697,8 +907,10 @@ describe("workspace message render core", () => {
       ].join("\n"),
     );
 
-    expect(renderWorkspaceMessageBodySegments(document).segments).toEqual([
-      { kind: "html", html: "<p>Вступление</p>" },
+    const segments = renderWorkspaceMessageBodySegments(document).segments;
+
+    expect(segments).toMatchObject([
+      { kind: "html" },
       {
         kind: "quote",
         reference: {
@@ -706,7 +918,7 @@ describe("workspace message render core", () => {
           fallbackAuthorLabel: "Alice",
         },
       },
-      { kind: "html", html: "<p>Ответ</p>" },
+      { kind: "html" },
       {
         kind: "quote",
         reference: {
@@ -715,6 +927,12 @@ describe("workspace message render core", () => {
         },
       },
     ]);
+    if (segments[0]?.kind === "html" && segments[2]?.kind === "html") {
+      expect(segments[0].html).toContain("Вступление");
+      expect(segments[2].html).toContain("Ответ");
+      expect(segments[0].html).not.toContain("workspace-message-gap");
+      expect(segments[2].html).not.toContain("workspace-message-gap");
+    }
   });
 
   it("keeps the string renderer as a sanitized quote compatibility adapter", () => {
@@ -869,9 +1087,14 @@ describe("workspace message render core", () => {
     );
     const result = renderWorkspaceMessageBody(document);
 
-    expect(result.html).toBe(
-      "<ol><li><p>First</p></li><li><p>Second</p></li></ol><p>After list</p>",
-    );
+    const listEnd = result.html.indexOf("</ol>");
+    const gap = result.html.indexOf("workspace-message-gap--1");
+    const trailingParagraph = result.html.indexOf("<p>After list</p>");
+
+    expect(result.html).toContain("<ol>");
+    expect(listEnd).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeGreaterThan(listEnd);
+    expect(trailingParagraph).toBeGreaterThan(gap);
   });
 
   it("renders inline code and code blocks with bubble-compatible code classes", () => {
@@ -1094,5 +1317,207 @@ describe("workspace message render core", () => {
     expect(result.html).toContain("legacy");
     expect(result.html).toContain("old stream");
     expect(result.html).toContain("narrow");
+  });
+});
+
+describe("workspace message intentional vertical gaps", () => {
+  it.each([1, 2, 3, 4, 5])(
+    "renders %i internal empty line(s) as the matching bounded gap",
+    (emptyLineCount) => {
+      const result = renderWorkspaceMessageBody(
+        parseWorkspaceMessageBody(markdownWithEmptyLines(emptyLineCount)),
+      );
+
+      expect(result.html).toContain("workspace-message-gap");
+      expect(result.html).toContain(`workspace-message-gap--${emptyLineCount}`);
+      expect(result.html.match(/workspace-message-gap--\d/g)).toHaveLength(1);
+      expect(result.html).toContain('aria-hidden="true"');
+    },
+  );
+
+  it.each([6, 9, 20])("limits %i internal empty lines to gap--5", (emptyLineCount) => {
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(markdownWithEmptyLines(emptyLineCount)),
+    );
+
+    expect(result.html).toContain("workspace-message-gap--5");
+    expect(result.html).not.toContain("workspace-message-gap--6");
+    expect(result.html.match(/workspace-message-gap--\d/g)).toHaveLength(1);
+  });
+
+  it("does not create gaps from leading or trailing empty lines", () => {
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(["", "", "Message", "", "", ""].join("\n")),
+    );
+
+    expect(result.html).not.toContain("workspace-message-gap");
+    expect(result.html).toContain("Message");
+  });
+
+  it("keeps a single line break on the ordinary Markdown breaks path", () => {
+    const result = renderWorkspaceMessageBody(parseWorkspaceMessageBody("Before\nAfter"));
+
+    expect(result.html).toContain("Before<br>After");
+    expect(result.html).not.toContain("workspace-message-gap");
+  });
+
+  it("preserves empty lines inside fenced code without creating layout gaps", () => {
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(["```text", "line one", "", "", "", "line two", "```"].join("\n")),
+    );
+
+    expect(result.html).not.toContain("workspace-message-gap");
+    expect(result.html).toContain("line one\n\n\n\nline two");
+  });
+
+  it("preserves separate gaps next to standard GFM and a Workspace URN", () => {
+    const messageUuid = "11111111-1111-4111-8111-111111111111";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        [
+          "Before",
+          "",
+          "",
+          `## [Open message](urn:message:${messageUuid})`,
+          "",
+          "",
+          "",
+          "",
+          "| Item | State |",
+          "|---|---|",
+          "| Renderer | Ready |",
+        ].join("\n"),
+      ),
+    );
+
+    expect(result.html).toContain("workspace-message-gap--2");
+    expect(result.html).toContain("workspace-message-gap--4");
+    expect(result.html.match(/workspace-message-gap--\d/g)).toHaveLength(2);
+    expect(result.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(result.html).toContain("workspace-message-table-scroll");
+  });
+
+  it("preserves an intentional gap inside nested Markdown block tokens", () => {
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(["> Before", ">", ">", "> After"].join("\n")),
+    );
+
+    expect(result.html).toContain("workspace-message-quote");
+    expect(result.html).toContain("workspace-message-gap--2");
+    expect(result.html.match(/workspace-message-gap--\d/g)).toHaveLength(1);
+  });
+
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    "does not render a gap directly around a standalone quote separated by %i empty line(s)",
+    (emptyLineCount) => {
+      const messageUuid = "33333333-3333-4333-8333-333333333333";
+      const emptyLines = Array.from({ length: emptyLineCount }, () => "");
+      const result = renderWorkspaceMessageBodySegments(
+        parseWorkspaceMessageBody(
+          [
+            "Intro",
+            ...emptyLines,
+            `[Alice](urn:quote:${messageUuid})`,
+            ...emptyLines,
+            "Outro",
+          ].join("\n"),
+        ),
+      );
+
+      expect(result.segments).toHaveLength(3);
+      expect(result.segments[0]).toMatchObject({ kind: "html" });
+      expect(result.segments[1]).toMatchObject({ kind: "quote", reference: { messageUuid } });
+      expect(result.segments[2]).toMatchObject({ kind: "html" });
+      if (result.segments[0]?.kind === "html" && result.segments[2]?.kind === "html") {
+        expect(result.segments[0].html).toContain("Intro");
+        expect(result.segments[2].html).toContain("Outro");
+        expect(result.segments[0].html).not.toContain("workspace-message-gap");
+        expect(result.segments[2].html).not.toContain("workspace-message-gap");
+      }
+    },
+  );
+
+  it("drops spacing tokens between several consecutive standalone quote references", () => {
+    const firstMessageUuid = "44444444-4444-4444-8444-444444444444";
+    const secondMessageUuid = "55555555-5555-4555-8555-555555555555";
+    const result = renderWorkspaceMessageBodySegments(
+      parseWorkspaceMessageBody(
+        [
+          "Intro",
+          "",
+          "",
+          `[Alice](urn:quote:${firstMessageUuid})`,
+          "",
+          "[first-definition]: https://example.com/first",
+          "",
+          "[second-definition]: https://example.com/second",
+          "",
+          `[Bob](urn:quote:${secondMessageUuid})`,
+          "",
+          "",
+          "Outro",
+        ].join("\n"),
+      ),
+    );
+
+    expect(result.segments.map((segment) => segment.kind)).toEqual([
+      "html",
+      "quote",
+      "quote",
+      "html",
+    ]);
+    expect(result.segments).toMatchObject([
+      { kind: "html" },
+      { kind: "quote", reference: { messageUuid: firstMessageUuid } },
+      { kind: "quote", reference: { messageUuid: secondMessageUuid } },
+      { kind: "html" },
+    ]);
+    for (const segment of result.segments) {
+      if (segment.kind === "html") {
+        expect(segment.html).not.toContain("workspace-message-gap");
+      }
+    }
+  });
+
+  it("does not leave a visually adjacent quote gap across non-rendered GFM definitions", () => {
+    const messageUuid = "66666666-6666-4666-8666-666666666666";
+    const result = renderWorkspaceMessageBodySegments(
+      parseWorkspaceMessageBody(
+        [
+          "Intro",
+          "",
+          "[guide]: https://example.com/guide",
+          "",
+          `[Alice](urn:quote:${messageUuid})`,
+          "",
+          "[after]: https://example.com/after",
+          "",
+          "Outro [guide]",
+        ].join("\n"),
+      ),
+    );
+
+    expect(result.segments.map((segment) => segment.kind)).toEqual(["html", "quote", "html"]);
+    for (const segment of result.segments) {
+      if (segment.kind === "html") {
+        expect(segment.html).not.toContain("workspace-message-gap");
+      }
+    }
+  });
+
+  it("does not emit edge gaps around a standalone quote-only message", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const result = renderWorkspaceMessageBodySegments(
+      parseWorkspaceMessageBody(
+        ["", "", `[Alice](urn:quote:${messageUuid})`, "", "", ""].join("\n"),
+      ),
+    );
+
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments[0]).toMatchObject({
+      kind: "quote",
+      reference: { messageUuid },
+    });
+    expect(result.segments.some((segment) => segment.kind === "html")).toBe(false);
   });
 });

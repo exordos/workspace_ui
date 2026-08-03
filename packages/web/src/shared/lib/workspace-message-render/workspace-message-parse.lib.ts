@@ -1,9 +1,14 @@
-import { marked, type Token, type Tokens } from "marked";
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
 import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
+import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
+import {
+  createWorkspaceMarkdownLexer,
+  inspectWorkspaceMarkdownTokens,
+  prepareWorkspaceMarkdownTokens,
+} from "./workspace-message-marked.lib";
 import type {
   WorkspaceMessageBlock,
   WorkspaceMessageBodyMetadata,
@@ -11,9 +16,11 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageInline,
   WorkspaceMessageListItem,
+  WorkspaceMessageMentionResolution,
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReferenceBlock,
 } from "./workspace-message-document.types";
+import type { Token, Tokens, TokensList } from "marked";
 
 const LINE_BREAK_PATTERN = /\r\n?|\n/;
 const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
@@ -21,11 +28,6 @@ const WHITESPACE_PATTERN = /\s+/g;
 const URL_ONLY_PATTERN = /^(?:https?:\/\/|mailto:)[^\s]+$/i;
 const UUID_PATTERN_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const UUID_PATTERN = new RegExp(`^${UUID_PATTERN_SOURCE}$`, "i");
-const POSITIVE_INTEGER_PATTERN = /^\d+$/;
-const WORKSPACE_FILE_URN_PATTERN = new RegExp(
-  `^urn:(image|video|file):(${UUID_PATTERN_SOURCE})(?:\\?([\\s\\S]*))?$`,
-  "i",
-);
 const SPOILER_CODE_LANGUAGE_PATTERN = /^spoiler(?:[ \t]+([\s\S]*))?$/i;
 const PLAIN_TEXT_INLINE_PATTERN = new RegExp(
   `<@(${UUID_PATTERN_SOURCE})>|(^|[\\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):`,
@@ -48,15 +50,7 @@ interface WorkspaceMessageParseState {
 interface WorkspaceMessageParseContext {
   options: WorkspaceMessageParseOptions;
   state: WorkspaceMessageParseState;
-}
-
-type ParsedWorkspaceFileType = "image" | "video" | "file";
-
-interface ParsedWorkspaceFileUrn {
-  type: ParsedWorkspaceFileType;
-  fileUuid: string;
-  searchParams: URLSearchParams;
-  href: string;
+  lexBlocks: (markdown: string) => TokensList;
 }
 
 function normalizeLineBreaks(value: string): string {
@@ -97,72 +91,6 @@ function isReadableLinkLabel(label: string, href: string): boolean {
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.replace(WHITESPACE_PATTERN, " ").trim();
   return normalized == null || normalized.length === 0 ? undefined : normalized;
-}
-
-function parsePositiveIntegerParam(searchParams: URLSearchParams, key: string): number | undefined {
-  const rawValue = normalizeOptionalText(searchParams.get(key));
-  if (rawValue == null) {
-    return undefined;
-  }
-  if (!POSITIVE_INTEGER_PATTERN.test(rawValue)) {
-    return undefined;
-  }
-
-  const parsed = Number(rawValue);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function parseWorkspaceFileUrn(href: string): ParsedWorkspaceFileUrn | null {
-  const trimmed = href.trim();
-  const match = WORKSPACE_FILE_URN_PATTERN.exec(trimmed);
-  if (match == null) {
-    return null;
-  }
-
-  const type = match[1]?.toLowerCase();
-  if (type !== "image" && type !== "video" && type !== "file") {
-    return null;
-  }
-  const fileUuid = match[2];
-  if (fileUuid == null || !UUID_PATTERN.test(fileUuid)) {
-    return null;
-  }
-
-  return {
-    type,
-    fileUuid,
-    searchParams: new URLSearchParams(match[3] ?? ""),
-    href: trimmed,
-  };
-}
-
-function parseWorkspaceFileHref(href: string, label: string): WorkspaceMessageFileReference | null {
-  const parsed = parseWorkspaceFileUrn(href);
-  if (parsed == null) {
-    return null;
-  }
-
-  const labelName = normalizeOptionalText(label);
-  const queryName = normalizeOptionalText(parsed.searchParams.get("name"));
-  const name = queryName ?? labelName;
-  const contentType = normalizeOptionalText(parsed.searchParams.get("content_type"));
-  const width = parsePositiveIntegerParam(parsed.searchParams, "w");
-  const height = parsePositiveIntegerParam(parsed.searchParams, "h");
-  const sizeBytes = parsePositiveIntegerParam(parsed.searchParams, "size");
-  const mediaKind = parsed.type === "image" || parsed.type === "video" ? parsed.type : undefined;
-  const kind = mediaKind == null ? "attachment" : "media";
-
-  return {
-    kind,
-    href: parsed.href,
-    fileUuid: parsed.fileUuid,
-    ...(name == null ? {} : { name }),
-    ...(contentType == null ? {} : { contentType }),
-    ...(width == null ? {} : { width }),
-    ...(height == null ? {} : { height }),
-    ...(sizeBytes == null ? {} : { sizeBytes }),
-    ...(mediaKind == null ? {} : { mediaKind }),
-  };
 }
 
 function applyWorkspaceFileState(
@@ -358,6 +286,28 @@ function resolveMentionUserUuid(
     return sourceUserUuid;
   }
   return resolvedUserUuid != null && resolvedUserUuid.length > 0 ? resolvedUserUuid : undefined;
+}
+
+function createCachedParseOptions(
+  options: WorkspaceMessageParseOptions,
+): WorkspaceMessageParseOptions {
+  const resolver = options.resolveMention;
+  if (resolver == null) {
+    return options;
+  }
+
+  const cache = new Map<string, WorkspaceMessageMentionResolution | null | undefined>();
+  return {
+    ...options,
+    resolveMention(displayText) {
+      if (cache.has(displayText)) {
+        return cache.get(displayText);
+      }
+      const resolution = resolver(displayText);
+      cache.set(displayText, resolution);
+      return resolution;
+    },
+  };
 }
 
 function createKnownEmojiShortcodeInline(
@@ -716,7 +666,7 @@ function parseInlineTokens(
             ];
           }
 
-          const reference = parseWorkspaceFileHref(link.href, link.text);
+          const reference = parseWorkspaceMessageFileHref(link.href, link.text);
           if (reference != null) {
             applyWorkspaceFileState(reference, context);
             return [{ kind: "file", reference }];
@@ -737,7 +687,7 @@ function parseInlineTokens(
         ];
       case "image": {
         const image = token as Tokens.Image;
-        const reference = parseWorkspaceFileHref(image.href, image.text);
+        const reference = parseWorkspaceMessageFileHref(image.href, image.text);
         if (reference != null) {
           applyWorkspaceFileState(reference, context);
           return [{ kind: "file", reference }];
@@ -796,7 +746,7 @@ function parseSpoilerCodeBlock(
   return {
     kind: "spoiler",
     header: parseInlineTokens(undefined, headerText, context),
-    blocks: parseBlockTokens(marked.lexer(code.text), context),
+    blocks: parseBlockTokens(context.lexBlocks(code.text), context),
   };
 }
 
@@ -817,7 +767,7 @@ function parseHistoricalQuoteCodeBlock(
   // the Workspace document model, but never emit this format from composer code.
   return {
     kind: "quote",
-    blocks: parseBlockTokens(marked.lexer(code.text), context),
+    blocks: parseBlockTokens(context.lexBlocks(code.text), context),
   };
 }
 
@@ -1001,19 +951,34 @@ export function parseWorkspaceMessageBody(
   options: WorkspaceMessageParseOptions = {},
 ): WorkspaceMessageDocument {
   const sourceMarkdown = normalizeLineBreaks(markdown);
+  const parseOptions = createCachedParseOptions(options);
+  const markdownLexer = createWorkspaceMarkdownLexer();
+  const lexBlocks = (source: string): TokensList =>
+    markdownLexer.lexer(source, { async: false, breaks: true, gfm: true });
   const state = createParseState();
-  const context: WorkspaceMessageParseContext = { options, state };
-  const tokens = marked.lexer(sourceMarkdown, {
-    breaks: true,
-    gfm: true,
-  });
+  const context: WorkspaceMessageParseContext = { options: parseOptions, state, lexBlocks };
+  const tokens = lexBlocks(sourceMarkdown);
   const blocks = parseBlockTokens(tokens, context);
+  const markdownTokens = prepareWorkspaceMarkdownTokens(tokens, {
+    parseOptions,
+    lexBlocks,
+  });
+  const markdownFacts = inspectWorkspaceMarkdownTokens(markdownTokens);
+  state.hasInlineRich ||= markdownFacts.hasInlineRich;
+  state.hasRichBlocks ||= markdownFacts.hasRichBlocks;
+  state.hasMentions ||= markdownFacts.hasMentions;
+  state.hasLinks ||= markdownFacts.hasLinks;
+  state.hasCodeBlocks ||= markdownFacts.hasCodeBlocks;
+  state.hasMedia ||= markdownFacts.hasMedia;
+  state.hasProtectedMedia ||= markdownFacts.hasProtectedMedia;
+  state.hasAttachments ||= markdownFacts.hasAttachments;
   const safeTextPreview = summarizeBlocksForPreview(blocks);
 
-  // Документ строится один раз: дальше и bubble-render, и summary читают
-  // готовые блоки, а не парсят markdown повторно с разными условиями.
+  // Keep one lexical result for rich rendering while legacy blocks continue
+  // to serve summaries and notification policies during the migration.
   return {
     sourceMarkdown,
+    markdownTokens,
     blocks,
     metadata: buildMetadata(sourceMarkdown, blocks, state, safeTextPreview),
     safeTextPreview,
