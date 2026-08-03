@@ -116,6 +116,7 @@ import type { ChatHeaderCommonProps } from "~/widgets/chat-view/chat-header.type
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  MessageComposerReplyClearReason,
   MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
@@ -1657,46 +1658,54 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, setWorkspaceReplySession],
   );
 
-  const handleClearReply = useCallback(() => {
-    if (isRestoredWorkspaceReplyEdit) {
-      setRestoredWorkspaceReplySession(null);
-      setWorkspaceReplyTabFocusKeySuppressed(false);
-      return;
-    }
-    const pendingCleanup = workspaceComposerSendCleanupRef.current;
-    if (
-      pendingCleanup?.ownerKey === ownerKey &&
-      pendingCleanup.conversationId === conversationId &&
-      pendingCleanup.ignoresReplyClear
-    ) {
-      pendingCleanup.ignoresReplyClear = false;
-      if (!pendingCleanup.ignoresValueClear) {
-        workspaceComposerSendCleanupRef.current = null;
+  const handleClearReply = useCallback(
+    (reason: MessageComposerReplyClearReason = "manual") => {
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession(null);
+        setWorkspaceReplyTabFocusKeySuppressed(false);
+        return;
       }
-      return;
-    }
-    updateWorkspaceComposerDraft((content) => {
-      const initialTab = content.replySession.tabs.reduce<WorkspaceReplyTab | undefined>(
-        (earliest, tab) => {
-          if (earliest == null || tab.createdAt < earliest.createdAt) return tab;
-          if (
-            tab.createdAt === earliest.createdAt &&
-            tab.id.localeCompare(earliest.id, undefined, { numeric: true }) < 0
-          ) {
-            return tab;
-          }
-          return earliest;
-        },
-        undefined,
-      );
-      return {
-        ...content,
-        text: content.text.length > 0 ? content.text : (initialTab?.answer ?? ""),
-        replySession: EMPTY_WORKSPACE_REPLY_SESSION,
-      };
-    });
-    setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft]);
+      if (reason === "submit") {
+        updateWorkspaceComposerDraft(() => EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+        setWorkspaceReplyTabFocusKeySuppressed(false);
+        return;
+      }
+      const pendingCleanup = workspaceComposerSendCleanupRef.current;
+      if (
+        pendingCleanup?.ownerKey === ownerKey &&
+        pendingCleanup.conversationId === conversationId &&
+        pendingCleanup.ignoresReplyClear
+      ) {
+        pendingCleanup.ignoresReplyClear = false;
+        if (!pendingCleanup.ignoresValueClear) {
+          workspaceComposerSendCleanupRef.current = null;
+        }
+        return;
+      }
+      updateWorkspaceComposerDraft((content) => {
+        const initialTab = content.replySession.tabs.reduce<WorkspaceReplyTab | undefined>(
+          (earliest, tab) => {
+            if (earliest == null || tab.createdAt < earliest.createdAt) return tab;
+            if (
+              tab.createdAt === earliest.createdAt &&
+              tab.id.localeCompare(earliest.id, undefined, { numeric: true }) < 0
+            ) {
+              return tab;
+            }
+            return earliest;
+          },
+          undefined,
+        );
+        return {
+          ...content,
+          text: content.text.length > 0 ? content.text : (initialTab?.answer ?? ""),
+          replySession: EMPTY_WORKSPACE_REPLY_SESSION,
+        };
+      });
+      setWorkspaceReplyTabFocusKeySuppressed(false);
+    },
+    [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft],
+  );
 
   const handleSelectWorkspaceReplyTab = useCallback(
     (tabId: string, source?: WorkspaceReplyTabSelectSource) => {

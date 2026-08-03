@@ -694,7 +694,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const clearComposerInput = useCallback(() => {
     if (effectiveReplyQuote) {
-      onClearReply?.();
+      onClearReply?.("submit");
     }
     setValue("");
     setFiles([]);
@@ -815,12 +815,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setSendInFlight(false);
       resetMentionState();
       resetWorkspaceReferenceState();
-      if (latestValueRef.current === valueToSend) {
-        setValue("");
-      }
-      if (latestFilesRef.current === filesSnapshot) {
-        setFiles([]);
-      }
+      setValue("");
+      setFiles([]);
       setMode("write");
       requestAnimationFrame(() => {
         const textarea = textareaRef.current;
@@ -831,7 +827,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         textarea.setSelectionRange(0, 0);
       });
       if (effectiveReplyQuote) {
-        onClearReply?.();
+        onClearReply?.("submit");
       }
       setAiMenuOpen(false);
       setScheduleMenuOpen(false);
@@ -868,7 +864,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       textarea.setSelectionRange(0, 0);
     });
     if (shouldClearComposer && effectiveReplyQuote) {
-      onClearReply?.();
+      onClearReply?.("submit");
     }
     setAiMenuOpen(false);
     setScheduleMenuOpen(false);
@@ -1305,7 +1301,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       {isEditing && preservesWorkspaceReplyContext ? (
         <MessageComposerEditNotice onCancelEdit={onCancelEdit} />
       ) : null}
-      {!isEditing || preservesWorkspaceReplyContext ? leadingContent : null}
       <MessageComposerPreface
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}
@@ -1319,6 +1314,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         onCancelScheduled={cancelScheduledMessage}
         replyQuote={effectiveReplyQuote}
         onClearReply={onClearReply}
+        replyLeadingContent={!isEditing || preservesWorkspaceReplyContext ? leadingContent : null}
         isEditing={isEditing}
         showReplyWhileEditing={preservesWorkspaceReplyContext}
         hideEditNotice={preservesWorkspaceReplyContext}

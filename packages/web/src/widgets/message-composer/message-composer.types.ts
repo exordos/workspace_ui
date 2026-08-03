@@ -59,6 +59,8 @@ export interface MessageComposerSendResult {
   shouldClearComposer?: boolean;
 }
 
+export type MessageComposerReplyClearReason = "manual" | "submit";
+
 // Capabilities keep the old composer layout while each backend controls action availability.
 // Unsupported Workspace actions stay visible through explicit placeholders without legacy API calls.
 export interface MessageComposerCapabilities {
@@ -88,8 +90,11 @@ export interface MessageComposerProps {
   activeTopic?: string;
   /** Reply quote (shown above the input, prepended to the body on send) */
   replyQuote?: ReplyQuote | null;
-  onClearReply?: () => void;
-  /** Optional content rendered above the regular composer preface inside the same card. */
+  onClearReply?: (reason?: MessageComposerReplyClearReason) => void;
+  /**
+   * Optional multi-reply tabs (or similar) rendered inside the reply chrome,
+   * above the active quote preview and beside the global clear-reply control.
+   */
   leadingContent?: ReactNode;
   /**
    * Fully assembled outgoing body supplied by the parent, for example for Workspace multi-reply.
@@ -165,6 +170,11 @@ export interface MessageComposerPrefaceProps {
   onCancelScheduled: (id: string) => void;
   replyQuote: ReplyQuote | null | undefined;
   onClearReply?: () => void;
+  /**
+   * Multi-reply tab strip rendered in the same chrome as the quote preview.
+   * When set, the global clear-reply control moves to the tabs row (top-right).
+   */
+  replyLeadingContent?: ReactNode;
   isEditing?: boolean;
   showReplyWhileEditing?: boolean;
   hideEditNotice?: boolean;

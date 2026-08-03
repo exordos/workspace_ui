@@ -289,6 +289,44 @@ describe("MessageComposer async send behavior", () => {
     resolveFirstSend();
   });
 
+  it("marks optimistic reply cleanup as a submit", async () => {
+    const onSend = vi.fn().mockReturnValue(
+      new Promise<void>(() => {
+        // Keep the send pending to verify optimistic cleanup.
+      }),
+    );
+    const onClearReply = vi.fn();
+    const onValueChange = vi.fn();
+
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        optimisticClearOnSend
+        initialValue="sent reply"
+        replyQuote={{
+          id: "reply-a",
+          content: "quoted message",
+          sender_full_name: "Bob Reed",
+          sender_uuid: "user-b",
+          permalinkUrl: "/messages/reply-a",
+          quoteFormat: "workspace",
+        }}
+        onClearReply={onClearReply}
+        onValueChange={onValueChange}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledOnce();
+      expect(textbox).toHaveValue("");
+      expect(onValueChange).toHaveBeenCalledWith("");
+      expect(onClearReply).toHaveBeenCalledWith("submit");
+    });
+  });
+
   it("keeps the visible draft when a successful send reports a newer draft", async () => {
     const onClearReply = vi.fn();
     const onSend = vi.fn().mockResolvedValue({ shouldClearComposer: false });
@@ -1733,6 +1771,62 @@ describe("MessageComposer reply quote", () => {
 
     const composer = screen.getByRole("form", { name: /message composer/i });
     expect(composer).toContainElement(screen.getByTestId("workspace-reply-tabs"));
+  });
+
+  it("keeps the clear-reply control on the tabs row when multi-reply tabs are present", () => {
+    const onClearReply = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        replyQuote={sampleReplyQuote}
+        onClearReply={onClearReply}
+        leadingContent={<div data-testid="workspace-reply-tabs">Reply tabs</div>}
+      />,
+    );
+
+    const replyTabs = screen.getByTestId("workspace-reply-tabs");
+    const clearReply = screen.getByRole("button", { name: /^cancel$/i });
+    const replyQuoteLabel = screen.getByText("Reply: Alice");
+
+    expect(
+      clearReply.compareDocumentPosition(replyQuoteLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(replyTabs.compareDocumentPosition(clearReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    // Tabs scroll in their own flex slot; the global dismiss stays a sibling (shrink-0).
+    const tabsSlot = replyTabs.parentElement;
+    const tabsRow = tabsSlot?.parentElement;
+    expect(tabsSlot).not.toBeNull();
+    expect(tabsRow).not.toBeNull();
+    expect(tabsSlot?.className).toMatch(/min-w-0/);
+    expect(tabsSlot?.className).toMatch(/flex-1/);
+    expect(tabsRow).toContainElement(clearReply);
+    expect(clearReply.className).toMatch(/shrink-0/);
+    expect(tabsSlot).not.toContainElement(clearReply);
+
+    fireEvent.click(clearReply);
+    expect(onClearReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the clear-reply control on the quote row for a single reply", () => {
+    const onClearReply = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        replyQuote={sampleReplyQuote}
+        onClearReply={onClearReply}
+      />,
+    );
+
+    const clearReply = screen.getByRole("button", { name: /^cancel$/i });
+    const replyQuoteLabel = screen.getByText("Reply: Alice");
+    const quoteRow = replyQuoteLabel.closest("div.flex");
+    expect(quoteRow).toContainElement(clearReply);
+
+    fireEvent.click(clearReply);
+    expect(onClearReply).toHaveBeenCalledTimes(1);
   });
 });
 

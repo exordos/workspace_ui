@@ -1781,6 +1781,36 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("does not restore submitted reply text when reply cleanup arrives first", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+    act(() => {
+      captured.composerProps?.onComposerValueChange("sent reply");
+    });
+    act(() => {
+      captured.composerProps?.onClearReply("submit");
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toEqual({
+        tabs: [],
+        activeTabId: null,
+      });
+      expect(captured.composerProps?.draftInitialValue).toBe("");
+    });
+
+    act(() => {
+      captured.composerProps?.onComposerValueChange("");
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe("");
+  });
+
   it("treats a whitespace-only reply selection as a whole-message quote", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,

@@ -34,6 +34,19 @@ export const MessageComposerEditNotice: React.FC<MessageComposerEditNoticeProps>
   ),
 );
 
+function MessageComposerClearReplyButton({ onClearReply }: { onClearReply?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClearReply?.()}
+      className="shrink-0 rounded p-1 text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+      aria-label={t("common.cancel")}
+    >
+      <Icon name="close" size={16} />
+    </button>
+  );
+}
+
 export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = React.memo(
   ({
     uploadProgress,
@@ -48,6 +61,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     onCancelScheduled,
     replyQuote,
     onClearReply,
+    replyLeadingContent = null,
     isEditing = false,
     showReplyWhileEditing = false,
     hideEditNotice = false,
@@ -62,6 +76,12 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
         includeQuotePrefix: false,
       }).text.trim();
     }, [replyQuote]);
+
+    const showReplyChrome =
+      (!isEditing || showReplyWhileEditing) && (replyQuote != null || replyLeadingContent != null);
+    const clearReplyOnTabsRow = replyLeadingContent != null;
+    // Keep a visible dismiss when there is a quote, or when the parent wired onClearReply.
+    const showClearReply = replyQuote != null || onClearReply != null;
 
     return (
       <>
@@ -186,24 +206,39 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {(!isEditing || showReplyWhileEditing) && replyQuote && (
-          <div className="bg-bg/50 flex items-start gap-2 border-b border-border-subtle px-4 py-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] text-text-muted">
-                {t("message.replyTo")}: {replyQuote.sender_full_name}
-              </p>
-              <p className="mt-0.5 line-clamp-2 text-sm text-text-primary">{replyQuotePreview}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onClearReply?.()}
-              className="flex-shrink-0 rounded p-1 text-text-muted hover:bg-bg-elevated hover:text-text-primary"
-              aria-label={t("common.cancel")}
-            >
-              <Icon name="close" size={16} />
-            </button>
+        {showReplyChrome ? (
+          <div className="bg-bg/50 border-b border-border-subtle">
+            {replyLeadingContent != null ? (
+              <div
+                className={`flex min-w-0 items-center gap-1.5 px-3 py-2 ${
+                  replyQuote != null ? "border-b border-border-subtle" : ""
+                }`}
+              >
+                {/* Constrain width so tabs scroll inside; dismiss stays a sibling. */}
+                <div className="min-w-0 flex-1 overflow-hidden">{replyLeadingContent}</div>
+                {clearReplyOnTabsRow && showClearReply ? (
+                  <MessageComposerClearReplyButton onClearReply={onClearReply} />
+                ) : null}
+              </div>
+            ) : null}
+
+            {replyQuote != null ? (
+              <div className="flex items-start gap-2 px-4 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-text-muted">
+                    {t("message.replyTo")}: {replyQuote.sender_full_name}
+                  </p>
+                  <p className="mt-0.5 line-clamp-2 text-sm text-text-primary">
+                    {replyQuotePreview}
+                  </p>
+                </div>
+                {!clearReplyOnTabsRow && showClearReply ? (
+                  <MessageComposerClearReplyButton onClearReply={onClearReply} />
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </>
     );
   },

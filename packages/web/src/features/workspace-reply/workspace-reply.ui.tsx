@@ -319,7 +319,7 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
 
   return (
     <div
-      className={`flex min-w-0 gap-1.5 overflow-x-auto border-b border-border-subtle px-3 py-2 ${className}`}
+      className={`flex w-full min-w-0 gap-1.5 overflow-x-auto ${className}`}
       ref={listElementRef}
       role="tablist"
       aria-label={replyLabel}

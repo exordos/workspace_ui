@@ -6,6 +6,7 @@ import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-mes
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  MessageComposerReplyClearReason,
   MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
@@ -31,7 +32,7 @@ export interface ChatPageComposerSectionProps {
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;
   replyQuote: ReplyQuote | null;
-  onClearReply: () => void;
+  onClearReply: (reason?: MessageComposerReplyClearReason) => void;
   workspaceReplySession?: WorkspaceReplySession | null;
   onSelectWorkspaceReplyTab?: (tabId: string, source?: WorkspaceReplyTabSelectSource) => void;
   onRemoveWorkspaceReplyTab?: (tabId: string) => void;
