@@ -13,17 +13,19 @@ export function mutateSelection(
   if (!textarea) return;
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
+  const scrollTop = textarea.scrollTop;
   const text = textarea.value;
   const selected = text.slice(start, end);
   const mutation = mutate(selected);
   const nextValue = text.slice(0, start) + mutation.text + text.slice(end);
   onValueChange(nextValue);
   requestAnimationFrame(() => {
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(
       start + mutation.selectionStartOffset,
       start + mutation.selectionEndOffset,
     );
+    textarea.scrollTop = scrollTop;
   });
 }
 
