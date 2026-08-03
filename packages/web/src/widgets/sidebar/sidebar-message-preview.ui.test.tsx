@@ -34,4 +34,16 @@ describe("SidebarMessagePreview", () => {
 
     expect(container.firstElementChild).toHaveClass("text-text-secondary");
   });
+
+  it("reserves the preview line height when sender and message are missing", () => {
+    // Empty divs ignore leading-5 — min-h-5 keeps topic rows equal to filled two-line rows.
+    const { container } = render(<SidebarMessagePreview />);
+
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root).toHaveClass("min-h-5");
+    expect(root).toHaveClass("leading-5");
+    expect(root).toHaveClass("text-xs");
+    expect(root?.textContent).toBe("");
+  });
 });

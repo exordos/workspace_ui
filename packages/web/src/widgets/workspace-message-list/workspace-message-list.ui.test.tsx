@@ -780,6 +780,37 @@ describe("WorkspaceMessageList", () => {
     expect(divider).not.toHaveTextContent("2026-07-03");
   });
 
+  it("keeps day dividers sticky at the top of the scroll container", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "day-one-message",
+            createdAt: "2026-07-02T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "day-two-message",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const stickyWrappers = Array.from(container.querySelectorAll("[data-day-divider]")).map(
+      (divider) => divider.parentElement,
+    );
+
+    expect(stickyWrappers).toHaveLength(2);
+    for (const wrapper of stickyWrappers) {
+      expect(wrapper).toHaveClass("sticky", "top-0", "z-sticky");
+    }
+  });
+
   it("renders one unread divider before the author group containing the anchor", () => {
     const { container } = render(
       <WorkspaceMessageList

@@ -473,9 +473,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
           do not need to keep the old numeric DOM key around just for scrolling. */}
       {dayGroups.map((dayGroup) => (
         <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
-          <div className="flex justify-center py-1">
+          {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
+          <div className="sticky top-0 z-sticky flex justify-center py-1">
             <time
-              className="rounded-full border border-border-subtle bg-bg-elevated px-3 py-1 text-xs font-medium text-text-muted"
+              className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
               dateTime={dayGroup.dateKey}
               data-day-divider={dayGroup.dateKey}
             >

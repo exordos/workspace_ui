@@ -76,12 +76,13 @@ export function resolveSidebarTopicBarColor(input: { color?: number | null }): s
 /**
  * “Show more topics” row (Figma 4997:25702 / parent 4997:25701).
  * Same leading inset + bar gutter as topic rows so the label lines up with titles.
+ * Hover matches topic/stream cards (`sidebarRowClass`) — not opacity-only, which is nearly invisible on card-bg.
  * No own fill — inherits the group card bg. No own radius — group shell clips corners.
  */
 export function sidebarTopicShowMoreButtonClass(compact: boolean): string {
   return compact
-    ? "flex w-full min-w-0 items-center justify-between gap-2 py-1.5 pl-9 pr-2 text-left text-sm font-medium leading-5 text-text-primary transition-opacity hover:opacity-90"
-    : "flex w-full min-w-0 items-center justify-between gap-3 py-2 pl-[38px] pr-2 text-left text-sm font-medium leading-5 text-text-primary transition-opacity hover:opacity-90";
+    ? "flex w-full min-w-0 items-center justify-between gap-2 py-1.5 pl-9 pr-2 text-left text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-sidebar-hover"
+    : "flex w-full min-w-0 items-center justify-between gap-3 py-2 pl-[38px] pr-2 text-left text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-sidebar-hover";
 }
 
 /** List gap between topic cards under an expanded stream (Figma: 4px). */

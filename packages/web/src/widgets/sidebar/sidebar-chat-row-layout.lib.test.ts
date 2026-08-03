@@ -108,6 +108,14 @@ describe("sidebarTopicShowMoreButtonClass", () => {
     expect(classes).not.toContain("rounded");
   });
 
+  it("uses the same sidebar-hover surface as topic/stream cards", () => {
+    const classes = sidebarTopicShowMoreButtonClass(false);
+    expect(classes).toContain("hover:bg-sidebar-hover");
+    expect(classes).toContain("transition-colors");
+    expect(classes).not.toContain("hover:opacity-90");
+    expect(sidebarTopicShowMoreButtonClass(true)).toContain("hover:bg-sidebar-hover");
+  });
+
   it("keeps the same left inset as topic cards", () => {
     expect(sidebarTopicShowMoreButtonClass(false)).toContain("pl-[38px]");
     expect(sidebarTopicRowLinkClass(false)).toContain("pl-[38px]");

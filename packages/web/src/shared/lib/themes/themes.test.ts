@@ -320,8 +320,10 @@ describe("blue-mist light palette spec", () => {
     expect(light["card-bg-active"]).toBe("#d5e5f6");
     expect(light["sidebar-bg"]).toBe("#ffffff");
     expect(light["sidebar-item-hover"]).toBe("#e4edf7");
-    expect(light["composer-outer"]).toBe("#eff5fb");
-    expect(light["composer-outer"]).toBe(light["card-bg"]);
+    // Composer matches white sidebar/header chrome, not soft-blue card underlay
+    expect(light["composer-outer"]).toBe(light["bg-elevated"]);
+    expect(light["composer-outer"]).toBe(light["sidebar-bg"]);
+    expect(light["composer-outer"]).toBe("#ffffff");
 
     expect(light["msg-bg"]).toBe("#ffffff");
     expect(light["msg-own-bg"]).toBe("#dbe8f8");
