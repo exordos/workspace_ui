@@ -100,7 +100,12 @@ describe("ManageExternalProviderEntry", () => {
       open: false,
       runtimeContext,
     });
-    fireEvent.click(screen.getByTestId("manage-external-provider-trigger"));
+
+    const trigger = screen.getByTestId("manage-external-provider-trigger");
+    // Modal opener: leading icon only — no trailing chevron (navigate/expand affordance).
+    expect(trigger.querySelectorAll("svg")).toHaveLength(1);
+
+    fireEvent.click(trigger);
     expect(screen.getByRole("dialog")).toHaveAttribute("data-access-status", "allowed");
     expect(useManageExternalProviderMock).toHaveBeenLastCalledWith({
       probeEnabled: true,

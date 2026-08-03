@@ -101,6 +101,41 @@ describe("Icon", () => {
     expect(trash).not.toMatch(/viewBox="0 0 24 24"/);
   });
 
+  it("keeps expanded chip icons optically smaller than compact rail crops", () => {
+    // Compact crops fill the hit target; expanded keeps padded artboards in 30px chips.
+    const mail = readFileSync(resolve(ICONS_DIR, "mail_activity.svg"), "utf8");
+    const mailCompact = readFileSync(resolve(ICONS_DIR, "mail_activity_compact.svg"), "utf8");
+    const drafts = readFileSync(resolve(ICONS_DIR, "drafts.svg"), "utf8");
+    const draftsCompact = readFileSync(resolve(ICONS_DIR, "drafts_compact.svg"), "utf8");
+    expect(mail).toMatch(/viewBox="0 0 24 24"/);
+    expect(mailCompact).toMatch(/viewBox="3 5 18 14"/);
+    // Outline pencil on padded 24×24 for chips; solid tip for compact rail.
+    expect(drafts).toMatch(/viewBox="0 0 24 24"/);
+    expect(drafts).toMatch(/translate\(5 4\.5\)/);
+    expect(draftsCompact).toMatch(/viewBox="0 0 25 25"/);
+  });
+
+  it("keeps menu logout on a square compact crop of the padded logout glyph", () => {
+    // `logout` stays 32×32 for chrome. Compact crop keeps the Material optical center
+    // (more left pad than right) so the door+arrow mass does not sit flush-left in the
+    // shared h-8 menu slot at size={22}.
+    const logout = readFileSync(resolve(ICONS_DIR, "logout.svg"), "utf8");
+    const logoutCompact = readFileSync(resolve(ICONS_DIR, "logout_compact.svg"), "utf8");
+    expect(logout).toMatch(/viewBox="0 0 32 32"/);
+    const match =
+      /viewBox="(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(
+        logoutCompact,
+      );
+    expect(match).not.toBeNull();
+    const minX = Number(match?.[1]);
+    const width = Number(match?.[3]);
+    const height = Number(match?.[4]);
+    expect(width).toBeCloseTo(height, 3);
+    expect(logoutCompact).not.toMatch(/viewBox="0 0 32 32"/);
+    // Extra left inset vs a content-flush crop (minX would be ~5.33 if flush to the door).
+    expect(minX).toBeLessThan(4);
+  });
+
   it("keeps profile-detail icons on square optically-normalized viewBoxes", () => {
     // Figma 12697:37391 — 32×32 boxes; oversized Material canvases (36/40/32) made
     // some glyphs look tiny next to already-cropped ones. Square crop + ~8% pad →

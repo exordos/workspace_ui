@@ -19,6 +19,30 @@ describe("RightDrawer", () => {
     expect(drawer).toHaveClass("relative");
   });
 
+  it("keeps content inside shell gutter by default", () => {
+    render(
+      <RightDrawer onClose={vi.fn()}>
+        <div>Content</div>
+      </RightDrawer>,
+    );
+
+    const contentSlot = screen.getByTestId("right-drawer-content");
+    expect(contentSlot).not.toHaveClass("-mx-2");
+    expect(contentSlot).toHaveAttribute("data-content-flush", "false");
+  });
+
+  it("flushes content past shell px-2 when contentFlush is set", () => {
+    render(
+      <RightDrawer onClose={vi.fn()} contentFlush>
+        <div>Content</div>
+      </RightDrawer>,
+    );
+
+    const contentSlot = screen.getByTestId("right-drawer-content");
+    expect(contentSlot).toHaveClass("-mx-2");
+    expect(contentSlot).toHaveAttribute("data-content-flush", "true");
+  });
+
   it("renders panel title in the same header row as the close button", () => {
     render(
       <RightDrawer onClose={vi.fn()} title="Channel info">

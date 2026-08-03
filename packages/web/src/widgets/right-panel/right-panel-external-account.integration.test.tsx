@@ -179,7 +179,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
 
     renderWithProviders(<RightPanelExternalAccountsList />);
 
-    // Card is expanded by default — action button is available immediately
+    // Flat card: actions are always visible without expanding
     fireEvent.click(screen.getByRole("button", { name: "Add chats" }));
 
     expect(await screen.findByText("Support")).toBeInTheDocument();
@@ -187,14 +187,14 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
-  it("keeps account deletion available from the expanded card", () => {
+  it("keeps account deletion available from the flat card", () => {
     seedRuntime();
     seedAccounts([account]);
 
     renderWithProviders(<RightPanelExternalAccountsList />);
 
     const deleteButton = screen.getByRole("button", { name: "Delete" });
-    expect(deleteButton).toHaveClass("bg-danger");
+    expect(deleteButton).toHaveClass("text-danger");
     fireEvent.click(deleteButton);
 
     expect(screen.getByRole("dialog")).toHaveTextContent("Delete connection");
@@ -207,22 +207,23 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     renderWithProviders(<RightPanelExternalAccountsList />);
 
     expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
+      "No external accounts connected yet.",
+    );
   });
 
-  it("expands connected accounts by default and still allows collapse", () => {
+  it("renders account identity and status without a nested accordion", () => {
     seedRuntime();
     seedAccounts([account]);
 
     renderWithProviders(<RightPanelExternalAccountsList />);
 
-    const card = document.querySelector("details");
-    expect(card).toHaveAttribute("open");
-    // Actions are visible without an extra expand click
+    expect(document.querySelector("details")).toBeNull();
+    expect(screen.getByTestId("external-account-card")).toHaveTextContent("user@example.com");
+    expect(screen.getByTestId("external-account-card")).toHaveTextContent(
+      "Zulip · https://zulip.example.com",
+    );
     expect(screen.getByRole("button", { name: "Add chats" })).toBeInTheDocument();
-
-    // Collapse via summary remains available
-    fireEvent.click(screen.getByText("user@example.com"));
-    expect(card).not.toHaveAttribute("open");
   });
 
   it("uses synchronization wording for an automatic account", () => {

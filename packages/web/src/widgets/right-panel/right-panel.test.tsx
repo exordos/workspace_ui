@@ -148,9 +148,11 @@ describe("RightPanelShell", () => {
     ).not.toBeInTheDocument();
 
     const logoutButton = screen.getByTestId("user-menu-logout-button");
-    expect(logoutButton).toHaveClass("bg-danger", "text-white");
-    expect(logoutButton).toHaveAttribute("data-icon-hover", "custom");
+    expect(logoutButton).toHaveClass("text-danger");
+    expect(logoutButton).toHaveAttribute("aria-label", t("auth.logoutFromOrg"));
+    // Same MenuButton icon slot (h-8) + shared logout glyph as the rest of the list
     expect(logoutButton.querySelector("svg")).toHaveAttribute("width", "22");
+    expect(logoutButton.querySelector(".h-8.w-8")).toBeTruthy();
   });
 
   it("opens the external-account feature from the profile and renders its compact list", () => {

@@ -14,7 +14,6 @@ import { canConfigureExternalChats } from "~/features/configure-external-chats/c
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { DeleteExternalAccountDialog } from "~/features/connect-external-account/delete-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
-import { Icon } from "~/shared/ui/icon";
 
 function renderChatsOnboardingStep(
   runtimeContext: WorkspaceRuntimeContext,
@@ -56,6 +55,7 @@ function statusClass(account: ExternalAccount): string {
   return "bg-accent/10 text-accent";
 }
 
+/** Flat account card: identity + status + actions always visible (no nested accordion). */
 const ExternalAccountCard = React.memo<{
   account: ExternalAccount;
   runtimeContext: WorkspaceRuntimeContext;
@@ -64,67 +64,59 @@ const ExternalAccountCard = React.memo<{
   const [reconnectOpen, setReconnectOpen] = useState(false);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  // Few accounts is common: show actions immediately; user can still collapse via chevron
-  const [cardOpen, setCardOpen] = useState(true);
   const canReconnect = account.status === "auth_required" || account.status === "degraded";
   const canConfigureChats = canConfigureExternalChats(account);
+  const providerLabel = t(`connectExternalAccount.providers.${account.provider}`);
+
   return (
-    <li>
-      <details
-        className="group overflow-hidden rounded-lg border border-border-subtle bg-card-bg"
-        open={cardOpen}
-        onToggle={(event) => {
-          setCardOpen(event.currentTarget.open);
-        }}
-      >
-        <summary
-          className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 hover:bg-bg-elevated"
-          title={account.settings.serverUrl}
+    <li
+      className="bg-bg-elevated/40 rounded-lg border border-border-subtle p-3"
+      data-testid="external-account-card"
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className="bg-accent/15 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold text-accent"
+          aria-hidden
         >
-          <span className="flex min-w-0 items-center gap-2.5">
-            <span className="bg-accent/15 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-bold text-accent">
-              Z
+          {providerLabel.slice(0, 1).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="truncate text-sm font-medium leading-5 text-text-primary">
+              {account.settings.email}
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-text-primary">
-                {account.settings.email}
-              </span>
-              <span className="block truncate text-[11px] text-text-muted">
-                {account.settings.serverUrl}
-              </span>
-            </span>
-          </span>
-          <Icon
-            name="chevron-right"
-            size={14}
-            className="shrink-0 text-text-muted transition-transform group-open:rotate-90"
-          />
-        </summary>
-        <div className="border-t border-border-subtle px-2.5 py-2.5 text-[11px]">
-          <span
-            className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 ${statusClass(account)}`}
-          >
-            <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
-            {statusLabel(account, t)}
-          </span>
-          {account.safeError != null ? (
-            <p className="mt-2 break-words text-notice-base">{account.safeError}</p>
-          ) : null}
-          {canReconnect ? (
-            <button
-              type="button"
-              onClick={() => setReconnectOpen(true)}
-              className="mt-2 rounded-md border border-border-subtle px-2 py-1 text-text-primary hover:bg-bg-elevated"
+            <span
+              className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ${statusClass(account)}`}
             >
-              {t("connectExternalAccount.reconnect")}
-            </button>
+              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+              {statusLabel(account, t)}
+            </span>
+          </div>
+          <p
+            className="mt-0.5 truncate text-xs leading-4 text-text-muted"
+            title={account.settings.serverUrl}
+          >
+            {providerLabel} · {account.settings.serverUrl}
+          </p>
+          {account.safeError != null ? (
+            <p className="mt-1.5 break-words text-xs text-notice-base">{account.safeError}</p>
           ) : null}
-          <div className="mt-2 flex items-center gap-2">
+
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {canReconnect ? (
+              <button
+                type="button"
+                onClick={() => setReconnectOpen(true)}
+                className="inline-flex items-center rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-on-accent transition-colors hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {t("connectExternalAccount.reconnect")}
+              </button>
+            ) : null}
             {canConfigureChats ? (
               <button
                 type="button"
                 onClick={() => setChatsOpen(true)}
-                className="whitespace-nowrap rounded-md border border-border-subtle px-2 py-1 text-text-primary hover:bg-bg-elevated"
+                className="inline-flex items-center rounded-md border border-border-subtle bg-bg px-2.5 py-1 text-xs font-medium text-text-primary transition-colors hover:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 {account.settings.selectionMode === "all"
                   ? t("configureExternalChats.automaticAction")
@@ -134,13 +126,14 @@ const ExternalAccountCard = React.memo<{
             <button
               type="button"
               onClick={() => setDeleteOpen(true)}
-              className="hover:bg-danger/90 whitespace-nowrap rounded-md border border-danger bg-danger px-2 py-1 text-white"
+              className="border-danger/30 hover:bg-danger/10 inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium text-danger transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
             >
               {t("connectExternalAccount.delete.shortAction")}
             </button>
           </div>
         </div>
-      </details>
+      </div>
+
       <ConnectExternalAccountDialog
         open={reconnectOpen}
         onOpenChange={setReconnectOpen}
@@ -189,13 +182,29 @@ export const RightPanelExternalAccountsList: React.FC = () => {
     runtimeOwnerKey != null &&
     (accountOwnerKey !== runtimeOwnerKey || accountLoadStatus === "loading")
   ) {
-    return <p className="text-[11px] text-text-muted">{t("connectExternalAccount.checking")}</p>;
+    return (
+      <p
+        className="px-1 text-center text-xs text-text-muted"
+        data-testid="connected-external-accounts-list"
+      >
+        {t("connectExternalAccount.checking")}
+      </p>
+    );
   }
   if (runtimeContext == null || visibleAccounts.length === 0) {
-    return <p className="text-[11px] text-text-muted">{t("connectExternalAccount.noAccounts")}</p>;
+    return (
+      <div
+        className="rounded-lg border border-dashed border-border-subtle px-3 py-4 text-center"
+        data-testid="connected-external-accounts-list"
+      >
+        <p className="text-xs leading-4 text-text-muted">
+          {t("connectExternalAccount.noAccounts")}
+        </p>
+      </div>
+    );
   }
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-2" data-testid="connected-external-accounts-list">
       {visibleAccounts.map((account) => (
         <ExternalAccountCard key={account.uuid} account={account} runtimeContext={runtimeContext} />
       ))}

@@ -803,6 +803,7 @@
     "authIdleTimeout3d": "3 days",
     "authIdleTimeout7d": "7 days",
     "authIdleTimeoutNever": "Never",
+    "sectionDescription": "Description",
     "settings": "Settings",
     "clearCache": "Clear cache",
     "clearCacheConfirm": "Clear message cache and all local settings? Your sign-in and saved organizations will be kept. The app will reload.",

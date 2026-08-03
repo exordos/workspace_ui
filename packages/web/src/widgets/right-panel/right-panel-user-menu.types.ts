@@ -10,10 +10,16 @@ export interface RightPanelUserMenuProps {
 export interface MenuButtonProps {
   label: string;
   icon: IconName;
+  /** Override default 22px glyph size (e.g. looser viewBox icons). */
+  iconSize?: number;
   subtitle?: ReactNode;
   right?: ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  /** Danger styling for destructive actions (logout). */
+  tone?: "default" | "danger";
+  testId?: string;
+  ariaLabel?: string;
 }
 
 export interface OptionButtonProps {

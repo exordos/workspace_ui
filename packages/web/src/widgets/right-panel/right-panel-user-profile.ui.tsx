@@ -518,7 +518,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       data-own-profile={profile.isOwnProfile ? "true" : "false"}
       data-editing={showEditChrome ? "true" : "false"}
     >
-      {/* Horizontal padding lives on sections: aside already has px-2 (Figma inset ≈ 8px). */}
+      {/* Horizontal padding lives on sections; aside already has px-2 (Figma inset ≈ 8px). */}
       <ScrollArea className="flex-1 py-2">
         {/* Figma right menu (12697:37361): vertical gap 20 between blocks */}
         <div className="space-y-5">

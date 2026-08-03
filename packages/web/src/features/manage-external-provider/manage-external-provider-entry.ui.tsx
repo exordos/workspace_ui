@@ -9,6 +9,10 @@ export interface ManageExternalProviderEntryProps {
   readonly runtimeContext: WorkspaceRuntimeContext | null;
 }
 
+/**
+ * Admin entry that opens the integration-settings modal.
+ * Styled as a flat action (icon + label), not a navigable row — no chevron.
+ */
 export function ManageExternalProviderEntry({
   runtimeContext,
 }: ManageExternalProviderEntryProps): ReactElement | null {
@@ -29,28 +33,35 @@ export function ManageExternalProviderEntry({
     setDialogOpen(open);
   }, []);
 
+  const handleOpenDialog = useCallback(() => {
+    setDialogOpen(true);
+  }, []);
+
   if (vm.accessStatus !== "allowed") {
     return null;
   }
 
   return (
-    <div className="mt-2 border-t border-border-subtle pt-2">
+    <div className="border-t border-border-subtle pt-3">
+      {/* Secondary admin action: quieter than the Connect CTA above */}
       <button
         type="button"
-        onClick={() => setDialogOpen(true)}
-        className="hover:bg-bg-elevated/70 flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition-colors"
+        onClick={handleOpenDialog}
+        className="bg-bg-elevated/30 flex w-full items-center gap-2.5 rounded-lg border border-border-subtle px-2.5 py-2 text-left transition-colors hover:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         aria-label={t("externalAccounts.manageIntegrations")}
         data-testid="manage-external-provider-trigger"
       >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg text-text-secondary">
+          <Icon name="businessCenter" size={18} className="text-current" />
+        </span>
         <span className="min-w-0">
-          <span className="block text-xs font-medium text-text-primary">
+          <span className="block text-xs font-medium leading-4 text-text-primary">
             {t("externalAccounts.manageIntegrations")}
           </span>
-          <span className="mt-0.5 block text-[10px] text-text-muted">
+          <span className="mt-0.5 block text-[11px] leading-4 text-text-muted">
             {t("externalAccounts.manageIntegrationsHint")}
           </span>
         </span>
-        <Icon name="chevron-right" size={14} className="shrink-0 text-text-muted" />
       </button>
       <ManageExternalProviderDialog open={dialogOpen} onOpenChange={handleOpenChange} vm={vm} />
     </div>

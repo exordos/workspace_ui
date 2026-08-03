@@ -25,6 +25,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
+import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
@@ -54,6 +55,26 @@ import type { UserStatusEmojiDisplay } from "./right-panel-user-menu-status-dial
 import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
+
+/**
+ * Flat section list — no card chrome (Figma right menu).
+ * Edge-to-edge row hover needs RightDrawer `contentFlush` (nested -mx is clipped);
+ * hairlines stay inset via ::before (px-4), not divide-y.
+ */
+const SECTION_LIST_CLASS =
+  "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-border-subtle";
+
+/** Inline accordion panel when a settings row expands — same inset hairlines as the parent list. */
+const ACCORDION_PANEL_CLASS =
+  "mb-1 bg-bg-elevated/40 [&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-border-subtle";
+
+const MenuChevron: React.FC<{ open?: boolean }> = ({ open = false }) => (
+  <Icon
+    name={open ? "chevron-up" : "chevron-right"}
+    size={16}
+    className="shrink-0 text-text-secondary"
+  />
+);
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   onOpenAboutDrawer,
@@ -337,78 +358,79 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      <ScrollArea className="flex-1 px-2 py-2">
-        <div className="space-y-3">
-          <section>
-            <SectionLabel tone="muted" className="px-2.5 pb-1">
-              {t("nav.profile")}
+      {/* Shell contentFlush cancels drawer px-2; rows own px-4 so hover reaches panel edges. */}
+      <ScrollArea className="flex-1 py-5">
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <SectionLabel tone="muted" className="px-4">
+              {t("settings.sectionDescription")}
             </SectionLabel>
-            <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
+            <div className={SECTION_LIST_CLASS}>
               {currentWorkspaceSession != null && (
-                <div data-testid="user-menu-current-server-item" className="px-2.5 py-2.5">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg">
+                <div
+                  data-testid="user-menu-current-server-item"
+                  className="flex w-full items-center justify-between gap-2 px-4 py-1.5"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center text-text-secondary">
                       {currentServerIconUrl != null ? (
                         <img
                           src={currentServerIconUrl}
                           alt=""
-                          className="h-4 w-4 rounded object-contain"
+                          className="h-5 w-5 rounded object-contain"
                         />
                       ) : (
-                        <Icon name="chatBubble" size={18} className="text-accent" />
+                        <Icon name="dashboard_customize" size={22} className="text-current" />
                       )}
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium text-text-primary">
+                      <span className="block text-sm font-medium leading-5 text-text-primary">
                         {t("auth.currentServer")}
                       </span>
-                      <span className="mt-0.5 block truncate text-[11px] text-text-muted">
+                      <span className="mt-0.5 block truncate text-sm leading-5 text-text-muted">
                         {currentServerLabel}
                       </span>
-                      <span className="truncate text-[11px] text-text-muted">
+                      <span className="block truncate text-sm leading-5 text-text-muted">
                         {currentServerAccountLabel}
                       </span>
                     </span>
                   </span>
+                  <MenuChevron />
                 </div>
               )}
               {currentWorkspaceSession != null && (
                 <>
                   <RightPanelUserMenuMenuButton
                     label={t("externalAccounts.title")}
-                    icon="links"
+                    // Same chain as `links`; compact viewBox so weight matches sibling menu icons
+                    icon="links_compact"
                     onClick={() => setExternalAccountsOpen((open) => !open)}
-                    right={
-                      <Icon
-                        name={externalAccountsOpen ? "chevron-up" : "chevron-right"}
-                        size={16}
-                        className="text-text-muted"
-                      />
-                    }
+                    right={<MenuChevron open={externalAccountsOpen} />}
                   />
                   {externalAccountsOpen && (
-                    <div
-                      className="mx-2 mb-2 rounded-md border border-border-subtle bg-bg-elevated px-2 py-2"
-                      data-testid="user-menu-external-accounts"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setExternalAccountDialogOpen(true)}
-                        className="border-accent/40 bg-accent/5 hover:bg-accent/10 mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed px-2.5 py-2 text-left transition-colors"
-                        aria-label={t("connectExternalAccount.connect")}
-                        data-testid="connect-external-account-trigger"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs font-medium text-text-primary">
-                            {t("connectExternalAccount.connect")}
-                          </span>
-                          <span className="mt-0.5 block truncate text-[10px] text-text-muted">
-                            {t("connectExternalAccount.connectHint")}
-                          </span>
-                        </span>
-                        <Icon name="chevron-right" size={14} className="shrink-0 text-accent" />
-                      </button>
+                    <div className="space-y-3 px-4 py-3" data-testid="user-menu-external-accounts">
+                      {/* Connected accounts (or empty/loading) sit above the CTA */}
                       <RightPanelExternalAccountsList />
+
+                      {/* Primary action: accent CTA, not a menu row — no chevron */}
+                      <div className="space-y-1.5">
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          className="w-full gap-1.5"
+                          onClick={() => setExternalAccountDialogOpen(true)}
+                          aria-label={t("connectExternalAccount.connect")}
+                          data-testid="connect-external-account-trigger"
+                        >
+                          <Icon name="add" size={16} className="shrink-0 text-current" />
+                          {t("connectExternalAccount.connect")}
+                        </Button>
+                        <p className="px-1 text-center text-[11px] leading-4 text-text-muted">
+                          {t("connectExternalAccount.connectHint")}
+                        </p>
+                      </div>
+
                       <ManageExternalProviderEntry runtimeContext={currentWorkspaceSession} />
                     </div>
                   )}
@@ -418,45 +440,36 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 label={t("settings.personalInfo")}
                 icon="accountCircle"
                 onClick={openPersonalInfo}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                right={<MenuChevron />}
               />
               <RightPanelUserMenuMenuButton
                 label={t("settings.status")}
-                icon="mood"
+                icon="sentiment_satisfied"
                 subtitle={currentStatusSubtitle}
                 onClick={openStatusDialog}
                 disabled={currentWorkspaceSession == null}
-                right={
-                  currentWorkspaceSession == null ? null : (
-                    <Icon name="chevron-right" size={16} className="text-text-muted" />
-                  )
-                }
               />
             </div>
           </section>
 
-          <section>
-            <SectionLabel tone="muted" className="px-2.5 pb-1">
+          <section className="space-y-3">
+            <SectionLabel tone="muted" className="px-4">
               {t("settings.settings")}
             </SectionLabel>
-            <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
+            <div className={SECTION_LIST_CLASS}>
               <RightPanelUserMenuMenuButton
                 label={t("settings.notificationSound")}
                 icon="volumeUp"
                 onClick={toggleSoundSettings}
                 right={
-                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                  <span className="flex items-center gap-2 text-sm text-text-secondary">
                     {soundLabel}
-                    <Icon
-                      name={soundSettingsOpen ? "chevron-up" : "chevron-right"}
-                      size={16}
-                      className="text-current"
-                    />
+                    <MenuChevron open={soundSettingsOpen} />
                   </span>
                 }
               />
               {soundSettingsOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                <div className={ACCORDION_PANEL_CLASS}>
                   {NOTIFICATION_SOUNDS.map((sound) => (
                     <RightPanelUserMenuOptionButton
                       key={sound}
@@ -472,18 +485,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 icon="language"
                 onClick={toggleLanguageSettings}
                 right={
-                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                  <span className="flex items-center gap-2 text-sm text-text-secondary">
                     {localeLabel}
-                    <Icon
-                      name={languageSettingsOpen ? "chevron-up" : "chevron-right"}
-                      size={16}
-                      className="text-current"
-                    />
+                    <MenuChevron open={languageSettingsOpen} />
                   </span>
                 }
               />
               {languageSettingsOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                <div className={ACCORDION_PANEL_CLASS}>
                   {locales.map((localeOption) => (
                     <RightPanelUserMenuOptionButton
                       key={localeOption.id}
@@ -497,22 +506,18 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
               <RightPanelUserMenuMenuButton
                 label={t("settings.authIdleTimeout")}
-                icon="visibility"
+                icon="delete_history"
                 subtitle={t("settings.authIdleTimeoutHint")}
                 onClick={toggleAuthIdleTimeoutSettings}
                 right={
-                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                  <span className="flex items-center gap-2 text-sm text-text-secondary">
                     {authIdleTimeoutLabel}
-                    <Icon
-                      name={authIdleTimeoutOpen ? "chevron-up" : "chevron-right"}
-                      size={16}
-                      className="text-current"
-                    />
+                    <MenuChevron open={authIdleTimeoutOpen} />
                   </span>
                 }
               />
               {authIdleTimeoutOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                <div className={ACCORDION_PANEL_CLASS}>
                   {AUTH_IDLE_TIMEOUT_PRESETS.map((timeout) => (
                     <RightPanelUserMenuOptionButton
                       key={timeout}
@@ -526,19 +531,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
               <RightPanelUserMenuMenuButton
                 label={t("settings.themeSettings")}
-                icon="mood"
+                icon="draw"
                 onClick={() => setThemeSettingsOpen((open) => !open)}
-                right={
-                  <Icon
-                    name={themeSettingsOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
+                right={<MenuChevron open={themeSettingsOpen} />}
               />
               {themeSettingsOpen && (
-                <div className="mx-2 mb-2 space-y-2 rounded-md border border-border-subtle bg-bg-elevated p-2">
-                  <div className="divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-card-bg">
+                <div className="bg-bg-elevated/40 mb-1 space-y-2 py-2">
+                  <div className={ACCORDION_PANEL_CLASS}>
                     {THEME_MODES.map((mode) => (
                       <RightPanelUserMenuOptionButton
                         key={mode}
@@ -548,16 +547,16 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       />
                     ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5 px-4">
                     {availablePalettes.map((palette) => (
                       <button
                         key={palette.id}
                         type="button"
                         onClick={() => selectPalette(palette.id)}
-                        className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs transition-colors ${
+                        className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-xs transition-colors ${
                           currentPaletteId === palette.id
-                            ? "border-accent bg-card-bg-active"
-                            : "border-border-subtle bg-card-bg hover:bg-card-bg-active"
+                            ? "bg-card-bg-active ring-1 ring-accent"
+                            : "bg-bg hover:bg-card-bg-active"
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -576,50 +575,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              {/*<RightPanelUserMenuMenuButton*/}
-              {/*  label={t("settings.chatSorting")}*/}
-              {/*  icon="channels"*/}
-              {/*  onClick={() => setChatSortingOpen((open) => !open)}*/}
-              {/*  subtitle={t("settings.chatSortingHint")}*/}
-              {/*  right={*/}
-              {/*    <Icon*/}
-              {/*      name={chatSortingOpen ? "chevron-up" : "chevron-right"}*/}
-              {/*      size={16}*/}
-              {/*      className="text-text-muted"*/}
-              {/*    />*/}
-              {/*  }*/}
-              {/*/>*/}
-              {/*{chatSortingOpen && (*/}
-              {/*  <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">*/}
-              {/*    <RightPanelUserMenuOptionButton*/}
-              {/*      label={t("settings.chatSortingPrioritizeDirects")}*/}
-              {/*      active={prioritizePersonalUnread}*/}
-              {/*      onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}*/}
-              {/*    />*/}
-              {/*    <RightPanelUserMenuOptionButton*/}
-              {/*      label={t("settings.chatSortingPrioritizeUnmuted")}*/}
-              {/*      active={prioritizeUnmutedUnreadChannels}*/}
-              {/*      onClick={() =>*/}
-              {/*        setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)*/}
-              {/*      }*/}
-              {/*    />*/}
-              {/*  </div>*/}
-              {/*)}*/}
-
               <RightPanelUserMenuMenuButton
                 label={t("settings.folderLayout")}
-                icon="folders"
+                icon="folder_copy"
                 onClick={() => setFolderLayoutOpen((open) => !open)}
-                right={
-                  <Icon
-                    name={folderLayoutOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
+                right={<MenuChevron open={folderLayoutOpen} />}
               />
               {folderLayoutOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                <div className={ACCORDION_PANEL_CLASS}>
                   {FOLDER_LAYOUTS.map((layout) => (
                     <RightPanelUserMenuOptionButton
                       key={layout}
@@ -633,18 +596,12 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
               <RightPanelUserMenuMenuButton
                 label={t("settings.chatListDensity")}
-                icon="list_bulleted"
+                icon="lists"
                 onClick={() => setChatListDensityOpen((open) => !open)}
-                right={
-                  <Icon
-                    name={chatListDensityOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
+                right={<MenuChevron open={chatListDensityOpen} />}
               />
               {chatListDensityOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                <div className={ACCORDION_PANEL_CLASS}>
                   {CHAT_LIST_DENSITIES.map((density) => (
                     <RightPanelUserMenuOptionButton
                       key={density}
@@ -658,35 +615,35 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             </div>
           </section>
 
-          <section>
-            <SectionLabel tone="muted" className="px-2.5 pb-1">
+          <section className="space-y-3">
+            <SectionLabel tone="muted" className="px-4">
               {t("settings.appVersion")}
             </SectionLabel>
-            <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
+            <div className={SECTION_LIST_CLASS}>
               <RightPanelUserMenuMenuButton
                 label={t("settings.selectBuild")}
-                icon="grid"
+                icon="build"
                 subtitle={t("settings.selectBuildHint")}
                 onClick={openBuilds}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                right={<MenuChevron />}
               />
               <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"
                 onClick={openAbout}
                 right={
-                  <span className="flex items-center gap-2 text-xs text-text-muted">
+                  <span className="flex items-center gap-2 text-sm text-text-secondary">
                     <span>{APP_VERSION}</span>
-                    <Icon name="chevron-right" size={16} className="text-current" />
+                    <MenuChevron />
                   </span>
                 }
               />
               {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
                 <RightPanelUserMenuMenuButton
                   label={t("settings.connectionDiagnostics")}
-                  icon="visibility"
+                  icon="lab_profile"
                   onClick={openDiagnostics}
-                  right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                  right={<MenuChevron />}
                 />
               )}
               <RightPanelUserMenuMenuButton
@@ -694,23 +651,21 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 icon="delete"
                 subtitle={t("settings.clearCacheHint")}
                 onClick={handleClearCache}
+                right={<MenuChevron />}
               />
+              {currentWorkspaceSession != null && (
+                <RightPanelUserMenuMenuButton
+                  label={t("auth.logout")}
+                  // Same glyph as `logout`; compact crop matches sibling menu optical size
+                  icon="logout_compact"
+                  tone="danger"
+                  onClick={handleLogoutFromCurrentOrg}
+                  testId="user-menu-logout-button"
+                  ariaLabel={t("auth.logoutFromOrg")}
+                />
+              )}
             </div>
           </section>
-
-          {currentWorkspaceSession != null && (
-            <button
-              type="button"
-              onClick={handleLogoutFromCurrentOrg}
-              className="hover:bg-danger/90 flex w-full items-center justify-center gap-3 rounded-lg border border-danger bg-danger px-3 py-3 text-sm font-semibold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-card-bg"
-              aria-label={t("auth.logoutFromOrg")}
-              data-icon-hover="custom"
-              data-testid="user-menu-logout-button"
-            >
-              <Icon name="logout" size={22} className="text-current" />
-              {t("auth.logoutFromOrg")}
-            </button>
-          )}
         </div>
       </ScrollArea>
 

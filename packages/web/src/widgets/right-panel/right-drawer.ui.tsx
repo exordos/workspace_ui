@@ -4,7 +4,13 @@ import { Icon } from "~/shared/ui/icon";
 import type { RightDrawerProps } from "./right-drawer.types";
 
 /** Right-side drawer next to the content. Any content can be placed inside (channel info, user info, settings, etc.). */
-export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, onBack, title, children }) => {
+export const RightDrawer: React.FC<RightDrawerProps> = ({
+  onClose,
+  onBack,
+  title,
+  contentFlush = false,
+  children,
+}) => {
   const trimmedTitle = title?.trim() ?? "";
 
   return (
@@ -39,7 +45,21 @@ export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, onBack, title
           <Icon name="close" size={16} className="text-current" />
         </button>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+      {/*
+        Nested `-mx-2` under this slot is clipped by overflow-hidden. When contentFlush
+        is set, cancel aside px-2 here (direct child) so account-menu hover can reach edges.
+      */}
+      <div
+        className={
+          contentFlush
+            ? "-mx-2 flex min-h-0 flex-1 flex-col overflow-hidden"
+            : "flex min-h-0 flex-1 flex-col overflow-hidden"
+        }
+        data-testid="right-drawer-content"
+        data-content-flush={contentFlush ? "true" : "false"}
+      >
+        {children}
+      </div>
     </aside>
   );
 };

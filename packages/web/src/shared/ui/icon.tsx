@@ -8,6 +8,7 @@ import BellIcon from "../assets/icons/bell.svg?react";
 import BellOffIcon from "../assets/icons/bell_off.svg?react";
 import BlockIcon from "../assets/icons/block.svg?react";
 import BorderColorIcon from "../assets/icons/border_color.svg?react";
+import BuildIcon from "../assets/icons/build.svg?react";
 import BusinessCenterIcon from "../assets/icons/business_center.svg?react";
 import CalendarIcon from "../assets/icons/calendar.svg?react";
 import CalendarMonthIcon from "../assets/icons/calendar_month.svg?react";
@@ -21,13 +22,17 @@ import ChevronRightIcon from "../assets/icons/chevron-right.svg?react";
 import ChevronUpIcon from "../assets/icons/chevron-up.svg?react";
 import CloseIcon from "../assets/icons/close.svg?react";
 import CopyIcon from "../assets/icons/copy.svg?react";
+import DashboardCustomizeIcon from "../assets/icons/dashboard_customize.svg?react";
 import DeleteIcon from "../assets/icons/delete.svg?react";
+import DeleteHistoryIcon from "../assets/icons/delete_history.svg?react";
 import DownloadIcon from "../assets/icons/download.svg?react";
 import DraftsIcon from "../assets/icons/drafts.svg?react";
 import DraftsCompactIcon from "../assets/icons/drafts_compact.svg?react";
+import DrawIcon from "../assets/icons/draw.svg?react";
 import FilesIcon from "../assets/icons/files.svg?react";
 import FlagIcon from "../assets/icons/flag.svg?react";
 import FolderIcon from "../assets/icons/folder.svg?react";
+import FolderCopyIcon from "../assets/icons/folder_copy.svg?react";
 import FolderOpenIcon from "../assets/icons/folder_open.svg?react";
 import FoldersIcon from "../assets/icons/folders.svg?react";
 import ForwardIcon from "../assets/icons/forward.svg?react";
@@ -42,10 +47,14 @@ import HomeIcon from "../assets/icons/home.svg?react";
 import HomeFilledIcon from "../assets/icons/home_filled.svg?react";
 import ImagesIcon from "../assets/icons/images.svg?react";
 import InfoIcon from "../assets/icons/info.svg?react";
+import LabProfileIcon from "../assets/icons/lab_profile.svg?react";
 import LanguageIcon from "../assets/icons/language.svg?react";
 import LinksIcon from "../assets/icons/links.svg?react";
+import LinksCompactIcon from "../assets/icons/links_compact.svg?react";
 import ListBulletedIcon from "../assets/icons/list_bulleted.svg?react";
+import ListsIcon from "../assets/icons/lists.svg?react";
 import LogoutIcon from "../assets/icons/logout.svg?react";
+import LogoutCompactIcon from "../assets/icons/logout_compact.svg?react";
 import MagicWandIcon from "../assets/icons/magic_wand.svg?react";
 import MailIcon from "../assets/icons/mail.svg?react";
 import MailActivityIcon from "../assets/icons/mail_activity.svg?react";
@@ -69,6 +78,7 @@ import ScheduleIcon from "../assets/icons/schedule.svg?react";
 import SearchIcon from "../assets/icons/search.svg?react";
 import SelectedBookmarkIcon from "../assets/icons/selected_bookmark_icon.svg?react";
 import SendIcon from "../assets/icons/send.svg?react";
+import SentimentSatisfiedIcon from "../assets/icons/sentiment_satisfied.svg?react";
 import SidePanelIcon from "../assets/icons/side_panel.svg?react";
 import SmileIcon from "../assets/icons/smile.svg?react";
 import SparklesIcon from "../assets/icons/sparkles.svg?react";
@@ -105,12 +115,13 @@ const ICONS: Record<string, IconSvgComponent> = {
   at: AtIcon,
   smile: SmileIcon,
   pen: PenIcon,
-  // Карандаш на бейдже аватара в режиме редактирования (Figma stylus)
+  // Pencil badge on editable profile avatar (Figma stylus)
   stylus: StylusIcon,
   photo_camera: PhotoCameraIcon,
   person_add: PersonAddIcon,
   folder: FolderIcon,
   folder_open: FolderOpenIcon,
+  folder_copy: FolderCopyIcon,
   folders: FoldersIcon,
   plus: PlusIcon,
   add: AddIcon,
@@ -120,7 +131,11 @@ const ICONS: Record<string, IconSvgComponent> = {
   check: CheckIcon,
   copy: CopyIcon,
   delete: DeleteIcon,
+  // Clock + trash — auth idle timeout (Figma delete_history)
+  delete_history: DeleteHistoryIcon,
   download: DownloadIcon,
+  // Palette/pen stroke — theme settings (Figma draw)
+  draw: DrawIcon,
   forward: ForwardIcon,
   profile: ProfileIcon,
   reply: ReplyIcon,
@@ -130,6 +145,8 @@ const ICONS: Record<string, IconSvgComponent> = {
   block: BlockIcon,
   // Pen with underline — profile "Edit" action (Figma border_color)
   border_color: BorderColorIcon,
+  // Wrench — select build (Figma build)
+  build: BuildIcon,
   channels: ChannelsIcon,
   more: MoreIcon,
   heart: HeartIcon,
@@ -138,6 +155,8 @@ const ICONS: Record<string, IconSvgComponent> = {
   "chevron-down": ChevronDownIcon,
   "chevron-up": ChevronUpIcon,
   "chevron-right": ChevronRightIcon,
+  // 3 tiles + plus — current server (Figma dashboard_customize)
+  dashboard_customize: DashboardCustomizeIcon,
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
   calendar: CalendarIcon,
@@ -151,8 +170,12 @@ const ICONS: Record<string, IconSvgComponent> = {
   mail_outline: MailOutlineIcon,
   magic_wand: MagicWandIcon,
   info: InfoIcon,
+  // Clipboard checklist — connection diagnostics (Figma lab_profile)
+  lab_profile: LabProfileIcon,
   language: LanguageIcon,
   logout: LogoutIcon,
+  // Same door+arrow as `logout`; crop keeps Material optical center (extra left pad)
+  logout_compact: LogoutCompactIcon,
   globe_location_pin: GlobeLocationPinIcon,
   group: GroupIcon,
   businessCenter: BusinessCenterIcon,
@@ -165,18 +188,24 @@ const ICONS: Record<string, IconSvgComponent> = {
   marker_outline: MarkerOutlineIcon,
   alternate_email: AlternateEmailIcon,
   mood: MoodIcon,
+  // Smiling face — status row (Figma sentiment_satisfied)
+  sentiment_satisfied: SentimentSatisfiedIcon,
   drafts: DraftsIcon,
   // Solid filled-tip pencil — compact activity rail only.
   drafts_compact: DraftsCompactIcon,
   moreVert: MoreVertIcon,
-  // Иконка правой панели (квадрат с боковой полосой)
+  // Right-panel toggle (square with side strip)
   sidePanel: SidePanelIcon,
   images: ImagesIcon,
   videos: VideosIcon,
   visibility: VisibilityIcon,
   files: FilesIcon,
   links: LinksIcon,
+  // Same chain glyph as `links`, tighter viewBox for 32px menu rows (does not replace `links`)
+  links_compact: LinksCompactIcon,
   list_bulleted: ListBulletedIcon,
+  // Dense list rows — chat list density (Figma lists)
+  lists: ListsIcon,
   chat_bubble_outline: ChatBubbleOutlineIcon,
   fullscreen: FullscreenIcon,
   fullscreen_exit: FullscreenExitIcon,

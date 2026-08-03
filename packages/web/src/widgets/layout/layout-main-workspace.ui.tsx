@@ -171,6 +171,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
             onClose={onCloseRightDrawer}
             onBack={onBackRightDrawer}
             title={rightDrawerTitle}
+            // Account/settings menu: edge-to-edge row hover (must flush on this slot, not nested).
+            contentFlush={rightDrawerMode === "user-menu" || rightDrawerMode === "settings"}
           >
             <RightPanel
               mode={rightDrawerMode}
