@@ -234,6 +234,8 @@ export interface MessengerSidebarTopicItem {
   topicUuid: MessengerUuid;
   title: string;
   unreadCount: number;
+  /** Best-effort flag computed from unread messages currently known to the client. */
+  hasUnreadPersonalMention?: boolean;
   isDefault: boolean;
   isDone: boolean;
   color: number | null;
@@ -252,6 +254,8 @@ export interface MessengerSidebarStreamItem {
   isPrivate: boolean;
   uiKind: WorkspaceConversationUiKind;
   unreadCount: number;
+  /** Best-effort flag computed from unread messages currently known to the client. */
+  hasUnreadPersonalMention?: boolean;
   pinnedAt: string | null;
   orderIndex: number | null;
   route: string;

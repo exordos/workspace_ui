@@ -332,6 +332,59 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("projects known unread personal mentions to their topic and stream", () => {
+    const rows = selectMessengerSidebarStreams(state(), {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById: createUsersById(),
+      messagesById: {
+        [MESSAGE_A]: message({
+          mentioned: true,
+          read: false,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+        }),
+        [MESSAGE_B]: message({
+          uuid: MESSAGE_B,
+          projectId: "another-project",
+          mentioned: true,
+          read: false,
+          streamUuid: STREAM_B,
+          topicUuid: TOPIC_B,
+        }),
+      },
+    });
+
+    expect(rows.find((row) => row.streamUuid === STREAM_A)?.hasUnreadPersonalMention).toBe(true);
+    expect(
+      rows.find((row) => row.streamUuid === STREAM_A)?.topics[0]?.hasUnreadPersonalMention,
+    ).toBe(true);
+    expect(rows.find((row) => row.streamUuid === STREAM_B)?.hasUnreadPersonalMention).toBe(false);
+  });
+
+  it("ignores read messages and messages without a personal mention", () => {
+    const rows = selectMessengerSidebarStreams(state(), {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById: createUsersById(),
+      messagesById: {
+        [MESSAGE_A]: message({ mentioned: true, read: true }),
+        [MESSAGE_B]: message({
+          uuid: MESSAGE_B,
+          mentioned: false,
+          read: false,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+        }),
+      },
+    });
+
+    expect(rows.find((row) => row.streamUuid === STREAM_A)?.hasUnreadPersonalMention).toBe(false);
+    expect(
+      rows.find((row) => row.streamUuid === STREAM_A)?.topics[0]?.hasUnreadPersonalMention,
+    ).toBe(false);
+  });
+
   it("uses folder item unread and pinned order for selected folders", () => {
     const rows = selectMessengerSidebarStreams(state(), {
       organizationId: ORGANIZATION_ID,

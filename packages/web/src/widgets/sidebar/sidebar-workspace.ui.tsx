@@ -173,7 +173,7 @@ function WorkspaceSidebarTopicRow({
           compact={compact}
           isPinned={false}
           unreadCount={topic.unreadCount}
-          hasMention={false}
+          hasMention={topic.hasUnreadPersonalMention}
           time={formatWorkspaceMessageTime(topic.lastMessageCreatedAt)}
         />
       </Link>
@@ -346,7 +346,7 @@ function WorkspaceSidebarStreamRow({
             compact={compact}
             isPinned={stream.pinnedAt != null}
             unreadCount={stream.unreadCount}
-            hasMention={false}
+            hasMention={stream.hasUnreadPersonalMention}
             time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
             expandChevron={
               stream.topics.length > 0

@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 
 describe("SidebarChatRowMeta action slot", () => {
+  it("renders the active personal mention indicator", () => {
+    render(<SidebarChatRowMeta hasMention />);
+
+    expect(screen.getByTitle("@")).toHaveClass("bg-sidebar-unread", "font-medium");
+  });
+
   it("renders unread badge by default when expand chevron is configured", () => {
     render(
       <div className="group/stream">
