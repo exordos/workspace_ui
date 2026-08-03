@@ -31,6 +31,7 @@ const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
 const removedStreamUuidsByOwnerKey = new Map<string, Set<MessengerUuid>>();
+let lastBootstrapRequestVersion = 0;
 type MessengerFreshnessState = Pick<
   MessengerDomainData,
   "streamsById" | "topicsById" | "conversationsById"
@@ -61,8 +62,9 @@ export interface MessengerStoreState extends MessengerDomainData {
   isLoading: boolean;
   error: string | null;
   lastLoadedAt: number | null;
+  bootstrapRequestVersion: number;
 
-  startBootstrap: (ownerKey: string) => void;
+  startBootstrap: (ownerKey: string) => number;
   finishBootstrapSilently: (ownerKey: string) => void;
   replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
   replaceFolderSnapshots: (ownerKey: string, folders: MessengerFolder[]) => void;
@@ -187,8 +189,14 @@ function createInitialState(): Omit<
     isLoading: false,
     error: null,
     lastLoadedAt: null,
+    bootstrapRequestVersion: 0,
     ...createEmptyMessengerData(),
   };
+}
+
+function nextBootstrapRequestVersion(): number {
+  lastBootstrapRequestVersion += 1;
+  return lastBootstrapRequestVersion;
 }
 
 function appendUniqueId<TId extends string>(ids: TId[], id: TId): TId[] {
@@ -609,12 +617,14 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
   ...createInitialState(),
 
   startBootstrap(ownerKey) {
-    logStoreAction("messenger", "startBootstrap", { ownerKey });
+    const bootstrapRequestVersion = nextBootstrapRequestVersion();
+    logStoreAction("messenger", "startBootstrap", { ownerKey, bootstrapRequestVersion });
     set((state) => {
       if (state.ownerKey === ownerKey) {
         return {
           isLoading: true,
           error: null,
+          bootstrapRequestVersion,
         };
       }
 
@@ -624,8 +634,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         isLoading: true,
         error: null,
         lastLoadedAt: null,
+        bootstrapRequestVersion,
       };
     });
+    return bootstrapRequestVersion;
   },
 
   finishBootstrapSilently(ownerKey) {
@@ -1143,7 +1155,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (state.ownerKey != null) {
         removedStreamUuidsByOwnerKey.delete(state.ownerKey);
       }
-      return createInitialState();
+      return {
+        ...createInitialState(),
+        bootstrapRequestVersion: nextBootstrapRequestVersion(),
+      };
     });
   },
 }));

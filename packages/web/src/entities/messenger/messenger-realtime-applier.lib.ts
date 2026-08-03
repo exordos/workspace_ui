@@ -310,7 +310,6 @@ function applyMessageRealtimeEvent(
   const stream = store.streamsById[message.streamUuid] ?? null;
   const previousMessage = messageStore.messagesById[message.uuid];
   messageStore.upsertMessage(message);
-  store.applyMessagePointer(ownerKey, message);
   if (event.kind === "message.updated") {
     if (activeCache.patchCachedMessage != null) {
       writeRealtimeCacheBestEffort(() => activeCache.patchCachedMessage?.(ownerKey, message));
@@ -327,6 +326,7 @@ function applyMessageRealtimeEvent(
     return;
   }
 
+  store.applyMessagePointer(ownerKey, message);
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
   if (
     context.notificationsEnabled === true &&

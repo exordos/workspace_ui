@@ -459,9 +459,7 @@ export async function patchMessengerCachedMessage(
   await patchCachedMessage(ownerKey, message);
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
     await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
-    return;
   }
-  await applyMessengerMessagePointerCache(ownerKey, message);
 }
 
 export async function markMessengerCachedMessagesRead(

@@ -608,28 +608,6 @@ async function readRowIdsByOwner(
   return rows.map((row) => row.id);
 }
 
-async function readRowsByIds<TRow extends { id: string }>(
-  db: IDBDatabase,
-  storeName: string,
-  ids: readonly string[],
-): Promise<Map<string, TRow>> {
-  if (ids.length === 0) return new Map();
-
-  const transaction = db.transaction(storeName, "readonly");
-  const store = transaction.objectStore(storeName);
-  const rows = (await Promise.all(ids.map((id) => requestToPromise(store.get(id))))) as (
-    | TRow
-    | undefined
-  )[];
-  const map = new Map<string, TRow>();
-  for (const row of rows) {
-    if (row != null) {
-      map.set(row.id, row);
-    }
-  }
-  return map;
-}
-
 async function readOwnerMeta(
   db: IDBDatabase,
   ownerKey: string,
@@ -982,8 +960,8 @@ function shouldUpsertCatalogRow(
   if (options.force === true || previous == null) return true;
   if (options.reconcileFence != null) {
     // A full response owns rows that predate its request. Realtime writes made
-    // after that request keep precedence over the eventually arriving snapshot.
-    return (previous.cacheUpdatedAt ?? 0) <= options.reconcileFence;
+    // after that request keep precedence only while they are newer than it.
+    if ((previous.cacheUpdatedAt ?? 0) <= options.reconcileFence) return true;
   }
   if (incomingUpdatedAt == null) return false;
   return incomingUpdatedAt >= previous.updatedAt;
@@ -997,6 +975,52 @@ function shouldApplyMessagePointer(
   // look newer than a later authoritative topic or stream snapshot.
   const currentPointerCreatedAt = row.lastMessageCreatedAt ?? row.updatedAt;
   return messageCreatedAt >= currentPointerCreatedAt;
+}
+
+function updateCatalogRowsAtomically<TRow extends { id: string }>(
+  db: IDBDatabase,
+  storeName: string,
+  rows: readonly TRow[],
+  update: (store: IDBObjectStore, previous: TRow | undefined, incoming: TRow) => void,
+): Promise<void> {
+  const transaction = db.transaction(storeName, "readwrite");
+  const store = transaction.objectStore(storeName);
+  for (const row of rows) {
+    const request = store.get(row.id);
+    request.onsuccess = () => {
+      update(store, request.result as TRow | undefined, row);
+    };
+  }
+  return transactionDone(transaction);
+}
+
+function updateRowById<TRow>(
+  store: IDBObjectStore,
+  id: string,
+  update: (row: TRow) => TRow | null,
+): void {
+  const request = store.get(id);
+  request.onsuccess = () => {
+    const row = request.result as TRow | undefined;
+    if (row == null) return;
+    const nextRow = update(row);
+    if (nextRow != null) store.put(nextRow);
+  };
+}
+
+function updateRowsByOwner<TRow>(
+  store: IDBObjectStore,
+  ownerKey: string,
+  update: (row: TRow) => TRow | null,
+): void {
+  const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (cursor == null) return;
+    const nextRow = update(cursor.value as TRow);
+    if (nextRow != null) cursor.update(nextRow);
+    cursor.continue();
+  };
 }
 
 async function deleteMissingCatalogRows(
@@ -1036,26 +1060,28 @@ async function upsertStreams(
   const stores = WORKSPACE_MESSENGER_CACHE_STORES;
   const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
   const rows = streams.map((stream) => toStreamRow(ownerKey, stream, cacheUpdatedAt));
-  const previousRows = await readRowsByIds<WorkspaceMessengerStreamCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerStreamCacheRow>(
     db,
     stores.streams,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
+        store.put({
+          ...row,
+          lastMessageCreatedAt:
+            previous != null && previous.stream.lastMessageUuid === row.stream.lastMessageUuid
+              ? previous.lastMessageCreatedAt
+              : undefined,
+        });
+      } else if (previous != null && previous.stream.color == null && row.stream.color != null) {
+        store.put({
+          ...previous,
+          stream: { ...previous.stream, color: row.stream.color },
+          cacheUpdatedAt,
+        });
+      }
+    },
   );
-  const transaction = db.transaction(stores.streams, "readwrite");
-  const store = transaction.objectStore(stores.streams);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
-      store.put(row);
-    } else if (previous != null && previous.stream.color == null && row.stream.color != null) {
-      store.put({
-        ...previous,
-        stream: { ...previous.stream, color: row.stream.color },
-        cacheUpdatedAt,
-      });
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertTopics(
@@ -1069,20 +1095,21 @@ async function upsertTopics(
   const stores = WORKSPACE_MESSENGER_CACHE_STORES;
   const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
   const rows = topics.map((topic) => toTopicRow(ownerKey, topic, cacheUpdatedAt));
-  const previousRows = await readRowsByIds<WorkspaceMessengerTopicCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerTopicCacheRow>(
     db,
     stores.topics,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (!shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) return;
+      store.put({
+        ...row,
+        lastMessageCreatedAt:
+          previous != null && previous.topic.lastMessageUuid === row.topic.lastMessageUuid
+            ? previous.lastMessageCreatedAt
+            : undefined,
+      });
+    },
   );
-  const transaction = db.transaction(stores.topics, "readwrite");
-  const store = transaction.objectStore(stores.topics);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertConversations(
@@ -1098,20 +1125,21 @@ async function upsertConversations(
   const rows = conversations.map((conversation) =>
     toConversationRow(ownerKey, conversation, cacheUpdatedAt),
   );
-  const previousRows = await readRowsByIds<WorkspaceMessengerConversationCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerConversationCacheRow>(
     db,
     stores.conversations,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (!shouldUpsertCatalogRow(previous, row.conversation.updatedAt, options)) return;
+      store.put({
+        ...row,
+        lastMessageCreatedAt:
+          previous?.lastMessageUuid === row.lastMessageUuid
+            ? previous.lastMessageCreatedAt
+            : undefined,
+      });
+    },
   );
-  const transaction = db.transaction(stores.conversations, "readwrite");
-  const store = transaction.objectStore(stores.conversations);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.conversation.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertFolders(
@@ -1125,20 +1153,14 @@ async function upsertFolders(
   const stores = WORKSPACE_MESSENGER_CACHE_STORES;
   const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
   const rows = folders.map((folder) => toFolderRow(ownerKey, folder, cacheUpdatedAt));
-  const previousRows = await readRowsByIds<WorkspaceMessengerFolderCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerFolderCacheRow>(
     db,
     stores.folders,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) store.put(row);
+    },
   );
-  const transaction = db.transaction(stores.folders, "readwrite");
-  const store = transaction.objectStore(stores.folders);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertFolderItems(
@@ -1154,20 +1176,14 @@ async function upsertFolderItems(
   const rows = folderItems.map((folderItem) =>
     toFolderItemRow(ownerKey, folderItem, cacheUpdatedAt),
   );
-  const previousRows = await readRowsByIds<WorkspaceMessengerFolderItemCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerFolderItemCacheRow>(
     db,
     stores.folderItems,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) store.put(row);
+    },
   );
-  const transaction = db.transaction(stores.folderItems, "readwrite");
-  const store = transaction.objectStore(stores.folderItems);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertUsers(
@@ -1181,20 +1197,14 @@ async function upsertUsers(
   const stores = WORKSPACE_MESSENGER_CACHE_STORES;
   const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
   const rows = users.map((user) => toUserRow(ownerKey, user, cacheUpdatedAt));
-  const previousRows = await readRowsByIds<WorkspaceMessengerUserCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerUserCacheRow>(
     db,
     stores.users,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (shouldUpsertCatalogRow(previous, row.user.updatedAt, options)) store.put(row);
+    },
   );
-  const transaction = db.transaction(stores.users, "readwrite");
-  const store = transaction.objectStore(stores.users);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.user.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function upsertStreamBindings(
@@ -1210,20 +1220,14 @@ async function upsertStreamBindings(
   const rows = streamBindings.map((streamBinding) =>
     toStreamBindingRow(ownerKey, streamBinding, cacheUpdatedAt),
   );
-  const previousRows = await readRowsByIds<WorkspaceMessengerStreamBindingCacheRow>(
+  await updateCatalogRowsAtomically<WorkspaceMessengerStreamBindingCacheRow>(
     db,
     stores.streamBindings,
-    rows.map((row) => row.id),
+    rows,
+    (store, previous, row) => {
+      if (shouldUpsertCatalogRow(previous, row.streamBinding.updatedAt, options)) store.put(row);
+    },
   );
-  const transaction = db.transaction(stores.streamBindings, "readwrite");
-  const store = transaction.objectStore(stores.streamBindings);
-  for (const row of rows) {
-    const previous = previousRows.get(row.id);
-    if (shouldUpsertCatalogRow(previous, row.streamBinding.updatedAt, options)) {
-      store.put(row);
-    }
-  }
-  await transactionDone(transaction);
 }
 
 async function writeCatalogCollection<TItem>(
@@ -1847,58 +1851,53 @@ export async function applyMessengerMessagePointerCache(
       message.conversationId,
       topicConversationId(message.streamUuid, message.topicUuid),
     ];
-    const [streamRows, topicRows, conversationRows] = await Promise.all([
-      readRowsByIds<WorkspaceMessengerStreamCacheRow>(db, stores.streams, [streamId]),
-      readRowsByIds<WorkspaceMessengerTopicCacheRow>(db, stores.topics, [topicId]),
-      readRowsByIds<WorkspaceMessengerConversationCacheRow>(
-        db,
-        stores.conversations,
-        [...new Set(conversationIds)].map((conversationId) => cacheRowId(ownerKey, conversationId)),
-      ),
-    ]);
     const transaction = db.transaction(
       [stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
-    const streamRow = streamRows.get(streamId);
-    if (streamRow != null && shouldApplyMessagePointer(streamRow, message.createdAt)) {
-      transaction.objectStore(stores.streams).put({
-        ...streamRow,
-        stream: {
-          ...streamRow.stream,
-          lastMessageUuid: message.uuid,
-        },
-        lastMessageCreatedAt: message.createdAt,
-        cacheUpdatedAt,
-      });
-    }
-    const topicRow = topicRows.get(topicId);
-    if (topicRow != null && shouldApplyMessagePointer(topicRow, message.createdAt)) {
-      transaction.objectStore(stores.topics).put({
-        ...topicRow,
-        topic: {
-          ...topicRow.topic,
-          lastMessageUuid: message.uuid,
-        },
-        lastMessageCreatedAt: message.createdAt,
-        cacheUpdatedAt,
-      });
-    }
+    updateRowById<WorkspaceMessengerStreamCacheRow>(
+      transaction.objectStore(stores.streams),
+      streamId,
+      (row) =>
+        shouldApplyMessagePointer(row, message.createdAt)
+          ? {
+              ...row,
+              stream: { ...row.stream, lastMessageUuid: message.uuid },
+              lastMessageCreatedAt: message.createdAt,
+              cacheUpdatedAt,
+            }
+          : null,
+    );
+    updateRowById<WorkspaceMessengerTopicCacheRow>(
+      transaction.objectStore(stores.topics),
+      topicId,
+      (row) =>
+        shouldApplyMessagePointer(row, message.createdAt)
+          ? {
+              ...row,
+              topic: { ...row.topic, lastMessageUuid: message.uuid },
+              lastMessageCreatedAt: message.createdAt,
+              cacheUpdatedAt,
+            }
+          : null,
+    );
     const conversationStore = transaction.objectStore(stores.conversations);
     for (const conversationId of new Set(conversationIds)) {
-      const row = conversationRows.get(cacheRowId(ownerKey, conversationId));
-      if (row == null || !shouldApplyMessagePointer(row, message.createdAt)) continue;
-      conversationStore.put({
-        ...row,
-        conversation: {
-          ...row.conversation,
-          lastMessageUuid: message.uuid,
-        },
-        lastMessageUuid: message.uuid,
-        lastMessageCreatedAt: message.createdAt,
-        cacheUpdatedAt,
-      });
+      updateRowById<WorkspaceMessengerConversationCacheRow>(
+        conversationStore,
+        cacheRowId(ownerKey, conversationId),
+        (row) =>
+          shouldApplyMessagePointer(row, message.createdAt)
+            ? {
+                ...row,
+                conversation: { ...row.conversation, lastMessageUuid: message.uuid },
+                lastMessageUuid: message.uuid,
+                lastMessageCreatedAt: message.createdAt,
+                cacheUpdatedAt,
+              }
+            : null,
+      );
     }
     await transactionDone(transaction);
   } catch {
@@ -1915,58 +1914,51 @@ export async function clearMessengerMessagePointerCache(
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const [streamRows, topicRows, conversationRows] = await Promise.all([
-      readRowsByOwner<WorkspaceMessengerStreamCacheRow>(db, ownerKey, stores.streams),
-      readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
-      readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
-    ]);
     const transaction = db.transaction(
       [stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const streamStore = transaction.objectStore(stores.streams);
-    for (const row of streamRows) {
-      const stream = row.stream as WorkspaceMessengerCachedStream & {
-        lastMessageUuid?: string | null;
-      };
-      if (stream.lastMessageUuid !== messageUuid) continue;
-      streamStore.put({
+    updateRowsByOwner<WorkspaceMessengerStreamCacheRow>(streamStore, ownerKey, (row) => {
+      if (row.stream.lastMessageUuid !== messageUuid) return null;
+      return {
         ...row,
-        stream: { ...stream, lastMessageUuid: null },
+        stream: { ...row.stream, lastMessageUuid: null },
         lastMessageCreatedAt: null,
         cacheUpdatedAt,
-      });
-    }
+      };
+    });
     const topicStore = transaction.objectStore(stores.topics);
-    for (const row of topicRows) {
-      const topic = row.topic as WorkspaceMessengerCachedTopic & {
-        lastMessageUuid?: string | null;
+    updateRowsByOwner<WorkspaceMessengerTopicCacheRow>(topicStore, ownerKey, (row) => {
+      if (row.topic.lastMessageUuid !== messageUuid) return null;
+      return {
+        ...row,
+        topic: { ...row.topic, lastMessageUuid: null },
+        lastMessageCreatedAt: null,
+        cacheUpdatedAt,
       };
-      if (topic.lastMessageUuid !== messageUuid) continue;
-      topicStore.put({
-        ...row,
-        topic: { ...topic, lastMessageUuid: null },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      });
-    }
+    });
     const conversationStore = transaction.objectStore(stores.conversations);
-    for (const row of conversationRows) {
-      if (row.lastMessageUuid !== messageUuid && row.conversation.lastMessageUuid !== messageUuid) {
-        continue;
-      }
-      conversationStore.put({
-        ...row,
-        lastMessageUuid: null,
-        conversation: {
-          ...row.conversation,
+    updateRowsByOwner<WorkspaceMessengerConversationCacheRow>(
+      conversationStore,
+      ownerKey,
+      (row) => {
+        if (
+          row.lastMessageUuid !== messageUuid &&
+          row.conversation.lastMessageUuid !== messageUuid
+        ) {
+          return null;
+        }
+        return {
+          ...row,
           lastMessageUuid: null,
-        },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      });
-    }
+          conversation: { ...row.conversation, lastMessageUuid: null },
+          lastMessageCreatedAt: null,
+          cacheUpdatedAt,
+        };
+      },
+    );
     await transactionDone(transaction);
   } catch {
     return;

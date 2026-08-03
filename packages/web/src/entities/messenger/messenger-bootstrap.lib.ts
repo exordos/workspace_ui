@@ -12,7 +12,10 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type {
+  WorkspaceRuntimeContext,
+  WorkspaceRuntimeRequestContext,
+} from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   getFolders as defaultGetFolders,
   getStreams as defaultGetStreams,
@@ -103,6 +106,7 @@ export interface MessengerStoreApi {
     | "setRealtimeCursor"
     | "ownerKey"
     | "isLoading"
+    | "bootstrapRequestVersion"
   >;
 }
 
@@ -111,7 +115,7 @@ export type MessengerBootstrapResult =
   | {
       status: "skipped";
       ownerKey: string | null;
-      reason: "missing-context" | "stale-owner" | "aborted";
+      reason: "missing-context" | "stale-owner" | "superseded" | "aborted";
     }
   | { status: "failed"; ownerKey: string; error: string };
 
@@ -154,6 +158,63 @@ function currentFolders(
     .filter((folder): folder is MessengerFolder => folder != null);
 }
 
+interface BootstrapFoldersOptions {
+  requestContext: WorkspaceRuntimeRequestContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  client: MessengerBootstrapClientDeps;
+  cache: MessengerBootstrapCacheDeps;
+  requestOptions: MessengerClientOptions;
+  signal?: AbortSignal;
+  ownerKey: string;
+  store: MessengerStoreApi;
+  isCurrentBootstrap: () => boolean;
+}
+
+async function loadBootstrapFolders({
+  requestContext,
+  getRuntimeContext,
+  client,
+  cache,
+  requestOptions,
+  signal,
+  ownerKey,
+  store,
+  isCurrentBootstrap,
+}: BootstrapFoldersOptions): Promise<MessengerBootstrapResult | null> {
+  try {
+    const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      return { status: "applied", ownerKey };
+    }
+    if (!isCurrentBootstrap()) {
+      return { status: "skipped", ownerKey, reason: "superseded" };
+    }
+
+    const adaptedFolders = folders.map(adaptMessengerFolder);
+    store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
+    writeBootstrapCacheBestEffort(() =>
+      (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
+        ownerKey,
+        adaptedFolders,
+      ),
+    );
+    return null;
+  } catch (folderError) {
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      return { status: "applied", ownerKey };
+    }
+    if (!isCurrentBootstrap()) {
+      return { status: "skipped", ownerKey, reason: "superseded" };
+    }
+    if (isAbortError(folderError)) {
+      return { status: "applied", ownerKey };
+    }
+    const message = normalizeBootstrapError(folderError);
+    store.getState().setBootstrapError(ownerKey, message);
+    return null;
+  }
+}
+
 // Runtime checks are needed because orgs and projects can switch.
 // If the user already moved to another project, the old API response must not be applied to the store.
 export async function bootstrapMessengerStore({
@@ -179,11 +240,27 @@ export async function bootstrapMessengerStore({
 
   const ownerKey = workspaceRuntimeOwnerKey(requestContext);
   if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-    store.getState().finishBootstrapSilently(ownerKey);
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
-  store.getState().startBootstrap(ownerKey);
+  const bootstrapRequestVersion = store.getState().startBootstrap(ownerKey);
+  const isCurrentBootstrap = (): boolean => {
+    const state = store.getState();
+    return state.ownerKey === ownerKey && state.bootstrapRequestVersion === bootstrapRequestVersion;
+  };
+  const finishCurrentBootstrapSilently = (): void => {
+    if (isCurrentBootstrap()) store.getState().finishBootstrapSilently(ownerKey);
+  };
+  const currentBootstrapSkipResult = (): MessengerBootstrapResult | null => {
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      finishCurrentBootstrapSilently();
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (!isCurrentBootstrap()) {
+      return { status: "skipped", ownerKey, reason: "superseded" };
+    }
+    return null;
+  };
   useUsersStore.getState().startOwnerSync(ownerKey);
   void hydrateUsersFromCache({
     ownerKey,
@@ -212,7 +289,7 @@ export async function bootstrapMessengerStore({
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
     const currentState = store.getState();
-    if (currentState.ownerKey !== ownerKey || !currentState.isLoading) return;
+    if (!isCurrentBootstrap() || !currentState.isLoading) return;
 
     await primeMessengerLastMessagesFromCache({
       ownerKey,
@@ -222,7 +299,7 @@ export async function bootstrapMessengerStore({
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
     const stateAfterMessageHydrate = store.getState();
-    if (stateAfterMessageHydrate.ownerKey !== ownerKey || !stateAfterMessageHydrate.isLoading) {
+    if (!isCurrentBootstrap() || !stateAfterMessageHydrate.isLoading) {
       return;
     }
 
@@ -270,10 +347,8 @@ export async function bootstrapMessengerStore({
       usersRequest,
     ]);
 
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().finishBootstrapSilently(ownerKey);
-      return { status: "skipped", ownerKey, reason: "stale-owner" };
-    }
+    const skipAfterCatalogLoad = currentBootstrapSkipResult();
+    if (skipAfterCatalogLoad != null) return skipAfterCatalogLoad;
 
     if (usersResult.status === "fulfilled") {
       const usersSyncResult = applyBootstrapUsers(usersResult.value, {
@@ -284,7 +359,7 @@ export async function bootstrapMessengerStore({
         cache: userCache,
       });
       if (usersSyncResult.status === "skipped") {
-        store.getState().finishBootstrapSilently(ownerKey);
+        finishCurrentBootstrapSilently();
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
     } else {
@@ -306,10 +381,8 @@ export async function bootstrapMessengerStore({
       payload: payloadWithoutFolders,
       cache: lastMessagesCache,
     });
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().finishBootstrapSilently(ownerKey);
-      return { status: "skipped", ownerKey, reason: "stale-owner" };
-    }
+    const skipAfterMessageHydrate = currentBootstrapSkipResult();
+    if (skipAfterMessageHydrate != null) return skipAfterMessageHydrate;
 
     const preservedFolders = currentFolders(store.getState());
     store.getState().replaceBootstrapState(ownerKey, {
@@ -329,41 +402,26 @@ export async function bootstrapMessengerStore({
     );
     loadLastMessagesForCurrentSidebar();
 
-    try {
-      // Folders arrive as a separate user layer above streams.
-      // Apply them as snapshots: when a folder arrives, update only that part.
-      const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
-      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-        return { status: "applied", ownerKey };
-      }
-
-      const adaptedFolders = folders.map(adaptMessengerFolder);
-      store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
-      writeBootstrapCacheBestEffort(() =>
-        (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
-          ownerKey,
-          adaptedFolders,
-        ),
-      );
-    } catch (folderError) {
-      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-        return { status: "applied", ownerKey };
-      }
-      if (isAbortError(folderError)) {
-        return { status: "applied", ownerKey };
-      }
-      const message = normalizeBootstrapError(folderError);
-      store.getState().setBootstrapError(ownerKey, message);
-    }
+    // Folders arrive as a separate user layer above streams.
+    const folderResult = await loadBootstrapFolders({
+      requestContext,
+      getRuntimeContext,
+      client,
+      cache,
+      requestOptions,
+      signal,
+      ownerKey,
+      store,
+      isCurrentBootstrap,
+    });
+    if (folderResult != null) return folderResult;
 
     return { status: "applied", ownerKey };
   } catch (error) {
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().finishBootstrapSilently(ownerKey);
-      return { status: "skipped", ownerKey, reason: "stale-owner" };
-    }
+    const skipAfterFailure = currentBootstrapSkipResult();
+    if (skipAfterFailure != null) return skipAfterFailure;
     if (isAbortError(error)) {
-      store.getState().finishBootstrapSilently(ownerKey);
+      finishCurrentBootstrapSilently();
       return { status: "skipped", ownerKey, reason: "aborted" };
     }
 

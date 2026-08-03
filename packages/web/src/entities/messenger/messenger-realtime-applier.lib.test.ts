@@ -348,6 +348,38 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
   });
 
+  it("does not move last-message pointers when an older message is edited", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: { last_message_uuid: MESSAGE_B },
+      topic: { last_message_uuid: MESSAGE_B },
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 3,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          uuid: MESSAGE_A,
+          created_at: DATE_MIDDLE,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_B);
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_B);
+    expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(MESSAGE_B);
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.lastMessageUuid).toBe(
+      MESSAGE_B,
+    );
+  });
+
   it("updates message reaction aggregate without dropping own projection", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;

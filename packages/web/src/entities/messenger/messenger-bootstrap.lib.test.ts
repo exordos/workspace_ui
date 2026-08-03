@@ -615,6 +615,42 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.name).toBe("UI");
   });
 
+  it("does not let an older same-owner bootstrap replace a newer response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const olderStreamsRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const olderBootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => olderStreamsRequest.promise,
+        getTopics: () => Promise.resolve([createTopicDto({ name: "general chat" })]),
+        getFolders: () => Promise.resolve([]),
+      }),
+    });
+
+    const newerBootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => Promise.resolve([createStreamDto()]),
+        getTopics: () => Promise.resolve([createTopicDto({ name: "UI" })]),
+        getFolders: () => Promise.resolve([]),
+      }),
+    });
+
+    await expect(newerBootstrap).resolves.toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+    });
+    olderStreamsRequest.resolve([createStreamDto()]);
+    await expect(olderBootstrap).resolves.toEqual({
+      status: "skipped",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+      reason: "superseded",
+    });
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.name).toBe("UI");
+  });
+
   it("hydrates cached users before the users network request finishes", async () => {
     const runtimeContext = createRuntimeContext();
     const usersRequest = createDeferred<BootstrapUserDto[]>();
