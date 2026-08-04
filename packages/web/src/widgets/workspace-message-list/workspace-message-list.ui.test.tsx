@@ -3037,7 +3037,9 @@ describe("WorkspaceMessageList", () => {
 
     const body = container.querySelector("[data-message-body='true']");
     const orderedList = body?.querySelector("ol");
-    const outroParagraph = orderedList?.nextElementSibling;
+    const preservedGap = orderedList?.nextElementSibling;
+    const outroParagraph = preservedGap?.nextElementSibling;
+    const time = container.querySelector("[data-message-time='true']");
 
     expect(body).toHaveClass("message-body");
     expect(body).toHaveClass("[&_ol]:list-decimal");
@@ -3047,8 +3049,11 @@ describe("WorkspaceMessageList", () => {
     expect(body).toHaveClass("[&_ol+p]:mt-1");
     expect(orderedList).toBeTruthy();
     expect(body?.querySelector("ol li ul")).toBeTruthy();
+    expect(preservedGap).toHaveClass("workspace-message-gap", "workspace-message-gap--1");
     expect(outroParagraph?.tagName.toLowerCase()).toBe("p");
     expect(outroParagraph).toHaveTextContent("Outro paragraph");
+    expect(outroParagraph).toHaveAttribute("data-workspace-message-meta-anchor", "true");
+    expect(time).toHaveAttribute("data-message-meta-placement", "inline");
   });
 
   it("renders nested Workspace quote blocks without legacy message anchors", () => {
