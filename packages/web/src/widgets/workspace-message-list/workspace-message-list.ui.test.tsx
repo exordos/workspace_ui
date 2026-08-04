@@ -954,7 +954,7 @@ describe("WorkspaceMessageList", () => {
         messages={messages}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
-        initialSnapshotReady={false}
+        initialPositionReady={false}
         unreadCount={0}
       />,
     );
@@ -966,13 +966,206 @@ describe("WorkspaceMessageList", () => {
         messages={messages}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
-        initialSnapshotReady
+        initialPositionReady
         firstUnreadUuid="late-unread-anchor"
         unreadCount={1}
       />,
     );
 
     expect(container.querySelector("[data-unread-divider='true']")).toBeInTheDocument();
+  });
+
+  it("waits for initial position readiness and scrolls to the corrected unread message once", () => {
+    const oldUnread = createWorkspaceMessage({
+      uuid: "old-unread",
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const correctedUnread = createWorkspaceMessage({
+      uuid: "corrected-unread",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[oldUnread, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="old-unread"
+        unreadCount={2}
+      />,
+    );
+    const oldNode = container.querySelector<HTMLElement>("[data-message-uuid='old-unread']");
+    const correctedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='corrected-unread']",
+    );
+    if (oldNode == null || correctedNode == null) throw new Error("Expected message nodes");
+    const oldScrollIntoView = vi.fn();
+    const correctedScrollIntoView = vi.fn();
+    oldNode.scrollIntoView = oldScrollIntoView;
+    correctedNode.scrollIntoView = correctedScrollIntoView;
+
+    expect(oldScrollIntoView).not.toHaveBeenCalled();
+    expect(correctedScrollIntoView).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...oldUnread, read: true }, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="corrected-unread"
+        unreadCount={1}
+      />,
+    );
+
+    expect(oldScrollIntoView).not.toHaveBeenCalled();
+    expect(correctedScrollIntoView).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...oldUnread, read: true }, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="corrected-unread"
+        unreadCount={1}
+      />,
+    );
+
+    expect(correctedScrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("gives an explicit focused message priority over the unread boundary", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "priority-unread" });
+    const focusedMessage = createWorkspaceMessage({ uuid: "priority-focused" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage, focusedMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="focused-position"
+        firstUnreadUuid="priority-unread"
+        unreadCount={2}
+        focusedMessageUuid="priority-focused"
+      />,
+    );
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='priority-unread']",
+    );
+    const focusedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='priority-focused']",
+    );
+    if (unreadNode == null || focusedNode == null) throw new Error("Expected message nodes");
+    const unreadScrollIntoView = vi.fn();
+    const focusedScrollIntoView = vi.fn();
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+    focusedNode.scrollIntoView = focusedScrollIntoView;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, focusedMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="focused-position"
+        firstUnreadUuid="priority-unread"
+        unreadCount={2}
+        focusedMessageUuid="priority-focused"
+      />,
+    );
+
+    expect(focusedScrollIntoView).toHaveBeenCalledOnce();
+    expect(unreadScrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("opens at the bottom after readiness when there are no unread messages", () => {
+    const message = createWorkspaceMessage({ uuid: "read-tail", read: true });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="bottom-position"
+        unreadCount={0}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 480 });
+    feed.scrollTop = 17;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="bottom-position"
+        unreadCount={0}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(480);
+  });
+
+  it("scrolls to the bottom after send without repeating the initial unread position", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "send-after-unread" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={0}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='send-after-unread']",
+    );
+    if (feed == null || unreadNode == null) throw new Error("Expected message list nodes");
+    const unreadScrollIntoView = vi.fn();
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={0}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+      />,
+    );
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 640 });
+    feed.scrollTop = 120;
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={1}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(640);
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
   });
 
   it("resets the unread divider anchor when entering another conversation", () => {

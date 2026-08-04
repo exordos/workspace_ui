@@ -608,6 +608,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       ? selectWorkspaceMessageStatusForConversation(state, "")
       : selectWorkspaceMessageStatusForConversation(state, conversationId),
   );
+  const messageWindowState = useWorkspaceMessageStore((state) =>
+    conversationId == null
+      ? null
+      : selectWorkspaceMessageWindowStateForConversation(state, conversationId),
+  );
+  const realtimeReadyRuntimeGeneration = useMessengerStore(
+    (state) => state.realtimeReadyRuntimeGeneration,
+  );
+  const realtimeReadyOwnerKey = useMessengerStore((state) => state.realtimeReadyOwnerKey);
   const beforePageMarker = useWorkspaceMessageStore((state) =>
     conversationId == null
       ? null
@@ -1019,6 +1028,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }).length,
     [currentUserUuid, routeMessages],
   );
+  const initialPositionReady =
+    runtimeContext != null &&
+    ownerKey != null &&
+    messageWindowState === "complete" &&
+    realtimeReadyOwnerKey === ownerKey &&
+    realtimeReadyRuntimeGeneration === runtimeContext.runtimeGeneration;
   const messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null =
     messagesStatus.error == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
 
@@ -2379,7 +2394,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     body = (
       <ChatPageWorkspaceMessageListSection
         messagesLoading={messagesStatus.loading}
-        hasInitialPayload={routeMessages.length > 0}
+        hasInitialPayload={routeMessages.length > 0 || messageWindowState === "complete"}
+        initialPositionReady={initialPositionReady}
         messages={routeMessages}
         outgoingMessages={outgoingMessages}
         resolveServerMessageRenderKey={resolveServerMessageRenderKey}

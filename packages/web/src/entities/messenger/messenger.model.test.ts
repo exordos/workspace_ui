@@ -126,6 +126,25 @@ describe("messenger store", () => {
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
   });
 
+  it("preserves realtime readiness published before bootstrap for the same owner", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().setRealtimeInitialSyncReady(OWNER_KEY, 7, true);
+
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+
+    expect(useMessengerStore.getState()).toMatchObject({
+      realtimeReadyOwnerKey: OWNER_KEY,
+      realtimeReadyRuntimeGeneration: 7,
+    });
+
+    useMessengerStore.getState().startBootstrap(OTHER_OWNER_KEY);
+
+    expect(useMessengerStore.getState()).toMatchObject({
+      realtimeReadyOwnerKey: null,
+      realtimeReadyRuntimeGeneration: null,
+    });
+  });
+
   it("removes a stream binding from id and stream indexes for the current owner only", () => {
     useMessengerStore
       .getState()

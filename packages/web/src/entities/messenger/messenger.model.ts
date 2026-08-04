@@ -64,6 +64,8 @@ export interface MessengerStoreState extends MessengerDomainData {
   error: string | null;
   lastLoadedAt: number | null;
   bootstrapRequestVersion: number;
+  realtimeReadyOwnerKey: string | null;
+  realtimeReadyRuntimeGeneration: number | null;
 
   startBootstrap: (ownerKey: string) => number;
   finishBootstrapSilently: (ownerKey: string) => void;
@@ -93,6 +95,11 @@ export interface MessengerStoreState extends MessengerDomainData {
     ownerKey: string,
     folderItem: MessengerDeletedFolderItem,
     options?: MessengerFolderItemRemovalOptions,
+  ) => void;
+  setRealtimeInitialSyncReady: (
+    ownerKey: string,
+    runtimeGeneration: number,
+    ready: boolean,
   ) => void;
   setRealtimeCursor: (ownerKey: string, epochVersion: number) => void;
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
@@ -180,6 +187,7 @@ function createInitialState(): Omit<
   | "removeFolder"
   | "upsertFolderItem"
   | "removeFolderItem"
+  | "setRealtimeInitialSyncReady"
   | "setRealtimeCursor"
   | "markRealtimeEventSkipped"
   | "setBootstrapError"
@@ -191,6 +199,8 @@ function createInitialState(): Omit<
     error: null,
     lastLoadedAt: null,
     bootstrapRequestVersion: 0,
+    realtimeReadyOwnerKey: null,
+    realtimeReadyRuntimeGeneration: null,
     ...createEmptyMessengerData(),
   };
 }
@@ -636,6 +646,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         error: null,
         lastLoadedAt: null,
         bootstrapRequestVersion,
+        realtimeReadyOwnerKey:
+          state.realtimeReadyOwnerKey === ownerKey ? state.realtimeReadyOwnerKey : null,
+        realtimeReadyRuntimeGeneration:
+          state.realtimeReadyOwnerKey === ownerKey ? state.realtimeReadyRuntimeGeneration : null,
       };
     });
     return bootstrapRequestVersion;
@@ -1100,6 +1114,33 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       }
 
       return didChange ? { foldersById: nextFoldersById } : state;
+    });
+  },
+
+  setRealtimeInitialSyncReady(ownerKey, runtimeGeneration, ready) {
+    logStoreAction("messenger", "setRealtimeInitialSyncReady", {
+      ownerKey,
+      runtimeGeneration,
+      ready,
+    });
+    set((state) => {
+      if (ready) {
+        if (
+          state.realtimeReadyOwnerKey === ownerKey &&
+          state.realtimeReadyRuntimeGeneration === runtimeGeneration
+        ) {
+          return state;
+        }
+        return {
+          realtimeReadyOwnerKey: ownerKey,
+          realtimeReadyRuntimeGeneration: runtimeGeneration,
+        };
+      }
+      if (state.realtimeReadyOwnerKey !== ownerKey) return state;
+      return {
+        realtimeReadyOwnerKey: null,
+        realtimeReadyRuntimeGeneration: null,
+      };
     });
   },
 

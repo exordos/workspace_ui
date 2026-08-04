@@ -247,7 +247,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   resolveServerMessageRenderKey,
   currentUserUuid,
   conversationId,
-  initialSnapshotReady = true,
+  initialPositionReady = true,
   scrollToBottomKey,
   scrollToBottomAfterSendNonce,
   firstUnreadUuid,
@@ -274,17 +274,17 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     ready: boolean;
     anchor: MessengerUuid | undefined;
   }>(() => ({
-    ready: initialSnapshotReady,
-    anchor: initialSnapshotReady ? firstUnreadUuid : undefined,
+    ready: initialPositionReady,
+    anchor: initialPositionReady ? firstUnreadUuid : undefined,
   }));
   const sessionFirstUnreadUuid = unreadDividerSession.ready
     ? unreadDividerSession.anchor
-    : firstUnreadUuid;
+    : undefined;
   const stableFirstUnreadUuid =
     unreadCount === 0 && firstUnreadUuid == null ? undefined : sessionFirstUnreadUuid;
 
   useEffect(() => {
-    if (!initialSnapshotReady) {
+    if (!initialPositionReady) {
       return;
     }
 
@@ -295,7 +295,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
       return { ready: true, anchor: firstUnreadUuid };
     });
-  }, [firstUnreadUuid, initialSnapshotReady]);
+  }, [firstUnreadUuid, initialPositionReady]);
 
   const usersById = useUsersStore((state) => state.usersById);
   const effectiveResolveAuthorLabel = useCallback(
@@ -397,8 +397,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     };
   }, [actions, handleOpenWorkspaceMedia]);
   const scrollRequestKey = useMemo(() => {
-    return `${conversationId}:${scrollToBottomKey ?? ""}:${scrollToBottomAfterSendNonce ?? 0}`;
-  }, [conversationId, scrollToBottomAfterSendNonce, scrollToBottomKey]);
+    return `${conversationId}:${scrollToBottomKey ?? ""}`;
+  }, [conversationId, scrollToBottomKey]);
   const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
   const isUnreadFromOther = useCallback(
     (message: WorkspaceMessageListItem) =>
@@ -416,9 +416,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     messages: renderedMessages,
     getMessageKey,
     isUnreadFromOther,
+    initialPositionReady,
     scrollToBottomKey: scrollRequestKey,
     scrollToBottomAfterSendNonce,
-    firstUnreadKey: stableFirstUnreadUuid,
+    firstUnreadKey: firstUnreadUuid,
     unreadCount,
     focusedMessageKey: focusedMessageUuid,
     isLoadingOlder,

@@ -105,6 +105,16 @@ export interface MessengerMessagesStoreApi {
   >;
 }
 
+function setInitialMessageWindowState(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  isInitialPage: boolean,
+  windowState: "staged" | "complete",
+): void {
+  if (!isInitialPage) return;
+  store.getState().setConversationMessageWindowState(conversationId, windowState);
+}
+
 export type MessengerConversationMessagesResult =
   | {
       status: "applied";
@@ -681,9 +691,11 @@ export async function loadMessengerConversationMessages({
   }
 
   const requestToken = Symbol("conversation-messages-request");
+  const isInitialPage = pageMarker == null;
   claimMessageLoadingRequest(store, conversationId, requestToken);
   store.getState().setMessagesLoading(conversationId, true);
   store.getState().setMessagesError(conversationId, null);
+  setInitialMessageWindowState(store, conversationId, isInitialPage, "staged");
   const isRequestStale = (): boolean =>
     isMessageLoadingRequestStale({
       conversationId,
@@ -788,6 +800,7 @@ export async function loadMessengerConversationMessages({
         },
       ),
     );
+    setInitialMessageWindowState(store, conversationId, isInitialPage, "complete");
     finishMessageLoadingRequest(store, conversationId, requestToken, null);
     return {
       status: "applied",
@@ -803,6 +816,7 @@ export async function loadMessengerConversationMessages({
     }
 
     const message = normalizeMessagesError(error);
+    setInitialMessageWindowState(store, conversationId, isInitialPage, "complete");
     finishMessageLoadingRequest(store, conversationId, requestToken, message);
     return {
       status: "failed",

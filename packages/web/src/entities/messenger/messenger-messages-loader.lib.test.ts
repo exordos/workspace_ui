@@ -203,6 +203,11 @@ describe("messenger conversation messages loader", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.read).toBe(false);
+    expect(
+      useWorkspaceMessageStore.getState().messageWindowStateByConversationId[
+        `topic:${STREAM_A}:${TOPIC_A}`
+      ],
+    ).toBe("complete");
   });
 
   it("hydrates a boundary before a cold direct message window", async () => {
@@ -784,6 +789,9 @@ describe("messenger conversation messages loader", () => {
       });
 
       await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+      expect(
+        useWorkspaceMessageStore.getState().messageWindowStateByConversationId[conversationId],
+      ).toBe("staged");
       windowController.abort();
       if (olderOutcome === "resolve") {
         windowRequest.resolve(createMessageWindow({ anchor, before: [], after: [] }));
@@ -813,6 +821,9 @@ describe("messenger conversation messages loader", () => {
           conversationId,
         ).loading,
       ).toBe(false);
+      expect(
+        useWorkspaceMessageStore.getState().messageWindowStateByConversationId[conversationId],
+      ).toBe("complete");
     },
   );
 

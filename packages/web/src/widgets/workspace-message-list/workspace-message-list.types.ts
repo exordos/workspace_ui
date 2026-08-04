@@ -92,7 +92,7 @@ export interface WorkspaceMessageListProps {
   resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
-  initialSnapshotReady?: boolean;
+  initialPositionReady?: boolean;
   scrollToBottomKey?: string;
   scrollToBottomAfterSendNonce?: number;
   firstUnreadUuid?: MessengerUuid;

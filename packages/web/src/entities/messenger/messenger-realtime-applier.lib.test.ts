@@ -388,6 +388,36 @@ describe("messenger realtime active applier", () => {
     );
   });
 
+  it("publishes initial sync readiness only after active catch-up finishes", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    const transportState = (mode: "catching_up" | "connecting" | "failed") => ({
+      owner: context.owner,
+      ownerKey: context.ownerKey,
+      surface: "active" as const,
+      mode,
+      lastEpochVersion: null,
+      reconnectAttempt: 0,
+    });
+
+    applier.onTransportStateChange(transportState("catching_up"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
+
+    applier.onTransportStateChange(transportState("connecting"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBe(
+      context.owner.runtimeGeneration,
+    );
+
+    applier.onTransportStateChange(transportState("catching_up"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
+
+    applier.onTransportStateChange(transportState("failed"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBe(
+      context.owner.runtimeGeneration,
+    );
+  });
+
   it("applies message created, updated, and deleted events", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;

@@ -19,6 +19,7 @@ export type WorkspaceChatMessagesLoadErrorKind = "initial" | "refresh";
 export interface ChatPageWorkspaceMessageListSectionProps {
   messagesLoading: boolean;
   hasInitialPayload: boolean;
+  initialPositionReady: boolean;
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
   resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;

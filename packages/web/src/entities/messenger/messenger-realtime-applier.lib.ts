@@ -6,6 +6,7 @@ import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-fil
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOwner,
   WorkspaceRealtimeSkipReason,
   WorkspaceRealtimeSkippedEvent,
@@ -140,7 +141,7 @@ export interface MessengerRealtimeBackgroundCacheWriter {
 const log = createLogger("realtime:workspace-messenger");
 
 function isActiveCurrentOwner(
-  context: WorkspaceRealtimeEventContext,
+  context: WorkspaceRealtimeRuntimeContext,
   options: MessengerRealtimeActiveApplierOptions,
 ): boolean {
   if (context.surface !== "active") return false;
@@ -647,8 +648,27 @@ export function createMessengerRealtimeActiveApplier(
         .markRealtimeEventSkipped(context.ownerKey, skippedEpoch(event), reason);
     },
 
-    onTransportStateChange() {
-      // The active apply path does not store diagnostics in messengerStore yet.
+    onTransportStateChange(state, context) {
+      if (!isActiveCurrentOwner(context, options)) return;
+
+      if (
+        state.mode === "starting" ||
+        state.mode === "catching_up" ||
+        state.mode === "auth_refreshing"
+      ) {
+        useMessengerStore
+          .getState()
+          .setRealtimeInitialSyncReady(context.ownerKey, context.owner.runtimeGeneration, false);
+        return;
+      }
+
+      if (state.mode === "connecting" || state.mode === "connected" || state.mode === "failed") {
+        // "connecting" starts only after catch-up has applied its full event queue.
+        // A failed catch-up is fail-open so message loading does not leave scrolling blocked forever.
+        useMessengerStore
+          .getState()
+          .setRealtimeInitialSyncReady(context.ownerKey, context.owner.runtimeGeneration, true);
+      }
     },
   };
 }

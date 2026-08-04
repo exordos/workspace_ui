@@ -74,6 +74,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       <ChatPageWorkspaceMessageListSection
         messagesLoading={false}
         hasInitialPayload
+        initialPositionReady
         messages={[message]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
@@ -103,6 +104,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(captured.workspaceMessageListProps?.messages[0]).not.toHaveProperty("id");
     expect(captured.workspaceMessageListProps?.messages[0]).not.toHaveProperty("content");
     expect(captured.workspaceMessageListProps?.firstUnreadUuid).toBe("workspace-message-uuid");
+    expect(captured.workspaceMessageListProps?.initialPositionReady).toBe(true);
     expect(captured.workspaceMessageListProps?.currentUserUuid).toBe("current-user-uuid");
   });
 
@@ -119,6 +121,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       <ChatPageWorkspaceMessageListSection
         messagesLoading={false}
         hasInitialPayload
+        initialPositionReady
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-props-message-uuid",
@@ -190,6 +193,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       <ChatPageWorkspaceMessageListSection
         messagesLoading={false}
         hasInitialPayload
+        initialPositionReady
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-menu-action-message",
@@ -250,6 +254,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       <ChatPageWorkspaceMessageListSection
         messagesLoading={false}
         hasInitialPayload
+        initialPositionReady
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-background-loading-message",

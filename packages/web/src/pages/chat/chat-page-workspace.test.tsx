@@ -961,6 +961,35 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("waits for both the message window and realtime catch-up before enabling initial position", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    expect(captured.messageListProps?.initialPositionReady).toBe(false);
+
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    act(() => {
+      useWorkspaceMessageStore
+        .getState()
+        .setConversationMessageWindowState(conversationId, "complete");
+    });
+    expect(captured.messageListProps?.initialPositionReady).toBe(false);
+
+    const session = createSession();
+    act(() => {
+      useMessengerStore
+        .getState()
+        .setRealtimeInitialSyncReady(
+          workspaceRuntimeOwnerKey(session),
+          session.runtimeGeneration,
+          true,
+        );
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.initialPositionReady).toBe(true));
+  });
+
   it("retries a failed direct message context load after staging its anchor", async () => {
     useWorkspaceMessageStore.getState().clear();
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
