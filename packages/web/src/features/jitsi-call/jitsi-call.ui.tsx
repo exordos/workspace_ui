@@ -190,7 +190,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
                 >
                   <Icon
                     name={isNativeFullscreen ? "fullscreen_exit" : "fullscreen"}
-                    size={18}
+                    size={28}
                     className="text-current"
                   />
                 </button>

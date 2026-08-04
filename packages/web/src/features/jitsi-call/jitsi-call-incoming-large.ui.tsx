@@ -4,6 +4,20 @@ import { t } from "~/i18n/i18n";
 import IncomingCallVideoIcon from "~/shared/assets/icons/call_incoming_video_toggle.svg?react";
 import { Icon } from "~/shared/ui/icon";
 
+/**
+ * Figma `button group` 6176:36282 — Material 40×40 icon frames.
+ * Shared close/phone SVGs are viewBox-cropped, so glyph sizes (not outer
+ * slot) must match the vectors inside those frames.
+ */
+export const INCOMING_CALL_ICON_SLOT_PX = 40;
+/** Figma close vector ≈ 20.31 inside the 40 box. */
+export const INCOMING_CALL_CLOSE_GLYPH_PX = 20;
+/** Figma call vector ≈ 26.67 inside the 40 box. */
+export const INCOMING_CALL_PHONE_GLYPH_PX = 27;
+
+/** Fallback phone in the empty avatar. */
+export const INCOMING_CALL_AVATAR_PHONE_SIZE = 48;
+
 export interface IncomingCallLargeProps {
   inviteTitle: string;
   inviteAvatarUrn?: string;
@@ -49,7 +63,11 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
                   {inviteAvatarLetter}
                 </span>
               ) : (
-                <Icon name="phone" size={68} className="text-current" />
+                <Icon
+                  name="phone"
+                  size={INCOMING_CALL_AVATAR_PHONE_SIZE}
+                  className="text-current"
+                />
               )}
             </span>
           )}
@@ -59,6 +77,7 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
           </div>
         </div>
 
+        {/* Figma button group: 514×52, gap 8, buttons pad 6/16, icon slot 40, gap 6 */}
         <div className="w-full max-w-[514px]">
           <div className="flex w-full items-center gap-2">
             <button
@@ -67,14 +86,18 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
               aria-checked={videoEnabled}
               onClick={onToggleVideo}
               data-testid="incoming-call-video-toggle"
-              className={`flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg px-4 text-base font-medium transition-colors sm:w-[169px] sm:flex-none ${
+              className={`flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg px-4 py-1.5 text-base font-normal transition-colors sm:w-[169px] sm:flex-none ${
                 videoEnabled
                   ? "hover:bg-call-green/85 bg-call-green text-black"
                   : "hover:bg-bg-elevated/80 border border-border-subtle bg-bg text-text-muted hover:text-text-primary"
               }`}
             >
               <span className="inline-flex h-10 min-w-0 items-center gap-1.5">
-                <IncomingCallVideoIcon className="h-10 w-10 shrink-0" aria-hidden="true" />
+                <IncomingCallVideoIcon
+                  className="h-10 w-10 shrink-0"
+                  aria-hidden="true"
+                  data-testid="incoming-call-video-icon"
+                />
                 <span className="truncate">{t("call.withVideo")}</span>
               </span>
             </button>
@@ -83,10 +106,15 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
               type="button"
               onClick={onDecline}
               data-testid="incoming-call-decline"
-              className="hover:bg-call-red/85 flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg bg-call-red px-4 text-base font-medium text-white transition-colors sm:w-[160px] sm:flex-none"
+              className="hover:bg-call-red/85 flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg bg-call-red px-4 py-1.5 text-base font-normal text-white transition-colors sm:w-[160px] sm:flex-none"
             >
               <span className="inline-flex h-10 min-w-0 items-center gap-1.5">
-                <Icon name="close" size={40} className="text-current" />
+                <span
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center"
+                  data-testid="incoming-call-decline-icon-slot"
+                >
+                  <Icon name="close" size={INCOMING_CALL_CLOSE_GLYPH_PX} className="text-current" />
+                </span>
                 <span className="truncate">{t("call.cancel")}</span>
               </span>
             </button>
@@ -95,10 +123,15 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
               type="button"
               onClick={onAccept}
               data-testid="incoming-call-accept"
-              className="hover:bg-call-green/85 flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg bg-call-green px-4 text-base font-medium text-black transition-colors sm:w-[169px] sm:flex-none"
+              className="hover:bg-call-green/85 flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-lg bg-call-green px-4 py-1.5 text-base font-normal text-black transition-colors sm:w-[169px] sm:flex-none"
             >
               <span className="inline-flex h-10 min-w-0 items-center gap-1.5">
-                <Icon name="phone" size={40} className="text-current" />
+                <span
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center"
+                  data-testid="incoming-call-accept-icon-slot"
+                >
+                  <Icon name="phone" size={INCOMING_CALL_PHONE_GLYPH_PX} className="text-current" />
+                </span>
                 <span className="truncate">{t("call.accept")}</span>
               </span>
             </button>
