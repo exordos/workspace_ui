@@ -1011,12 +1011,20 @@ describe("useLayoutWorkspaceRealtime", () => {
     await waitFor(() => {
       expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
     });
+    useMessengerStore
+      .getState()
+      .setRealtimeInitialSyncReady(
+        workspaceRuntimeOwnerKey(session),
+        session.runtimeGeneration,
+        true,
+      );
     act(() => {
       rerender({ pathname: "/inbox" });
     });
 
     await waitFor(() => {
       expect(runtimes[0]?.stop).toHaveBeenCalledWith("layout_inactive");
+      expect(useMessengerStore.getState().realtimeReadyOwnerKey).toBeNull();
     });
   });
 

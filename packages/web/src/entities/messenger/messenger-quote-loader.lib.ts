@@ -17,6 +17,7 @@ import {
   readMessengerMessageBodyCache as defaultReadMessengerMessageBodyCache,
   writeMessengerMessageBodyCache as defaultWriteMessengerMessageBodyCache,
 } from "./messenger-cache.lib";
+import { applyMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
@@ -99,8 +100,12 @@ async function restoreQuoteFallbackFromCache({
   }
 
   const activeMessage = store.getState().messagesById[messageUuid] ?? null;
-  const message =
+  const restoredMessage =
     activeMessage ?? cachedMessages.find((candidate) => candidate.uuid === messageUuid) ?? null;
+  const message =
+    activeMessage == null && restoredMessage != null
+      ? applyMessengerReadBoundary(restoredMessage, ownerKey)
+      : restoredMessage;
   if (activeMessage == null && message != null) {
     store.getState().upsertMessage(message);
   }
@@ -200,7 +205,7 @@ async function loadMessengerQuoteMessageUncached({
       });
     }
 
-    const message = adaptMessengerMessage(dto);
+    const message = applyMessengerReadBoundary(adaptMessengerMessage(dto), ownerKey);
     store.getState().upsertMessage(message);
     if (isRequestStale(requestContext, getRuntimeContext, signal)) {
       return { status: "stale" };

@@ -401,6 +401,17 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
 
     if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
       // Outside the workspace messenger route, do not keep realtime alive: this is the current route host, not a global daemon.
+      const messengerState = useMessengerStore.getState();
+      if (
+        messengerState.realtimeReadyOwnerKey != null &&
+        messengerState.realtimeReadyRuntimeGeneration != null
+      ) {
+        messengerState.setRealtimeInitialSyncReady(
+          messengerState.realtimeReadyOwnerKey,
+          messengerState.realtimeReadyRuntimeGeneration,
+          false,
+        );
+      }
       void managerRef.current?.stopAll("layout_inactive").catch((error) => {
         reportUnexpectedError("workspace-realtime:stop", error);
       });

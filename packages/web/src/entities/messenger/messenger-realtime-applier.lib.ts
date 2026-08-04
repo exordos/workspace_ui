@@ -312,7 +312,7 @@ function applyMessageRealtimeEvent(
   context: WorkspaceRealtimeEventContext,
   activeCache: MessengerRealtimeActiveCacheWriter,
   options: MessengerRealtimeActiveApplierOptions,
-): void {
+): Promise<void> | void {
   const store = useMessengerStore.getState();
   const messageStore = useWorkspaceMessageStore.getState();
 
@@ -348,15 +348,13 @@ function applyMessageRealtimeEvent(
     messageStore.markMessagesReadUpTo(message.uuid, {
       conversationIds: conversationIdsForRealtimeMessage(message),
     });
-    if (activeCache.advanceReadBoundary != null) {
-      writeRealtimeCacheBestEffort(() => activeCache.advanceReadBoundary?.(boundary));
-    }
+    const boundaryWrite = activeCache.advanceReadBoundary?.(boundary);
     if (activeCache.patchCachedMessage != null) {
       writeRealtimeCacheBestEffort(() =>
         activeCache.patchCachedMessage?.(ownerKey, { ...message, read: true }),
       );
     }
-    return;
+    return boundaryWrite;
   }
   if (event.kind === "message.updated") {
     if (activeCache.patchCachedMessage != null) {
@@ -391,13 +389,9 @@ function applyMessagesRealtimeEvent(
   event: MessengerMessagesRealtimeEvent,
   ownerKey: string,
   activeCache: MessengerRealtimeActiveCacheWriter,
-): void {
+): Promise<void> | void {
   useWorkspaceMessageStore.getState().markMessagesRead(event.messageUuids);
-  if (activeCache.markCachedMessagesRead != null) {
-    writeRealtimeCacheBestEffort(() =>
-      activeCache.markCachedMessagesRead?.(ownerKey, event.messageUuids),
-    );
-  }
+  return activeCache.markCachedMessagesRead?.(ownerKey, event.messageUuids);
 }
 
 function applyStreamRealtimeEvent(
@@ -563,14 +557,12 @@ function applySupportedRealtimeEvent(
   context: WorkspaceRealtimeEventContext,
   activeCache: MessengerRealtimeActiveCacheWriter,
   options: MessengerRealtimeActiveApplierOptions,
-): void {
+): Promise<void> | void {
   switch (event.type) {
     case "message":
-      applyMessageRealtimeEvent(event, ownerKey, context, activeCache, options);
-      break;
+      return applyMessageRealtimeEvent(event, ownerKey, context, activeCache, options);
     case "messages":
-      applyMessagesRealtimeEvent(event, ownerKey, activeCache);
-      break;
+      return applyMessagesRealtimeEvent(event, ownerKey, activeCache);
     case "stream":
       applyStreamRealtimeEvent(event, ownerKey, activeCache);
       break;
@@ -626,11 +618,22 @@ export function createMessengerRealtimeActiveApplier(
         return;
       }
 
-      applySupportedRealtimeEvent(event, context.ownerKey, context, activeCache, options);
-      applyLightweightProjectionEvent(event, context);
-
-      store.setRealtimeCursor(context.ownerKey, event.epoch_version);
-      writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);
+      const finishApplication = (): void => {
+        applyLightweightProjectionEvent(event, context);
+        store.setRealtimeCursor(context.ownerKey, event.epoch_version);
+        writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);
+      };
+      const cacheWrite = applySupportedRealtimeEvent(
+        event,
+        context.ownerKey,
+        context,
+        activeCache,
+        options,
+      );
+      if (cacheWrite instanceof Promise) {
+        return cacheWrite.then(finishApplication);
+      }
+      finishApplication();
     },
 
     skipEvent(event, reason: WorkspaceRealtimeSkipReason, context) {
@@ -654,7 +657,11 @@ export function createMessengerRealtimeActiveApplier(
       if (
         state.mode === "starting" ||
         state.mode === "catching_up" ||
-        state.mode === "auth_refreshing"
+        state.mode === "connecting" ||
+        state.mode === "auth_refreshing" ||
+        state.mode === "disconnecting" ||
+        state.mode === "stopped" ||
+        (state.mode === "reconnecting" && state.reason !== "catch_up_failed")
       ) {
         useMessengerStore
           .getState()
@@ -662,9 +669,9 @@ export function createMessengerRealtimeActiveApplier(
         return;
       }
 
-      if (state.mode === "connecting" || state.mode === "connected" || state.mode === "failed") {
-        // "connecting" starts only after catch-up has applied its full event queue.
-        // A failed catch-up is fail-open so message loading does not leave scrolling blocked forever.
+      if (state.mode === "connected" || state.mode === "failed") {
+        // "connected" starts only after the socket has applied events up to its ready frame.
+        // A failed catch-up stays fail-open during its backoff, then blocks again when retry starts.
         useMessengerStore
           .getState()
           .setRealtimeInitialSyncReady(context.ownerKey, context.owner.runtimeGeneration, true);
@@ -689,15 +696,15 @@ export function createMessengerRealtimeBackgroundApplier(
       }
 
       if (event.type === "messages") {
-        if (backgroundCache.markCachedMessagesRead != null) {
-          writeRealtimeCacheBestEffort(() =>
-            backgroundCache.markCachedMessagesRead?.(context.ownerKey, event.messageUuids),
-          );
-        }
+        const cacheWrite = backgroundCache.markCachedMessagesRead?.(
+          context.ownerKey,
+          event.messageUuids,
+        );
         store.recordAppliedEvent(context.ownerKey, event, context);
-        return;
+        return cacheWrite;
       }
 
+      let requiredCacheWrite: Promise<void> | void = undefined;
       if (event.type === "message" && event.kind === "message.read") {
         const message = adaptMessengerMessage(event.message);
         const boundary = advanceMessengerReadBoundary({
@@ -708,9 +715,7 @@ export function createMessengerRealtimeBackgroundApplier(
           messageUuid: message.uuid,
           epochVersion: event.epoch_version,
         });
-        if (backgroundCache.advanceReadBoundary != null) {
-          writeRealtimeCacheBestEffort(() => backgroundCache.advanceReadBoundary?.(boundary));
-        }
+        requiredCacheWrite = backgroundCache.advanceReadBoundary?.(boundary);
       }
 
       // Background projection хранит только легкие снимки, compact preview и route-данные.
@@ -730,10 +735,11 @@ export function createMessengerRealtimeBackgroundApplier(
           }).catch(() => undefined);
         }
         store.recordAppliedEvent(context.ownerKey, event, context);
-        return;
+        return requiredCacheWrite;
       }
 
       store.recordSkippedEvent(context.ownerKey, event, "background_apply_deferred", context);
+      return requiredCacheWrite;
     },
 
     skipEvent(event, reason, context) {

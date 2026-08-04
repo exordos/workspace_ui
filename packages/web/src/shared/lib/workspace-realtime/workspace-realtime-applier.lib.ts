@@ -12,27 +12,21 @@ export function composeWorkspaceRealtimeAppliers(
   appliers: readonly WorkspaceRealtimeEventApplier[],
 ): WorkspaceRealtimeEventApplier {
   return {
-    applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext) {
-      for (const applier of appliers) {
-        applier.applyEvent(event, context);
-      }
+    async applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext) {
+      await Promise.all(appliers.map((applier) => applier.applyEvent(event, context)));
     },
-    skipEvent(
+    async skipEvent(
       event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
       reason: WorkspaceRealtimeSkipReason,
       context: WorkspaceRealtimeEventContext,
     ) {
-      for (const applier of appliers) {
-        applier.skipEvent(event, reason, context);
-      }
+      await Promise.all(appliers.map((applier) => applier.skipEvent(event, reason, context)));
     },
-    onTransportStateChange(
+    async onTransportStateChange(
       state: WorkspaceRealtimeTransportState,
       context: WorkspaceRealtimeRuntimeContext,
     ) {
-      for (const applier of appliers) {
-        applier.onTransportStateChange(state, context);
-      }
+      await Promise.all(appliers.map((applier) => applier.onTransportStateChange(state, context)));
     },
   };
 }

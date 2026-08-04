@@ -322,6 +322,48 @@ describe("messenger realtime active applier", () => {
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
+  it("does not publish the applied epoch before the read boundary is durable", async () => {
+    const context = createContext();
+    let releaseBoundaryWrite: (() => void) | undefined;
+    const boundaryWrite = new Promise<void>((resolve) => {
+      releaseBoundaryWrite = resolve;
+    });
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: {
+        advanceReadBoundary: vi.fn(() => boundaryWrite),
+        patchCachedMessage: vi.fn(),
+        writeRealtimeCursor: vi.fn(),
+      },
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 12,
+          type: "message",
+          kind: "message.read",
+          message: createMessageDto({
+            uuid: MESSAGE_B,
+            author_uuid: USER_B,
+            is_own: false,
+            read: true,
+            created_at: DATE_LATER,
+            updated_at: DATE_LATER,
+          }),
+        },
+        context,
+      ),
+    );
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+
+    releaseBoundaryWrite?.();
+    await application;
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(12);
+  });
+
   it("applies messages.read as an exact batch without advancing a boundary", () => {
     const context = createContext();
     const cache = { markCachedMessagesRead: vi.fn(), writeRealtimeCursor: vi.fn() };
@@ -388,31 +430,88 @@ describe("messenger realtime active applier", () => {
     );
   });
 
+  it("keeps background message.read application pending until the boundary is durable", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    let releaseBoundaryWrite: (() => void) | undefined;
+    const boundaryWrite = new Promise<void>((resolve) => {
+      releaseBoundaryWrite = resolve;
+    });
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache: { advanceReadBoundary: vi.fn(() => boundaryWrite) },
+    });
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 14,
+          type: "message",
+          kind: "message.read",
+          message: createMessageDto({
+            uuid: MESSAGE_B,
+            author_uuid: USER_B,
+            is_own: false,
+            read: true,
+            created_at: DATE_LATER,
+            updated_at: DATE_LATER,
+          }),
+        },
+        context,
+      ),
+    );
+    let settled = false;
+    void application.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseBoundaryWrite?.();
+    await application;
+
+    expect(settled).toBe(true);
+  });
+
   it("publishes initial sync readiness only after active catch-up finishes", () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
-    const transportState = (mode: "catching_up" | "connecting" | "failed") => ({
+    const transportState = (
+      mode: "catching_up" | "connecting" | "connected" | "reconnecting" | "failed",
+      reason?: string,
+    ) => ({
       owner: context.owner,
       ownerKey: context.ownerKey,
       surface: "active" as const,
       mode,
       lastEpochVersion: null,
       reconnectAttempt: 0,
+      ...(reason == null ? {} : { reason }),
     });
 
     applier.onTransportStateChange(transportState("catching_up"), context);
     expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
 
     applier.onTransportStateChange(transportState("connecting"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
+
+    applier.onTransportStateChange(transportState("connected"), context);
     expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBe(
       context.owner.runtimeGeneration,
     );
+
+    applier.onTransportStateChange(transportState("reconnecting", "socket_close"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
 
     applier.onTransportStateChange(transportState("catching_up"), context);
     expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBeNull();
 
     applier.onTransportStateChange(transportState("failed"), context);
+    expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBe(
+      context.owner.runtimeGeneration,
+    );
+
+    applier.onTransportStateChange(transportState("reconnecting", "catch_up_failed"), context);
     expect(useMessengerStore.getState().realtimeReadyRuntimeGeneration).toBe(
       context.owner.runtimeGeneration,
     );

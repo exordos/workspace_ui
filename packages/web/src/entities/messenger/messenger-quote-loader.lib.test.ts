@@ -12,6 +12,10 @@ import {
 } from "./messenger-cache.lib";
 import { conversationIdForStream } from "./messenger-ids.lib";
 import { loadMessengerQuoteMessage } from "./messenger-quote-loader.lib";
+import {
+  advanceMessengerReadBoundary,
+  clearMessengerReadBoundariesForOwner,
+} from "./messenger-read-boundary.lib";
 
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const OTHER_MESSAGE_UUID = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
@@ -108,6 +112,52 @@ describe("loadMessengerQuoteMessage", () => {
       expect.objectContaining({ projectId: context.projectId }),
       [MESSAGE_UUID],
     );
+  });
+
+  it("applies the read boundary to cached and refreshed quote messages", async () => {
+    const context = runtimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(context);
+    const unreadMessage = adaptMessengerMessage(messageDto({ read: false }));
+    const store = createStore();
+    advanceMessengerReadBoundary({
+      ownerKey,
+      streamUuid: unreadMessage.streamUuid,
+      topicUuid: unreadMessage.topicUuid,
+      createdAt: "2026-07-28T11:00:00Z",
+      messageUuid: OTHER_MESSAGE_UUID,
+    });
+
+    try {
+      const result = await loadMessengerQuoteMessage({
+        runtimeContext: context,
+        getRuntimeContext: () => context,
+        messageUuid: MESSAGE_UUID,
+        cache: {
+          readMessageBodies: () => Promise.resolve([unreadMessage]),
+          writeMessageBodies: vi.fn(),
+          deleteMessage: vi.fn(),
+        },
+        client: { getMessagesByUuids: () => Promise.resolve([messageDto({ read: false })]) },
+        store: store.store,
+      });
+
+      expect(store.upsertMessage).toHaveBeenCalledTimes(2);
+      expect(store.upsertMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ read: true }),
+      );
+      expect(store.upsertMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ read: true }),
+      );
+      expect(result).toEqual({
+        status: "resolved",
+        message: expect.objectContaining({ read: true }),
+        source: "server",
+      });
+    } finally {
+      clearMessengerReadBoundariesForOwner(ownerKey);
+    }
   });
 
   it("does not write cache results after the runtime owner changes", async () => {
