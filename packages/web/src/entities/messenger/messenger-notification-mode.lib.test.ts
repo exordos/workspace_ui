@@ -34,11 +34,4 @@ describe("Workspace notification projections", () => {
       }),
     ).toBeNull();
   });
-
-  it("treats legacy raw unread as active during a rolling backend deployment", () => {
-    expect(resolveWorkspaceDisplayedUnread({ unreadCount: 4 })).toEqual({
-      count: 4,
-      passive: false,
-    });
-  });
 });

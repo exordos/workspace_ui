@@ -47,15 +47,7 @@ export function resolveWorkspacePassiveUnreadCount(
 
 export function resolveWorkspaceDisplayedUnread(
   counters: WorkspaceUnreadCounterProjection,
-  legacyPassive = false,
 ): { count: number; passive: boolean } | null {
-  if (
-    legacyPassive &&
-    counters.activeUnreadCount === undefined &&
-    counters.passiveUnreadCount === undefined
-  ) {
-    return counters.unreadCount > 0 ? { count: counters.unreadCount, passive: true } : null;
-  }
   const activeUnreadCount = resolveWorkspaceActiveUnreadCount(counters);
   if (activeUnreadCount > 0) return { count: activeUnreadCount, passive: false };
 

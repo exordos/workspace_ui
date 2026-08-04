@@ -47,8 +47,8 @@ export interface WorkspaceMessengerStreamDto {
   role: WorkspaceMessengerRole;
   notification_mode: WorkspaceMessengerStreamNotificationMode;
   unread_count: number;
-  active_unread_count?: number;
-  passive_unread_count?: number;
+  active_unread_count: number;
+  passive_unread_count: number;
   source_name: WorkspaceMessengerSourceName;
   source: WorkspaceMessengerSourceDto;
   invite_only: boolean;
@@ -82,8 +82,8 @@ export interface WorkspaceMessengerTopicDto {
   stream_uuid: WorkspaceMessengerUuid;
   user_uuid: WorkspaceMessengerUuid;
   unread_count: number;
-  active_unread_count?: number;
-  passive_unread_count?: number;
+  active_unread_count: number;
+  passive_unread_count: number;
   is_default: boolean;
   is_done: boolean;
   notification_mode: WorkspaceMessengerTopicNotificationMode;
@@ -230,8 +230,8 @@ export interface WorkspaceMessengerFolderItemDto {
   order_index?: number | null;
   pinned_at?: WorkspaceMessengerDateTime | null;
   unread_count: number;
-  active_unread_count?: number;
-  passive_unread_count?: number;
+  active_unread_count: number;
+  passive_unread_count: number;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -1050,9 +1050,8 @@ export function isWorkspaceMessengerStreamDto(
     isRole(value.role) &&
     isStreamNotificationMode(value.notification_mode) &&
     isNonNegativeInteger(value.unread_count) &&
-    (value.active_unread_count === undefined || isNonNegativeInteger(value.active_unread_count)) &&
-    (value.passive_unread_count === undefined ||
-      isNonNegativeInteger(value.passive_unread_count)) &&
+    isNonNegativeInteger(value.active_unread_count) &&
+    isNonNegativeInteger(value.passive_unread_count) &&
     isSourceName(value.source_name) &&
     isWorkspaceMessengerSourceDto(value.source) &&
     typeof value.invite_only === "boolean" &&
@@ -1095,9 +1094,8 @@ export function isWorkspaceMessengerTopicDto(value: unknown): value is Workspace
     isUuid(value.stream_uuid) &&
     isUuid(value.user_uuid) &&
     isNonNegativeInteger(value.unread_count) &&
-    (value.active_unread_count === undefined || isNonNegativeInteger(value.active_unread_count)) &&
-    (value.passive_unread_count === undefined ||
-      isNonNegativeInteger(value.passive_unread_count)) &&
+    isNonNegativeInteger(value.active_unread_count) &&
+    isNonNegativeInteger(value.passive_unread_count) &&
     typeof value.is_default === "boolean" &&
     typeof value.is_done === "boolean" &&
     isTopicNotificationMode(value.notification_mode) &&
@@ -1201,9 +1199,8 @@ export function isWorkspaceMessengerFolderItemDto(
       isNonNegativeInteger(value.order_index)) &&
     (value.pinned_at === undefined || isNullableDateTime(value.pinned_at)) &&
     isNonNegativeInteger(value.unread_count) &&
-    (value.active_unread_count === undefined || isNonNegativeInteger(value.active_unread_count)) &&
-    (value.passive_unread_count === undefined ||
-      isNonNegativeInteger(value.passive_unread_count)) &&
+    isNonNegativeInteger(value.active_unread_count) &&
+    isNonNegativeInteger(value.passive_unread_count) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );

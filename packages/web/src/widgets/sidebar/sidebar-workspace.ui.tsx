@@ -152,7 +152,7 @@ function WorkspaceSidebarTopicRow({
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
   const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
-  const displayedUnread = resolveWorkspaceDisplayedUnread(topic, isMuted);
+  const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
   const title = formatSidebarTopicTitle(topic.title);
 
   return (
@@ -297,7 +297,7 @@ function WorkspaceSidebarStreamRow({
     stream.notificationMode,
     stream.topics.map((topic) => topic.notificationMode),
   );
-  const displayedUnread = resolveWorkspaceDisplayedUnread(stream, isMuted);
+  const displayedUnread = resolveWorkspaceDisplayedUnread(stream);
 
   // Always wrap in the card shell so collapsed rows keep the same `card-bg` base.
   return (

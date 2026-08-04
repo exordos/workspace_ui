@@ -44,6 +44,8 @@ const streamDto = {
   role: "owner",
   notification_mode: "all_messages",
   unread_count: 3,
+  active_unread_count: 3,
+  passive_unread_count: 0,
   source_name: "native",
   source: { kind: "native" },
   invite_only: false,
@@ -74,6 +76,8 @@ const topicDto = {
   stream_uuid: STREAM_UUID,
   user_uuid: USER_UUID,
   unread_count: 2,
+  active_unread_count: 2,
+  passive_unread_count: 0,
   is_default: false,
   is_done: false,
   notification_mode: "follow",
@@ -151,6 +155,8 @@ const folderItemDto = {
   order_index: 10,
   pinned_at: null,
   unread_count: 3,
+  active_unread_count: 3,
+  passive_unread_count: 0,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -260,7 +266,7 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
-  it("validates optional active and passive unread counters", () => {
+  it("requires valid active and passive unread counters", () => {
     expect(
       isWorkspaceMessengerStreamDto({
         ...streamDto,
@@ -276,6 +282,10 @@ describe("Workspace messenger DTO guards", () => {
       }),
     ).toBe(true);
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, active_unread_count: -1 })).toBe(false);
+    const { active_unread_count: _activeStreamUnread, ...streamWithoutActiveUnread } = streamDto;
+    const { passive_unread_count: _passiveTopicUnread, ...topicWithoutPassiveUnread } = topicDto;
+    expect(isWorkspaceMessengerStreamDto(streamWithoutActiveUnread)).toBe(false);
+    expect(isWorkspaceMessengerTopicDto(topicWithoutPassiveUnread)).toBe(false);
     expect(
       isWorkspaceMessengerFolderDto({
         ...folderDto,
@@ -400,6 +410,8 @@ describe("Workspace messenger DTO guards", () => {
             pinned_at: null,
             chat_type: "stream",
             unread_count: 3,
+            active_unread_count: 3,
+            passive_unread_count: 0,
             created_at: "2000-01-01T00:00:00",
             updated_at: "2000-01-01T00:00:00",
           },
@@ -426,6 +438,8 @@ describe("Workspace messenger DTO guards", () => {
             pinned_at: null,
             chat_type: "stream",
             unread_count: 3,
+            active_unread_count: 3,
+            passive_unread_count: 0,
             created_at: "2000-01-01T00:00:02",
             updated_at: "2000-01-01T00:00:02",
           },
@@ -554,6 +568,8 @@ describe("Workspace messenger DTO guards", () => {
             stream_uuid: STREAM_UUID,
             chat_type: "stream",
             unread_count: 0,
+            active_unread_count: 0,
+            passive_unread_count: 0,
             created_at: DATE,
             updated_at: DATE,
           },

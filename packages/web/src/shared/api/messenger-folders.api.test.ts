@@ -67,6 +67,8 @@ const folderItemDto = {
   order_index: 10,
   pinned_at: null,
   unread_count: 3,
+  active_unread_count: 3,
+  passive_unread_count: 0,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -262,6 +264,8 @@ describe("messenger folders API", () => {
       stream_uuid: STREAM_UUID,
       chat_type: "stream",
       unread_count: 0,
+      active_unread_count: 0,
+      passive_unread_count: 0,
       created_at: DATE,
       updated_at: DATE,
     });
@@ -283,6 +287,8 @@ describe("messenger folders API", () => {
       stream_uuid: STREAM_UUID,
       chat_type: "stream",
       unread_count: 0,
+      active_unread_count: 0,
+      passive_unread_count: 0,
       order_index: undefined,
       pinned_at: undefined,
       created_at: DATE,

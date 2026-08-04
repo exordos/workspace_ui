@@ -2,7 +2,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  isWorkspaceTopicEffectivelyMuted,
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
   resolveWorkspaceDisplayedUnread,
@@ -683,10 +682,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             <ul className="space-y-1.5">
               {info.topics.map((topic) => {
                 const topicDisplay = resolveTopicDisplayInfo(topic.name);
-                const displayedUnread = resolveWorkspaceDisplayedUnread(
-                  topic,
-                  isWorkspaceTopicEffectivelyMuted(topic.notificationMode, info.notificationMode),
-                );
+                const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
                 return (
                   <li key={topic.id}>
                     <button
