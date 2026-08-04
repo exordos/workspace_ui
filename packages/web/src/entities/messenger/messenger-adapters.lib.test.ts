@@ -109,6 +109,8 @@ describe("messenger adapters", () => {
       audience: "channel",
       isPrivate: false,
       unreadCount: 3,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 0,
       notificationMode: "all_messages",
       sourceName: "native",
       source: { kind: "native" },
@@ -121,9 +123,30 @@ describe("messenger adapters", () => {
       streamUuid: STREAM_UUID,
       name: "Releases",
       unreadCount: 2,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 0,
       notificationMode: "follow",
       color: 0xf458d2,
     });
+  });
+
+  it("maps separate active and passive unread counters", () => {
+    expect(
+      adaptMessengerStream({
+        ...streamDto,
+        unread_count: 9,
+        active_unread_count: 2,
+        passive_unread_count: 7,
+      }),
+    ).toMatchObject({ unreadCount: 9, activeUnreadCount: 2, passiveUnreadCount: 7 });
+    expect(
+      adaptMessengerTopic({
+        ...topicDto,
+        unread_count: 5,
+        active_unread_count: 1,
+        passive_unread_count: 4,
+      }),
+    ).toMatchObject({ unreadCount: 5, activeUnreadCount: 1, passiveUnreadCount: 4 });
   });
 
   it("normalizes missing direct user id on channel streams", () => {
@@ -162,6 +185,8 @@ describe("messenger adapters", () => {
       audience: "private",
       isPrivate: true,
       unreadCount: 3,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 0,
       isArchived: false,
       directUserUuid: USER_UUID,
       lastMessageUuid: null,
@@ -175,6 +200,8 @@ describe("messenger adapters", () => {
       audience: "private",
       isPrivate: true,
       unreadCount: 2,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 0,
       isArchived: false,
       directUserUuid: USER_UUID,
       lastMessageUuid: null,
@@ -332,6 +359,8 @@ describe("messenger adapters", () => {
           orderIndex: 10,
           pinnedAt: null,
           unreadCount: 3,
+          activeUnreadCount: 3,
+          passiveUnreadCount: 0,
           createdAt: DATE,
           updatedAt: DATE,
         },

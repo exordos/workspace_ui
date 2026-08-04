@@ -69,6 +69,8 @@ export interface MessengerStream {
   name: string;
   description: string;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   sourceName: WorkspaceMessengerSourceName;
   source: WorkspaceMessengerSourceDto;
   audience: MessengerAudience;
@@ -103,6 +105,8 @@ export interface MessengerTopic {
   userUuid: MessengerUuid;
   name: string;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   isDefault: boolean;
   isDone: boolean;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
@@ -120,6 +124,8 @@ export interface MessengerConversation {
   audience: MessengerAudience;
   isPrivate: boolean;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   isArchived?: boolean;
   directUserUuid?: MessengerUuid | null;
   lastMessageUuid?: MessengerUuid | null;
@@ -167,6 +173,8 @@ export interface MessengerFolderItem {
   orderIndex: number | null;
   pinnedAt: string | null;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -234,6 +242,8 @@ export interface MessengerSidebarTopicItem {
   topicUuid: MessengerUuid;
   title: string;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   /** Best-effort flag computed from unread messages currently known to the client. */
   hasUnreadPersonalMention?: boolean;
   isDefault: boolean;
@@ -257,6 +267,8 @@ export interface MessengerSidebarStreamItem {
   uiKind: WorkspaceConversationUiKind;
   notificationMode: WorkspaceMessengerStreamNotificationMode | null;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   /** Best-effort flag computed from unread messages currently known to the client. */
   hasUnreadPersonalMention?: boolean;
   pinnedAt: string | null;

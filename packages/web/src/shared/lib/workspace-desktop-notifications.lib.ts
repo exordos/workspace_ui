@@ -168,10 +168,13 @@ export function isWorkspaceDesktopNotificationMuted(
   if (message.isMuted === true) {
     return true;
   }
-  if (message.streamNotificationMode === "muted") {
+  if (message.topicNotificationMode === "mute") {
     return true;
   }
-  return message.topicNotificationMode === "mute";
+  if (message.topicNotificationMode === "unmute" || message.topicNotificationMode === "follow") {
+    return false;
+  }
+  return message.streamNotificationMode === "muted";
 }
 
 export function isWorkspaceDesktopNotificationEnabledForTrigger(
@@ -186,10 +189,7 @@ export function isWorkspaceDesktopNotificationEnabledForTrigger(
     case "followed_topic":
       return message.topicNotificationMode === "follow";
     case "stream":
-      return (
-        message.streamNotificationMode === "all_messages" ||
-        message.topicNotificationMode === "unmute"
-      );
+      return message.streamNotificationMode === "all_messages";
     default:
       return false;
   }

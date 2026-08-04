@@ -341,6 +341,41 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
   });
 
+  it("renders active topic unread first and passive topic unread in gray", () => {
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          notificationMode: "muted",
+          topics: [
+            {
+              id: "active-topic",
+              name: "Active topic",
+              unreadCount: 9,
+              activeUnreadCount: 2,
+              passiveUnreadCount: 7,
+              notificationMode: "follow",
+              route: "/active-topic",
+            },
+            {
+              id: "passive-topic",
+              name: "Muted topic",
+              unreadCount: 5,
+              activeUnreadCount: 0,
+              passiveUnreadCount: 5,
+              notificationMode: "default",
+              route: "/passive-topic",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("2")).toHaveClass("bg-accent", "text-on-accent");
+    expect(screen.getByText("5")).toHaveClass("bg-notice-disable", "text-badge-text");
+    expect(screen.queryByText("7")).not.toBeInTheDocument();
+    expect(screen.queryByText("9")).not.toBeInTheDocument();
+  });
+
   it("renders own-profile actions for the signed-in user", () => {
     renderWithProviders(
       <RightPanelWorkspaceInfo

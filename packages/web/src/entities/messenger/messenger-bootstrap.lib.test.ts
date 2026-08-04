@@ -1408,6 +1408,7 @@ describe("messenger bootstrap store", () => {
     useMessengerStore.getState().upsertFolderItem(ownerKey, {
       ...folderItem!,
       unreadCount: 7,
+      activeUnreadCount: 7,
       updatedAt: "2026-06-22T10:30:00Z",
     });
 
@@ -1455,6 +1456,7 @@ describe("messenger bootstrap store", () => {
       ...folderB!.items[0]!,
       folderUuid: FOLDER_A,
       unreadCount: 6,
+      activeUnreadCount: 6,
       updatedAt: "2026-06-22T10:40:00Z",
     });
 

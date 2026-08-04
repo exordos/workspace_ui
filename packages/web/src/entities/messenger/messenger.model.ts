@@ -209,21 +209,37 @@ function removeId<TId extends string>(ids: TId[], id: TId): TId[] {
 
 function projectStreamUnreadIntoFolders(
   foldersById: Readonly<Record<MessengerUuid, MessengerFolder>>,
-  streamUuid: MessengerUuid,
-  unreadCount: number,
+  stream: Pick<
+    MessengerStream,
+    "uuid" | "unreadCount" | "activeUnreadCount" | "passiveUnreadCount"
+  >,
 ): Record<MessengerUuid, MessengerFolder> {
   let nextFoldersById: Record<MessengerUuid, MessengerFolder> | null = null;
+  const activeUnreadCount = stream.activeUnreadCount ?? stream.unreadCount;
+  const passiveUnreadCount = stream.passiveUnreadCount ?? 0;
 
   for (const [folderUuid, folder] of Object.entries(foldersById)) {
     let nextItems: MessengerFolderItem[] | null = null;
     let unreadDelta = 0;
 
     for (const [index, item] of folder.items.entries()) {
-      if (item.streamUuid !== streamUuid || item.unreadCount === unreadCount) continue;
+      if (item.streamUuid !== stream.uuid) continue;
+      if (
+        item.unreadCount === stream.unreadCount &&
+        (item.activeUnreadCount ?? item.unreadCount) === activeUnreadCount &&
+        (item.passiveUnreadCount ?? 0) === passiveUnreadCount
+      ) {
+        continue;
+      }
 
       nextItems ??= [...folder.items];
-      nextItems[index] = { ...item, unreadCount };
-      unreadDelta += unreadCount - item.unreadCount;
+      nextItems[index] = {
+        ...item,
+        unreadCount: stream.unreadCount,
+        activeUnreadCount,
+        passiveUnreadCount,
+      };
+      unreadDelta += activeUnreadCount - (item.activeUnreadCount ?? item.unreadCount);
     }
 
     if (nextItems == null) continue;
@@ -411,7 +427,7 @@ function rebuildFolderWithItems(
     unreadCount:
       options?.preserveUnreadCount === true
         ? folder.unreadCount
-        : items.reduce((total, item) => total + item.unreadCount, 0),
+        : items.reduce((total, item) => total + (item.activeUnreadCount ?? item.unreadCount), 0),
   };
 }
 
@@ -432,6 +448,8 @@ function conversationFromStream(stream: MessengerStream): MessengerConversation 
     audience: stream.audience,
     isPrivate: stream.isPrivate,
     unreadCount: stream.unreadCount,
+    activeUnreadCount: stream.activeUnreadCount,
+    passiveUnreadCount: stream.passiveUnreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
     lastMessageUuid: stream.lastMessageUuid,
@@ -452,6 +470,8 @@ function conversationFromTopic(
     audience: stream.audience,
     isPrivate: stream.isPrivate,
     unreadCount: topic.unreadCount,
+    activeUnreadCount: topic.activeUnreadCount,
+    passiveUnreadCount: topic.passiveUnreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
     lastMessageUuid: topic.lastMessageUuid,
@@ -736,11 +756,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           [stream.uuid]: stream,
         },
         streamIds: appendUniqueId(state.streamIds, stream.uuid),
-        foldersById: projectStreamUnreadIntoFolders(
-          state.foldersById,
-          stream.uuid,
-          stream.unreadCount,
-        ),
+        foldersById: projectStreamUnreadIntoFolders(state.foldersById, stream),
         ...conversationState,
       };
     });

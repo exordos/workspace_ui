@@ -161,15 +161,35 @@ function beginOptimisticCatalogRead(
 
   const unreadDelta =
     topicUuid == null ? previousStream.unreadCount : (previousTopics[0]?.unreadCount ?? 0);
+  const activeUnreadDelta =
+    topicUuid == null
+      ? (previousStream.activeUnreadCount ?? previousStream.unreadCount)
+      : (previousTopics[0]?.activeUnreadCount ?? previousTopics[0]?.unreadCount ?? 0);
+  const passiveUnreadDelta =
+    topicUuid == null
+      ? (previousStream.passiveUnreadCount ?? 0)
+      : (previousTopics[0]?.passiveUnreadCount ?? 0);
   const projectedTopics = previousTopics.map((topic) =>
-    topic.unreadCount === 0 ? topic : { ...topic, unreadCount: 0 },
+    topic.unreadCount === 0 &&
+    (topic.activeUnreadCount ?? 0) === 0 &&
+    (topic.passiveUnreadCount ?? 0) === 0
+      ? topic
+      : { ...topic, unreadCount: 0, activeUnreadCount: 0, passiveUnreadCount: 0 },
   );
   const projectedStream =
-    unreadDelta === 0
+    unreadDelta === 0 && activeUnreadDelta === 0 && passiveUnreadDelta === 0
       ? previousStream
       : {
           ...previousStream,
           unreadCount: Math.max(0, previousStream.unreadCount - unreadDelta),
+          activeUnreadCount: Math.max(
+            0,
+            (previousStream.activeUnreadCount ?? previousStream.unreadCount) - activeUnreadDelta,
+          ),
+          passiveUnreadCount: Math.max(
+            0,
+            (previousStream.passiveUnreadCount ?? 0) - passiveUnreadDelta,
+          ),
         };
 
   const previousFoldersById = store.foldersById;

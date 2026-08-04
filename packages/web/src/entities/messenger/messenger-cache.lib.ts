@@ -124,7 +124,10 @@ function withoutRemovedCachedFolderItems(
     : {
         ...folder,
         items,
-        unreadCount: items.reduce((total, item) => total + item.unreadCount, 0),
+        unreadCount: items.reduce(
+          (total, item) => total + (item.activeUnreadCount ?? item.unreadCount),
+          0,
+        ),
       };
 }
 
@@ -217,6 +220,8 @@ function conversationFromStream(stream: MessengerStream): MessengerConversation 
     audience: stream.audience,
     isPrivate: stream.isPrivate,
     unreadCount: stream.unreadCount,
+    activeUnreadCount: stream.activeUnreadCount,
+    passiveUnreadCount: stream.passiveUnreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
     lastMessageUuid: stream.lastMessageUuid,
@@ -243,6 +248,8 @@ function conversationFromTopic(
     audience: stream.audience,
     isPrivate: stream.isPrivate,
     unreadCount: topic.unreadCount,
+    activeUnreadCount: topic.activeUnreadCount,
+    passiveUnreadCount: topic.passiveUnreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
     lastMessageUuid: topic.lastMessageUuid,

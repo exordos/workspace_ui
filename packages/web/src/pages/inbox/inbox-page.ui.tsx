@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { resolveWorkspaceActiveUnreadCount } from "~/entities/messenger/messenger-notification-mode.lib";
 import {
   selectMessengerSidebarStreams,
   type MessengerSidebarStreamsState,
@@ -49,7 +50,10 @@ function formatWorkspaceTimestamp(value: string): string {
 }
 
 function hasUnread(stream: MessengerSidebarStreamItem): boolean {
-  return stream.unreadCount > 0 || stream.topics.some((topic) => topic.unreadCount > 0);
+  return (
+    resolveWorkspaceActiveUnreadCount(stream) > 0 ||
+    stream.topics.some((topic) => resolveWorkspaceActiveUnreadCount(topic) > 0)
+  );
 }
 
 function topicRow(
@@ -61,7 +65,7 @@ function topicRow(
   return {
     id: topic.id,
     title: `${streamTitle} · ${topicTitle}`,
-    unreadCount: topic.unreadCount,
+    unreadCount: resolveWorkspaceActiveUnreadCount(topic),
     route: topic.route,
     updatedAt: topic.updatedAt,
     uiKind: stream.uiKind,
@@ -72,7 +76,7 @@ function fallbackStreamRow(stream: MessengerSidebarStreamItem): InboxDisplayRow 
   return {
     id: stream.id,
     title: stream.uiKind === "directPrivate" ? stream.title : `#${stream.title}`,
-    unreadCount: stream.unreadCount,
+    unreadCount: resolveWorkspaceActiveUnreadCount(stream),
     route: stream.route,
     updatedAt: stream.updatedAt,
     uiKind: stream.uiKind,
@@ -81,10 +85,10 @@ function fallbackStreamRow(stream: MessengerSidebarStreamItem): InboxDisplayRow 
 
 function buildInboxStreamGroup(stream: MessengerSidebarStreamItem): InboxStreamGroup {
   const unreadTopicRows = stream.topics
-    .filter((topic) => topic.unreadCount > 0)
+    .filter((topic) => resolveWorkspaceActiveUnreadCount(topic) > 0)
     .map((topic) => topicRow(stream, topic));
   const rows =
-    unreadTopicRows.length > 0 || stream.unreadCount === 0
+    unreadTopicRows.length > 0 || resolveWorkspaceActiveUnreadCount(stream) === 0
       ? unreadTopicRows
       : [fallbackStreamRow(stream)];
   return { stream, rows };
@@ -139,7 +143,7 @@ const InboxStreamCard = React.memo<{
           <span className="truncate text-sm font-semibold text-text-primary">{title}</span>
         </div>
         <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium text-badge-text">
-          {stream.unreadCount}
+          {resolveWorkspaceActiveUnreadCount(stream)}
         </span>
       </div>
       <ul className="space-y-1.5">

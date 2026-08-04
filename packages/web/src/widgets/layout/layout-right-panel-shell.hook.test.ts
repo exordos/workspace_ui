@@ -172,6 +172,9 @@ describe("useLayoutRightPanelShell", () => {
         id: TOPIC_UUID,
         name: "Roadmap",
         unreadCount: 2,
+        activeUnreadCount: undefined,
+        passiveUnreadCount: undefined,
+        notificationMode: "default",
         route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       },
     ]);

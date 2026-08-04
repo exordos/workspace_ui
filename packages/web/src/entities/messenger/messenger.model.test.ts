@@ -330,6 +330,36 @@ describe("messenger store", () => {
     expect(state.foldersById[FOLDER_B]?.unreadCount).toBe(8);
   });
 
+  it("uses active unread for folder totals while preserving raw and passive item counts", () => {
+    useMessengerStore.getState().replaceFolderSnapshots(OWNER_KEY, [
+      createFolder({
+        items: [
+          createFolderItem({
+            unreadCount: 7,
+            activeUnreadCount: 2,
+            passiveUnreadCount: 5,
+          }),
+        ],
+        unreadCount: 2,
+      }),
+    ]);
+
+    useMessengerStore
+      .getState()
+      .upsertStream(
+        OWNER_KEY,
+        createStream({ unreadCount: 9, activeUnreadCount: 3, passiveUnreadCount: 6 }),
+      );
+
+    const folder = useMessengerStore.getState().foldersById[FOLDER_A];
+    expect(folder?.unreadCount).toBe(3);
+    expect(folder?.items[0]).toMatchObject({
+      unreadCount: 9,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 6,
+    });
+  });
+
   it("preserves unaffected folders and is idempotent for the same unread snapshot", () => {
     const unaffectedFolder = createFolder({
       uuid: FOLDER_C,

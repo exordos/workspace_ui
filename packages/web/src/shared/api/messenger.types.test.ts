@@ -260,6 +260,30 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("validates optional active and passive unread counters", () => {
+    expect(
+      isWorkspaceMessengerStreamDto({
+        ...streamDto,
+        active_unread_count: 1,
+        passive_unread_count: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerTopicDto({
+        ...topicDto,
+        active_unread_count: 1,
+        passive_unread_count: 1,
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, active_unread_count: -1 })).toBe(false);
+    expect(
+      isWorkspaceMessengerFolderDto({
+        ...folderDto,
+        folder_items: [{ ...folderDto.folder_items[0], passive_unread_count: "2" }],
+      }),
+    ).toBe(false);
+  });
+
   it("accepts external message provenance and legacy provider metadata", () => {
     const provider = {
       kind: "zulip",

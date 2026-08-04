@@ -473,6 +473,71 @@ describe("messenger sidebar selectors", () => {
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B, STREAM_C]);
   });
 
+  it("returns a muted stream with an explicitly active topic to the active group", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({
+            name: "Fully muted",
+            notificationMode: "muted",
+            updatedAt: DATE_B,
+          }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Muted with active topic",
+            notificationMode: "muted",
+            updatedAt: DATE_A,
+          }),
+        },
+        streamIds: [STREAM_A, STREAM_B],
+        topicsById: {
+          [TOPIC_A]: topic({ notificationMode: "default" }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            notificationMode: "unmute",
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+  });
+
+  it("projects raw, active and passive folder item counts into sidebar rows", () => {
+    const item = {
+      ...folder().items[0]!,
+      unreadCount: 9,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 7,
+    };
+    const rows = selectMessengerSidebarStreams(
+      state({
+        foldersById: {
+          [FOLDER_A]: folder({ items: [item] }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        usersById: createUsersById(),
+      },
+    );
+
+    expect(rows[0]).toMatchObject({
+      unreadCount: 9,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 7,
+    });
+  });
+
   it("keeps the current user's self chat out of general and folder projections", () => {
     const base = state();
     const commonOptions = {

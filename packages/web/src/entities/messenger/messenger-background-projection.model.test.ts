@@ -727,6 +727,53 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderItemId).toEqual({});
   });
 
+  it("projects active stream unread into folder totals while preserving passive unread", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 21,
+        type: "folder",
+        kind: "folder.updated",
+        folder: createFolderDto({
+          unread_count: 2,
+          folder_items: [
+            createFolderItemDto({
+              unread_count: 7,
+              active_unread_count: 2,
+              passive_unread_count: 5,
+            }),
+          ],
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 22,
+        type: "stream",
+        kind: "stream.updated",
+        stream: createStreamDto({
+          unread_count: 9,
+          active_unread_count: 3,
+          passive_unread_count: 6,
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.unreadByFolderItemId[FOLDER_ITEM_A]).toBe(3);
+    expect(projection?.unreadByFolderId[FOLDER_A]).toBe(3);
+    expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_A]).toMatchObject({
+      unreadCount: 9,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 6,
+    });
+  });
+
   it("projects a zero stream unread count into existing background folder state", () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();

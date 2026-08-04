@@ -3,7 +3,10 @@ import {
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
-import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
+import type {
+  WorkspaceMessengerStreamNotificationMode,
+  WorkspaceMessengerTopicNotificationMode,
+} from "~/shared/api/messenger.types";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import {
   type WorkspaceMessengerRouteMatch,
@@ -31,6 +34,9 @@ export interface WorkspaceRightPanelTopicView {
   id: string;
   name: string;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
+  notificationMode: WorkspaceMessengerTopicNotificationMode;
   route: string;
 }
 
@@ -334,6 +340,9 @@ export function selectWorkspaceRightPanelInfoView(
       id: candidate.uuid,
       name: candidate.name,
       unreadCount: candidate.unreadCount,
+      activeUnreadCount: candidate.activeUnreadCount,
+      passiveUnreadCount: candidate.passiveUnreadCount,
+      notificationMode: candidate.notificationMode,
       route: workspaceMessengerTopicRoute({
         orgId: route.orgId,
         projectId: route.projectId,

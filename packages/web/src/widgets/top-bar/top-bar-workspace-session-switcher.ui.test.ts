@@ -122,6 +122,20 @@ describe("getBackgroundProjectionUnreadCount", () => {
     ).toBe(4);
   });
 
+  it("uses the all folder for the organization badge without double-counting other folders", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          unreadByFolderId: {
+            "00000000-0000-0000-0000-000000000000": 4,
+            "00000000-0000-0000-0000-000000000002": 3,
+            "custom-folder": 2,
+          },
+        }),
+      ),
+    ).toBe(4);
+  });
+
   it("prefers an authoritative zero folder count over a stale candidate", () => {
     expect(
       getBackgroundProjectionUnreadCount(
