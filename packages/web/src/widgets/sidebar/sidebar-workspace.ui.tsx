@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { isWorkspaceTopicEffectivelyMuted } from "~/entities/messenger/messenger-notification-mode.lib";
 import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import type {
   MessengerSidebarStreamItem,
@@ -146,9 +147,7 @@ function WorkspaceSidebarTopicRow({
   barColor: string;
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
-  const isMuted =
-    topic.notificationMode === "mute" ||
-    (topic.notificationMode === "default" && streamNotificationMode === "muted");
+  const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
   const title = formatSidebarTopicTitle(topic.title);
 
   return (
@@ -310,7 +309,7 @@ function WorkspaceSidebarStreamRow({
             : undefined
         }
       >
-        <div className={`${rowClass} w-full ${rowSurfaceClass}`}>
+        <div className={`${rowClass} w-full ${rowSurfaceClass} ${isMuted ? "opacity-70" : ""}`}>
           <Link
             to={stream.route}
             className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"

@@ -253,6 +253,7 @@ export interface MessengerSidebarStreamItem {
   title: string;
   audience: MessengerAudience;
   isPrivate: boolean;
+  isArchived: boolean;
   uiKind: WorkspaceConversationUiKind;
   notificationMode: WorkspaceMessengerStreamNotificationMode | null;
   unreadCount: number;

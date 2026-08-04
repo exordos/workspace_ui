@@ -644,11 +644,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       projectId: runtimeContext.projectId,
       state: { topicIds, topicsById },
       streamUuid: selection.streamUuid,
+      streamNotificationMode: streamsById[selection.streamUuid]?.notificationMode ?? null,
       messagesById: allWorkspaceMessagesById,
       usersById,
       currentUserUuid: runtimeContext.userUuid,
     }).filter((topic) => topic.title.trim().length > 0);
-  }, [allWorkspaceMessagesById, runtimeContext, selection, topicIds, topicsById, usersById]);
+  }, [
+    allWorkspaceMessagesById,
+    runtimeContext,
+    selection,
+    streamsById,
+    topicIds,
+    topicsById,
+    usersById,
+  ]);
   const messageListPresentation = useMemo(() => {
     if (selection.status !== "conversation" || selection.kind !== "stream") {
       return undefined;

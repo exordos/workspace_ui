@@ -90,6 +90,7 @@ function createStream(
     title: "Engineering",
     audience: "channel",
     isPrivate: false,
+    isArchived: false,
     uiKind: "channel",
     notificationMode: "mentions_only",
     unreadCount: 3,
@@ -282,6 +283,13 @@ describe("WorkspaceSidebar context menu", () => {
 
     expect(screen.getByRole("link", { name: /release/i })).toHaveClass("opacity-70");
     expect(screen.getByText("#Release")).not.toHaveClass("line-through");
+  });
+
+  it("dims muted stream cards", () => {
+    renderWorkspaceSidebar([createStream({ notificationMode: "muted" })]);
+
+    const titleLink = screen.getByRole("link", { name: /engineering/i });
+    expect(titleLink.closest("div.w-full")).toHaveClass("opacity-70");
   });
 
   it("marks every stream message read from the context menu", async () => {

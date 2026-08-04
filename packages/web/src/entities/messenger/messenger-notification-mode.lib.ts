@@ -1,6 +1,16 @@
-import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
+import type {
+  WorkspaceMessengerStreamNotificationMode,
+  WorkspaceMessengerTopicNotificationMode,
+} from "~/shared/api/messenger.types";
 
 export type WorkspaceStreamNotificationLevel = "default" | "muted" | "subscribed";
+
+export function isWorkspaceTopicEffectivelyMuted(
+  topicMode: WorkspaceMessengerTopicNotificationMode,
+  streamMode: WorkspaceMessengerStreamNotificationMode | null,
+): boolean {
+  return topicMode === "mute" || (topicMode === "default" && streamMode === "muted");
+}
 
 export function mapWorkspaceStreamNotificationModeToLevel(
   mode: WorkspaceMessengerStreamNotificationMode,

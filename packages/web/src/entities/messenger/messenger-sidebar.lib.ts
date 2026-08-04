@@ -13,6 +13,7 @@ import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
+import { isWorkspaceTopicEffectivelyMuted } from "./messenger-notification-mode.lib";
 import { isWorkspaceSelfChat } from "./messenger-self-chat.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
@@ -108,6 +109,9 @@ function compareSidebarStreams(
   a: MessengerSidebarStreamItem,
   b: MessengerSidebarStreamItem,
 ): number {
+  const groupCompare = streamGroupRank(a) - streamGroupRank(b);
+  if (groupCompare !== 0) return groupCompare;
+
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
 
@@ -124,11 +128,27 @@ function compareSidebarStreams(
   return 0;
 }
 
-function compareSidebarTopics(a: MessengerSidebarTopicItem, b: MessengerSidebarTopicItem): number {
-  // Done topics stay visible but always sink below active ones.
-  if (a.isDone !== b.isDone) {
-    return a.isDone ? 1 : -1;
-  }
+function streamGroupRank(stream: MessengerSidebarStreamItem): number {
+  if (stream.isArchived) return 2;
+  return stream.notificationMode === "muted" ? 1 : 0;
+}
+
+function topicGroupRank(
+  topic: MessengerSidebarTopicItem,
+  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
+): number {
+  if (topic.isDone) return 2;
+  return isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode) ? 1 : 0;
+}
+
+function compareSidebarTopics(
+  a: MessengerSidebarTopicItem,
+  b: MessengerSidebarTopicItem,
+  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
+): number {
+  const groupCompare =
+    topicGroupRank(a, streamNotificationMode) - topicGroupRank(b, streamNotificationMode);
+  if (groupCompare !== 0) return groupCompare;
 
   return compareNullableStringsDesc(
     a.lastMessageCreatedAt ?? a.updatedAt,
@@ -294,6 +314,7 @@ function streamItemFromStream(input: {
         : input.stream.name,
     audience: input.stream.audience,
     isPrivate: input.stream.isPrivate,
+    isArchived: input.stream.isArchived,
     uiKind,
     notificationMode: input.stream.notificationMode,
     unreadCount: input.unreadCount ?? input.stream.unreadCount,
@@ -357,6 +378,7 @@ function streamItemFromConversation(input: {
         : input.conversation.title,
     audience: input.conversation.audience,
     isPrivate: input.conversation.isPrivate,
+    isArchived: input.conversation.isArchived ?? false,
     uiKind,
     notificationMode:
       input.conversation.notificationMode === "all_messages" ||
@@ -399,6 +421,7 @@ export function selectMessengerSidebarTopicsForStream(input: {
   projectId: string;
   state: Pick<MessengerSidebarStreamsState, "topicIds" | "topicsById">;
   streamUuid: MessengerUuid;
+  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
@@ -427,7 +450,7 @@ export function selectMessengerSidebarTopicsForStream(input: {
     );
 
   if (topics.length === 0) return EMPTY_SIDEBAR_TOPICS;
-  return topics.sort(compareSidebarTopics);
+  return topics.sort((a, b) => compareSidebarTopics(a, b, input.streamNotificationMode));
 }
 
 export function selectMessengerSidebarStreams(
@@ -484,6 +507,7 @@ export function selectMessengerSidebarStreams(
                 projectId: options.projectId,
                 state,
                 streamUuid: stream.uuid,
+                streamNotificationMode: stream.notificationMode,
                 messagesById,
                 usersById,
                 currentUserUuid,
@@ -531,13 +555,15 @@ export function selectMessengerSidebarStreams(
               projectId: options.projectId,
               state,
               streamUuid: stream.uuid,
+              streamNotificationMode: stream.notificationMode,
               messagesById,
               usersById,
               currentUserUuid,
               unreadMentionIndex,
             }),
           }),
-        );
+        )
+        .sort(compareSidebarStreams);
 
   const result = streams.length > 0 ? streams : EMPTY_SIDEBAR_STREAMS;
   sidebarStreamsCache = {

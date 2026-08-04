@@ -23,14 +23,19 @@ const ORGANIZATION_ID = "workspace.example.com";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
+const STREAM_C = "f1a37d93-38f8-4d47-9be8-22dc63d77a7d";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const TOPIC_C = "a5bde5af-8228-4b88-8e6d-e8dfe59e9b56";
+const TOPIC_D = "e92533bc-a4f0-46c6-94fd-0f1e03a0d019";
+const TOPIC_E = "70d881da-01f7-4204-9871-2f122d77ec53";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
+const FOLDER_ITEM_C = "e89320c1-e1e8-4382-bef9-df411693b068";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
+const MESSAGE_C = "9ac6a4e1-4688-4549-b273-d3946ec2b0a3";
 const AUTHOR_UUID = "author";
 const DATE_A = "2026-06-22T10:10:00Z";
 const DATE_B = "2026-06-22T11:10:00Z";
@@ -412,6 +417,62 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("keeps active streams above muted and archived streams", () => {
+    const archivedMessageAt = "2026-06-22T12:10:00Z";
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Muted",
+            notificationMode: "muted",
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [STREAM_C]: stream({
+            uuid: STREAM_C,
+            name: "Archived",
+            isArchived: true,
+            lastMessageUuid: MESSAGE_C,
+          }),
+        },
+        streamIds: [STREAM_C, STREAM_B, STREAM_A],
+        foldersById: {
+          [FOLDER_A]: folder({
+            items: [
+              folder().items[0]!,
+              { ...folder().items[1]!, pinnedAt: DATE_B },
+              {
+                ...folder().items[0]!,
+                uuid: FOLDER_ITEM_C,
+                streamUuid: STREAM_C,
+                conversationId: `stream:${STREAM_C}`,
+                pinnedAt: archivedMessageAt,
+              },
+            ],
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, streamUuid: STREAM_B, createdAt: DATE_B }),
+          [MESSAGE_C]: message({
+            uuid: MESSAGE_C,
+            streamUuid: STREAM_C,
+            createdAt: archivedMessageAt,
+          }),
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B, STREAM_C]);
+  });
+
   it("keeps the current user's self chat out of general and folder projections", () => {
     const base = state();
     const commonOptions = {
@@ -698,6 +759,60 @@ describe("messenger sidebar selectors", () => {
     );
 
     expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_C, TOPIC_B, TOPIC_A]);
+  });
+
+  it("groups topics by effective mute and restores inherited topics when the stream unmutes", () => {
+    const followAt = "2026-06-22T08:10:00Z";
+    const unmuteAt = "2026-06-22T09:10:00Z";
+    const muteAt = "2026-06-22T12:10:00Z";
+    const doneAt = "2026-06-22T13:10:00Z";
+    const topicsById = {
+      [TOPIC_A]: topic({ notificationMode: "default", updatedAt: DATE_B }),
+      [TOPIC_B]: topic({
+        uuid: TOPIC_B,
+        notificationMode: "unmute",
+        updatedAt: unmuteAt,
+      }),
+      [TOPIC_C]: topic({
+        uuid: TOPIC_C,
+        notificationMode: "follow",
+        updatedAt: followAt,
+      }),
+      [TOPIC_D]: topic({
+        uuid: TOPIC_D,
+        notificationMode: "mute",
+        updatedAt: muteAt,
+      }),
+      [TOPIC_E]: topic({
+        uuid: TOPIC_E,
+        notificationMode: "unmute",
+        isDone: true,
+        updatedAt: doneAt,
+      }),
+    };
+    const topicIds = [TOPIC_A, TOPIC_B, TOPIC_C, TOPIC_D, TOPIC_E];
+    const topicOrder = (streamNotificationMode: MessengerStream["notificationMode"]) => {
+      const rows = selectMessengerSidebarStreams(
+        state({
+          streamsById: {
+            [STREAM_A]: stream({ notificationMode: streamNotificationMode }),
+          },
+          streamIds: [STREAM_A],
+          topicsById,
+          topicIds,
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          projectId: PROJECT_ID,
+          usersById: createUsersById(),
+        },
+      );
+
+      return rows[0]?.topics.map((item) => item.topicUuid);
+    };
+
+    expect(topicOrder("muted")).toEqual([TOPIC_B, TOPIC_C, TOPIC_D, TOPIC_A, TOPIC_E]);
+    expect(topicOrder("mentions_only")).toEqual([TOPIC_A, TOPIC_B, TOPIC_C, TOPIC_D, TOPIC_E]);
   });
 
   it("puts a newly created topic without messages above older topics", () => {
