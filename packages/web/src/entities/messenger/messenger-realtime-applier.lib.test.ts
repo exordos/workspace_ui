@@ -18,6 +18,10 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
+  clearMessengerReadBoundariesForOwner,
+  readMessengerReadBoundary,
+} from "./messenger-read-boundary.lib";
+import {
   createMessengerRealtimeActiveApplier,
   createMessengerRealtimeBackgroundApplier,
 } from "./messenger-realtime-applier.lib";
@@ -249,9 +253,139 @@ function applyStreamAndTopicSnapshot(
 
 describe("messenger realtime active applier", () => {
   beforeEach(() => {
+    clearMessengerReadBoundariesForOwner(createContext().ownerKey);
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
+  });
+
+  it("advances a read boundary and marks the loaded topic prefix", () => {
+    const context = createContext();
+    const cache = {
+      advanceReadBoundary: vi.fn(),
+      patchCachedMessage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageCreated });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    for (const [uuid, createdAt] of [
+      [MESSAGE_A, DATE],
+      [MESSAGE_B, DATE_LATER],
+    ] as const) {
+      applier.applyEvent(
+        {
+          epoch_version: uuid === MESSAGE_A ? 10 : 11,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid,
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+            created_at: createdAt,
+            updated_at: createdAt,
+          }),
+        },
+        context,
+      );
+    }
+    onMessageCreated.mockClear();
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)).toMatchObject({
+      messageUuid: MESSAGE_B,
+      epochVersion: 12,
+    });
+    expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
+      expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 12 }),
+    );
+    expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
+  it("applies messages.read as an exact batch without advancing a boundary", () => {
+    const context = createContext();
+    const cache = { markCachedMessagesRead: vi.fn(), writeRealtimeCursor: vi.fn() };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: MESSAGE_A,
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+        }),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [MESSAGE_A],
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)).toBeNull();
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(context.ownerKey, [MESSAGE_A]);
+  });
+
+  it("persists a background message.read boundary without touching the active message store", () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const cache = { advanceReadBoundary: vi.fn(), markCachedMessagesRead: vi.fn() };
+    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+
+    applier.applyEvent(
+      {
+        epoch_version: 14,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+    expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)?.messageUuid).toBe(
+      MESSAGE_B,
+    );
+    expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
+      expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 14 }),
+    );
   });
 
   it("applies message created, updated, and deleted events", () => {

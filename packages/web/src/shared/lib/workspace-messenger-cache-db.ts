@@ -5,8 +5,8 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-// Version 6 stores a collection of composer drafts for one conversation.
-const DB_VERSION = 6;
+// Version 7 stores a monotonic read boundary for each owner topic.
+const DB_VERSION = 7;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -246,6 +246,16 @@ export interface WorkspaceMessengerRealtimeCursorRow {
   updatedAt: number;
 }
 
+export interface WorkspaceMessengerReadBoundaryCacheRow {
+  id: string;
+  ownerKey: string;
+  streamUuid: string;
+  topicUuid: string;
+  createdAt: string;
+  messageUuid: string;
+  epochVersion?: number;
+}
+
 export interface WorkspaceMessengerSearchResultRow {
   id: string;
   ownerKey: string;
@@ -428,6 +438,10 @@ function ownMessageReactionRowId(ownerKey: string, messageUuid: string, emojiNam
   return `${ownerKey}:${messageUuid}:${emojiName}`;
 }
 
+function readBoundaryRowId(ownerKey: string, streamUuid: string, topicUuid: string): string {
+  return cacheRowId(ownerKey, `${streamUuid}:${topicUuid}`);
+}
+
 export function workspaceMessengerMessageOrderKey(message: {
   createdAt: string;
   uuid: string;
@@ -567,6 +581,7 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.realtimeCursor,
       stores.searchResults,
       stores.composerDrafts,
+      stores.readBoundaries,
     ];
     const idsByStore = await Promise.all(
       storeNames.map(async (storeName) => {
@@ -2387,6 +2402,105 @@ export async function markCachedMessagesRead(
     await transactionDone(transaction);
   } catch (error) {
     logCacheWriteFailure("mark-messages-read", error);
+  }
+}
+
+export async function readMessengerReadBoundaries(
+  ownerKey: string,
+): Promise<WorkspaceMessengerReadBoundaryCacheRow[]> {
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    return await readRowsByOwner<WorkspaceMessengerReadBoundaryCacheRow>(
+      db,
+      ownerKey,
+      WORKSPACE_MESSENGER_CACHE_STORES.readBoundaries,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function compareReadBoundaryOrder(
+  left: Pick<WorkspaceMessengerReadBoundaryCacheRow, "createdAt" | "messageUuid">,
+  right: Pick<WorkspaceMessengerReadBoundaryCacheRow, "createdAt" | "messageUuid">,
+): number {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  return createdAtOrder !== 0 ? createdAtOrder : left.messageUuid.localeCompare(right.messageUuid);
+}
+
+function mergeReadBoundaryRows(
+  previous: WorkspaceMessengerReadBoundaryCacheRow | undefined,
+  candidate: WorkspaceMessengerReadBoundaryCacheRow,
+): WorkspaceMessengerReadBoundaryCacheRow {
+  if (previous == null) return candidate;
+  const order = compareReadBoundaryOrder(previous, candidate);
+  if (order > 0) return previous;
+  if (order < 0) return candidate;
+
+  const epochVersion = Math.max(previous.epochVersion ?? -1, candidate.epochVersion ?? -1);
+  return epochVersion < 0
+    ? { ...previous, epochVersion: undefined }
+    : { ...previous, epochVersion };
+}
+
+export async function advanceMessengerReadBoundaryCache(
+  boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      [stores.readBoundaries, stores.messages, stores.messageBuckets],
+      "readwrite",
+    );
+    const boundaryStore = transaction.objectStore(stores.readBoundaries);
+    const id = readBoundaryRowId(boundary.ownerKey, boundary.streamUuid, boundary.topicUuid);
+    const previous = await requestToPromise<WorkspaceMessengerReadBoundaryCacheRow | undefined>(
+      boundaryStore.get(id),
+    );
+    const effective = mergeReadBoundaryRows(previous, { ...boundary, id });
+    boundaryStore.put(effective);
+
+    const conversationId = topicConversationId(effective.streamUuid, effective.topicUuid);
+    const orderKey = workspaceMessengerMessageOrderKey({
+      createdAt: effective.createdAt,
+      uuid: effective.messageUuid,
+    });
+    const bucketRows = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
+      transaction
+        .objectStore(stores.messageBuckets)
+        .index("byConversationOrder")
+        .getAll(
+          IDBKeyRange.bound(
+            [effective.ownerKey, conversationId, ""],
+            [effective.ownerKey, conversationId, orderKey],
+          ),
+        ),
+    );
+    const messageStore = transaction.objectStore(stores.messages);
+    const rows = await Promise.all(
+      bucketRows.map((bucket) =>
+        requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+          messageStore.get(cacheRowId(effective.ownerKey, bucket.messageUuid)),
+        ),
+      ),
+    );
+    for (const row of rows) {
+      if (row?.ownerKey !== effective.ownerKey || row.message.read === true) continue;
+      messageStore.put({
+        ...row,
+        message: { ...row.message, read: true },
+        version: row.version + 1,
+      } satisfies WorkspaceMessengerMessageCacheRow);
+    }
+
+    await transactionDone(transaction);
+  } catch (error) {
+    logCacheWriteFailure("advance-read-boundary", error);
   }
 }
 

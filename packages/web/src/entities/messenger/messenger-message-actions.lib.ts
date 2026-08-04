@@ -23,6 +23,10 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
+  advanceMessengerReadBoundary,
+  type MessengerReadBoundary,
+} from "./messenger-read-boundary.lib";
+import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
@@ -56,6 +60,7 @@ export interface MessengerMessageActionCacheConversationPage {
 }
 
 export interface MessengerMessageActionCacheWriter {
+  advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
   patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
   markCachedMessagesRead?: (
     ownerKey: string,
@@ -352,14 +357,24 @@ export async function markMessengerMessageRead({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
+  const boundary = advanceMessengerReadBoundary({
+    ownerKey: action.ownerKey,
+    streamUuid: message.streamUuid,
+    topicUuid: message.topicUuid,
+    createdAt: message.createdAt,
+    messageUuid: message.uuid,
+  });
   store.getState().upsertMessage(message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
-  store.getState().markMessageRead(message.uuid, {
+  store.getState().markMessagesReadUpTo(message.uuid, {
     conversationIds: conversationIds ?? [
       message.conversationId,
       conversationIdForStream(message.streamUuid),
     ],
   });
+  if (cache?.advanceReadBoundary != null) {
+    await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
+  }
   if (cache?.patchCachedMessage != null) {
     await writeActionCacheBestEffort(() =>
       cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
@@ -393,6 +408,13 @@ export async function markMessengerMessagesReadUpTo({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
+  const boundary = advanceMessengerReadBoundary({
+    ownerKey: action.ownerKey,
+    streamUuid: message.streamUuid,
+    topicUuid: message.topicUuid,
+    createdAt: message.createdAt,
+    messageUuid: message.uuid,
+  });
   store.getState().upsertMessage(message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
 
@@ -406,6 +428,10 @@ export async function markMessengerMessagesReadUpTo({
   const messagesToCache = new Map<string, MessengerMessage>([[message.uuid, message]]);
   for (const changedMessage of changedMessages) {
     messagesToCache.set(changedMessage.uuid, changedMessage);
+  }
+
+  if (cache?.advanceReadBoundary != null) {
+    await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
   }
 
   if (cache?.markCachedMessagesRead != null) {

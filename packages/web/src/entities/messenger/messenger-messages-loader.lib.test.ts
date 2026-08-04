@@ -19,6 +19,7 @@ import {
   loadMessengerMessageWindowPage,
   type MessengerMessagesOwnReactionSyncDeps,
 } from "./messenger-messages-loader.lib";
+import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
@@ -141,6 +142,115 @@ describe("messenger conversation messages loader", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
+  });
+
+  it("applies a restored boundary to stale cached and server read flags", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const cached = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_A,
+        read: false,
+        is_own: false,
+        created_at: DATE,
+      }),
+    );
+    const result = await loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      cache: {
+        readReadBoundaries: () =>
+          Promise.resolve([
+            {
+              ownerKey,
+              streamUuid: STREAM_A,
+              topicUuid: TOPIC_A,
+              createdAt: DATE_LATER,
+              messageUuid: MESSAGE_B,
+            },
+          ]),
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [cached],
+            nextPageMarker: null,
+            hasMore: false,
+          }),
+        writeConversationMessagePage: vi.fn(),
+      },
+      client: {
+        getMessagesPage: () =>
+          Promise.resolve(
+            createMessagesPage([
+              createMessageDto({
+                uuid: MESSAGE_B,
+                read: false,
+                is_own: false,
+                created_at: DATE_LATER,
+              }),
+              createMessageDto({
+                uuid: MESSAGE_C,
+                read: false,
+                is_own: false,
+                created_at: DATE_LATEST,
+              }),
+            ]),
+          ),
+      },
+    });
+
+    expect(result.status).toBe("applied");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.read).toBe(false);
+  });
+
+  it("hydrates a boundary before a cold direct message window", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const before = createMessageDto({
+      uuid: MESSAGE_A,
+      read: false,
+      is_own: false,
+      created_at: DATE,
+    });
+    const anchor = createMessageDto({
+      uuid: MESSAGE_B,
+      read: false,
+      is_own: false,
+      created_at: DATE_LATER,
+    });
+    const after = createMessageDto({
+      uuid: MESSAGE_C,
+      read: false,
+      is_own: false,
+      created_at: DATE_LATEST,
+    });
+
+    await loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      messageUuid: MESSAGE_B,
+      boundaryCache: {
+        readReadBoundaries: () =>
+          Promise.resolve([
+            {
+              ownerKey,
+              streamUuid: STREAM_A,
+              topicUuid: TOPIC_A,
+              createdAt: DATE_LATER,
+              messageUuid: MESSAGE_B,
+            },
+          ]),
+      },
+      client: {
+        getMessageWindowAroundMessage: () =>
+          Promise.resolve(createMessageWindow({ anchor, before: [before], after: [after] })),
+      },
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.read).toBe(false);
   });
 
   it("loads a topic message window with stream and topic filters through the strict replace path", async () => {

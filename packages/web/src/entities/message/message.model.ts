@@ -13,6 +13,7 @@ import type {
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   conversationBucketsForWorkspaceMessage,
+  compareWorkspaceMessages,
   EMPTY_WORKSPACE_MESSAGE_IDS,
   EMPTY_WORKSPACE_MESSAGES,
   insertSortedWorkspaceMessageId,
@@ -635,6 +636,32 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     });
   },
 
+  markMessagesRead(messageUuids, options) {
+    logStoreAction("workspaceMessage", "markMessagesRead", { messages: messageUuids.length });
+    if (messageUuids.length === 0) return;
+    set((state) => {
+      const nextMessagesById = { ...state.messagesById };
+      let changed = false;
+      for (const messageUuid of new Set(messageUuids)) {
+        const message = state.messagesById[messageUuid];
+        if (message == null || message.read) continue;
+        if (
+          options?.conversationIds != null &&
+          !options.conversationIds.some((conversationId) =>
+            (
+              state.messageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS
+            ).includes(messageUuid),
+          )
+        ) {
+          continue;
+        }
+        nextMessagesById[messageUuid] = { ...message, read: true };
+        changed = true;
+      }
+      return changed ? { messagesById: nextMessagesById } : state;
+    });
+  },
+
   markMessagesReadUpTo(messageUuid, options) {
     logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
     let changedMessages: MessengerMessage[] = [];
@@ -666,7 +693,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
             !message.read &&
             message.streamUuid === anchor.streamUuid &&
             message.topicUuid === anchor.topicUuid &&
-            message.createdAt.localeCompare(anchor.createdAt) <= 0,
+            compareWorkspaceMessages(message, anchor) <= 0,
         );
 
       if (changedMessages.length === 0) return state;

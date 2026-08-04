@@ -19,6 +19,7 @@ import {
   markMessengerMessagesReadUpTo,
   sendMessengerMessage,
 } from "./messenger-message-actions.lib";
+import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 
 const ACCOUNT_A = "account-a";
@@ -358,6 +359,7 @@ describe("messenger message actions", () => {
       Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
     );
     const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.resolve()),
       patchCachedMessage: vi.fn(() => Promise.resolve()),
       markCachedMessagesRead: vi.fn(() => Promise.resolve()),
     };
@@ -379,6 +381,14 @@ describe("messenger message actions", () => {
       expect.objectContaining({ uuid: MESSAGE_B, read: true }),
     );
     expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
+    expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerKey,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        messageUuid: MESSAGE_B,
+      }),
+    );
   });
 
   it("includes the read_up_to anchor in a bulk-only cache update", async () => {
@@ -420,6 +430,27 @@ describe("messenger message actions", () => {
     });
 
     expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_B, MESSAGE_A]);
+  });
+
+  it("does not advance a boundary after a stale read response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const response = createDeferred<WorkspaceMessengerMessageDto>();
+    const cache = { advanceReadBoundary: vi.fn(() => Promise.resolve()) };
+    let currentRuntime = runtimeContext;
+    const result = markMessengerMessageRead({
+      runtimeContext,
+      getRuntimeContext: () => currentRuntime,
+      messageUuid: MESSAGE_A,
+      client: { markMessageRead: () => response.promise },
+      cache,
+    });
+    currentRuntime = createRuntimeContext({ organizationId: ORGANIZATION_B });
+    response.resolve(createMessageDto({ read: true }));
+
+    await expect(result).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-owner" });
+    expect(cache.advanceReadBoundary).not.toHaveBeenCalled();
+    expect(readMessengerReadBoundary(ownerKey, STREAM_A, TOPIC_A)).toBeNull();
   });
 
   it("keeps the send result applied when the cache write fails", async () => {

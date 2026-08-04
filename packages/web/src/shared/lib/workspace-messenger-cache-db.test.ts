@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  advanceMessengerReadBoundaryCache,
   createMessengerCatalogCacheReconcileFence,
   deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
@@ -18,6 +19,7 @@ import {
   readWorkspaceComposerDraft,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  readMessengerReadBoundaries,
   readOwnMessageReaction,
   readOwnMessageReactions,
   readMessengerSearchResults,
@@ -121,6 +123,7 @@ describe("workspace-messenger-cache-db", () => {
       "messages",
       "ownMessageReactions",
       "ownerMeta",
+      "readBoundaries",
       "realtimeCursor",
       "searchResults",
       "streamBindings",
@@ -841,6 +844,20 @@ describe("workspace-messenger-cache-db", () => {
     });
     await writeRealtimeCursor(OWNER, 10);
     await writeRealtimeCursor(OTHER_OWNER, 20);
+    await advanceMessengerReadBoundaryCache({
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00.000Z",
+      messageUuid: "msg-a",
+    });
+    await advanceMessengerReadBoundaryCache({
+      ownerKey: OTHER_OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00.000Z",
+      messageUuid: "msg-a",
+    });
     await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
     await upsertOwnMessageReaction(
       OTHER_OWNER,
@@ -857,6 +874,8 @@ describe("workspace-messenger-cache-db", () => {
     expect(ownerWindow.messages).toEqual([]);
     expect(ownerCatalog.realtimeCursor).toBeNull();
     expect(await readOwnMessageReactions(OWNER, ["msg-a"])).toEqual([]);
+    expect(await readMessengerReadBoundaries(OWNER)).toEqual([]);
+    expect(await readMessengerReadBoundaries(OTHER_OWNER)).toHaveLength(1);
     expect(
       (await readOwnMessageReactions(OTHER_OWNER, ["msg-a"])).map((row) => row.reactionUuid),
     ).toEqual(["reaction-other"]);
@@ -864,5 +883,60 @@ describe("workspace-messenger-cache-db", () => {
       { uuid: "stream-b", updatedAt: "2026-07-01T08:00:00.000Z" },
     ]);
     expect(otherOwnerCatalog.realtimeCursor?.epochVersion).toBe(20);
+  });
+
+  it("keeps the maximum topic boundary and updates only its cached prefix", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        message("msg-a", "2026-07-01T08:01:00.000Z"),
+        message("msg-b", "2026-07-01T08:01:00.000Z"),
+        message("msg-c", "2026-07-01T08:02:00.000Z"),
+      ],
+    });
+    await writeConversationMessagePage(OWNER, `topic:${STREAM}:topic-b`, {
+      messages: [
+        {
+          ...message("other-topic", "2026-07-01T08:01:00.000Z"),
+          conversationId: `topic:${STREAM}:topic-b`,
+          topicUuid: "topic-b",
+        },
+      ],
+    });
+
+    await advanceMessengerReadBoundaryCache({
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00.000Z",
+      messageUuid: "msg-b",
+      epochVersion: 3,
+    });
+    await advanceMessengerReadBoundaryCache({
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00.000Z",
+      messageUuid: "msg-b",
+      epochVersion: 8,
+    });
+    await advanceMessengerReadBoundaryCache({
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00.000Z",
+      messageUuid: "msg-a",
+    });
+
+    expect(await readMessengerReadBoundaries(OWNER)).toMatchObject([
+      { topicUuid: TOPIC, messageUuid: "msg-b", epochVersion: 8 },
+    ]);
+    expect(
+      (await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION)).messages.map(
+        (cached) => cached.read,
+      ),
+    ).toEqual([true, true, undefined]);
+    expect(
+      (await readConversationMessageWindow(OWNER, `topic:${STREAM}:topic-b`)).messages[0]?.read,
+    ).toBeUndefined();
   });
 });

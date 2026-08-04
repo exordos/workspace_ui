@@ -495,11 +495,25 @@ describe("messenger-realtime.api", () => {
       message: messageDto,
     });
     expect(
+      normalizeWorkspaceRestEvent(
+        createEvent({
+          kind: "messages.read",
+          project_id: PROJECT_UUID,
+          message_uuids: [MESSAGE_UUID],
+        }),
+      ),
+    ).toEqual({
+      epoch_version: 124,
+      type: "messages",
+      kind: "messages.read",
+      messageUuids: [MESSAGE_UUID],
+    });
+    expect(
       normalizeWorkspaceRestEvent(createEvent({ kind: "message.read", ...messageDto })),
     ).toEqual({
       epoch_version: 124,
       type: "message",
-      kind: "message.updated",
+      kind: "message.read",
       message: messageDto,
     });
     expect(
@@ -599,6 +613,7 @@ describe("messenger-realtime.api", () => {
     ).toEqual({
       epoch_version: 124,
       type: "message",
+      kind: "message.created",
       message: messageDto,
     });
     expect(
@@ -669,7 +684,12 @@ describe("messenger-realtime.api", () => {
           message_uuids: [MESSAGE_UUID],
         }),
       ),
-    ).toBeNull();
+    ).toEqual({
+      epoch_version: 124,
+      type: "messages",
+      kind: "messages.read",
+      messageUuids: [MESSAGE_UUID],
+    });
     expect(
       normalizeWorkspaceRestEvent(
         createEvent({
@@ -702,6 +722,7 @@ describe("messenger-realtime.api", () => {
     ).toEqual({
       epoch_version: 125,
       type: "message",
+      kind: "message.created",
       message: messageDto,
     });
   });

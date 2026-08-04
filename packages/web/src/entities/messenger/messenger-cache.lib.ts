@@ -1,5 +1,6 @@
 import {
   applyMessengerMessagePointerCache,
+  advanceMessengerReadBoundaryCache,
   clearMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
   deleteCachedMessage,
@@ -18,6 +19,7 @@ import {
   readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  readMessengerReadBoundaries,
   readOwnMessageReaction,
   readOwnMessageReactions,
   replaceOwnMessageReactionsForOwner,
@@ -47,6 +49,7 @@ import {
   conversationIdForTopic,
   parseMessengerConversationId,
 } from "./messenger-ids.lib";
+import type { MessengerReadBoundary } from "./messenger-read-boundary.lib";
 import type {
   MessengerBootstrapPayload,
   MessengerConversation,
@@ -470,6 +473,26 @@ export async function markMessengerCachedMessagesRead(
   await markCachedMessagesRead(ownerKey, messageUuids, conversationIds);
 }
 
+export async function readMessengerCachedReadBoundaries(
+  ownerKey: string,
+): Promise<MessengerReadBoundary[]> {
+  const rows = await readMessengerReadBoundaries(ownerKey);
+  return rows.map((row) => ({
+    ownerKey: row.ownerKey,
+    streamUuid: row.streamUuid,
+    topicUuid: row.topicUuid,
+    createdAt: row.createdAt,
+    messageUuid: row.messageUuid,
+    epochVersion: row.epochVersion,
+  }));
+}
+
+export async function advanceMessengerCachedReadBoundary(
+  boundary: MessengerReadBoundary,
+): Promise<void> {
+  await advanceMessengerReadBoundaryCache(boundary);
+}
+
 export async function deleteMessengerCachedMessage(
   ownerKey: string,
   messageUuid: MessengerUuid,
@@ -557,6 +580,7 @@ export async function writeMessengerRealtimeCursorCache(
 }
 
 export const messengerMessageActionCache = {
+  advanceReadBoundary: advanceMessengerCachedReadBoundary,
   patchCachedMessage: patchMessengerCachedMessage,
   markCachedMessagesRead: markMessengerCachedMessagesRead,
   deleteCachedMessage: deleteMessengerCachedMessage,
@@ -564,6 +588,8 @@ export const messengerMessageActionCache = {
 };
 
 export const messengerRealtimeActiveCache = {
+  advanceReadBoundary: advanceMessengerCachedReadBoundary,
+  markCachedMessagesRead: markMessengerCachedMessagesRead,
   patchCachedMessage: patchMessengerCachedMessage,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
@@ -577,4 +603,9 @@ export const messengerRealtimeActiveCache = {
   deleteCachedFolder: deleteMessengerFolderCache,
   deleteCachedFolderItem: deleteMessengerFolderItemCache,
   writeRealtimeCursor: writeMessengerRealtimeCursorCache,
+};
+
+export const messengerRealtimeBackgroundCache = {
+  advanceReadBoundary: advanceMessengerCachedReadBoundary,
+  markCachedMessagesRead: markMessengerCachedMessagesRead,
 };

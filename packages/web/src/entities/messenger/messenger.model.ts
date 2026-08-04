@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import type {
   MessengerBootstrapPayload,
   MessengerConversation,
@@ -1154,6 +1155,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey != null) {
         removedStreamUuidsByOwnerKey.delete(state.ownerKey);
+        clearMessengerReadBoundariesForOwner(state.ownerKey);
       }
       return {
         ...createInitialState(),

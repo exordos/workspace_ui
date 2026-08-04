@@ -365,7 +365,10 @@ function isMessageCreatedEvent(
   event: WorkspaceRealtimeEvent,
 ): event is WorkspaceRealtimeMessageSnapshotEvent {
   return (
-    event.type === "message" && event.kind !== "message.updated" && event.kind !== "message.deleted"
+    event.type === "message" &&
+    event.kind !== "message.updated" &&
+    event.kind !== "message.deleted" &&
+    event.kind !== "message.read"
   );
 }
 

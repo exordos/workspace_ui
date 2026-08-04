@@ -545,12 +545,18 @@ export interface WorkspaceMessengerServerSettingsDto {
 // Это уже не REST-модель, а нормализованное realtime-событие.
 // Его получают и из REST-догонки, и из WebSocket, чтобы дальше использовать один applier.
 export type WorkspaceRealtimeEvent =
-  | ({
+  | {
       epoch_version: WorkspaceMessengerEpochVersion;
       type: "message";
-      kind?: "message.updated";
+      kind?: "message.created" | "message.updated" | "message.read";
       message: WorkspaceMessengerMessageDto;
-    } & Record<string, unknown>)
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "messages";
+      kind: "messages.read";
+      messageUuids: WorkspaceMessengerUuid[];
+    }
   | {
       epoch_version: WorkspaceMessengerEpochVersion;
       type: "message";
@@ -1438,8 +1444,19 @@ function isWorkspaceRealtimeMessageEvent(value: Record<string, unknown>): boolea
     return isMessageDeleteDto(value.message);
   }
   return (
-    (value.kind === undefined || value.kind === "message.updated") &&
+    (value.kind === undefined ||
+      value.kind === "message.created" ||
+      value.kind === "message.updated" ||
+      value.kind === "message.read") &&
     isWorkspaceMessengerMessageDto(value.message)
+  );
+}
+
+function isWorkspaceRealtimeMessagesEvent(value: Record<string, unknown>): boolean {
+  return (
+    value.kind === "messages.read" &&
+    Array.isArray(value.messageUuids) &&
+    value.messageUuids.every(isUuid)
   );
 }
 
@@ -1513,6 +1530,8 @@ export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceReal
   switch (value.type) {
     case "message":
       return isWorkspaceRealtimeMessageEvent(value);
+    case "messages":
+      return isWorkspaceRealtimeMessagesEvent(value);
     case "stream":
       return isWorkspaceRealtimeStreamEvent(value);
     case "stream_binding":

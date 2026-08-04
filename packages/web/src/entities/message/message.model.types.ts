@@ -123,6 +123,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,
   ) => void;
+  markMessagesRead: (
+    messageUuids: readonly MessengerUuid[],
+    options?: WorkspaceScopedMessageMutationOptions,
+  ) => void;
   markMessagesReadUpTo: (
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,

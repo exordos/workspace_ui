@@ -97,6 +97,7 @@ export function normalizeWorkspaceRestEvent(
       return {
         epoch_version: model.epoch_version,
         type: "message",
+        kind: "message.created",
         message,
       };
     }
@@ -106,7 +107,7 @@ export function normalizeWorkspaceRestEvent(
       return {
         epoch_version: model.epoch_version,
         type: "message",
-        kind: "message.updated",
+        kind: model.payload.kind,
         message,
       };
     }
@@ -273,9 +274,13 @@ export function normalizeWorkspaceRestEvent(
     case "message_reaction.updated":
     case "message_reaction.deleted":
       return null;
-    // Historical migration event: current read updates use message.read/topic.read/stream.read.
     case "messages.read":
-      return null;
+      return {
+        epoch_version: model.epoch_version,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: model.payload.message_uuids,
+      };
     default:
       return null;
   }

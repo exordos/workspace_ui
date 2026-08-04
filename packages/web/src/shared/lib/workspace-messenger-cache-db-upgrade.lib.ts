@@ -18,10 +18,20 @@ export const WORKSPACE_MESSENGER_CACHE_STORES = {
   realtimeCursor: "realtimeCursor",
   searchResults: "searchResults",
   composerDrafts: "composerDrafts",
+  readBoundaries: "readBoundaries",
 } as const;
 
 function createOwnerIndex(store: IDBObjectStore): void {
   store.createIndex("byOwner", "ownerKey", { unique: false });
+}
+
+function createReadBoundariesStore(db: IDBDatabase): void {
+  const storeName = WORKSPACE_MESSENGER_CACHE_STORES.readBoundaries;
+  if (db.objectStoreNames.contains(storeName)) return;
+
+  const store = db.createObjectStore(storeName, { keyPath: "id" });
+  createOwnerIndex(store);
+  store.createIndex("byOwnerTopic", ["ownerKey", "streamUuid", "topicUuid"], { unique: true });
 }
 
 export function createWorkspaceMessengerCacheDbSchema(
@@ -126,6 +136,8 @@ export function createWorkspaceMessengerCacheDbSchema(
       createOwnerIndex(store);
     }
   }
+
+  createReadBoundariesStore(db);
 }
 
 /** Ensures the latest Workspace messenger cache schema exists during open. */
