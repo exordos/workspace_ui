@@ -85,6 +85,12 @@ export function adaptMessengerTopic(dto: WorkspaceMessengerTopicDto): MessengerT
     notificationMode: dto.notification_mode,
     color: dto.color ?? null,
     lastMessageUuid: dto.last_message_uuid ?? null,
+    summary: dto.summary ?? null,
+    summaryLastMessageUuid: dto.summary_last_message_uuid ?? null,
+    summaryHasNewMessages: dto.summary_has_new_messages ?? null,
+    summaryEnabled: dto.summary_enabled ?? true,
+    summarySystemPrompt: dto.summary_system_prompt ?? null,
+    summaryReasoningEffort: dto.summary_reasoning_effort ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };

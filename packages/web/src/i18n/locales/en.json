@@ -462,7 +462,16 @@
     "forwardUnsupported": "Forwarding is not connected to Workspace messaging yet.",
     "readReceiptsUnsupported": "Read receipts are not connected to Workspace messaging yet.",
     "permalinkUnsupported": "Old message links are not connected to Workspace messaging yet.",
-    "retryUnsupported": "Retry for this Workspace action is not connected yet."
+    "retryUnsupported": "Retry for this Workspace action is not connected yet.",
+    "topicSummary": {
+      "title": "Topic context",
+      "expand": "Expand topic context",
+      "collapse": "Collapse topic context",
+      "pending": "The summary will appear after the messages are processed.",
+      "disabledEmpty": "There is no summary for this topic.",
+      "hasNewMessages": "New messages appeared. The summary will update automatically.",
+      "disabled": "Automatic summary updates are disabled for this topic."
+    }
   },
   "workspaceDrafts": {
     "channel": "Channel",

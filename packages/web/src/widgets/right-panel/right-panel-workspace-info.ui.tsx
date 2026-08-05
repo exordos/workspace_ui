@@ -39,6 +39,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
@@ -632,7 +633,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
       <ScrollArea className="flex-1 space-y-4 px-4 py-3">
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.notifications")}
             <span className="font-medium normal-case text-text-muted">
               {" "}
@@ -660,9 +661,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           )}
         </div>
 
+        {info.topicSummary != null ? (
+          <RightPanelTopicSummary key={info.topicSummary.topicUuid} summary={info.topicSummary} />
+        ) : null}
+
         {info.description && (
           <div>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
               {t("chatInfo.description")}
             </h3>
             <p className="rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-primary">
@@ -672,7 +677,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         )}
 
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.topics")}
           </h3>
           {info.topics.length === 0 ? (
@@ -707,7 +712,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         <div>
           {/* Заголовок как на макете: только текст «Участники», без иконки слева.
               Кнопка person_add — 24×24, совпадает с hit-area h-6 w-6. */}
-          <h3 className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <h3 className="mb-2 flex items-center justify-between text-sm font-medium normal-case text-text-primary">
             {t("channel.members")}
             {info.streamUuid != null && runtimeContext != null && (
               <button

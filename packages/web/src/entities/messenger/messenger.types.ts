@@ -108,6 +108,12 @@ export interface MessengerTopic {
   notificationMode: WorkspaceMessengerTopicNotificationMode;
   color?: number | null;
   lastMessageUuid: MessengerUuid | null;
+  summary?: string | null;
+  summaryLastMessageUuid?: MessengerUuid | null;
+  summaryHasNewMessages?: boolean | null;
+  summaryEnabled?: boolean;
+  summarySystemPrompt?: string | null;
+  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
   createdAt: string;
   updatedAt: string;
 }

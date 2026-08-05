@@ -75,6 +75,7 @@ function createInfo(
     ],
     topics: [],
     ...overrides,
+    topicSummary: overrides.topicSummary ?? null,
   };
 }
 
@@ -195,11 +196,98 @@ describe("RightPanelWorkspaceInfo", () => {
     useWorkspaceAuthStore.getState().clear();
   });
 
+  it("shows the selected topic summary and its freshness state", () => {
+    const { rerender } = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: "topic-a",
+            topicName: "Roadmap",
+            text: "Release scope is approved.",
+            hasNewMessages: true,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Topic context")).toBeInTheDocument();
+    expect(screen.getByText("(AI ✨)")).toBeInTheDocument();
+    expect(screen.getByText("Release scope is approved.")).toBeInTheDocument();
+    expect(screen.getByTestId("topic-summary-content")).toHaveClass(
+      "max-h-[218px]",
+      "overflow-y-auto",
+      "border",
+      "border-border-subtle",
+    );
+    expect(
+      screen.getByText("New messages appeared. The summary will update automatically."),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse topic context" }));
+    expect(screen.queryByText("Release scope is approved.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand topic context" }));
+    expect(screen.getByText("Release scope is approved.")).toBeInTheDocument();
+
+    rerender(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: "topic-b",
+            topicName: "Support",
+            text: "Support queue is clear.",
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Release scope is approved.")).not.toBeInTheDocument();
+    expect(screen.getByText("Support queue is clear.")).toBeInTheDocument();
+  });
+
+  it("starts with an empty topic context collapsed and lets the user expand it", () => {
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: "topic-without-summary",
+            topicName: "Planning",
+            text: null,
+            hasNewMessages: null,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Expand topic context" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(
+      screen.queryByText("The summary will appear after the messages are processed."),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand topic context" }));
+
+    expect(
+      screen.getByText("The summary will appear after the messages are processed."),
+    ).toBeInTheDocument();
+  });
+
   it("shows current notification mode and sends workspace update", async () => {
     runWorkspaceStreamNotificationUpdateMock.mockResolvedValue({ status: "applied" });
 
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
+    expect(screen.getByText("Notifications").closest("h3")).toHaveClass(
+      "text-text-primary",
+      "normal-case",
+    );
+    expect(screen.getByText("Topics")).toHaveClass("text-text-primary", "normal-case");
+    expect(screen.getByText("Members")).toHaveClass("text-text-primary", "normal-case");
     expect(screen.getByRole("radio", { name: "All messages" })).toHaveAttribute(
       "aria-checked",
       "true",

@@ -125,6 +125,12 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         isDone: false,
         notificationMode: "default",
         lastMessageUuid: null,
+        summary: "Release scope is approved.",
+        summaryLastMessageUuid: "77777777-7777-4777-8777-777777777777",
+        summaryHasNewMessages: true,
+        summaryEnabled: true,
+        summarySystemPrompt: null,
+        summaryReasoningEffort: null,
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
       },
@@ -342,6 +348,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(view?.participantsCount).toBe(2);
     expect(view?.onlineCount).toBe(1);
     expect(view?.topics.map((topic) => topic.name)).toEqual(["Roadmap", "Support"]);
+    expect(view.topicSummary).toEqual({
+      topicUuid: TOPIC_A_UUID,
+      topicName: "Roadmap",
+      text: "Release scope is approved.",
+      hasNewMessages: true,
+      enabled: true,
+    });
   });
 
   it("maps members from stream bindings and keeps binding order", () => {

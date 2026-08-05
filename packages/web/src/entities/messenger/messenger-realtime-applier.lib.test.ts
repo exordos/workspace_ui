@@ -1535,6 +1535,10 @@ describe("messenger realtime active applier", () => {
         topic: createTopicDto({
           name: "Release notes",
           is_done: true,
+          summary: "Release scope is approved.",
+          summary_last_message_uuid: MESSAGE_A,
+          summary_has_new_messages: true,
+          summary_enabled: true,
           updated_at: "2026-06-22T10:20:00Z",
         }),
       },
@@ -1561,7 +1565,14 @@ describe("messenger realtime active applier", () => {
       expect.objectContaining({ streamUuid: STREAM_A }),
     );
     expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
-      expect.objectContaining({ name: "Release notes", isDone: true }),
+      expect.objectContaining({
+        name: "Release notes",
+        isDone: true,
+        summary: "Release scope is approved.",
+        summaryLastMessageUuid: MESSAGE_A,
+        summaryHasNewMessages: true,
+        summaryEnabled: true,
+      }),
     );
     expect(selectMessengerFolders(useMessengerStore.getState())).toEqual([
       expect.objectContaining({

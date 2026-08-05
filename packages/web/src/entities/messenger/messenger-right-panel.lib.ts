@@ -34,6 +34,14 @@ export interface WorkspaceRightPanelTopicView {
   route: string;
 }
 
+export interface WorkspaceRightPanelTopicSummaryView {
+  topicUuid: MessengerUuid;
+  topicName: string;
+  text: string | null;
+  hasNewMessages: boolean | null;
+  enabled: boolean;
+}
+
 export interface WorkspaceRightPanelMemberView {
   bindingUuid: MessengerUuid;
   userUuid: MessengerUuid;
@@ -78,6 +86,7 @@ export interface WorkspaceRightPanelChannelInfoView {
   onlineCount: number;
   members: WorkspaceRightPanelMemberView[];
   topics: WorkspaceRightPanelTopicView[];
+  topicSummary?: WorkspaceRightPanelTopicSummaryView | null;
 }
 
 export interface WorkspaceRightPanelDirectPrivateInfoView {
@@ -343,6 +352,8 @@ export function selectWorkspaceRightPanelInfoView(
     }));
 
   const rawDescription = stream?.description?.trim();
+  const selectedTopic =
+    selection.kind === "topic" ? state.topicsById[selection.topicUuid] : undefined;
 
   return {
     kind: "channel",
@@ -355,5 +366,16 @@ export function selectWorkspaceRightPanelInfoView(
     onlineCount,
     members,
     topics,
+    ...(selectedTopic == null
+      ? {}
+      : {
+          topicSummary: {
+            topicUuid: selectedTopic.uuid,
+            topicName: selectedTopic.name,
+            text: selectedTopic.summary ?? null,
+            hasNewMessages: selectedTopic.summaryHasNewMessages ?? null,
+            enabled: selectedTopic.summaryEnabled ?? true,
+          },
+        }),
   };
 }

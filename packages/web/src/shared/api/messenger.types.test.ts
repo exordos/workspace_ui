@@ -260,6 +260,24 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("validates topic summary fields", () => {
+    expect(
+      isWorkspaceMessengerTopicDto({
+        ...topicDto,
+        summary: "Release scope is approved.",
+        summary_last_message_uuid: MESSAGE_UUID,
+        summary_has_new_messages: true,
+        summary_enabled: true,
+        summary_system_prompt: null,
+        summary_reasoning_effort: "medium",
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, summary_enabled: "yes" })).toBe(false);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, summary_reasoning_effort: "maximum" })).toBe(
+      false,
+    );
+  });
+
   it("accepts external message provenance and legacy provider metadata", () => {
     const provider = {
       kind: "zulip",

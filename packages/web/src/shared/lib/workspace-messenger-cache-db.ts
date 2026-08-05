@@ -52,6 +52,12 @@ export interface WorkspaceMessengerCachedTopic {
   uuid: string;
   streamUuid: string;
   lastMessageUuid?: string | null;
+  summary?: string | null;
+  summaryLastMessageUuid?: string | null;
+  summaryHasNewMessages?: boolean | null;
+  summaryEnabled?: boolean;
+  summarySystemPrompt?: string | null;
+  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
   updatedAt?: string | null;
 }
 
