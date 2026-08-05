@@ -112,6 +112,8 @@ function createStreamDto(
     role: "member",
     notification_mode: "all_messages",
     unread_count: 5,
+    active_unread_count: 5,
+    passive_unread_count: 0,
     source_name: "native",
     source: { kind: "native" },
     invite_only: false,
@@ -136,6 +138,8 @@ function createTopicDto(
     stream_uuid: STREAM_A,
     user_uuid: USER_A,
     unread_count: 6,
+    active_unread_count: 6,
+    passive_unread_count: 0,
     is_default: false,
     is_done: false,
     notification_mode: "default",
@@ -168,6 +172,8 @@ function createFolderDto(
         order_index: 10,
         pinned_at: null,
         unread_count: 3,
+        active_unread_count: 3,
+        passive_unread_count: 0,
         created_at: DATE,
         updated_at: DATE,
       },
@@ -181,6 +187,8 @@ function createFolderDto(
         order_index: 20,
         pinned_at: null,
         unread_count: 4,
+        active_unread_count: 4,
+        passive_unread_count: 0,
         created_at: DATE,
         updated_at: DATE,
       },
@@ -204,6 +212,8 @@ function createFolderItemDto(
     order_index: 10,
     pinned_at: null,
     unread_count: 3,
+    active_unread_count: 3,
+    passive_unread_count: 0,
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -607,6 +617,8 @@ describe("messenger background projection", () => {
               uuid: FOLDER_ITEM_B,
               stream_uuid: STREAM_B,
               unread_count: 4,
+              active_unread_count: 4,
+              passive_unread_count: 0,
             }),
           ],
         }),
@@ -626,6 +638,8 @@ describe("messenger background projection", () => {
               uuid: FOLDER_ITEM_C,
               folder_uuid: FOLDER_B,
               unread_count: 2,
+              active_unread_count: 2,
+              passive_unread_count: 0,
             }),
           ],
         }),
@@ -646,6 +660,8 @@ describe("messenger background projection", () => {
               folder_uuid: FOLDER_C,
               stream_uuid: STREAM_B,
               unread_count: 6,
+              active_unread_count: 6,
+              passive_unread_count: 0,
             }),
           ],
         }),
@@ -663,7 +679,11 @@ describe("messenger background projection", () => {
         epoch_version: 24,
         type: "stream",
         kind: "stream.updated",
-        stream: createStreamDto({ unread_count: 8 }),
+        stream: createStreamDto({
+          unread_count: 8,
+          active_unread_count: 8,
+          passive_unread_count: 0,
+        }),
       },
       context,
     );
@@ -695,7 +715,11 @@ describe("messenger background projection", () => {
         epoch_version: 25,
         type: "stream",
         kind: "stream.updated",
-        stream: createStreamDto({ unread_count: 8 }),
+        stream: createStreamDto({
+          unread_count: 8,
+          active_unread_count: 8,
+          passive_unread_count: 0,
+        }),
       },
       context,
     );
@@ -727,6 +751,53 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderItemId).toEqual({});
   });
 
+  it("projects active stream unread into folder totals while preserving passive unread", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 21,
+        type: "folder",
+        kind: "folder.updated",
+        folder: createFolderDto({
+          unread_count: 2,
+          folder_items: [
+            createFolderItemDto({
+              unread_count: 7,
+              active_unread_count: 2,
+              passive_unread_count: 5,
+            }),
+          ],
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 22,
+        type: "stream",
+        kind: "stream.updated",
+        stream: createStreamDto({
+          unread_count: 9,
+          active_unread_count: 3,
+          passive_unread_count: 6,
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.unreadByFolderItemId[FOLDER_ITEM_A]).toBe(3);
+    expect(projection?.unreadByFolderId[FOLDER_A]).toBe(3);
+    expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_A]).toMatchObject({
+      unreadCount: 9,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 6,
+    });
+  });
+
   it("projects a zero stream unread count into existing background folder state", () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
@@ -744,6 +815,8 @@ describe("messenger background projection", () => {
               uuid: FOLDER_ITEM_B,
               stream_uuid: STREAM_B,
               unread_count: 4,
+              active_unread_count: 4,
+              passive_unread_count: 0,
             }),
           ],
         }),
@@ -755,7 +828,11 @@ describe("messenger background projection", () => {
         epoch_version: 22,
         type: "stream",
         kind: "stream.updated",
-        stream: createStreamDto({ unread_count: 0 }),
+        stream: createStreamDto({
+          unread_count: 0,
+          active_unread_count: 0,
+          passive_unread_count: 0,
+        }),
       },
       context,
     );
@@ -785,7 +862,13 @@ describe("messenger background projection", () => {
         kind: "folder.updated",
         folder: createFolderDto({
           unread_count: 3,
-          folder_items: [createFolderItemDto({ unread_count: 3 })],
+          folder_items: [
+            createFolderItemDto({
+              unread_count: 3,
+              active_unread_count: 3,
+              passive_unread_count: 0,
+            }),
+          ],
         }),
       },
       context,
@@ -797,7 +880,11 @@ describe("messenger background projection", () => {
         epoch_version: 22,
         type: "stream",
         kind: "stream.updated",
-        stream: createStreamDto({ unread_count: 0 }),
+        stream: createStreamDto({
+          unread_count: 0,
+          active_unread_count: 0,
+          passive_unread_count: 0,
+        }),
       },
       context,
     );
@@ -820,7 +907,11 @@ describe("messenger background projection", () => {
         epoch_version: 23,
         type: "stream",
         kind: "stream.updated",
-        stream: createStreamDto({ unread_count: 0 }),
+        stream: createStreamDto({
+          unread_count: 0,
+          active_unread_count: 0,
+          passive_unread_count: 0,
+        }),
       },
       context,
     );
@@ -838,6 +929,8 @@ describe("messenger background projection", () => {
         uuid: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         stream_uuid: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
       }),
     );
     const lastItem = folderItems[200];
@@ -869,6 +962,8 @@ describe("messenger background projection", () => {
         stream: createStreamDto({
           uuid: lastItem.stream_uuid,
           unread_count: 5,
+          active_unread_count: 5,
+          passive_unread_count: 0,
         }),
       },
       context,

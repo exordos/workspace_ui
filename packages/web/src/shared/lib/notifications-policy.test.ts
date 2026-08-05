@@ -218,6 +218,31 @@ describe("notifications-policy", () => {
       });
     });
 
+    it("treats an unmuted topic in a muted stream as mentions-only", () => {
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: {
+            ...baseStreamMessage,
+            streamNotificationMode: "muted",
+            topicNotificationMode: "unmute",
+          },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: false, trigger: "stream" });
+
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: {
+            ...baseStreamMessage,
+            streamNotificationMode: "muted",
+            topicNotificationMode: "unmute",
+            hasCurrentUserMention: true,
+          },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: true, trigger: "mention" });
+    });
+
     it("notifies for stream all_messages mode", () => {
       expect(
         shouldWorkspaceDesktopNotify({

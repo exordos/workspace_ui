@@ -12,6 +12,49 @@ export function isWorkspaceTopicEffectivelyMuted(
   return topicMode === "mute" || (topicMode === "default" && streamMode === "muted");
 }
 
+export function isWorkspaceTopicExplicitlyActive(
+  topicMode: WorkspaceMessengerTopicNotificationMode,
+): boolean {
+  return topicMode === "unmute" || topicMode === "follow";
+}
+
+export function isWorkspaceStreamFullyMuted(
+  streamMode: WorkspaceMessengerStreamNotificationMode | null,
+  topicModes: readonly WorkspaceMessengerTopicNotificationMode[],
+): boolean {
+  return (
+    streamMode === "muted" && !topicModes.some((mode) => isWorkspaceTopicExplicitlyActive(mode))
+  );
+}
+
+export interface WorkspaceUnreadCounterProjection {
+  unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
+}
+
+export function resolveWorkspaceActiveUnreadCount(
+  counters: WorkspaceUnreadCounterProjection,
+): number {
+  return counters.activeUnreadCount ?? counters.unreadCount;
+}
+
+export function resolveWorkspacePassiveUnreadCount(
+  counters: WorkspaceUnreadCounterProjection,
+): number {
+  return counters.passiveUnreadCount ?? 0;
+}
+
+export function resolveWorkspaceDisplayedUnread(
+  counters: WorkspaceUnreadCounterProjection,
+): { count: number; passive: boolean } | null {
+  const activeUnreadCount = resolveWorkspaceActiveUnreadCount(counters);
+  if (activeUnreadCount > 0) return { count: activeUnreadCount, passive: false };
+
+  const passiveUnreadCount = resolveWorkspacePassiveUnreadCount(counters);
+  return passiveUnreadCount > 0 ? { count: passiveUnreadCount, passive: true } : null;
+}
+
 export function mapWorkspaceStreamNotificationModeToLevel(
   mode: WorkspaceMessengerStreamNotificationMode,
 ): WorkspaceStreamNotificationLevel {

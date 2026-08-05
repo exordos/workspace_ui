@@ -1,6 +1,10 @@
 import React, { useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { isWorkspaceTopicEffectivelyMuted } from "~/entities/messenger/messenger-notification-mode.lib";
+import {
+  isWorkspaceStreamFullyMuted,
+  isWorkspaceTopicEffectivelyMuted,
+  resolveWorkspaceDisplayedUnread,
+} from "~/entities/messenger/messenger-notification-mode.lib";
 import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import type {
   MessengerSidebarStreamItem,
@@ -148,6 +152,7 @@ function WorkspaceSidebarTopicRow({
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
   const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
+  const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
   const title = formatSidebarTopicTitle(topic.title);
 
   return (
@@ -182,8 +187,8 @@ function WorkspaceSidebarTopicRow({
         <SidebarChatRowMeta
           compact={compact}
           isPinned={false}
-          unreadCount={topic.unreadCount}
-          unreadBadgeVariant={isMuted ? "muted" : "unread"}
+          unreadCount={displayedUnread?.count ?? 0}
+          unreadBadgeVariant={displayedUnread?.passive === true ? "muted" : "unread"}
           hasMention={topic.hasUnreadPersonalMention}
           time={formatWorkspaceMessageTime(topic.lastMessageCreatedAt)}
           notificationIndicator={
@@ -288,7 +293,11 @@ function WorkspaceSidebarStreamRow({
     isDirectPrivate && stream.statusText != null && stream.statusText.trim().length > 0
       ? stream.statusText.trim()
       : null;
-  const isMuted = stream.notificationMode === "muted";
+  const isMuted = isWorkspaceStreamFullyMuted(
+    stream.notificationMode,
+    stream.topics.map((topic) => topic.notificationMode),
+  );
+  const displayedUnread = resolveWorkspaceDisplayedUnread(stream);
 
   // Always wrap in the card shell so collapsed rows keep the same `card-bg` base.
   return (
@@ -361,8 +370,8 @@ function WorkspaceSidebarStreamRow({
           <SidebarChatRowMeta
             compact={compact}
             isPinned={stream.pinnedAt != null}
-            unreadCount={stream.unreadCount}
-            unreadBadgeVariant={isMuted ? "muted" : "unread"}
+            unreadCount={displayedUnread?.count ?? 0}
+            unreadBadgeVariant={displayedUnread?.passive === true ? "muted" : "unread"}
             hasMention={stream.hasUnreadPersonalMention}
             time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
             notificationIndicator={

@@ -222,6 +222,54 @@ describe("InboxPage workspace data", () => {
     expect(screen.getByText("No unread messages")).toBeInTheDocument();
   });
 
+  it("excludes passive unread traffic and shows only active topic counts", () => {
+    seedWorkspaceInbox({
+      streams: [
+        stream({
+          uuid: CHANNEL_STREAM_UUID,
+          name: "Engineering",
+          unreadCount: 9,
+          activeUnreadCount: 2,
+          passiveUnreadCount: 7,
+        }),
+        stream({
+          uuid: READ_STREAM_UUID,
+          name: "Muted channel",
+          unreadCount: 6,
+          activeUnreadCount: 0,
+          passiveUnreadCount: 6,
+          notificationMode: "muted",
+        }),
+      ],
+      topics: [
+        topic({
+          uuid: CHANNEL_TOPIC_UUID,
+          name: "Releases",
+          unreadCount: 5,
+          activeUnreadCount: 2,
+          passiveUnreadCount: 3,
+        }),
+        topic({
+          uuid: READ_TOPIC_UUID,
+          streamUuid: READ_STREAM_UUID,
+          name: "Muted topic",
+          unreadCount: 6,
+          activeUnreadCount: 0,
+          passiveUnreadCount: 6,
+        }),
+      ],
+    });
+
+    renderInbox();
+
+    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
+    expect(screen.getAllByText("2")).toHaveLength(2);
+    expect(screen.queryByText("#Muted channel")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Muted channel · Muted topic")).not.toBeInTheDocument();
+    expect(screen.queryByText("7")).not.toBeInTheDocument();
+    expect(screen.queryByText("6")).not.toBeInTheDocument();
+  });
+
   it("shows only unread topics inside an unread stream", () => {
     seedWorkspaceInbox({
       streams: [stream({ uuid: CHANNEL_STREAM_UUID, name: "Engineering", unreadCount: 3 })],

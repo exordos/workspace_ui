@@ -37,6 +37,8 @@ const streamDto: WorkspaceMessengerStreamDto = {
   role: "owner",
   notification_mode: "all_messages",
   unread_count: 3,
+  active_unread_count: 3,
+  passive_unread_count: 0,
   source_name: "native",
   source: { kind: "native" },
   invite_only: false,
@@ -68,6 +70,8 @@ const topicDto: WorkspaceMessengerTopicDto = {
   stream_uuid: STREAM_UUID,
   user_uuid: USER_UUID,
   unread_count: 2,
+  active_unread_count: 2,
+  passive_unread_count: 0,
   is_default: false,
   is_done: false,
   notification_mode: "follow",
@@ -109,6 +113,8 @@ describe("messenger adapters", () => {
       audience: "channel",
       isPrivate: false,
       unreadCount: 3,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 0,
       notificationMode: "all_messages",
       sourceName: "native",
       source: { kind: "native" },
@@ -121,9 +127,30 @@ describe("messenger adapters", () => {
       streamUuid: STREAM_UUID,
       name: "Releases",
       unreadCount: 2,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 0,
       notificationMode: "follow",
       color: 0xf458d2,
     });
+  });
+
+  it("maps separate active and passive unread counters", () => {
+    expect(
+      adaptMessengerStream({
+        ...streamDto,
+        unread_count: 9,
+        active_unread_count: 2,
+        passive_unread_count: 7,
+      }),
+    ).toMatchObject({ unreadCount: 9, activeUnreadCount: 2, passiveUnreadCount: 7 });
+    expect(
+      adaptMessengerTopic({
+        ...topicDto,
+        unread_count: 5,
+        active_unread_count: 1,
+        passive_unread_count: 4,
+      }),
+    ).toMatchObject({ unreadCount: 5, activeUnreadCount: 1, passiveUnreadCount: 4 });
   });
 
   it("normalizes missing direct user id on channel streams", () => {
@@ -162,6 +189,8 @@ describe("messenger adapters", () => {
       audience: "private",
       isPrivate: true,
       unreadCount: 3,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 0,
       isArchived: false,
       directUserUuid: USER_UUID,
       lastMessageUuid: null,
@@ -175,6 +204,8 @@ describe("messenger adapters", () => {
       audience: "private",
       isPrivate: true,
       unreadCount: 2,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 0,
       isArchived: false,
       directUserUuid: USER_UUID,
       lastMessageUuid: null,
@@ -306,6 +337,8 @@ describe("messenger adapters", () => {
           order_index: 10,
           pinned_at: null,
           unread_count: 3,
+          active_unread_count: 3,
+          passive_unread_count: 0,
           created_at: DATE,
           updated_at: DATE,
         },
@@ -332,6 +365,8 @@ describe("messenger adapters", () => {
           orderIndex: 10,
           pinnedAt: null,
           unreadCount: 3,
+          activeUnreadCount: 3,
+          passiveUnreadCount: 0,
           createdAt: DATE,
           updatedAt: DATE,
         },
@@ -358,6 +393,8 @@ describe("messenger adapters", () => {
           order_index: null,
           pinned_at: null,
           unread_count: 3,
+          active_unread_count: 3,
+          passive_unread_count: 0,
           created_at: DATE,
           updated_at: DATE,
         },
@@ -393,6 +430,8 @@ describe("messenger adapters", () => {
           stream_uuid: STREAM_UUID,
           chat_type: "private",
           unread_count: 3,
+          active_unread_count: 3,
+          passive_unread_count: 0,
           created_at: DATE,
           updated_at: DATE,
         },

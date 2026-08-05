@@ -83,6 +83,8 @@ const streamDto = {
   role: "owner",
   notification_mode: "all_messages",
   unread_count: 3,
+  active_unread_count: 3,
+  passive_unread_count: 0,
   source_name: "native",
   source: { kind: "native" },
   invite_only: false,

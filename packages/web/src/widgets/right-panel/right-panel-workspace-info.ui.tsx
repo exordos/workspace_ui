@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
+  resolveWorkspaceDisplayedUnread,
   type WorkspaceStreamNotificationLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
@@ -686,6 +687,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             <ul className="space-y-1.5">
               {info.topics.map((topic) => {
                 const topicDisplay = resolveTopicDisplayInfo(topic.name);
+                const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
                 return (
                   <li key={topic.id}>
                     <button
@@ -696,9 +698,15 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                       <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
                         {topicDisplay.label}
                       </span>
-                      {topic.unreadCount > 0 && (
-                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">
-                          {topic.unreadCount}
+                      {displayedUnread != null && (
+                        <span
+                          className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
+                            displayedUnread.passive
+                              ? "bg-notice-disable text-badge-text"
+                              : "bg-accent text-on-accent"
+                          }`}
+                        >
+                          {displayedUnread.count}
                         </span>
                       )}
                     </button>

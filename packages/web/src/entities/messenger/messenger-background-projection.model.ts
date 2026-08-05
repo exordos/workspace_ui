@@ -101,6 +101,8 @@ export interface MessengerBackgroundStreamSnapshot {
   streamUuid: WorkspaceMessengerUuid;
   streamName: string;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   notificationMode: WorkspaceMessengerStreamNotificationMode;
   isPrivate: boolean;
   lastMessageUuid: WorkspaceMessengerUuid | null;
@@ -116,6 +118,8 @@ export interface MessengerBackgroundTopicSnapshot {
   streamUuid: WorkspaceMessengerUuid;
   topicName: string | null;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
   lastMessageUuid: WorkspaceMessengerUuid | null;
   isDefault: boolean;
@@ -144,6 +148,8 @@ export interface MessengerBackgroundFolderItemSnapshot {
   chatType: WorkspaceMessengerFolderItemChatType;
   orderIndex: number | null;
   unreadCount: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   epochVersion: WorkspaceMessengerEpochVersion;
   updatedAt: string;
   observedAt: number;
@@ -662,10 +668,14 @@ function applyStreamProjection(
   context: WorkspaceRealtimeEventContext,
   observedAt: number,
 ): MessengerBackgroundProjection {
+  const activeUnreadCount = event.stream.active_unread_count ?? event.stream.unread_count;
+  const passiveUnreadCount = event.stream.passive_unread_count ?? 0;
   const folderUnreadProjection = projectStreamUnreadIntoBackgroundFolders(
     baseProjection,
     event.stream.uuid,
     event.stream.unread_count,
+    activeUnreadCount,
+    passiveUnreadCount,
   );
 
   return compactProjection(
@@ -679,6 +689,8 @@ function applyStreamProjection(
           streamUuid: event.stream.uuid,
           streamName: event.stream.name,
           unreadCount: event.stream.unread_count,
+          activeUnreadCount,
+          passiveUnreadCount,
           notificationMode: event.stream.notification_mode,
           isPrivate: event.stream.private,
           lastMessageUuid: event.stream.last_message_uuid ?? null,
@@ -697,6 +709,8 @@ function projectStreamUnreadIntoBackgroundFolders(
   projection: MessengerBackgroundProjection,
   streamUuid: WorkspaceMessengerUuid,
   unreadCount: number,
+  activeUnreadCount: number,
+  passiveUnreadCount: number,
 ): Pick<
   MessengerBackgroundProjection,
   "folderItemSnapshotsById" | "folderSnapshotsById" | "unreadByFolderItemId" | "unreadByFolderId"
@@ -705,6 +719,8 @@ function projectStreamUnreadIntoBackgroundFolders(
     projection,
     streamUuid,
     unreadCount,
+    activeUnreadCount,
+    passiveUnreadCount,
   );
   const folderProjection = projectBackgroundFolderUnreadTotals(
     projection,
@@ -724,6 +740,8 @@ function projectStreamUnreadIntoBackgroundFolderItems(
   projection: MessengerBackgroundProjection,
   streamUuid: WorkspaceMessengerUuid,
   unreadCount: number,
+  activeUnreadCount: number,
+  passiveUnreadCount: number,
 ): {
   affectedFolderIds: Set<WorkspaceMessengerUuid>;
   folderItemSnapshotsById: MessengerBackgroundProjection["folderItemSnapshotsById"];
@@ -737,21 +755,28 @@ function projectStreamUnreadIntoBackgroundFolderItems(
     if (topology.streamUuid !== streamUuid) continue;
 
     const itemSnapshot = projection.folderItemSnapshotsById[folderItemUuid];
-    if (itemSnapshot != null && itemSnapshot.unreadCount !== unreadCount) {
+    if (
+      itemSnapshot != null &&
+      (itemSnapshot.unreadCount !== unreadCount ||
+        itemSnapshot.activeUnreadCount !== activeUnreadCount ||
+        itemSnapshot.passiveUnreadCount !== passiveUnreadCount)
+    ) {
       if (folderItemSnapshotsById === projection.folderItemSnapshotsById) {
         folderItemSnapshotsById = { ...projection.folderItemSnapshotsById };
       }
       folderItemSnapshotsById[folderItemUuid] = {
         ...itemSnapshot,
         unreadCount,
+        activeUnreadCount,
+        passiveUnreadCount,
       };
     }
 
-    if (projection.unreadByFolderItemId[folderItemUuid] !== unreadCount) {
+    if (projection.unreadByFolderItemId[folderItemUuid] !== activeUnreadCount) {
       if (unreadByFolderItemId === projection.unreadByFolderItemId) {
         unreadByFolderItemId = { ...projection.unreadByFolderItemId };
       }
-      unreadByFolderItemId[folderItemUuid] = unreadCount;
+      unreadByFolderItemId[folderItemUuid] = activeUnreadCount;
     }
 
     if (topology.folderUuid != null) {
@@ -843,6 +868,8 @@ function applyTopicProjection(
           streamUuid: event.topic.stream_uuid,
           topicName: event.topic.is_default ? null : event.topic.name,
           unreadCount: event.topic.unread_count,
+          activeUnreadCount: event.topic.active_unread_count ?? event.topic.unread_count,
+          passiveUnreadCount: event.topic.passive_unread_count ?? 0,
           notificationMode: event.topic.notification_mode,
           lastMessageUuid: event.topic.last_message_uuid ?? null,
           isDefault: event.topic.is_default,
@@ -914,7 +941,7 @@ function applyFolderProjection(
   for (const item of event.folder.folder_items) {
     const folderUuid = item.folder_uuid ?? item.folder ?? null;
     nextFolderItemIds.push(item.uuid);
-    nextUnreadByFolderItemId[item.uuid] = item.unread_count;
+    nextUnreadByFolderItemId[item.uuid] = item.active_unread_count ?? item.unread_count;
     nextFolderItemSnapshotsById[item.uuid] = {
       ownerKey: context.ownerKey,
       folderItemUuid: item.uuid,
@@ -923,6 +950,8 @@ function applyFolderProjection(
       chatType: item.chat_type,
       orderIndex: item.order_index ?? null,
       unreadCount: item.unread_count,
+      activeUnreadCount: item.active_unread_count ?? item.unread_count,
+      passiveUnreadCount: item.passive_unread_count ?? 0,
       epochVersion: event.epoch_version,
       updatedAt: item.updated_at,
       observedAt,

@@ -13,7 +13,12 @@ import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
-import { isWorkspaceTopicEffectivelyMuted } from "./messenger-notification-mode.lib";
+import {
+  isWorkspaceStreamFullyMuted,
+  isWorkspaceTopicEffectivelyMuted,
+  resolveWorkspaceActiveUnreadCount,
+  resolveWorkspacePassiveUnreadCount,
+} from "./messenger-notification-mode.lib";
 import { isWorkspaceSelfChat } from "./messenger-self-chat.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
@@ -130,7 +135,12 @@ function compareSidebarStreams(
 
 function streamGroupRank(stream: MessengerSidebarStreamItem): number {
   if (stream.isArchived) return 2;
-  return stream.notificationMode === "muted" ? 1 : 0;
+  return isWorkspaceStreamFullyMuted(
+    stream.notificationMode,
+    stream.topics.map((topic) => topic.notificationMode),
+  )
+    ? 1
+    : 0;
 }
 
 function topicGroupRank(
@@ -257,6 +267,8 @@ function topicItemFromTopic(input: {
     topicUuid: input.topic.uuid,
     title: input.topic.name,
     unreadCount: input.topic.unreadCount,
+    activeUnreadCount: resolveWorkspaceActiveUnreadCount(input.topic),
+    passiveUnreadCount: resolveWorkspacePassiveUnreadCount(input.topic),
     hasUnreadPersonalMention: input.unreadMentionIndex.topicUuids.has(input.topic.uuid),
     // Default/general is still tracked for other UX; the sidebar strip has no special case.
     isDefault: input.topic.isDefault,
@@ -292,6 +304,8 @@ function streamItemFromStream(input: {
   currentUserUuid: MessengerUuid | null;
   unreadMentionIndex: MessengerSidebarUnreadMentionIndex;
   unreadCount?: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
 }): MessengerSidebarStreamItem {
@@ -318,6 +332,9 @@ function streamItemFromStream(input: {
     uiKind,
     notificationMode: input.stream.notificationMode,
     unreadCount: input.unreadCount ?? input.stream.unreadCount,
+    activeUnreadCount: input.activeUnreadCount ?? resolveWorkspaceActiveUnreadCount(input.stream),
+    passiveUnreadCount:
+      input.passiveUnreadCount ?? resolveWorkspacePassiveUnreadCount(input.stream),
     hasUnreadPersonalMention: input.unreadMentionIndex.streamUuids.has(input.stream.uuid),
     pinnedAt: input.pinnedAt ?? null,
     orderIndex: input.orderIndex ?? null,
@@ -358,6 +375,8 @@ function streamItemFromConversation(input: {
   currentUserUuid: MessengerUuid | null;
   unreadMentionIndex: MessengerSidebarUnreadMentionIndex;
   unreadCount?: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
   updatedAt?: string | null;
@@ -387,6 +406,10 @@ function streamItemFromConversation(input: {
         ? input.conversation.notificationMode
         : null,
     unreadCount: input.unreadCount ?? input.conversation.unreadCount,
+    activeUnreadCount:
+      input.activeUnreadCount ?? resolveWorkspaceActiveUnreadCount(input.conversation),
+    passiveUnreadCount:
+      input.passiveUnreadCount ?? resolveWorkspacePassiveUnreadCount(input.conversation),
     hasUnreadPersonalMention: input.unreadMentionIndex.streamUuids.has(
       input.conversation.streamUuid,
     ),
@@ -500,6 +523,8 @@ export function selectMessengerSidebarStreams(
               currentUserUuid,
               unreadMentionIndex,
               unreadCount: item.unreadCount,
+              activeUnreadCount: resolveWorkspaceActiveUnreadCount(item),
+              passiveUnreadCount: resolveWorkspacePassiveUnreadCount(item),
               pinnedAt: item.pinnedAt,
               orderIndex: item.orderIndex,
               topics: selectMessengerSidebarTopicsForStream({
@@ -528,6 +553,8 @@ export function selectMessengerSidebarStreams(
             currentUserUuid,
             unreadMentionIndex,
             unreadCount: item.unreadCount,
+            activeUnreadCount: resolveWorkspaceActiveUnreadCount(item),
+            passiveUnreadCount: resolveWorkspacePassiveUnreadCount(item),
             pinnedAt: item.pinnedAt,
             orderIndex: item.orderIndex,
             updatedAt: item.updatedAt,

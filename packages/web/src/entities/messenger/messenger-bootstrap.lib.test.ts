@@ -88,6 +88,8 @@ function createStreamDto(
     role: "owner",
     notification_mode: "all_messages",
     unread_count: 3,
+    active_unread_count: 3,
+    passive_unread_count: 0,
     source_name: "native",
     source: { kind: "native" },
     invite_only: false,
@@ -128,6 +130,8 @@ function createTopicDto(
     stream_uuid: STREAM_A,
     user_uuid: USER_A,
     unread_count: 2,
+    active_unread_count: 2,
+    passive_unread_count: 0,
     is_default: false,
     is_done: false,
     notification_mode: "default",
@@ -182,6 +186,8 @@ function createFolderDto(
         order_index: 10,
         pinned_at: null,
         unread_count: 3,
+        active_unread_count: 3,
+        passive_unread_count: 0,
         created_at: DATE,
         updated_at: DATE,
       },
@@ -1408,6 +1414,7 @@ describe("messenger bootstrap store", () => {
     useMessengerStore.getState().upsertFolderItem(ownerKey, {
       ...folderItem!,
       unreadCount: 7,
+      activeUnreadCount: 7,
       updatedAt: "2026-06-22T10:30:00Z",
     });
 
@@ -1447,6 +1454,8 @@ describe("messenger bootstrap store", () => {
           ...item,
           folder_uuid: FOLDER_B,
           unread_count: 3,
+          active_unread_count: 3,
+          passive_unread_count: 0,
         })),
       }),
     ]);
@@ -1455,6 +1464,7 @@ describe("messenger bootstrap store", () => {
       ...folderB!.items[0]!,
       folderUuid: FOLDER_A,
       unreadCount: 6,
+      activeUnreadCount: 6,
       updatedAt: "2026-06-22T10:40:00Z",
     });
 

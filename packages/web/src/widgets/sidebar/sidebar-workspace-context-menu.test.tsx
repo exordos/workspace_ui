@@ -243,20 +243,29 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.getByLabelText("Mute")).toBeInTheDocument();
   });
 
-  it("uses gray unread badges for muted streams and topics", () => {
+  it("uses active and gray passive badges across mixed muted states", () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
 
     renderWorkspaceSidebar([
       createStream({
         notificationMode: "muted",
-        unreadCount: 3,
+        unreadCount: 13,
+        activeUnreadCount: 7,
+        passiveUnreadCount: 6,
         topics: [
-          createTopic({ unreadCount: 2, notificationMode: "default" }),
+          createTopic({
+            unreadCount: 2,
+            activeUnreadCount: 0,
+            passiveUnreadCount: 2,
+            notificationMode: "default",
+          }),
           createTopic({
             id: "topic:muted",
             topicUuid: "29e59899-1ad1-4c7c-a643-c3b9c513ce4d",
             title: "Muted topic",
             unreadCount: 4,
+            activeUnreadCount: 0,
+            passiveUnreadCount: 4,
             notificationMode: "mute",
           }),
           createTopic({
@@ -264,13 +273,15 @@ describe("WorkspaceSidebar context menu", () => {
             topicUuid: "7f9b3bce-2f2c-4cc9-8c08-0353c324751d",
             title: "Unmuted topic",
             unreadCount: 5,
+            activeUnreadCount: 5,
+            passiveUnreadCount: 0,
             notificationMode: "unmute",
           }),
         ],
       }),
     ]);
 
-    expect(screen.getByText("3")).toHaveClass("bg-notice-disable", "text-badge-text");
+    expect(screen.getByText("7")).toHaveClass("bg-sidebar-unread");
     expect(screen.getByText("2")).toHaveClass("bg-notice-disable", "text-badge-text");
     expect(screen.getByText("4")).toHaveClass("bg-notice-disable", "text-badge-text");
     expect(screen.getByText("5")).toHaveClass("bg-sidebar-unread");
@@ -290,6 +301,44 @@ describe("WorkspaceSidebar context menu", () => {
 
     const titleLink = screen.getByRole("link", { name: /engineering/i });
     expect(titleLink.closest("div.w-full")).toHaveClass("opacity-70");
+  });
+
+  it("keeps a muted stream with an active topic bright and shows its passive badge in gray", () => {
+    renderWorkspaceSidebar([
+      createStream({
+        notificationMode: "muted",
+        unreadCount: 5,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 5,
+        topics: [
+          createTopic({
+            notificationMode: "unmute",
+            unreadCount: 0,
+            activeUnreadCount: 0,
+            passiveUnreadCount: 0,
+          }),
+        ],
+      }),
+    ]);
+
+    const titleLink = screen.getByRole("link", { name: /engineering/i });
+    expect(titleLink.closest("div.w-full")).not.toHaveClass("opacity-70");
+    expect(screen.getByLabelText("Muted")).toBeInTheDocument();
+    expect(screen.getByText("5")).toHaveClass("bg-notice-disable", "text-badge-text");
+  });
+
+  it("shows only the active unread counter when both counters are non-zero", () => {
+    renderWorkspaceSidebar([
+      createStream({
+        unreadCount: 9,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 7,
+      }),
+    ]);
+
+    expect(screen.getByText("2")).toHaveClass("bg-sidebar-unread");
+    expect(screen.queryByText("7")).not.toBeInTheDocument();
+    expect(screen.queryByText("9")).not.toBeInTheDocument();
   });
 
   it("marks every stream message read from the context menu", async () => {

@@ -49,6 +49,8 @@ const folderItemSuccess = {
   order_index: 0,
   pinned_at: null,
   unread_count: 0,
+  active_unread_count: 0,
+  passive_unread_count: 0,
   created_at: CREATED_AT,
   updated_at: CREATED_AT,
 };

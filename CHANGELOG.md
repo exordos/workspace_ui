@@ -6,6 +6,35 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-08-04
+
+### Changed
+
+- Stream and topic unread badges now prefer active unread messages, fall back to
+  a muted-color passive count, and stay hidden when both counters are zero.
+- A muted stream with an explicitly active topic remains in the active sidebar
+  group with normal title emphasis while retaining its muted-stream indicator.
+- Fully muted streams remain in the muted group, and muted topics use passive
+  badge styling in both the sidebar and channel information panel.
+- Inbox, folder, organization, and workspace-session badges now use active
+  unread counts only, so passive traffic does not raise attention indicators.
+- Desktop notification decisions now honor explicit topic overrides and the
+  effective notification mode inherited from the parent stream.
+
+### Requirements and compatibility
+
+- Requires Exordos Core `0.2.3` or newer.
+- Requires Workspace backend `0.1.30` or newer because stream, topic, and folder
+  payloads must provide separate active and passive unread counters.
+- No persisted-data or client-data migration is required.
+
+### Migration notes
+
+- Update the Workspace backend to `0.1.30` or newer before updating
+  `workspace_ui` to `0.4.5`.
+
+No client or server data migration is required.
+
 ## [0.4.4] — 2026-08-04
 
 ### Added

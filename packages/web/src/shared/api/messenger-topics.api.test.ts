@@ -52,6 +52,8 @@ const topicDto = {
   stream_uuid: STREAM_UUID,
   user_uuid: USER_UUID,
   unread_count: 0,
+  active_unread_count: 0,
+  passive_unread_count: 0,
   is_default: false,
   is_done: false,
   notification_mode: "default",
