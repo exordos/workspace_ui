@@ -8,6 +8,7 @@ import {
   useWorkspaceComposerDraftStore,
 } from "~/entities/composer-draft/composer-draft.model";
 import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
@@ -23,6 +24,7 @@ import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchMyMentionsPage = vi.hoisted(() => vi.fn());
+const fetchMyReactionActivityPage = vi.hoisted(() => vi.fn());
 const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const openWorkspaceForward = vi.hoisted(() => vi.fn());
 const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
@@ -42,6 +44,10 @@ vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
 
 vi.mock("~/entities/activity/activity-mentions.api", () => ({
   fetchMyMentionsPage,
+}));
+
+vi.mock("~/entities/activity/activity-reactions.api", () => ({
+  fetchMyReactionActivityPage,
 }));
 
 vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
@@ -241,6 +247,17 @@ function mockMentionsPage(
   });
 }
 
+function mockReactionActivityPage(
+  messages: WorkspaceMessengerMessageDto[],
+  nextCursor: string | null = null,
+): void {
+  fetchMyReactionActivityPage.mockResolvedValue({
+    messages: messages.map(adaptMessengerMessage),
+    nextCursor,
+    hasMore: nextCursor != null,
+  });
+}
+
 function activityMessageOrder(container: HTMLElement, labels: readonly string[]): string[] {
   return Array.from(container.querySelectorAll("ul > li")).flatMap((row) => {
     const label = labels.find((candidate) => row.textContent?.includes(candidate) === true);
@@ -252,9 +269,11 @@ describe("ActivityPage", () => {
   beforeEach(() => {
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
     useUsersStore.getState().clear();
     resetWorkspaceComposerDraftStoreForTests();
     fetchMyMentionsPage.mockReset();
+    fetchMyReactionActivityPage.mockReset();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
@@ -267,9 +286,11 @@ describe("ActivityPage", () => {
   afterEach(() => {
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
     useUsersStore.getState().clear();
     resetWorkspaceComposerDraftStoreForTests();
     fetchMyMentionsPage.mockReset();
+    fetchMyReactionActivityPage.mockReset();
     fetchWorkspaceStarredMessages.mockReset();
     openWorkspaceForward.mockReset();
     loadWorkspaceComposerDrafts.mockReset();
@@ -354,14 +375,98 @@ describe("ActivityPage", () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
-  it("shows an explicit unsupported state for reactions", () => {
+  it("loads own messages that received reactions", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    mockReactionActivityPage([
+      createWorkspaceMessage({
+        uuid: "message-reacted",
+        author_uuid: WORKSPACE_SESSION.userUuid,
+        is_own: true,
+        starred: false,
+        reactions: { heart: 3 },
+        reaction_users: {
+          heart: ["user-2", "user-3", "user-4"],
+        },
+        payload: { kind: "markdown", content: "My reacted message" },
+      }),
+    ]);
+
+    renderActivityPage("/activity/reactions");
+
+    expect(await screen.findByText("My reacted message")).toBeInTheDocument();
+    expect(fetchMyReactionActivityPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({
+          projectId: WORKSPACE_SESSION.projectId,
+          userUuid: WORKSPACE_SESSION.userUuid,
+        }),
+        pageSize: 50,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+    expect(fetchMyMentionsPage).not.toHaveBeenCalled();
+  });
+
+  it("shows the reaction activity empty state", async () => {
+    setWorkspaceSession();
+    mockReactionActivityPage([]);
+
     renderActivityPage("/activity/reactions");
 
     expect(
-      screen.getByText("Reactions are not connected to Workspace messaging yet."),
+      await screen.findByText("Your messages that received emoji reactions will appear here."),
     ).toBeInTheDocument();
-    expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
-    expect(fetchMyMentionsPage).not.toHaveBeenCalled();
+  });
+
+  it("keeps reaction activity synchronized with message snapshots", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    const initialDto = createWorkspaceMessage({
+      uuid: "message-reacted-live",
+      author_uuid: WORKSPACE_SESSION.userUuid,
+      is_own: true,
+      reactions: { eyes: 1 },
+      payload: { kind: "markdown", content: "Live reacted message" },
+    });
+    mockReactionActivityPage([initialDto]);
+
+    renderActivityPage("/activity/reactions");
+
+    expect(await screen.findByText("Live reacted message")).toBeInTheDocument();
+
+    act(() => {
+      useWorkspaceMessageStore.getState().upsertMessage(
+        adaptMessengerMessage({
+          ...initialDto,
+          reactions: {},
+          updated_at: "2026-06-22T10:11:00Z",
+        }),
+      );
+    });
+
+    expect(screen.queryByText("Live reacted message")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Your messages that received emoji reactions will appear here."),
+    ).toBeInTheDocument();
+
+    act(() => {
+      useWorkspaceMessageStore.getState().upsertMessage(
+        adaptMessengerMessage(
+          createWorkspaceMessage({
+            uuid: "message-first-reaction-live",
+            author_uuid: WORKSPACE_SESSION.userUuid,
+            is_own: true,
+            reactions: { heart: 1 },
+            payload: { kind: "markdown", content: "First live reaction" },
+            updated_at: "2026-06-22T10:12:00Z",
+          }),
+        ),
+      );
+    });
+
+    expect(screen.getByText("First live reaction")).toBeInTheDocument();
   });
 
   it("loads mentions, including an own message that mentions the current user", async () => {

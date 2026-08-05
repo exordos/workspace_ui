@@ -389,6 +389,36 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerMessageReactionDto({ ...reactionDto, user_uuid: 42 })).toBe(false);
   });
 
+  it("accepts only complete-shaped reaction user snapshots", () => {
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        reaction_users: {
+          thumbs_up: [USER_UUID, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+        },
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerMessageDto({ ...messageDto, reaction_users: {} })).toBe(true);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        reaction_users: { thumbs_up: [] },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        reaction_users: { thumbs_up: [USER_UUID, USER_UUID] },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        reaction_users: { thumbs_up: ["not-a-uuid"] },
+      }),
+    ).toBe(false);
+  });
+
   it("accepts system folder payloads with folder item parent alias", () => {
     expect(
       isWorkspaceMessengerFolderDto({

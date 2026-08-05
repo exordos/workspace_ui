@@ -221,6 +221,26 @@ export async function getMessagesPage(
   };
 }
 
+export async function getReactionActivityMessagesPage(
+  options: MessengerClientOptions,
+  query: MessengerPaginationQuery = {},
+): Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>> {
+  const { data, headers } = await messengerRequestJsonResult(
+    "GET",
+    "/activity/reactions/",
+    options,
+    projectScopedParams(options, paginationParams(query)),
+  );
+  return {
+    items: parseStrictDtoList(
+      data,
+      isWorkspaceMessengerMessageDto,
+      "messenger reaction activity response",
+    ),
+    ...parsePaginationHeaders(headers),
+  };
+}
+
 // Reaction wrappers возвращают только Workspace DTO.
 // В них нет UI-заглушек и старых Zulip payload-полей: backend сам определяет пользователя
 // из bearer-сессии, а frontend передает только message_uuid и emoji_name.

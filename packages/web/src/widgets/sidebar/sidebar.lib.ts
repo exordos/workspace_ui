@@ -91,6 +91,7 @@ const VISIBLE_MY_ACTIVITY_KEYS: ReadonlySet<(typeof MY_ACTIVITY)[number]["key"]>
   "favorites",
   "markedMessages",
   "mentions",
+  "reactions",
   "drafts",
 ]);
 

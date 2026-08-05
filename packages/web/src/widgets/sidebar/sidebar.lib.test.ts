@@ -18,6 +18,7 @@ describe("VISIBLE_MY_ACTIVITY", () => {
       "favorites",
       "markedMessages",
       "mentions",
+      "reactions",
       "drafts",
     ]);
   });
@@ -28,6 +29,7 @@ describe("VISIBLE_MY_ACTIVITY", () => {
       ["favorites", "home_filled", "bg-indicator-blue"],
       ["markedMessages", "marker", "bg-indicator-red"],
       ["mentions", "alternate_email", "bg-indicator-yellow"],
+      ["reactions", "mood", "bg-indicator-green"],
       ["drafts", "drafts", "bg-indicator-pink"],
     ]);
   });
@@ -38,6 +40,7 @@ describe("VISIBLE_MY_ACTIVITY", () => {
       ["favorites", "home"],
       ["markedMessages", "marker_outline"],
       ["mentions", "alternate_email"],
+      ["reactions", "mood"],
       ["drafts", "drafts_compact"],
     ]);
   });
@@ -48,6 +51,7 @@ describe("VISIBLE_MY_ACTIVITY", () => {
       ["favorites", 18],
       ["markedMessages", 18],
       ["mentions", 20],
+      ["reactions", 18],
       ["drafts", 18],
     ]);
   });

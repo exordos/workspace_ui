@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchMyMentionsPage } from "~/entities/activity/activity-mentions.api";
+import { fetchMyReactionActivityPage } from "~/entities/activity/activity-reactions.api";
 import { fetchWorkspaceStarredMessages } from "~/entities/activity/activity-workspace-starred.api";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -32,7 +34,7 @@ import { WorkspaceDraftsPage } from "./workspace-drafts-page.ui";
 const log = createLogger("activity-page");
 
 type ActivityPageFilter = "starred" | "mentions" | "reactions" | "drafts";
-type ActivityMessageFilter = Extract<ActivityPageFilter, "starred" | "mentions">;
+type ActivityMessageFilter = Extract<ActivityPageFilter, "starred" | "mentions" | "reactions">;
 
 const ALL_FILTERS = ["starred", "mentions", "reactions", "drafts"] as const;
 const ACTIVITY_PAGE_SIZE = 50;
@@ -63,10 +65,6 @@ function getActivityTitle(filter: ActivityPageFilter): string {
   return item ? t(item.labelKey) : filter;
 }
 
-function getUnsupportedMessage(): string {
-  return t("workspaceMessenger.reactionsUnsupported");
-}
-
 function isRuntimeContextCurrent(runtimeContext: WorkspaceRuntimeContext): boolean {
   return isWorkspaceRuntimeRequestContextCurrent(runtimeContext, () =>
     useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
@@ -86,12 +84,18 @@ function sortUniqueActivityMessages(messages: readonly MessengerMessage[]): Mess
   return [...byUuid.values()].sort(compareActivityMessages);
 }
 
-function ActivityUnsupportedState() {
-  return (
-    <div className="flex min-h-0 flex-1 items-start p-4 text-sm text-text-muted">
-      {getUnsupportedMessage()}
-    </div>
-  );
+function hasReactions(message: MessengerMessage): boolean {
+  return Object.values(message.reactions).some((count) => count > 0);
+}
+
+function indexActivityMessagesByUuid(
+  messages: readonly MessengerMessage[],
+): Map<string, MessengerMessage> {
+  const messagesByUuid = new Map<string, MessengerMessage>();
+  for (const message of messages) {
+    messagesByUuid.set(message.uuid, message);
+  }
+  return messagesByUuid;
 }
 
 async function fetchActivityMessagesPage({
@@ -107,6 +111,15 @@ async function fetchActivityMessagesPage({
 }): Promise<{ messages: MessengerMessage[]; nextCursor: string | null; hasMore: boolean }> {
   if (filter === "mentions") {
     return fetchMyMentionsPage({
+      runtimeContext,
+      pageSize: ACTIVITY_PAGE_SIZE,
+      ...(cursor == null ? {} : { cursor }),
+      signal,
+    });
+  }
+
+  if (filter === "reactions") {
+    return fetchMyReactionActivityPage({
       runtimeContext,
       pageSize: ACTIVITY_PAGE_SIZE,
       ...(cursor == null ? {} : { cursor }),
@@ -172,7 +185,9 @@ export const ActivityPage: React.FC = () => {
       ? (filter as ActivityPageFilter)
       : null;
   const activityMessageFilter: ActivityMessageFilter | null =
-    validFilter === "starred" || validFilter === "mentions" ? validFilter : null;
+    validFilter === "starred" || validFilter === "mentions" || validFilter === "reactions"
+      ? validFilter
+      : null;
   const collectionKey =
     ownerKey != null && activityMessageFilter != null
       ? `${ownerKey}:activity:${activityMessageFilter}`
@@ -204,6 +219,57 @@ export const ActivityPage: React.FC = () => {
       }
     }
   }, [navigate, orgId, projectId, validFilter]);
+
+  useEffect(() => {
+    if (activityMessageFilter !== "reactions" || runtimeContext == null || collectionKey == null) {
+      return;
+    }
+
+    const requestRuntimeContext = runtimeContext;
+    return useWorkspaceMessageStore.subscribe((nextState, previousState) => {
+      if (!isRuntimeContextCurrent(requestRuntimeContext)) return;
+
+      const changedUuids = new Set<string>();
+      for (const [messageUuid, message] of Object.entries(nextState.messagesById)) {
+        if (previousState.messagesById[messageUuid] !== message) {
+          changedUuids.add(messageUuid);
+        }
+      }
+      for (const messageUuid of Object.keys(previousState.messagesById)) {
+        if (nextState.messagesById[messageUuid] == null) {
+          changedUuids.add(messageUuid);
+        }
+      }
+      if (changedUuids.size === 0) return;
+
+      setActivityMessagesState((current) => {
+        if (current.collectionKey !== collectionKey) return current;
+        const messagesByUuid = indexActivityMessagesByUuid(current.messages);
+        let changed = false;
+
+        for (const messageUuid of changedUuids) {
+          const message = nextState.messagesById[messageUuid];
+          const belongsToReactionActivity =
+            message?.projectId === requestRuntimeContext.projectId &&
+            message.authorUuid === requestRuntimeContext.userUuid &&
+            hasReactions(message);
+
+          if (belongsToReactionActivity) {
+            if (messagesByUuid.get(messageUuid) !== message) {
+              messagesByUuid.set(messageUuid, message);
+              changed = true;
+            }
+          } else if (messagesByUuid.delete(messageUuid)) {
+            changed = true;
+          }
+        }
+
+        return changed
+          ? { ...current, messages: sortUniqueActivityMessages([...messagesByUuid.values()]) }
+          : current;
+      });
+    });
+  }, [activityMessageFilter, collectionKey, runtimeContext]);
 
   useEffect(() => {
     if (activityMessageFilter == null || runtimeContext == null || collectionKey == null) {
@@ -254,6 +320,12 @@ export const ActivityPage: React.FC = () => {
           !isRuntimeContextCurrent(requestRuntimeContext)
         ) {
           return;
+        }
+        if (activityMessageFilter === "reactions") {
+          const messageStore = useWorkspaceMessageStore.getState();
+          for (const message of page.messages) {
+            messageStore.upsertMessage(message);
+          }
         }
         setActivityMessagesState((current) => {
           if (current.collectionKey !== collectionKey) return current;
@@ -395,6 +467,12 @@ export const ActivityPage: React.FC = () => {
         ) {
           return;
         }
+        if (activityMessageFilter === "reactions") {
+          const messageStore = useWorkspaceMessageStore.getState();
+          for (const message of page.messages) {
+            messageStore.upsertMessage(message);
+          }
+        }
         setActivityMessagesState((current) => {
           if (
             current.collectionKey !== requestCollectionKey ||
@@ -478,9 +556,6 @@ export const ActivityPage: React.FC = () => {
     if (validFilter === "drafts") {
       return <WorkspaceDraftsPage />;
     }
-    if (validFilter === "reactions") {
-      return <ActivityUnsupportedState />;
-    }
     if (runtimeContext == null) {
       return (
         <div className="p-4 text-sm text-text-muted">
@@ -506,6 +581,14 @@ export const ActivityPage: React.FC = () => {
       );
     }
     if (activityMessages.length === 0) {
+      if (validFilter === "reactions") {
+        return (
+          <div className="p-4 text-sm text-text-muted">
+            <p>{t("activity.reactionsEmpty")}</p>
+            <p className="mt-1 text-xs">{t("activity.reactionsEmptyHint")}</p>
+          </div>
+        );
+      }
       return (
         <div className="p-4 text-sm text-text-muted">
           {validFilter === "mentions" ? t("activity.mentionsEmpty") : t("chat.noMessages")}

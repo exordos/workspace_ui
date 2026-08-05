@@ -27,7 +27,6 @@ export const WorkspaceSidebarActivity: React.FC<WorkspaceSidebarActivityProps> =
         markedMessages: null,
       }}
       disabledItems={{
-        reactions: t("workspaceMessenger.reactionsUnsupported"),
         feed: t("workspaceMessenger.feedUnsupported"),
       }}
       isCompactDensity={isCompactDensity}

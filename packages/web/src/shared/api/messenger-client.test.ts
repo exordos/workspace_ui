@@ -3,6 +3,7 @@ import {
   createMessageReaction,
   deleteMessageReaction,
   MessengerApiError,
+  getReactionActivityMessagesPage,
   getMessageReactions,
   getMessages,
   getMessagesByUuids,
@@ -436,6 +437,46 @@ describe("messenger-client", () => {
     await expect(
       getMessagesPage({ accessToken: "access-token", fetchImpl: invalidFetchMock }),
     ).rejects.toThrow("Expected valid messenger messages response item at index 1");
+  });
+
+  it("fetches current-user messages with reactions using cursor pagination", async () => {
+    const fetchMock = createFetchMock(
+      [
+        {
+          ...messageDto,
+          reaction_users: {
+            thumbs_up: [USER_UUID],
+          },
+        },
+      ],
+      200,
+      {
+        "X-Pagination-Marker": "next-reaction-message",
+        "X-Pagination-Limit": "25",
+      },
+    );
+
+    await expect(
+      getReactionActivityMessagesPage(
+        { accessToken: "access-token", projectId: PROJECT_UUID, fetchImpl: fetchMock },
+        { pageLimit: 25, pageMarker: "reaction-cursor" },
+      ),
+    ).resolves.toEqual({
+      items: [
+        {
+          ...messageDto,
+          reaction_users: {
+            thumbs_up: [USER_UUID],
+          },
+        },
+      ],
+      nextPageMarker: "next-reaction-message",
+      pageLimit: 25,
+    });
+
+    expect(firstFetchCall(fetchMock)[0]).toBe(
+      `/api/workspace/v1/messenger/activity/reactions/?page_limit=25&page_marker=reaction-cursor&project_id=${PROJECT_UUID}`,
+    );
   });
 
   it("fetches users, user pages, and one user by uuid", async () => {
