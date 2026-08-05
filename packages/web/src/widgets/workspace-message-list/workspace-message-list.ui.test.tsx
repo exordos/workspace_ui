@@ -1504,6 +1504,13 @@ describe("WorkspaceMessageList", () => {
     expect(peerArticle?.querySelector("[data-workspace-message-bubble='true']")).toHaveClass(
       "bg-msg-bg",
     );
+    expect(ownArticle?.querySelector("[data-workspace-message-bubble='true']")).not.toHaveAttribute(
+      "role",
+      "button",
+    );
+    expect(
+      peerArticle?.querySelector("[data-workspace-message-bubble='true']"),
+    ).not.toHaveAttribute("role", "button");
     expect(ownArticle?.querySelector("[data-peer-author-label='true']")).not.toBeInTheDocument();
     expect(peerArticle?.querySelector("[data-peer-author-label='true']")).toHaveTextContent(
       "Bob Reed",

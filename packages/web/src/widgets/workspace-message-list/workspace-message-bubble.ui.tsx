@@ -330,6 +330,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         renderedBody.metadata.hasCodeBlocks);
 
     return (
+      // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className={`group relative ${bubbleClassName}`}
         data-workspace-message-bubble="true"
@@ -339,7 +341,6 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         data-last-in-group={isLastInGroup ? "true" : "false"}
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
-        role={containsInteractiveBody ? undefined : "button"}
         tabIndex={containsInteractiveBody ? undefined : 0}
       >
         {serverMessage != null ? (
