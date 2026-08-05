@@ -83,9 +83,12 @@ export function parseWorkspaceIamProjects(value: unknown): WorkspaceIamProject[]
     throw new TypeError("Expected IAM projects response to be an array");
   }
 
+  const projectUuids = new Set<string>();
   return collection.flatMap((item) => {
     const project = parseWorkspaceIamProject(item);
-    return project == null ? [] : [project];
+    if (project == null || projectUuids.has(project.uuid)) return [];
+    projectUuids.add(project.uuid);
+    return [project];
   });
 }
 

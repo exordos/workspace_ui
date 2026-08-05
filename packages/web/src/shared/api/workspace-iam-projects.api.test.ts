@@ -81,6 +81,16 @@ describe("workspace-iam-projects", () => {
     );
   });
 
+  it("keeps each project once when multiple IAM roles return duplicate rows", () => {
+    expect(
+      parseWorkspaceIamProjects([
+        project,
+        { ...project },
+        { ...project, uuid: "project-2", name: "Engineering" },
+      ]),
+    ).toEqual([project, { ...project, uuid: "project-2", name: "Engineering" }]);
+  });
+
   it("throws a typed error for rejected requests", async () => {
     const fetchImpl = vi
       .fn()
