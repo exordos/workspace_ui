@@ -68,6 +68,7 @@ export const RightPanelUserMenuOptionButton: React.FC<OptionButtonProps> = ({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-sidebar-hover"
     >
       <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>

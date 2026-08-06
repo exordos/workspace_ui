@@ -806,6 +806,299 @@ describe("messenger sidebar selectors", () => {
     expect(rows[0]?.topics[1]?.lastMessageCreatedAt).toBe(DATE_A);
   });
 
+  it("puts active unread topics and streams above newer read activity in unread-first mode", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_B }),
+          [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_A }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({
+            unreadCount: 0,
+            activeUnreadCount: 0,
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            unreadCount: 2,
+            activeUnreadCount: 2,
+            lastMessageUuid: MESSAGE_A,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        sortMode: "unread_first",
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({
+            uuid: MESSAGE_A,
+            streamUuid: STREAM_B,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_A,
+          }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }),
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_B]);
+  });
+
+  it("does not prioritize passive unread activity above an active unread topic", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({
+            unreadCount: 5,
+            activeUnreadCount: 0,
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            unreadCount: 1,
+            activeUnreadCount: 1,
+            lastMessageUuid: MESSAGE_A,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        sortMode: "unread_first",
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, topicUuid: TOPIC_B, createdAt: DATE_A }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }),
+        },
+      },
+    );
+
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_B, TOPIC_A]);
+  });
+
+  it("returns streams to date ordering after their active unread count is cleared", () => {
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      sortMode: "unread_first" as const,
+      usersById: createUsersById(),
+      messagesById: {
+        [MESSAGE_A]: message({
+          uuid: MESSAGE_A,
+          streamUuid: STREAM_B,
+          topicUuid: TOPIC_B,
+          createdAt: DATE_A,
+        }),
+        [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }),
+      },
+    };
+    const unreadState = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_B }),
+        [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_A }),
+      },
+      topicsById: {
+        [TOPIC_A]: topic({ unreadCount: 0, activeUnreadCount: 0, lastMessageUuid: MESSAGE_B }),
+        [TOPIC_B]: topic({
+          uuid: TOPIC_B,
+          streamUuid: STREAM_B,
+          unreadCount: 1,
+          activeUnreadCount: 1,
+          lastMessageUuid: MESSAGE_A,
+        }),
+      },
+      topicIds: [TOPIC_A, TOPIC_B],
+    });
+    const readState = {
+      ...unreadState,
+      topicsById: {
+        ...unreadState.topicsById,
+        [TOPIC_B]: topic({
+          uuid: TOPIC_B,
+          streamUuid: STREAM_B,
+          unreadCount: 0,
+          activeUnreadCount: 0,
+          lastMessageUuid: MESSAGE_A,
+        }),
+      },
+    };
+
+    expect(
+      selectMessengerSidebarStreams(unreadState, options).map((row) => row.streamUuid),
+    ).toEqual([STREAM_B, STREAM_A]);
+    expect(selectMessengerSidebarStreams(readState, options).map((row) => row.streamUuid)).toEqual([
+      STREAM_A,
+      STREAM_B,
+    ]);
+  });
+
+  it("recomputes cached sidebar rows when the sort mode changes", () => {
+    const base = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_B }),
+        [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_A }),
+      },
+      topicsById: {
+        [TOPIC_A]: topic({ unreadCount: 0, activeUnreadCount: 0, lastMessageUuid: MESSAGE_B }),
+        [TOPIC_B]: topic({
+          uuid: TOPIC_B,
+          streamUuid: STREAM_B,
+          unreadCount: 1,
+          activeUnreadCount: 1,
+          lastMessageUuid: MESSAGE_A,
+        }),
+      },
+      topicIds: [TOPIC_A, TOPIC_B],
+    });
+    const commonOptions = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById: createUsersById(),
+      messagesById: {
+        [MESSAGE_A]: message({
+          uuid: MESSAGE_A,
+          streamUuid: STREAM_B,
+          topicUuid: TOPIC_B,
+          createdAt: DATE_A,
+        }),
+        [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }),
+      },
+    };
+
+    expect(selectMessengerSidebarStreams(base, commonOptions).map((row) => row.streamUuid)).toEqual(
+      [STREAM_A, STREAM_B],
+    );
+    expect(
+      selectMessengerSidebarStreams(base, {
+        ...commonOptions,
+        sortMode: "unread_first",
+      }).map((row) => row.streamUuid),
+    ).toEqual([STREAM_B, STREAM_A]);
+  });
+
+  it("does not let muted or done unread topics lift their stream", () => {
+    const mutedMessageUuid = "4d9b34ca-bf68-414c-b5b1-77e4118471a4";
+    const doneMessageUuid = "00d8331b-4d3d-43d1-a0d7-9c4f21b7cd70";
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: mutedMessageUuid }),
+          [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_A }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ unreadCount: 0, activeUnreadCount: 0, lastMessageUuid: MESSAGE_B }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            notificationMode: "mute",
+            unreadCount: 3,
+            activeUnreadCount: 3,
+            lastMessageUuid: mutedMessageUuid,
+          }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            isDone: true,
+            unreadCount: 4,
+            activeUnreadCount: 4,
+            lastMessageUuid: doneMessageUuid,
+          }),
+          [TOPIC_D]: topic({
+            uuid: TOPIC_D,
+            streamUuid: STREAM_B,
+            unreadCount: 1,
+            activeUnreadCount: 1,
+            lastMessageUuid: MESSAGE_A,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B, TOPIC_C, TOPIC_D],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        sortMode: "unread_first",
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({
+            uuid: MESSAGE_A,
+            streamUuid: STREAM_B,
+            topicUuid: TOPIC_D,
+            createdAt: DATE_A,
+          }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }),
+          [mutedMessageUuid]: message({
+            uuid: mutedMessageUuid,
+            topicUuid: TOPIC_B,
+            createdAt: "2026-06-22T13:10:00Z",
+          }),
+          [doneMessageUuid]: message({
+            uuid: doneMessageUuid,
+            topicUuid: TOPIC_C,
+            createdAt: "2026-06-22T14:10:00Z",
+          }),
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(
+      rows.find((row) => row.streamUuid === STREAM_A)?.topics.map((item) => item.topicUuid),
+    ).toEqual([TOPIC_A, TOPIC_B, TOPIC_C]);
+  });
+
+  it("keeps pinned streams ahead of active unread streams in unread-first mode", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+          [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_B }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ unreadCount: 1, activeUnreadCount: 1, lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            unreadCount: 0,
+            activeUnreadCount: 0,
+            lastMessageUuid: MESSAGE_B,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+        foldersById: {
+          [FOLDER_A]: folder({
+            items: [
+              { ...folder().items[0]!, streamUuid: STREAM_A, pinnedAt: null },
+              { ...folder().items[1]!, streamUuid: STREAM_B, pinnedAt: DATE_A },
+            ],
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        sortMode: "unread_first",
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_B }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            streamUuid: STREAM_B,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_A,
+          }),
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+  });
+
   it("keeps done topics at the bottom even when they have newer messages", () => {
     const rows = selectMessengerSidebarStreams(
       state({

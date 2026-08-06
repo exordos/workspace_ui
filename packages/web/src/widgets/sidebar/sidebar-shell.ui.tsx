@@ -34,6 +34,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   pathname = "",
 }) => {
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
+  const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const workspaceRoute = useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
@@ -104,6 +105,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
             projectId: sidebarWorkspaceIdentity.projectId,
             currentUserUuid,
             selectedFolderUuid: workspaceEffectiveFolderId,
+            sortMode: messengerSidebarSortMode,
             messagesById: workspaceMessagesById,
             usersById: workspaceUsersById,
           })
@@ -113,6 +115,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       sidebarWorkspaceIdentity,
       workspaceEffectiveFolderId,
       workspaceMessagesById,
+      messengerSidebarSortMode,
       workspaceSidebarState,
       workspaceUsersById,
     ],

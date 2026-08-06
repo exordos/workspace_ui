@@ -6,6 +6,8 @@
  */
 
 import { create } from "zustand";
+import type { MessengerSidebarSortMode } from "~/entities/messenger/messenger-sidebar.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   buildLegacyWorkspaceSessionStorageKey,
   buildWorkspaceSessionStorageKey,
@@ -13,7 +15,6 @@ import {
   getWorkspaceSessionStorageScopeFromAuthState,
   type WorkspaceSessionStorageScope,
 } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { setLocale } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
@@ -59,6 +60,7 @@ function createDefaultSettings(): AppSettings {
   return {
     prioritizePersonalUnread: false,
     prioritizeUnmutedUnreadChannels: false,
+    messengerSidebarSortMode: "last_message",
     notificationSound: "default",
     language: resolveBrowserLanguage(),
     folderRailLayout: "vertical",
@@ -73,6 +75,7 @@ const DEFAULT_SETTINGS: AppSettings = createDefaultSettings();
 const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   prioritizePersonalUnread: false,
   prioritizeUnmutedUnreadChannels: false,
+  messengerSidebarSortMode: "last_message",
   notificationSound: "default",
   folderRailLayout: "horizontal",
   showSystemFolders: true,
@@ -108,6 +111,10 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
   return value === "compact" ? "compact" : FALLBACK_SETTINGS.chatListDensity;
 }
 
+function resolveMessengerSidebarSortMode(value: unknown): MessengerSidebarSortMode {
+  return value === "unread_first" ? "unread_first" : "last_message";
+}
+
 function readSettingsRaw(key: string, legacyKey: string | null): string | null {
   const raw = localStorage.getItem(key);
   if (raw != null || legacyKey == null || legacyKey === key) return raw;
@@ -138,6 +145,7 @@ function loadSettings(
     return {
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
+      messengerSidebarSortMode: resolveMessengerSidebarSortMode(parsed.messengerSidebarSortMode),
       notificationSound: resolveNotificationSound(parsed.notificationSound),
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
@@ -169,6 +177,7 @@ function persistSettings(
 interface SettingsState extends AppSettings {
   setPrioritizePersonalUnread: (enabled: boolean) => void;
   setPrioritizeUnmutedUnreadChannels: (enabled: boolean) => void;
+  setMessengerSidebarSortMode: (sortMode: MessengerSidebarSortMode) => void;
   setNotificationSound: (sound: NotificationSound) => void;
   setLanguage: (language: AppLanguage) => void;
   setFolderRailLayout: (layout: FolderRailLayout) => void;
@@ -193,6 +202,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setPrioritizeUnmutedUnreadChannels", { enabled });
     set({ prioritizeUnmutedUnreadChannels: enabled });
     persistSettings({ ...get(), prioritizeUnmutedUnreadChannels: enabled });
+  },
+
+  setMessengerSidebarSortMode(messengerSidebarSortMode) {
+    logStoreAction("settings", "setMessengerSidebarSortMode", { messengerSidebarSortMode });
+    set({ messengerSidebarSortMode });
+    persistSettings({ ...get(), messengerSidebarSortMode });
   },
 
   setNotificationSound(sound) {

@@ -107,6 +107,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
+  const setMessengerSidebarSortMode = useSettingsStore((s) => s.setMessengerSidebarSortMode);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
   const chatListDensity = useSettingsStore((s) => s.chatListDensity);
@@ -119,6 +121,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
   const [languageSettingsOpen, setLanguageSettingsOpen] = useState(false);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
+  const [messengerSidebarSortModeOpen, setMessengerSidebarSortModeOpen] = useState(false);
   // const [chatSortingOpen, setChatSortingOpen] = useState(false);
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
@@ -310,6 +313,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, []);
   const toggleLanguageSettings = useCallback(() => {
     setLanguageSettingsOpen((open) => !open);
+  }, []);
+  const toggleMessengerSidebarSortMode = useCallback(() => {
+    setMessengerSidebarSortModeOpen((open) => !open);
   }, []);
   const toggleAuthIdleTimeoutSettings = useCallback(() => {
     setAuthIdleTimeoutOpen((open) => !open);
@@ -572,6 +578,27 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              <RightPanelUserMenuMenuButton
+                label={t("settings.messengerSidebarSortMode")}
+                icon="sort"
+                onClick={toggleMessengerSidebarSortMode}
+                right={<MenuChevron open={messengerSidebarSortModeOpen} />}
+              />
+              {messengerSidebarSortModeOpen && (
+                <div className={ACCORDION_PANEL_CLASS}>
+                  <RightPanelUserMenuOptionButton
+                    label={t("settings.messengerSidebarSortModeLastMessage")}
+                    active={messengerSidebarSortMode === "last_message"}
+                    onClick={() => setMessengerSidebarSortMode("last_message")}
+                  />
+                  <RightPanelUserMenuOptionButton
+                    label={t("settings.messengerSidebarSortModeUnreadFirst")}
+                    active={messengerSidebarSortMode === "unread_first"}
+                    onClick={() => setMessengerSidebarSortMode("unread_first")}
+                  />
                 </div>
               )}
 

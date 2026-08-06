@@ -69,6 +69,7 @@ describe("useSettingsStore", () => {
       const state = useSettingsStore.getState();
       expect(state.prioritizePersonalUnread).toBe(false);
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(state.messengerSidebarSortMode).toBe("last_message");
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
       expect(state.folderRailLayout).toBe("vertical");
@@ -100,6 +101,16 @@ describe("useSettingsStore", () => {
       const raw = localStorage.getItem("workspace-settings");
       const parsed = JSON.parse(raw!);
       expect(parsed.prioritizeUnmutedUnreadChannels).toBe(true);
+    });
+  });
+
+  describe("messenger sidebar sort mode", () => {
+    it("switches to unread-first mode and persists it", () => {
+      useSettingsStore.getState().setMessengerSidebarSortMode("unread_first");
+
+      expect(useSettingsStore.getState().messengerSidebarSortMode).toBe("unread_first");
+      const raw = localStorage.getItem("workspace-settings");
+      expect(JSON.parse(raw!).messengerSidebarSortMode).toBe("unread_first");
     });
   });
 
@@ -137,6 +148,7 @@ describe("useSettingsStore", () => {
       const state = useSettingsStore.getState();
       expect(state.prioritizePersonalUnread).toBe(false);
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(state.messengerSidebarSortMode).toBe("last_message");
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
       expect(state.showSystemFolders).toBe(true);
@@ -152,6 +164,7 @@ describe("useSettingsStore", () => {
       const parsed = JSON.parse(raw!);
       expect(parsed.prioritizePersonalUnread).toBe(false);
       expect(parsed.prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(parsed.messengerSidebarSortMode).toBe("last_message");
       expect(parsed.authIdleTimeout).toBe("3d");
     });
   });
@@ -412,6 +425,7 @@ describe("loadSettings (module reload)", () => {
       JSON.stringify({
         prioritizePersonalUnread: true,
         prioritizeUnmutedUnreadChannels: false,
+        messengerSidebarSortMode: "unread_first",
         notificationSound: "none",
         language: "ru",
         folderRailLayout: "horizontal",
@@ -425,6 +439,7 @@ describe("loadSettings (module reload)", () => {
     const state = freshStore.getState();
     expect(state.prioritizePersonalUnread).toBe(true);
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
+    expect(state.messengerSidebarSortMode).toBe("unread_first");
     expect(state.notificationSound).toBe("none");
     expect(state.language).toBe("ru");
     expect(state.folderRailLayout).toBe("horizontal");
@@ -445,6 +460,16 @@ describe("loadSettings (module reload)", () => {
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");
     expect(freshStore.getState().authIdleTimeout).toBe("3d");
+  });
+
+  it("uses the default sidebar sort mode when the persisted value is invalid", async () => {
+    localStorage.setItem(
+      "workspace-settings",
+      JSON.stringify({ messengerSidebarSortMode: "alphabetical" }),
+    );
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().messengerSidebarSortMode).toBe("last_message");
   });
 
   it("respects explicit showSystemFolders false in persisted settings", async () => {
