@@ -7,8 +7,8 @@ import {
   highlightWorkspaceMessageAnchor,
   isWorkspaceScrollAtBottom,
   resolveVisibleWorkspaceMessageRenderAnchor,
-  WORKSPACE_MESSAGE_UUID_ATTRIBUTE,
-  WORKSPACE_MESSAGE_UUID_SELECTOR,
+  WORKSPACE_MESSAGE_READ_BOUNDARY_ATTRIBUTE,
+  WORKSPACE_MESSAGE_READ_BOUNDARY_SELECTOR,
   type WorkspaceScrollAnchor,
   type WorkspaceScrollSnapshot,
 } from "./workspace-message-list-scroll-anchor.lib";
@@ -16,7 +16,6 @@ import type React from "react";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const LOAD_MORE_THRESHOLD = 100;
-const UNREAD_VISIBILITY_THRESHOLD = 0.5;
 
 interface PendingPrependScrollSnapshot extends WorkspaceScrollSnapshot {
   messageCount: number;
@@ -75,17 +74,18 @@ function collectVisibleUnreadKeys(root: HTMLElement, unreadKeys: ReadonlySet<str
   const rootRect = root.getBoundingClientRect();
   const visibleKeys: string[] = [];
 
-  for (const node of root.querySelectorAll<HTMLElement>(WORKSPACE_MESSAGE_UUID_SELECTOR)) {
-    const messageKey = node.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+  for (const boundary of root.querySelectorAll<HTMLElement>(
+    WORKSPACE_MESSAGE_READ_BOUNDARY_SELECTOR,
+  )) {
+    const messageKey = boundary.getAttribute(WORKSPACE_MESSAGE_READ_BOUNDARY_ATTRIBUTE);
 
     if (messageKey == null || !unreadKeys.has(messageKey)) {
       continue;
     }
 
-    const rect = node.getBoundingClientRect();
-    const visibleHeight = Math.min(rect.bottom, rootRect.bottom) - Math.max(rect.top, rootRect.top);
+    const rect = boundary.getBoundingClientRect();
 
-    if (rect.height <= 0 || visibleHeight / rect.height < UNREAD_VISIBILITY_THRESHOLD) {
+    if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) {
       continue;
     }
 
@@ -306,13 +306,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
       for (const entry of entries) {
         const element = entry.target as HTMLElement;
-        const messageKey = element.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+        const messageKey = element.getAttribute(WORKSPACE_MESSAGE_READ_BOUNDARY_ATTRIBUTE);
 
         if (messageKey == null || !unreadCandidateKeys.has(messageKey)) {
           continue;
         }
 
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+        if (entry.isIntersecting && entry.intersectionRatio > 0) {
           viewportUnreadKeysRef.current.add(messageKey);
           visibleThisFrame.push(messageKey);
         } else {
@@ -666,14 +666,16 @@ export function useWorkspaceMessageListScroll<TMessage>({
       },
       {
         root,
-        threshold: [UNREAD_VISIBILITY_THRESHOLD],
+        threshold: [0],
       },
     );
     const previousObservedNodes = observedUnreadNodesRef.current;
     const nextObservedNodes = new Map<string, HTMLElement>();
 
-    for (const node of root.querySelectorAll<HTMLElement>(WORKSPACE_MESSAGE_UUID_SELECTOR)) {
-      const messageKey = node.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+    for (const node of root.querySelectorAll<HTMLElement>(
+      WORKSPACE_MESSAGE_READ_BOUNDARY_SELECTOR,
+    )) {
+      const messageKey = node.getAttribute(WORKSPACE_MESSAGE_READ_BOUNDARY_ATTRIBUTE);
 
       if (messageKey == null || !unreadCandidateKeys.has(messageKey)) {
         continue;

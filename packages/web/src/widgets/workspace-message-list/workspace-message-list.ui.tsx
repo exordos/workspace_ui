@@ -30,8 +30,8 @@ import type {
   WorkspaceMessageListProps,
 } from "./workspace-message-list.types";
 
-const OWN_ROW_CLASS_NAME = "flex w-full justify-end self-stretch";
-const PEER_ROW_CLASS_NAME = "flex w-full justify-start self-stretch";
+const OWN_ROW_CLASS_NAME = "relative flex w-full justify-end self-stretch";
+const PEER_ROW_CLASS_NAME = "relative flex w-full justify-start self-stretch";
 const OWN_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-end";
 const PEER_AUTHOR_GROUP_CLASS_NAME = "flex w-full items-stretch gap-2";
 const PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME = "flex min-w-0 flex-1 flex-col items-start gap-1";
@@ -142,6 +142,11 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         resolveMention={resolveMention}
         quoteRenderMode={quoteRenderMode}
         actions={actions}
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+        data-message-read-boundary={messageUuid}
       />
     </article>
   );

@@ -1350,7 +1350,7 @@ describe("WorkspaceMessageList", () => {
     });
   });
 
-  it("reports only sufficiently visible unread messages after focus returns", () => {
+  it("reports a tall unread message after its bottom boundary enters the viewport", () => {
     const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
@@ -1369,8 +1369,11 @@ describe("WorkspaceMessageList", () => {
     const message = container.querySelector<HTMLElement>(
       "[data-message-uuid='focus-unread-message']",
     );
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='focus-unread-message']",
+    );
 
-    if (feed == null || message == null) {
+    if (feed == null || message == null || readBoundary == null) {
       throw new Error("Unread focus test nodes were not found");
     }
 
@@ -1385,16 +1388,27 @@ describe("WorkspaceMessageList", () => {
       y: 0,
       toJSON: () => ({}),
     });
-    const messageRect = vi.spyOn(message, "getBoundingClientRect");
-    messageRect.mockReturnValue({
-      top: 90,
-      bottom: 110,
+    vi.spyOn(message, "getBoundingClientRect").mockReturnValue({
+      top: -300,
+      bottom: 200,
       left: 0,
       right: 100,
       width: 100,
-      height: 20,
+      height: 500,
       x: 0,
-      y: 90,
+      y: -300,
+      toJSON: () => ({}),
+    });
+    const readBoundaryRect = vi.spyOn(readBoundary, "getBoundingClientRect");
+    readBoundaryRect.mockReturnValue({
+      top: 99,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 1,
+      x: 0,
+      y: 99,
       toJSON: () => ({}),
     });
 
