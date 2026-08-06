@@ -644,6 +644,65 @@ describe("messenger sidebar selectors", () => {
     expect(rows[1]?.updatedAt).toBe(newerMessageAt);
   });
 
+  it("does not let muted or done topics lift an active stream", () => {
+    const activeTopicMessageAt = "2026-06-22T11:10:00Z";
+    const mutedTopicMessageAt = "2026-06-22T12:10:00Z";
+    const doneTopicMessageAt = "2026-06-22T13:10:00Z";
+    const mutedTopicMessageUuid = "4d9b34ca-bf68-414c-b5b1-77e4118471a4";
+    const doneTopicMessageUuid = "00d8331b-4d3d-43d1-a0d7-9c4f21b7cd70";
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: mutedTopicMessageUuid }),
+        },
+        streamIds: [STREAM_A],
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            notificationMode: "mute",
+            lastMessageUuid: mutedTopicMessageUuid,
+          }),
+          [TOPIC_D]: topic({
+            uuid: TOPIC_D,
+            isDone: true,
+            lastMessageUuid: doneTopicMessageUuid,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B, TOPIC_C, TOPIC_D],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            topicUuid: TOPIC_B,
+            createdAt: activeTopicMessageAt,
+          }),
+          [mutedTopicMessageUuid]: message({
+            uuid: mutedTopicMessageUuid,
+            topicUuid: TOPIC_C,
+            createdAt: mutedTopicMessageAt,
+          }),
+          [doneTopicMessageUuid]: message({
+            uuid: doneTopicMessageUuid,
+            topicUuid: TOPIC_D,
+            createdAt: doneTopicMessageAt,
+          }),
+        },
+      },
+    );
+
+    expect(rows[0]?.lastMessageCreatedAt).toBe(activeTopicMessageAt);
+  });
+
   it("builds previews from loaded last messages", () => {
     const rows = selectMessengerSidebarStreams(
       state({

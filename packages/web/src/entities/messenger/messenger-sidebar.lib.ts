@@ -151,6 +151,13 @@ function topicGroupRank(
   return isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode) ? 1 : 0;
 }
 
+function isActiveSidebarTopic(
+  topic: MessengerSidebarTopicItem,
+  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
+): boolean {
+  return topicGroupRank(topic, streamNotificationMode) === 0;
+}
+
 function compareSidebarTopics(
   a: MessengerSidebarTopicItem,
   b: MessengerSidebarTopicItem,
@@ -317,6 +324,28 @@ function streamItemFromStream(input: {
       ? input.usersById[input.stream.directUserUuid]
       : undefined;
   const uiKind = selectWorkspaceStreamConversationUiKind(input.stream);
+  const isActiveStream =
+    !input.stream.isArchived &&
+    !isWorkspaceStreamFullyMuted(
+      input.stream.notificationMode,
+      input.topics.map((topic) => topic.notificationMode),
+    );
+  const activeTopics = isActiveStream
+    ? input.topics.filter((topic) => isActiveSidebarTopic(topic, input.stream.notificationMode))
+    : input.topics;
+  const streamLastMessageTopicUuid =
+    input.stream.lastMessageUuid != null
+      ? input.messagesById[input.stream.lastMessageUuid]?.topicUuid
+      : undefined;
+  const streamLastMessageTopic = input.topics.find(
+    (topic) => topic.topicUuid === streamLastMessageTopicUuid,
+  );
+  const streamLastMessageUuid =
+    isActiveStream &&
+    streamLastMessageTopic != null &&
+    !isActiveSidebarTopic(streamLastMessageTopic, input.stream.notificationMode)
+      ? null
+      : input.stream.lastMessageUuid;
 
   return {
     id: `stream:${input.stream.uuid}`,
@@ -360,7 +389,7 @@ function streamItemFromStream(input: {
     statusText: uiKind === "directPrivate" ? (directUser?.statusText ?? null) : undefined,
     updatedAt: input.stream.updatedAt,
     lastMessageCreatedAt: latestMessageCreatedAt(
-      [input.stream.lastMessageUuid, ...input.topics.map((topic) => topic.preview?.messageUuid)],
+      [streamLastMessageUuid, ...activeTopics.map((topic) => topic.preview?.messageUuid)],
       input.messagesById,
     ),
   };
