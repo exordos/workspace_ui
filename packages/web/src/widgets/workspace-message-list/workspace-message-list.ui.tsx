@@ -86,6 +86,7 @@ interface WorkspaceMessageListRowProps {
   isSelected: boolean;
   selectionMode: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  usersById: UsersById;
   topicLabel?: string | null;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
@@ -101,6 +102,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   isSelected,
   selectionMode,
   resolveAuthorLabel,
+  usersById,
   topicLabel,
   resolveMention,
   quoteRenderMode,
@@ -135,6 +137,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         isSelected={isSelected}
         selectionMode={selectionMode}
         resolveAuthorLabel={resolveAuthorLabel}
+        usersById={usersById}
         topicLabel={topicLabel}
         resolveMention={resolveMention}
         quoteRenderMode={quoteRenderMode}
@@ -194,6 +197,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       isSelected={message.kind === "server" && selectedMessageUuids.has(message.message.uuid)}
       selectionMode={selectionMode}
       resolveAuthorLabel={resolveAuthorLabel}
+      usersById={usersById}
       topicLabel={
         showTopicLabels && messageIndex === 0
           ? formatWorkspaceTopicLabel(resolveTopicLabel?.(message.message.topicUuid))

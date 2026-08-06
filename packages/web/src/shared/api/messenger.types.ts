@@ -162,11 +162,10 @@ export interface WorkspaceMessengerUpdateDraftRequestBody {
   payload: WorkspaceMessengerMarkdownPayloadDto;
 }
 
-// Aggregate хранит только серверные счетчики по имени emoji.
-// Здесь намеренно нет списка пользователей, reaction_type, emoji_code или numeric user id:
-// Workspace API пока отдает только имя emoji и количество, а недостающие сведения нельзя
-// достраивать на фронтенде без риска получить ложную доменную модель.
+// Counts and bounded complete user lists are separate server projections.
+// A missing reaction_users key means count-only; clients must not infer the server limit.
 export type WorkspaceMessengerReactionAggregate = Record<string, number>;
+export type WorkspaceMessengerReactionUsers = Record<string, WorkspaceMessengerUuid[]>;
 
 // DTO одной строки реакции нужен для операций текущего пользователя.
 // Счетчики приходят в message.reactions, а uuid конкретной реакции нужен только для DELETE,
@@ -221,6 +220,7 @@ export interface WorkspaceMessengerMessageDto {
   provider?: WorkspaceMessengerProviderDto | null;
   delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: WorkspaceMessengerReactionAggregate;
+  reaction_users: WorkspaceMessengerReactionUsers;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -1048,6 +1048,22 @@ export function isWorkspaceMessengerReactionAggregate(
   );
 }
 
+export function isWorkspaceMessengerReactionUsers(
+  value: unknown,
+): value is WorkspaceMessengerReactionUsers {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  return Object.entries(value).every(([emojiName, userUuids]) => {
+    if (emojiName.trim().length === 0 || !Array.isArray(userUuids) || userUuids.length === 0) {
+      return false;
+    }
+
+    return userUuids.every(isUuid) && new Set(userUuids).size === userUuids.length;
+  });
+}
+
 export function isWorkspaceMessengerStreamDto(
   value: unknown,
 ): value is WorkspaceMessengerStreamDto {
@@ -1162,6 +1178,7 @@ export function isWorkspaceMessengerMessageDto(
       value.delivery === null ||
       isWorkspaceMessengerDeliveryDto(value.delivery)) &&
     isWorkspaceMessengerReactionAggregate(value.reactions) &&
+    isWorkspaceMessengerReactionUsers(value.reaction_users) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );

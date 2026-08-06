@@ -99,6 +99,9 @@ const messageDto: WorkspaceMessengerMessageDto = {
     thumbs_up: 2,
     eyes: 1,
   },
+  reaction_users: {
+    eyes: [USER_UUID],
+  },
   created_at: DATE,
   updated_at: DATE,
 };
@@ -267,6 +270,9 @@ describe("messenger adapters", () => {
       reactions: {
         thumbs_up: 2,
         eyes: 1,
+      },
+      reactionUserUuidsByEmojiName: {
+        eyes: [USER_UUID],
       },
       ownReactionUuidsByEmojiName: {},
       createdAt: DATE,

@@ -55,6 +55,7 @@ function createMessage(overrides: MessageOverrides & { uuid: MessengerUuid }): M
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,

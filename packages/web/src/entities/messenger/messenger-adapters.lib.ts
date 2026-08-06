@@ -171,6 +171,12 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     // Своих reactionUuid в этом snapshot нет, поэтому adapter всегда начинает с
     // пустой локальной проекции; store/action слой обогатит ее отдельно из cache/SWR.
     reactions: { ...dto.reactions },
+    reactionUserUuidsByEmojiName: Object.fromEntries(
+      Object.entries(dto.reaction_users).map(([emojiName, userUuids]) => [
+        emojiName,
+        [...userUuids],
+      ]),
+    ),
     ownReactionUuidsByEmojiName: {},
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,

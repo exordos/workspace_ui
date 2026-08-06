@@ -74,6 +74,7 @@ function createMessage(overrides: MessageOverrides = {}): MessengerMessage {
     starred: false,
     isOwn: true,
     reactions: { thumbs_up: 1 },
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,
@@ -466,6 +467,41 @@ describe("messenger message reaction actions", () => {
     expect(upsertOwnMessageReaction).not.toHaveBeenCalled();
   });
 
+  it("rolls back optimistic remove when the Workspace DELETE fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(
+      createMessage({
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+    const request = createDeferred<void>();
+    const actionPromise = removeMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: { deleteMessageReaction: vi.fn(() => request.promise) },
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({});
+
+    request.reject(new Error("network"));
+
+    await expect(actionPromise).rejects.toThrow("network");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({ thumbs_up: REACTION_A });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+  });
+
   it("recovers duplicate add conflict by reloading own rows for the message", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
@@ -547,15 +583,53 @@ describe("messenger message reaction actions", () => {
     ).toEqual({});
   });
 
-  it("toggles by resolving own rows first, avoiding duplicate POST", async () => {
+  it("toggles an unprojected reaction immediately without a preflight GET", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     indexMessages(createMessage());
+    const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
+    const getMessageReactions = vi.fn(() => Promise.resolve([]));
+    const createMessageReaction = vi.fn(() => request.promise);
+
+    const actionPromise = toggleMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: { getMessageReactions, createMessageReaction },
+    });
+
+    expect(getMessageReactions).not.toHaveBeenCalled();
+    expect(createMessageReaction).toHaveBeenCalledTimes(1);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 2,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName
+        ?.thumbs_up?.operation,
+    ).toBe("add");
+
+    request.resolve(createReactionDto());
+
+    await expect(actionPromise).resolves.toEqual({
+      status: "applied",
+      ownerKey,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      operation: "added",
+      reactionUuid: REACTION_A,
+    });
+  });
+
+  it("removes an existing reaction after an optimistic add conflict", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    indexMessages(createMessage());
+    const createMessageReaction = vi.fn(() =>
+      Promise.reject(new MessengerApiError("conflict", 409, {})),
+    );
     const getMessageReactions = vi.fn(() => Promise.resolve([createReactionDto()]));
-    const createMessageReaction = vi.fn(() => Promise.resolve(createReactionDto()));
     const deleteMessageReaction = vi.fn(() => Promise.resolve());
-    const replaceOwnMessageReactionsForMessage = vi.fn(() => Promise.resolve());
-    const deleteOwnMessageReaction = vi.fn(() => Promise.resolve());
 
     await expect(
       toggleMessengerMessageReaction({
@@ -563,8 +637,7 @@ describe("messenger message reaction actions", () => {
         getRuntimeContext: () => runtimeContext,
         messageUuid: MESSAGE_A,
         emojiName: "thumbs_up",
-        client: { getMessageReactions, createMessageReaction, deleteMessageReaction },
-        cache: { replaceOwnMessageReactionsForMessage, deleteOwnMessageReaction },
+        client: { createMessageReaction, getMessageReactions, deleteMessageReaction },
       }),
     ).resolves.toEqual({
       status: "applied",
@@ -575,9 +648,47 @@ describe("messenger message reaction actions", () => {
       reactionUuid: REACTION_A,
     });
 
+    expect(createMessageReaction).toHaveBeenCalledTimes(1);
     expect(getMessageReactions).toHaveBeenCalledTimes(1);
-    expect(createMessageReaction).not.toHaveBeenCalled();
     expect(deleteMessageReaction).toHaveBeenCalledWith(expect.any(Object), REACTION_A);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({});
+  });
+
+  it("skips a repeated toggle while the same reaction request is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    indexMessages(createMessage());
+    const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
+    const createMessageReaction = vi.fn(() => request.promise);
+
+    const firstAction = toggleMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "eyes",
+      client: { createMessageReaction },
+    });
+
+    await expect(
+      toggleMessengerMessageReaction({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuid: MESSAGE_A,
+        emojiName: "eyes",
+        client: { createMessageReaction },
+      }),
+    ).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "pending-reaction",
+    });
+    expect(createMessageReaction).toHaveBeenCalledTimes(1);
+
+    request.resolve(createReactionDto({ emoji_name: "eyes" }));
+    await firstAction;
   });
 
   it("revalidates and clears own projection when realtime aggregate becomes empty", async () => {

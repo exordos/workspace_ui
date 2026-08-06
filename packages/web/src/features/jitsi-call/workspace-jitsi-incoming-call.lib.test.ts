@@ -36,6 +36,7 @@ function createMessage(overrides: MessageOverrides = {}): MessengerMessage {
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,

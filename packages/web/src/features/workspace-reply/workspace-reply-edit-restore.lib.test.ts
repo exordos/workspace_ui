@@ -36,6 +36,7 @@ function createMessage(): MessengerMessage {
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-28T10:00:00.000Z",
     updatedAt: "2026-07-28T10:00:00.000Z",

@@ -29,6 +29,7 @@ const ownMentionMessage: WorkspaceMessengerMessageDto = {
   is_own: true,
   mentioned: true,
   reactions: {},
+  reaction_users: {},
   created_at: "2026-06-22T10:10:00Z",
   updated_at: "2026-06-22T10:10:00Z",
 };

@@ -138,7 +138,7 @@ export type MessengerMessageReactionActionResult =
   | {
       status: "skipped";
       ownerKey: string | null;
-      reason: "missing-context" | "stale-owner" | "empty-emoji";
+      reason: "missing-context" | "stale-owner" | "empty-emoji" | "pending-reaction";
     };
 
 interface CapturedReactionAction {
@@ -273,6 +273,16 @@ function isOwnReactionProjected(
   if (message == null) return false;
   if (message.ownReactionUuidsByEmojiName[emojiName] != null) return true;
   return message.pendingOwnReactionsByEmojiName?.[emojiName]?.operation === "add";
+}
+
+function hasPendingOwnReaction(
+  store: MessengerMessageReactionStoreApi,
+  messageUuid: MessengerUuid,
+  emojiName: string,
+): boolean {
+  return (
+    store.getState().messagesById[messageUuid]?.pendingOwnReactionsByEmojiName?.[emojiName] != null
+  );
 }
 
 function createReactionOptimisticRequestId(): string {
@@ -656,17 +666,28 @@ export async function removeMessengerMessageReaction({
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const effectiveCache = { ...defaultReactionCache, ...cache };
-  const row = await resolveOwnReactionForMessageAndEmoji({
-    runtimeContext,
-    requestOptions,
-    ownerKey: action.ownerKey,
-    messageUuid,
-    emojiName: normalizedEmojiName,
-    action,
-    client,
-    cache: effectiveCache,
-    store,
-  });
+  const projectedReactionUuid = currentOwnReactionUuid(store, messageUuid, normalizedEmojiName);
+  const row =
+    projectedReactionUuid != null
+      ? {
+          messageUuid,
+          userUuid: runtimeContext.userUuid,
+          reactionUuid: projectedReactionUuid,
+          emojiName: normalizedEmojiName,
+          createdAt: "",
+          updatedAt: "",
+        }
+      : await resolveOwnReactionForMessageAndEmoji({
+          runtimeContext,
+          requestOptions,
+          ownerKey: action.ownerKey,
+          messageUuid,
+          emojiName: normalizedEmojiName,
+          action,
+          client,
+          cache: effectiveCache,
+          store,
+        });
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
@@ -747,6 +768,11 @@ export async function toggleMessengerMessageReaction({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "empty-emoji" };
   }
 
+  if (hasPendingOwnReaction(store, messageUuid, normalizedEmojiName)) {
+    const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "pending-reaction" };
+  }
+
   if (isOwnReactionProjected(store, messageUuid, normalizedEmojiName)) {
     return removeMessengerMessageReaction({
       runtimeContext,
@@ -761,7 +787,7 @@ export async function toggleMessengerMessageReaction({
     });
   }
 
-  const revalidateResult = await revalidateMessengerOwnMessageReactions({
+  const addResult = await addMessengerMessageReaction({
     runtimeContext,
     getRuntimeContext,
     clientOptions,
@@ -769,32 +795,14 @@ export async function toggleMessengerMessageReaction({
     cache,
     signal,
     store,
-    messageUuids: [messageUuid],
+    messageUuid,
+    emojiName: normalizedEmojiName,
   });
-  if (revalidateResult.status === "skipped") {
-    return {
-      status: "skipped",
-      ownerKey: revalidateResult.ownerKey,
-      reason:
-        revalidateResult.reason === "empty-message-list" ? "stale-owner" : revalidateResult.reason,
-    };
+  if (addResult.status !== "applied" || addResult.operation !== "already-added") {
+    return addResult;
   }
 
-  if (isOwnReactionProjected(store, messageUuid, normalizedEmojiName)) {
-    return removeMessengerMessageReaction({
-      runtimeContext,
-      getRuntimeContext,
-      clientOptions,
-      client,
-      cache,
-      signal,
-      store,
-      messageUuid,
-      emojiName: normalizedEmojiName,
-    });
-  }
-
-  return addMessengerMessageReaction({
+  return removeMessengerMessageReaction({
     runtimeContext,
     getRuntimeContext,
     clientOptions,

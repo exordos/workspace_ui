@@ -17,11 +17,10 @@ export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
 export type WorkspaceConversationUiKind = "channel" | "directPrivate";
 
-// Агрегат реакций в Workspace-домене совпадает с backend contract:
-// ключом является стабильное emoji_name, значением - серверный счетчик.
-// Здесь намеренно нет Zulip-полей reaction_type/emoji_code и нет списка
-// пользователей, потому что таких данных backend message snapshot не несет.
+// Counts and bounded complete user lists stay separate in the domain.
+// A missing user-list key means count-only and never a partial list.
 export type MessengerReactionCountsByName = Record<string, number>;
+export type MessengerReactionUserUuidsByName = Record<string, MessengerUuid[]>;
 
 // Локальная проекция собственных реакций нужна только для действий текущего
 // пользователя: по emoji_name быстро понять, есть ли моя реакция, и какой
@@ -162,6 +161,7 @@ export interface MessengerMessage {
   provider?: WorkspaceMessengerProviderDto | null;
   delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: MessengerReactionCountsByName;
+  reactionUserUuidsByEmojiName: MessengerReactionUserUuidsByName;
   ownReactionUuidsByEmojiName: MessengerOwnReactionUuidsByName;
   pendingOwnReactionsByEmojiName?: MessengerPendingOwnReactionsByName;
   createdAt: string;

@@ -25,6 +25,7 @@ function createMessage(uuid = SERVER_MESSAGE_UUID): MessengerMessage {
     starred: false,
     isOwn: true,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-17T10:00:00.000Z",
     updatedAt: "2026-07-17T10:00:00.000Z",

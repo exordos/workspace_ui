@@ -7,6 +7,7 @@ import {
   isWorkspaceMessengerMessageReactionDto,
   isWorkspaceMessengerRawEventDto,
   isWorkspaceMessengerReactionAggregate,
+  isWorkspaceMessengerReactionUsers,
   isWorkspaceMessengerRealtimeEventDto,
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerStreamBindingDto,
@@ -104,6 +105,9 @@ const messageDto = {
   reactions: {
     thumbs_up: 2,
     eyes: 1,
+  },
+  reaction_users: {
+    eyes: [USER_UUID],
   },
   created_at: DATE,
   updated_at: DATE,
@@ -401,6 +405,11 @@ describe("Workspace messenger DTO guards", () => {
     );
     expect(isWorkspaceMessengerReactionAggregate(["thumbs_up"])).toBe(false);
     expect(isWorkspaceMessengerReactionAggregate(new Map([["thumbs_up", 1]]))).toBe(false);
+    expect(isWorkspaceMessengerReactionUsers({ thumbs_up: [USER_UUID] })).toBe(true);
+    expect(isWorkspaceMessengerReactionUsers({})).toBe(true);
+    expect(isWorkspaceMessengerReactionUsers({ thumbs_up: [] })).toBe(false);
+    expect(isWorkspaceMessengerReactionUsers({ thumbs_up: ["not-a-uuid"] })).toBe(false);
+    expect(isWorkspaceMessengerReactionUsers({ thumbs_up: [USER_UUID, USER_UUID] })).toBe(false);
 
     expect(isWorkspaceMessengerMessageReactionDto(reactionDto)).toBe(true);
     expect(isWorkspaceMessengerMessageReactionDto({ ...reactionDto, emoji_name: "" })).toBe(false);
@@ -769,6 +778,9 @@ describe("Workspace messenger DTO guards", () => {
       }),
     ).toBe(false);
     expect(isWorkspaceMessengerMessageDto({ ...messageDto, reactions: undefined })).toBe(false);
+    expect(isWorkspaceMessengerMessageDto({ ...messageDto, reaction_users: undefined })).toBe(
+      false,
+    );
     expect(
       isWorkspaceMessengerMessageDto({
         ...messageDto,

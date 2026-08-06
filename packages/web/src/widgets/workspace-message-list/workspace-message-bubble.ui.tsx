@@ -3,6 +3,9 @@ import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/mess
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import type { UsersById } from "~/entities/user/user.types";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import {
   normalizeEmojiShortcodeName,
@@ -33,6 +36,8 @@ interface WorkspaceMessageReactionChip {
   displayChar: string;
   count: number;
   reactedByMe: boolean;
+  pending: boolean;
+  userUuids: readonly MessengerUuid[] | null;
 }
 
 const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
@@ -128,22 +133,36 @@ function getWorkspaceReactionChips(message: MessengerMessage): WorkspaceMessageR
   return Object.entries(message.reactions)
     .filter(([emojiName, count]) => emojiName.trim().length > 0 && count > 0)
     .sort(([leftEmojiName], [rightEmojiName]) => leftEmojiName.localeCompare(rightEmojiName))
-    .map(([emojiName, count]) => ({
-      key: `workspace-reaction:${emojiName}`,
-      emojiName,
-      displayChar: resolveWorkspaceReactionDisplayChar(emojiName),
-      count,
-      reactedByMe: message.ownReactionUuidsByEmojiName[emojiName] != null,
-    }));
+    .map(([emojiName, count]) => {
+      const pendingOperation = message.pendingOwnReactionsByEmojiName?.[emojiName]?.operation;
+      const serverUserUuids = message.reactionUserUuidsByEmojiName[emojiName];
+      return {
+        key: `workspace-reaction:${emojiName}`,
+        emojiName,
+        displayChar: resolveWorkspaceReactionDisplayChar(emojiName),
+        count,
+        reactedByMe:
+          pendingOperation === "add" ||
+          (pendingOperation !== "remove" && message.ownReactionUuidsByEmojiName[emojiName] != null),
+        pending: pendingOperation != null,
+        userUuids: serverUserUuids?.length === count ? serverUserUuids : null,
+      };
+    });
+}
+
+function resolveReactionUserLabel(userUuid: MessengerUuid, usersById: UsersById): string {
+  return selectUserDisplayName(usersById[userUuid], `#${userUuid.slice(0, 8)}`);
 }
 
 interface WorkspaceMessageReactionRowProps {
   message: MessengerMessage;
+  usersById: UsersById;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
 }
 
 const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReactionRow({
   message,
+  usersById,
   onToggleMessageReaction,
 }: WorkspaceMessageReactionRowProps): React.ReactElement | null {
   const reactionChips = getWorkspaceReactionChips(message);
@@ -153,36 +172,74 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-1">
-      {reactionChips.map(({ key, emojiName, displayChar, count, reactedByMe }) => {
-        const label = `${displayChar} ${count}`;
-        return (
-          <button
-            type="button"
-            key={key}
-            data-workspace-message-reaction-chip="true"
-            className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
-              reactedByMe
-                ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
-                : "border-border-subtle bg-card-bg hover:bg-card-bg-active"
-            } ${
-              onToggleMessageReaction == null
-                ? "cursor-default"
-                : "cursor-pointer hover:text-text-primary"
-            }`}
-            title={label}
-            aria-label={label}
-            disabled={onToggleMessageReaction == null}
-            onClick={() => {
-              void onToggleMessageReaction?.(message.uuid, emojiName);
-            }}
-          >
-            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden leading-none">
-              <span className="block text-base leading-none">{displayChar}</span>
-            </span>
-            <span className="min-w-0 truncate text-[11px] text-text-muted">{count}</span>
-          </button>
-        );
-      })}
+      {reactionChips.map(
+        ({ key, emojiName, displayChar, count, reactedByMe, pending, userUuids }) => {
+          const userLabels = userUuids?.map((userUuid) =>
+            resolveReactionUserLabel(userUuid, usersById),
+          );
+          const label =
+            userLabels == null
+              ? `${displayChar} ${count}`
+              : `${displayChar} ${userLabels.join(", ")}`;
+          return (
+            <button
+              type="button"
+              key={key}
+              data-workspace-message-reaction-chip="true"
+              data-workspace-message-reaction-pending={pending ? "true" : "false"}
+              className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+                reactedByMe
+                  ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
+                  : "border-border-subtle bg-card-bg hover:bg-card-bg-active"
+              } ${
+                pending
+                  ? "cursor-wait"
+                  : onToggleMessageReaction == null
+                    ? "cursor-default"
+                    : "cursor-pointer hover:text-text-primary"
+              }`}
+              title={label}
+              aria-label={label}
+              aria-busy={pending}
+              aria-pressed={reactedByMe}
+              disabled={onToggleMessageReaction == null || pending}
+              onClick={() => {
+                void onToggleMessageReaction?.(message.uuid, emojiName);
+              }}
+            >
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden leading-none">
+                <span className="block text-base leading-none">{displayChar}</span>
+              </span>
+              {userUuids == null ? (
+                <span className="min-w-0 truncate text-[11px] text-text-muted">{count}</span>
+              ) : (
+                <span className="flex -space-x-1" data-workspace-reaction-user-list="true">
+                  {userUuids.map((userUuid) => {
+                    const user = usersById[userUuid];
+                    const userLabel = resolveReactionUserLabel(userUuid, usersById);
+                    return (
+                      <span
+                        key={userUuid}
+                        data-reaction-user-uuid={userUuid}
+                        title={userLabel}
+                        className="rounded-full ring-1 ring-border-subtle"
+                      >
+                        <WorkspaceAvatar
+                          size="xs"
+                          className="!h-5 !w-5 !text-[9px]"
+                          avatarUrn={user?.avatarUrl}
+                        >
+                          {userLabel.slice(0, 1)}
+                        </WorkspaceAvatar>
+                      </span>
+                    );
+                  })}
+                </span>
+              )}
+            </button>
+          );
+        },
+      )}
     </div>
   );
 });
@@ -196,6 +253,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     isSelected = false,
     selectionMode = false,
     resolveAuthorLabel,
+    usersById,
     topicLabel,
     resolveMention,
     quoteRenderMode,
@@ -471,6 +529,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             {serverMessage != null ? (
               <WorkspaceMessageReactionRow
                 message={serverMessage}
+                usersById={usersById}
                 onToggleMessageReaction={actions?.onToggleMessageReaction}
               />
             ) : (

@@ -39,6 +39,7 @@ import type {
   WorkspaceMessengerCatalogCacheSnapshot,
   WorkspaceMessengerCatalogCacheWriteOptions,
   WorkspaceMessengerCatalogCacheWriteSnapshot,
+  WorkspaceMessengerCachedMessage,
   WorkspaceMessengerConversationMessagePage,
   WorkspaceMessengerCachedConversation,
   WorkspaceMessengerOwnMessageReactionCacheRow,
@@ -75,6 +76,18 @@ export interface MessengerConversationCacheWindow {
   messages: MessengerMessage[];
   nextPageMarker: string | null;
   hasMore: boolean;
+}
+
+function normalizeCachedMessages(
+  messages: readonly WorkspaceMessengerCachedMessage[],
+): MessengerMessage[] {
+  return messages.map((cachedMessage) => {
+    const message = cachedMessage as unknown as MessengerMessage;
+    return {
+      ...message,
+      reactionUserUuidsByEmojiName: message.reactionUserUuidsByEmojiName ?? {},
+    };
+  });
 }
 
 const removedStreamCacheKeys = new Set<string>();
@@ -403,7 +416,7 @@ export async function readMessengerConversationWindowCache(
 ): Promise<MessengerConversationCacheWindow> {
   const cached = await readConversationMessageWindow(ownerKey, conversationId);
   return {
-    messages: cached.messages as unknown as MessengerMessage[],
+    messages: normalizeCachedMessages(cached.messages),
     nextPageMarker: cached.window?.nextPageMarker ?? null,
     hasMore: cached.window?.hasMore ?? false,
   };
@@ -414,7 +427,7 @@ export async function readMessengerMessageBodyCache(
   messageUuids: readonly MessengerUuid[],
 ): Promise<MessengerMessage[]> {
   const cached = await readCachedMessagesByUuids(ownerKey, messageUuids);
-  return cached as unknown as MessengerMessage[];
+  return normalizeCachedMessages(cached);
 }
 
 export async function writeMessengerMessageBodyCache(

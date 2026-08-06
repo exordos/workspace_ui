@@ -60,6 +60,7 @@ function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMess
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",
@@ -3646,6 +3647,14 @@ describe("WorkspaceMessageList", () => {
 
   it("renders Workspace reaction chips inside the message bubble", () => {
     const onToggleMessageReaction = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser(),
+      createWorkspaceUser({
+        uuid: "second-peer-user-uuid",
+        username: "sam",
+        displayName: "Sam Lee",
+      }),
+    ]);
 
     const { container } = render(
       <WorkspaceMessageList
@@ -3660,6 +3669,9 @@ describe("WorkspaceMessageList", () => {
             uuid: "peer-reaction-chip-message",
             markdown: "Peer reacted text",
             reactions: { "👏": 2 },
+            reactionUserUuidsByEmojiName: {
+              "👏": ["peer-user-uuid", "second-peer-user-uuid"],
+            },
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -3678,6 +3690,7 @@ describe("WorkspaceMessageList", () => {
     const peerReactionChip = peerArticle?.querySelector(
       "[data-workspace-message-reaction-chip='true']",
     );
+    const peerReactionUsers = peerReactionChip?.querySelectorAll("[data-reaction-user-uuid]");
 
     expect(reactionChip).toBeInTheDocument();
     expect(reactionChip).toHaveTextContent("👍");
@@ -3686,10 +3699,69 @@ describe("WorkspaceMessageList", () => {
     expect(reactionFooter).toContainElement(messageTime as HTMLElement);
     // Idle chips use card hover tokens so they stay visible on white peer bubbles
     expect(peerReactionChip).toHaveClass("bg-card-bg", "hover:bg-card-bg-active");
+    expect(peerReactionUsers).toHaveLength(2);
+    expect(peerReactionChip).toHaveAttribute("aria-label", "👏 Bob Reed, Sam Lee");
+    expect(
+      peerReactionChip?.querySelector("[data-workspace-reaction-user-list='true']"),
+    ).toBeInTheDocument();
 
     fireEvent.click(reactionChip!);
 
     expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "👍");
+  });
+
+  it("renders optimistic reaction highlight and falls back to counts for stale user lists", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "pending-add-reaction",
+            reactions: { "👍": 2 },
+            reactionUserUuidsByEmojiName: { "👍": ["peer-user-uuid"] },
+            pendingOwnReactionsByEmojiName: {
+              "👍": {
+                requestId: "add-request",
+                operation: "add",
+                previousCount: 1,
+                previousOwnReactionUuid: null,
+              },
+            },
+          }),
+          createWorkspaceMessage({
+            uuid: "pending-remove-reaction",
+            reactions: { "👏": 1 },
+            pendingOwnReactionsByEmojiName: {
+              "👏": {
+                requestId: "remove-request",
+                operation: "remove",
+                previousCount: 2,
+                previousOwnReactionUuid: "reaction-uuid",
+              },
+            },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction: vi.fn() }}
+      />,
+    );
+
+    const pendingAddChip = container.querySelector(
+      "[data-message-uuid='pending-add-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const pendingRemoveChip = container.querySelector(
+      "[data-message-uuid='pending-remove-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+
+    expect(pendingAddChip).toHaveAttribute("aria-pressed", "true");
+    expect(pendingAddChip).toHaveAttribute("aria-busy", "true");
+    expect(pendingAddChip).toBeDisabled();
+    expect(pendingAddChip).toHaveTextContent("2");
+    expect(pendingAddChip?.querySelector("[data-workspace-reaction-user-list='true']")).toBeNull();
+    expect(pendingRemoveChip).toHaveAttribute("aria-pressed", "false");
+    expect(pendingRemoveChip).toHaveAttribute("aria-busy", "true");
+    expect(pendingRemoveChip).toBeDisabled();
+    expect(pendingRemoveChip).toHaveTextContent("1");
   });
 
   it("opens the Workspace bubble menu from the trigger button", async () => {

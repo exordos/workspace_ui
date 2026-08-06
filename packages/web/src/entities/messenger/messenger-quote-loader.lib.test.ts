@@ -49,6 +49,7 @@ function messageDto(
     starred: false,
     is_own: false,
     reactions: {},
+    reaction_users: {},
     created_at: "2026-07-28T10:00:00Z",
     updated_at: "2026-07-28T10:00:00Z",
     ...overrides,

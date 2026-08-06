@@ -22,6 +22,7 @@ function createWorkspaceMessage(overrides: MessageOverrides): MessengerMessage {
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",

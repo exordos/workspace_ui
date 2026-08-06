@@ -168,6 +168,7 @@ function createMessageDto(
     starred: false,
     is_own: true,
     reactions: {},
+    reaction_users: {},
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -670,6 +671,7 @@ describe("messenger realtime active applier", () => {
         type: "message",
         message: createMessageDto({
           reactions: { thumbs_up: 1 },
+          reaction_users: { thumbs_up: [USER_A] },
         }),
       },
       context,
@@ -685,6 +687,7 @@ describe("messenger realtime active applier", () => {
         kind: "message.updated",
         message: createMessageDto({
           reactions: { thumbs_up: 2, eyes: 1 },
+          reaction_users: { eyes: [USER_B] },
           updated_at: DATE_LATER,
         }),
       },
@@ -694,6 +697,7 @@ describe("messenger realtime active applier", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
         reactions: { thumbs_up: 2, eyes: 1 },
+        reactionUserUuidsByEmojiName: { eyes: [USER_B] },
         ownReactionUuidsByEmojiName: {
           thumbs_up: "20000000-0000-4000-8000-000000000001",
         },
@@ -704,6 +708,7 @@ describe("messenger realtime active applier", () => {
       expect.objectContaining({
         uuid: MESSAGE_A,
         reactions: { thumbs_up: 2, eyes: 1 },
+        reactionUserUuidsByEmojiName: { eyes: [USER_B] },
       }),
     );
     expect(onMessageReactionAggregateUpdated).toHaveBeenCalledWith(

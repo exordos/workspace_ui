@@ -178,6 +178,7 @@ function createMessageDto(
     starred: overrides.starred ?? false,
     is_own: overrides.is_own ?? false,
     reactions: overrides.reactions ?? {},
+    reaction_users: overrides.reaction_users ?? {},
     created_at: overrides.created_at ?? "2026-01-01T00:00:00.000Z",
     updated_at: overrides.updated_at ?? "2026-01-01T00:00:00.000Z",
   };

@@ -28,6 +28,7 @@ const message: WorkspaceMessengerMessageDto = {
   starred: true,
   is_own: false,
   reactions: {},
+  reaction_users: {},
   created_at: "2026-06-22T10:10:00Z",
   updated_at: "2026-06-22T10:10:00Z",
 };

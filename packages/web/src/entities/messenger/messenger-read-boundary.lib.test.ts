@@ -28,6 +28,7 @@ function message(uuid: string, createdAt: string, topicUuid = TOPIC_A): Messenge
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt,
     updatedAt: createdAt,

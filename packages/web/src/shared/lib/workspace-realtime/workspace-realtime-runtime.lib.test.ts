@@ -133,6 +133,7 @@ const messageDto: WorkspaceMessengerMessageDto = {
   starred: false,
   is_own: false,
   reactions: {},
+  reaction_users: {},
   created_at: DATE,
   updated_at: DATE,
 };

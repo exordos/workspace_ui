@@ -1,4 +1,5 @@
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type {
   WorkspaceMessageListActions,
@@ -14,6 +15,7 @@ export interface WorkspaceMessageBubbleProps {
   isSelected?: boolean;
   selectionMode?: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  usersById: UsersById;
   topicLabel?: string | null;
   resolveMention?: WorkspaceMessageMentionResolver;
   quoteRenderMode?: WorkspaceQuoteRenderMode;

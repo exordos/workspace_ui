@@ -114,6 +114,7 @@ function createFeedMessage(overrides: MessageOverrides = {}): MessengerMessage {
     starred: false,
     isOwn: false,
     reactions: {},
+    reactionUserUuidsByEmojiName: {},
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-02T10:00:00Z",
     updatedAt: "2026-07-02T10:00:00Z",
