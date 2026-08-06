@@ -1,3 +1,4 @@
+import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.internal";
@@ -6,7 +7,7 @@ import {
   isWorkspaceAvatarUrn,
   resolveWorkspaceAvatarSource,
 } from "./workspace-avatar-urn.lib";
-import { loadWorkspaceAvatar } from "./workspace-avatar.lib";
+import { loadWorkspaceAvatar, useWorkspaceAvatarUrl } from "./workspace-avatar.lib";
 
 vi.mock("~/shared/api/messenger-files.api", () => ({
   downloadWorkspaceFile: vi.fn(),
@@ -86,6 +87,40 @@ describe("Workspace avatar resolution", () => {
     });
     expect(isWorkspaceAvatarUrn(`urn:image:${FILE_UUID}`)).toBe(true);
     expect(isWorkspaceAvatarUrn("urn:image:not-a-uuid")).toBe(false);
+  });
+
+  it("returns external avatar URLs on the first render", () => {
+    const hash = "7ec7606c46a14a7ef514d1f1f9038823";
+    const options = {
+      avatarUrn: `urn:gravatar:${hash}`,
+      ownerKey: "account:a:project:p:user:u",
+      runtimeGeneration: 3,
+      requestOptions: { accessToken: "token" },
+    };
+
+    const { result } = renderHook(() => useWorkspaceAvatarUrl(options));
+
+    expect(result.current).toBe(`https://secure.gravatar.com/avatar/${hash}?d=identicon&s=500`);
+    expect(downloadWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("reuses a loaded image avatar without another download or fallback render", async () => {
+    const options = avatarOptions();
+    downloadMock.mockResolvedValue({
+      blob: new Blob(["cached-avatar"], { type: "image/png" }),
+      headers: new Headers(),
+    });
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-avatar");
+
+    const first = renderHook(() => useWorkspaceAvatarUrl(options));
+    await waitFor(() => expect(first.result.current).toBe("blob:cached-avatar"));
+    first.unmount();
+
+    const second = renderHook(() => useWorkspaceAvatarUrl(options));
+    expect(second.result.current).toBe("blob:cached-avatar");
+    expect(downloadWorkspaceFile).toHaveBeenCalledTimes(1);
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    second.unmount();
   });
 
   it("downloads image avatars through the Workspace file endpoint and revokes the object URL", async () => {

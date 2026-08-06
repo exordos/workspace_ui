@@ -57,6 +57,13 @@ function currentInvalidationVersion(ownerKey: string, fileUuid: string): number 
   return invalidationVersionsByFileKey.get(fileCacheKey(ownerKey, fileUuid)) ?? 0;
 }
 
+export function getWorkspaceFileResourceInvalidationVersion(
+  ownerKey: string,
+  fileUuid: string,
+): number {
+  return currentInvalidationVersion(ownerKey, fileUuid);
+}
+
 // Realtime file mutations do not have a metadata store. Bump this version so the
 // next preview/download cannot reuse bytes fetched before the mutation.
 export function invalidateWorkspaceFileResourceCache(ownerKey: string, fileUuid: string): void {

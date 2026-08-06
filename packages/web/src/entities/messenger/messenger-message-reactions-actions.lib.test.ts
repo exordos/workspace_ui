@@ -325,7 +325,12 @@ describe("messenger message reaction actions", () => {
   it("adds a reaction, stores the returned row, and applies own projection", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-    indexMessages(createMessage({ reactions: { "👍": 1 } }));
+    indexMessages(
+      createMessage({
+        reactions: { "👍": 1 },
+        reactionUserUuidsByEmojiName: { "👍": [USER_B] },
+      }),
+    );
     const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
     const upsertOwnMessageReaction = vi.fn(() => Promise.resolve());
     const createMessageReaction = vi.fn(
@@ -352,6 +357,13 @@ describe("messenger message reaction actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
       "👍": 2,
     });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ "👍": [USER_B] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ "👍": [USER_B, USER_A] });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName?.[
         "👍"
@@ -383,6 +395,81 @@ describe("messenger message reaction actions", () => {
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
     ).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ "👍": [USER_B] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ "👍": [USER_B, USER_A] });
+  });
+
+  it("shows the current user as the optimistic avatar for a new reaction", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(createMessage());
+    const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
+
+    const actionPromise = addMessengerMessageReaction({
+      runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "sparkles",
+      client: { createMessageReaction: vi.fn(() => request.promise) },
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+      sparkles: 1,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ sparkles: [USER_A] });
+
+    request.resolve(createReactionDto({ emoji_name: "sparkles" }));
+    await expect(actionPromise).resolves.toMatchObject({ operation: "added" });
+
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ sparkles: [USER_A] });
+  });
+
+  it("keeps an existing count-only reaction in count mode during optimistic add", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(
+      createMessage({
+        reactions: { thumbs_up: 5 },
+        reactionUserUuidsByEmojiName: {},
+      }),
+    );
+    const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
+
+    const actionPromise = addMessengerMessageReaction({
+      runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: { createMessageReaction: vi.fn(() => request.promise) },
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 6,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: null });
+
+    request.resolve(createReactionDto());
+    await expect(actionPromise).resolves.toMatchObject({ operation: "added" });
   });
 
   it("removes using store uuid before cache or API fallback", async () => {
@@ -390,6 +477,8 @@ describe("messenger message reaction actions", () => {
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     indexMessages(
       createMessage({
+        reactions: { thumbs_up: 2 },
+        reactionUserUuidsByEmojiName: { thumbs_up: [USER_B, USER_A] },
         ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
       }),
     );
@@ -412,10 +501,19 @@ describe("messenger message reaction actions", () => {
       expect(deleteMessageReaction).toHaveBeenCalledWith(expect.any(Object), REACTION_A);
     });
     expect(deleteOwnMessageReaction).not.toHaveBeenCalled();
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+    });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B, USER_A] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B] });
 
     request.resolve(undefined);
 
@@ -434,11 +532,23 @@ describe("messenger message reaction actions", () => {
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B, USER_A] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B] });
   });
 
   it("rolls back optimistic add when the Workspace POST fails", async () => {
     const runtimeContext = createRuntimeContext();
-    indexMessages(createMessage());
+    indexMessages(
+      createMessage({
+        reactions: { thumbs_up: 1, eyes: 1 },
+        reactionUserUuidsByEmojiName: { eyes: [USER_B] },
+      }),
+    );
     const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
     const upsertOwnMessageReaction = vi.fn(() => Promise.resolve());
     const actionPromise = addMessengerMessageReaction({
@@ -452,25 +562,88 @@ describe("messenger message reaction actions", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
       thumbs_up: 1,
-      eyes: 1,
+      eyes: 2,
     });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ eyes: [USER_B] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ eyes: [USER_B, USER_A] });
 
     request.reject(new Error("network"));
 
     await expect(actionPromise).rejects.toThrow("network");
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
       thumbs_up: 1,
+      eyes: 1,
     });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ eyes: [USER_B] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toBeUndefined();
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({});
     expect(upsertOwnMessageReaction).not.toHaveBeenCalled();
   });
 
+  it("keeps a newer server reaction snapshot when an optimistic request later fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(
+      createMessage({
+        reactions: { thumbs_up: 1 },
+        reactionUserUuidsByEmojiName: { thumbs_up: [USER_B] },
+      }),
+    );
+    const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
+    const actionPromise = addMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: { createMessageReaction: vi.fn(() => request.promise) },
+    });
+
+    indexMessages(
+      createMessage({
+        reactions: { thumbs_up: 5 },
+        reactionUserUuidsByEmojiName: {},
+        updatedAt: "2026-07-03T10:01:00Z",
+      }),
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 5,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toBeUndefined();
+
+    request.reject(new Error("network"));
+
+    await expect(actionPromise).rejects.toThrow("network");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 5,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+  });
+
   it("rolls back optimistic remove when the Workspace DELETE fails", async () => {
     const runtimeContext = createRuntimeContext();
     indexMessages(
       createMessage({
+        reactions: { thumbs_up: 2 },
+        reactionUserUuidsByEmojiName: { thumbs_up: [USER_B, USER_A] },
         ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
       }),
     );
@@ -483,22 +656,80 @@ describe("messenger message reaction actions", () => {
       client: { deleteMessageReaction: vi.fn(() => request.promise) },
     });
 
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+    });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({});
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B, USER_A] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B] });
 
     request.reject(new Error("network"));
 
     await expect(actionPromise).rejects.toThrow("network");
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
-      thumbs_up: 1,
+      thumbs_up: 2,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({ thumbs_up: REACTION_A });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactionUserUuidsByEmojiName,
+    ).toEqual({ thumbs_up: [USER_B, USER_A] });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+  });
+
+  it("clears optimistic remove state when the request is aborted", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(
+      createMessage({
+        reactions: { thumbs_up: 2 },
+        reactionUserUuidsByEmojiName: { thumbs_up: [USER_B, USER_A] },
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+    const controller = new AbortController();
+    const request = createDeferred<void>();
+    const actionPromise = removeMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      signal: controller.signal,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: { deleteMessageReaction: vi.fn(() => request.promise) },
+    });
+
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeDefined();
+    controller.abort();
+    request.reject(new DOMException("Aborted", "AbortError"));
+
+    await expect(actionPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 2,
     });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({ thumbs_up: REACTION_A });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
     ).toBeUndefined();
   });
 
@@ -543,6 +774,46 @@ describe("messenger message reaction actions", () => {
     });
   });
 
+  it("clears optimistic add state when duplicate recovery is aborted", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(createMessage());
+    const controller = new AbortController();
+    const recoveryRequest = createDeferred<WorkspaceMessengerMessageReactionDto[]>();
+    const actionPromise = addMessengerMessageReaction({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      signal: controller.signal,
+      messageUuid: MESSAGE_A,
+      emojiName: "thumbs_up",
+      client: {
+        createMessageReaction: vi.fn(() =>
+          Promise.reject(new MessengerApiError("conflict", 409, {})),
+        ),
+        getMessageReactions: vi.fn(() => recoveryRequest.promise),
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+      ).toBeDefined(),
+    );
+    controller.abort();
+    recoveryRequest.reject(new DOMException("Aborted", "AbortError"));
+
+    await expect(actionPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toBeUndefined();
+  });
+
   it("skips store and cache writes when the runtime becomes stale after await", async () => {
     const runtimeA = createRuntimeContext();
     const runtimeB = createRuntimeContext({
@@ -581,6 +852,16 @@ describe("messenger message reaction actions", () => {
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
     ).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
+      thumbs_up: 1,
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
+    ).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]
+        ?.optimisticReactionUserUuidsByEmojiName,
+    ).toBeUndefined();
   });
 
   it("toggles an unprojected reaction immediately without a preflight GET", async () => {

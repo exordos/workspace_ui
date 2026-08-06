@@ -21,6 +21,7 @@ export type WorkspaceConversationUiKind = "channel" | "directPrivate";
 // A missing user-list key means count-only and never a partial list.
 export type MessengerReactionCountsByName = Record<string, number>;
 export type MessengerReactionUserUuidsByName = Record<string, MessengerUuid[]>;
+export type MessengerOptimisticReactionUserUuidsByName = Record<string, MessengerUuid[] | null>;
 
 // Локальная проекция собственных реакций нужна только для действий текущего
 // пользователя: по emoji_name быстро понять, есть ли моя реакция, и какой
@@ -162,6 +163,7 @@ export interface MessengerMessage {
   delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: MessengerReactionCountsByName;
   reactionUserUuidsByEmojiName: MessengerReactionUserUuidsByName;
+  optimisticReactionUserUuidsByEmojiName?: MessengerOptimisticReactionUserUuidsByName;
   ownReactionUuidsByEmojiName: MessengerOwnReactionUuidsByName;
   pendingOwnReactionsByEmojiName?: MessengerPendingOwnReactionsByName;
   createdAt: string;

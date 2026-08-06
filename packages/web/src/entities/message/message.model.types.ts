@@ -100,6 +100,7 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
     emojiName: string,
     operation: MessengerPendingOwnReactionOperation,
     requestId: string,
+    currentUserUuid: MessengerUuid,
   ) => void;
   settleOptimisticOwnMessageReaction: (
     messageUuid: MessengerUuid,

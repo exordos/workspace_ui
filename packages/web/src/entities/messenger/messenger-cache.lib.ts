@@ -78,15 +78,22 @@ export interface MessengerConversationCacheWindow {
   hasMore: boolean;
 }
 
+function withoutRuntimeReactionState(message: MessengerMessage): MessengerMessage {
+  const snapshot = { ...message };
+  delete snapshot.pendingOwnReactionsByEmojiName;
+  delete snapshot.optimisticReactionUserUuidsByEmojiName;
+  return snapshot;
+}
+
 function normalizeCachedMessages(
   messages: readonly WorkspaceMessengerCachedMessage[],
 ): MessengerMessage[] {
   return messages.map((cachedMessage) => {
     const message = cachedMessage as unknown as MessengerMessage;
-    return {
+    return withoutRuntimeReactionState({
       ...message,
       reactionUserUuidsByEmojiName: message.reactionUserUuidsByEmojiName ?? {},
-    };
+    });
   });
 }
 
@@ -436,7 +443,9 @@ export async function writeMessengerMessageBodyCache(
 ): Promise<void> {
   await upsertCachedMessages(
     ownerKey,
-    messages.filter((message) => keepCachedMessage(ownerKey, message)),
+    messages
+      .filter((message) => keepCachedMessage(ownerKey, message))
+      .map(withoutRuntimeReactionState),
   );
   await purgeRemovedStreamCaches(
     ownerKey,
@@ -465,7 +474,9 @@ export async function writeMessengerLiveMessageCache(
 ): Promise<void> {
   const parsed = parseMessengerConversationId(conversationId);
   if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
-  const messages = page.messages.filter((message) => keepCachedMessage(ownerKey, message));
+  const messages = page.messages
+    .filter((message) => keepCachedMessage(ownerKey, message))
+    .map(withoutRuntimeReactionState);
   await writeConversationMessagePage(ownerKey, conversationId, { messages });
   await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
   const message = messages.at(-1);
@@ -479,7 +490,7 @@ export async function patchMessengerCachedMessage(
   message: MessengerMessage,
 ): Promise<void> {
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
-  await patchCachedMessage(ownerKey, message);
+  await patchCachedMessage(ownerKey, withoutRuntimeReactionState(message));
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
     await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
   }

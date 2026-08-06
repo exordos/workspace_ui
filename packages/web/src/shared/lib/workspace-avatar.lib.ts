@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { MessengerClientOptions } from "~/shared/api/messenger-transport.internal";
 import { resolveWorkspaceAvatarSource } from "./workspace-avatar-urn.lib";
-import { loadWorkspaceFile } from "./workspace-file-loader.lib";
+import {
+  createWorkspaceFileResourceCache,
+  getWorkspaceFileResourceInvalidationVersion,
+  loadWorkspaceFile,
+} from "./workspace-file-loader.lib";
 
 export interface WorkspaceAvatarRuntimeScope {
   ownerKey: string;
@@ -22,6 +26,104 @@ export interface WorkspaceAvatarResource {
 export interface UseWorkspaceAvatarUrlOptions extends WorkspaceAvatarRuntimeScope {
   avatarUrn: string | null | undefined;
   requestOptions: MessengerClientOptions | null;
+}
+
+interface LoadedWorkspaceFileAvatar {
+  key: string;
+  url: string;
+}
+
+interface CachedWorkspaceFileAvatar extends LoadedWorkspaceFileAvatar {
+  consumers: number;
+}
+
+interface WorkspaceFileAvatarLease extends LoadedWorkspaceFileAvatar {
+  release: () => void;
+}
+
+const MAX_CACHED_WORKSPACE_AVATARS = 64;
+const workspaceAvatarFileCache = createWorkspaceFileResourceCache({
+  maxEntries: MAX_CACHED_WORKSPACE_AVATARS,
+  maxBytes: 32 * 1024 * 1024,
+});
+const cachedWorkspaceFileAvatars = new Map<string, CachedWorkspaceFileAvatar>();
+
+function workspaceFileAvatarKey(
+  ownerKey: string,
+  runtimeGeneration: number,
+  fileUuid: string,
+): string {
+  return JSON.stringify([
+    ownerKey,
+    runtimeGeneration,
+    fileUuid,
+    getWorkspaceFileResourceInvalidationVersion(ownerKey, fileUuid),
+  ]);
+}
+
+function touchCachedWorkspaceFileAvatar(entry: CachedWorkspaceFileAvatar): void {
+  cachedWorkspaceFileAvatars.delete(entry.key);
+  cachedWorkspaceFileAvatars.set(entry.key, entry);
+}
+
+function trimCachedWorkspaceFileAvatars(): void {
+  for (const [key, entry] of cachedWorkspaceFileAvatars) {
+    if (cachedWorkspaceFileAvatars.size <= MAX_CACHED_WORKSPACE_AVATARS) return;
+    if (entry.consumers > 0) continue;
+    cachedWorkspaceFileAvatars.delete(key);
+    URL.revokeObjectURL(entry.url);
+  }
+}
+
+function createWorkspaceFileAvatarLease(
+  entry: CachedWorkspaceFileAvatar,
+): WorkspaceFileAvatarLease {
+  entry.consumers += 1;
+  touchCachedWorkspaceFileAvatar(entry);
+  let released = false;
+  return {
+    key: entry.key,
+    url: entry.url,
+    release: () => {
+      if (released) return;
+      released = true;
+      entry.consumers = Math.max(0, entry.consumers - 1);
+      trimCachedWorkspaceFileAvatars();
+    },
+  };
+}
+
+async function acquireWorkspaceFileAvatar(
+  options: LoadWorkspaceAvatarOptions,
+  fileUuid: string,
+  key: string,
+): Promise<WorkspaceFileAvatarLease> {
+  const cached = cachedWorkspaceFileAvatars.get(key);
+  if (cached != null) {
+    return createWorkspaceFileAvatarLease(cached);
+  }
+
+  const result = await workspaceAvatarFileCache.load({
+    ownerKey: options.ownerKey,
+    runtimeGeneration: options.runtimeGeneration,
+    fileUuid,
+    requestOptions: options.requestOptions,
+    signal: options.signal,
+  });
+  const cachedAfterLoad = cachedWorkspaceFileAvatars.get(key);
+  if (cachedAfterLoad != null) {
+    return createWorkspaceFileAvatarLease(cachedAfterLoad);
+  }
+
+  const entry: CachedWorkspaceFileAvatar = {
+    key,
+    url: URL.createObjectURL(result.blob),
+    consumers: 0,
+  };
+  cachedWorkspaceFileAvatars.set(key, entry);
+  const lease = createWorkspaceFileAvatarLease(entry);
+  trimCachedWorkspaceFileAvatars();
+  return lease;
 }
 
 export async function loadWorkspaceAvatar(
@@ -61,24 +163,20 @@ export async function loadWorkspaceAvatar(
 }
 
 export function useWorkspaceAvatarUrl(options: UseWorkspaceAvatarUrlOptions): string | undefined {
-  const [loadedUrl, setLoadedUrl] = useState<string>();
+  const source = resolveWorkspaceAvatarSource(options.avatarUrn);
+  const fileUuid = source?.kind === "file" ? source.fileUuid : null;
+  const fileKey =
+    fileUuid == null
+      ? null
+      : workspaceFileAvatarKey(options.ownerKey, options.runtimeGeneration, fileUuid);
+  const cachedFileUrl = fileKey == null ? undefined : cachedWorkspaceFileAvatars.get(fileKey)?.url;
+  const [loadedFileAvatar, setLoadedFileAvatar] = useState<LoadedWorkspaceFileAvatar | null>(null);
 
   useEffect(() => {
     let active = true;
-    let resource: WorkspaceAvatarResource | null = null;
+    let lease: WorkspaceFileAvatarLease | null = null;
     const controller = new AbortController();
-    const source = resolveWorkspaceAvatarSource(options.avatarUrn);
-
-    setLoadedUrl(undefined);
-    if (source == null) {
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }
-
-    if (source.kind === "external") {
-      setLoadedUrl(source.url);
+    if (fileUuid == null || fileKey == null) {
       return () => {
         active = false;
         controller.abort();
@@ -92,31 +190,48 @@ export function useWorkspaceAvatarUrl(options: UseWorkspaceAvatarUrlOptions): st
       };
     }
 
-    void loadWorkspaceAvatar({
-      ...options,
-      requestOptions: options.requestOptions,
-      signal: controller.signal,
-    })
-      .then((nextResource) => {
+    void acquireWorkspaceFileAvatar(
+      {
+        avatarUrn: options.avatarUrn,
+        ownerKey: options.ownerKey,
+        runtimeGeneration: options.runtimeGeneration,
+        requestOptions: options.requestOptions,
+        signal: controller.signal,
+      },
+      fileUuid,
+      fileKey,
+    )
+      .then((nextLease) => {
         if (!active || controller.signal.aborted) {
-          nextResource?.dispose();
+          nextLease.release();
           return;
         }
-        resource = nextResource;
-        setLoadedUrl(nextResource?.url);
+        lease = nextLease;
+        setLoadedFileAvatar({ key: nextLease.key, url: nextLease.url });
       })
       .catch(() => {
         if (active && !controller.signal.aborted) {
-          setLoadedUrl(undefined);
+          setLoadedFileAvatar((current) => (current?.key === fileKey ? null : current));
         }
       });
 
     return () => {
       active = false;
       controller.abort();
-      resource?.dispose();
+      lease?.release();
     };
-  }, [options.avatarUrn, options.ownerKey, options.requestOptions, options.runtimeGeneration]);
+  }, [
+    fileKey,
+    fileUuid,
+    options.avatarUrn,
+    options.ownerKey,
+    options.requestOptions,
+    options.runtimeGeneration,
+  ]);
 
-  return loadedUrl;
+  if (source?.kind === "external") {
+    return source.url;
+  }
+  if (fileKey == null) return undefined;
+  return loadedFileAvatar?.key === fileKey ? loadedFileAvatar.url : cachedFileUrl;
 }

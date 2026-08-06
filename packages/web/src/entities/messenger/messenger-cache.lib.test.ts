@@ -348,6 +348,26 @@ describe("messenger cache", () => {
     expect(restoredMessage?.reactionUserUuidsByEmojiName).toEqual({});
   });
 
+  it("does not persist runtime-only optimistic reaction state", async () => {
+    const message = createMessage({
+      optimisticReactionUserUuidsByEmojiName: { thumbs_up: [USER_UUID] },
+      pendingOwnReactionsByEmojiName: {
+        thumbs_up: {
+          requestId: "reaction-request",
+          operation: "add",
+          previousCount: 0,
+          previousOwnReactionUuid: null,
+        },
+      },
+    });
+
+    await writeMessengerMessageBodyCache(OWNER_KEY, [message]);
+    const [restoredMessage] = await readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID]);
+
+    expect(restoredMessage?.optimisticReactionUserUuidsByEmojiName).toBeUndefined();
+    expect(restoredMessage?.pendingOwnReactionsByEmojiName).toBeUndefined();
+  });
+
   it("does not let a stale message write recreate a deleted stream cache", async () => {
     const message: MessengerMessage = {
       uuid: MESSAGE_UUID,

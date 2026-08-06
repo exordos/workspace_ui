@@ -136,6 +136,12 @@ function getWorkspaceReactionChips(message: MessengerMessage): WorkspaceMessageR
     .map(([emojiName, count]) => {
       const pendingOperation = message.pendingOwnReactionsByEmojiName?.[emojiName]?.operation;
       const serverUserUuids = message.reactionUserUuidsByEmojiName[emojiName];
+      const hasOptimisticUserUuids =
+        message.optimisticReactionUserUuidsByEmojiName != null &&
+        Object.hasOwn(message.optimisticReactionUserUuidsByEmojiName, emojiName);
+      const effectiveUserUuids = hasOptimisticUserUuids
+        ? message.optimisticReactionUserUuidsByEmojiName?.[emojiName]
+        : serverUserUuids;
       return {
         key: `workspace-reaction:${emojiName}`,
         emojiName,
@@ -145,7 +151,7 @@ function getWorkspaceReactionChips(message: MessengerMessage): WorkspaceMessageR
           pendingOperation === "add" ||
           (pendingOperation !== "remove" && message.ownReactionUuidsByEmojiName[emojiName] != null),
         pending: pendingOperation != null,
-        userUuids: serverUserUuids?.length === count ? serverUserUuids : null,
+        userUuids: effectiveUserUuids?.length === count ? effectiveUserUuids : null,
       };
     });
 }
@@ -226,6 +232,7 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
                       >
                         <WorkspaceAvatar
                           size="xs"
+                          imageLoading="eager"
                           className="!h-5 !w-5 !text-[9px]"
                           avatarUrn={user?.avatarUrl}
                         >

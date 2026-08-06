@@ -95,13 +95,17 @@ function mergeWorkspaceMessageSnapshot(
   previousMessage: MessengerMessage | undefined,
   incomingMessage: MessengerMessage,
 ): MessengerMessage {
-  if (previousMessage == null) return incomingMessage;
+  const incomingSnapshot: MessengerMessage = {
+    ...incomingMessage,
+    optimisticReactionUserUuidsByEmojiName: undefined,
+  };
+  if (previousMessage == null) return incomingSnapshot;
 
-  const incomingOwnProjection = incomingMessage.ownReactionUuidsByEmojiName;
-  if (Object.keys(incomingOwnProjection).length > 0) return incomingMessage;
+  const incomingOwnProjection = incomingSnapshot.ownReactionUuidsByEmojiName;
+  if (Object.keys(incomingOwnProjection).length > 0) return incomingSnapshot;
 
   return {
-    ...incomingMessage,
+    ...incomingSnapshot,
     ownReactionUuidsByEmojiName: previousMessage.ownReactionUuidsByEmojiName,
     pendingOwnReactionsByEmojiName: previousMessage.pendingOwnReactionsByEmojiName,
   };
@@ -160,6 +164,23 @@ function optimisticReactionCount(
   operation: MessengerPendingOwnReactionOperation,
 ): number {
   return operation === "add" ? currentCount + 1 : Math.max(0, currentCount - 1);
+}
+
+function optimisticReactionUserUuids(
+  previousUserUuids: readonly MessengerUuid[] | null,
+  previousCount: number,
+  operation: MessengerPendingOwnReactionOperation,
+  currentUserUuid: MessengerUuid,
+): readonly MessengerUuid[] | null {
+  if (previousUserUuids == null) {
+    return operation === "add" && previousCount === 0 ? [currentUserUuid] : null;
+  }
+  if (operation === "remove") {
+    return previousUserUuids.filter((userUuid) => userUuid !== currentUserUuid);
+  }
+  return previousUserUuids.includes(currentUserUuid)
+    ? previousUserUuids
+    : [...previousUserUuids, currentUserUuid];
 }
 
 function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
@@ -477,7 +498,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     });
   },
 
-  beginOptimisticOwnMessageReaction(messageUuid, emojiName, operation, requestId) {
+  beginOptimisticOwnMessageReaction(messageUuid, emojiName, operation, requestId, currentUserUuid) {
     logStoreAction("workspaceMessage", "beginOptimisticOwnMessageReaction", {
       messageUuid,
       emojiName,
@@ -492,6 +513,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
 
       const previousCount = message.reactions[emojiName] ?? 0;
       const previousOwnReactionUuid = message.ownReactionUuidsByEmojiName[emojiName] ?? null;
+      const previousReactionUserUuids = message.reactionUserUuidsByEmojiName[emojiName] ?? null;
       if (operation === "add" && previousOwnReactionUuid != null) return state;
       const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
       if (operation === "remove") {
@@ -504,6 +526,12 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
         previousCount,
         previousOwnReactionUuid,
       };
+      const nextReactionUserUuids = optimisticReactionUserUuids(
+        previousReactionUserUuids,
+        previousCount,
+        operation,
+        currentUserUuid,
+      );
 
       return {
         messagesById: {
@@ -515,6 +543,10 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
               emojiName,
               optimisticReactionCount(previousCount, operation),
             ),
+            optimisticReactionUserUuidsByEmojiName: {
+              ...message.optimisticReactionUserUuidsByEmojiName,
+              [emojiName]: nextReactionUserUuids == null ? null : [...nextReactionUserUuids],
+            },
             ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
             pendingOwnReactionsByEmojiName: pending,
           },
@@ -560,6 +592,14 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
 
       const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
       delete pending[emojiName];
+      const optimisticReactionUserUuidsByEmojiName = {
+        ...message.optimisticReactionUserUuidsByEmojiName,
+      };
+      const hasUnreconciledOptimisticUsers = Object.hasOwn(
+        optimisticReactionUserUuidsByEmojiName,
+        emojiName,
+      );
+      delete optimisticReactionUserUuidsByEmojiName[emojiName];
 
       const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
       if (pendingAction.previousOwnReactionUuid == null) {
@@ -573,7 +613,13 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
           ...state.messagesById,
           [messageUuid]: {
             ...message,
-            reactions: setReactionCount(message.reactions, emojiName, pendingAction.previousCount),
+            reactions: hasUnreconciledOptimisticUsers
+              ? setReactionCount(message.reactions, emojiName, pendingAction.previousCount)
+              : message.reactions,
+            optimisticReactionUserUuidsByEmojiName:
+              Object.keys(optimisticReactionUserUuidsByEmojiName).length > 0
+                ? optimisticReactionUserUuidsByEmojiName
+                : undefined,
             ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
             pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
           },

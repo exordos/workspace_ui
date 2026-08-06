@@ -3724,7 +3724,17 @@ describe("WorkspaceMessageList", () => {
     expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "👍");
   });
 
-  it("renders optimistic reaction highlight and falls back to counts for stale user lists", () => {
+  it("optimistically adds the current user avatar until the backend replaces the list", () => {
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser(),
+      createWorkspaceUser({
+        uuid: "current-user-uuid",
+        username: "ada",
+        displayName: "Ada Lovelace",
+        avatarUrl: "urn:gravatar:7ec7606c46a14a7ef514d1f1f9038823",
+      }),
+    ]);
+
     const { container } = render(
       <WorkspaceMessageList
         messages={[
@@ -3732,6 +3742,9 @@ describe("WorkspaceMessageList", () => {
             uuid: "pending-add-reaction",
             reactions: { "👍": 2 },
             reactionUserUuidsByEmojiName: { "👍": ["peer-user-uuid"] },
+            optimisticReactionUserUuidsByEmojiName: {
+              "👍": ["peer-user-uuid", "current-user-uuid"],
+            },
             pendingOwnReactionsByEmojiName: {
               "👍": {
                 requestId: "add-request",
@@ -3744,12 +3757,47 @@ describe("WorkspaceMessageList", () => {
           createWorkspaceMessage({
             uuid: "pending-remove-reaction",
             reactions: { "👏": 1 },
+            reactionUserUuidsByEmojiName: {
+              "👏": ["peer-user-uuid", "current-user-uuid"],
+            },
+            optimisticReactionUserUuidsByEmojiName: { "👏": ["peer-user-uuid"] },
             pendingOwnReactionsByEmojiName: {
               "👏": {
                 requestId: "remove-request",
                 operation: "remove",
                 previousCount: 2,
                 previousOwnReactionUuid: "reaction-uuid",
+              },
+            },
+          }),
+          createWorkspaceMessage({
+            uuid: "settled-add-reaction",
+            reactions: { "🔥": 2 },
+            reactionUserUuidsByEmojiName: { "🔥": ["peer-user-uuid"] },
+            optimisticReactionUserUuidsByEmojiName: {
+              "🔥": ["peer-user-uuid", "current-user-uuid"],
+            },
+            ownReactionUuidsByEmojiName: { "🔥": "reaction-uuid" },
+          }),
+          createWorkspaceMessage({
+            uuid: "backend-count-reaction",
+            reactions: { "🚀": 5 },
+            reactionUserUuidsByEmojiName: {},
+            ownReactionUuidsByEmojiName: { "🚀": "reaction-uuid" },
+          }),
+          createWorkspaceMessage({
+            uuid: "new-optimistic-reaction",
+            reactions: { "✨": 1 },
+            reactionUserUuidsByEmojiName: {},
+            optimisticReactionUserUuidsByEmojiName: {
+              "✨": ["current-user-uuid"],
+            },
+            pendingOwnReactionsByEmojiName: {
+              "✨": {
+                requestId: "new-add-request",
+                operation: "add",
+                previousCount: 0,
+                previousOwnReactionUuid: null,
               },
             },
           }),
@@ -3766,16 +3814,42 @@ describe("WorkspaceMessageList", () => {
     const pendingRemoveChip = container.querySelector(
       "[data-message-uuid='pending-remove-reaction'] [data-workspace-message-reaction-chip='true']",
     );
+    const settledAddChip = container.querySelector(
+      "[data-message-uuid='settled-add-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const backendCountChip = container.querySelector(
+      "[data-message-uuid='backend-count-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const newOptimisticChip = container.querySelector(
+      "[data-message-uuid='new-optimistic-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
 
     expect(pendingAddChip).toHaveAttribute("aria-pressed", "true");
     expect(pendingAddChip).toHaveAttribute("aria-busy", "true");
     expect(pendingAddChip).toBeDisabled();
-    expect(pendingAddChip).toHaveTextContent("2");
-    expect(pendingAddChip?.querySelector("[data-workspace-reaction-user-list='true']")).toBeNull();
+    expect(pendingAddChip).toHaveAttribute("aria-label", "👍 Bob Reed, Ada Lovelace");
+    expect(pendingAddChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(2);
+    expect(
+      pendingAddChip?.querySelector("[data-reaction-user-uuid='current-user-uuid']"),
+    ).toBeInTheDocument();
     expect(pendingRemoveChip).toHaveAttribute("aria-pressed", "false");
     expect(pendingRemoveChip).toHaveAttribute("aria-busy", "true");
     expect(pendingRemoveChip).toBeDisabled();
-    expect(pendingRemoveChip).toHaveTextContent("1");
+    expect(pendingRemoveChip).toHaveAttribute("aria-label", "👏 Bob Reed");
+    expect(pendingRemoveChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(1);
+    expect(settledAddChip).toHaveAttribute("aria-label", "🔥 Bob Reed, Ada Lovelace");
+    expect(settledAddChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(2);
+    expect(backendCountChip).toHaveTextContent("5");
+    expect(
+      backendCountChip?.querySelector("[data-workspace-reaction-user-list='true']"),
+    ).toBeNull();
+    expect(newOptimisticChip).toHaveAttribute("aria-label", "✨ Ada Lovelace");
+    expect(
+      newOptimisticChip?.querySelector("[data-reaction-user-uuid='current-user-uuid']"),
+    ).toBeInTheDocument();
+    expect(
+      newOptimisticChip?.querySelector("[data-reaction-user-uuid='current-user-uuid'] img"),
+    ).toHaveAttribute("loading", "eager");
   });
 
   it("opens the Workspace bubble menu from the trigger button", async () => {

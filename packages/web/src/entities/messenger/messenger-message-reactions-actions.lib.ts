@@ -289,6 +289,15 @@ function createReactionOptimisticRequestId(): string {
   return `reaction:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
+function rollbackOwnReactionOptimisticState(
+  store: MessengerMessageReactionStoreApi,
+  messageUuid: MessengerUuid,
+  emojiName: string,
+  requestId: string,
+): void {
+  store.getState().rollbackOptimisticOwnMessageReaction(messageUuid, emojiName, requestId);
+}
+
 function applyOwnRowsToStore(
   store: MessengerMessageReactionStoreApi,
   messageUuid: MessengerUuid,
@@ -568,6 +577,7 @@ export async function addMessengerMessageReaction({
       normalizedEmojiName,
       "add",
       optimisticRequestId,
+      runtimeContext.userUuid,
     );
 
   try {
@@ -578,8 +588,15 @@ export async function addMessengerMessageReaction({
         emoji_name: normalizedEmojiName,
       },
     );
-    if (action.isStale())
+    if (action.isStale()) {
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
       return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    }
 
     const row = dtoToOwnReactionCacheWrite(dto);
     store.getState().setOwnMessageReaction(messageUuid, normalizedEmojiName, row.reactionUuid);
@@ -599,36 +616,60 @@ export async function addMessengerMessageReaction({
     };
   } catch (error) {
     if (!isDuplicateReactionConflict(error)) {
-      if (!action.isStale()) {
-        store
-          .getState()
-          .rollbackOptimisticOwnMessageReaction(
-            messageUuid,
-            normalizedEmojiName,
-            optimisticRequestId,
-          );
-      }
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
       throw error;
     }
-    if (action.isStale())
-      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-
-    const rows = await resolveOwnRowsFromApiForMessage({
-      runtimeContext,
-      requestOptions,
-      ownerKey: action.ownerKey,
-      messageUuid,
-      action,
-      client,
-      cache: effectiveCache,
-      store,
-    });
-    if (rows == null) {
+    if (action.isStale()) {
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
       return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
     }
-    store
-      .getState()
-      .rollbackOptimisticOwnMessageReaction(messageUuid, normalizedEmojiName, optimisticRequestId);
+
+    let rows: MessengerOwnMessageReactionCacheWrite[] | null;
+    try {
+      rows = await resolveOwnRowsFromApiForMessage({
+        runtimeContext,
+        requestOptions,
+        ownerKey: action.ownerKey,
+        messageUuid,
+        action,
+        client,
+        cache: effectiveCache,
+        store,
+      });
+    } catch (resolutionError) {
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
+      throw resolutionError;
+    }
+    if (rows == null) {
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    }
+    rollbackOwnReactionOptimisticState(
+      store,
+      messageUuid,
+      normalizedEmojiName,
+      optimisticRequestId,
+    );
     applyOwnRowsToStore(store, messageUuid, rows);
     const ownRow = rows.find((row) => row.emojiName === normalizedEmojiName) ?? null;
     return {
@@ -713,6 +754,7 @@ export async function removeMessengerMessageReaction({
       normalizedEmojiName,
       "remove",
       optimisticRequestId,
+      runtimeContext.userUuid,
     );
 
   try {
@@ -720,8 +762,15 @@ export async function removeMessengerMessageReaction({
       requestOptions,
       row.reactionUuid,
     );
-    if (action.isStale())
+    if (action.isStale()) {
+      rollbackOwnReactionOptimisticState(
+        store,
+        messageUuid,
+        normalizedEmojiName,
+        optimisticRequestId,
+      );
       return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    }
 
     store
       .getState()
@@ -730,15 +779,12 @@ export async function removeMessengerMessageReaction({
       effectiveCache.deleteOwnMessageReaction(action.ownerKey, messageUuid, normalizedEmojiName),
     );
   } catch (error) {
-    if (!action.isStale()) {
-      store
-        .getState()
-        .rollbackOptimisticOwnMessageReaction(
-          messageUuid,
-          normalizedEmojiName,
-          optimisticRequestId,
-        );
-    }
+    rollbackOwnReactionOptimisticState(
+      store,
+      messageUuid,
+      normalizedEmojiName,
+      optimisticRequestId,
+    );
     throw error;
   }
   return {
