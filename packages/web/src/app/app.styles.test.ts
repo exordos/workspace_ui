@@ -20,6 +20,16 @@ const videoOffIcon = readFileSync(
   "utf8",
 );
 
+describe("icon-only button preset contract", () => {
+  it("opts out labeled CTAs via data-icon-hover and gap utilities", () => {
+    // Text nodes do not break :has(> *:not(svg)); without these guards, svg+label
+    // buttons get text-icon-base (gray) until hover flips to text-icon-active.
+    expect(appStyles).toContain('[data-icon-hover="custom"]');
+    expect(appStyles).toContain(':not([class*="gap-"])');
+    expect(appStyles).toContain("text-icon-base");
+  });
+});
+
 describe("focus-outline styles contract", () => {
   it("separates focus outline styling for controls and text-entry inputs", () => {
     expect(focusOutlineStyles).toContain("button:focus-visible");

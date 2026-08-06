@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNotificationLevelSwitchSizeStyles,
   getStreamNotificationLevelOption,
   getTopicVisibilityLevelOption,
   getTopicVisibilityLevelOptions,
@@ -13,6 +14,35 @@ describe("notification-level.ui.lib", () => {
     expect(getTopicVisibilityLevelOption("muted").icon).toBe("topic_mute");
     expect(getTopicVisibilityLevelOption("unmuted").icon).toBe("at");
     expect(getTopicVisibilityLevelOption("followed").icon).toBe("topic_follow");
+  });
+
+  describe("switch size styles", () => {
+    it("exposes universal sm/md/lg densities without outer border", () => {
+      const sm = getNotificationLevelSwitchSizeStyles("sm");
+      const md = getNotificationLevelSwitchSizeStyles("md");
+      const lg = getNotificationLevelSwitchSizeStyles("lg");
+
+      expect(sm.iconSize).toBe(14);
+      expect(sm.containerClass).toContain("p-0.5");
+      expect(sm.containerClass).not.toContain("border");
+
+      expect(md.iconSize).toBe(18);
+      expect(md.containerClass).toContain("p-1");
+      expect(md.containerClass).not.toContain("border");
+
+      expect(lg.iconSize).toBe(28);
+      expect(lg.containerClass).toContain("gap-2");
+      expect(lg.containerClass).toContain("p-1");
+      expect(lg.containerClass).not.toContain("border");
+      expect(lg.segmentButtonClass).toContain("h-9");
+      expect(lg.segmentButtonClass).not.toContain("py-");
+    });
+
+    it("defaults to md when size is omitted", () => {
+      expect(getNotificationLevelSwitchSizeStyles()).toEqual(
+        getNotificationLevelSwitchSizeStyles("md"),
+      );
+    });
   });
 
   describe("topic visibility options", () => {

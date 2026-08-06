@@ -613,8 +613,9 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      <header className="flex-shrink-0 border-b border-border-subtle px-4 pb-3 pt-1">
-        <div className="flex items-center gap-3">
+      {/* Drawer already has px-2 (8px); header adds another 8px to match Figma title/avatar inset. */}
+      <header className="flex-shrink-0 border-b border-border-subtle px-2 pb-3 pt-1">
+        <div className="flex items-center gap-4">
           <Avatar
             size="lg"
             className="bg-bg-elevated text-text-secondary"
@@ -632,9 +633,10 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
       </header>
 
-      <ScrollArea className="flex-1 space-y-4 px-4 py-3">
+      {/* No extra horizontal pad — aside px-2 is the Figma 8px inset; sections gap 20. */}
+      <ScrollArea className="flex-1 space-y-5 py-2">
         <div>
-          <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
+          <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.notifications")}
             <span className="font-medium normal-case text-text-muted">
               {" "}
@@ -646,45 +648,47 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
               <StreamNotificationLevelSwitch
                 value={notificationLevel}
                 disabled={notificationPending}
+                size="lg"
                 onChange={(level) => {
                   void handleSetNotificationLevel(level);
                 }}
-                className="mx-2"
               />
               {notificationError && (
-                <p className="mx-2 mt-1 text-xs text-notice-base">{notificationError}</p>
+                <p className="mt-1 px-2 text-xs text-notice-base">{notificationError}</p>
               )}
             </>
           ) : (
-            <p className="mx-2 rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-muted">
+            <p className="rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-muted">
               {t("workspaceMessenger.actionUnsupported")}
             </p>
           )}
         </div>
 
         {info.topicSummary != null ? (
-          <RightPanelTopicSummary key={info.topicSummary.topicUuid} summary={info.topicSummary} />
+          <div className="px-2">
+            <RightPanelTopicSummary key={info.topicSummary.topicUuid} summary={info.topicSummary} />
+          </div>
         ) : null}
 
         {info.description && (
           <div>
-            <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
+            <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
               {t("chatInfo.description")}
             </h3>
-            <p className="rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-primary">
+            <p className="rounded-lg bg-bg-elevated px-3 py-2 text-sm text-text-primary">
               {info.description}
             </p>
           </div>
         )}
 
         <div>
-          <h3 className="mb-2 text-sm font-medium normal-case text-text-primary">
+          <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.topics")}
           </h3>
           {info.topics.length === 0 ? (
             <p className="px-2 py-2 text-sm text-text-muted">{t("channel.noTopics")}</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="space-y-1">
               {info.topics.map((topic) => {
                 const topicDisplay = resolveTopicDisplayInfo(topic.name);
                 const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
@@ -692,7 +696,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                   <li key={topic.id}>
                     <button
                       type="button"
-                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active"
+                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active"
                       onClick={() => handleOpenTopic(topic.route)}
                     >
                       <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
@@ -718,16 +722,15 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
 
         <div>
-          {/* Заголовок как на макете: только текст «Участники», без иконки слева.
-              Кнопка person_add — 24×24, совпадает с hit-area h-6 w-6. */}
-          <h3 className="mb-2 flex items-center justify-between text-sm font-medium normal-case text-text-primary">
+          {/* Members block: title + person_add only (no leading profile icon). Hit area 32×32. */}
+          <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.members")}
             {info.streamUuid != null && runtimeContext != null && (
               <button
                 type="button"
                 aria-label={t("channel.addMembers")}
                 onClick={handleOpenAddMembers}
-                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-card-bg-active hover:text-text-primary"
+                className="flex h-8 w-8 items-center justify-center rounded text-text-secondary transition-colors hover:bg-card-bg-active hover:text-text-primary"
               >
                 <Icon name="person_add" size={24} className="text-current" />
               </button>
@@ -738,12 +741,12 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
               {t("channel.noMembers")}
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-1">
               {info.members.map((member) => (
                 <li key={member.bindingUuid} className="group/member">
                   {/* The member row is intentionally not a button: Workspace profile
                       flow is not wired here yet, so this surface creates no false action. */}
-                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-card-bg-active">
+                  <div className="flex items-center gap-3 rounded-lg bg-card-bg px-3 py-2 transition-colors hover:bg-card-bg-active">
                     <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <div className="relative shrink-0">
                         <WorkspaceAvatar

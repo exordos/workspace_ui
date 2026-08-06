@@ -401,7 +401,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       </span>
                     </span>
                   </span>
-                  <MenuChevron />
                 </div>
               )}
               {currentWorkspaceSession != null && (
@@ -430,7 +429,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                           data-testid="connect-external-account-trigger"
                         >
                           <Icon name="add" size={16} className="shrink-0 text-current" />
-                          {t("connectExternalAccount.connect")}
+                          <span>{t("connectExternalAccount.connect")}</span>
                         </Button>
                         <p className="px-1 text-center text-[11px] leading-4 text-text-muted">
                           {t("connectExternalAccount.connectHint")}

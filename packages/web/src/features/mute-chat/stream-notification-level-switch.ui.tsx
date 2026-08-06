@@ -3,7 +3,9 @@ import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import {
   STREAM_NOTIFICATION_LEVEL_OPTIONS,
+  getNotificationLevelSwitchSizeStyles,
   type NotificationLevelOption,
+  type NotificationLevelSwitchSize,
 } from "./notification-level.ui.lib";
 import type { NotificationLevel } from "./notification-level.lib";
 
@@ -11,8 +13,8 @@ export interface StreamNotificationLevelSwitchProps {
   value: NotificationLevel;
   onChange: (level: NotificationLevel) => void;
   disabled?: boolean;
-  /** menu = context menu; compact = dialogs; default = info panel. */
-  size?: "menu" | "compact" | "default";
+  /** sm = menus, md = dialogs, lg = info panel (Figma). */
+  size?: NotificationLevelSwitchSize;
   className?: string;
   /** i18n key for radiogroup label. */
   groupLabelKey?: "channel.notifications" | "channel.topicNotifications";
@@ -25,7 +27,7 @@ export const StreamNotificationLevelSwitch = React.memo<StreamNotificationLevelS
     value,
     onChange,
     disabled = false,
-    size = "default",
+    size = "md",
     className,
     groupLabelKey = "channel.notifications",
     options = STREAM_NOTIFICATION_LEVEL_OPTIONS,
@@ -38,17 +40,8 @@ export const StreamNotificationLevelSwitch = React.memo<StreamNotificationLevelS
       [disabled, onChange, value],
     );
 
-    const segmentSize = size === "menu" ? 14 : size === "compact" ? 16 : 18;
-    const segmentButtonClass =
-      size === "menu"
-        ? "h-7 min-w-7 flex-1"
-        : size === "compact"
-          ? "h-8 min-w-8 flex-1"
-          : "h-10 min-w-10 flex-1";
-    const containerClass =
-      size === "menu"
-        ? "flex rounded-md border border-border-subtle bg-bg p-0.5"
-        : "flex rounded-lg border border-border-subtle bg-bg p-1";
+    const { iconSize, containerClass, segmentButtonClass } =
+      getNotificationLevelSwitchSizeStyles(size);
 
     return (
       <div
@@ -69,17 +62,13 @@ export const StreamNotificationLevelSwitch = React.memo<StreamNotificationLevelS
               title={label}
               disabled={disabled}
               onClick={() => handleSelect(option.level)}
-              className={`focus-visible:ring-accent/40 flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
+              className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
                 selected
-                  ? "ring-accent/35 bg-accent-soft text-accent ring-1 ring-inset"
+                  ? "bg-card-bg text-text-primary"
                   : "text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
               } disabled:cursor-not-allowed disabled:opacity-50`}
             >
-              <Icon
-                name={option.icon}
-                size={segmentSize}
-                className={`shrink-0 ${selected ? "text-accent" : ""}`}
-              />
+              <Icon name={option.icon} size={iconSize} className="shrink-0 text-current" />
             </button>
           );
         })}

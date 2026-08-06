@@ -2,7 +2,9 @@ import React, { useCallback, useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import {
+  getNotificationLevelSwitchSizeStyles,
   getTopicVisibilityLevelOptions,
+  type NotificationLevelSwitchSize,
   type TopicVisibilityLevelOption,
 } from "./notification-level.ui.lib";
 import type { TopicVisibilityLevel } from "./notification-level.lib";
@@ -13,7 +15,8 @@ export interface TopicVisibilityLevelSwitchProps {
   streamMuted: boolean;
   topicExplicitlyUnmuted: boolean;
   disabled?: boolean;
-  size?: "menu" | "compact" | "default";
+  /** sm = menus, md = dialogs, lg = info panel (Figma). */
+  size?: NotificationLevelSwitchSize;
   className?: string;
 }
 
@@ -24,7 +27,7 @@ export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchP
     streamMuted,
     topicExplicitlyUnmuted,
     disabled = false,
-    size = "default",
+    size = "md",
     className,
   }) => {
     const options = useMemo(
@@ -40,17 +43,8 @@ export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchP
       [disabled, onChange, value],
     );
 
-    const segmentSize = size === "menu" ? 14 : size === "compact" ? 16 : 18;
-    const segmentButtonClass =
-      size === "menu"
-        ? "h-7 min-w-7 flex-1"
-        : size === "compact"
-          ? "h-8 min-w-8 flex-1"
-          : "h-10 min-w-10 flex-1";
-    const containerClass =
-      size === "menu"
-        ? "flex rounded-md border border-border-subtle bg-bg p-0.5"
-        : "flex rounded-lg border border-border-subtle bg-bg p-1";
+    const { iconSize, containerClass, segmentButtonClass } =
+      getNotificationLevelSwitchSizeStyles(size);
 
     return (
       <div
@@ -64,7 +58,7 @@ export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchP
             option={option}
             selected={value === option.level}
             disabled={disabled}
-            segmentSize={segmentSize}
+            iconSize={iconSize}
             segmentButtonClass={segmentButtonClass}
             onSelect={handleSelect}
           />
@@ -80,13 +74,13 @@ interface TopicVisibilitySegmentProps {
   option: TopicVisibilityLevelOption;
   selected: boolean;
   disabled: boolean;
-  segmentSize: number;
+  iconSize: number;
   segmentButtonClass: string;
   onSelect: (level: TopicVisibilityLevel) => void;
 }
 
 const TopicVisibilitySegment = React.memo<TopicVisibilitySegmentProps>(
-  ({ option, selected, disabled, segmentSize, segmentButtonClass, onSelect }) => {
+  ({ option, selected, disabled, iconSize, segmentButtonClass, onSelect }) => {
     const label = t(option.labelKey);
     return (
       <button
@@ -97,17 +91,13 @@ const TopicVisibilitySegment = React.memo<TopicVisibilitySegmentProps>(
         title={label}
         disabled={disabled}
         onClick={() => onSelect(option.level)}
-        className={`focus-visible:ring-accent/40 flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
+        className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
           selected
-            ? "ring-accent/35 bg-accent-soft text-accent ring-1 ring-inset"
+            ? "bg-card-bg text-text-primary"
             : "text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        <Icon
-          name={option.icon}
-          size={segmentSize}
-          className={`shrink-0 text-current ${selected ? "text-accent" : ""}`}
-        />
+        <Icon name={option.icon} size={iconSize} className="shrink-0 text-current" />
       </button>
     );
   },

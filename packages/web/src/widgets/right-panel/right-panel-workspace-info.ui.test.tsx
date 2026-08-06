@@ -372,7 +372,7 @@ describe("RightPanelWorkspaceInfo", () => {
   });
 
   it("renders members heading without a leading profile icon and a 24px add button", () => {
-    // Зачем: на макете у блока «Участники» только заголовок + person_add 24×24, без profile слева.
+    // Figma members block: title + person_add only (24px glyph in 32px hit area), no profile icon.
     seedWorkspaceAuth();
 
     const { container } = renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
@@ -382,6 +382,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(membersHeading!.querySelectorAll("svg")).toHaveLength(1);
 
     const addMembersButton = screen.getByRole("button", { name: "Add members" });
+    expect(addMembersButton).toHaveClass("h-8", "w-8");
     const addIcon = addMembersButton.querySelector("svg");
     expect(addIcon).not.toBeNull();
     expect(addIcon).toHaveAttribute("width", "24");

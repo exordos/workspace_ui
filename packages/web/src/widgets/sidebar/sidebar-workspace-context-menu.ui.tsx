@@ -358,7 +358,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
           <StreamNotificationLevelSwitch
             value={mapWorkspaceStreamNotificationModeToLevel(notificationMode)}
             disabled={notificationPending}
-            size="menu"
+            size="sm"
             onChange={(level) =>
               handleSetNotificationMode(mapNotificationLevelToWorkspaceStreamMode(level))
             }
@@ -638,7 +638,7 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
             streamMuted={streamNotificationMode === "muted"}
             topicExplicitlyUnmuted={notificationMode === "unmute"}
             disabled={notificationPending}
-            size="menu"
+            size="sm"
             onChange={(level) =>
               handleSetNotificationMode(mapTopicVisibilityLevelToWorkspaceMode(level))
             }

@@ -26,6 +26,48 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
+/**
+ * Visual density for segmented notification switches.
+ * Context-agnostic: sm = dropdowns, md = dialogs, lg = info panels (Figma).
+ */
+export type NotificationLevelSwitchSize = "sm" | "md" | "lg";
+
+export interface NotificationLevelSwitchSizeStyles {
+  iconSize: number;
+  containerClass: string;
+  segmentButtonClass: string;
+}
+
+/** Shared layout tokens — no outer border, no selected ring (Figma Exordos Core). */
+export const NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES: Record<
+  NotificationLevelSwitchSize,
+  NotificationLevelSwitchSizeStyles
+> = {
+  // Half padding (p-0.5) for compact menus
+  sm: {
+    iconSize: 14,
+    containerClass: "flex gap-0.5 rounded-md bg-bg p-0.5",
+    segmentButtonClass: "h-7 min-w-7 flex-1 rounded-md",
+  },
+  md: {
+    iconSize: 18,
+    containerClass: "flex gap-1 rounded-lg bg-bg p-1",
+    segmentButtonClass: "h-8 min-w-8 flex-1 rounded-lg",
+  },
+  // Info panel: 28px icons, 4px pad, 8px gap — button group height 44px (Figma)
+  lg: {
+    iconSize: 28,
+    containerClass: "flex gap-2 rounded-lg bg-bg p-1",
+    segmentButtonClass: "h-9 min-w-0 flex-1 rounded-lg",
+  },
+};
+
+export function getNotificationLevelSwitchSizeStyles(
+  size: NotificationLevelSwitchSize = "md",
+): NotificationLevelSwitchSizeStyles {
+  return NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES[size];
+}
+
 const STREAM_NOTIFICATION_OPTION_BY_LEVEL: Record<NotificationLevel, NotificationLevelOption> = {
   default: { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
   muted: { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },

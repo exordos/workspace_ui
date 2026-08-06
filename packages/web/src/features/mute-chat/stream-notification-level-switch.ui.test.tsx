@@ -29,4 +29,23 @@ describe("StreamNotificationLevelSwitch", () => {
     fireEvent.click(screen.getByRole("radio", { name: /all messages/i }));
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("uses Figma lg density without outer border or selected ring", () => {
+    render(<StreamNotificationLevelSwitch value="muted" onChange={vi.fn()} size="lg" />);
+
+    const group = screen.getByRole("radiogroup");
+    expect(group.className).toContain("gap-2");
+    expect(group.className).not.toContain("border");
+
+    const selected = screen.getByRole("radio", { name: /muted/i });
+    expect(selected.className).toContain("bg-card-bg");
+    expect(selected.className).not.toMatch(/(?:^|\s)ring-/);
+    expect(selected.className).not.toContain("accent-soft");
+  });
+
+  it("uses half-padding sm density for compact surfaces", () => {
+    render(<StreamNotificationLevelSwitch value="default" onChange={vi.fn()} size="sm" />);
+
+    expect(screen.getByRole("radiogroup").className).toContain("p-0.5");
+  });
 });

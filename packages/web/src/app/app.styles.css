@@ -798,6 +798,12 @@ article,
 /*
  * Shared hover/focus contract for icon-only action buttons.
  * Keeps icon behavior consistent across the UI.
+ *
+ * Important: `:has(> *:not(svg))` ignores text nodes. A button with
+ * `<svg/>Label` still matches and would get gray `text-icon-base` until hover
+ * flips to `text-icon-active`. Opt out with `data-icon-hover="custom"`, or put
+ * the label in an element (e.g. span). Also skip `[class*="gap-"]` — icon+text
+ * CTAs usually set a gap utility.
  */
 .composer-toolbar-btn {
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
@@ -813,7 +819,7 @@ article,
 @media (hover: hover) {
   button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn):not(
       .composer-mode-tab-btn
-    ):has(> svg):not(:has(> *:not(svg))):hover {
+    ):not([class*="gap-"]):has(> svg):not(:has(> *:not(svg))):hover {
     @apply text-icon-active;
     background-color: color-mix(in srgb, var(--color-icon-hover) 35%, transparent);
   }
@@ -821,7 +827,7 @@ article,
 
 button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn):not(
     .composer-mode-tab-btn
-  ):has(> svg):not(:has(> *:not(svg))) {
+  ):not([class*="gap-"]):has(> svg):not(:has(> *:not(svg))) {
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
 }
 

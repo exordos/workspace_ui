@@ -181,7 +181,11 @@ describe("RightPanelShell", () => {
     expect(screen.getByTestId("manage-external-provider-entry")).toHaveTextContent(
       "workspace.example.com",
     );
-    fireEvent.click(screen.getByTestId("connect-external-account-trigger"));
+    const connectTrigger = screen.getByTestId("connect-external-account-trigger");
+    expect(connectTrigger).toHaveClass("text-on-accent");
+    // Must opt out: global icon-only CSS treats svg+text as icon-only and forces gray label
+    expect(connectTrigger).toHaveAttribute("data-icon-hover", "custom");
+    fireEvent.click(connectTrigger);
     expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");
   });
 
