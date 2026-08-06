@@ -90,12 +90,50 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     ),
     [depth, maxDepth, mode, nextVisitedMessageUuids, onOpenMessage, resolveMention],
   );
-  const handleOpen = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+  const openMessage = useCallback(() => {
+    onOpenMessage?.(reference.messageUuid);
+  }, [onOpenMessage, reference.messageUuid]);
+  const handleBlockClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (onOpenMessage == null) return;
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const interactiveTarget = target.closest(
+        "a, button, input, textarea, select, [role='button'], [role='link']",
+      );
+      if (interactiveTarget != null && interactiveTarget !== event.currentTarget) {
+        return;
+      }
+      if (target.closest("[data-workspace-quote='true']") !== event.currentTarget) return;
+      const selection = window.getSelection();
+      if (selection != null && !selection.isCollapsed) return;
+
       event.stopPropagation();
-      onOpenMessage?.(reference.messageUuid);
+      openMessage();
     },
-    [onOpenMessage, reference.messageUuid],
+    [onOpenMessage, openMessage],
+  );
+  const handleBlockKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (onOpenMessage == null || event.key !== "Enter") {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const interactiveTarget = target.closest(
+        "a, button, input, textarea, select, [role='button'], [role='link']",
+      );
+      if (interactiveTarget !== event.currentTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      openMessage();
+    },
+    [onOpenMessage, openMessage],
   );
   let headerLabel = authorLabel;
   let messageContent: React.ReactNode = null;
@@ -121,23 +159,28 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
 
   return (
     <div
-      className="bg-bg/35 my-1 min-w-0 rounded-md border-l-2 border-accent px-2 py-1.5"
+      className={`bg-bg/35 my-1 min-w-0 rounded-md border-l-2 border-accent px-2 py-1.5 ${
+        onOpenMessage == null ? "" : "cursor-pointer"
+      }`}
       data-workspace-quote="true"
       data-workspace-quote-mode={mode}
       data-workspace-quote-message-uuid={reference.messageUuid}
       data-workspace-quote-status={resolved.status}
+      role="link"
+      tabIndex={onOpenMessage == null ? -1 : 0}
+      aria-disabled={onOpenMessage == null}
+      aria-label={t("message.openInChat")}
+      onClick={onOpenMessage == null ? undefined : handleBlockClick}
+      onKeyDown={onOpenMessage == null ? undefined : handleBlockKeyDown}
     >
-      <button
-        type="button"
+      <span
         className={`mb-0.5 block max-w-full truncate rounded-sm text-left text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft ${
           resolved.status === "unavailable" ? "text-text-muted" : "text-accent"
         }`}
         data-workspace-quote-open="true"
-        aria-label={t("message.openInChat")}
-        onClick={handleOpen}
       >
         {headerLabel}
-      </button>
+      </span>
       {messageContent}
     </div>
   );

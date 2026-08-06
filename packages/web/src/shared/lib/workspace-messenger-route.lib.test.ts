@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   isLegacyMessengerPathname,
   isWorkspaceMessengerRoute,
+  parseWorkspaceMessengerMessageAnchor,
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
   workspaceFeedRoute,
   workspaceInboxRoute,
   workspaceMessengerRootRoute,
+  workspaceMessengerMessageAnchor,
 } from "./workspace-messenger-route.lib";
 
 describe("workspace-messenger-route", () => {
@@ -53,5 +55,15 @@ describe("workspace-messenger-route", () => {
     expect(isLegacyMessengerPathname("/org/org-a/project/project-a/stream/stream-uuid")).toBe(
       false,
     );
+  });
+
+  it("builds and parses message anchors independently from the chat route", () => {
+    const messageUuid = "55555555-5555-4555-8555-555555555555";
+
+    expect(workspaceMessengerMessageAnchor(messageUuid)).toBe(`#message-${messageUuid}`);
+    expect(parseWorkspaceMessengerMessageAnchor(`#message-${messageUuid}`)).toBe(messageUuid);
+    expect(parseWorkspaceMessengerMessageAnchor(`message-${messageUuid}`)).toBe(messageUuid);
+    expect(parseWorkspaceMessengerMessageAnchor("#message-")).toBeNull();
+    expect(parseWorkspaceMessengerMessageAnchor("#section-settings")).toBeNull();
   });
 });

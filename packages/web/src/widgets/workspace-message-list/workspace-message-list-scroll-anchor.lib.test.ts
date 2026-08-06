@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   computeWorkspaceScrollTopAfterPrepend,
   computeWorkspaceScrollTopFromAnchor,
   computeWorkspaceScrollTopFromRenderAnchor,
   findWorkspaceMessageNode,
+  highlightWorkspaceMessageAnchor,
   resolveVisibleWorkspaceMessageAnchor,
   resolveVisibleWorkspaceMessageRenderAnchor,
 } from "./workspace-message-list-scroll-anchor.lib";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function setRect(element: HTMLElement, rect: Pick<DOMRect, "top" | "bottom">): void {
   element.getBoundingClientRect = () => ({
@@ -34,6 +39,24 @@ describe("workspace message scroll anchor helpers", () => {
 
     expect(findWorkspaceMessageNode(root, "topic:stream-uuid:message-uuid")).toBe(message);
     expect(findWorkspaceMessageNode(root, "missing-message")).toBeNull();
+  });
+
+  it("shows a temporary anchor highlight and restarts it for the same message", () => {
+    vi.useFakeTimers();
+    const message = document.createElement("article");
+
+    const clearFirstHighlight = highlightWorkspaceMessageAnchor(message);
+    expect(message).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+
+    vi.advanceTimersByTime(2000);
+    clearFirstHighlight();
+    const clearSecondHighlight = highlightWorkspaceMessageAnchor(message);
+    vi.advanceTimersByTime(700);
+    expect(message).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+
+    vi.advanceTimersByTime(1900);
+    expect(message).not.toHaveAttribute("data-workspace-message-anchor-highlight");
+    clearSecondHighlight();
   });
 
   it("resolves the first visible string-keyed message anchor", () => {

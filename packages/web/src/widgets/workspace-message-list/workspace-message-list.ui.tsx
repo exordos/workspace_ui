@@ -9,6 +9,7 @@ import type { UsersById } from "~/entities/user/user.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
@@ -109,6 +110,11 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   const messageUuid = serverMessageUuid ?? message.key;
   return (
     <article
+      id={
+        serverMessageUuid == null
+          ? undefined
+          : workspaceMessengerMessageAnchor(serverMessageUuid).slice(1)
+      }
       className={owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME}
       data-message-uuid={messageUuid}
       data-message-render-key={message.key}
@@ -211,7 +217,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           <button
             type="button"
             onClick={handleAuthorClick}
-            className="group rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            className="group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >

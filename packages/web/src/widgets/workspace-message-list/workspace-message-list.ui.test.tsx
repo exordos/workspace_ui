@@ -336,6 +336,10 @@ describe("WorkspaceMessageList", () => {
     );
 
     expect(container.querySelectorAll("[data-workspace-peer-avatar='true']")).toHaveLength(1);
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
+      "relative",
+      "z-[1]",
+    );
     expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
       "src",
       "https://cdn.example/avatar.png",
@@ -1080,6 +1084,7 @@ describe("WorkspaceMessageList", () => {
 
     expect(focusedScrollIntoView).toHaveBeenCalledOnce();
     expect(unreadScrollIntoView).not.toHaveBeenCalled();
+    expect(focusedNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
   });
 
   it("opens at the bottom after readiness when there are no unread messages", () => {

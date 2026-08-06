@@ -4,6 +4,7 @@ import {
   computeWorkspaceScrollTopAfterPrepend,
   computeWorkspaceScrollTopFromRenderAnchor,
   findWorkspaceMessageNode,
+  highlightWorkspaceMessageAnchor,
   isWorkspaceScrollAtBottom,
   resolveVisibleWorkspaceMessageRenderAnchor,
   WORKSPACE_MESSAGE_UUID_ATTRIBUTE,
@@ -129,6 +130,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const observedUnreadNodesRef = useRef<Map<string, HTMLElement>>(new Map());
   const viewportUnreadKeysRef = useRef<Set<string>>(new Set());
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  const clearAnchorHighlightRef = useRef<(() => void) | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isUnreadDividerDismissed, setIsUnreadDividerDismissed] = useState(false);
   const isInitialPositionApplied = useCallback(
@@ -470,6 +472,8 @@ export function useWorkspaceMessageListScroll<TMessage>({
           target.scrollIntoView({ block: "center", behavior: "instant" });
           syncAtBottomFromElement(root);
         });
+        clearAnchorHighlightRef.current?.();
+        clearAnchorHighlightRef.current = highlightWorkspaceMessageAnchor(target);
         initialPositionAppliedKeyRef.current = initialPositionKey;
         return;
       }
@@ -501,6 +505,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
       unreadCount,
     ],
   );
+
+  useEffect(() => {
+    return () => {
+      clearAnchorHighlightRef.current?.();
+      clearAnchorHighlightRef.current = null;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const root = scrollContainerRef.current;

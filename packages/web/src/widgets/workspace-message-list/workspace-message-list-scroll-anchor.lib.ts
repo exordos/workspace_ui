@@ -2,6 +2,9 @@ export const WORKSPACE_MESSAGE_UUID_ATTRIBUTE = "data-message-uuid";
 export const WORKSPACE_MESSAGE_UUID_SELECTOR = `[${WORKSPACE_MESSAGE_UUID_ATTRIBUTE}]`;
 export const WORKSPACE_MESSAGE_RENDER_KEY_ATTRIBUTE = "data-message-render-key";
 export const WORKSPACE_MESSAGE_RENDER_KEY_SELECTOR = `[${WORKSPACE_MESSAGE_RENDER_KEY_ATTRIBUTE}]`;
+export const WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_ATTRIBUTE =
+  "data-workspace-message-anchor-highlight";
+export const WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_DURATION_MS = 2600;
 
 export interface WorkspaceScrollSnapshot {
   scrollTop: number;
@@ -32,6 +35,22 @@ export function findWorkspaceMessageNode(
   messageKey: string,
 ): HTMLElement | null {
   return findWorkspaceMessageNodeByAttribute(root, WORKSPACE_MESSAGE_UUID_ATTRIBUTE, messageKey);
+}
+
+export function highlightWorkspaceMessageAnchor(node: HTMLElement): () => void {
+  node.removeAttribute(WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_ATTRIBUTE);
+  // A layout read restarts the CSS animation when the same anchor is opened again.
+  node.getBoundingClientRect();
+  node.setAttribute(WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_ATTRIBUTE, "true");
+
+  const timeoutId = window.setTimeout(() => {
+    node.removeAttribute(WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_ATTRIBUTE);
+  }, WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_DURATION_MS);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+    node.removeAttribute(WORKSPACE_MESSAGE_ANCHOR_HIGHLIGHT_ATTRIBUTE);
+  };
 }
 
 function resolveVisibleWorkspaceMessageAnchorByAttribute(

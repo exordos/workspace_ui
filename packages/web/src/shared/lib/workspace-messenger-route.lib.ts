@@ -56,6 +56,23 @@ function safeDecodeRouteSegment(value: string): string {
   }
 }
 
+const WORKSPACE_MESSAGE_ANCHOR_PREFIX = "message-";
+
+export function workspaceMessengerMessageAnchor(messageUuid: string): string {
+  return `#${WORKSPACE_MESSAGE_ANCHOR_PREFIX}${encodeRouteSegment(messageUuid)}`;
+}
+
+export function parseWorkspaceMessengerMessageAnchor(hash: string): string | null {
+  const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!normalizedHash.startsWith(WORKSPACE_MESSAGE_ANCHOR_PREFIX)) return null;
+
+  const encodedMessageUuid = normalizedHash.slice(WORKSPACE_MESSAGE_ANCHOR_PREFIX.length);
+  if (encodedMessageUuid.length === 0) return null;
+
+  const messageUuid = safeDecodeRouteSegment(encodedMessageUuid).trim();
+  return messageUuid.length > 0 ? messageUuid : null;
+}
+
 export function workspaceMessengerRootRoute(orgId: string, projectId: string): string {
   return withOrgRoutePrefix(`/project/${encodeRouteSegment(projectId)}/messenger`, orgId);
 }

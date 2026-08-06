@@ -114,6 +114,42 @@
   }
 }
 
+@keyframes workspace-message-anchor-highlight {
+  0%,
+  18% {
+    background-color: color-mix(in srgb, var(--color-accent-soft) 72%, transparent);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+[data-workspace-message-anchor-highlight="true"] {
+  position: relative;
+  isolation: isolate;
+  border-radius: 12px;
+}
+
+[data-workspace-message-anchor-highlight="true"]::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 12px;
+  content: "";
+  pointer-events: none;
+  animation: workspace-message-anchor-highlight 2.6s ease-out;
+}
+
+[data-workspace-message-anchor-highlight="true"][data-message-owner="peer"]::before {
+  inset-inline-start: -3.5rem;
+}
+
+[data-workspace-peer-avatar="true"] {
+  isolation: isolate;
+  box-shadow: 0 0 0 2px var(--color-bg);
+}
+
 .media-viewer-resource-placeholder {
   display: flex;
   min-width: 4rem;
@@ -157,6 +193,11 @@
     .workspace-message-file-placeholder__video-icon,
   .media-viewer-resource-placeholder[data-media-viewer-resource-state="loading"]
     .media-viewer-resource-placeholder__icon {
+    animation: none;
+  }
+
+  [data-workspace-message-anchor-highlight="true"]::before {
+    background-color: color-mix(in srgb, var(--color-accent-soft) 72%, transparent);
     animation: none;
   }
 }

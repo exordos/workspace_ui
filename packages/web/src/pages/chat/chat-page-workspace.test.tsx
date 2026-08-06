@@ -488,7 +488,7 @@ function renderWorkspaceChatPageWithShellContexts(
 
 function WorkspaceLocationProbe() {
   const location = useLocation();
-  return <span data-testid="workspace-location">{location.pathname}</span>;
+  return <span data-testid="workspace-location">{`${location.pathname}${location.hash}`}</span>;
 }
 
 describe("ChatPage Workspace route", () => {
@@ -852,6 +852,40 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     expect(captured.messageListProps?.focusedMessageUuid).toBe(MESSAGE_UUID);
     expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("focuses an already loaded message from the canonical chat anchor", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
+    );
+
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+    expect(captured.messageListProps?.focusedMessageUuid).toBe(MESSAGE_UUID);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads the current chat window around a missing canonical anchor", async () => {
+    useWorkspaceMessageStore.getState().clear();
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        messageUuid: MESSAGE_UUID,
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.messageListProps?.focusedMessageUuid).toBe(MESSAGE_UUID);
     expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
   });
 
@@ -1683,7 +1717,8 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("opens a quoted Workspace message through the UUID-native message route", async () => {
+  it("opens a quoted Workspace message in its chat through a URL anchor", async () => {
+    seedSecondMessage();
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -1695,9 +1730,60 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("workspace-location")).toHaveTextContent(
-        `/org/org-a/project/project-a/message/${SECOND_MESSAGE_UUID}`,
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${SECOND_MESSAGE_UUID}`,
       );
     });
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+  });
+
+  it("resolves an unknown quoted message before opening its chat anchor", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+    useWorkspaceMessageStore.getState().clear();
+    useWorkspaceMessageStore
+      .getState()
+      .replaceConversationMessagesWindow(conversationId, [createMessage()]);
+    captured.loadWorkspaceMessageWindowAroundMessage.mockImplementationOnce(() => {
+      useWorkspaceMessageStore
+        .getState()
+        .replaceConversationMessagesWindow(conversationId, [
+          createMessage(),
+          createSecondMessage(),
+        ]);
+      return {
+        status: "applied" as const,
+        ownerKey: "owner-key",
+        conversationId,
+        anchorUuid: SECOND_MESSAGE_UUID,
+        beforePageMarker: null,
+        afterPageMarker: null,
+        beforeLimit: null,
+        afterLimit: null,
+      };
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onOpenMessageInChat?.(SECOND_MESSAGE_UUID);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${SECOND_MESSAGE_UUID}`,
+      ),
+    );
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageUuid: SECOND_MESSAGE_UUID,
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0].conversationId).toBe(
+      undefined,
+    );
   });
 
   it("moves existing composer text into the first Workspace reply tab", async () => {
