@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
-import { fetchMyMentionsPage } from "./activity-mentions.api";
+import { fetchMyMentionsPage, fetchUnreadMentionsCount } from "./activity-mentions.api";
 
 const runtimeContext: WorkspaceRuntimeContext = {
   accountId: "account-1",
@@ -98,6 +98,43 @@ describe("fetchMyMentionsPage", () => {
     expect(getMessagesPage).toHaveBeenCalledWith(expect.any(Object), {
       pageLimit: 25,
       mentioned: true,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
+  });
+});
+
+describe("fetchUnreadMentionsCount", () => {
+  it("counts every page filtered by unread mentions", async () => {
+    const getMessagesPage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [ownMentionMessage, { ...ownMentionMessage, uuid: "message-2" }],
+        nextPageMarker: "next-page",
+        pageLimit: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...ownMentionMessage, uuid: "message-3" }],
+        nextPageMarker: null,
+        pageLimit: 100,
+      });
+
+    await expect(
+      fetchUnreadMentionsCount({ runtimeContext, client: { getMessagesPage } }),
+    ).resolves.toBe(3);
+
+    expect(getMessagesPage).toHaveBeenNthCalledWith(1, expect.any(Object), {
+      pageLimit: 100,
+      mentioned: true,
+      read: false,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
+    expect(getMessagesPage).toHaveBeenNthCalledWith(2, expect.any(Object), {
+      pageLimit: 100,
+      pageMarker: "next-page",
+      mentioned: true,
+      read: false,
       sortKey: "created_at",
       sortDir: "desc",
     });

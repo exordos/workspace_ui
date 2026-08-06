@@ -54,6 +54,7 @@ export interface GetMessagesQuery extends MessengerPaginationQuery {
   sortDir?: "asc" | "desc";
   starred?: boolean;
   mentioned?: boolean;
+  read?: boolean;
 }
 
 export interface GetMessageReactionsQuery {
@@ -169,6 +170,7 @@ export async function getMessages(
       sort_dir: query.sortDir,
       starred: query.starred == null ? undefined : String(query.starred),
       mentioned: query.mentioned == null ? undefined : String(query.mentioned),
+      read: query.read == null ? undefined : String(query.read),
     }),
   );
   return parseDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response");
@@ -213,6 +215,7 @@ export async function getMessagesPage(
       sort_dir: query.sortDir,
       starred: query.starred == null ? undefined : String(query.starred),
       mentioned: query.mentioned == null ? undefined : String(query.mentioned),
+      read: query.read == null ? undefined : String(query.read),
     }),
   );
   return {

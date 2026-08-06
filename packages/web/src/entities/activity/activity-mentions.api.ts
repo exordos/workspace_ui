@@ -16,6 +16,7 @@ import { createLogger, logApiCall } from "~/shared/lib/logger";
 
 const log = createLogger("activity:mentions");
 const DEFAULT_MENTIONS_PAGE_SIZE = 50;
+const UNREAD_MENTIONS_PAGE_SIZE = 100;
 
 export interface MyMentionsPageResult {
   messages: MessengerMessage[];
@@ -36,6 +37,7 @@ export interface FetchMyMentionsPageOptions {
         pageLimit: number;
         pageMarker?: string;
         mentioned: boolean;
+        read?: boolean;
         sortKey: "created_at";
         sortDir: "desc";
       },
@@ -84,4 +86,35 @@ export async function fetchMyMentionsPage({
     }
     throw error;
   }
+}
+
+export async function fetchUnreadMentionsCount(options: {
+  runtimeContext: WorkspaceRuntimeContext;
+  signal?: AbortSignal;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  client?: FetchMyMentionsPageOptions["client"];
+}): Promise<number> {
+  const requestOptions = buildMessengerRequestOptions(
+    options.runtimeContext,
+    options.clientOptions,
+    options.signal,
+  );
+  const getMessagesPage = options.client?.getMessagesPage ?? defaultGetMessagesPage;
+  let count = 0;
+  let pageMarker: string | undefined;
+
+  do {
+    const page = await getMessagesPage(requestOptions, {
+      pageLimit: UNREAD_MENTIONS_PAGE_SIZE,
+      ...(pageMarker == null ? {} : { pageMarker }),
+      mentioned: true,
+      read: false,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
+    count += page.items.length;
+    pageMarker = page.nextPageMarker ?? undefined;
+  } while (pageMarker != null);
+
+  return count;
 }
