@@ -38,6 +38,8 @@ const ALL_FILTERS = ["starred", "mentions", "reactions", "drafts"] as const;
 const ACTIVITY_PAGE_SIZE = 50;
 const ACTIVITY_TOP_PAGINATION_THRESHOLD_PX = 64;
 const ACTIVITY_TOP_PAGINATION_REARM_THRESHOLD_PX = 96;
+const ACTIVITY_BOTTOM_PAGINATION_THRESHOLD_PX = 64;
+const ACTIVITY_BOTTOM_PAGINATION_REARM_THRESHOLD_PX = 96;
 const EMPTY_ACTIVITY_MESSAGES: MessengerMessage[] = [];
 
 interface ActivityMessagesState {
@@ -78,12 +80,18 @@ function compareActivityMessages(left: MessengerMessage, right: MessengerMessage
   return createdAtOrder !== 0 ? createdAtOrder : left.uuid.localeCompare(right.uuid);
 }
 
-function sortUniqueActivityMessages(messages: readonly MessengerMessage[]): MessengerMessage[] {
+type ActivityMessageOrder = "oldest-first" | "newest-first";
+
+function sortUniqueActivityMessages(
+  messages: readonly MessengerMessage[],
+  order: ActivityMessageOrder = "oldest-first",
+): MessengerMessage[] {
   const byUuid = new Map<string, MessengerMessage>();
   for (const message of messages) {
     byUuid.set(message.uuid, message);
   }
-  return [...byUuid.values()].sort(compareActivityMessages);
+  const sortedMessages = [...byUuid.values()].sort(compareActivityMessages);
+  return order === "newest-first" ? sortedMessages.reverse() : sortedMessages;
 }
 
 function ActivityUnsupportedState() {
@@ -165,7 +173,7 @@ export const ActivityPage: React.FC = () => {
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const requestVersionRef = useRef(0);
-  const topPaginationArmedRef = useRef(true);
+  const paginationArmedRef = useRef(true);
 
   const validFilter: ActivityPageFilter | null =
     filter && (ALL_FILTERS as readonly string[]).includes(filter)
@@ -192,6 +200,9 @@ export const ActivityPage: React.FC = () => {
   const nextCursor = stateBelongsToCollection ? activityMessagesState.nextCursor : null;
   const hasLoadError = stateBelongsToCollection && activityMessagesState.error;
   const hasPaginationError = stateBelongsToCollection && activityMessagesState.paginationError;
+  const activityMessageOrder: ActivityMessageOrder =
+    activityMessageFilter != null ? "newest-first" : "oldest-first";
+  const isNewestFirst = activityMessageOrder === "newest-first";
 
   useEffect(() => {
     if (!validFilter) {
@@ -259,7 +270,7 @@ export const ActivityPage: React.FC = () => {
           if (current.collectionKey !== collectionKey) return current;
           return {
             collectionKey,
-            messages: sortUniqueActivityMessages(page.messages),
+            messages: sortUniqueActivityMessages(page.messages, activityMessageOrder),
             nextCursor: page.nextCursor,
             hasMore: page.hasMore,
             isInitialLoading: false,
@@ -298,7 +309,7 @@ export const ActivityPage: React.FC = () => {
       loadMoreAbortRef.current?.abort();
       loadMoreAbortRef.current = null;
     };
-  }, [activityMessageFilter, collectionKey, reloadVersion, runtimeContext]);
+  }, [activityMessageFilter, activityMessageOrder, collectionKey, reloadVersion, runtimeContext]);
 
   useLayoutEffect(() => {
     if (collectionKey == null) {
@@ -309,19 +320,19 @@ export const ActivityPage: React.FC = () => {
     if (initialScrollPositionKeyRef.current === collectionKey) return;
     const el = listScrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = isNewestFirst ? 0 : el.scrollHeight;
     initialScrollPositionKeyRef.current = collectionKey;
-    topPaginationArmedRef.current = true;
-  }, [activityMessages.length, collectionKey, isInitialLoading]);
+    paginationArmedRef.current = true;
+  }, [activityMessages.length, collectionKey, isInitialLoading, isNewestFirst]);
 
   useLayoutEffect(() => {
     const pending = pendingScrollRestoreRef.current;
-    if (pending == null || isLoadingMore) return;
+    if (isNewestFirst || pending == null || isLoadingMore) return;
     const el = listScrollRef.current;
     if (!el) return;
     el.scrollTop = computeScrollTopAfterPrepend(pending, el.scrollHeight);
     pendingScrollRestoreRef.current = null;
-  }, [activityMessages.length, isLoadingMore]);
+  }, [activityMessages.length, isLoadingMore, isNewestFirst]);
 
   const handleWorkspaceMessageForward = useCallback(
     (messageUuid: string) => {
@@ -360,7 +371,7 @@ export const ActivityPage: React.FC = () => {
     }
 
     const list = listScrollRef.current;
-    if (list != null) {
+    if (list != null && !isNewestFirst) {
       pendingScrollRestoreRef.current = {
         scrollTop: list.scrollTop,
         scrollHeight: list.scrollHeight,
@@ -404,7 +415,10 @@ export const ActivityPage: React.FC = () => {
           }
           return {
             ...current,
-            messages: sortUniqueActivityMessages([...page.messages, ...current.messages]),
+            messages: sortUniqueActivityMessages(
+              [...current.messages, ...page.messages],
+              activityMessageOrder,
+            ),
             nextCursor: page.nextCursor,
             hasMore: page.hasMore,
             isLoadingMore: false,
@@ -435,6 +449,7 @@ export const ActivityPage: React.FC = () => {
       });
   }, [
     activityMessageFilter,
+    activityMessageOrder,
     collectionKey,
     hasMore,
     isInitialLoading,
@@ -442,28 +457,46 @@ export const ActivityPage: React.FC = () => {
     isRefreshing,
     nextCursor,
     runtimeContext,
+    isNewestFirst,
   ]);
 
   const handleListScroll = useCallback(
     (event: React.UIEvent<HTMLUListElement>) => {
       const scrollTop = event.currentTarget.scrollTop;
-      if (scrollTop > ACTIVITY_TOP_PAGINATION_REARM_THRESHOLD_PX) {
-        topPaginationArmedRef.current = true;
+      const distanceFromBottom =
+        event.currentTarget.scrollHeight - event.currentTarget.clientHeight - scrollTop;
+      const paginationThreshold = isNewestFirst
+        ? ACTIVITY_BOTTOM_PAGINATION_THRESHOLD_PX
+        : ACTIVITY_TOP_PAGINATION_THRESHOLD_PX;
+      const paginationRearmThreshold = isNewestFirst
+        ? ACTIVITY_BOTTOM_PAGINATION_REARM_THRESHOLD_PX
+        : ACTIVITY_TOP_PAGINATION_REARM_THRESHOLD_PX;
+      const paginationDistance = isNewestFirst ? distanceFromBottom : scrollTop;
+      if (paginationDistance > paginationRearmThreshold) {
+        paginationArmedRef.current = true;
       }
       if (
-        topPaginationArmedRef.current &&
-        scrollTop <= ACTIVITY_TOP_PAGINATION_THRESHOLD_PX &&
+        paginationArmedRef.current &&
+        paginationDistance <= paginationThreshold &&
         hasMore &&
         nextCursor != null &&
         !isInitialLoading &&
         !isRefreshing &&
         !isLoadingMore
       ) {
-        topPaginationArmedRef.current = false;
+        paginationArmedRef.current = false;
         handleLoadMore();
       }
     },
-    [handleLoadMore, hasMore, isInitialLoading, isLoadingMore, isRefreshing, nextCursor],
+    [
+      handleLoadMore,
+      hasMore,
+      isInitialLoading,
+      isLoadingMore,
+      isNewestFirst,
+      isRefreshing,
+      nextCursor,
+    ],
   );
 
   const handleRetry = useCallback(() => {

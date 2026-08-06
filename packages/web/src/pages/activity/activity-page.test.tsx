@@ -426,7 +426,7 @@ describe("ActivityPage", () => {
     expect(fetchMyMentionsPage).toHaveBeenCalledTimes(2);
   });
 
-  it("loads older mentions at the top and preserves both pages", async () => {
+  it("keeps newest mentions at the top and loads older mentions at the bottom", async () => {
     setWorkspaceSession();
     seedWorkspaceMessengerContext();
     fetchMyMentionsPage
@@ -461,6 +461,9 @@ describe("ActivityPage", () => {
 
     const { container } = renderActivityPage("/activity/mentions");
     expect(await screen.findByText("New mention")).toBeInTheDocument();
+    expect(activityMessageOrder(container, ["Old mention", "New mention"])).toEqual([
+      "New mention",
+    ]);
     const list = container.querySelector("ul");
     expect(list).not.toBeNull();
     fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
@@ -468,6 +471,10 @@ describe("ActivityPage", () => {
 
     expect(await screen.findByText("Old mention")).toBeInTheDocument();
     expect(screen.getByText("New mention")).toBeInTheDocument();
+    expect(activityMessageOrder(container, ["Old mention", "New mention"])).toEqual([
+      "New mention",
+      "Old mention",
+    ]);
     expect(fetchMyMentionsPage).toHaveBeenCalledTimes(2);
     expect(fetchMyMentionsPage).toHaveBeenNthCalledWith(
       2,
@@ -479,7 +486,7 @@ describe("ActivityPage", () => {
     );
   });
 
-  it("orders newest-first starred pages oldest to newest and prepends older messages", async () => {
+  it("orders starred pages newest to oldest and appends older messages", async () => {
     setWorkspaceSession();
     seedWorkspaceMessengerContext();
     const labels = ["Oldest starred", "Older starred", "Recent starred", "Newest starred"] as const;
@@ -521,7 +528,7 @@ describe("ActivityPage", () => {
 
     const { container } = renderActivityPage("/activity/starred");
     expect(await screen.findByText("Newest starred")).toBeInTheDocument();
-    expect(activityMessageOrder(container, labels)).toEqual(["Recent starred", "Newest starred"]);
+    expect(activityMessageOrder(container, labels)).toEqual(["Newest starred", "Recent starred"]);
 
     const list = container.querySelector("ul");
     expect(list).not.toBeNull();
@@ -529,7 +536,12 @@ describe("ActivityPage", () => {
     fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
 
     expect(await screen.findByText("Oldest starred")).toBeInTheDocument();
-    expect(activityMessageOrder(container, labels)).toEqual(labels);
+    expect(activityMessageOrder(container, labels)).toEqual([
+      "Newest starred",
+      "Recent starred",
+      "Older starred",
+      "Oldest starred",
+    ]);
     expect(fetchWorkspaceStarredMessages).toHaveBeenCalledTimes(2);
     expect(fetchWorkspaceStarredMessages).toHaveBeenNthCalledWith(
       2,
@@ -801,7 +813,7 @@ describe("ActivityPage", () => {
 
       const list = container.querySelector("ul");
       expect(list).not.toBeNull();
-      expect((list as HTMLUListElement).scrollTop).toBe(1200);
+      expect((list as HTMLUListElement).scrollTop).toBe(0);
     } finally {
       restoreScrollHeight();
     }
