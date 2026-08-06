@@ -740,7 +740,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("[Alice Johnson](urn:user:user-alice-johnson) ");
+    expect(textbox).toHaveValue("@Alice Johnson ");
     expect(useMentionSuggestStore.getState().visible).toBe(false);
     expect(useMentionSuggestStore.getState().query).toBe("");
 
@@ -784,7 +784,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("[Alex Roe](urn:user:user-alex-roe) ");
+    expect(textbox).toHaveValue("@Alex Roe ");
   });
 
   it("shows no-results popup when mention query has no matches", async () => {
@@ -1005,7 +1005,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue("[Alex Roe](urn:user:user-alex-roe) ");
+    expect(textbox).toHaveValue("@Alex Roe ");
   });
 });
 

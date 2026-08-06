@@ -71,6 +71,7 @@ import {
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
+import type { WorkspaceComposerMention } from "./message-composer-body.lib";
 import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
 import type { ComposerSuggestion } from "./message-composer-mention-dropdown.types";
 import type { SavedSnippet } from "./message-composer-saved-snippets.types";
@@ -358,7 +359,26 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setActiveMentionIndex,
     mentionStartPos,
     setMentionStartPos,
+    mentionUsers,
   } = useComposerMentions({ enabled: mentionsSupported });
+  const workspaceComposerMentions = useMemo<WorkspaceComposerMention[]>(() => {
+    const displayNameCounts = new Map<string, number>();
+    for (const user of mentionUsers) {
+      displayNameCounts.set(user.displayName, (displayNameCounts.get(user.displayName) ?? 0) + 1);
+    }
+    return mentionUsers.map((user) => ({
+      userUuid: user.userUuid,
+      displayName: user.displayName,
+      visibleText:
+        (displayNameCounts.get(user.displayName) ?? 0) > 1
+          ? `${user.displayName} (${user.username})`
+          : user.displayName,
+    }));
+  }, [mentionUsers]);
+  const workspaceComposerMentionsByUserUuid = useMemo(
+    () => new Map(workspaceComposerMentions.map((mention) => [mention.userUuid, mention] as const)),
+    [workspaceComposerMentions],
+  );
   const messengerOwnerKey = useMessengerStore((state) => state.ownerKey);
   const workspaceReferencesEnabled =
     capabilities?.mentions?.mode === "enabled" && messengerOwnerKey != null;
@@ -481,8 +501,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     () =>
       (!isEditing || preservesWorkspaceReplyContext) && outgoingBodyOverride != null
         ? outgoingBodyOverride
-        : buildOutgoingMessageBody(value, effectiveReplyQuote),
-    [effectiveReplyQuote, isEditing, outgoingBodyOverride, preservesWorkspaceReplyContext, value],
+        : buildOutgoingMessageBody(value, effectiveReplyQuote, workspaceComposerMentions),
+    [
+      effectiveReplyQuote,
+      isEditing,
+      outgoingBodyOverride,
+      preservesWorkspaceReplyContext,
+      value,
+      workspaceComposerMentions,
+    ],
   );
   const canSendWithEmptyActiveValue =
     allowEmptyActiveValueSend &&
@@ -638,12 +665,13 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handleMentionSelect = useCallback(
     (user: MentionSuggestion) => {
+      const mention = workspaceComposerMentionsByUserUuid.get(user.userUuid);
+      if (mention == null) return;
       const insertion = insertWorkspaceMention(
         value,
         mentionStartPos,
         textareaRef.current?.selectionStart ?? value.length,
-        user.displayName,
-        user.userUuid,
+        mention.visibleText,
       );
       setValue(insertion.value);
       resetMentionState();
@@ -653,7 +681,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition);
       });
     },
-    [mentionStartPos, resetMentionState, resetWorkspaceReferenceState, setValue, value],
+    [
+      mentionStartPos,
+      resetMentionState,
+      resetWorkspaceReferenceState,
+      setValue,
+      value,
+      workspaceComposerMentionsByUserUuid,
+    ],
   );
 
   const handleWorkspaceReferenceSelect = useCallback(

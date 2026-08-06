@@ -8,6 +8,7 @@ import {
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
+  serializeWorkspaceComposerMentions,
 } from "./message-composer-body.lib";
 
 describe("message-composer-body.lib", () => {
@@ -104,17 +105,52 @@ describe("message-composer-body.lib", () => {
   });
 
   describe("insertWorkspaceMention", () => {
-    it("replaces the active query and keeps the cursor after the inserted link", () => {
-      const result = insertWorkspaceMention("Hi @bo!", 3, 6, "Bob Reed", "user-uuid");
+    it("replaces the active query with the person's name and keeps the cursor after it", () => {
+      const result = insertWorkspaceMention("Hi @bo!", 3, 6, "Bob Reed");
 
-      expect(result.value).toBe("Hi [Bob Reed](urn:user:user-uuid) !");
-      expect(result.cursorPosition).toBe("Hi [Bob Reed](urn:user:user-uuid) ".length);
+      expect(result.value).toBe("Hi @Bob Reed !");
+      expect(result.cursorPosition).toBe("Hi @Bob Reed ".length);
     });
 
-    it("escapes the display name in an ordinary mention", () => {
-      const result = insertWorkspaceMention("@a", 0, 2, "A]lice", "user-uuid");
+    it("keeps punctuation in the person's name", () => {
+      const result = insertWorkspaceMention("@a", 0, 2, "A. Lice");
 
-      expect(result.value).toBe("[A\\]lice](urn:user:user-uuid) ");
+      expect(result.value).toBe("@A. Lice ");
+    });
+  });
+
+  describe("serializeWorkspaceComposerMentions", () => {
+    it("converts visible person names to canonical Workspace URNs", () => {
+      expect(
+        serializeWorkspaceComposerMentions("Hi @Боб Рид!", [
+          { userUuid: "user-uuid", displayName: "Боб Рид", visibleText: "Боб Рид" },
+        ]),
+      ).toBe("Hi [Боб Рид](urn:user:user-uuid)!");
+    });
+
+    it("does not convert a name inside an email address", () => {
+      expect(
+        serializeWorkspaceComposerMentions("bob@example.com", [
+          { userUuid: "user-uuid", displayName: "Bob Reed", visibleText: "Bob Reed" },
+        ]),
+      ).toBe("bob@example.com");
+    });
+
+    it("keeps users with matching names unambiguous", () => {
+      expect(
+        serializeWorkspaceComposerMentions("Hi @Иван Иванов (ivan.two)!", [
+          {
+            userUuid: "first-user-uuid",
+            displayName: "Иван Иванов",
+            visibleText: "Иван Иванов (ivan.one)",
+          },
+          {
+            userUuid: "second-user-uuid",
+            displayName: "Иван Иванов",
+            visibleText: "Иван Иванов (ivan.two)",
+          },
+        ]),
+      ).toBe("Hi [Иван Иванов](urn:user:second-user-uuid)!");
     });
   });
 

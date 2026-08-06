@@ -10,22 +10,27 @@ import {
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
+export interface WorkspaceComposerMention {
+  userUuid: string;
+  displayName: string;
+  visibleText: string;
+}
+
 export interface WorkspaceMentionInsertion {
   value: string;
   cursorPosition: number;
 }
 
-/** Replaces the active @query with a canonical Workspace user link. */
+/** Replaces the active @query with the person's name shown in the composer. */
 export function insertWorkspaceMention(
   value: string,
   mentionStartPos: number,
   cursorPos: number,
   displayName: string,
-  userUuid: string,
 ): WorkspaceMentionInsertion {
   const before = value.slice(0, mentionStartPos);
   const after = value.slice(cursorPos);
-  const mention = `${buildWorkspaceUserMention(displayName, userUuid)} `;
+  const mention = `@${displayName} `;
   const nextValue = before + mention + after;
   return {
     value: nextValue,
@@ -33,9 +38,47 @@ export function insertWorkspaceMention(
   };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Converts visible person names to the canonical URNs required by the Workspace API. */
+export function serializeWorkspaceComposerMentions(
+  value: string,
+  mentions: readonly WorkspaceComposerMention[],
+): string {
+  if (mentions.length === 0) return value;
+
+  const mentionsByVisibleText = new Map(
+    mentions
+      .filter((mention) => mention.visibleText.trim().length > 0)
+      .map((mention) => [mention.visibleText, mention] as const),
+  );
+  const visibleTexts = [...mentionsByVisibleText.keys()].sort(
+    (left, right) => right.length - left.length,
+  );
+  if (visibleTexts.length === 0) return value;
+
+  const visibleTextPattern = visibleTexts.map(escapeRegExp).join("|");
+  const mentionPattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}_.-])@(${visibleTextPattern})(?![\\p{L}\\p{N}_.-])`,
+    "gu",
+  );
+  return value.replace(mentionPattern, (match, prefix: string, visibleText: string) => {
+    const mention = mentionsByVisibleText.get(visibleText);
+    return mention == null
+      ? match
+      : `${prefix}${buildWorkspaceUserMention(mention.displayName, mention.userUuid)}`;
+  });
+}
+
 /** Builds a reply quote prefix before the outgoing draft body. */
-export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null): string {
-  let body = value.trim();
+export function buildOutgoingMessageBody(
+  value: string,
+  replyQuote?: ReplyQuote | null,
+  mentions: readonly WorkspaceComposerMention[] = [],
+): string {
+  let body = serializeWorkspaceComposerMentions(value, mentions).trim();
   if (replyQuote) {
     if (replyQuote.quoteFormat === "workspace") {
       const quoteReference = buildWorkspaceQuoteReference({
