@@ -130,6 +130,7 @@ export function messageSuccess(content: string) {
     starred: false,
     is_own: true,
     reactions: {},
+    reaction_users: {},
     created_at: CREATED_AT,
     updated_at: CREATED_AT,
   };
