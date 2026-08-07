@@ -9,19 +9,15 @@
  * This script runs automatically after electron-builder signs the app.
  * It uses @electron/notarize to submit the app to Apple and wait for approval.
  *
- * Required environment variables (set in CI or .env):
- *   APPLE_ID              — Apple Developer account email
- *   APPLE_APP_PASSWORD    — App-specific password (NOT your Apple ID password)
- *   APPLE_TEAM_ID         — 10-character Team ID from developer.apple.com
+ * Preferred CI authentication uses an App Store Connect Team API key:
+ *   APPLE_API_KEY       — absolute path to the downloaded .p8 private key
+ *   APPLE_API_KEY_ID    — 10-character App Store Connect key ID
+ *   APPLE_API_ISSUER    — App Store Connect issuer UUID
  *
- * To generate an app-specific password:
- *   1. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords
- *   2. Generate a new password, name it "Workspace Notarize"
- *   3. Store it as APPLE_APP_PASSWORD in CI secrets
- *
- * To find your Team ID:
- *   1. Go to developer.apple.com/account → Membership Details
- *   2. Copy the 10-character Team ID (e.g., "A1B2C3D4E5")
+ * Apple ID credentials remain supported for local builds:
+ *   APPLE_ID                     — Apple Developer account email
+ *   APPLE_APP_SPECIFIC_PASSWORD  — app-specific password
+ *   APPLE_TEAM_ID                — 10-character Apple Developer Team ID
  */
 
 import { notarize } from "@electron/notarize";
@@ -30,6 +26,63 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const value = (environment, name) => environment[name]?.trim() || undefined;
+
+/**
+ * Resolve exactly one complete notarytool credential set.
+ *
+ * @param {NodeJS.ProcessEnv} environment
+ * @returns {import("@electron/notarize").NotaryToolCredentials | undefined}
+ */
+export function resolveNotarizationCredentials(environment = process.env) {
+  const appleApiKey = value(environment, "APPLE_API_KEY");
+  const appleApiKeyId = value(environment, "APPLE_API_KEY_ID");
+  const appleApiIssuer = value(environment, "APPLE_API_ISSUER");
+  const apiValues = [appleApiKey, appleApiKeyId, appleApiIssuer];
+  const hasApiCredentials = apiValues.some(Boolean);
+
+  const appleId = value(environment, "APPLE_ID");
+  const appleIdPassword =
+    value(environment, "APPLE_APP_SPECIFIC_PASSWORD") ?? value(environment, "APPLE_APP_PASSWORD");
+  const teamId = value(environment, "APPLE_TEAM_ID");
+  const appleIdValues = [appleId, appleIdPassword, teamId];
+  const hasAppleIdCredentials = appleIdValues.some(Boolean);
+
+  if (hasApiCredentials && hasAppleIdCredentials) {
+    throw new Error(
+      "Configure either App Store Connect API credentials or Apple ID credentials, not both",
+    );
+  }
+
+  if (hasApiCredentials) {
+    if (!apiValues.every(Boolean)) {
+      throw new Error(
+        "APPLE_API_KEY, APPLE_API_KEY_ID, and APPLE_API_ISSUER must be configured together",
+      );
+    }
+    return {
+      appleApiKey,
+      appleApiKeyId,
+      appleApiIssuer,
+    };
+  }
+
+  if (hasAppleIdCredentials) {
+    if (!appleIdValues.every(Boolean)) {
+      throw new Error(
+        "APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID must be configured together",
+      );
+    }
+    return {
+      appleId,
+      appleIdPassword,
+      teamId,
+    };
+  }
+
+  return undefined;
+}
 
 /**
  * @param {import("electron-builder").AfterPackContext} context
@@ -43,22 +96,16 @@ export default async function afterSign(context) {
     return;
   }
 
-  // Skip if signing env vars are not set (local dev builds)
-  const appleId = process.env.APPLE_ID;
-  const appleAppPassword = process.env.APPLE_APP_PASSWORD;
-  const appleTeamId = process.env.APPLE_TEAM_ID;
+  // Local unsigned builds remain possible; partially configured release credentials fail closed.
+  const credentials = resolveNotarizationCredentials();
 
-  if (!appleId || !appleAppPassword || !appleTeamId) {
-    console.log("⏭️  Skipping notarization: APPLE_ID, APPLE_APP_PASSWORD, or APPLE_TEAM_ID not set");
-    console.log("   Set these env vars in CI to enable notarization.");
+  if (!credentials) {
+    console.log("⏭️  Skipping notarization: no notarytool credentials configured");
     return;
   }
 
   // Read appId from electron-builder config
-  const builderConfig = readFileSync(
-    join(__dirname, "..", "electron-builder.yml"),
-    "utf-8",
-  );
+  const builderConfig = readFileSync(join(__dirname, "..", "electron-builder.yml"), "utf-8");
   const appIdMatch = builderConfig.match(/^appId:\s*(.+)$/m);
   const appId = appIdMatch?.[1]?.trim() ?? "com.exordos.workspace";
 
@@ -66,18 +113,14 @@ export default async function afterSign(context) {
   const appPath = join(appOutDir, `${appName}.app`);
 
   console.log(`🍎 Notarizing ${appPath}...`);
-  console.log(`   Team ID:  ${appleTeamId}`);
   console.log(`   App ID:   ${appId}`);
 
   const startTime = Date.now();
 
   try {
     await notarize({
-      tool: "notarytool",
       appPath,
-      appleId,
-      appleIdPassword: appleAppPassword,
-      teamId: appleTeamId,
+      ...credentials,
     });
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -85,8 +128,7 @@ export default async function afterSign(context) {
   } catch (error) {
     console.error("❌ Notarization failed:", error.message);
     console.error("   Common issues:");
-    console.error("   - Invalid APPLE_APP_PASSWORD (generate a new app-specific password)");
-    console.error("   - Incorrect APPLE_TEAM_ID (check developer.apple.com)");
+    console.error("   - Invalid App Store Connect API key or Apple ID credentials");
     console.error("   - App not properly code-signed (check CSC_LINK / CSC_KEY_PASSWORD)");
     throw error;
   }

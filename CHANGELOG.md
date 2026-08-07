@@ -6,6 +6,45 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-08-06
+
+### Added
+
+- The topic information panel now shows AI-generated topic context when the
+  backend supplies summary metadata, including pending, disabled, and
+  new-message states.
+
+### Changed
+
+- macOS release artifacts for Apple Silicon and Intel are now Developer ID
+  signed and notarized in a protected tag-only job. Release publication fails
+  closed unless signatures, hardened runtime, secure timestamps, stapled
+  tickets, Gatekeeper acceptance, signing team, and architectures are verified.
+
+### Fixed
+
+- Per-topic read boundaries are persisted across cached and realtime state, so
+  previously read messages no longer reappear as unread after switching clients
+  or reloading the application.
+- Initial chat positioning waits for restored read state and preserves its
+  viewport anchor while older or newer pages and realtime messages arrive,
+  preventing stale unread dividers and unexpected scroll jumps.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.5`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- Topic-summary fields remain optional; the context panel shows the available
+  empty or disabled state when summary metadata is not provided.
+- The local messenger cache upgrades automatically from schema version 6 to 7.
+  No manual client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.6`.
+- macOS desktop packages now require the signed and notarized release pipeline;
+  no user-side signing configuration is needed.
+
 ## [0.4.5] — 2026-08-04
 
 ### Changed

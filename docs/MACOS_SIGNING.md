@@ -14,11 +14,11 @@ Without this, users see "App is damaged and can't be opened" or Gatekeeper block
 
 ## Prerequisites
 
-| Item                                 | Where to get it                                                                   | Cost     |
-| ------------------------------------ | --------------------------------------------------------------------------------- | -------- |
-| Apple Developer Program membership   | [developer.apple.com](https://developer.apple.com/programs/)                      | $99/year |
-| Developer ID Application certificate | Xcode → Certificates → Developer ID Application                                   | Included |
-| App-specific password                | [appleid.apple.com](https://appleid.apple.com) → Sign-In → App-Specific Passwords | Free     |
+| Item                                   | Where to get it                                                 | Cost     |
+| -------------------------------------- | --------------------------------------------------------------- | -------- |
+| Apple Developer Program membership     | [developer.apple.com](https://developer.apple.com/programs/)    | $99/year |
+| Developer ID Application certificate   | Xcode → Certificates → Developer ID Application                 | Included |
+| App Store Connect Team API key (`.p8`) | App Store Connect → Users and Access → Integrations → Team Keys | Included |
 
 ## Step 1: Create the Certificate
 
@@ -27,6 +27,8 @@ Without this, users see "App is damaged and can't be opened" or Gatekeeper block
 1. Open Xcode → Settings → Accounts → select your team
 2. Click "Manage Certificates..." → "+" → "Developer ID Application"
 3. Xcode creates the certificate and installs it in your Keychain
+
+Use a dedicated Developer ID Application certificate per independently revocable product when the available certificate quota permits it. This keeps a compromised signing key from forcing unrelated products to rotate at the same time.
 
 ### Option B: Via Apple Developer Portal
 
@@ -42,19 +44,18 @@ Without this, users see "App is damaged and can't be opened" or Gatekeeper block
 3. Right-click → "Export..." → save as `certificate.p12`
 4. Set a strong password (you'll need it as `CSC_KEY_PASSWORD`)
 
-## Step 3: Generate App-Specific Password
+## Step 3: Create an App Store Connect Team API Key
 
-1. Go to [appleid.apple.com](https://appleid.apple.com)
-2. Sign in → "Sign-In and Security" → "App-Specific Passwords"
-3. Click "+" → name it "Workspace Notarize"
-4. Copy the generated password (you'll need it as `APPLE_APP_PASSWORD`)
+1. Open App Store Connect → Users and Access → Integrations → Team Keys.
+2. Create or select a key dedicated to this release pipeline with **App Manager** access, as required by `@electron/notarize`. Team keys remain account-wide, but separate keys provide distinct audit and revocation boundaries.
+3. Record the key ID and issuer ID, and download the `.p8` private key once.
+4. Store the private key and its metadata in KeePassXC before configuring CI.
 
-## Step 4: Find Your Team ID
+The release workflow uses `notarytool` API-key authentication. Apple ID credentials remain supported by the local hook, but they are not the CI default.
 
-1. Go to [developer.apple.com/account](https://developer.apple.com/account)
-2. Look at "Membership Details" → Team ID (10-character string like "A1B2C3D4E5")
+The Team API key may also authenticate future Exordos Workspace iOS CI because it belongs to the product's Apple team integration. Platform signing material remains separate: macOS uses Developer ID Application, while iOS distribution requires its own Apple Distribution certificate and provisioning profiles.
 
-## Step 5: Local Signing (Developer Machine)
+## Step 4: Local Signing (Developer Machine)
 
 Set environment variables and build:
 
@@ -63,10 +64,10 @@ Set environment variables and build:
 export CSC_LINK="/path/to/certificate.p12"
 export CSC_KEY_PASSWORD="your-p12-password"
 
-# Notarization
-export APPLE_ID="your@apple-id.com"
-export APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-export APPLE_TEAM_ID="A1B2C3D4E5"
+# Notarization with an App Store Connect Team API key
+export APPLE_API_KEY="/path/to/AuthKey_KEYID.p8"
+export APPLE_API_KEY_ID="KEYID12345"
+export APPLE_API_ISSUER="00000000-0000-0000-0000-000000000000"
 
 # Build signed + notarized app
 npm run package:electron:mac
@@ -79,48 +80,48 @@ The build will:
 3. Submit to Apple's notary service (~1-5 minutes)
 4. Staple the notarization ticket
 
-## Step 6: CI/CD Signing (GitHub Actions)
+## Step 5: CI/CD Signing (GitHub Actions)
 
-### Add secrets to GitHub
+The tag-only macOS job uses the protected `macos-release` environment. Its tag policy is `*.*.*`, and required reviewers must approve the job before GitHub exposes signing secrets.
 
-Go to your repo → Settings → Secrets and variables → Actions → "New repository secret":
+Configure these environment secrets:
 
-| Secret name            | Value                                                           |
-| ---------------------- | --------------------------------------------------------------- |
-| `MAC_CSC_LINK`         | Base64-encoded .p12 file: `base64 -i certificate.p12 \| pbcopy` |
-| `MAC_CSC_KEY_PASSWORD` | Password for the .p12 file                                      |
-| `APPLE_ID`             | Your Apple ID email                                             |
-| `APPLE_APP_PASSWORD`   | App-specific password from Step 3                               |
-| `APPLE_TEAM_ID`        | 10-character Team ID from Step 4                                |
+| Secret name                       | Value                                                 |
+| --------------------------------- | ----------------------------------------------------- |
+| `MACOS_CERTIFICATE_P12_BASE64`    | Base64-encoded Developer ID Application `.p12`        |
+| `MACOS_CERTIFICATE_PASSWORD`      | Password for the `.p12` export                        |
+| `APPLE_API_PRIVATE_KEY_P8_BASE64` | Base64-encoded App Store Connect Team API private key |
+| `APPLE_API_KEY_ID`                | App Store Connect key ID                              |
+| `APPLE_API_ISSUER_ID`             | App Store Connect issuer UUID                         |
 
-The CI workflow (`.github/workflows/ci.yml`) already passes these secrets to the macOS build job.
+The CI job fails before packaging when any secret is absent. Release publication waits for the signed macOS job, so a tag cannot produce a GitHub Release with unsigned macOS assets.
 
 ## Verification
 
 ### Check signing
 
 ```bash
-codesign --verify --deep --strict --verbose=2 "Workspace.app"
+codesign --verify --deep --strict --verbose=2 "Exordos Workspace.app"
 # Expected: valid on disk, satisfies its Designated Requirement
 
-codesign -dv --verbose=4 "Workspace.app" 2>&1 | grep "Authority"
+codesign -dv --verbose=4 "Exordos Workspace.app" 2>&1 | grep "Authority"
 # Expected: Authority=Developer ID Application: YOUR_TEAM (TEAM_ID)
 ```
 
 ### Check notarization
 
 ```bash
-spctl --assess --type exec --verbose "Workspace.app"
+spctl --assess --type exec --verbose=4 "Exordos Workspace.app"
 # Expected: accepted, source=Notarized Developer ID
 
-xcrun stapler validate "Workspace.app"
+xcrun stapler validate "Exordos Workspace.app"
 # Expected: The validate action worked!
 ```
 
 ### Check entitlements
 
 ```bash
-codesign -d --entitlements :- "Workspace.app"
+codesign -d --entitlements :- "Exordos Workspace.app"
 # Shows the entitlements embedded in the binary
 ```
 
@@ -132,7 +133,7 @@ codesign -d --entitlements :- "Workspace.app"
 | `packages/electron/resources/entitlements.mac.inherit.plist` | Child process entitlements (renderer, GPU)              |
 | `packages/electron/scripts/notarize.mjs`                     | afterSign hook — submits to Apple's notary service      |
 | `electron-builder.yml` → `mac:` section                      | Signing configuration                                   |
-| `.github/workflows/ci.yml` → `build-electron`                | CI job with secrets                                     |
+| `.github/workflows/ci.yml` → `build-electron-macos`          | Protected tag-only signing and verification job         |
 
 ## Troubleshooting
 
@@ -140,7 +141,7 @@ codesign -d --entitlements :- "Workspace.app"
 
 The app was not signed or notarization failed. Check:
 
-- `CSC_LINK` points to a valid .p12 with "Developer ID Application" certificate
+- `CSC_LINK` points to a valid `.p12` with a Developer ID Application certificate
 - The certificate is not expired (valid for 5 years)
 - Notarization completed successfully (check CI logs)
 
@@ -164,6 +165,7 @@ security import certificate.p12 -P "password" -A
 
 ### Build works locally but fails in CI
 
-- Ensure `MAC_CSC_LINK` is base64-encoded (not a file path)
+- Ensure `MACOS_CERTIFICATE_P12_BASE64` contains the base64-encoded `.p12`
 - Ensure the secret doesn't have trailing newlines
-- Ensure `macos-latest` runner is used (not `ubuntu-latest`)
+- Ensure the App Store Connect `.p8`, key ID, and issuer ID belong to the same Team key
+- Ensure the protected `macos-release` deployment was approved

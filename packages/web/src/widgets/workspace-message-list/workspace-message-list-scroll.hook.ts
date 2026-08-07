@@ -515,7 +515,6 @@ export function useWorkspaceMessageListScroll<TMessage>({
       clearAnchorHighlightRef.current = null;
     };
   }, []);
-
   useLayoutEffect(() => {
     const root = scrollContainerRef.current;
 

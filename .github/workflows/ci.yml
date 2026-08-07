@@ -112,8 +112,6 @@ jobs:
             cmd: package:electron:linux -- --linux rpm deb AppImage
           - os: windows-latest
             cmd: package:electron:win
-          - os: macos-latest
-            cmd: package:electron:mac
 
     steps:
       - uses: actions/checkout@v6
@@ -130,14 +128,6 @@ jobs:
       #   run: npm ci
       #   working-directory: packages/electron
 
-      # macOS: import signing certificate from secrets
-      # - name: Import macOS signing certificate
-      #   if: matrix.os == 'macos-latest' && env.CSC_LINK != ''
-      #   env:
-      #     CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-      #     CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-      #   run: echo "Certificate imported from secrets"
-
       - name: Build web
         shell: bash
         run: |
@@ -153,16 +143,6 @@ jobs:
           npm run ${{ matrix.cmd }}
         env:
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
-        #   # macOS code signing (set secrets in GitHub repo settings)
-        #   CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-        #   CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-        #   # macOS notarization
-        #   APPLE_ID: ${{ secrets.APPLE_ID }}
-        #   APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        #   # Windows code signing (future)
-        #   # CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-        #   # CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Collect release files
         id: collect
@@ -178,6 +158,144 @@ jobs:
           name: electron-${{ matrix.os }}
           path: upload/*
           retention-days: 14
+
+  build-electron-macos:
+    name: Build signed Electron (macOS)
+    needs: check
+    if: github.ref_type == 'tag'
+    environment: macos-release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prepare release credentials
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_PRIVATE_KEY_P8_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          for name in \
+            MACOS_CERTIFICATE_P12_BASE64 \
+            MACOS_CERTIFICATE_PASSWORD \
+            APPLE_API_PRIVATE_KEY_P8_BASE64 \
+            APPLE_API_KEY_ID \
+            APPLE_API_ISSUER_ID
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::${name} is not configured in the macos-release environment"
+              exit 1
+            fi
+          done
+
+          umask 077
+          printf '%s' "$APPLE_API_PRIVATE_KEY_P8_BASE64" \
+            | /usr/bin/base64 -D > "$RUNNER_TEMP/AuthKey.p8"
+          grep -q '^-----BEGIN PRIVATE KEY-----$' "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Build web
+        shell: bash
+        run: |
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run build --workspace=web
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
+
+      - name: Build, sign, and notarize
+        run: |
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run package:electron:mac
+        env:
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+
+      - name: Verify signatures, notarization, and architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_COUNT=0
+          ARM64_COUNT=0
+          X64_COUNT=0
+          SIGNING_TEAM=''
+
+          while IFS= read -r -d '' app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            signature=$(codesign -dvvv "$app" 2>&1)
+            grep -q '^Authority=Developer ID Application:' <<< "$signature"
+            grep -Eq '(^|[[:space:]])flags=.*runtime' <<< "$signature"
+            grep -q '^Timestamp=' <<< "$signature"
+
+            team=$(awk -F= '/^TeamIdentifier=/ {print $2; exit}' <<< "$signature")
+            test -n "$team"
+            test "$team" != 'not set'
+            if [[ -z "$SIGNING_TEAM" ]]; then
+              SIGNING_TEAM=$team
+            else
+              test "$team" = "$SIGNING_TEAM"
+            fi
+
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+
+            executable=$(/usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+            architectures=$(lipo -archs "$app/Contents/MacOS/$executable")
+            case " $architectures " in
+              *' arm64 '*) ARM64_COUNT=$((ARM64_COUNT + 1)) ;;
+            esac
+            case " $architectures " in
+              *' x86_64 '*) X64_COUNT=$((X64_COUNT + 1)) ;;
+            esac
+            APP_COUNT=$((APP_COUNT + 1))
+          # Stop at each product bundle so nested Electron Helper apps are not
+          # treated as independently released artifacts.
+          done < <(find packages/electron/release -type d \
+            -name 'Exordos Workspace.app' -prune -print0)
+
+          test "$APP_COUNT" -eq 2
+          test "$ARM64_COUNT" -eq 1
+          test "$X64_COUNT" -eq 1
+
+      - name: Collect release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          find packages/electron/release -maxdepth 1 -type f \
+            -name 'Exordos Workspace*-mac-*' -exec cp {} upload/ \;
+          test "$(find upload -type f | wc -l)" -gt 0
+          ls -la upload/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-macos-latest
+          path: upload/*
+          retention-days: 14
+
+      - name: Remove notarization key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
 
   publish-apt:
     name: Publish apt repository
@@ -275,7 +393,7 @@ jobs:
     # the repository leaves `apt upgrade` users without the version the release notes
     # promise. The remaining ordering risk is the mirror image — packages published
     # while this job fails — which is recoverable by re-running it.
-    needs: [build-electron, publish-apt]
+    needs: [build-electron, build-electron-macos, publish-apt]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
 

@@ -63,7 +63,8 @@ nsis:
 #
 # Notarization:
 #   After signing, the afterSign hook submits the app to Apple's notary service.
-#   Required env vars: APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
+#   Preferred CI env vars: APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER
+#   Apple ID credentials are also supported for local builds.
 #   Without them, notarization is skipped (dev builds).
 #
 mac:
