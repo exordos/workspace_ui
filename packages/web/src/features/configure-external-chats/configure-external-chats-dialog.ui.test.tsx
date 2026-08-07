@@ -281,7 +281,7 @@ describe("ConfigureExternalChatsDialog", () => {
     expect(screen.getByText(/restart history loading for 2 connected chats/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save settings" })).toHaveClass(
       "bg-accent",
-      "text-black",
+      "text-on-accent",
     );
     expect(screen.getByRole("button", { name: "Sync (1)" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Support" })).toBeDisabled();

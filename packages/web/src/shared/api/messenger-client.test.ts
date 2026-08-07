@@ -114,6 +114,7 @@ const messageDto = {
   reactions: {
     thumbs_up: 2,
   },
+  reaction_users: {},
   created_at: DATE,
   updated_at: DATE,
 };
