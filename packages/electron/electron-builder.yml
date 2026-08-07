@@ -149,6 +149,12 @@ deb:
     - libatspi2.0-0
     - libuuid1
   priority: optional
+  # Releases through 0.4.5 used `electron-app` as the Debian package name.
+  # Mark the renamed package as its replacement so apt can remove the legacy
+  # owner before installing the same application files under the new name.
+  fpm:
+    - --conflicts=electron-app
+    - --replaces=electron-app
 
 rpm:
   maintainer: Exordos <info@genesis-corporation.ru>
