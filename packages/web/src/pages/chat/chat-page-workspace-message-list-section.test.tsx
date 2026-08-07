@@ -86,6 +86,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onLoadNewer={vi.fn()}
         hasOlderMessages={false}
         hasNewerMessages={false}
+        lastMessageUuid={null}
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
         firstUnreadUuid="workspace-message-uuid"
         unreadCount={1}
         focusedMessageUuid={null}
@@ -114,6 +117,8 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onLoadNewer = vi.fn();
     const onUnreadMessagesVisible = vi.fn();
     const onUnreadMessagesAtBottom = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
     const resolveAuthorLabel = vi.fn(() => "Bob Reed");
     const resolveMention = vi.fn(() => ({ userUuid: "mention-user-uuid" }));
     const resolveServerMessageRenderKey = vi.fn(() => "transient-local-id");
@@ -137,6 +142,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onLoadNewer={onLoadNewer}
         hasOlderMessages={true}
         hasNewerMessages={true}
+        lastMessageUuid="latest-message-uuid"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
         firstUnreadUuid="workspace-props-message-uuid"
         unreadCount={3}
         focusedMessageUuid="focused-message-uuid"
@@ -159,6 +167,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       isLoadingNewer: true,
       hasOlderMessages: true,
       hasNewerMessages: true,
+      lastMessageUuid: "latest-message-uuid",
       firstUnreadUuid: "workspace-props-message-uuid",
       unreadCount: 3,
       focusedMessageUuid: "focused-message-uuid",
@@ -166,6 +175,10 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     });
     expect(captured.workspaceMessageListProps?.onLoadOlder).toBe(onLoadOlder);
     expect(captured.workspaceMessageListProps?.onLoadNewer).toBe(onLoadNewer);
+    expect(captured.workspaceMessageListProps?.onLoadLatestWindow).toBe(onLoadLatestWindow);
+    expect(captured.workspaceMessageListProps?.onCancelLatestWindowLoad).toBe(
+      onCancelLatestWindowLoad,
+    );
     expect(captured.workspaceMessageListProps?.onUnreadMessagesVisible).toBe(
       onUnreadMessagesVisible,
     );
@@ -209,6 +222,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onLoadNewer={vi.fn()}
         hasOlderMessages={false}
         hasNewerMessages={false}
+        lastMessageUuid={null}
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
         firstUnreadUuid={undefined}
         unreadCount={0}
         focusedMessageUuid={null}
@@ -270,6 +286,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onLoadNewer={vi.fn()}
         hasOlderMessages={true}
         hasNewerMessages={false}
+        lastMessageUuid={null}
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
         firstUnreadUuid={undefined}
         unreadCount={0}
         focusedMessageUuid={null}

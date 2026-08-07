@@ -213,7 +213,7 @@ export async function getMessageWindowAroundMessage(
 
   const anchor = await anchorPromise;
   const streamUuid = query.streamUuid ?? anchor.stream_uuid;
-  const topicUuid = query.topicUuid ?? anchor.topic_uuid;
+  const topicUuid = query.topicUuid ?? (query.streamUuid == null ? anchor.topic_uuid : undefined);
   const [beforeDescPage, afterAscPage] = await Promise.all([
     getMessagesPage(options, {
       streamUuid,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
-import { fetchMyMentionsPage, fetchUnreadMentionsCount } from "./activity-mentions.api";
+import { fetchMyMentionsPage, fetchUnreadMentions } from "./activity-mentions.api";
 
 const runtimeContext: WorkspaceRuntimeContext = {
   accountId: "account-1",
@@ -104,8 +104,8 @@ describe("fetchMyMentionsPage", () => {
   });
 });
 
-describe("fetchUnreadMentionsCount", () => {
-  it("counts every page filtered by unread mentions", async () => {
+describe("fetchUnreadMentions", () => {
+  it("returns minimal entries from every page filtered by unread mentions", async () => {
     const getMessagesPage = vi
       .fn()
       .mockResolvedValueOnce({
@@ -120,8 +120,27 @@ describe("fetchUnreadMentionsCount", () => {
       });
 
     await expect(
-      fetchUnreadMentionsCount({ runtimeContext, client: { getMessagesPage } }),
-    ).resolves.toBe(3);
+      fetchUnreadMentions({ runtimeContext, client: { getMessagesPage } }),
+    ).resolves.toEqual([
+      {
+        uuid: "message-1",
+        streamUuid: ownMentionMessage.stream_uuid,
+        topicUuid: ownMentionMessage.topic_uuid,
+        createdAt: ownMentionMessage.created_at,
+      },
+      {
+        uuid: "message-2",
+        streamUuid: ownMentionMessage.stream_uuid,
+        topicUuid: ownMentionMessage.topic_uuid,
+        createdAt: ownMentionMessage.created_at,
+      },
+      {
+        uuid: "message-3",
+        streamUuid: ownMentionMessage.stream_uuid,
+        topicUuid: ownMentionMessage.topic_uuid,
+        createdAt: ownMentionMessage.created_at,
+      },
+    ]);
 
     expect(getMessagesPage).toHaveBeenNthCalledWith(1, expect.any(Object), {
       pageLimit: 100,

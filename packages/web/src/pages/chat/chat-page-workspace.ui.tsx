@@ -15,7 +15,6 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import type { WorkspaceComposerDraftContent } from "~/entities/composer-draft/composer-draft.types";
 import { useDownloadStore } from "~/entities/download/download.model";
-import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -34,7 +33,6 @@ import {
 import {
   deleteMessengerMessage,
   editMessengerMessage,
-  markMessengerMessagesReadUpTo,
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
@@ -72,6 +70,7 @@ import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jit
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
 import { useWorkspaceMediaViewer } from "~/features/media-viewer/workspace-media-viewer.hook";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
+import { useWorkspaceVisibleMessageRead } from "~/features/workspace-message-read/workspace-visible-message-read.hook";
 import { createWorkspaceReplyEditRestoreController } from "~/features/workspace-reply/workspace-reply-edit-restore.lib";
 import {
   addWorkspaceReplyTab,
@@ -94,7 +93,6 @@ import { uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
-import { isWindowActive } from "~/shared/lib/visibility";
 import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
@@ -161,11 +159,26 @@ interface WorkspaceComposerSendCleanup {
   ignoresReplyClear: boolean;
 }
 
+interface WorkspaceTailWindowRequest {
+  controller: AbortController;
+  conversationId: MessengerConversationId;
+  messageUuid: MessengerUuid;
+  requestToken: symbol;
+  scopeKey: string;
+}
+
+interface WorkspaceTailWindowIntent {
+  messageUuid: MessengerUuid;
+  promise: Promise<void>;
+  resolve: () => void;
+  scopeKey: string;
+  settled: boolean;
+}
+
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
 const EMPTY_OUTGOING_MESSAGE_LOCAL_IDS: readonly string[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
-const READ_BATCH_DELAY_MS = 250;
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
 const workspaceComposerDraftLog = createLogger("chat-page:workspace-composer-draft");
@@ -363,7 +376,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const [focusedMessageUuid, setFocusedMessageUuid] = useState<MessengerUuid | null>(null);
   const [messageRouteLoading, setMessageRouteLoading] = useState(false);
   const [windowPaginationDirection, setWindowPaginationDirection] = useState<
-    "before" | "after" | null
+    "before" | "after" | "tail" | null
   >(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
@@ -388,11 +401,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const parsed = parseWorkspaceMessengerMessageAnchor(location.hash);
     return isMessengerUuid(parsed) ? parsed : null;
   }, [location.hash]);
-  const pendingReadUpToMessageUuidRef = useRef<string | null>(null);
-  const lastReadUpToMessageUuidRef = useRef<string | null>(null);
-  const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const queuedTailMessageUuidRef = useRef<MessengerUuid | null>(null);
+  const tailWindowIntentRef = useRef<WorkspaceTailWindowIntent | null>(null);
+  const tailWindowRequestRef = useRef<WorkspaceTailWindowRequest | null>(null);
   const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
   const workspaceComposerSendCleanupRef = useRef<WorkspaceComposerSendCleanup | null>(null);
   const workspaceComposerDraftShadowRef = useRef<{
@@ -477,6 +490,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (state) => state.pendingDmCallPartnerUserUuid,
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  const tailRequestScopeKey = `${ownerKey ?? ""}:${runtimeContext?.runtimeGeneration ?? ""}:${
+    conversationId ?? ""
+  }`;
   useEffect(
     () => () => {
       workspaceReplyEditRestoreController.cancel();
@@ -614,6 +630,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
+  let lastMessageUuid: MessengerUuid | null = null;
+  if (selection.status === "conversation") {
+    lastMessageUuid =
+      selection.kind === "topic"
+        ? (topic?.lastMessageUuid ?? conversation?.lastMessageUuid ?? null)
+        : (stream?.lastMessageUuid ?? conversation?.lastMessageUuid ?? null);
+  }
   const routeMessages = useWorkspaceMessageStore((state) =>
     conversationId == null
       ? EMPTY_MESSAGES
@@ -1008,12 +1031,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
       pendingWorkspaceJitsiHeaderCallRef.current = false;
-      if (readBatchTimerRef.current != null) {
-        window.clearTimeout(readBatchTimerRef.current);
-        readBatchTimerRef.current = null;
-      }
-      pendingReadUpToMessageUuidRef.current = null;
-      lastReadUpToMessageUuidRef.current = null;
       workspaceFileResourceCache.clear();
     };
   }, [workspaceFileResourceCache]);
@@ -1028,12 +1045,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
       pendingWorkspaceJitsiHeaderCallRef.current = false;
-      if (readBatchTimerRef.current != null) {
-        window.clearTimeout(readBatchTimerRef.current);
-        readBatchTimerRef.current = null;
-      }
-      pendingReadUpToMessageUuidRef.current = null;
-      lastReadUpToMessageUuidRef.current = null;
       workspaceFileResourceCache.clear();
     };
   }, [conversationId, runtimeContext, workspaceFileResourceCache]);
@@ -2122,84 +2133,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
   }, []);
 
-  const flushReadBatch = useCallback(() => {
-    readBatchTimerRef.current = null;
-    if (!isWindowActive()) {
-      pendingReadUpToMessageUuidRef.current = null;
-      return;
-    }
-    if (runtimeContext == null || conversationId == null) {
-      pendingReadUpToMessageUuidRef.current = null;
-      return;
-    }
-
-    const messageUuid = pendingReadUpToMessageUuidRef.current;
-    pendingReadUpToMessageUuidRef.current = null;
-    if (messageUuid == null) return;
-
-    const state = useWorkspaceMessageStore.getState();
-    const message = selectWorkspaceMessageById(state, messageUuid);
-    const lastMessageUuid = lastReadUpToMessageUuidRef.current;
-    const lastMessage =
-      lastMessageUuid == null ? null : selectWorkspaceMessageById(state, lastMessageUuid);
-    if (
-      message == null ||
-      message.isOwn ||
-      message.read ||
-      (lastMessage != null && compareWorkspaceMessages(message, lastMessage) <= 0)
-    ) {
-      return;
-    }
-
-    lastReadUpToMessageUuidRef.current = message.uuid;
-    void runWorkspaceAction((signal) =>
-      markMessengerMessagesReadUpTo({
-        runtimeContext,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        signal,
-        messageUuid: message.uuid,
-        conversationIds: [conversationId],
-      }),
-    ).catch(() => {
-      if (lastReadUpToMessageUuidRef.current === message.uuid) {
-        lastReadUpToMessageUuidRef.current = null;
-      }
-    });
-  }, [conversationId, runWorkspaceAction, runtimeContext]);
-
-  const scheduleReadBatch = useCallback(
-    (messageUuids: string[]) => {
-      if (messageUuids.length === 0) return;
-      if (!isWindowActive()) return;
-
-      const latestMessageUuid = messageUuids.at(-1);
-      if (latestMessageUuid == null) return;
-
-      const state = useWorkspaceMessageStore.getState();
-      const latestMessage = selectWorkspaceMessageById(state, latestMessageUuid);
-      if (latestMessage == null || latestMessage.isOwn || latestMessage.read) return;
-
-      const pendingMessageUuid = pendingReadUpToMessageUuidRef.current;
-      const pendingMessage =
-        pendingMessageUuid == null ? null : selectWorkspaceMessageById(state, pendingMessageUuid);
-      const lastMessageUuid = lastReadUpToMessageUuidRef.current;
-      const lastMessage =
-        lastMessageUuid == null ? null : selectWorkspaceMessageById(state, lastMessageUuid);
-      if (
-        (pendingMessage != null && compareWorkspaceMessages(latestMessage, pendingMessage) <= 0) ||
-        (lastMessage != null && compareWorkspaceMessages(latestMessage, lastMessage) <= 0)
-      ) {
-        return;
-      }
-
-      pendingReadUpToMessageUuidRef.current = latestMessage.uuid;
-      if (readBatchTimerRef.current != null) {
-        window.clearTimeout(readBatchTimerRef.current);
-      }
-      readBatchTimerRef.current = window.setTimeout(flushReadBatch, READ_BATCH_DELAY_MS);
-    },
-    [flushReadBatch],
-  );
+  const scheduleReadBatch = useWorkspaceVisibleMessageRead({
+    runtimeContext,
+    conversationId,
+  });
 
   const handleLoadOlder = useCallback(() => {
     if (runtimeContext == null || conversationId == null || messagesStatus.loading) {
@@ -2318,6 +2255,234 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     runWorkspaceAction,
     runtimeContext,
   ]);
+
+  const settleTailWindowIntent = useCallback((intent: WorkspaceTailWindowIntent): void => {
+    if (intent.settled) return;
+    intent.settled = true;
+    if (tailWindowIntentRef.current === intent) {
+      tailWindowIntentRef.current = null;
+      queuedTailMessageUuidRef.current = null;
+    }
+    intent.resolve();
+  }, []);
+
+  const startTailWindowRequest = useCallback(
+    (intent: WorkspaceTailWindowIntent) => {
+      if (runtimeContext == null || conversationId == null || intent.settled) {
+        settleTailWindowIntent(intent);
+        return;
+      }
+
+      const requestedLastMessageUuid = intent.messageUuid;
+      const requestToken = Symbol("tail-window-request");
+      const requestScopeKey = tailRequestScopeKey;
+      setWindowPaginationDirection("tail");
+      setActionError(null);
+      void runWorkspaceAction(
+        (signal) =>
+          loadMessengerMessageWindowAroundMessage({
+            runtimeContext,
+            conversationId,
+            messageUuid: requestedLastMessageUuid,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+          }),
+        {
+          onController: (controller) => {
+            tailWindowRequestRef.current = {
+              controller,
+              conversationId,
+              messageUuid: requestedLastMessageUuid,
+              requestToken,
+              scopeKey: requestScopeKey,
+            };
+          },
+        },
+      )
+        .then((result) => {
+          const activeRequest = tailWindowRequestRef.current;
+          if (
+            activeRequest?.requestToken !== requestToken ||
+            tailWindowIntentRef.current !== intent
+          ) {
+            return;
+          }
+          if (result.status === "applied") {
+            setFocusedMessageUuid(null);
+            setActionError(null);
+          } else if (result.status === "failed") {
+            setActionError(result.error);
+          }
+          settleTailWindowIntent(intent);
+        })
+        .catch((error: unknown) => {
+          const activeRequest = tailWindowRequestRef.current;
+          if (
+            activeRequest?.requestToken !== requestToken ||
+            tailWindowIntentRef.current !== intent
+          ) {
+            return;
+          }
+          setActionError(normalizeWorkspaceActionError(error, t("chat.messagesLoadError")));
+          settleTailWindowIntent(intent);
+        })
+        .finally(() => {
+          if (tailWindowRequestRef.current?.requestToken !== requestToken) return;
+          tailWindowRequestRef.current = null;
+          setWindowPaginationDirection(null);
+        });
+    },
+    [
+      conversationId,
+      runWorkspaceAction,
+      runtimeContext,
+      settleTailWindowIntent,
+      tailRequestScopeKey,
+    ],
+  );
+
+  const handleLoadLatestWindow = useCallback(
+    (requestedLastMessageUuid: MessengerUuid): Promise<void> => {
+      if (runtimeContext == null || conversationId == null) return Promise.resolve();
+
+      let intent = tailWindowIntentRef.current;
+      if (intent?.scopeKey !== tailRequestScopeKey) {
+        if (intent != null) settleTailWindowIntent(intent);
+        intent = null;
+      }
+      if (intent?.messageUuid === requestedLastMessageUuid) {
+        return intent.promise;
+      }
+
+      if (intent == null) {
+        let resolveIntent: () => void = noop;
+        const promise = new Promise<void>((resolve) => {
+          resolveIntent = () => resolve();
+        });
+        intent = {
+          messageUuid: requestedLastMessageUuid,
+          promise,
+          resolve: resolveIntent,
+          scopeKey: tailRequestScopeKey,
+          settled: false,
+        };
+        tailWindowIntentRef.current = intent;
+      } else {
+        intent = {
+          ...intent,
+          messageUuid: requestedLastMessageUuid,
+        };
+        tailWindowIntentRef.current = intent;
+      }
+
+      const activeRequest = tailWindowRequestRef.current;
+      queuedTailMessageUuidRef.current = null;
+      const replacesActiveTailRequest = activeRequest?.scopeKey === tailRequestScopeKey;
+      if (activeRequest != null) {
+        activeRequest.controller.abort();
+        tailWindowRequestRef.current = null;
+      }
+
+      const messageStoreState = useWorkspaceMessageStore.getState();
+      if (
+        selectWorkspaceMessagesForConversation(messageStoreState, conversationId).some(
+          (message) => message.uuid === requestedLastMessageUuid,
+        )
+      ) {
+        setWindowPaginationDirection(null);
+        settleTailWindowIntent(intent);
+        return intent.promise;
+      }
+
+      if (
+        !replacesActiveTailRequest &&
+        selectWorkspaceMessageStatusForConversation(messageStoreState, conversationId).loading
+      ) {
+        queuedTailMessageUuidRef.current = requestedLastMessageUuid;
+        return intent.promise;
+      }
+
+      startTailWindowRequest(intent);
+      return intent.promise;
+    },
+    [
+      conversationId,
+      runtimeContext,
+      settleTailWindowIntent,
+      startTailWindowRequest,
+      tailRequestScopeKey,
+    ],
+  );
+
+  const handleCancelLatestWindowLoad = useCallback(
+    (targetMessageUuid: MessengerUuid) => {
+      const intent = tailWindowIntentRef.current;
+      if (intent?.scopeKey !== tailRequestScopeKey || intent.messageUuid !== targetMessageUuid) {
+        return;
+      }
+
+      queuedTailMessageUuidRef.current = null;
+      const activeRequest = tailWindowRequestRef.current;
+      tailWindowRequestRef.current = null;
+      activeRequest?.controller.abort();
+      settleTailWindowIntent(intent);
+      setWindowPaginationDirection((direction) => (direction === "tail" ? null : direction));
+    },
+    [settleTailWindowIntent, tailRequestScopeKey],
+  );
+
+  useEffect(() => {
+    if (tailWindowIntentRef.current == null || lastMessageUuid == null) return;
+
+    handleLoadLatestWindow(lastMessageUuid).catch(noop);
+  }, [handleLoadLatestWindow, lastMessageUuid]);
+
+  useEffect(() => {
+    if (messagesStatus.loading) return;
+
+    const queuedMessageUuid = queuedTailMessageUuidRef.current;
+    if (queuedMessageUuid == null) return;
+    queuedTailMessageUuidRef.current = null;
+    const intent = tailWindowIntentRef.current;
+    if (intent?.messageUuid !== queuedMessageUuid) return;
+
+    const messageStoreState = useWorkspaceMessageStore.getState();
+    if (
+      conversationId == null ||
+      selectWorkspaceMessagesForConversation(messageStoreState, conversationId).some(
+        (message) => message.uuid === queuedMessageUuid,
+      )
+    ) {
+      settleTailWindowIntent(intent);
+      return;
+    }
+    startTailWindowRequest(intent);
+  }, [conversationId, messagesStatus.loading, settleTailWindowIntent, startTailWindowRequest]);
+
+  useEffect(() => {
+    queuedTailMessageUuidRef.current = null;
+    const currentIntent = tailWindowIntentRef.current;
+    if (currentIntent != null && currentIntent.scopeKey !== tailRequestScopeKey) {
+      settleTailWindowIntent(currentIntent);
+    }
+    const activeRequest = tailWindowRequestRef.current;
+    if (activeRequest != null && activeRequest.scopeKey !== tailRequestScopeKey) {
+      activeRequest.controller.abort();
+      tailWindowRequestRef.current = null;
+    }
+    return () => {
+      queuedTailMessageUuidRef.current = null;
+      const intentAtCleanup = tailWindowIntentRef.current;
+      if (intentAtCleanup?.scopeKey === tailRequestScopeKey) {
+        settleTailWindowIntent(intentAtCleanup);
+      }
+      const requestAtCleanup = tailWindowRequestRef.current;
+      if (requestAtCleanup?.scopeKey === tailRequestScopeKey) {
+        requestAtCleanup.controller.abort();
+        tailWindowRequestRef.current = null;
+      }
+    };
+  }, [settleTailWindowIntent, tailRequestScopeKey]);
 
   const handleToggleRightPanel = useCallback(() => {
     rightDrawer?.setOpen(!rightDrawer.open);
@@ -2545,7 +2710,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         isLoadingOlder={
           messagesStatus.loading &&
           routeMessages.length > 0 &&
-          windowPaginationDirection !== "after"
+          windowPaginationDirection === "before"
         }
         isLoadingNewer={
           messagesStatus.loading &&
@@ -2562,6 +2727,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           (routeSelection.status === "message" || messageAnchorUuid != null) &&
           afterPageMarker != null
         }
+        lastMessageUuid={lastMessageUuid}
+        onLoadLatestWindow={handleLoadLatestWindow}
+        onCancelLatestWindowLoad={handleCancelLatestWindowLoad}
         firstUnreadUuid={firstUnreadMessage?.uuid}
         unreadCount={unreadCount}
         focusedMessageUuid={activeFocusedMessageUuid}

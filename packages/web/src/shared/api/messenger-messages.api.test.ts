@@ -54,6 +54,7 @@ const messageDto = {
   reactions: {
     thumbs_up: 2,
   },
+  reaction_users: {},
   created_at: DATE,
   updated_at: DATE,
 };
@@ -551,5 +552,45 @@ describe("messenger messages API", () => {
       );
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stream window across topics when only stream scope is requested", async () => {
+    const otherTopicUuid = "18d6ded8-f57b-42a6-bf87-f82457707653";
+    const beforeMessage = {
+      ...messageWithUuid("a39dcd0d-b312-417e-8bed-9696f7634a49", "2026-06-22T10:09:00Z"),
+      topic_uuid: otherTopicUuid,
+    };
+    const afterMessage = messageWithUuid(
+      "e88dac46-1af8-4529-b32e-ab3ec9725d4c",
+      "2026-06-22T10:11:00Z",
+    );
+    const fetchMock = vi.fn<typeof fetch>();
+
+    fetchMock.mockImplementation((input) => {
+      const url = parsedFetchUrl(input);
+      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
+        return Promise.resolve(jsonResponse(messageDto));
+      }
+      if (url.pathname === "/api/workspace/v1/messenger/messages/") {
+        expect(url.searchParams.get("stream_uuid")).toBe(STREAM_UUID);
+        expect(url.searchParams.has("topic_uuid")).toBe(false);
+        return Promise.resolve(
+          jsonResponse(
+            url.searchParams.get("sort_dir") === "desc" ? [beforeMessage] : [afterMessage],
+          ),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected URL: ${url.toString()}`));
+    });
+
+    await expect(
+      getMessageWindowAroundMessage(
+        { accessToken: "access-token", fetchImpl: fetchMock },
+        { messageUuid: MESSAGE_UUID, streamUuid: STREAM_UUID },
+      ),
+    ).resolves.toMatchObject({
+      before: [beforeMessage],
+      after: [afterMessage],
+    });
   });
 });

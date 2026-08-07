@@ -578,7 +578,7 @@ export type WorkspaceRealtimeEvent =
   | {
       epoch_version: WorkspaceMessengerEpochVersion;
       type: "stream";
-      kind: "stream.created" | "stream.updated";
+      kind: "stream.created" | "stream.updated" | "stream.read";
       stream: WorkspaceMessengerStreamDto;
     }
   | {
@@ -613,7 +613,7 @@ export type WorkspaceRealtimeEvent =
   | {
       epoch_version: WorkspaceMessengerEpochVersion;
       type: "topic";
-      kind: "topic.created" | "topic.updated";
+      kind: "topic.created" | "topic.updated" | "topic.read";
       topic: WorkspaceMessengerTopicDto;
     }
   | {

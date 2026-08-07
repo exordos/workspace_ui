@@ -32,6 +32,9 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onLoadNewer: () => void;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;
+  lastMessageUuid: MessengerUuid | null;
+  onLoadLatestWindow: (lastMessageUuid: MessengerUuid) => Promise<void>;
+  onCancelLatestWindowLoad: (targetMessageUuid: MessengerUuid) => void;
   firstUnreadUuid: MessengerUuid | undefined;
   unreadCount: number;
   focusedMessageUuid: MessengerUuid | null | undefined;

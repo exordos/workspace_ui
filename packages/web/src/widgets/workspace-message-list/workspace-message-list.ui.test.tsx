@@ -623,6 +623,363 @@ describe("WorkspaceMessageList", () => {
     expect(feed).toHaveAttribute("data-scroll-at-bottom");
   });
 
+  it("shows the scroll-to-bottom button after leaving the tail and returns to it", async () => {
+    const firstMessage = createWorkspaceMessage({ uuid: "scroll-button-message" });
+    const onLoadLatestWindow = vi.fn();
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        focusedMessageUuid="scroll-button-message"
+        lastMessageUuid="scroll-button-message"
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    const focusedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='scroll-button-message']",
+    );
+    if (focusedNode == null) throw new Error("Expected focused message");
+    focusedNode.scrollIntoView = vi.fn();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        focusedMessageUuid="scroll-button-message"
+        lastMessageUuid="scroll-button-message"
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+
+    expect(feed.scrollTop).toBe(1000);
+    expect(onLoadLatestWindow).not.toHaveBeenCalled();
+    await waitFor(() => expect(scrollButton).not.toBeInTheDocument());
+
+    scrollHeight = 1200;
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          firstMessage,
+          createWorkspaceMessage({
+            uuid: "message-after-scroll-button",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        focusedMessageUuid="scroll-button-message"
+        lastMessageUuid="message-after-scroll-button"
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1200);
+  });
+
+  it("loads one window around the known last message instead of paging to the tail", async () => {
+    const onLoadNewer = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const firstMessage = createWorkspaceMessage({ uuid: "anchor-window-message" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "last-anchor-window-message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        hasNewerMessages
+        lastMessageUuid="last-anchor-window-message"
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenCalledOnce();
+    expect(onLoadLatestWindow).toHaveBeenCalledWith("last-anchor-window-message");
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(feed.scrollTop).toBe(300);
+
+    scrollHeight = 1200;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid="last-anchor-window-message"
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1200);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Scroll to bottom" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("offers a direct tail jump when the known last message is outside the active window", () => {
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "active-window-tail" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        lastMessageUuid="known-conversation-tail"
+        onLoadLatestWindow={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
+  });
+
+  it("cancels a pending latest-window jump after manual scroll input", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const firstMessage = createWorkspaceMessage({ uuid: "manual-cancel-anchor" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "manual-cancel-tail",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenCalledWith(lastMessage.uuid);
+
+    fireEvent.wheel(feed, { deltaY: -100 });
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledWith(lastMessage.uuid);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(300);
+  });
+
+  it("allows retrying the latest window after a failed request settles", async () => {
+    let settleFirstRequest: (() => void) | undefined;
+    const firstRequest = new Promise<void>((resolve) => {
+      settleFirstRequest = resolve;
+    });
+    const onLoadLatestWindow = vi
+      .fn<(lastMessageUuid: string) => Promise<void>>()
+      .mockImplementationOnce(() => firstRequest)
+      .mockResolvedValueOnce(undefined);
+    const firstMessage = createWorkspaceMessage({ uuid: "retry-tail-anchor" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "retry-tail-message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settleFirstRequest?.();
+      await firstRequest;
+    });
+    expect(scrollButton).toBeInTheDocument();
+
+    fireEvent.click(scrollButton);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(2);
+
+    scrollHeight = 1300;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1300);
+  });
+
+  it("retargets a pending tail intent when the known last message changes", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const firstMessage = createWorkspaceMessage({ uuid: "retarget-anchor" });
+    const nextLastMessage = createWorkspaceMessage({
+      uuid: "retarget-tail-b",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid="retarget-tail-a"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+    fireEvent.click(scrollButton);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith("retarget-tail-a");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={nextLastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledWith("retarget-tail-a");
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(2);
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith(nextLastMessage.uuid);
+
+    scrollHeight = 1400;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, nextLastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={nextLastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1400);
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+  });
+
+  it("cancels pending latest-window work on conversation change and unmount", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const renderList = (conversationId: string, lastMessageUuid: string) => (
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: `${conversationId}-anchor`,
+            conversationId,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        initialPositionReady={false}
+        lastMessageUuid={lastMessageUuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />
+    );
+    const { container, rerender, unmount } = render(
+      renderList("topic:stream-uuid-1:topic-uuid-1", "first-conversation-tail"),
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+
+    rerender(renderList("topic:stream-uuid-2:topic-uuid-2", "second-conversation-tail"));
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledTimes(1);
+    expect(onCancelLatestWindowLoad).toHaveBeenLastCalledWith("first-conversation-tail");
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+
+    const nextFeed = container.querySelector<HTMLElement>("[role='feed']");
+    if (nextFeed == null) throw new Error("Expected next message feed");
+    Object.defineProperty(nextFeed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(nextFeed, "clientHeight", { configurable: true, value: 200 });
+    nextFeed.scrollTop = 300;
+    fireEvent.wheel(nextFeed, { deltaY: -100 });
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith("second-conversation-tail");
+
+    unmount();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledTimes(2);
+    expect(onCancelLatestWindowLoad).toHaveBeenLastCalledWith("second-conversation-tail");
+  });
+
   it("resets the scroll state when the conversation scroll key changes", async () => {
     const { container, rerender } = render(
       <WorkspaceMessageList
@@ -1420,15 +1777,15 @@ describe("WorkspaceMessageList", () => {
     expect(onUnreadMessagesVisible).toHaveBeenCalledWith(["focus-unread-message"]);
 
     onUnreadMessagesVisible.mockClear();
-    messageRect.mockReturnValue({
-      top: 91,
-      bottom: 111,
+    readBoundaryRect.mockReturnValue({
+      top: 100,
+      bottom: 101,
       left: 0,
       right: 100,
       width: 100,
-      height: 20,
+      height: 1,
       x: 0,
-      y: 91,
+      y: 100,
       toJSON: () => ({}),
     });
 

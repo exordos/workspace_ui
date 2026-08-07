@@ -25,6 +25,9 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     onLoadNewer,
     hasOlderMessages,
     hasNewerMessages,
+    lastMessageUuid,
+    onLoadLatestWindow,
+    onCancelLatestWindowLoad,
     firstUnreadUuid,
     unreadCount,
     focusedMessageUuid,
@@ -200,6 +203,9 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           isLoadingNewer={isLoadingNewer}
           hasOlderMessages={hasOlderMessages}
           hasNewerMessages={hasNewerMessages}
+          lastMessageUuid={lastMessageUuid}
+          onLoadLatestWindow={onLoadLatestWindow}
+          onCancelLatestWindowLoad={onCancelLatestWindowLoad}
           onLoadOlder={onLoadOlder}
           onLoadNewer={onLoadNewer}
           onUnreadMessagesVisible={onUnreadMessagesVisible}

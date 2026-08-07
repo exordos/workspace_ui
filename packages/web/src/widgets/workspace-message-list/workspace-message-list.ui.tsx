@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MessengerConversationId, MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
@@ -10,6 +10,7 @@ import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui
 import { t, useTranslation } from "~/i18n/i18n";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
+import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
@@ -37,6 +38,11 @@ const PEER_AUTHOR_GROUP_CLASS_NAME = "flex w-full items-stretch gap-2";
 const PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME = "flex min-w-0 flex-1 flex-col items-start gap-1";
 const EMPTY_SELECTED_MESSAGE_UUIDS = new Set<MessengerUuid>();
 const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
+
+interface PendingLatestWindow {
+  targetUuid: MessengerUuid;
+  cancel?: (lastMessageUuid: MessengerUuid) => void;
+}
 
 function resolveMessageOwner(
   message: WorkspaceMessageListItem,
@@ -274,8 +280,11 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   isLoadingNewer = false,
   hasOlderMessages = false,
   hasNewerMessages = false,
+  lastMessageUuid = null,
   onLoadOlder,
   onLoadNewer,
+  onLoadLatestWindow,
+  onCancelLatestWindowLoad,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
   resolveAuthorLabel,
@@ -414,6 +423,29 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   const scrollRequestKey = useMemo(() => {
     return `${conversationId}:${scrollToBottomKey ?? ""}`;
   }, [conversationId, scrollToBottomKey]);
+  const pendingLatestWindowRef = useRef<PendingLatestWindow | null>(null);
+  const tailIntentConversationRef = useRef<MessengerConversationId | null>(null);
+  const lastMessageIsLoaded = useMemo(
+    () => lastMessageUuid != null && messages.some((message) => message.uuid === lastMessageUuid),
+    [lastMessageUuid, messages],
+  );
+  const isKnownTailOutsideWindow = lastMessageUuid != null && !lastMessageIsLoaded;
+  const cancelPendingLatestWindow = useCallback(() => {
+    const pending = pendingLatestWindowRef.current;
+    if (pending != null) {
+      pendingLatestWindowRef.current = null;
+      pending.cancel?.(pending.targetUuid);
+    }
+  }, []);
+  const clearCompletedLatestWindow = useCallback((targetUuid: MessengerUuid): void => {
+    if (pendingLatestWindowRef.current?.targetUuid === targetUuid) {
+      pendingLatestWindowRef.current = null;
+    }
+  }, []);
+  const handleUserScrollInput = useCallback(() => {
+    tailIntentConversationRef.current = null;
+    cancelPendingLatestWindow();
+  }, [cancelPendingLatestWindow]);
   const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
   const isUnreadFromOther = useCallback(
     (message: WorkspaceMessageListItem) =>
@@ -425,6 +457,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     handleScroll,
     handleWheel,
     handleTouchMove,
+    scrollToBottom,
     isAtBottom,
     isUnreadDividerDismissed,
   } = useWorkspaceMessageListScroll({
@@ -443,9 +476,97 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     hasNewerMessages,
     onLoadOlder,
     onLoadNewer,
+    onUserScrollInput: handleUserScrollInput,
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
   });
+  const requestLatestWindow = useCallback(
+    (targetUuid: MessengerUuid): void => {
+      if (pendingLatestWindowRef.current?.targetUuid === targetUuid || onLoadLatestWindow == null) {
+        return;
+      }
+
+      cancelPendingLatestWindow();
+      pendingLatestWindowRef.current = { targetUuid, cancel: onCancelLatestWindowLoad };
+      const request = onLoadLatestWindow(targetUuid);
+      if (request != null) {
+        void Promise.resolve(request).then(
+          () => {
+            clearCompletedLatestWindow(targetUuid);
+          },
+          () => {
+            clearCompletedLatestWindow(targetUuid);
+          },
+        );
+      }
+    },
+    [
+      cancelPendingLatestWindow,
+      clearCompletedLatestWindow,
+      onCancelLatestWindowLoad,
+      onLoadLatestWindow,
+    ],
+  );
+  const handleScrollToBottom = useCallback(() => {
+    tailIntentConversationRef.current = conversationId;
+
+    if (lastMessageUuid != null && !lastMessageIsLoaded) {
+      requestLatestWindow(lastMessageUuid);
+      return;
+    }
+
+    cancelPendingLatestWindow();
+    scrollToBottom();
+  }, [
+    cancelPendingLatestWindow,
+    conversationId,
+    lastMessageIsLoaded,
+    lastMessageUuid,
+    requestLatestWindow,
+    scrollToBottom,
+  ]);
+
+  useLayoutEffect(() => {
+    if (tailIntentConversationRef.current !== conversationId) {
+      return;
+    }
+
+    if (lastMessageUuid == null) {
+      cancelPendingLatestWindow();
+      scrollToBottom();
+      return;
+    }
+
+    if (lastMessageIsLoaded) {
+      if (
+        pendingLatestWindowRef.current != null &&
+        pendingLatestWindowRef.current.targetUuid !== lastMessageUuid
+      ) {
+        cancelPendingLatestWindow();
+      } else {
+        clearCompletedLatestWindow(lastMessageUuid);
+      }
+      scrollToBottom();
+      return;
+    }
+
+    requestLatestWindow(lastMessageUuid);
+  }, [
+    cancelPendingLatestWindow,
+    clearCompletedLatestWindow,
+    conversationId,
+    lastMessageIsLoaded,
+    lastMessageUuid,
+    requestLatestWindow,
+    scrollToBottom,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      tailIntentConversationRef.current = null;
+      cancelPendingLatestWindow();
+    };
+  }, [cancelPendingLatestWindow, conversationId]);
   const unreadMessagesLabel =
     unreadCount > 0
       ? t("chat.unreadMessagesWithCount", { count: unreadCount })
@@ -473,82 +594,87 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   }
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-4"
-      onScroll={handleScroll}
-      onWheel={handleWheel}
-      onTouchMove={handleTouchMove}
-      role="feed"
-      data-conversation-id={conversationId}
-      data-current-user-uuid={currentUserUuid}
-      data-scroll-at-bottom={isAtBottom ? "true" : "false"}
-      data-workspace-scroll-controller="true"
-    >
-      {/* The list already stores string Workspace UUIDs in the DOM. Later phases
+    <>
+      <div
+        ref={scrollContainerRef}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-4"
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        role="feed"
+        data-conversation-id={conversationId}
+        data-current-user-uuid={currentUserUuid}
+        data-scroll-at-bottom={isAtBottom ? "true" : "false"}
+        data-workspace-scroll-controller="true"
+      >
+        {/* The list already stores string Workspace UUIDs in the DOM. Later phases
           do not need to keep the old numeric DOM key around just for scrolling. */}
-      {dayGroups.map((dayGroup) => (
-        <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
-          {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
-          <div className="sticky top-0 z-sticky flex justify-center py-1">
-            <time
-              className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
-              dateTime={dayGroup.dateKey}
-              data-day-divider={dayGroup.dateKey}
-            >
-              {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
-            </time>
-          </div>
-          <div className="flex flex-col gap-2">
-            {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
-              const showUnreadMarker =
-                stableFirstUnreadUuid != null &&
-                authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
-              const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
-              const dividerTopicLabel = formatWorkspaceTopicLabel(
-                resolveTopicLabel?.(authorGroup.topicUuid),
-              );
-              const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
+        {dayGroups.map((dayGroup) => (
+          <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
+            {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
+            <div className="sticky top-0 z-sticky flex justify-center py-1">
+              <time
+                className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
+                dateTime={dayGroup.dateKey}
+                data-day-divider={dayGroup.dateKey}
+              >
+                {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
+              </time>
+            </div>
+            <div className="flex flex-col gap-2">
+              {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
+                const showUnreadMarker =
+                  stableFirstUnreadUuid != null &&
+                  authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
+                const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
+                const dividerTopicLabel = formatWorkspaceTopicLabel(
+                  resolveTopicLabel?.(authorGroup.topicUuid),
+                );
+                const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
 
-              return (
-                <React.Fragment key={authorGroupKey}>
-                  {showUnreadMarker && !isUnreadDividerDismissed && (
-                    <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
-                  )}
-                  {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
-                    <WorkspaceMessageDivider
-                      data-topic-divider="true"
-                      data-topic-uuid={authorGroup.topicUuid}
-                    >
-                      {dividerTopicLabel != null && dividerStreamUuid != null ? (
-                        <WorkspaceMessageTopicLink
-                          label={dividerTopicLabel}
-                          streamUuid={dividerStreamUuid}
-                          topicUuid={authorGroup.topicUuid}
-                          onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
-                        />
-                      ) : null}
-                    </WorkspaceMessageDivider>
-                  ) : null}
-                  <WorkspaceMessageAuthorGroupView
-                    group={authorGroup}
-                    currentUserUuid={currentUserUuid}
-                    resolveAuthorLabel={effectiveResolveAuthorLabel}
-                    resolveTopicLabel={resolveTopicLabel}
-                    showTopicLabels={presentation?.topicLabels === true}
-                    resolveMention={resolveMention}
-                    quoteRenderMode={presentation?.quoteRenderMode}
-                    actions={messageActions}
-                    selectedMessageUuids={selectedMessageUuids}
-                    selectionMode={selectionMode}
-                    usersById={usersById}
-                  />
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
+                return (
+                  <React.Fragment key={authorGroupKey}>
+                    {showUnreadMarker && !isUnreadDividerDismissed && (
+                      <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
+                    )}
+                    {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
+                      <WorkspaceMessageDivider
+                        data-topic-divider="true"
+                        data-topic-uuid={authorGroup.topicUuid}
+                      >
+                        {dividerTopicLabel != null && dividerStreamUuid != null ? (
+                          <WorkspaceMessageTopicLink
+                            label={dividerTopicLabel}
+                            streamUuid={dividerStreamUuid}
+                            topicUuid={authorGroup.topicUuid}
+                            onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
+                          />
+                        ) : null}
+                      </WorkspaceMessageDivider>
+                    ) : null}
+                    <WorkspaceMessageAuthorGroupView
+                      group={authorGroup}
+                      currentUserUuid={currentUserUuid}
+                      resolveAuthorLabel={effectiveResolveAuthorLabel}
+                      resolveTopicLabel={resolveTopicLabel}
+                      showTopicLabels={presentation?.topicLabels === true}
+                      resolveMention={resolveMention}
+                      quoteRenderMode={presentation?.quoteRenderMode}
+                      actions={messageActions}
+                      selectedMessageUuids={selectedMessageUuids}
+                      selectionMode={selectionMode}
+                      usersById={usersById}
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+      {!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages ? (
+        <FloatingScrollToBottomButton onClick={handleScrollToBottom} unreadCount={unreadCount} />
+      ) : null}
+    </>
   );
 };

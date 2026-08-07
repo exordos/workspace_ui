@@ -1,7 +1,6 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { fetchUnreadMentionsCount } from "~/entities/activity/activity-mentions.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -9,10 +8,7 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  isWorkspaceRuntimeRequestContextCurrent,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
@@ -39,6 +35,7 @@ import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
+import { useLayoutUnreadMentionsBootstrap } from "./layout-unread-mentions-bootstrap.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
@@ -67,7 +64,6 @@ export const Layout: React.FC = () => {
   const activeTopic = topicName ?? null;
 
   const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
-  const workspaceRealtimeVersion = useMessengerStore((state) => state.lastEpochVersion);
   const bootstrapError = useMessengerStore((state) => state.error);
   const currentUserId = null;
   const streamsFromStore = EMPTY_LEGACY_STREAMS;
@@ -79,9 +75,6 @@ export const Layout: React.FC = () => {
   const dmUnreadCountForCurrentInstance = 0;
   const unreadMentionsOwnerKey = useActivityStore((state) => state.unreadMentionsOwnerKey);
   const unreadMentionsCount = useActivityStore((state) => state.unreadMentionsCount);
-  const unreadMentionsStaleVersion = useActivityStore((state) => state.staleVersion);
-  const setUnreadMentionsOwner = useActivityStore((state) => state.setUnreadMentionsOwner);
-  const setUnreadMentionsCount = useActivityStore((state) => state.setUnreadMentionsCount);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
@@ -135,44 +128,7 @@ export const Layout: React.FC = () => {
   const mentionsUnreadCount =
     unreadMentionsOwnerKey === currentWorkspaceOwnerKey ? (unreadMentionsCount ?? 0) : 0;
 
-  useEffect(() => {
-    setUnreadMentionsOwner(currentWorkspaceOwnerKey);
-    if (currentWorkspaceRuntimeContext == null || currentWorkspaceOwnerKey == null) return;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      void fetchUnreadMentionsCount({
-        runtimeContext: currentWorkspaceRuntimeContext,
-        signal: controller.signal,
-      })
-        .then((count) => {
-          if (
-            controller.signal.aborted ||
-            !isWorkspaceRuntimeRequestContextCurrent(
-              currentWorkspaceRuntimeContext,
-              useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
-            )
-          ) {
-            return;
-          }
-          setUnreadMentionsCount(currentWorkspaceOwnerKey, count);
-        })
-        .catch(() => undefined);
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [
-    currentWorkspaceRuntimeContext,
-    currentWorkspaceOwnerKey,
-    setUnreadMentionsCount,
-    setUnreadMentionsOwner,
-    unreadMentionsStaleVersion,
-    workspaceRealtimeVersion,
-  ]);
-
+  useLayoutUnreadMentionsBootstrap(currentWorkspaceRuntimeContext);
   useLayoutWorkspaceMessengerBootstrap({ enabled: true, retryNonce: bootstrapRetryNonce });
   useLayoutWorkspaceRealtime({
     enabled: workspaceMessengerActive,

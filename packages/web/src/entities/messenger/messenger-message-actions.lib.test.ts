@@ -303,7 +303,7 @@ describe("messenger message actions", () => {
       getRuntimeContext: () => runtimeContext,
       messageUuid: MESSAGE_A,
       conversationIds: [`topic:${STREAM_A}:${TOPIC_A}`],
-      client: { markMessageRead: () => Promise.resolve(createMessageDto({ read: true })) },
+      client: { markMessagesReadUpTo: () => Promise.resolve(createMessageDto({ read: true })) },
       cache,
     });
 
@@ -443,7 +443,7 @@ describe("messenger message actions", () => {
       runtimeContext,
       getRuntimeContext: () => currentRuntime,
       messageUuid: MESSAGE_A,
-      client: { markMessageRead: () => response.promise },
+      client: { markMessagesReadUpTo: () => response.promise },
       cache,
     });
     currentRuntime = createRuntimeContext({ organizationId: ORGANIZATION_B });

@@ -104,8 +104,11 @@ export interface WorkspaceMessageListProps {
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;
   hasNewerMessages?: boolean;
+  lastMessageUuid?: MessengerUuid | null;
   onLoadOlder?: () => void;
   onLoadNewer?: () => void;
+  onLoadLatestWindow?: (lastMessageUuid: MessengerUuid) => void | Promise<void>;
+  onCancelLatestWindowLoad?: (lastMessageUuid: MessengerUuid) => void;
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;

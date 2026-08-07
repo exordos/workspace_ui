@@ -46,6 +46,7 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   hasNewerMessages?: boolean;
   onLoadOlder?: () => void;
   onLoadNewer?: () => void;
+  onUserScrollInput?: () => void;
   onUnreadMessagesVisible?: (messageKeys: string[]) => void;
   onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }
@@ -56,6 +57,7 @@ interface WorkspaceMessageListScrollResult {
   handleScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   handleWheel: (event: React.WheelEvent<HTMLDivElement>) => void;
   handleTouchMove: () => void;
+  scrollToBottom: () => void;
   isUnreadDividerDismissed: boolean;
 }
 
@@ -111,6 +113,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   hasNewerMessages = false,
   onLoadOlder,
   onLoadNewer,
+  onUserScrollInput,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: WorkspaceMessageListScrollOptions<TMessage>): WorkspaceMessageListScrollResult {
@@ -754,6 +757,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       lastScrollTopRef.current = root.scrollTop;
 
       if (isTrustedUserScroll) {
+        onUserScrollInput?.();
         userScrollSeenRef.current = true;
         if (previousScrollTop != null && root.scrollTop > previousScrollTop) {
           dismissUnreadDividerIfPassed(root);
@@ -819,6 +823,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       isLoadingOlder,
       onLoadNewer,
       onLoadOlder,
+      onUserScrollInput,
       syncAtBottomFromElement,
       dismissUnreadDividerIfPassed,
     ],
@@ -826,6 +831,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
+      onUserScrollInput?.();
       userScrollSeenRef.current = true;
 
       const root = scrollContainerRef.current;
@@ -849,17 +855,31 @@ export function useWorkspaceMessageListScroll<TMessage>({
       const atBottom = syncAtBottomFromElement(root);
       userScrolledAwayFromBottomRef.current = !atBottom;
     },
-    [dismissUnreadDividerIfPassed, syncAtBottomFromElement],
+    [dismissUnreadDividerIfPassed, onUserScrollInput, syncAtBottomFromElement],
   );
 
   const handleTouchMove = useCallback(() => {
+    onUserScrollInput?.();
     userScrollSeenRef.current = true;
 
     const root = scrollContainerRef.current;
     if (root != null) {
       lastScrollTopRef.current = root.scrollTop;
     }
-  }, []);
+  }, [onUserScrollInput]);
+
+  const handleScrollToBottom = useCallback(() => {
+    const root = scrollContainerRef.current;
+    if (root == null) {
+      return;
+    }
+
+    userScrollSeenRef.current = true;
+    userScrolledAwayFromBottomRef.current = false;
+    bottomUnreadDispatchKeyRef.current = null;
+    pinTailToBottom(root);
+    dispatchUnreadAtBottom();
+  }, [dispatchUnreadAtBottom, pinTailToBottom]);
 
   return {
     scrollContainerRef,
@@ -867,6 +887,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     handleScroll,
     handleWheel,
     handleTouchMove,
+    scrollToBottom: handleScrollToBottom,
     isUnreadDividerDismissed,
   };
 }

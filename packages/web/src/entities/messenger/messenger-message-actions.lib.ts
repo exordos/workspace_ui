@@ -11,7 +11,6 @@ import {
   createMessage as defaultCreateMessage,
   deleteMessage as defaultDeleteMessage,
   editMessage as defaultEditMessage,
-  markMessageRead as defaultMarkMessageRead,
   markMessagesReadUpTo as defaultMarkMessagesReadUpTo,
 } from "~/shared/api/messenger-messages.api";
 import type {
@@ -44,10 +43,6 @@ export interface MessengerMessageActionClientDeps {
     body: WorkspaceMessengerUpdateMessageRequestBody,
   ) => Promise<WorkspaceMessengerMessageDto>;
   deleteMessage?: (options: MessengerClientOptions, messageUuid: string) => Promise<void>;
-  markMessageRead?: (
-    options: MessengerClientOptions,
-    messageUuid: string,
-  ) => Promise<WorkspaceMessengerMessageDto>;
   markMessagesReadUpTo?: (
     options: MessengerClientOptions,
     messageUuid: string,
@@ -342,14 +337,14 @@ export async function markMessengerMessageRead({
   messageUuid,
   conversationIds,
 }: MarkMessengerMessageReadOptions): Promise<MessengerMessageActionResult> {
-  // The backend currently marks one message as read, so batching happens above at page level.
+  // Frontend reads are always topic boundaries, including callers that still use this old name.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const dto = await (client.markMessageRead ?? defaultMarkMessageRead)(
+  const dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
   );

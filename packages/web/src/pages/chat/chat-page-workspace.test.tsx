@@ -51,6 +51,7 @@ const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
 const MESSAGE_UUID = "55555555-5555-4555-8555-555555555555";
 const SECOND_MESSAGE_UUID = "99999999-9999-4999-8999-999999999991";
+const THIRD_MESSAGE_UUID = "99999999-9999-4999-8999-999999999992";
 const STREAM_BINDING_A_UUID = "66666666-6666-4666-8666-666666666666";
 const STREAM_BINDING_B_UUID = "77777777-7777-4777-8777-777777777777";
 
@@ -424,6 +425,38 @@ function createSecondMessage(): MessengerMessage {
   };
 }
 
+function createThirdMessage(): MessengerMessage {
+  return {
+    ...createSecondMessage(),
+    uuid: THIRD_MESSAGE_UUID,
+    payload: { kind: "markdown", content: "third workspace message" },
+    createdAt: "2026-06-30T10:02:00.000Z",
+    updatedAt: "2026-06-30T10:02:00.000Z",
+  };
+}
+
+function createDirectMessage(): MessengerMessage {
+  return {
+    ...createSecondMessage(),
+    conversationId: `topic:${DIRECT_STREAM_UUID}:${DIRECT_TOPIC_UUID}`,
+    streamUuid: DIRECT_STREAM_UUID,
+    topicUuid: DIRECT_TOPIC_UUID,
+  };
+}
+
+function appliedWindowResult(anchorUuid: string) {
+  return {
+    status: "applied" as const,
+    ownerKey: "owner-key",
+    conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}` as const,
+    anchorUuid,
+    beforePageMarker: null,
+    afterPageMarker: null,
+    beforeLimit: null,
+    afterLimit: null,
+  };
+}
+
 function seedSecondMessage() {
   useWorkspaceMessageStore
     .getState()
@@ -671,6 +704,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.messages[0]).not.toHaveProperty("content");
     expect(captured.messageListProps?.firstUnreadUuid).toBe("55555555-5555-4555-8555-555555555555");
     expect(captured.messageListProps?.unreadCount).toBe(1);
+    expect(captured.messageListProps?.lastMessageUuid).toBeNull();
     expect(captured.messageListProps?.onReplyMessage).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onAddReplyMessage).toBeUndefined();
     expect(captured.messageListProps?.onEditMessage).toEqual(expect.any(Function));
@@ -704,6 +738,334 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("loads one latest window from the active topic last-message pointer", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    expect(captured.messageListProps?.lastMessageUuid).toBe(SECOND_MESSAGE_UUID);
+    expect(captured.messageListProps?.onLoadLatestWindow).toEqual(expect.any(Function));
+
+    act(() => {
+      captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        messageUuid: SECOND_MESSAGE_UUID,
+        runtimeContext: expect.objectContaining({ projectId: "project-a" }),
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.loadWorkspaceMessageWindowPage).not.toHaveBeenCalled();
+  });
+
+  it("uses the stream last-message pointer and falls back to its conversation projection", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    await screen.findByTestId("workspace-message-list-section");
+    expect(captured.messageListProps?.lastMessageUuid).toBe(SECOND_MESSAGE_UUID);
+
+    act(() => {
+      useMessengerStore.setState((state) => ({
+        streamsById: {
+          ...state.streamsById,
+          [STREAM_UUID]: {
+            ...state.streamsById[STREAM_UUID]!,
+            lastMessageUuid: null,
+          },
+        },
+        conversationsById: {
+          ...state.conversationsById,
+          [`stream:${STREAM_UUID}`]: {
+            ...state.conversationsById[`stream:${STREAM_UUID}`]!,
+            lastMessageUuid: SECOND_MESSAGE_UUID,
+          },
+        },
+      }));
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.lastMessageUuid).toBe(SECOND_MESSAGE_UUID),
+    );
+  });
+
+  it("uses the stream pointer for a direct-message conversation", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createDirectMessage());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    expect(captured.messageListProps?.lastMessageUuid).toBe(SECOND_MESSAGE_UUID);
+  });
+
+  it("queues the latest-window intent while another message request is busy", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, true);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let tailPromise: Promise<void> | undefined;
+    act(() => {
+      tailPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+
+    act(() => {
+      useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, false);
+    });
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    await tailPromise;
+  });
+
+  it("cancels a queued latest-window intent before the busy request finishes", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, true);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let tailPromise: Promise<void> | undefined;
+    act(() => {
+      tailPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+      captured.messageListProps?.onCancelLatestWindowLoad(SECOND_MESSAGE_UUID);
+      useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, false);
+    });
+
+    await tailPromise;
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates repeated latest-window clicks for the same message", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let firstPromise: Promise<void> | undefined;
+    let secondPromise: Promise<void> | undefined;
+    act(() => {
+      firstPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+      secondPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    expect(secondPromise).toBe(firstPromise);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1);
+
+    windowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
+    await firstPromise;
+  });
+
+  it("does not classify an unfinished tail request as boundary pagination", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let tailPromise: Promise<void> | undefined;
+    act(() => {
+      tailPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+      useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, true);
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.messagesLoading).toBe(true));
+    expect(captured.messageListProps?.isLoadingOlder).toBe(false);
+    expect(captured.messageListProps?.isLoadingNewer).toBe(false);
+
+    windowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
+    await tailPromise;
+    act(() => {
+      useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, false);
+    });
+  });
+
+  it("aborts an in-flight latest-window request when scrolling cancels the intent", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let tailPromise: Promise<void> | undefined;
+    act(() => {
+      tailPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    const signal = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0].signal;
+    act(() => {
+      captured.messageListProps?.onCancelLatestWindowLoad(SECOND_MESSAGE_UUID);
+    });
+
+    expect(signal?.aborted).toBe(true);
+    await tailPromise;
+    windowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
+  });
+
+  it("replaces an in-flight tail request when the last-message pointer advances", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const oldWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    const latestWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage
+      .mockReturnValueOnce(oldWindowRequest.promise)
+      .mockReturnValueOnce(latestWindowRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    let tailPromise: Promise<void> | undefined;
+    act(() => {
+      tailPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    const oldSignal = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0].signal;
+
+    act(() => {
+      useMessengerStore.getState().applyMessagePointer(ownerKey, createThirdMessage());
+    });
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
+    );
+    expect(oldSignal?.aborted).toBe(true);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[1]?.[0].messageUuid).toBe(
+      THIRD_MESSAGE_UUID,
+    );
+
+    oldWindowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
+    await Promise.resolve();
+    act(() => {
+      void captured.messageListProps?.onLoadLatestWindow(THIRD_MESSAGE_UUID);
+    });
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2);
+
+    latestWindowRequest.resolve(appliedWindowResult(THIRD_MESSAGE_UUID));
+    await tailPromise;
+  });
+
+  it("settles a failed tail request so the same click can retry", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    captured.loadWorkspaceMessageWindowAroundMessage
+      .mockResolvedValueOnce({
+        status: "failed",
+        ownerKey: "owner-key",
+        conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        error: "tail unavailable",
+      })
+      .mockResolvedValueOnce(appliedWindowResult(SECOND_MESSAGE_UUID));
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    await act(async () => {
+      await captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    await act(async () => {
+      await captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let cleanup from the previous conversation abort a new tail request", async () => {
+    const ownerKey = useMessengerStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Expected messenger owner");
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const topicWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    const streamWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage
+      .mockReturnValueOnce(topicWindowRequest.promise)
+      .mockReturnValueOnce(streamWindowRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const oldCancel = captured.messageListProps?.onCancelLatestWindowLoad;
+    act(() => {
+      void captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+
+    act(() => {
+      navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    let streamPromise: Promise<void> | undefined;
+    act(() => {
+      streamPromise = captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
+    );
+    const streamSignal = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[1]?.[0].signal;
+
+    act(() => {
+      oldCancel?.(SECOND_MESSAGE_UUID);
+    });
+    expect(streamSignal?.aborted).toBe(false);
+
+    streamWindowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
+    await streamPromise;
+    topicWindowRequest.resolve(appliedWindowResult(SECOND_MESSAGE_UUID));
   });
 
   it("renders Favorites as the self chat with a title-only header", async () => {

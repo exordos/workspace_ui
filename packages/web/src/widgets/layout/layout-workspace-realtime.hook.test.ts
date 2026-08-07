@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
@@ -187,6 +188,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     startWorkspacePresenceReporterMock.mockClear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useActivityStore.getState().clear();
     useExternalChatsStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
@@ -201,6 +203,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     workspaceRealtimeRuntimeOptions.length = 0;
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useActivityStore.getState().clear();
     useExternalChatsStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
@@ -301,6 +304,21 @@ describe("useLayoutWorkspaceRealtime", () => {
     const resetAuthoritativeSnapshots = runtimeOptions.resetAuthoritativeSnapshots;
     expect(resetAuthoritativeSnapshots).toBeTypeOf("function");
     useExternalChatsStore.getState().start("stale-external-chat-scope", EXTERNAL_ACCOUNT_UUID);
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const bootstrapToken = useActivityStore
+      .getState()
+      .startUnreadMentionsBootstrap(ownerKey, session.runtimeGeneration);
+    useActivityStore
+      .getState()
+      .finishUnreadMentionsBootstrap(ownerKey, session.runtimeGeneration, bootstrapToken, [
+        {
+          uuid: MESSAGE_UUID,
+          streamUuid: STREAM_UUID,
+          topicUuid: TOPIC_UUID,
+          createdAt: DATE,
+        },
+      ]);
+    const staleVersionBeforeRecovery = useActivityStore.getState().staleVersion;
 
     await resetAuthoritativeSnapshots?.(
       {
@@ -335,9 +353,15 @@ describe("useLayoutWorkspaceRealtime", () => {
         runtimeContext: expect.objectContaining({ projectId: "project-a" }),
       }),
     );
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: staleVersionBeforeRecovery + 1,
+      unreadMentionsStatus: "idle",
+      unreadMentionsCount: null,
+      unreadMentionsByUuid: {},
+    });
   });
 
-  it("routes external chat events through the default active applier", async () => {
+  it("routes activity and external chat events through the default active appliers", async () => {
     const session = createSession();
     setWorkspaceSession(session);
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
@@ -358,10 +382,55 @@ describe("useLayoutWorkspaceRealtime", () => {
     const scopeKey = `${ownerKey}:external-account:${EXTERNAL_ACCOUNT_UUID}`;
     useExternalChatsStore.getState().start(scopeKey, EXTERNAL_ACCOUNT_UUID);
     const runtimeOptions = workspaceRealtimeRuntimeOptions[0] as WorkspaceRealtimeRuntimeOptions;
+    const bootstrapToken = useActivityStore
+      .getState()
+      .startUnreadMentionsBootstrap(ownerKey, session.runtimeGeneration);
+    useActivityStore
+      .getState()
+      .finishUnreadMentionsBootstrap(ownerKey, session.runtimeGeneration, bootstrapToken, []);
 
     runtimeOptions.applier.applyEvent(
       {
         epoch_version: 1,
+        type: "message",
+        kind: "message.created",
+        message: {
+          uuid: MESSAGE_UUID,
+          project_id: session.projectId,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          author_uuid: CALLER_UUID,
+          payload: { kind: "markdown", content: "hello" },
+          user_uuid: session.userUuid,
+          read: false,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          mentioned: true,
+          reactions: {},
+          reaction_users: {},
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      {
+        owner: {
+          accountId: session.accountId,
+          instanceId: session.instanceId,
+          organizationId: session.organizationId,
+          projectId: session.projectId,
+          userUuid: session.userUuid,
+          runtimeGeneration: session.runtimeGeneration,
+        },
+        ownerKey,
+        surface: "active",
+        source: "websocket",
+      },
+    );
+
+    runtimeOptions.applier.applyEvent(
+      {
+        epoch_version: 2,
         type: "external_chat",
         kind: "external_chat.created",
         external_chat: {
@@ -400,6 +469,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     expect(useExternalChatsStore.getState().chats).toEqual([
       expect.objectContaining({ uuid: EXTERNAL_CHAT_UUID, revision: 1 }),
     ]);
+    expect(useActivityStore.getState().unreadMentionsCount).toBe(1);
   });
 
   it("starts and cleans up Workspace presence reporter on active route", async () => {

@@ -635,7 +635,7 @@ describe("messenger-realtime.api", () => {
       {
         epoch_version: 124,
         type: "stream",
-        kind: "stream.updated",
+        kind: "stream.read",
         stream: streamDto,
       },
     );
@@ -658,7 +658,7 @@ describe("messenger-realtime.api", () => {
     expect(normalizeWorkspaceRestEvent(createEvent({ kind: "topic.read", ...topicDto }))).toEqual({
       epoch_version: 124,
       type: "topic",
-      kind: "topic.updated",
+      kind: "topic.read",
       topic: topicDto,
     });
     expect(

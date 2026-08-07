@@ -129,7 +129,7 @@ export function normalizeWorkspaceRestEvent(
       return {
         epoch_version: model.epoch_version,
         type: "stream",
-        kind: payloadKind === "stream.created" ? "stream.created" : "stream.updated",
+        kind: payloadKind,
         stream,
       };
     }
@@ -177,7 +177,7 @@ export function normalizeWorkspaceRestEvent(
       return {
         epoch_version: model.epoch_version,
         type: "topic",
-        kind: payloadKind === "topic.created" ? "topic.created" : "topic.updated",
+        kind: payloadKind,
         topic,
       };
     }

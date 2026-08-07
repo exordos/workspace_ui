@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
+import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   adaptWorkspaceExternalAccountDto,
   toWorkspaceExternalAccountCacheProfile,
@@ -211,6 +213,7 @@ function defaultRuntimeFactory({
       }
 
       if (isActiveOwner) {
+        useActivityStore.getState().invalidateUnreadMentions(ownerKey);
         // Active stores are owner scoped in memory. Background recovery only refreshes its cache.
         useMessengerStore.getState().clear();
         useWorkspaceMessageStore.getState().clear();
@@ -326,6 +329,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
         activeApplierFactory: ({ isOwnerCurrent }) =>
           applier ??
           composeWorkspaceRealtimeAppliers([
+            createActivityRealtimeApplier({ isOwnerCurrent }),
             createExternalAccountRealtimeApplier({
               surface: "active",
               isOwnerCurrent,
