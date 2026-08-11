@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -152,6 +153,7 @@ describe("WorkspaceMessageList", () => {
   });
 
   afterEach(() => {
+    cleanup();
     setLocale("en");
     useUsersStore.getState().clear();
     vi.useRealTimers();
@@ -626,19 +628,29 @@ describe("WorkspaceMessageList", () => {
   it("shows the scroll-to-bottom button after leaving the tail and returns to it", async () => {
     const firstMessage = createWorkspaceMessage({ uuid: "scroll-button-message" });
     const onLoadLatestWindow = vi.fn();
+    let feedAtTailRequest: HTMLElement | null = null;
+    const onTailNavigationRequested = vi.fn(() => {
+      expect(feedAtTailRequest?.scrollTop).toBe(300);
+    });
     const { container, rerender } = render(
       <WorkspaceMessageList
         messages={[firstMessage]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         initialPositionReady={false}
-        focusedMessageUuid="scroll-button-message"
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
         lastMessageUuid="scroll-button-message"
         onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
     const feed = container.querySelector<HTMLElement>("[role='feed']");
     if (feed == null) throw new Error("Expected message feed");
+    feedAtTailRequest = feed;
     let scrollHeight = 1000;
     Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
     Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
@@ -655,15 +667,21 @@ describe("WorkspaceMessageList", () => {
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         initialPositionReady
-        focusedMessageUuid="scroll-button-message"
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
         lastMessageUuid="scroll-button-message"
         onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
     const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
     fireEvent.click(scrollButton);
 
+    expect(onTailNavigationRequested).toHaveBeenCalledOnce();
     expect(feed.scrollTop).toBe(1000);
     expect(onLoadLatestWindow).not.toHaveBeenCalled();
     await waitFor(() => expect(scrollButton).not.toBeInTheDocument());
@@ -680,9 +698,14 @@ describe("WorkspaceMessageList", () => {
         ]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
-        focusedMessageUuid="scroll-button-message"
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
         lastMessageUuid="message-after-scroll-button"
         onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
@@ -691,7 +714,13 @@ describe("WorkspaceMessageList", () => {
 
   it("loads one window around the known last message instead of paging to the tail", async () => {
     const onLoadNewer = vi.fn();
-    const onLoadLatestWindow = vi.fn();
+    const calls: string[] = [];
+    const onTailNavigationRequested = vi.fn(() => {
+      calls.push("tail");
+    });
+    const onLoadLatestWindow = vi.fn(() => {
+      calls.push("load");
+    });
     const firstMessage = createWorkspaceMessage({ uuid: "anchor-window-message" });
     const lastMessage = createWorkspaceMessage({
       uuid: "last-anchor-window-message",
@@ -707,6 +736,7 @@ describe("WorkspaceMessageList", () => {
         lastMessageUuid="last-anchor-window-message"
         onLoadNewer={onLoadNewer}
         onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
     const feed = container.querySelector<HTMLElement>("[role='feed']");
@@ -720,6 +750,7 @@ describe("WorkspaceMessageList", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
     expect(onLoadLatestWindow).toHaveBeenCalledOnce();
     expect(onLoadLatestWindow).toHaveBeenCalledWith("last-anchor-window-message");
+    expect(calls).toEqual(["tail", "load"]);
     expect(onLoadNewer).not.toHaveBeenCalled();
     expect(feed.scrollTop).toBe(300);
 
@@ -733,6 +764,7 @@ describe("WorkspaceMessageList", () => {
         lastMessageUuid="last-anchor-window-message"
         onLoadNewer={onLoadNewer}
         onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
@@ -845,6 +877,7 @@ describe("WorkspaceMessageList", () => {
       await firstRequest;
     });
     expect(scrollButton).toBeInTheDocument();
+    expect(feed.scrollTop).toBe(300);
 
     fireEvent.click(scrollButton);
     expect(onLoadLatestWindow).toHaveBeenCalledTimes(2);
@@ -867,6 +900,7 @@ describe("WorkspaceMessageList", () => {
   it("retargets a pending tail intent when the known last message changes", async () => {
     const onLoadLatestWindow = vi.fn();
     const onCancelLatestWindowLoad = vi.fn();
+    const onTailNavigationRequested = vi.fn();
     const firstMessage = createWorkspaceMessage({ uuid: "retarget-anchor" });
     const nextLastMessage = createWorkspaceMessage({
       uuid: "retarget-tail-b",
@@ -881,6 +915,7 @@ describe("WorkspaceMessageList", () => {
         lastMessageUuid="retarget-tail-a"
         onLoadLatestWindow={onLoadLatestWindow}
         onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
     const feed = container.querySelector<HTMLElement>("[role='feed']");
@@ -894,6 +929,7 @@ describe("WorkspaceMessageList", () => {
     const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
     fireEvent.click(scrollButton);
     fireEvent.click(scrollButton);
+    expect(onTailNavigationRequested).toHaveBeenCalledTimes(2);
     expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
     expect(onLoadLatestWindow).toHaveBeenLastCalledWith("retarget-tail-a");
 
@@ -906,6 +942,7 @@ describe("WorkspaceMessageList", () => {
         lastMessageUuid={nextLastMessage.uuid}
         onLoadLatestWindow={onLoadLatestWindow}
         onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
@@ -924,6 +961,7 @@ describe("WorkspaceMessageList", () => {
         lastMessageUuid={nextLastMessage.uuid}
         onLoadLatestWindow={onLoadLatestWindow}
         onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
@@ -1400,7 +1438,70 @@ describe("WorkspaceMessageList", () => {
     expect(correctedScrollIntoView).toHaveBeenCalledOnce();
   });
 
+  it("preserves scroll position while an anchor is active without an exact focus target", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "anchor-pending-unread" });
+    const tailMessage = createWorkspaceMessage({
+      uuid: "anchor-pending-tail",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='anchor-pending-unread']",
+    );
+    if (feed == null || unreadNode == null)
+      throw new Error("Expected message feed and unread node");
+    const unreadScrollIntoView = vi.fn();
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 900 });
+    feed.scrollTop = 137;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(137);
+    expect(unreadScrollIntoView).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive={false}
+      />,
+    );
+
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+  });
+
   it("gives an explicit focused message priority over the unread boundary", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const focusOrder: string[] = [];
     const unreadMessage = createWorkspaceMessage({ uuid: "priority-unread" });
     const focusedMessage = createWorkspaceMessage({ uuid: "priority-focused" });
     const { container, rerender } = render(
@@ -1412,7 +1513,8 @@ describe("WorkspaceMessageList", () => {
         scrollToBottomKey="focused-position"
         firstUnreadUuid="priority-unread"
         unreadCount={2}
-        focusedMessageUuid="priority-focused"
+        focusedMessageTarget={{ intentId: 17, messageUuid: "priority-focused", focusAttempt: 0 }}
+        onFocusedMessageApplied={onFocusedMessageApplied}
       />,
     );
     const unreadNode = container.querySelector<HTMLElement>(
@@ -1423,9 +1525,15 @@ describe("WorkspaceMessageList", () => {
     );
     if (unreadNode == null || focusedNode == null) throw new Error("Expected message nodes");
     const unreadScrollIntoView = vi.fn();
-    const focusedScrollIntoView = vi.fn();
+    const focusedScrollIntoView = vi.fn(() => {
+      focusOrder.push("scroll");
+    });
     unreadNode.scrollIntoView = unreadScrollIntoView;
     focusedNode.scrollIntoView = focusedScrollIntoView;
+    onFocusedMessageApplied.mockImplementation(() => {
+      expect(focusedNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+      focusOrder.push("callback");
+    });
 
     rerender(
       <WorkspaceMessageList
@@ -1436,13 +1544,862 @@ describe("WorkspaceMessageList", () => {
         scrollToBottomKey="focused-position"
         firstUnreadUuid="priority-unread"
         unreadCount={2}
-        focusedMessageUuid="priority-focused"
+        focusedMessageTarget={{ intentId: 17, messageUuid: "priority-focused", focusAttempt: 0 }}
+        onFocusedMessageApplied={onFocusedMessageApplied}
       />,
     );
 
     expect(focusedScrollIntoView).toHaveBeenCalledOnce();
+    expect(focusedScrollIntoView).toHaveBeenCalledWith({
+      block: "center",
+      behavior: "instant",
+    });
     expect(unreadScrollIntoView).not.toHaveBeenCalled();
     expect(focusedNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+    expect(focusOrder).toEqual(["scroll", "callback"]);
+    expect(onFocusedMessageApplied).toHaveBeenCalledWith({
+      intentId: 17,
+      messageUuid: "priority-focused",
+      focusAttempt: 0,
+    });
+  });
+
+  it("reports a focused node without scrollIntoView as missing once per attempt", () => {
+    const onFocusedMessageMissing = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "focus-without-scroll-method" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="missing-scroll-method:0"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='focus-without-scroll-method']",
+    );
+    if (targetNode == null) throw new Error("Expected focused message node");
+    Reflect.deleteProperty(targetNode, "scrollIntoView");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-scroll-method:0"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-scroll-method:1"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 1,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    expect(onFocusedMessageMissing).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports one focus callback in StrictMode for the same composite target", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "strict-focus-message" });
+    const renderList = (ready: boolean) => (
+      <StrictMode>
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={ready}
+          scrollToBottomKey="strict-focus"
+          focusedMessageTarget={{
+            intentId: 91,
+            messageUuid: target.uuid,
+            focusAttempt: 0,
+          }}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      </StrictMode>
+    );
+    const { container, rerender } = render(renderList(false));
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='strict-focus-message']",
+    );
+    if (targetNode == null) throw new Error("Expected strict focused message node");
+    targetNode.scrollIntoView = vi.fn();
+
+    rerender(renderList(true));
+
+    expect(targetNode.scrollIntoView).toHaveBeenCalledOnce();
+    expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a hidden focus confirmation when the same UUID receives a newer intent", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "reused-focus-message" });
+    const renderList = (
+      focusedMessageTarget: { intentId: number; messageUuid: string; focusAttempt: number } | null,
+      anchorHandoffPending: boolean,
+    ) => (
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={focusedMessageTarget != null}
+        scrollToBottomKey="reused-focus-message"
+        focusedMessageTarget={focusedMessageTarget}
+        anchorHandoffPending={anchorHandoffPending}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList(null, false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='reused-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: 600 - feed.scrollTop,
+          bottom: 640 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(renderList({ intentId: 301, messageUuid: target.uuid, focusAttempt: 0 }, true));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      rerender(renderList(null, false));
+      rerender(renderList({ intentId: 302, messageUuid: target.uuid, focusAttempt: 0 }, true));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledWith({
+        intentId: 302,
+        messageUuid: target.uuid,
+        focusAttempt: 0,
+      });
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("confirms hidden focus only after layout stabilizes and corrects the root scroll position", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "layout-stabilized-focus-message" });
+    let targetDocumentTop = 700;
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={false}
+          scrollToBottomKey="layout-stabilized-focus"
+          focusedMessageTarget={{ intentId: 401, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />,
+      );
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='layout-stabilized-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop + 40 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          scrollToBottomKey="layout-stabilized-focus"
+          focusedMessageTarget={{ intentId: 401, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />,
+      );
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      const firstProgrammaticFrame = scheduledFrames.shift();
+      act(() => firstProgrammaticFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      const firstConfirmationFrame = scheduledFrames.shift();
+      act(() => firstConfirmationFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      targetDocumentTop = 900;
+      const secondProgrammaticFrame = scheduledFrames.shift();
+      act(() => secondProgrammaticFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      const secondConfirmationFrame = scheduledFrames.shift();
+      act(() => secondConfirmationFrame?.(0));
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(feed.scrollTop).toBe(820);
+      const targetRect = targetNode.getBoundingClientRect();
+      const feedRect = feed.getBoundingClientRect();
+      expect(targetRect.top + targetRect.height / 2).toBe(feedRect.top + feedRect.height / 2);
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("keeps one hidden focus confirmation when the same intent rerenders between frames", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "rerendered-hidden-focus-message" });
+    const appended = createWorkspaceMessage({ uuid: "rerendered-hidden-focus-append" });
+    let targetDocumentTop = 700;
+    const renderList = (messages: readonly MessengerMessage[], initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        scrollToBottomKey="rerendered-hidden-focus"
+        focusedMessageTarget={{ intentId: 402, messageUuid: target.uuid, focusAttempt: 0 }}
+        anchorHandoffPending
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList([target], false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='rerendered-hidden-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop + 40 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(renderList([target], true));
+      const initialProgrammaticFrame = scheduledFrames.shift();
+      act(() => initialProgrammaticFrame?.(0));
+
+      targetDocumentTop = 900;
+      rerender(renderList([target, appended], true));
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(feed.scrollTop).toBe(820);
+      const targetRect = targetNode.getBoundingClientRect();
+      const feedRect = feed.getBoundingClientRect();
+      expect(targetRect.top + targetRect.height / 2).toBe(feedRect.top + feedRect.height / 2);
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("reports a hidden focus target that disappears before confirmation as missing once", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onFocusedMessageMissing = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "disappearing-hidden-focus-message" });
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={false}
+          scrollToBottomKey="disappearing-hidden-focus"
+          focusedMessageTarget={{ intentId: 403, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+          onFocusedMessageMissing={onFocusedMessageMissing}
+        />,
+      );
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='disappearing-hidden-focus-message']",
+      );
+      if (targetNode == null) throw new Error("Expected focus test node");
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          scrollToBottomKey="disappearing-hidden-focus"
+          focusedMessageTarget={{ intentId: 403, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+          onFocusedMessageMissing={onFocusedMessageMissing}
+        />,
+      );
+      targetNode.remove();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+      expect(onFocusedMessageMissing).toHaveBeenCalledWith({
+        intentId: 403,
+        messageUuid: target.uuid,
+        focusAttempt: 0,
+      });
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("restores the focused highlight during an initial StrictMode effect replay", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const scrollIntoView = vi.fn();
+    const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const target = createWorkspaceMessage({ uuid: "strict-initial-focus-message" });
+
+    try {
+      const { container } = render(
+        <StrictMode>
+          <WorkspaceMessageList
+            messages={[target]}
+            currentUserUuid="current-user-uuid"
+            conversationId="topic:stream-uuid-1:topic-uuid-1"
+            initialPositionReady
+            scrollToBottomKey="strict-initial-focus"
+            focusedMessageTarget={{
+              intentId: 92,
+              messageUuid: target.uuid,
+              focusAttempt: 0,
+            }}
+            onFocusedMessageApplied={onFocusedMessageApplied}
+          />
+        </StrictMode>,
+      );
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='strict-initial-focus-message']",
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(targetNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+    } finally {
+      if (previousScrollIntoView == null) {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      } else {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    }
+  });
+
+  it("keeps the browser scroll caused by focus inside the programmatic window", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "programmatic-focus-message" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="programmatic-focus"
+        focusedMessageTarget={{
+          intentId: 101,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        hasOlderMessages
+        hasNewerMessages
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='programmatic-focus-message']",
+    );
+    if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    feed.scrollTop = 0;
+    targetNode.scrollIntoView = vi.fn();
+    fireEvent.wheel(feed, { deltaY: -1 });
+    onLoadOlder.mockClear();
+    onLoadNewer.mockClear();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="programmatic-focus"
+        focusedMessageTarget={{
+          intentId: 101,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        hasOlderMessages
+        hasNewerMessages
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+    fireEvent.scroll(feed);
+
+    expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    expect(onLoadOlder).not.toHaveBeenCalled();
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+
+    const firstFrame = scheduledFrames.shift();
+    firstFrame?.(0);
+    const secondFrame = scheduledFrames.shift();
+    secondFrame?.(0);
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+    requestFrame.mockRestore();
+  });
+
+  it("keeps the focused DOM node at the same offset after a before-page prepend", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "prepend-focused-target" });
+    const older = createWorkspaceMessage({
+      uuid: "prepend-older-message",
+      createdAt: "2026-07-03T08:59:00.000Z",
+    });
+    const focusTarget = {
+      intentId: 103,
+      messageUuid: target.uuid,
+      focusAttempt: 0,
+    };
+    const renderList = (messages: readonly MessengerMessage[], initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        focusedMessageTarget={focusTarget}
+        hasOlderMessages
+        onLoadOlder={onLoadOlder}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList([target], false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='prepend-focused-target']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected prepend test nodes");
+      let scrollHeight = 1000;
+      let targetTop = 40;
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetTop,
+          bottom: targetTop + 40,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+      rerender(renderList([target], true));
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      while (scheduledFrames.length > 0) scheduledFrames.shift()?.(0);
+
+      feed.scrollTop = 50;
+      fireEvent.wheel(feed, { deltaY: -1 });
+      fireEvent.scroll(feed);
+      expect(onLoadOlder).toHaveBeenCalledOnce();
+
+      scrollHeight = 1200;
+      targetTop = 140;
+      rerender(renderList([older, target], true));
+
+      expect(feed.scrollTop).toBe(150);
+      expect(container.querySelector("[data-message-uuid='prepend-focused-target']")).toBe(
+        targetNode,
+      );
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("keeps the StrictMode anchor handoff scroll inside one programmatic window", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const scrollIntoView = vi.fn();
+    const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "strict-programmatic-focus-message" });
+    const renderList = (anchorHandoffPending: boolean) => (
+      <StrictMode>
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          anchorHandoffPending={anchorHandoffPending}
+          scrollToBottomKey="strict-programmatic-focus"
+          focusedMessageTarget={{
+            intentId: 102,
+            messageUuid: target.uuid,
+            focusAttempt: 0,
+          }}
+          hasOlderMessages
+          hasNewerMessages
+          lastMessageUuid="tail-outside-window"
+          onLoadOlder={onLoadOlder}
+          onLoadNewer={onLoadNewer}
+          onLoadLatestWindow={onLoadLatestWindow}
+          onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      </StrictMode>
+    );
+
+    try {
+      const { container, rerender } = render(renderList(true));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      if (feed == null) throw new Error("Expected StrictMode handoff feed");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+      feed.scrollTop = 0;
+
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+
+      rerender(renderList(false));
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+      if (previousScrollIntoView == null) {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      } else {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    }
+  });
+
+  it("suppresses pending anchor navigation side effects and restores them after reveal", () => {
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "author-uuid-1",
+        avatarUrl: "urn:url:https://cdn.example/a.png",
+      }),
+    ]);
+    const target = createWorkspaceMessage({ uuid: "pending-gate-message" });
+    const renderList = (anchorHandoffPending: boolean) => (
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        anchorHandoffPending={anchorHandoffPending}
+        hasOlderMessages
+        hasNewerMessages
+        lastMessageUuid="tail-outside-window"
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />
+    );
+    const { container, rerender } = render(renderList(true));
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected pending feed");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    feed.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+    const readBoundary = container.querySelector<HTMLElement>("[data-message-read-boundary]");
+    if (readBoundary == null) throw new Error("Expected unread boundary");
+    readBoundary.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 110, left: 0, right: 200, width: 200, height: 10 }) as DOMRect;
+    feed.scrollTop = 0;
+
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+    feed.scrollTop = 800;
+    fireEvent.scroll(feed);
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
+    expect(onLoadOlder).not.toHaveBeenCalled();
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(onLoadLatestWindow).not.toHaveBeenCalled();
+    expect(onCancelLatestWindowLoad).not.toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toBeNull();
+
+    rerender(renderList(false));
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
+      "src",
+      "https://cdn.example/a.png",
+    );
+    feed.scrollTop = 0;
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+    feed.scrollTop = 800;
+    fireEvent.scroll(feed);
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to bottom" }));
+
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+    expect(onLoadNewer).toHaveBeenCalledOnce();
+    expect(onLoadLatestWindow).toHaveBeenCalledWith("tail-outside-window");
+  });
+
+  it("reports a missing focused message once after initial positioning is ready", () => {
+    const onFocusedMessageMissing = vi.fn();
+    const visibleMessage = createWorkspaceMessage({ uuid: "visible-message" });
+    const { rerender } = render(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+    expect(onFocusedMessageMissing).toHaveBeenCalledWith({
+      intentId: 41,
+      messageUuid: "missing-focused-message",
+      focusAttempt: 0,
+    });
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage, createWorkspaceMessage({ uuid: "another-visible-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 1,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledTimes(2);
+    expect(onFocusedMessageMissing).toHaveBeenLastCalledWith({
+      intentId: 41,
+      messageUuid: "missing-focused-message",
+      focusAttempt: 1,
+    });
   });
 
   it("opens at the bottom after readiness when there are no unread messages", () => {
@@ -1478,6 +2435,7 @@ describe("WorkspaceMessageList", () => {
 
   it("scrolls to the bottom after send without repeating the initial unread position", () => {
     const unreadMessage = createWorkspaceMessage({ uuid: "send-after-unread" });
+    const onTailNavigationRequested = vi.fn();
     const { container, rerender } = render(
       <WorkspaceMessageList
         messages={[unreadMessage]}
@@ -1488,6 +2446,7 @@ describe("WorkspaceMessageList", () => {
         scrollToBottomAfterSendNonce={0}
         firstUnreadUuid="send-after-unread"
         unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
     const feed = container.querySelector<HTMLElement>("[role='feed']");
@@ -1508,12 +2467,14 @@ describe("WorkspaceMessageList", () => {
         scrollToBottomAfterSendNonce={0}
         firstUnreadUuid="send-after-unread"
         unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
     expect(unreadScrollIntoView).toHaveBeenCalledOnce();
 
     Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 640 });
     feed.scrollTop = 120;
+    fireEvent.wheel(feed, { deltaY: -100 });
     rerender(
       <WorkspaceMessageList
         messages={[unreadMessage]}
@@ -1524,11 +2485,13 @@ describe("WorkspaceMessageList", () => {
         scrollToBottomAfterSendNonce={1}
         firstUnreadUuid="send-after-unread"
         unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
       />,
     );
 
     expect(feed.scrollTop).toBe(640);
     expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+    expect(onTailNavigationRequested).not.toHaveBeenCalled();
   });
 
   it("resets the unread divider anchor when entering another conversation", () => {

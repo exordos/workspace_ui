@@ -27,6 +27,11 @@ const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
 const DATE = "2026-06-22T10:10:00Z";
 
+function seedWorkspaceMessageBody(message: ReturnType<typeof adaptMessengerMessage>): void {
+  const state = useWorkspaceMessageStore.getState();
+  state.upsertMessageBodyFromSnapshot(message, state.messageMutationRevision);
+}
+
 function runtimeContext(overrides: Partial<WorkspaceRuntimeContext> = {}): WorkspaceRuntimeContext {
   return {
     accountId: "account-a",
@@ -129,7 +134,11 @@ function seed(runtime: WorkspaceRuntimeContext): string {
       }),
     ),
   );
-  useWorkspaceMessageStore.getState().upsertMessage(adaptMessengerMessage(messageDto()));
+  const messageState = useWorkspaceMessageStore.getState();
+  messageState.upsertMessageBodyFromSnapshot(
+    adaptMessengerMessage(messageDto()),
+    messageState.messageMutationRevision,
+  );
   return ownerKey;
 }
 
@@ -342,13 +351,9 @@ describe("workspace read actions", () => {
   it("keeps neighboring and newly arrived messages unread", async () => {
     const runtime = runtimeContext();
     seed(runtime);
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessage(
-        adaptMessengerMessage(
-          messageDto({ uuid: OTHER_MESSAGE_UUID, topic_uuid: OTHER_TOPIC_UUID }),
-        ),
-      );
+    seedWorkspaceMessageBody(
+      adaptMessengerMessage(messageDto({ uuid: OTHER_MESSAGE_UUID, topic_uuid: OTHER_TOPIC_UUID })),
+    );
     const request = deferred<WorkspaceMessengerTopicDto>();
     const action = runWorkspaceTopicRead(
       { streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID },
@@ -359,15 +364,11 @@ describe("workspace read actions", () => {
         cache: {},
       },
     );
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessage(adaptMessengerMessage(messageDto({ uuid: NEW_MESSAGE_UUID })));
+    seedWorkspaceMessageBody(adaptMessengerMessage(messageDto({ uuid: NEW_MESSAGE_UUID })));
 
     request.resolve(topicDto({ unread_count: 0 }));
     await action;
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessage(adaptMessengerMessage(messageDto({ uuid: AFTER_MESSAGE_UUID })));
+    seedWorkspaceMessageBody(adaptMessengerMessage(messageDto({ uuid: AFTER_MESSAGE_UUID })));
 
     expect(useWorkspaceMessageStore.getState().messagesById[OTHER_MESSAGE_UUID]?.read).toBe(false);
     expect(useWorkspaceMessageStore.getState().messagesById[NEW_MESSAGE_UUID]?.read).toBe(false);

@@ -2260,6 +2260,7 @@ export async function writeConversationMessagePage(
   ownerKey: string,
   conversationId: string,
   page: WorkspaceMessengerConversationMessagePage,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -2278,6 +2279,8 @@ export async function writeConversationMessagePage(
     for (const bucket of existingBuckets) {
       nextBucketsById.set(bucket.id, bucket);
     }
+
+    if (!isWriteCurrent()) return;
 
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(

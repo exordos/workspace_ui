@@ -57,7 +57,10 @@ export interface MessengerLastMessagesStoreApi {
 }
 
 export interface MessengerLastMessagesMessageStoreApi {
-  getState: () => Pick<WorkspaceMessageStoreState, "upsertMessageBody">;
+  getState: () => Pick<
+    WorkspaceMessageStoreState,
+    "ownerKey" | "messageMutationRevision" | "messagesById" | "upsertMessageBodyFromSnapshot"
+  >;
 }
 
 export type MessengerLastMessagesResult =
@@ -179,6 +182,7 @@ export async function primeMessengerLastMessagesFromCache({
 }): Promise<number> {
   const messageUuids = collectMessengerLastMessageUuidsFromPayload(payload);
   if (messageUuids.length === 0) return 0;
+  const capturedMutationRevision = messageStore.getState().messageMutationRevision;
 
   const cachedMessages = await (cache.readMessagesByUuids ?? defaultReadMessagesByUuids)(
     ownerKey,
@@ -186,11 +190,15 @@ export async function primeMessengerLastMessagesFromCache({
   ).catch((): MessengerMessage[] => []);
 
   const messageStoreState = messageStore.getState();
+  if (messageStoreState.ownerKey !== ownerKey) return 0;
+  let applied = 0;
   for (const message of cachedMessages) {
-    messageStoreState.upsertMessageBody(message);
+    if (messageStoreState.upsertMessageBodyFromSnapshot(message, capturedMutationRevision)) {
+      applied += 1;
+    }
   }
 
-  return cachedMessages.length;
+  return applied;
 }
 
 export async function loadMessengerLastMessagesForSidebar({
@@ -219,6 +227,7 @@ export async function loadMessengerLastMessagesForSidebar({
     return { status: "loaded", ownerKey, requested: 0, applied: 0 };
   }
 
+  const cachedMutationRevision = messageStore.getState().messageMutationRevision;
   const cachedMessages = await (cache.readMessagesByUuids ?? defaultReadMessagesByUuids)(
     ownerKey,
     messageUuids,
@@ -229,10 +238,16 @@ export async function loadMessengerLastMessagesForSidebar({
   }
 
   const messageStoreState = messageStore.getState();
+  if (messageStoreState.ownerKey != null && messageStoreState.ownerKey !== ownerKey) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
   const cachedMessageUuids = new Set<MessengerUuid>();
+  let appliedCachedMessages = 0;
   for (const message of cachedMessages) {
     cachedMessageUuids.add(message.uuid);
-    messageStoreState.upsertMessageBody(message);
+    if (messageStoreState.upsertMessageBodyFromSnapshot(message, cachedMutationRevision)) {
+      appliedCachedMessages += 1;
+    }
   }
 
   const missingMessageUuids = messageUuids.filter(
@@ -243,11 +258,12 @@ export async function loadMessengerLastMessagesForSidebar({
       status: "loaded",
       ownerKey,
       requested: 0,
-      applied: cachedMessages.length,
+      applied: appliedCachedMessages,
     };
   }
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const serverMutationRevision = messageStore.getState().messageMutationRevision;
 
   try {
     const messages = await (client.getMessagesByUuids ?? defaultGetMessagesByUuids)(
@@ -258,13 +274,23 @@ export async function loadMessengerLastMessagesForSidebar({
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
+    const currentMessageStoreState = messageStore.getState();
+    if (
+      currentMessageStoreState.ownerKey != null &&
+      currentMessageStoreState.ownerKey !== ownerKey
+    ) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
 
     const adaptedMessages = messages.map(adaptMessengerMessage);
+    const appliedMessages: MessengerMessage[] = [];
     for (const message of adaptedMessages) {
-      messageStoreState.upsertMessageBody(message);
+      if (messageStore.getState().upsertMessageBodyFromSnapshot(message, serverMutationRevision)) {
+        appliedMessages.push(messageStore.getState().messagesById[message.uuid] ?? message);
+      }
     }
     try {
-      await (cache.writeMessages ?? defaultWriteMessages)(ownerKey, adaptedMessages);
+      await (cache.writeMessages ?? defaultWriteMessages)(ownerKey, appliedMessages);
     } catch {
       // Cache write is best-effort; the sidebar state was already updated from the network.
     }
@@ -273,7 +299,7 @@ export async function loadMessengerLastMessagesForSidebar({
       status: "loaded",
       ownerKey,
       requested: missingMessageUuids.length,
-      applied: cachedMessages.length + messages.length,
+      applied: appliedCachedMessages + appliedMessages.length,
     };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {

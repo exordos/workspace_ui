@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import { t } from "~/i18n/i18n";
 import type { FloatingLoadingOverlayProps } from "~/shared/ui/floating-loading-overlay.types";
 import type { WorkspaceMessageListProps } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
@@ -65,6 +66,51 @@ function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMess
 }
 
 describe("ChatPageWorkspaceMessageListSection", () => {
+  it("keeps the canonical list hidden and inert during an anchor handoff", () => {
+    const { container } = render(
+      <ChatPageWorkspaceMessageListSection
+        messagesLoading={false}
+        hasInitialPayload
+        initialPositionReady
+        messages={[createWorkspaceMessage({ uuid: "hidden-anchor-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        scrollToBottomKey="anchor-handoff"
+        onLoadOlder={vi.fn()}
+        isLoadingOlder={false}
+        isLoadingNewer={false}
+        onLoadNewer={vi.fn()}
+        hasOlderMessages
+        hasNewerMessages
+        lastMessageUuid="tail-message"
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
+        firstUnreadUuid={undefined}
+        unreadCount={1}
+        anchorHandoffPending
+        focusedMessageTarget={{
+          intentId: 7,
+          messageUuid: "hidden-anchor-message",
+          focusAttempt: 0,
+        }}
+        messagesLoadError={null}
+        onRetryMessagesLoad={vi.fn()}
+        boundaryLoadFailed={false}
+        onRetryBoundaryLoad={vi.fn()}
+        scrollToBottomAfterSendNonce={1}
+      />,
+    );
+
+    const layer = container.querySelector("[data-message-anchor-list-layer='true']");
+    expect(layer).toHaveClass("invisible", "pointer-events-none");
+    expect(layer).toHaveAttribute("aria-hidden", "true");
+    expect(layer).toHaveAttribute("inert");
+    expect(captured.workspaceMessageListProps?.anchorHandoffPending).toBe(true);
+    expect(captured.workspaceMessageListProps?.onUnreadMessagesVisible).toBeUndefined();
+    expect(captured.workspaceMessageListProps?.onUnreadMessagesAtBottom).toBeUndefined();
+  });
+
   it("passes Workspace messages to WorkspaceMessageList without legacy message shape", () => {
     const message = createWorkspaceMessage({
       uuid: "workspace-message-uuid",
@@ -89,15 +135,15 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         lastMessageUuid={null}
         onLoadLatestWindow={vi.fn()}
         onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
         firstUnreadUuid="workspace-message-uuid"
         unreadCount={1}
-        focusedMessageUuid={null}
         onUnreadMessagesVisible={vi.fn()}
         onUnreadMessagesAtBottom={vi.fn()}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
-        onDismissBoundaryLoadFailed={vi.fn()}
+        onRetryBoundaryLoad={vi.fn()}
         scrollToBottomAfterSendNonce={0}
       />,
     );
@@ -119,6 +165,8 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onUnreadMessagesAtBottom = vi.fn();
     const onLoadLatestWindow = vi.fn();
     const onCancelLatestWindowLoad = vi.fn();
+    const onTailNavigationRequested = vi.fn();
+    const onFocusedMessageMissing = vi.fn();
     const resolveAuthorLabel = vi.fn(() => "Bob Reed");
     const resolveMention = vi.fn(() => ({ userUuid: "mention-user-uuid" }));
     const resolveServerMessageRenderKey = vi.fn(() => "transient-local-id");
@@ -145,15 +193,21 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         lastMessageUuid="latest-message-uuid"
         onLoadLatestWindow={onLoadLatestWindow}
         onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
         firstUnreadUuid="workspace-props-message-uuid"
         unreadCount={3}
-        focusedMessageUuid="focused-message-uuid"
+        focusedMessageTarget={{
+          intentId: 9,
+          messageUuid: "focused-message-uuid",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
         onUnreadMessagesVisible={onUnreadMessagesVisible}
         onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
-        onDismissBoundaryLoadFailed={vi.fn()}
+        onRetryBoundaryLoad={vi.fn()}
         scrollToBottomAfterSendNonce={7}
         resolveAuthorLabel={resolveAuthorLabel}
         resolveMention={resolveMention}
@@ -170,7 +224,11 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       lastMessageUuid: "latest-message-uuid",
       firstUnreadUuid: "workspace-props-message-uuid",
       unreadCount: 3,
-      focusedMessageUuid: "focused-message-uuid",
+      focusedMessageTarget: {
+        intentId: 9,
+        messageUuid: "focused-message-uuid",
+        focusAttempt: 0,
+      },
       scrollToBottomAfterSendNonce: 7,
     });
     expect(captured.workspaceMessageListProps?.onLoadOlder).toBe(onLoadOlder);
@@ -178,6 +236,12 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(captured.workspaceMessageListProps?.onLoadLatestWindow).toBe(onLoadLatestWindow);
     expect(captured.workspaceMessageListProps?.onCancelLatestWindowLoad).toBe(
       onCancelLatestWindowLoad,
+    );
+    expect(captured.workspaceMessageListProps?.onTailNavigationRequested).toBe(
+      onTailNavigationRequested,
+    );
+    expect(captured.workspaceMessageListProps?.onFocusedMessageMissing).toBe(
+      onFocusedMessageMissing,
     );
     expect(captured.workspaceMessageListProps?.onUnreadMessagesVisible).toBe(
       onUnreadMessagesVisible,
@@ -225,9 +289,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         lastMessageUuid={null}
         onLoadLatestWindow={vi.fn()}
         onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
         firstUnreadUuid={undefined}
         unreadCount={0}
-        focusedMessageUuid={null}
         onUnreadMessagesVisible={vi.fn()}
         onUnreadMessagesAtBottom={vi.fn()}
         onReplyMessage={onReplyMessage}
@@ -242,7 +306,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
-        onDismissBoundaryLoadFailed={vi.fn()}
+        onRetryBoundaryLoad={vi.fn()}
         scrollToBottomAfterSendNonce={0}
       />,
     );
@@ -264,6 +328,42 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(captured.workspaceMessageListProps?.actions?.onOpenUnsupportedFilePreview).toBe(
       onOpenUnsupportedFilePreview,
     );
+  });
+
+  it("shows an accessible retry for a boundary page failure", () => {
+    const onRetryBoundaryLoad = vi.fn();
+    render(
+      <ChatPageWorkspaceMessageListSection
+        messagesLoading={false}
+        hasInitialPayload
+        initialPositionReady
+        messages={[createWorkspaceMessage({ uuid: "boundary-retry-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        scrollToBottomKey="boundary-retry"
+        onLoadOlder={vi.fn()}
+        isLoadingOlder={false}
+        isLoadingNewer={false}
+        onLoadNewer={vi.fn()}
+        hasOlderMessages
+        hasNewerMessages={false}
+        lastMessageUuid={null}
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
+        firstUnreadUuid={undefined}
+        unreadCount={0}
+        messagesLoadError={null}
+        onRetryMessagesLoad={vi.fn()}
+        boundaryLoadFailed
+        onRetryBoundaryLoad={onRetryBoundaryLoad}
+        scrollToBottomAfterSendNonce={0}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(t("chat.boundaryPaginationError"));
+    fireEvent.click(screen.getByRole("button", { name: t("chat.retryLoadMessages") }));
+    expect(onRetryBoundaryLoad).toHaveBeenCalledOnce();
   });
 
   it("keeps the background loading bubble at the top-left edge", () => {
@@ -289,15 +389,15 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         lastMessageUuid={null}
         onLoadLatestWindow={vi.fn()}
         onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
         firstUnreadUuid={undefined}
         unreadCount={0}
-        focusedMessageUuid={null}
         onUnreadMessagesVisible={vi.fn()}
         onUnreadMessagesAtBottom={vi.fn()}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
-        onDismissBoundaryLoadFailed={vi.fn()}
+        onRetryBoundaryLoad={vi.fn()}
         scrollToBottomAfterSendNonce={0}
       />,
     );

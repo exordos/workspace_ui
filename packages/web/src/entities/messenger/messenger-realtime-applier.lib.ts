@@ -146,6 +146,8 @@ function isActiveCurrentOwner(
 ): boolean {
   if (context.surface !== "active") return false;
   if (context.signal?.aborted === true) return false;
+  const messageStoreOwnerKey = useWorkspaceMessageStore.getState().ownerKey;
+  if (messageStoreOwnerKey != null && messageStoreOwnerKey !== context.ownerKey) return false;
 
   // ownerKey does not include runtimeGeneration, so check stale sockets before any store write.
   return options.isOwnerCurrent?.(context.owner) ?? true;
@@ -289,10 +291,6 @@ function removeTopicMessagesFromWorkspaceStore(
   topicUuid: string,
 ): MessengerDeletedMessage[] {
   const messageStore = useWorkspaceMessageStore.getState();
-  const conversationIds = [
-    conversationIdForStream(streamUuid),
-    conversationIdForTopic(streamUuid, topicUuid),
-  ];
   const removedMessages: MessengerDeletedMessage[] = [];
   for (const message of Object.values(messageStore.messagesById)) {
     if (message.streamUuid !== streamUuid || message.topicUuid !== topicUuid) continue;
@@ -301,7 +299,7 @@ function removeTopicMessagesFromWorkspaceStore(
       streamUuid: message.streamUuid,
       topicUuid: message.topicUuid,
     });
-    messageStore.removeMessage(message.uuid, { conversationIds });
+    messageStore.removeMessage(message.uuid);
   }
   return removedMessages;
 }
@@ -335,8 +333,8 @@ function applyMessageRealtimeEvent(
   const message = applyMessengerReadBoundary(adaptMessengerMessage(event.message), ownerKey);
   const stream = store.streamsById[message.streamUuid] ?? null;
   const previousMessage = messageStore.messagesById[message.uuid];
-  messageStore.upsertMessage(message);
   if (event.kind === "message.read") {
+    messageStore.applyLiveKnownBodyMutation(message);
     const boundary = advanceMessengerReadBoundary({
       ownerKey,
       streamUuid: message.streamUuid,
@@ -349,7 +347,7 @@ function applyMessageRealtimeEvent(
       conversationIds: conversationIdsForRealtimeMessage(message),
     });
     const boundaryWrite = activeCache.advanceReadBoundary?.(boundary);
-    if (activeCache.patchCachedMessage != null) {
+    if (previousMessage != null && activeCache.patchCachedMessage != null) {
       writeRealtimeCacheBestEffort(() =>
         activeCache.patchCachedMessage?.(ownerKey, { ...message, read: true }),
       );
@@ -357,7 +355,8 @@ function applyMessageRealtimeEvent(
     return boundaryWrite;
   }
   if (event.kind === "message.updated") {
-    if (activeCache.patchCachedMessage != null) {
+    messageStore.applyLiveKnownBodyMutation(message);
+    if (previousMessage != null && activeCache.patchCachedMessage != null) {
       writeRealtimeCacheBestEffort(() => activeCache.patchCachedMessage?.(ownerKey, message));
     }
     if (
@@ -372,6 +371,7 @@ function applyMessageRealtimeEvent(
     return;
   }
 
+  messageStore.applyLiveCreatedMessage(message);
   store.applyMessagePointer(ownerKey, message);
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
   if (

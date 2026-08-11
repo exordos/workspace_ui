@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -184,6 +185,14 @@ function createMessageDto(
   };
 }
 
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 function prepareStores(options: { includeDirect?: boolean } = {}) {
   const session = createSession();
   const ownerKey = workspaceRuntimeOwnerKey(session);
@@ -317,6 +326,28 @@ describe("WorkspaceForwardMessageDialog contract", () => {
       [MESSAGE_UUID],
     );
     expect(screen.queryByText(/full message text/)).not.toBeInTheDocument();
+  });
+
+  it("does not apply a late hydration response after a realtime update fence", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const request = createDeferred<WorkspaceMessengerMessageDto[]>();
+    mocks.getMessagesByUuids.mockReturnValueOnce(request.promise);
+    useWorkspaceForwardMessageStore.getState().open({ messageUuids: [MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+    await waitFor(() => expect(mocks.getMessagesByUuids).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      useWorkspaceMessageStore
+        .getState()
+        .applyLiveKnownBodyMutation(
+          adaptMessengerMessage(
+            createMessageDto({ payload: { kind: "markdown", content: "Realtime update" } }),
+          ),
+        );
+      request.resolve([createMessageDto()]);
+      await request.promise;
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
   });
 
   it("sends a topic forward with stream, topic, markdown, and no stream-conversation include", async () => {

@@ -15,6 +15,11 @@ vi.mock("./messenger-quote-loader.lib", () => ({
 
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 
+function seedWorkspaceMessageBody(message: MessengerMessage): void {
+  const state = useWorkspaceMessageStore.getState();
+  state.upsertMessageBodyFromSnapshot(message, state.messageMutationRevision);
+}
+
 function activeMessage(): MessengerMessage {
   return {
     uuid: MESSAGE_UUID,
@@ -41,7 +46,7 @@ describe("useResolvedMessengerQuoteMessage", () => {
   beforeEach(() => {
     mocked.load.mockClear();
     useWorkspaceMessageStore.getState().clear();
-    useWorkspaceMessageStore.getState().upsertMessage(activeMessage());
+    seedWorkspaceMessageBody(activeMessage());
     useWorkspaceAuthStore.setState({
       currentAccountId: "account-a",
       runtimeGeneration: 1,
@@ -68,13 +73,32 @@ describe("useResolvedMessengerQuoteMessage", () => {
     });
   });
 
-  it("returns an active-store hit immediately and still starts a background refresh", async () => {
+  it("returns an active-store hit immediately without a background refresh", () => {
     const { result } = renderHook(() => useResolvedMessengerQuoteMessage(MESSAGE_UUID));
 
     expect(result.current).toEqual({
       status: "ready",
       message: expect.objectContaining({ uuid: MESSAGE_UUID }),
     });
+    expect(mocked.load).not.toHaveBeenCalled();
+  });
+
+  it("reads a known body without starting a refresh when loading is disabled", () => {
+    const { result } = renderHook(() => useResolvedMessengerQuoteMessage(MESSAGE_UUID, false));
+
+    expect(result.current).toEqual({
+      status: "ready",
+      message: expect.objectContaining({ uuid: MESSAGE_UUID }),
+    });
+    expect(mocked.load).not.toHaveBeenCalled();
+  });
+
+  it("loads a quote that is missing from the active message store", async () => {
+    useWorkspaceMessageStore.getState().clear();
+
+    const { result } = renderHook(() => useResolvedMessengerQuoteMessage(MESSAGE_UUID));
+
+    expect(result.current).toEqual({ status: "loading", message: null });
     await waitFor(() => {
       expect(mocked.load).toHaveBeenCalledWith(
         expect.objectContaining({ messageUuid: MESSAGE_UUID }),

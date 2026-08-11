@@ -20,4 +20,6 @@ export interface WorkspaceMessageBubbleProps {
   resolveMention?: WorkspaceMessageMentionResolver;
   quoteRenderMode?: WorkspaceQuoteRenderMode;
   actions?: WorkspaceMessageListActions;
+  presentationMode?: "message" | "preview";
+  passiveLoadersEnabled?: boolean;
 }

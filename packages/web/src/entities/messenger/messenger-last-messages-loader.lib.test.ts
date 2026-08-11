@@ -11,6 +11,7 @@ import { adaptMessengerBootstrapPayload, adaptMessengerMessage } from "./messeng
 import {
   collectMessengerLastMessageUuids,
   loadMessengerLastMessagesForSidebar,
+  primeMessengerLastMessagesFromCache,
 } from "./messenger-last-messages-loader.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -147,15 +148,18 @@ function createDeferred<T>(): {
 describe("messenger last messages loader", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().setOwner(null, false);
     useWorkspaceMessageStore.getState().clear();
   });
 
   it("collects unique last message uuids from sidebar state", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     seedBootstrap(ownerKey);
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessageBody(adaptMessengerMessage(createMessageDto()));
+    const messageState = useWorkspaceMessageStore.getState();
+    messageState.upsertMessageBodyFromSnapshot(
+      adaptMessengerMessage(createMessageDto()),
+      messageState.messageMutationRevision,
+    );
 
     expect(collectMessengerLastMessageUuids(useMessengerStore.getState())).toEqual([
       MESSAGE_A,
@@ -303,12 +307,15 @@ describe("messenger last messages loader", () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     seedBootstrap(ownerKey);
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessageBody(adaptMessengerMessage(createMessageDto()));
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessageBody(adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })));
+    const messageState = useWorkspaceMessageStore.getState();
+    messageState.upsertMessageBodyFromSnapshot(
+      adaptMessengerMessage(createMessageDto()),
+      messageState.messageMutationRevision,
+    );
+    messageState.upsertMessageBodyFromSnapshot(
+      adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })),
+      messageState.messageMutationRevision,
+    );
     const readMessagesByUuids = vi.fn(() => Promise.resolve([]));
     const getMessagesByUuids = vi.fn(() => Promise.resolve([createMessageDto()]));
 
@@ -397,6 +404,62 @@ describe("messenger last messages loader", () => {
     });
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(getMessagesByUuids).not.toHaveBeenCalled();
+  });
+
+  it("does not prime owner A cache into the message store after it switches to owner B", async () => {
+    const contextA = createRuntimeContext();
+    const contextB = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+    });
+    const ownerA = workspaceRuntimeOwnerKey(contextA);
+    const ownerB = workspaceRuntimeOwnerKey(contextB);
+    const cacheRequest = createDeferred<ReturnType<typeof adaptMessengerMessage>[]>();
+    const payload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
+      topics: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().setOwner(ownerA, false);
+
+    const priming = primeMessengerLastMessagesFromCache({
+      ownerKey: ownerA,
+      payload,
+      cache: { readMessagesByUuids: () => cacheRequest.promise },
+    });
+    useWorkspaceMessageStore.getState().setOwner(ownerB, false);
+    cacheRequest.resolve([adaptMessengerMessage(createMessageDto())]);
+
+    await expect(priming).resolves.toBe(0);
+    expect(useWorkspaceMessageStore.getState().ownerKey).toBe(ownerB);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("does not prime owner A cache after the message store owner becomes null", async () => {
+    const contextA = createRuntimeContext();
+    const ownerA = workspaceRuntimeOwnerKey(contextA);
+    const cacheRequest = createDeferred<ReturnType<typeof adaptMessengerMessage>[]>();
+    const payload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
+      topics: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().setOwner(ownerA, false);
+
+    const priming = primeMessengerLastMessagesFromCache({
+      ownerKey: ownerA,
+      payload,
+      cache: { readMessagesByUuids: () => cacheRequest.promise },
+    });
+    useWorkspaceMessageStore.getState().setOwner(null, false);
+    cacheRequest.resolve([adaptMessengerMessage(createMessageDto())]);
+
+    await expect(priming).resolves.toBe(0);
+    expect(useWorkspaceMessageStore.getState().ownerKey).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
   });
 
   it("falls back to the client when reading the message cache fails", async () => {

@@ -34,23 +34,17 @@ export interface GetMessagesQuery extends MessengerPaginationQuery {
   sortDir?: "asc" | "desc";
 }
 
-export interface GetMessageWindowAroundMessageQuery {
+export interface GetMessagePagesAroundResolvedMessageQuery {
   messageUuid: string;
-  streamUuid?: string;
+  streamUuid: string;
   topicUuid?: string;
   beforeLimit?: number;
   afterLimit?: number;
 }
 
-export interface GetMessageWindowAroundMessageHooks {
-  onAnchor?: (anchor: WorkspaceMessengerMessageDto) => void;
-}
-
-export interface MessengerMessageWindow {
-  anchor: WorkspaceMessengerMessageDto;
+export interface MessengerMessagePagesAroundResolvedMessage {
   before: WorkspaceMessengerMessageDto[];
   after: WorkspaceMessengerMessageDto[];
-  items: WorkspaceMessengerMessageDto[];
   beforePageMarker: string | null;
   afterPageMarker: string | null;
 }
@@ -107,41 +101,6 @@ function rejectUnsupportedAction(action: UnsupportedMessengerApiAction): Promise
   return Promise.reject(new UnsupportedMessengerApiActionError(action));
 }
 
-function dedupeMessagesInOrder(
-  messages: readonly WorkspaceMessengerMessageDto[],
-): WorkspaceMessengerMessageDto[] {
-  const seen = new Set<string>();
-  const deduped: WorkspaceMessengerMessageDto[] = [];
-
-  for (const message of messages) {
-    if (seen.has(message.uuid)) {
-      continue;
-    }
-    seen.add(message.uuid);
-    deduped.push(message);
-  }
-
-  return deduped;
-}
-
-function buildMessageWindow(
-  anchor: WorkspaceMessengerMessageDto,
-  beforeDescPage: MessengerCollectionPage<WorkspaceMessengerMessageDto>,
-  afterAscPage: MessengerCollectionPage<WorkspaceMessengerMessageDto>,
-): MessengerMessageWindow {
-  const before = [...beforeDescPage.items].reverse();
-  const after = afterAscPage.items;
-
-  return {
-    anchor,
-    before,
-    after,
-    items: dedupeMessagesInOrder([...before, anchor, ...after]),
-    beforePageMarker: beforeDescPage.nextPageMarker,
-    afterPageMarker: afterAscPage.nextPageMarker,
-  };
-}
-
 // Message lists are strict because dropping rows would hide real chat history.
 export async function getMessages(
   options: MessengerClientOptions,
@@ -175,57 +134,24 @@ export async function getMessage(
   return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
 }
 
-export async function getMessageWindowAroundMessage(
+export async function getMessagePagesAroundResolvedMessage(
   options: MessengerClientOptions,
-  query: GetMessageWindowAroundMessageQuery,
-  hooks: GetMessageWindowAroundMessageHooks = {},
-): Promise<MessengerMessageWindow> {
+  query: GetMessagePagesAroundResolvedMessageQuery,
+): Promise<MessengerMessagePagesAroundResolvedMessage> {
   const beforeLimit = query.beforeLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
   const afterLimit = query.afterLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
-  const anchorPromise = getMessage(options, query.messageUuid).then((anchor) => {
-    hooks.onAnchor?.(anchor);
-    return anchor;
-  });
-
-  if (query.streamUuid != null && query.topicUuid != null) {
-    const [anchor, beforeDescPage, afterAscPage] = await Promise.all([
-      anchorPromise,
-      getMessagesPage(options, {
-        streamUuid: query.streamUuid,
-        topicUuid: query.topicUuid,
-        pageLimit: beforeLimit,
-        pageMarker: query.messageUuid,
-        sortKey: "created_at",
-        sortDir: "desc",
-      }),
-      getMessagesPage(options, {
-        streamUuid: query.streamUuid,
-        topicUuid: query.topicUuid,
-        pageLimit: afterLimit,
-        pageMarker: query.messageUuid,
-        sortKey: "created_at",
-        sortDir: "asc",
-      }),
-    ]);
-
-    return buildMessageWindow(anchor, beforeDescPage, afterAscPage);
-  }
-
-  const anchor = await anchorPromise;
-  const streamUuid = query.streamUuid ?? anchor.stream_uuid;
-  const topicUuid = query.topicUuid ?? (query.streamUuid == null ? anchor.topic_uuid : undefined);
   const [beforeDescPage, afterAscPage] = await Promise.all([
     getMessagesPage(options, {
-      streamUuid,
-      topicUuid,
+      streamUuid: query.streamUuid,
+      topicUuid: query.topicUuid,
       pageLimit: beforeLimit,
       pageMarker: query.messageUuid,
       sortKey: "created_at",
       sortDir: "desc",
     }),
     getMessagesPage(options, {
-      streamUuid,
-      topicUuid,
+      streamUuid: query.streamUuid,
+      topicUuid: query.topicUuid,
       pageLimit: afterLimit,
       pageMarker: query.messageUuid,
       sortKey: "created_at",
@@ -233,7 +159,12 @@ export async function getMessageWindowAroundMessage(
     }),
   ]);
 
-  return buildMessageWindow(anchor, beforeDescPage, afterAscPage);
+  return {
+    before: [...beforeDescPage.items].reverse(),
+    after: afterAscPage.items,
+    beforePageMarker: beforeDescPage.nextPageMarker,
+    afterPageMarker: afterAscPage.nextPageMarker,
+  };
 }
 
 export async function createMessage(

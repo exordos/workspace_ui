@@ -52,7 +52,10 @@ export interface LoadMessengerQuoteMessageOptions {
   store?: {
     getState: () => Pick<
       ReturnType<typeof useWorkspaceMessageStore.getState>,
-      "messagesById" | "removeMessage" | "upsertMessage"
+      | "messagesById"
+      | "messageMutationRevision"
+      | "removeMessageFromSnapshot"
+      | "upsertMessageBodyFromSnapshot"
     >;
   };
 }
@@ -77,6 +80,7 @@ async function restoreQuoteFallbackFromCache({
   requestContext,
   getRuntimeContext,
   signal,
+  capturedMutationRevision,
 }: {
   ownerKey: string;
   messageUuid: MessengerUuid;
@@ -88,6 +92,7 @@ async function restoreQuoteFallbackFromCache({
   requestContext: QuoteRequestContext;
   getRuntimeContext: WorkspaceRuntimeContextGetter;
   signal?: AbortSignal;
+  capturedMutationRevision: number;
 }): Promise<{ status: "ready"; message: MessengerMessage | null } | { status: "stale" }> {
   let cachedMessages: MessengerMessage[] = [];
   try {
@@ -107,9 +112,12 @@ async function restoreQuoteFallbackFromCache({
       ? applyMessengerReadBoundary(restoredMessage, ownerKey)
       : restoredMessage;
   if (activeMessage == null && message != null) {
-    store.getState().upsertMessage(message);
+    store.getState().upsertMessageBodyFromSnapshot(message, capturedMutationRevision);
   }
-  return { status: "ready", message };
+  return {
+    status: "ready",
+    message: store.getState().messagesById[messageUuid] ?? null,
+  };
 }
 
 async function removeUnavailableQuoteMessage({
@@ -120,6 +128,7 @@ async function removeUnavailableQuoteMessage({
   requestContext,
   getRuntimeContext,
   signal,
+  capturedMutationRevision,
 }: {
   ownerKey: string;
   messageUuid: MessengerUuid;
@@ -132,8 +141,11 @@ async function removeUnavailableQuoteMessage({
   requestContext: QuoteRequestContext;
   getRuntimeContext: WorkspaceRuntimeContextGetter;
   signal?: AbortSignal;
+  capturedMutationRevision: number;
 }): Promise<MessengerQuoteMessageLoadResult> {
-  store.getState().removeMessage(messageUuid);
+  if (!store.getState().removeMessageFromSnapshot(messageUuid, capturedMutationRevision)) {
+    return { status: "stale" };
+  }
   if (isRequestStale(requestContext, getRuntimeContext, signal)) {
     return { status: "stale" };
   }
@@ -164,7 +176,8 @@ async function loadMessengerQuoteMessageUncached({
   const writeMessageBodies = cache?.writeMessageBodies ?? defaultWriteMessengerMessageBodyCache;
   const deleteMessage = cache?.deleteMessage ?? defaultDeleteMessengerCachedMessage;
   const getMessagesByUuids = client?.getMessagesByUuids ?? defaultGetMessagesByUuids;
-  let fallbackMessage = store.getState().messagesById[messageUuid] ?? null;
+  const capturedMutationRevision = store.getState().messageMutationRevision;
+  const fallbackMessage = store.getState().messagesById[messageUuid] ?? null;
 
   if (fallbackMessage == null) {
     const restored = await restoreQuoteFallbackFromCache({
@@ -175,11 +188,11 @@ async function loadMessengerQuoteMessageUncached({
       requestContext,
       getRuntimeContext,
       signal,
+      capturedMutationRevision,
     });
     if (restored.status === "stale") {
       return restored;
     }
-    fallbackMessage = restored.message;
   }
 
   if (isRequestStale(requestContext, getRuntimeContext, signal)) {
@@ -202,30 +215,38 @@ async function loadMessengerQuoteMessageUncached({
         requestContext,
         getRuntimeContext,
         signal,
+        capturedMutationRevision,
       });
     }
 
     const message = applyMessengerReadBoundary(adaptMessengerMessage(dto), ownerKey);
-    store.getState().upsertMessage(message);
+    if (!store.getState().upsertMessageBodyFromSnapshot(message, capturedMutationRevision)) {
+      const currentMessage = store.getState().messagesById[messageUuid] ?? null;
+      return currentMessage == null
+        ? { status: "stale" }
+        : { status: "resolved", message: currentMessage, source: "server" };
+    }
+    const effectiveMessage = store.getState().messagesById[messageUuid] ?? message;
     if (isRequestStale(requestContext, getRuntimeContext, signal)) {
       return { status: "stale" };
     }
     try {
-      await writeMessageBodies(ownerKey, [message]);
+      await writeMessageBodies(ownerKey, [effectiveMessage]);
     } catch {
       // Durable cache writes are best effort after the active store is current.
     }
     if (isRequestStale(requestContext, getRuntimeContext, signal)) {
       return { status: "stale" };
     }
-    return { status: "resolved", message, source: "server" };
+    return { status: "resolved", message: effectiveMessage, source: "server" };
   } catch {
     if (isRequestStale(requestContext, getRuntimeContext, signal)) {
       return { status: "stale" };
     }
-    return fallbackMessage == null
+    const currentMessage = store.getState().messagesById[messageUuid] ?? null;
+    return currentMessage == null
       ? { status: "unavailable" }
-      : { status: "resolved", message: fallbackMessage, source: "cache" };
+      : { status: "resolved", message: currentMessage, source: "cache" };
   }
 }
 

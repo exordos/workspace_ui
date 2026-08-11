@@ -97,6 +97,7 @@ interface WorkspaceMessageListRowProps {
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   actions?: WorkspaceMessageListProps["actions"];
+  passiveLoadersEnabled: boolean;
 }
 
 const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
@@ -113,6 +114,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   resolveMention,
   quoteRenderMode,
   actions,
+  passiveLoadersEnabled,
 }: WorkspaceMessageListRowProps): React.ReactElement {
   const serverMessageUuid = message.kind === "server" ? message.message.uuid : undefined;
   const messageUuid = serverMessageUuid ?? message.key;
@@ -148,6 +150,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         resolveMention={resolveMention}
         quoteRenderMode={quoteRenderMode}
         actions={actions}
+        passiveLoadersEnabled={passiveLoadersEnabled}
       />
       <span
         aria-hidden="true"
@@ -167,6 +170,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   actions?: WorkspaceMessageListProps["actions"];
+  passiveLoadersEnabled: boolean;
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
   selectionMode: boolean;
   usersById: UsersById;
@@ -181,6 +185,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   resolveMention,
   quoteRenderMode,
   actions,
+  passiveLoadersEnabled,
   selectedMessageUuids,
   selectionMode,
   usersById,
@@ -217,6 +222,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       resolveMention={resolveMention}
       quoteRenderMode={quoteRenderMode}
       actions={actions}
+      passiveLoadersEnabled={passiveLoadersEnabled}
     />
   ));
 
@@ -241,7 +247,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
                 size="lg"
                 interactive
                 className="bg-bg-elevated text-accent-soft"
-                avatarUrn={author?.avatarUrl}
+                avatarUrn={passiveLoadersEnabled ? author?.avatarUrl : null}
                 imageLoading="lazy"
               >
                 {displayName.slice(0, 1)}
@@ -273,7 +279,11 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   scrollToBottomAfterSendNonce,
   firstUnreadUuid,
   unreadCount = 0,
-  focusedMessageUuid = null,
+  focusedMessageTarget = null,
+  anchorHandoffPending = false,
+  anchorNavigationActive = false,
+  onFocusedMessageApplied,
+  onFocusedMessageMissing,
   selectionMode = false,
   selectedMessageUuids = EMPTY_SELECTED_MESSAGE_UUIDS,
   isLoadingOlder = false,
@@ -285,6 +295,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   onLoadNewer,
   onLoadLatestWindow,
   onCancelLatestWindowLoad,
+  onTailNavigationRequested,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
   resolveAuthorLabel,
@@ -308,7 +319,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     unreadCount === 0 && firstUnreadUuid == null ? undefined : sessionFirstUnreadUuid;
 
   useEffect(() => {
-    if (!initialPositionReady) {
+    if (anchorHandoffPending || !initialPositionReady) {
       return;
     }
 
@@ -319,7 +330,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
       return { ready: true, anchor: firstUnreadUuid };
     });
-  }, [firstUnreadUuid, initialPositionReady]);
+  }, [anchorHandoffPending, firstUnreadUuid, initialPositionReady]);
 
   const usersById = useUsersStore((state) => state.usersById);
   const effectiveResolveAuthorLabel = useCallback(
@@ -443,9 +454,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     }
   }, []);
   const handleUserScrollInput = useCallback(() => {
+    if (anchorHandoffPending) return;
     tailIntentConversationRef.current = null;
     cancelPendingLatestWindow();
-  }, [cancelPendingLatestWindow]);
+  }, [anchorHandoffPending, cancelPendingLatestWindow]);
   const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
   const isUnreadFromOther = useCallback(
     (message: WorkspaceMessageListItem) =>
@@ -469,7 +481,11 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     scrollToBottomAfterSendNonce,
     firstUnreadKey: firstUnreadUuid,
     unreadCount,
-    focusedMessageKey: focusedMessageUuid,
+    focusedMessageTarget,
+    anchorHandoffPending,
+    anchorNavigationActive,
+    onFocusedMessageApplied,
+    onFocusedMessageMissing,
     isLoadingOlder,
     isLoadingNewer,
     hasOlderMessages,
@@ -482,7 +498,11 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   });
   const requestLatestWindow = useCallback(
     (targetUuid: MessengerUuid): void => {
-      if (pendingLatestWindowRef.current?.targetUuid === targetUuid || onLoadLatestWindow == null) {
+      if (
+        anchorHandoffPending ||
+        pendingLatestWindowRef.current?.targetUuid === targetUuid ||
+        onLoadLatestWindow == null
+      ) {
         return;
       }
 
@@ -501,6 +521,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       }
     },
     [
+      anchorHandoffPending,
       cancelPendingLatestWindow,
       clearCompletedLatestWindow,
       onCancelLatestWindowLoad,
@@ -508,6 +529,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     ],
   );
   const handleScrollToBottom = useCallback(() => {
+    onTailNavigationRequested?.();
     tailIntentConversationRef.current = conversationId;
 
     if (lastMessageUuid != null && !lastMessageIsLoaded) {
@@ -524,9 +546,18 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     lastMessageUuid,
     requestLatestWindow,
     scrollToBottom,
+    onTailNavigationRequested,
   ]);
 
+  const focusedMessageIntentId = focusedMessageTarget?.intentId;
   useLayoutEffect(() => {
+    if (focusedMessageIntentId == null) return;
+    tailIntentConversationRef.current = null;
+    cancelPendingLatestWindow();
+  }, [cancelPendingLatestWindow, focusedMessageIntentId]);
+
+  useLayoutEffect(() => {
+    if (anchorHandoffPending) return;
     if (tailIntentConversationRef.current !== conversationId) {
       return;
     }
@@ -552,6 +583,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
     requestLatestWindow(lastMessageUuid);
   }, [
+    anchorHandoffPending,
     cancelPendingLatestWindow,
     clearCompletedLatestWindow,
     conversationId,
@@ -661,6 +693,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                       resolveMention={resolveMention}
                       quoteRenderMode={presentation?.quoteRenderMode}
                       actions={messageActions}
+                      passiveLoadersEnabled={!anchorHandoffPending}
                       selectedMessageUuids={selectedMessageUuids}
                       selectionMode={selectionMode}
                       usersById={usersById}
@@ -672,7 +705,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
           </section>
         ))}
       </div>
-      {!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages ? (
+      {!anchorHandoffPending && (!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages) ? (
         <FloatingScrollToBottomButton onClick={handleScrollToBottom} unreadCount={unreadCount} />
       ) : null}
     </>

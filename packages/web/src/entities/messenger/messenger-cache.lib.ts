@@ -457,13 +457,19 @@ export async function writeMessengerConversationWindowCache(
   ownerKey: string,
   conversationId: MessengerConversationId,
   page: WorkspaceMessengerConversationMessagePage,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   const parsed = parseMessengerConversationId(conversationId);
   if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
-  await writeConversationMessagePage(ownerKey, conversationId, {
-    ...page,
-    messages: page.messages.filter((message) => keepCachedMessage(ownerKey, message)),
-  });
+  await writeConversationMessagePage(
+    ownerKey,
+    conversationId,
+    {
+      ...page,
+      messages: page.messages.filter((message) => keepCachedMessage(ownerKey, message)),
+    },
+    isWriteCurrent,
+  );
   await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
 }
 

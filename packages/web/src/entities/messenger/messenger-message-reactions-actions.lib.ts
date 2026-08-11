@@ -106,6 +106,7 @@ export interface MessengerMessageReactionBaseOptions {
 
 export interface MessengerVisibleOwnReactionsOptions extends MessengerMessageReactionBaseOptions {
   messageUuids: readonly MessengerUuid[];
+  isRequestCurrent?: () => boolean;
 }
 
 export interface MessengerSingleReactionOptions extends MessengerMessageReactionBaseOptions {
@@ -308,6 +309,9 @@ function applyOwnRowsToStore(
   store.getState().applyOwnMessageReactions(messageUuid, ownReactionProjectionRows(rows));
 }
 
+let nextOwnReactionRevalidationRequestId = 0;
+const latestOwnReactionRevalidationRequestByMessage = new Map<string, number>();
+
 async function resolveOwnRowsFromApiForMessage({
   runtimeContext,
   requestOptions,
@@ -317,6 +321,7 @@ async function resolveOwnRowsFromApiForMessage({
   client,
   cache,
   store,
+  isRequestCurrent,
 }: {
   runtimeContext: WorkspaceRuntimeContext;
   requestOptions: MessengerClientOptions;
@@ -326,6 +331,7 @@ async function resolveOwnRowsFromApiForMessage({
   client: MessengerMessageReactionClientDeps;
   cache: Required<MessengerMessageReactionCacheDeps>;
   store: MessengerMessageReactionStoreApi;
+  isRequestCurrent?: () => boolean;
 }): Promise<MessengerOwnMessageReactionCacheWrite[] | null> {
   // GET запрашивает только реакции текущего пользователя. Ответ авторитетен
   // для одного messageUuid и полностью заменяет cache-проекцию этого сообщения.
@@ -333,7 +339,7 @@ async function resolveOwnRowsFromApiForMessage({
     messageUuid,
     userUuid: runtimeContext.userUuid,
   });
-  if (action.isStale()) return null;
+  if (action.isStale() || isRequestCurrent?.() === false) return null;
 
   const rows = dtoRows
     .filter(
@@ -407,11 +413,12 @@ export async function hydrateMessengerOwnMessageReactionsFromCache({
   cache = defaultReactionCache,
   signal,
   store = useWorkspaceMessageStore,
+  isRequestCurrent,
 }: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
   const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
-  if (action.isStale())
+  if (action.isStale() || isRequestCurrent?.() === false)
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const normalizedUuids = normalizedMessageUuids(messageUuids);
@@ -422,7 +429,7 @@ export async function hydrateMessengerOwnMessageReactionsFromCache({
   const rows = await (
     cache.readOwnMessageReactions ?? defaultReactionCache.readOwnMessageReactions
   )(action.ownerKey, normalizedUuids);
-  if (action.isStale())
+  if (action.isStale() || isRequestCurrent?.() === false)
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const groupedRows = groupOwnReactionRowsByMessage(rows);
@@ -462,6 +469,9 @@ export async function revalidateMessengerOwnMessageReactions({
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   let reactionCount = 0;
   for (const messageUuid of normalizedUuids) {
+    const requestKey = `${action.ownerKey}:${messageUuid}`;
+    const requestId = ++nextOwnReactionRevalidationRequestId;
+    latestOwnReactionRevalidationRequestByMessage.set(requestKey, requestId);
     const rows = await resolveOwnRowsFromApiForMessage({
       runtimeContext,
       requestOptions,
@@ -474,7 +484,12 @@ export async function revalidateMessengerOwnMessageReactions({
         ...cache,
       },
       store,
+      isRequestCurrent: () =>
+        latestOwnReactionRevalidationRequestByMessage.get(requestKey) === requestId,
     });
+    if (latestOwnReactionRevalidationRequestByMessage.get(requestKey) === requestId) {
+      latestOwnReactionRevalidationRequestByMessage.delete(requestKey);
+    }
     if (rows == null) {
       return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
     }
@@ -498,12 +513,13 @@ export async function syncMessengerOwnerOwnMessageReactions({
   signal,
   store = useWorkspaceMessageStore,
   messageUuids,
+  isRequestCurrent,
 }: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
   const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
-  if (action.isStale())
-    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const isStale = (): boolean => action.isStale() || isRequestCurrent?.() === false;
+  if (isStale()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const normalizedUuids = normalizedMessageUuids(messageUuids);
   if (normalizedUuids.length === 0) {
@@ -515,8 +531,7 @@ export async function syncMessengerOwnerOwnMessageReactions({
   const dtoRows = await (client.getMessageReactions ?? defaultGetMessageReactions)(requestOptions, {
     userUuid: runtimeContext.userUuid,
   });
-  if (action.isStale())
-    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (isStale()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const rows = dtoRows
     .filter((dto) => reactionDtoMatchesCurrentUser(dto, runtimeContext))
@@ -525,15 +540,16 @@ export async function syncMessengerOwnerOwnMessageReactions({
   const visibleRows = rows.filter((row) => visibleUuids.has(row.messageUuid));
   const groupedRows = groupOwnReactionRowsByMessage(visibleRows);
 
+  if (isStale()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   try {
     await effectiveCache.replaceOwnMessageReactionsForOwner(action.ownerKey, rows);
   } catch {
     // Cache sync is best-effort; store projection still reflects the server response.
   }
-  if (action.isStale())
-    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (isStale()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   for (const messageUuid of normalizedUuids) {
+    if (isStale()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
     applyOwnRowsToStore(store, messageUuid, groupedRows.get(messageUuid) ?? []);
   }
 

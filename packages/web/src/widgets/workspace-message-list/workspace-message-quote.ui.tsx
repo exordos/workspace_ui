@@ -30,8 +30,9 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   visitedMessageUuids = new Set<string>(),
   resolveMention,
   onOpenMessage,
+  loadEnabled = true,
 }: WorkspaceMessageQuoteProps): React.ReactElement {
-  const resolved = useResolvedMessengerQuoteMessage(reference.messageUuid);
+  const resolved = useResolvedMessengerQuoteMessage(reference.messageUuid, loadEnabled);
   const author = useUsersStore((state) =>
     resolved.message == null ? undefined : state.usersById[resolved.message.authorUuid],
   );
@@ -86,9 +87,10 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
         visitedMessageUuids={nextVisitedMessageUuids}
         resolveMention={resolveMention}
         onOpenMessage={onOpenMessage}
+        loadEnabled={loadEnabled}
       />
     ),
-    [depth, maxDepth, mode, nextVisitedMessageUuids, onOpenMessage, resolveMention],
+    [depth, loadEnabled, maxDepth, mode, nextVisitedMessageUuids, onOpenMessage, resolveMention],
   );
   const openMessage = useCallback(() => {
     onOpenMessage?.(reference.messageUuid);

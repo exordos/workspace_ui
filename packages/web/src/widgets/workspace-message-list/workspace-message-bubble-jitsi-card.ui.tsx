@@ -17,6 +17,7 @@ interface WorkspaceMessageBubbleJitsiCardProps {
   createdAt: string;
   deliveryIndicator?: React.ReactNode;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
+  interactive?: boolean;
 }
 
 const EMPTY_PARTICIPANTS: CallParticipant[] = [];
@@ -50,6 +51,7 @@ export const WorkspaceMessageBubbleJitsiCard = React.memo(function WorkspaceMess
   createdAt,
   deliveryIndicator = null,
   onOpenJitsiCall,
+  interactive = true,
 }: WorkspaceMessageBubbleJitsiCardProps): React.ReactElement {
   const callParticipants = useCallParticipantsStore((state) =>
     jitsiUrl ? (state.participantsByUrl[jitsiUrl] ?? EMPTY_PARTICIPANTS) : EMPTY_PARTICIPANTS,
@@ -90,13 +92,19 @@ export const WorkspaceMessageBubbleJitsiCard = React.memo(function WorkspaceMess
   );
 
   return (
+    // The preview keeps the call card visual without exposing a fake action.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleOpen}
-      onKeyDown={handleKeyDown}
-      className="relative flex cursor-pointer flex-col gap-2 outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-      aria-label={t("call.joinCall")}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? handleOpen : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
+      className={`relative flex flex-col gap-2 ${
+        interactive
+          ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          : ""
+      }`}
+      aria-label={interactive ? t("call.joinCall") : undefined}
       data-workspace-jitsi-card="true"
     >
       <div className="flex items-start justify-between gap-2">

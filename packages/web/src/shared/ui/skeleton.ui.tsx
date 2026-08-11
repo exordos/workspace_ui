@@ -2,12 +2,16 @@ import React from "react";
 
 export interface SkeletonProps {
   className?: string;
+  animated?: boolean;
 }
 
-const BASE_CLASS = "animate-pulse rounded bg-border-subtle/60";
+const BASE_CLASS = "rounded bg-border-subtle/60";
 
-export const Skeleton: React.FC<SkeletonProps> = ({ className = "" }) => (
-  <div className={`${BASE_CLASS} ${className}`.trim()} aria-hidden />
+export const Skeleton: React.FC<SkeletonProps> = ({ className = "", animated = true }) => (
+  <div
+    className={`${BASE_CLASS} ${animated ? "animate-pulse" : ""} ${className}`.trim()}
+    aria-hidden
+  />
 );
 
 export interface SkeletonTextProps {

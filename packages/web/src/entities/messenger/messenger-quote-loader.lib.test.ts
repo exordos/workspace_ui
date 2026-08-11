@@ -63,15 +63,34 @@ function createStore(initialMessages: ReturnType<typeof adaptMessengerMessage>[]
   const upsertMessage = vi.fn((message: ReturnType<typeof adaptMessengerMessage>) => {
     messagesById[message.uuid] = message;
   });
+  const upsertMessageBody = vi.fn((message: ReturnType<typeof adaptMessengerMessage>) => {
+    messagesById[message.uuid] = message;
+  });
+  const upsertMessageBodyFromSnapshot = vi.fn(
+    (message: ReturnType<typeof adaptMessengerMessage>) => {
+      upsertMessageBody(message);
+      return true;
+    },
+  );
   const removeMessage = vi.fn((messageUuid: string) => {
     delete messagesById[messageUuid];
+  });
+  const removeMessageFromSnapshot = vi.fn((messageUuid: string) => {
+    removeMessage(messageUuid);
+    return true;
   });
   return {
     messagesById,
     upsertMessage,
+    upsertMessageBody,
     removeMessage,
     store: {
-      getState: () => ({ messagesById, upsertMessage, removeMessage }),
+      getState: () => ({
+        messagesById,
+        messageMutationRevision: 0,
+        upsertMessageBodyFromSnapshot,
+        removeMessageFromSnapshot,
+      }),
     },
   };
 }
@@ -82,7 +101,7 @@ describe("loadMessengerQuoteMessage", () => {
     const cached = adaptMessengerMessage(messageDto());
     const order: string[] = [];
     const store = createStore();
-    store.upsertMessage.mockImplementation((message) => {
+    store.upsertMessageBody.mockImplementation((message) => {
       order.push("store");
       store.messagesById[message.uuid] = message;
     });
@@ -115,6 +134,35 @@ describe("loadMessengerQuoteMessage", () => {
     );
   });
 
+  it("stores a loaded quote body without adding it to a visible conversation bucket", async () => {
+    const context = runtimeContext();
+    const message = adaptMessengerMessage(messageDto());
+    useWorkspaceMessageStore.getState().clear();
+
+    try {
+      await expect(
+        loadMessengerQuoteMessage({
+          runtimeContext: context,
+          getRuntimeContext: () => context,
+          messageUuid: MESSAGE_UUID,
+          client: { getMessagesByUuids: () => Promise.resolve([messageDto()]) },
+        }),
+      ).resolves.toEqual({ status: "resolved", message, source: "server" });
+
+      const state = useWorkspaceMessageStore.getState();
+      expect(state.messagesById[MESSAGE_UUID]).toEqual(message);
+      expect(
+        state.conversationWindowsById[message.conversationId]?.messageUuids ?? [],
+      ).not.toContain(MESSAGE_UUID);
+      expect(
+        state.conversationWindowsById[conversationIdForStream(message.streamUuid)]?.messageUuids ??
+          [],
+      ).not.toContain(MESSAGE_UUID);
+    } finally {
+      useWorkspaceMessageStore.getState().clear();
+    }
+  });
+
   it("applies the read boundary to cached and refreshed quote messages", async () => {
     const context = runtimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(context);
@@ -142,12 +190,12 @@ describe("loadMessengerQuoteMessage", () => {
         store: store.store,
       });
 
-      expect(store.upsertMessage).toHaveBeenCalledTimes(2);
-      expect(store.upsertMessage).toHaveBeenNthCalledWith(
+      expect(store.upsertMessageBody).toHaveBeenCalledTimes(2);
+      expect(store.upsertMessageBody).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({ read: true }),
       );
-      expect(store.upsertMessage).toHaveBeenNthCalledWith(
+      expect(store.upsertMessageBody).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ read: true }),
       );
@@ -187,7 +235,7 @@ describe("loadMessengerQuoteMessage", () => {
     releaseCache?.([adaptMessengerMessage(messageDto())]);
 
     await expect(loading).resolves.toEqual({ status: "stale" });
-    expect(store.upsertMessage).not.toHaveBeenCalled();
+    expect(store.upsertMessageBody).not.toHaveBeenCalled();
     expect(getMessagesByUuids).not.toHaveBeenCalled();
   });
 
@@ -208,6 +256,39 @@ describe("loadMessengerQuoteMessage", () => {
         store: store.store,
       }),
     ).resolves.toEqual({ status: "unavailable" });
+  });
+
+  it("does not remove a realtime-created body when an older quote request misses", async () => {
+    const context = runtimeContext();
+    const serverResponse = new Promise<WorkspaceMessengerMessageDto[]>((resolve) => {
+      queueMicrotask(() => {
+        useWorkspaceMessageStore
+          .getState()
+          .applyLiveCreatedMessage(
+            adaptMessengerMessage(
+              messageDto({ payload: { kind: "markdown", content: "Realtime" } }),
+            ),
+          );
+        resolve([]);
+      });
+    });
+    useWorkspaceMessageStore.getState().clear();
+
+    await loadMessengerQuoteMessage({
+      runtimeContext: context,
+      getRuntimeContext: () => context,
+      messageUuid: MESSAGE_UUID,
+      cache: {
+        readMessageBodies: () => Promise.resolve([]),
+        writeMessageBodies: vi.fn(),
+        deleteMessage: vi.fn(),
+      },
+      client: { getMessagesByUuids: () => serverResponse },
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload.content).toBe(
+      "Realtime",
+    );
   });
 
   it("refreshes an active-store hit without restoring an older cache value", async () => {
@@ -266,13 +347,13 @@ describe("loadMessengerQuoteMessage", () => {
 
     expect(result).toEqual({ status: "unavailable" });
     expect(readMessageBodies).toHaveBeenCalledOnce();
-    expect(store.upsertMessage).toHaveBeenCalledWith(stale);
+    expect(store.upsertMessageBody).toHaveBeenCalledWith(stale);
     expect(store.removeMessage).toHaveBeenCalledWith(MESSAGE_UUID);
     expect(store.messagesById[MESSAGE_UUID]).toBeUndefined();
     expect(deleteMessage).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(context), MESSAGE_UUID, []);
   });
 
-  it("removes a topic message body and every real store/cache bucket after server miss", async () => {
+  it("removes a topic message body without creating visible membership after a server miss", async () => {
     const context = runtimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(context);
     const stale = adaptMessengerMessage(messageDto());
@@ -282,20 +363,14 @@ describe("loadMessengerQuoteMessage", () => {
         payload: { kind: "markdown", content: "Other message" },
       }),
     );
-    const streamConversationId = conversationIdForStream(stale.streamUuid);
     useWorkspaceMessageStore.getState().clear();
-    useWorkspaceMessageStore.getState().upsertMessage(stale);
-    useWorkspaceMessageStore.getState().upsertMessage(other);
+    const messageState = useWorkspaceMessageStore.getState();
+    messageState.upsertMessageBodyFromSnapshot(stale, messageState.messageMutationRevision);
+    messageState.upsertMessageBodyFromSnapshot(other, messageState.messageMutationRevision);
     await deleteMessengerCachedMessage(ownerKey, MESSAGE_UUID, []);
     await deleteMessengerCachedMessage(ownerKey, OTHER_MESSAGE_UUID, []);
     await writeMessengerMessageBodyCache(ownerKey, [stale, other]);
 
-    expect(
-      useWorkspaceMessageStore.getState().messageIdsByConversationId[stale.conversationId],
-    ).toContain(MESSAGE_UUID);
-    expect(
-      useWorkspaceMessageStore.getState().messageIdsByConversationId[streamConversationId],
-    ).toContain(MESSAGE_UUID);
     expect(await readMessengerMessageBodyCache(ownerKey, [MESSAGE_UUID])).toHaveLength(1);
 
     const result = await loadMessengerQuoteMessage({
@@ -308,12 +383,9 @@ describe("loadMessengerQuoteMessage", () => {
     const state = useWorkspaceMessageStore.getState();
     expect(result).toEqual({ status: "unavailable" });
     expect(state.messagesById[MESSAGE_UUID]).toBeUndefined();
-    expect(state.messageIdsByConversationId[stale.conversationId]).not.toContain(MESSAGE_UUID);
-    expect(state.messageIdsByConversationId[streamConversationId]).not.toContain(MESSAGE_UUID);
     expect(await readMessengerMessageBodyCache(ownerKey, [MESSAGE_UUID])).toEqual([]);
     expect(state.messagesById[OTHER_MESSAGE_UUID]).toEqual(other);
-    expect(state.messageIdsByConversationId[other.conversationId]).toContain(OTHER_MESSAGE_UUID);
-    expect(state.messageIdsByConversationId[streamConversationId]).toContain(OTHER_MESSAGE_UUID);
+    expect(state.conversationWindowsById).toEqual({});
     expect(await readMessengerMessageBodyCache(ownerKey, [OTHER_MESSAGE_UUID])).toEqual([other]);
   });
 
@@ -343,6 +415,51 @@ describe("loadMessengerQuoteMessage", () => {
     expect(store.removeMessage).not.toHaveBeenCalled();
     expect(deleteMessage).not.toHaveBeenCalled();
   });
+
+  it.each(["update", "delete"] as const)(
+    "re-reads the current store after a quote refresh fails following realtime %s",
+    async (mutation) => {
+      const context = runtimeContext();
+      const initial = adaptMessengerMessage(messageDto());
+      useWorkspaceMessageStore.getState().clear();
+      const initialState = useWorkspaceMessageStore.getState();
+      initialState.upsertMessageBodyFromSnapshot(initial, initialState.messageMutationRevision);
+      let rejectServer: (reason: unknown) => void = () => undefined;
+      const serverResponse = new Promise<WorkspaceMessengerMessageDto[]>((_, reject) => {
+        rejectServer = reject;
+      });
+      const loading = loadMessengerQuoteMessage({
+        runtimeContext: context,
+        getRuntimeContext: () => context,
+        messageUuid: MESSAGE_UUID,
+        client: { getMessagesByUuids: () => serverResponse },
+      });
+
+      if (mutation === "update") {
+        useWorkspaceMessageStore
+          .getState()
+          .applyLiveKnownBodyMutation(
+            adaptMessengerMessage(
+              messageDto({ payload: { kind: "markdown", content: "Realtime body" } }),
+            ),
+          );
+      } else {
+        useWorkspaceMessageStore.getState().removeMessage(MESSAGE_UUID);
+      }
+      rejectServer(new Error("refresh failed"));
+      const result = await loading;
+
+      if (mutation === "update") {
+        expect(result).toMatchObject({
+          status: "resolved",
+          message: { payload: { content: "Realtime body" } },
+        });
+      } else {
+        expect(result.status).not.toBe("resolved");
+        expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
+      }
+    },
+  );
 
   it("does not let one caller abort a shared request used by another caller", async () => {
     const context = runtimeContext();

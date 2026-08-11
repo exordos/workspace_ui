@@ -17,6 +17,7 @@ export interface ResolvedMessengerQuoteMessage {
 
 export function useResolvedMessengerQuoteMessage(
   messageUuid: MessengerUuid,
+  enabled = true,
 ): ResolvedMessengerQuoteMessage {
   const message = useWorkspaceMessageStore((state) =>
     selectWorkspaceMessageById(state, messageUuid),
@@ -34,7 +35,7 @@ export function useResolvedMessengerQuoteMessage(
   const [unavailableKey, setUnavailableKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (runtimeContext == null) {
+    if (!enabled || runtimeContext == null || message != null) {
       return;
     }
 
@@ -48,7 +49,7 @@ export function useResolvedMessengerQuoteMessage(
         setUnavailableKey(requestKey);
       }
     });
-  }, [messageUuid, requestKey, runtimeContext]);
+  }, [enabled, message, messageUuid, requestKey, runtimeContext]);
 
   if (message != null) {
     return { status: "ready", message };

@@ -315,7 +315,7 @@ describe("messenger bootstrap store", () => {
     expect(state.streamBindingIdsByStreamId).toEqual({});
     expect(state.topicsById[TOPIC_A]?.name).toBe("Releases");
     expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
-    expect(useWorkspaceMessageStore.getState().messageIdsByConversationId).toEqual({});
+    expect(useWorkspaceMessageStore.getState().conversationWindowsById).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
     expect(useUsersStore.getState().getUser(USER_A)).toEqual(
       expect.objectContaining({
@@ -1211,13 +1211,20 @@ describe("messenger bootstrap store", () => {
     );
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    useWorkspaceMessageStore
-      .getState()
-      .mergeConversationMessagesPage(`topic:${STREAM_A}:${TOPIC_A}`, [
+    const messageStore = useWorkspaceMessageStore.getState();
+    messageStore.replaceConversationWindow({
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      expectedRevision: null,
+      capturedMutationRevision: messageStore.messageMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: [
         messageB,
         messageA,
         { ...messageA, payload: { kind: "markdown", content: "Edited" } },
-      ]);
+      ],
+      markers: { beforePageMarker: null, afterPageMarker: null },
+    });
 
     expect(
       selectWorkspaceMessagesForConversation(
@@ -1247,8 +1254,24 @@ describe("messenger bootstrap store", () => {
     const message = adaptMessengerMessage(createMessageDto());
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    useWorkspaceMessageStore.getState().indexMessageIntoConversationBuckets(message, {
-      includeStreamConversation: true,
+    const messageStore = useWorkspaceMessageStore.getState();
+    messageStore.replaceConversationWindow({
+      conversationId: `stream:${STREAM_A}`,
+      expectedRevision: null,
+      capturedMutationRevision: messageStore.messageMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: [message],
+      markers: { beforePageMarker: null, afterPageMarker: null },
+    });
+    messageStore.replaceConversationWindow({
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      expectedRevision: null,
+      capturedMutationRevision: messageStore.messageMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: [message],
+      markers: { beforePageMarker: null, afterPageMarker: null },
     });
 
     expect(

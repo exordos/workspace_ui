@@ -17,6 +17,8 @@ import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import { applyMessengerMessageWindow } from "./messenger-messages-loader.lib";
 import {
   clearMessengerReadBoundariesForOwner,
   readMessengerReadBoundary,
@@ -262,6 +264,7 @@ describe("messenger realtime active applier", () => {
   beforeEach(() => {
     clearMessengerReadBoundariesForOwner(createContext().ownerKey);
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().setOwner(null, false);
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
   });
@@ -298,6 +301,16 @@ describe("messenger realtime active applier", () => {
         context,
       );
     }
+    const messageState = useWorkspaceMessageStore.getState();
+    messageState.replaceConversationWindow({
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      expectedRevision: null,
+      capturedMutationRevision: messageState.messageMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: [messageState.messagesById[MESSAGE_A]!, messageState.messagesById[MESSAGE_B]!],
+      markers: { beforePageMarker: null, afterPageMarker: null },
+    });
     onMessageCreated.mockClear();
 
     applier.applyEvent(
@@ -618,6 +631,67 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
   });
 
+  it("preserves realtime body and pointers when an older fetched anchor window is applied", async () => {
+    const context = createContext();
+    const runtimeContext = {
+      ...context.owner,
+      organizationOrigin: "https://organization-a.example.com",
+      accessToken: "access-token-a",
+    };
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+
+    const window = {
+      ownerKey: context.ownerKey,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}` as const,
+      anchorUuid: MESSAGE_A,
+      messages: [
+        adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_A })),
+        adaptMessengerMessage(
+          createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, updated_at: DATE_LATER }),
+        ),
+      ],
+      beforePageMarker: "older",
+      afterPageMarker: "newer",
+      expectedWindowRevision: null,
+      capturedMutationRevision: 0,
+    };
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: MESSAGE_C,
+          created_at: DATE_MIDDLE,
+          updated_at: DATE_MIDDLE,
+        }),
+      },
+      context,
+    );
+
+    await expect(
+      applyMessengerMessageWindow({
+        runtimeContext,
+        window,
+        getRuntimeContext: () => runtimeContext,
+        isRequestCurrent: () => true,
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+
+    const messageState = useWorkspaceMessageStore.getState();
+    expect(messageState.messagesById[MESSAGE_C]).toBeDefined();
+    expect(
+      selectWorkspaceMessagesForConversation(messageState, window.conversationId).map(
+        (message) => message.uuid,
+      ),
+    ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_C);
+  });
+
   it("does not move last-message pointers when an older message is edited", () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier();
@@ -763,7 +837,7 @@ describe("messenger realtime active applier", () => {
     );
   });
 
-  it("deduplicates repeated message events by uuid across topic and stream buckets", () => {
+  it("keeps repeated created events outside an unloaded visible window", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
@@ -781,15 +855,15 @@ describe("messenger realtime active applier", () => {
     const messengerState = useMessengerStore.getState();
     const messageState = useWorkspaceMessageStore.getState();
     expect(Object.keys(messageState.messagesById)).toEqual([MESSAGE_A]);
-    expect(messageState.messageIdsByConversationId[`stream:${STREAM_A}`]).toEqual([MESSAGE_A]);
-    expect(messageState.messageIdsByConversationId[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual([
-      MESSAGE_A,
-    ]);
+    expect(selectWorkspaceMessagesForConversation(messageState, `stream:${STREAM_A}`)).toEqual([]);
+    expect(
+      selectWorkspaceMessagesForConversation(messageState, `topic:${STREAM_A}:${TOPIC_A}`),
+    ).toEqual([]);
     expect(messengerState.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_A);
     expect(messengerState.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
   });
 
-  it("indexes an incoming message into the active stream and topic conversation buckets", () => {
+  it("stores an incoming message body without inventing stream or topic membership", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
@@ -806,19 +880,70 @@ describe("messenger realtime active applier", () => {
     );
 
     const state = useWorkspaceMessageStore.getState();
-    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+    expect(state.messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
         uuid: MESSAGE_A,
         payload: { kind: "markdown", content: "Hello, workspace" },
       }),
-    ]);
-    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
-      expect.objectContaining({
-        uuid: MESSAGE_A,
-        payload: { kind: "markdown", content: "Hello, workspace" },
-      }),
-    ]);
+    );
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
+      [],
+    );
   });
+
+  it("does not apply an active owner A event after the message store switches to owner B", () => {
+    const contextA = createContext();
+    const ownerB = workspaceRuntimeOwnerKey(
+      createOwner({ organizationId: "organization-b", projectId: "project-b" }),
+    );
+    useWorkspaceMessageStore.getState().setOwner(ownerB, false);
+    const applier = createMessengerRealtimeActiveApplier({ isOwnerCurrent: () => true });
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto(),
+      },
+      contextA,
+    );
+
+    expect(useWorkspaceMessageStore.getState().ownerKey).toBe(ownerB);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it.each(["message.updated", "message.read"] as const)(
+    "does not patch cache or create a body for unknown realtime %s",
+    (kind) => {
+      const context = createContext();
+      const cache = {
+        patchCachedMessage: vi.fn(),
+        writeConversationMessagePage: vi.fn(),
+        advanceReadBoundary: vi.fn(),
+      };
+      const applier = createMessengerRealtimeActiveApplier({ cache });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      const beforeRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
+
+      applier.applyEvent(
+        {
+          epoch_version: 11,
+          type: "message",
+          kind,
+          message: createMessageDto(),
+        },
+        context,
+      );
+
+      const state = useWorkspaceMessageStore.getState();
+      expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+      expect(state.messageMutationRevision).toBe(beforeRevision + 1);
+      expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+      expect(cache.writeConversationMessagePage).not.toHaveBeenCalled();
+      expect(cache.advanceReadBoundary).toHaveBeenCalledTimes(kind === "message.read" ? 1 : 0);
+    },
+  );
 
   it("emits message created callback with stream context for incoming DM call detection", () => {
     const context = createContext();
@@ -938,7 +1063,7 @@ describe("messenger realtime active applier", () => {
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
-  it("inserts delayed live messages by created time in stream and topic buckets", () => {
+  it("stores delayed live message bodies without extending an unloaded window", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
@@ -981,16 +1106,13 @@ describe("messenger realtime active applier", () => {
     );
 
     const state = useWorkspaceMessageStore.getState();
-    expect(
-      selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`).map(
-        (message) => message.uuid,
-      ),
-    ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
-    expect(
-      selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`).map(
-        (message) => message.uuid,
-      ),
-    ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
+    expect(Object.keys(state.messagesById).sort()).toEqual(
+      [MESSAGE_A, MESSAGE_B, MESSAGE_C].sort(),
+    );
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
+      [],
+    );
   });
 
   it("updates inactive conversation sidebar preview and ordering from a fresh message event", () => {
@@ -1079,14 +1201,15 @@ describe("messenger realtime active applier", () => {
 
     const messengerState = useMessengerStore.getState();
     const messageState = useWorkspaceMessageStore.getState();
-    expect(
-      selectWorkspaceMessagesForConversation(messageState, `topic:${STREAM_B}:${TOPIC_B}`),
-    ).toEqual([
+    expect(messageState.messagesById[MESSAGE_B]).toEqual(
       expect.objectContaining({
         uuid: MESSAGE_B,
         payload: { kind: "markdown", content: "Fresh inactive chat" },
       }),
-    ]);
+    );
+    expect(
+      selectWorkspaceMessagesForConversation(messageState, `topic:${STREAM_B}:${TOPIC_B}`),
+    ).toEqual([]);
     const rows = selectMessengerSidebarStreams(messengerState, {
       organizationId: ORGANIZATION_A,
       projectId: PROJECT_A,
@@ -1104,7 +1227,7 @@ describe("messenger realtime active applier", () => {
     });
   });
 
-  it("updates and deletes bootstrapped messages without changing bucket order", () => {
+  it("updates and deletes known message bodies outside an unloaded window", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
@@ -1146,15 +1269,15 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ payload: { kind: "markdown", content: "Edited first message" } }),
+    );
     expect(
       selectWorkspaceMessagesForConversation(
         useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
-      ).map((message) => [message.uuid, message.payload.content]),
-    ).toEqual([
-      [MESSAGE_A, "Edited first message"],
-      [MESSAGE_B, "Second message"],
-    ]);
+      ),
+    ).toEqual([]);
 
     applier.applyEvent(
       {
@@ -1171,12 +1294,10 @@ describe("messenger realtime active applier", () => {
     );
 
     const state = useWorkspaceMessageStore.getState();
-    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_B }),
-    ]);
-    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_B }),
-    ]);
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
+      [],
+    );
     expect(state.messagesById[MESSAGE_A]).toBeUndefined();
   });
 

@@ -4,6 +4,7 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
+import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
@@ -35,13 +36,18 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   lastMessageUuid: MessengerUuid | null;
   onLoadLatestWindow: (lastMessageUuid: MessengerUuid) => Promise<void>;
   onCancelLatestWindowLoad: (targetMessageUuid: MessengerUuid) => void;
+  onTailNavigationRequested: () => void;
   firstUnreadUuid: MessengerUuid | undefined;
   unreadCount: number;
-  focusedMessageUuid: MessengerUuid | null | undefined;
+  focusedMessageTarget?: WorkspaceMessageAnchorFocusTarget | null;
+  anchorHandoffPending?: boolean;
+  anchorNavigationActive?: boolean;
+  onFocusedMessageApplied?: (target: WorkspaceMessageAnchorFocusTarget) => void;
+  onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
-  onUnreadMessagesVisible: (messageUuids: MessengerUuid[]) => void;
-  onUnreadMessagesAtBottom: (messageUuids: MessengerUuid[]) => void;
+  onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
+  onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
@@ -71,7 +77,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;
   boundaryLoadFailed: boolean;
-  onDismissBoundaryLoadFailed: () => void;
+  onRetryBoundaryLoad: () => void;
   scrollToBottomAfterSendNonce: number;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   resolveTopicLabel?: (topicUuid: MessengerUuid) => string | null | undefined;

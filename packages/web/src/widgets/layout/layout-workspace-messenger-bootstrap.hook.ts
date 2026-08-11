@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
@@ -41,6 +42,17 @@ export function useLayoutWorkspaceMessengerBootstrap(options: {
     [sessions, currentAccountId],
   );
   const clearMessengerStore = useMessengerStore((state) => state.clear);
+  const setWorkspaceMessageOwner = useWorkspaceMessageStore((state) => state.setOwner);
+  const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+
+  useLayoutEffect(() => {
+    const messageState = useWorkspaceMessageStore.getState();
+    const canPreserveWarmWindow =
+      messageState.ownerKey == null &&
+      runtimeOwnerKey != null &&
+      useMessengerStore.getState().ownerKey === runtimeOwnerKey;
+    setWorkspaceMessageOwner(runtimeOwnerKey, canPreserveWarmWindow);
+  }, [runtimeOwnerKey, setWorkspaceMessageOwner]);
 
   useEffect(() => {
     if (!enabled) {

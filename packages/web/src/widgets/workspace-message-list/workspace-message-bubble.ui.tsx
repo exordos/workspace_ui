@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
@@ -45,6 +45,14 @@ const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
   enableCodeCopy: true,
   enableProtectedMedia: true,
   enableAttachments: true,
+  enableGallery: false,
+} as const;
+
+const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
+  ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+  enableCodeCopy: false,
+  enableProtectedMedia: false,
+  enableAttachments: false,
   enableGallery: false,
 } as const;
 
@@ -163,12 +171,14 @@ function resolveReactionUserLabel(userUuid: MessengerUuid, usersById: UsersById)
 interface WorkspaceMessageReactionRowProps {
   message: MessengerMessage;
   usersById: UsersById;
+  passiveLoadersEnabled: boolean;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
 }
 
 const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReactionRow({
   message,
   usersById,
+  passiveLoadersEnabled,
   onToggleMessageReaction,
 }: WorkspaceMessageReactionRowProps): React.ReactElement | null {
   const reactionChips = getWorkspaceReactionChips(message);
@@ -234,7 +244,7 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
                           size="xs"
                           imageLoading="eager"
                           className="!h-5 !w-5 !text-[9px]"
-                          avatarUrn={user?.avatarUrl}
+                          avatarUrn={passiveLoadersEnabled ? user?.avatarUrl : null}
                         >
                           {userLabel.slice(0, 1)}
                         </WorkspaceAvatar>
@@ -251,6 +261,70 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
   );
 });
 
+interface WorkspaceMessageBubbleFooterProps {
+  isJitsiCall: boolean;
+  useInlineMeta: boolean;
+  metaRef: React.RefObject<HTMLSpanElement | null>;
+  time: string;
+  createdAt: string;
+  deliveryIndicator: React.ReactNode;
+  serverMessage: MessengerMessage | null;
+  usersById: UsersById;
+  passiveLoadersEnabled: boolean;
+  onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
+}
+
+function WorkspaceMessageBubbleFooter({
+  isJitsiCall,
+  useInlineMeta,
+  metaRef,
+  time,
+  createdAt,
+  deliveryIndicator,
+  serverMessage,
+  usersById,
+  passiveLoadersEnabled,
+  onToggleMessageReaction,
+}: Readonly<WorkspaceMessageBubbleFooterProps>): React.ReactElement | null {
+  if (isJitsiCall) return null;
+
+  if (useInlineMeta) {
+    return (
+      <WorkspaceMessageBubbleMeta
+        ref={metaRef}
+        time={time}
+        createdAt={createdAt}
+        placement="inline"
+        after={deliveryIndicator}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="mt-1 flex min-w-0 items-end justify-between gap-2"
+      data-workspace-message-reaction-footer="true"
+    >
+      {serverMessage != null ? (
+        <WorkspaceMessageReactionRow
+          message={serverMessage}
+          usersById={usersById}
+          passiveLoadersEnabled={passiveLoadersEnabled}
+          onToggleMessageReaction={onToggleMessageReaction}
+        />
+      ) : (
+        <span className="min-w-0 flex-1" aria-hidden />
+      )}
+      <WorkspaceMessageBubbleMeta
+        time={time}
+        createdAt={createdAt}
+        placement="row"
+        after={deliveryIndicator}
+      />
+    </div>
+  );
+}
+
 export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = React.memo(
   function WorkspaceMessageBubble({
     message,
@@ -265,31 +339,37 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     resolveMention,
     quoteRenderMode,
     actions,
+    presentationMode = "message",
+    passiveLoadersEnabled = true,
   }): React.ReactElement {
+    const isPreview = presentationMode === "preview";
+    const interactiveActions = isPreview ? undefined : actions;
+    const passiveContentEnabled = !isPreview && passiveLoadersEnabled;
     const owner = resolveMessageOwner(message, currentUserUuid);
     const isOwn = owner === "own";
     const serverMessage = message.kind === "server" ? message.message : null;
+    const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
     const displayMessage = serverMessage ?? outgoingMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
     const markdown = serverMessage?.payload.content ?? outgoingMessage?.markdown ?? "";
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
-      () => ({ serverBaseUrl: actions?.jitsiServerBaseUrl }),
-      [actions?.jitsiServerBaseUrl],
+      () => ({ serverBaseUrl: interactiveActions?.jitsiServerBaseUrl }),
+      [interactiveActions?.jitsiServerBaseUrl],
     );
     const jitsiUrl = useMemo(
       () => getJitsiMeetingUrl(markdown, jitsiLinkOptions),
       [jitsiLinkOptions, markdown],
     );
     const isJitsiCall = jitsiUrl != null;
-    const jitsiLocationName = actions?.jitsiLocationName?.trim() ?? "";
+    const jitsiLocationName = interactiveActions?.jitsiLocationName?.trim() ?? "";
     const handleOpenJitsiCall = useMemo(() => {
-      if (jitsiUrl == null || actions?.onOpenJitsiCall == null) return undefined;
+      if (jitsiUrl == null || interactiveActions?.onOpenJitsiCall == null) return undefined;
       return () => {
-        actions.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
+        interactiveActions.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
       };
-    }, [actions, jitsiLocationName, jitsiUrl]);
+    }, [interactiveActions, jitsiLocationName, jitsiUrl]);
     const peerAuthorLabel =
       owner === "peer" && isFirstInGroup
         ? resolvePeerAuthorLabel(
@@ -310,11 +390,13 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const renderedBody = useMemo(() => {
       const document = parseWorkspaceMessageBody(markdown, { resolveMention });
       const segmented = renderWorkspaceMessageBodySegments(document, {
-        ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
+        ...(isPreview
+          ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
+          : WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS),
         // Enable interactive mentions only when the current surface exposes a
         // UUID-only callback. Otherwise keep `@Name` as plain text instead of
         // swapping the action back to the old number-based direct-message/profile path.
-        enableMentions: actions?.onOpenMentionUser != null,
+        enableMentions: interactiveActions?.onOpenMentionUser != null,
       });
       return {
         ...segmented,
@@ -332,7 +414,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           .join("\u0000"),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
-    }, [actions?.onOpenMentionUser, markdown, resolveMention]);
+    }, [interactiveActions?.onOpenMentionUser, isPreview, markdown, resolveMention]);
+    const fileReferences = passiveContentEnabled ? renderedBody.fileReferences : [];
     const {
       menuOpen,
       menuSource,
@@ -346,21 +429,33 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     } = useWorkspaceMessageBodyInteractions({
       bodyRef,
       renderedHtml: renderedBody.html,
-      enableCodeCopy: WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
-      fileReferences: renderedBody.fileReferences,
-      onOpenMentionUser: actions?.onOpenMentionUser,
-      onOpenMessageInChat: actions?.onOpenMessageInChat,
-      onOpenWorkspaceReference: actions?.onOpenWorkspaceReference,
-      onDownloadFile: actions?.onDownloadFile,
-      onOpenWorkspaceMedia: actions?.onOpenWorkspaceMedia,
-      onOpenUnsupportedFilePreview: actions?.onOpenUnsupportedFilePreview,
+      enableCodeCopy: !isPreview && WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
+      fileReferences,
+      onOpenMentionUser: interactiveActions?.onOpenMentionUser,
+      onOpenMessageInChat: interactiveActions?.onOpenMessageInChat,
+      onOpenWorkspaceReference: interactiveActions?.onOpenWorkspaceReference,
+      onDownloadFile: interactiveActions?.onDownloadFile,
+      onOpenWorkspaceMedia: interactiveActions?.onOpenWorkspaceMedia,
+      onOpenUnsupportedFilePreview: interactiveActions?.onOpenUnsupportedFilePreview,
     });
     useWorkspaceMessageFilePreviews({
       bodyRef,
       renderedHtml: renderedBody.html,
-      fileReferences: renderedBody.fileReferences,
-      onLoadWorkspaceFilePreview: actions?.onLoadWorkspaceFilePreview,
+      fileReferences,
+      onLoadWorkspaceFilePreview: passiveContentEnabled
+        ? interactiveActions?.onLoadWorkspaceFilePreview
+        : undefined,
     });
+    useLayoutEffect(() => {
+      if (!isPreview || bodyRef.current == null) return;
+      for (const spoiler of bodyRef.current.querySelectorAll(".spoiler-block, .inline-spoiler")) {
+        spoiler.classList.add("open");
+      }
+      for (const header of bodyRef.current.querySelectorAll(".spoiler-header")) {
+        header.removeAttribute("role");
+        header.removeAttribute("tabindex");
+      }
+    }, [isPreview, renderedBody.structureKey]);
     const preferInlineMeta =
       !isJitsiCall &&
       !(serverMessage != null && hasWorkspaceReactions(serverMessage)) &&
@@ -372,31 +467,55 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       contentKey: renderedBody.structureKey,
     });
     const renderQuote = useCallback(
-      (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode => (
-        <WorkspaceMessageQuote
-          reference={segment.reference}
-          mode={quoteRenderMode}
-          visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
-          resolveMention={resolveMention}
-          onOpenMessage={actions?.onOpenMessageInChat}
-        />
-      ),
-      [actions?.onOpenMessageInChat, quoteRenderMode, resolveMention, serverMessage],
+      (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode =>
+        isPreview ? (
+          <div className="bg-bg/35 my-1 rounded-md border-l-2 border-accent px-2 py-1.5">
+            <span className="block text-xs font-medium text-accent">
+              {segment.reference.fallbackAuthorLabel}
+            </span>
+            {segment.reference.selectedText}
+          </div>
+        ) : (
+          <WorkspaceMessageQuote
+            reference={segment.reference}
+            mode={quoteRenderMode}
+            visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
+            resolveMention={resolveMention}
+            onOpenMessage={interactiveActions?.onOpenMessageInChat}
+            loadEnabled={passiveContentEnabled}
+          />
+        ),
+      [
+        interactiveActions?.onOpenMessageInChat,
+        isPreview,
+        quoteRenderMode,
+        resolveMention,
+        serverMessage,
+        passiveContentEnabled,
+      ],
     );
 
     const containsInteractiveBody =
       isJitsiCall ||
       renderedBody.metadata.hasLinks ||
-      (renderedBody.metadata.hasMentions && actions?.onOpenMentionUser != null) ||
+      (renderedBody.metadata.hasMentions && interactiveActions?.onOpenMentionUser != null) ||
       renderedBody.metadata.hasMedia ||
       renderedBody.metadata.hasAttachments ||
       renderedBody.hasQuoteSegments ||
-      (WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy &&
+      (!isPreview &&
+        WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy &&
         renderedBody.metadata.hasCodeBlocks);
+    const deliveryIndicator =
+      outgoingMessage == null ? null : (
+        <WorkspaceMessageOutgoingDeliveryIndicator
+          message={outgoingMessage}
+          onRetry={interactiveActions?.onRetryOutgoingMessage}
+          onRemove={interactiveActions?.onRemoveOutgoingMessage}
+        />
+      );
 
     return (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className={`group relative ${bubbleClassName}`}
         data-workspace-message-bubble="true"
@@ -404,31 +523,31 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         data-message-owner={owner}
         data-first-in-group={isFirstInGroup ? "true" : "false"}
         data-last-in-group={isLastInGroup ? "true" : "false"}
-        onContextMenu={handleContextMenu}
-        onKeyDown={handleKeyDown}
-        tabIndex={containsInteractiveBody ? undefined : 0}
+        onContextMenu={isPreview ? undefined : handleContextMenu}
+        onKeyDown={isPreview ? undefined : handleKeyDown}
+        tabIndex={isPreview || containsInteractiveBody ? undefined : 0}
       >
-        {serverMessage != null ? (
+        {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu
-            message={serverMessage}
+            message={interactiveServerMessage}
             isOwn={isOwn}
             open={menuOpen}
             source={menuSource}
             contextAnchor={contextMenuAnchor}
             onSourceChange={handleMenuSourceChange}
             onOpenChange={handleMenuOpenChange}
-            onReplyMessage={actions?.onReplyMessage}
-            onAddReplyMessage={actions?.onAddReplyMessage}
-            onForwardMessage={actions?.onForwardMessage}
-            onToggleMessageSelection={actions?.onToggleMessageSelection}
-            onEditMessage={actions?.onEditMessage}
-            onRequestDeleteMessage={actions?.onRequestDeleteMessage}
-            onCopyMessageText={actions?.onCopyMessageText}
-            onToggleMessageReaction={actions?.onToggleMessageReaction}
+            onReplyMessage={interactiveActions?.onReplyMessage}
+            onAddReplyMessage={interactiveActions?.onAddReplyMessage}
+            onForwardMessage={interactiveActions?.onForwardMessage}
+            onToggleMessageSelection={interactiveActions?.onToggleMessageSelection}
+            onEditMessage={interactiveActions?.onEditMessage}
+            onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
+            onCopyMessageText={interactiveActions?.onCopyMessageText}
+            onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
             getSelectedText={getSelectedText}
           />
         ) : null}
-        {selectionMode && serverMessage != null ? (
+        {selectionMode && interactiveServerMessage != null ? (
           <button
             type="button"
             aria-label={t("message.select")}
@@ -438,20 +557,22 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
                 ? "-left-7 border-accent bg-accent text-bg"
                 : "-right-7 border-accent bg-accent text-bg"
             } ${isSelected ? "opacity-100" : "opacity-70"}`}
-            onClick={() => actions?.onToggleMessageSelection?.(serverMessage.uuid)}
+            onClick={() =>
+              interactiveActions?.onToggleMessageSelection?.(interactiveServerMessage.uuid)
+            }
           >
             {isSelected ? "✓" : ""}
           </button>
         ) : null}
         {peerAuthorLabel.length > 0 || normalizedTopicLabel.length > 0 ? (
           <div className="mb-1 flex min-w-0 items-baseline gap-1.5 text-xs font-medium">
-            {peerAuthorLabel.length > 0 && actions?.onOpenAuthorProfile != null ? (
+            {peerAuthorLabel.length > 0 && interactiveActions?.onOpenAuthorProfile != null ? (
               <button
                 type="button"
                 className="min-w-0 truncate rounded-sm text-text-muted transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
                 data-peer-author-label="true"
                 aria-label={t("a11y.openUserProfile", { name: peerAuthorLabel })}
-                onClick={() => actions.onOpenAuthorProfile?.(displayMessage.authorUuid)}
+                onClick={() => interactiveActions.onOpenAuthorProfile?.(displayMessage.authorUuid)}
               >
                 {peerAuthorLabel}
               </button>
@@ -467,7 +588,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
                   label={normalizedTopicLabel}
                   streamUuid={displayMessage.streamUuid}
                   topicUuid={displayMessage.topicUuid}
-                  onOpenWorkspaceReference={actions?.onOpenWorkspaceReference}
+                  onOpenWorkspaceReference={interactiveActions?.onOpenWorkspaceReference}
                 />
               </span>
             ) : null}
@@ -483,16 +604,11 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             isOwn={isOwn}
             time={time}
             createdAt={displayMessage.createdAt}
-            deliveryIndicator={
-              outgoingMessage == null ? null : (
-                <WorkspaceMessageOutgoingDeliveryIndicator
-                  message={outgoingMessage}
-                  onRetry={actions?.onRetryOutgoingMessage}
-                  onRemove={actions?.onRemoveOutgoingMessage}
-                />
-              )
+            deliveryIndicator={deliveryIndicator}
+            onOpenJitsiCall={
+              handleOpenJitsiCall == null ? undefined : interactiveActions?.onOpenJitsiCall
             }
-            onOpenJitsiCall={handleOpenJitsiCall == null ? undefined : actions?.onOpenJitsiCall}
+            interactive={!isPreview}
           />
         ) : (
           <WorkspaceMessageBody
@@ -501,66 +617,22 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
             renderQuote={renderQuote}
             metadata={renderedBody.metadata}
-            onBodyClick={handleBodyClick}
+            onBodyClick={isPreview ? undefined : handleBodyClick}
             useInlineMeta={useInlineMeta}
           />
         )}
-        {!isJitsiCall && useInlineMeta ? (
-          <>
-            {/* This explanatory block is intentionally kept here because the layout
-                depends on it. Inline time sits in the lower-right corner of the
-                bubble. The empty ::after on the last body block keeps the same
-                width, so the last line does not slide under the time label after
-                font-size recalculation or a future delivery indicator. */}
-            <WorkspaceMessageBubbleMeta
-              ref={metaRef}
-              time={time}
-              createdAt={displayMessage.createdAt}
-              placement="inline"
-              after={
-                outgoingMessage == null ? null : (
-                  <WorkspaceMessageOutgoingDeliveryIndicator
-                    message={outgoingMessage}
-                    onRetry={actions?.onRetryOutgoingMessage}
-                    onRemove={actions?.onRemoveOutgoingMessage}
-                  />
-                )
-              }
-            />
-          </>
-        ) : !isJitsiCall ? (
-          <div
-            className="mt-1 flex min-w-0 items-end justify-between gap-2"
-            data-workspace-message-reaction-footer="true"
-          >
-            {serverMessage != null ? (
-              <WorkspaceMessageReactionRow
-                message={serverMessage}
-                usersById={usersById}
-                onToggleMessageReaction={actions?.onToggleMessageReaction}
-              />
-            ) : (
-              <span className="min-w-0 flex-1" aria-hidden />
-            )}
-            {/* This explanatory block is intentionally kept here because the layout
-                depends on it. Row placement keeps reactions and time on the same
-                baseline while the reaction list wraps within the available width. */}
-            <WorkspaceMessageBubbleMeta
-              time={time}
-              createdAt={displayMessage.createdAt}
-              placement="row"
-              after={
-                outgoingMessage == null ? null : (
-                  <WorkspaceMessageOutgoingDeliveryIndicator
-                    message={outgoingMessage}
-                    onRetry={actions?.onRetryOutgoingMessage}
-                    onRemove={actions?.onRemoveOutgoingMessage}
-                  />
-                )
-              }
-            />
-          </div>
-        ) : null}
+        <WorkspaceMessageBubbleFooter
+          isJitsiCall={isJitsiCall}
+          useInlineMeta={useInlineMeta}
+          metaRef={metaRef}
+          time={time}
+          createdAt={displayMessage.createdAt}
+          deliveryIndicator={deliveryIndicator}
+          serverMessage={serverMessage}
+          usersById={usersById}
+          passiveLoadersEnabled={passiveContentEnabled}
+          onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
+        />
       </div>
     );
   },

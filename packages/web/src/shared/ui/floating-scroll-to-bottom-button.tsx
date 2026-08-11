@@ -8,6 +8,7 @@ import { UnreadCountBadge } from "./unread-count-badge";
 interface FloatingScrollToBottomButtonProps {
   onClick: () => void;
   unreadCount?: number;
+  inline?: boolean;
 }
 
 function resolveAriaLabel(unreadCount: number): string {
@@ -21,11 +22,12 @@ function resolveAriaLabel(unreadCount: number): string {
 export const FloatingScrollToBottomButton: React.FC<FloatingScrollToBottomButtonProps> = ({
   onClick,
   unreadCount = 0,
+  inline = false,
 }) => {
   const showBadge = unreadCount > 0;
 
   return (
-    <div className="absolute bottom-4 right-4 z-float">
+    <div className={inline ? "relative z-float" : "absolute bottom-4 right-4 z-float"}>
       <button
         type="button"
         onClick={onClick}

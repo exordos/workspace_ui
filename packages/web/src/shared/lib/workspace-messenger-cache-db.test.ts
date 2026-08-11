@@ -515,6 +515,20 @@ describe("workspace-messenger-cache-db", () => {
     );
   });
 
+  it("checks page write freshness after async reads and before opening the transaction", async () => {
+    await writeConversationMessagePage(
+      OWNER,
+      TOPIC_CONVERSATION,
+      { messages: [message("msg-stale", "2026-07-01T08:01:00.000Z")] },
+      () => false,
+    );
+
+    await expect(readConversationMessageWindow(OWNER, TOPIC_CONVERSATION)).resolves.toEqual({
+      messages: [],
+      window: null,
+    });
+  });
+
   it("patches cached messages and recalculates bucket order when createdAt changes", async () => {
     await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
       messages: [

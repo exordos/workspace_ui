@@ -76,12 +76,12 @@ export interface MessengerMessageActionCacheWriter {
 export interface MessengerMessageActionStoreApi {
   getState: () => Pick<
     ReturnType<typeof useWorkspaceMessageStore.getState>,
-    | "indexMessageIntoConversationBuckets"
-    | "upsertMessage"
-    | "applyMessageEdit"
-    | "markMessageRead"
+    | "applyLiveCreatedMessage"
+    | "applyLiveKnownBodyMutation"
     | "markMessagesReadUpTo"
     | "removeMessage"
+    | "messageMutationRevision"
+    | "messagesById"
   >;
 }
 
@@ -209,7 +209,7 @@ export async function sendMessengerMessage({
   includeStreamConversation = false,
   onBeforeMessageIndexed,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  // Sending creates a markdown payload in the Workspace API and indexes the response into message lists.
+  // Sending creates a markdown payload in the Workspace API and applies it to an active tail window.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -229,9 +229,7 @@ export async function sendMessengerMessage({
 
   const message = adaptMessengerMessage(dto);
   onBeforeMessageIndexed?.(message);
-  store.getState().indexMessageIntoConversationBuckets(message, {
-    includeStreamConversation,
-  });
+  store.getState().applyLiveCreatedMessage(message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   // Cache persistence must not delay the successful send transition in the UI.
   void writeMessagePageCacheBestEffort(
@@ -254,12 +252,14 @@ export async function editMessengerMessage({
   messageUuid,
   markdown,
 }: EditMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  // Only the message payload is edited; the visual list updates from the new messenger store.
+  // Editing refreshes a known message body without changing the active window membership.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const capturedMutationRevision = store.getState().messageMutationRevision;
 
   const dto = await (client.editMessage ?? defaultEditMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
@@ -270,16 +270,17 @@ export async function editMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
-  store.getState().upsertMessage(message);
-  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
-  store.getState().applyMessageEdit(message.uuid, {
-    markdown: message.payload.content,
-    updatedAt: message.updatedAt,
-  });
-  if (cache?.patchCachedMessage != null) {
-    await writeActionCacheBestEffort(() => cache.patchCachedMessage?.(action.ownerKey, message));
+  store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
+  const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
+  if (effectiveMessage != null) {
+    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
   }
-  return { status: "applied", ownerKey: action.ownerKey, message };
+  if (cache?.patchCachedMessage != null && effectiveMessage != null) {
+    await writeActionCacheBestEffort(() =>
+      cache.patchCachedMessage?.(action.ownerKey, effectiveMessage),
+    );
+  }
+  return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
 
 export async function deleteMessengerMessage({
@@ -344,6 +345,8 @@ export async function markMessengerMessageRead({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const capturedMutationRevision = store.getState().messageMutationRevision;
+
   const dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
@@ -359,23 +362,26 @@ export async function markMessengerMessageRead({
     createdAt: message.createdAt,
     messageUuid: message.uuid,
   });
-  store.getState().upsertMessage(message);
-  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
-  store.getState().markMessagesReadUpTo(message.uuid, {
-    conversationIds: conversationIds ?? [
-      message.conversationId,
-      conversationIdForStream(message.streamUuid),
-    ],
-  });
+  store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
+  const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
+  if (effectiveMessage != null) {
+    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+    store.getState().markMessagesReadUpTo(message.uuid, {
+      conversationIds: conversationIds ?? [
+        message.conversationId,
+        conversationIdForStream(message.streamUuid),
+      ],
+    });
+  }
   if (cache?.advanceReadBoundary != null) {
     await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
   }
-  if (cache?.patchCachedMessage != null) {
+  if (cache?.patchCachedMessage != null && effectiveMessage != null) {
     await writeActionCacheBestEffort(() =>
-      cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
+      cache.patchCachedMessage?.(action.ownerKey, { ...effectiveMessage, read: true }),
     );
   }
-  return { status: "applied", ownerKey: action.ownerKey, message };
+  return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
 
 export async function markMessengerMessagesReadUpTo({
@@ -395,6 +401,8 @@ export async function markMessengerMessagesReadUpTo({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const capturedMutationRevision = store.getState().messageMutationRevision;
+
   const dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
@@ -410,17 +418,22 @@ export async function markMessengerMessagesReadUpTo({
     createdAt: message.createdAt,
     messageUuid: message.uuid,
   });
-  store.getState().upsertMessage(message);
-  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
+  const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
+  if (effectiveMessage != null) {
+    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+  }
 
   const scope = conversationIds ?? [
     message.conversationId,
     conversationIdForStream(message.streamUuid),
   ];
-  const changedMessages = store.getState().markMessagesReadUpTo(message.uuid, {
-    conversationIds: scope,
-  });
-  const messagesToCache = new Map<string, MessengerMessage>([[message.uuid, message]]);
+  const changedMessages =
+    effectiveMessage == null
+      ? []
+      : store.getState().markMessagesReadUpTo(message.uuid, { conversationIds: scope });
+  const messagesToCache = new Map<string, MessengerMessage>();
+  if (effectiveMessage != null) messagesToCache.set(message.uuid, effectiveMessage);
   for (const changedMessage of changedMessages) {
     messagesToCache.set(changedMessage.uuid, changedMessage);
   }
@@ -430,9 +443,9 @@ export async function markMessengerMessagesReadUpTo({
   }
 
   if (cache?.markCachedMessagesRead != null) {
-    if (cache.patchCachedMessage != null) {
+    if (cache.patchCachedMessage != null && effectiveMessage != null) {
       await writeActionCacheBestEffort(() =>
-        cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
+        cache.patchCachedMessage?.(action.ownerKey, { ...effectiveMessage, read: true }),
       );
     }
     const messageUuids = [...messagesToCache.keys()].filter(
@@ -451,5 +464,5 @@ export async function markMessengerMessagesReadUpTo({
     }
   }
 
-  return { status: "applied", ownerKey: action.ownerKey, message };
+  return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }

@@ -119,7 +119,8 @@ function createCacheRow(
 
 function indexMessages(...messages: MessengerMessage[]): void {
   for (const message of messages) {
-    useWorkspaceMessageStore.getState().indexMessageIntoConversationBuckets(message);
+    const state = useWorkspaceMessageStore.getState();
+    state.upsertMessageBodyFromSnapshot(message, state.messageMutationRevision);
   }
 }
 
@@ -180,6 +181,34 @@ describe("messenger message reaction actions", () => {
     ).toEqual({ eyes: REACTION_B });
   });
 
+  it.each(["guard", "abort"] as const)(
+    "does not write cached reactions after deferred hydration loses its %s",
+    async (staleKind) => {
+      const runtimeContext = createRuntimeContext();
+      const deferred = createDeferred<ReturnType<typeof createCacheRow>[]>();
+      const controller = new AbortController();
+      let current = true;
+      indexMessages(createMessage());
+      const loading = hydrateMessengerOwnMessageReactionsFromCache({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuids: [MESSAGE_A],
+        signal: controller.signal,
+        isRequestCurrent: () => current,
+        cache: { readOwnMessageReactions: () => deferred.promise },
+      });
+
+      if (staleKind === "abort") controller.abort();
+      else current = false;
+      deferred.resolve([createCacheRow()]);
+
+      await expect(loading).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+      ).toEqual({});
+    },
+  );
+
   it("revalidates own reactions through Workspace API, writes cache, and applies store projection", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
@@ -229,6 +258,42 @@ describe("messenger message reaction actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
       thumbs_up: 1,
     });
+  });
+
+  it("does not let an older revalidation replace the latest result for the same message", async () => {
+    const runtimeContext = createRuntimeContext();
+    indexMessages(createMessage());
+    const first = createDeferred<WorkspaceMessengerMessageReactionDto[]>();
+    const second = createDeferred<WorkspaceMessengerMessageReactionDto[]>();
+    const getMessageReactions = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const cache = { replaceOwnMessageReactionsForMessage: vi.fn(() => Promise.resolve()) };
+
+    const firstRequest = revalidateMessengerOwnMessageReactions({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuids: [MESSAGE_A],
+      client: { getMessageReactions },
+      cache,
+    });
+    const secondRequest = revalidateMessengerOwnMessageReactions({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuids: [MESSAGE_A],
+      client: { getMessageReactions },
+      cache,
+    });
+
+    second.resolve([createReactionDto({ uuid: REACTION_B, emoji_name: "eyes" })]);
+    await secondRequest;
+    first.resolve([createReactionDto()]);
+    await firstRequest;
+
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({ eyes: REACTION_B });
   });
 
   it("syncs visible own reactions through one owner request and replaces owner cache", async () => {

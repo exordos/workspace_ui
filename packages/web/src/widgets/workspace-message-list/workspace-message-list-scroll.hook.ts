@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import { isWindowActive } from "~/shared/lib/visibility";
 import {
   computeWorkspaceScrollTopAfterPrepend,
@@ -39,7 +40,11 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   scrollToBottomAfterSendNonce?: number;
   firstUnreadKey?: string;
   unreadCount?: number;
-  focusedMessageKey?: string | null;
+  focusedMessageTarget?: WorkspaceMessageAnchorFocusTarget | null;
+  anchorHandoffPending?: boolean;
+  anchorNavigationActive?: boolean;
+  onFocusedMessageApplied?: (target: WorkspaceMessageAnchorFocusTarget) => void;
+  onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   isLoadingOlder?: boolean;
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;
@@ -63,6 +68,26 @@ interface WorkspaceMessageListScrollResult {
 
 function scrollToBottom(root: HTMLElement): void {
   root.scrollTop = root.scrollHeight;
+}
+
+function clampWorkspaceScrollTop(root: HTMLElement, scrollTop: number): number {
+  const maximumScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+
+  return Math.min(maximumScrollTop, Math.max(0, scrollTop));
+}
+
+function centerWorkspaceMessageInRoot(root: HTMLElement, target: HTMLElement): void {
+  const rootRect = root.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const rootCenter = rootRect.top + rootRect.height / 2;
+  const targetCenter = targetRect.top + targetRect.height / 2;
+  const nextScrollTop = root.scrollTop + targetCenter - rootCenter;
+
+  root.scrollTop = clampWorkspaceScrollTop(root, nextScrollTop);
+}
+
+function getFocusedMessageTargetKey(target: WorkspaceMessageAnchorFocusTarget): string {
+  return `${target.intentId}:${target.messageUuid}:${target.focusAttempt}`;
 }
 
 function getOrderedKeys<TMessage>(
@@ -106,7 +131,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
   scrollToBottomAfterSendNonce = 0,
   firstUnreadKey,
   unreadCount = 0,
-  focusedMessageKey = null,
+  focusedMessageTarget = null,
+  anchorHandoffPending = false,
+  anchorNavigationActive = false,
+  onFocusedMessageApplied,
+  onFocusedMessageMissing,
   isLoadingOlder = false,
   isLoadingNewer = false,
   hasOlderMessages = false,
@@ -117,6 +146,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: WorkspaceMessageListScrollOptions<TMessage>): WorkspaceMessageListScrollResult {
+  const focusedMessageKey = focusedMessageTarget?.messageUuid ?? null;
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
   const pendingSameMessagesScrollAnchorRef = useRef<PendingSameMessagesScrollAnchor | null>(null);
@@ -124,9 +154,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const userScrollSeenRef = useRef(false);
   const userScrolledAwayFromBottomRef = useRef(false);
   const programmaticScrollRef = useRef(false);
+  const programmaticScrollGenerationRef = useRef(0);
   const topPaginationArmedRef = useRef(true);
   const previousFirstMessageKeyForTopPaginationRef = useRef<string | undefined>(undefined);
   const initialPositionAppliedKeyRef = useRef<string | null>(null);
+  const reportedFocusedAnchorKeyRef = useRef<string | null>(null);
   const unreadDividerDismissedRef = useRef(false);
   const lastScrollTopRef = useRef<number | null>(null);
   const bottomUnreadDispatchKeyRef = useRef<string | null>(null);
@@ -134,6 +166,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const viewportUnreadKeysRef = useRef<Set<string>>(new Set());
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
   const clearAnchorHighlightRef = useRef<(() => void) | null>(null);
+  const focusConfirmationGenerationRef = useRef(0);
+  const focusConfirmationFrameRef = useRef<number | null>(null);
+  const pendingFocusedMessageTargetKeyRef = useRef<string | null>(null);
+  const focusedMessageTargetKeyRef = useRef<string | null>(null);
+  const anchorHandoffPendingRef = useRef(anchorHandoffPending);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isUnreadDividerDismissed, setIsUnreadDividerDismissed] = useState(false);
   const isInitialPositionApplied = useCallback(
@@ -146,6 +183,8 @@ export function useWorkspaceMessageListScroll<TMessage>({
     [messages, getMessageKey],
   );
   const messageKeysKey = useMemo(() => messageKeys.join("\u0001"), [messageKeys]);
+  const focusedMessageTargetKey =
+    focusedMessageTarget == null ? null : getFocusedMessageTargetKey(focusedMessageTarget);
   const messageCount = messageKeys.length;
   const firstMessageKey = messageKeys[0];
   const lastMessageKey = messageKeys[messageKeys.length - 1];
@@ -180,12 +219,16 @@ export function useWorkspaceMessageListScroll<TMessage>({
   }, []);
 
   const runProgrammaticScroll = useCallback((scrollAction: () => void) => {
+    const generation = programmaticScrollGenerationRef.current + 1;
+    programmaticScrollGenerationRef.current = generation;
     programmaticScrollRef.current = true;
     scrollAction();
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        programmaticScrollRef.current = false;
+        if (programmaticScrollGenerationRef.current === generation) {
+          programmaticScrollRef.current = false;
+        }
       });
     });
   }, []);
@@ -331,6 +374,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   );
 
   useEffect(() => {
+    if (anchorHandoffPending) return;
     const dispatchVisibleUnreadAfterFocus = (): void => {
       if (!isWindowActive() || !isInitialPositionApplied()) {
         return;
@@ -357,6 +401,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       document.removeEventListener("visibilitychange", dispatchVisibleUnreadAfterFocus);
     };
   }, [
+    anchorHandoffPending,
     isInitialPositionApplied,
     onUnreadMessagesVisible,
     sortKeysByMessageOrder,
@@ -364,9 +409,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
   ]);
 
   useEffect(() => {
+    if (anchorHandoffPending) return;
     viewportUnreadKeysRef.current.clear();
     bottomUnreadDispatchKeyRef.current = null;
-  }, [unreadCandidateKeys]);
+  }, [anchorHandoffPending, unreadCandidateKeys]);
 
   useLayoutEffect(() => {
     viewportUnreadKeysRef.current.clear();
@@ -374,7 +420,6 @@ export function useWorkspaceMessageListScroll<TMessage>({
     userScrollSeenRef.current = false;
     wasAtBottomRef.current = true;
     userScrolledAwayFromBottomRef.current = false;
-    programmaticScrollRef.current = false;
     pendingPrependScrollRef.current = null;
     pendingSameMessagesScrollAnchorRef.current = null;
     topPaginationArmedRef.current = true;
@@ -385,6 +430,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   }, [focusedMessageKey, scrollToBottomKey]);
 
   useEffect(() => {
+    if (anchorHandoffPending) return;
     const previousFirstMessageKey = previousFirstMessageKeyForTopPaginationRef.current;
 
     if (previousFirstMessageKey !== undefined && previousFirstMessageKey !== firstMessageKey) {
@@ -392,9 +438,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
     }
 
     previousFirstMessageKeyForTopPaginationRef.current = firstMessageKey;
-  }, [firstMessageKey]);
+  }, [anchorHandoffPending, firstMessageKey]);
 
   useLayoutEffect(() => {
+    if (anchorHandoffPending) return;
     const pending = pendingSameMessagesScrollAnchorRef.current;
     pendingSameMessagesScrollAnchorRef.current = null;
 
@@ -433,9 +480,17 @@ export function useWorkspaceMessageListScroll<TMessage>({
               wasAtBottom: wasAtBottomRef.current,
             };
     };
-  }, [messageKeysKey, messages, runProgrammaticScroll, scrollToBottomKey, syncAtBottomFromElement]);
+  }, [
+    anchorHandoffPending,
+    messageKeysKey,
+    messages,
+    runProgrammaticScroll,
+    scrollToBottomKey,
+    syncAtBottomFromElement,
+  ]);
 
   useLayoutEffect(() => {
+    if (anchorHandoffPending) return;
     if (scrollToBottomAfterSendNonce === 0 || !isInitialPositionApplied()) {
       return;
     }
@@ -452,31 +507,155 @@ export function useWorkspaceMessageListScroll<TMessage>({
     pinTailToBottom(root);
     dispatchUnreadAtBottom();
   }, [
+    anchorHandoffPending,
     dispatchUnreadAtBottom,
     isInitialPositionApplied,
     pinTailToBottom,
     scrollToBottomAfterSendNonce,
   ]);
 
+  useLayoutEffect(() => {
+    focusedMessageTargetKeyRef.current = focusedMessageTargetKey;
+    anchorHandoffPendingRef.current = anchorHandoffPending;
+    focusConfirmationGenerationRef.current += 1;
+
+    if (pendingFocusedMessageTargetKeyRef.current !== focusedMessageTargetKey) {
+      pendingFocusedMessageTargetKeyRef.current = null;
+    }
+
+    if (focusConfirmationFrameRef.current != null) {
+      cancelAnimationFrame(focusConfirmationFrameRef.current);
+      focusConfirmationFrameRef.current = null;
+    }
+
+    return () => {
+      focusConfirmationGenerationRef.current += 1;
+
+      if (focusConfirmationFrameRef.current != null) {
+        cancelAnimationFrame(focusConfirmationFrameRef.current);
+        focusConfirmationFrameRef.current = null;
+      }
+    };
+  }, [anchorHandoffPending, focusedMessageTargetKey]);
+
+  const reportFocusedMessageMissing = useCallback(
+    (target: WorkspaceMessageAnchorFocusTarget): void => {
+      const focusAnchorKey = getFocusedMessageTargetKey(target);
+
+      if (reportedFocusedAnchorKeyRef.current === focusAnchorKey) {
+        return;
+      }
+
+      reportedFocusedAnchorKeyRef.current = focusAnchorKey;
+      onFocusedMessageMissing?.(target);
+    },
+    [onFocusedMessageMissing],
+  );
+
+  const finishFocusedMessagePosition = useCallback(
+    (
+      target: HTMLElement,
+      focusTarget: WorkspaceMessageAnchorFocusTarget,
+      initialPositionKey: string,
+    ): void => {
+      const focusAnchorKey = getFocusedMessageTargetKey(focusTarget);
+
+      clearAnchorHighlightRef.current?.();
+      clearAnchorHighlightRef.current = highlightWorkspaceMessageAnchor(target);
+      initialPositionAppliedKeyRef.current = initialPositionKey;
+      reportedFocusedAnchorKeyRef.current = focusAnchorKey;
+      onFocusedMessageApplied?.(focusTarget);
+    },
+    [onFocusedMessageApplied],
+  );
+
   const applyInitialPosition = useCallback(
     (root: HTMLElement, initialPositionKey: string): void => {
       if (!initialPositionReady) return;
 
-      if (messageCount === 0) {
-        initialPositionAppliedKeyRef.current = initialPositionKey;
+      if (focusedMessageKey != null && focusedMessageTarget != null) {
+        const target = findWorkspaceMessageNode(root, focusedMessageKey);
+        const focusAnchorKey = getFocusedMessageTargetKey(focusedMessageTarget);
+        if (target == null || typeof target.scrollIntoView !== "function") {
+          reportFocusedMessageMissing(focusedMessageTarget);
+          return;
+        }
+        if (reportedFocusedAnchorKeyRef.current === focusAnchorKey) {
+          clearAnchorHighlightRef.current?.();
+          clearAnchorHighlightRef.current = highlightWorkspaceMessageAnchor(target);
+          initialPositionAppliedKeyRef.current = initialPositionKey;
+          return;
+        }
+
+        const hasPendingPositionForTarget =
+          pendingFocusedMessageTargetKeyRef.current === focusAnchorKey;
+
+        if (!hasPendingPositionForTarget) {
+          runProgrammaticScroll(() => {
+            target.scrollIntoView({ block: "center", behavior: "instant" });
+            centerWorkspaceMessageInRoot(root, target);
+            syncAtBottomFromElement(root);
+          });
+          pendingFocusedMessageTargetKeyRef.current = focusAnchorKey;
+        }
+
+        if (!anchorHandoffPending) {
+          finishFocusedMessagePosition(target, focusedMessageTarget, initialPositionKey);
+          return;
+        }
+
+        if (focusConfirmationFrameRef.current != null) {
+          return;
+        }
+
+        const confirmationGeneration = focusConfirmationGenerationRef.current;
+        const confirmFocusedMessagePosition = (): void => {
+          if (
+            focusConfirmationGenerationRef.current !== confirmationGeneration ||
+            focusedMessageTargetKeyRef.current !== focusAnchorKey ||
+            !anchorHandoffPendingRef.current
+          ) {
+            return;
+          }
+
+          const currentRoot = scrollContainerRef.current;
+          const currentTarget =
+            currentRoot == null
+              ? null
+              : findWorkspaceMessageNode(currentRoot, focusedMessageTarget.messageUuid);
+
+          if (
+            currentRoot == null ||
+            currentTarget == null ||
+            typeof currentTarget.scrollIntoView !== "function"
+          ) {
+            reportFocusedMessageMissing(focusedMessageTarget);
+            return;
+          }
+
+          runProgrammaticScroll(() => {
+            centerWorkspaceMessageInRoot(currentRoot, currentTarget);
+            syncAtBottomFromElement(currentRoot);
+          });
+          focusConfirmationFrameRef.current = null;
+          finishFocusedMessagePosition(currentTarget, focusedMessageTarget, initialPositionKey);
+        };
+
+        focusConfirmationFrameRef.current = requestAnimationFrame(() => {
+          if (
+            focusConfirmationGenerationRef.current !== confirmationGeneration ||
+            focusedMessageTargetKeyRef.current !== focusAnchorKey ||
+            !anchorHandoffPendingRef.current
+          ) {
+            return;
+          }
+
+          focusConfirmationFrameRef.current = requestAnimationFrame(confirmFocusedMessagePosition);
+        });
         return;
       }
 
-      if (focusedMessageKey != null) {
-        const target = findWorkspaceMessageNode(root, focusedMessageKey);
-        if (target == null || typeof target.scrollIntoView !== "function") return;
-
-        runProgrammaticScroll(() => {
-          target.scrollIntoView({ block: "center", behavior: "instant" });
-          syncAtBottomFromElement(root);
-        });
-        clearAnchorHighlightRef.current?.();
-        clearAnchorHighlightRef.current = highlightWorkspaceMessageAnchor(target);
+      if (messageCount === 0) {
         initialPositionAppliedKeyRef.current = initialPositionKey;
         return;
       }
@@ -500,9 +679,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
     [
       firstUnreadKey,
       focusedMessageKey,
+      focusedMessageTarget,
+      anchorHandoffPending,
+      finishFocusedMessagePosition,
       initialPositionReady,
       messageCount,
       pinTailToBottom,
+      reportFocusedMessageMissing,
       runProgrammaticScroll,
       syncAtBottomFromElement,
       unreadCount,
@@ -516,6 +699,9 @@ export function useWorkspaceMessageListScroll<TMessage>({
     };
   }, []);
   useLayoutEffect(() => {
+    if (anchorNavigationActive && focusedMessageTarget == null) {
+      return;
+    }
     const root = scrollContainerRef.current;
 
     if (root == null) {
@@ -547,8 +733,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
     syncAtBottomFromElement(root);
   }, [
+    anchorNavigationActive,
     applyInitialPosition,
     focusedMessageKey,
+    focusedMessageTarget,
     lastMessageKey,
     messageCount,
     pinTailToBottom,
@@ -557,6 +745,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   ]);
 
   useLayoutEffect(() => {
+    if (anchorHandoffPending) return;
     const pending = pendingPrependScrollRef.current;
 
     if (pending == null) {
@@ -604,6 +793,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     });
     pendingPrependScrollRef.current = null;
   }, [
+    anchorHandoffPending,
     firstMessageKey,
     isLoadingOlder,
     messageCount,
@@ -612,6 +802,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   ]);
 
   useLayoutEffect(() => {
+    if (anchorHandoffPending) return;
     if (typeof ResizeObserver === "undefined") {
       return;
     }
@@ -649,9 +840,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
     return () => {
       observer.disconnect();
     };
-  }, [isInitialPositionApplied, pinTailToBottom, syncAtBottomFromElement]);
+  }, [anchorHandoffPending, isInitialPositionApplied, pinTailToBottom, syncAtBottomFromElement]);
 
   useEffect(() => {
+    if (anchorHandoffPending) return;
     if (typeof IntersectionObserver === "undefined") {
       return;
     }
@@ -723,6 +915,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       }
     };
   }, [
+    anchorHandoffPending,
     dispatchUnreadAtBottom,
     isInitialPositionApplied,
     processIntersectionEntries,
@@ -730,6 +923,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   ]);
 
   useEffect(() => {
+    if (anchorHandoffPending) return;
     const root = scrollContainerRef.current;
 
     if (root == null) {
@@ -741,10 +935,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
     if (atBottom) {
       dispatchUnreadAtBottom();
     }
-  }, [dispatchUnreadAtBottom, messageCount, syncAtBottomFromElement]);
+  }, [anchorHandoffPending, dispatchUnreadAtBottom, messageCount, syncAtBottomFromElement]);
 
   const handleScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
+      if (anchorHandoffPending) return;
       const root = scrollContainerRef.current;
 
       if (root == null) {
@@ -814,6 +1009,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       }
     },
     [
+      anchorHandoffPending,
       capturePrependScrollSnapshot,
       dispatchUnreadAtBottom,
       hasNewerMessages,
@@ -830,6 +1026,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
+      if (anchorHandoffPending) return;
       onUserScrollInput?.();
       userScrollSeenRef.current = true;
 
@@ -854,10 +1051,16 @@ export function useWorkspaceMessageListScroll<TMessage>({
       const atBottom = syncAtBottomFromElement(root);
       userScrolledAwayFromBottomRef.current = !atBottom;
     },
-    [dismissUnreadDividerIfPassed, onUserScrollInput, syncAtBottomFromElement],
+    [
+      anchorHandoffPending,
+      dismissUnreadDividerIfPassed,
+      onUserScrollInput,
+      syncAtBottomFromElement,
+    ],
   );
 
   const handleTouchMove = useCallback(() => {
+    if (anchorHandoffPending) return;
     onUserScrollInput?.();
     userScrollSeenRef.current = true;
 
@@ -865,9 +1068,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
     if (root != null) {
       lastScrollTopRef.current = root.scrollTop;
     }
-  }, [onUserScrollInput]);
+  }, [anchorHandoffPending, onUserScrollInput]);
 
   const handleScrollToBottom = useCallback(() => {
+    if (anchorHandoffPending) return;
     const root = scrollContainerRef.current;
     if (root == null) {
       return;
@@ -878,7 +1082,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     bottomUnreadDispatchKeyRef.current = null;
     pinTailToBottom(root);
     dispatchUnreadAtBottom();
-  }, [dispatchUnreadAtBottom, pinTailToBottom]);
+  }, [anchorHandoffPending, dispatchUnreadAtBottom, pinTailToBottom]);
 
   return {
     scrollContainerRef,

@@ -345,6 +345,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
     const abortController = new AbortController();
     const ownerKey = workspaceRuntimeOwnerKey(loadRuntimeContext);
     const runtimeGeneration = loadRuntimeContext.runtimeGeneration;
+    const capturedMutationRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
 
     async function loadMissingMessages() {
       try {
@@ -359,7 +360,9 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
         }
         const messages = dtos.map(adaptMessengerMessage);
         for (const message of messages) {
-          useWorkspaceMessageStore.getState().upsertMessage(message);
+          useWorkspaceMessageStore
+            .getState()
+            .upsertMessageBodyFromSnapshot(message, capturedMutationRevision);
         }
       } catch (loadError) {
         if (abortController.signal.aborted || !isRuntimeStillCurrent(ownerKey, runtimeGeneration)) {

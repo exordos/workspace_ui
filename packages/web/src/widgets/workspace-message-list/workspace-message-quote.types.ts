@@ -17,4 +17,5 @@ export interface WorkspaceMessageQuoteProps {
   visitedMessageUuids?: ReadonlySet<MessengerUuid>;
   resolveMention?: WorkspaceMessageMentionResolver;
   onOpenMessage?: (messageUuid: MessengerUuid) => void;
+  loadEnabled?: boolean;
 }

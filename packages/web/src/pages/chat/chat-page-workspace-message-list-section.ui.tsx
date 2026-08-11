@@ -28,9 +28,14 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     lastMessageUuid,
     onLoadLatestWindow,
     onCancelLatestWindowLoad,
+    onTailNavigationRequested,
     firstUnreadUuid,
     unreadCount,
-    focusedMessageUuid,
+    focusedMessageTarget,
+    anchorHandoffPending = false,
+    anchorNavigationActive = false,
+    onFocusedMessageApplied,
+    onFocusedMessageMissing,
     selectionMode,
     selectedMessageUuids,
     onUnreadMessagesVisible,
@@ -58,7 +63,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     messagesLoadError,
     onRetryMessagesLoad,
     boundaryLoadFailed,
-    onDismissBoundaryLoadFailed,
+    onRetryBoundaryLoad,
     scrollToBottomAfterSendNonce,
     resolveAuthorLabel,
     resolveTopicLabel,
@@ -69,9 +74,9 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
       onRetryMessagesLoad();
     }, [onRetryMessagesLoad]);
 
-    const handleDismissBoundary = useCallback(() => {
-      onDismissBoundaryLoadFailed();
-    }, [onDismissBoundaryLoadFailed]);
+    const handleRetryBoundary = useCallback(() => {
+      onRetryBoundaryLoad();
+    }, [onRetryBoundaryLoad]);
 
     const showBlockingLoader = messagesLoading && !hasInitialPayload;
     const showLoadingOverlay =
@@ -156,7 +161,10 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     return (
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {showRefreshLoadError ? (
-          <div className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base">
+          <div
+            className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base"
+            role="alert"
+          >
             <span className="min-w-0 flex-1">{t("chat.messagesRefreshError")}</span>
             <button
               type="button"
@@ -168,14 +176,17 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           </div>
         ) : null}
         {boundaryLoadFailed ? (
-          <div className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base">
+          <div
+            className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base"
+            role="alert"
+          >
             <span className="min-w-0 flex-1">{t("chat.boundaryPaginationError")}</span>
             <button
               type="button"
-              onClick={handleDismissBoundary}
+              onClick={handleRetryBoundary}
               className="shrink-0 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-text-primary"
             >
-              {t("common.cancel")}
+              {t("chat.retryLoadMessages")}
             </button>
           </div>
         ) : null}
@@ -184,38 +195,53 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           label={t("chat.loadingMessages")}
           position="top-left"
         />
-        <WorkspaceMessageList
-          key={conversationId}
-          messages={messages}
-          outgoingMessages={outgoingMessages}
-          resolveServerMessageRenderKey={resolveServerMessageRenderKey}
-          currentUserUuid={currentUserUuid}
-          conversationId={conversationId}
-          initialPositionReady={initialPositionReady}
-          scrollToBottomKey={scrollToBottomKey}
-          scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
-          firstUnreadUuid={firstUnreadUuid}
-          unreadCount={unreadCount}
-          focusedMessageUuid={focusedMessageUuid}
-          selectionMode={selectionMode}
-          selectedMessageUuids={selectedMessageUuids}
-          isLoadingOlder={isLoadingOlder}
-          isLoadingNewer={isLoadingNewer}
-          hasOlderMessages={hasOlderMessages}
-          hasNewerMessages={hasNewerMessages}
-          lastMessageUuid={lastMessageUuid}
-          onLoadLatestWindow={onLoadLatestWindow}
-          onCancelLatestWindowLoad={onCancelLatestWindowLoad}
-          onLoadOlder={onLoadOlder}
-          onLoadNewer={onLoadNewer}
-          onUnreadMessagesVisible={onUnreadMessagesVisible}
-          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
-          resolveAuthorLabel={resolveAuthorLabel}
-          resolveTopicLabel={resolveTopicLabel}
-          presentation={presentation}
-          resolveMention={resolveMention}
-          actions={messageActions}
-        />
+        <div
+          className={`flex min-h-0 flex-1 flex-col ${
+            anchorHandoffPending ? "pointer-events-none invisible" : ""
+          }`}
+          aria-hidden={anchorHandoffPending ? true : undefined}
+          inert={anchorHandoffPending}
+          data-message-anchor-list-layer="true"
+          data-message-anchor-list-hidden={anchorHandoffPending ? "true" : "false"}
+        >
+          <WorkspaceMessageList
+            key={conversationId}
+            messages={messages}
+            outgoingMessages={outgoingMessages}
+            resolveServerMessageRenderKey={resolveServerMessageRenderKey}
+            currentUserUuid={currentUserUuid}
+            conversationId={conversationId}
+            initialPositionReady={initialPositionReady}
+            scrollToBottomKey={scrollToBottomKey}
+            scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
+            firstUnreadUuid={firstUnreadUuid}
+            unreadCount={unreadCount}
+            focusedMessageTarget={focusedMessageTarget}
+            anchorHandoffPending={anchorHandoffPending}
+            anchorNavigationActive={anchorNavigationActive}
+            onFocusedMessageApplied={onFocusedMessageApplied}
+            onFocusedMessageMissing={onFocusedMessageMissing}
+            selectionMode={selectionMode}
+            selectedMessageUuids={selectedMessageUuids}
+            isLoadingOlder={isLoadingOlder}
+            isLoadingNewer={isLoadingNewer}
+            hasOlderMessages={hasOlderMessages}
+            hasNewerMessages={hasNewerMessages}
+            lastMessageUuid={lastMessageUuid}
+            onLoadLatestWindow={onLoadLatestWindow}
+            onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+            onTailNavigationRequested={onTailNavigationRequested}
+            onLoadOlder={onLoadOlder}
+            onLoadNewer={onLoadNewer}
+            onUnreadMessagesVisible={onUnreadMessagesVisible}
+            onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+            resolveAuthorLabel={resolveAuthorLabel}
+            resolveTopicLabel={resolveTopicLabel}
+            presentation={presentation}
+            resolveMention={resolveMention}
+            actions={messageActions}
+          />
+        </div>
       </div>
     );
   },

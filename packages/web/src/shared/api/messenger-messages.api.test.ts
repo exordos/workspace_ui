@@ -10,7 +10,7 @@ import {
   getLinkPreviewUnsupported,
   getMessage,
   getMessageReactions,
-  getMessageWindowAroundMessage,
+  getMessagePagesAroundResolvedMessage,
   getMessages,
   getMessagesPage,
   markConversationReadUnsupported,
@@ -105,23 +105,6 @@ function messageWithUuid(uuid: string, createdAt: string) {
   };
 }
 
-function deferredResponse() {
-  let resolveResponse: ((response: Response) => void) | null = null;
-  const promise = new Promise<Response>((resolvePromise) => {
-    resolveResponse = resolvePromise;
-  });
-
-  return {
-    promise,
-    resolve: (response: Response) => {
-      if (resolveResponse == null) {
-        throw new Error("Deferred response resolver is not initialized");
-      }
-      resolveResponse(response);
-    },
-  };
-}
-
 function parsedFetchUrl(input: Parameters<typeof fetch>[0]) {
   if (typeof input === "string" || input instanceof URL) {
     return new URL(input, "http://workspace.test");
@@ -187,7 +170,7 @@ describe("messenger messages API", () => {
     );
   });
 
-  it("loads message window in parallel when stream and topic are provided", async () => {
+  it("loads message pages in parallel around a resolved anchor", async () => {
     const beforeOlder = messageWithUuid(
       "6e5de721-6c25-40f1-bd73-ef854055d291",
       "2026-06-22T10:08:00Z",
@@ -200,14 +183,10 @@ describe("messenger messages API", () => {
       "d892276e-8c58-4baa-90eb-d88fb4ad2fac",
       "2026-06-22T10:11:00Z",
     );
-    const anchorResponse = deferredResponse();
     const fetchMock = vi.fn<typeof fetch>();
 
     fetchMock.mockImplementation((input) => {
       const url = parsedFetchUrl(input);
-      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
-        return anchorResponse.promise;
-      }
       if (url.pathname === "/api/workspace/v1/messenger/messages/") {
         const sortDir = url.searchParams.get("sort_dir");
         if (sortDir === "desc") {
@@ -219,7 +198,7 @@ describe("messenger messages API", () => {
         }
         if (sortDir === "asc") {
           return Promise.resolve(
-            jsonResponse([messageDto, afterNewer], 200, {
+            jsonResponse([afterNewer], 200, {
               "X-Pagination-Marker": "after-page",
             }),
           );
@@ -228,7 +207,7 @@ describe("messenger messages API", () => {
       return Promise.reject(new Error(`Unexpected URL: ${url.toString()}`));
     });
 
-    const windowPromise = getMessageWindowAroundMessage(
+    const windowPromise = getMessagePagesAroundResolvedMessage(
       { accessToken: "access-token", fetchImpl: fetchMock },
       {
         messageUuid: MESSAGE_UUID,
@@ -241,14 +220,11 @@ describe("messenger messages API", () => {
 
     await Promise.resolve();
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    anchorResponse.resolve(jsonResponse(messageDto));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await expect(windowPromise).resolves.toEqual({
-      anchor: messageDto,
       before: [beforeOlder, beforeNewer],
-      after: [messageDto, afterNewer],
-      items: [beforeOlder, beforeNewer, messageDto, afterNewer],
+      after: [afterNewer],
       beforePageMarker: "before-page",
       afterPageMarker: "after-page",
     });
@@ -273,83 +249,6 @@ describe("messenger messages API", () => {
     expect(urls.map((url) => url.toString()).join("\n")).not.toContain("created_at%3C");
     expect(urls.map((url) => url.toString()).join("\n")).not.toContain("created_at>");
     expect(urls.map((url) => url.toString()).join("\n")).not.toContain("created_at<");
-  });
-
-  it("loads anchor first when stream or topic is missing", async () => {
-    const beforeMessage = messageWithUuid(
-      "b3cf540b-475e-4d76-af16-d8439bdfc3f9",
-      "2026-06-22T10:09:00Z",
-    );
-    const afterMessage = messageWithUuid(
-      "b0822f7d-2186-429c-a49e-75f237b1cf83",
-      "2026-06-22T10:11:00Z",
-    );
-    const anchorResponse = deferredResponse();
-    const beforeResponse = deferredResponse();
-    const afterResponse = deferredResponse();
-    const onAnchor = vi.fn();
-    const fetchMock = vi.fn<typeof fetch>();
-
-    fetchMock.mockImplementation((input) => {
-      const url = parsedFetchUrl(input);
-      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
-        return anchorResponse.promise;
-      }
-      if (url.pathname === "/api/workspace/v1/messenger/messages/") {
-        expect(url.searchParams.get("stream_uuid")).toBe(STREAM_UUID);
-        expect(url.searchParams.get("topic_uuid")).toBe(TOPIC_UUID);
-        return url.searchParams.get("sort_dir") === "desc"
-          ? beforeResponse.promise
-          : afterResponse.promise;
-      }
-      return Promise.reject(new Error(`Unexpected URL: ${url.toString()}`));
-    });
-
-    const windowPromise = getMessageWindowAroundMessage(
-      { accessToken: "access-token", fetchImpl: fetchMock },
-      {
-        messageUuid: MESSAGE_UUID,
-      },
-      { onAnchor },
-    );
-
-    await Promise.resolve();
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(firstFetchCall(fetchMock)[0]).toBe(
-      `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`,
-    );
-
-    anchorResponse.resolve(jsonResponse(messageDto));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-
-    expect(onAnchor).toHaveBeenCalledTimes(1);
-    expect(onAnchor).toHaveBeenCalledWith(messageDto);
-
-    let windowSettled = false;
-    void windowPromise.then(
-      () => {
-        windowSettled = true;
-      },
-      () => {
-        windowSettled = true;
-      },
-    );
-    await Promise.resolve();
-    expect(windowSettled).toBe(false);
-
-    beforeResponse.resolve(jsonResponse([beforeMessage]));
-    afterResponse.resolve(jsonResponse([afterMessage]));
-
-    await expect(windowPromise).resolves.toEqual({
-      anchor: messageDto,
-      before: [beforeMessage],
-      after: [afterMessage],
-      items: [beforeMessage, messageDto, afterMessage],
-      beforePageMarker: null,
-      afterPageMarker: null,
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("strictly rejects invalid message rows", async () => {
@@ -568,9 +467,6 @@ describe("messenger messages API", () => {
 
     fetchMock.mockImplementation((input) => {
       const url = parsedFetchUrl(input);
-      if (url.pathname === `/api/workspace/v1/messenger/messages/${MESSAGE_UUID}`) {
-        return Promise.resolve(jsonResponse(messageDto));
-      }
       if (url.pathname === "/api/workspace/v1/messenger/messages/") {
         expect(url.searchParams.get("stream_uuid")).toBe(STREAM_UUID);
         expect(url.searchParams.has("topic_uuid")).toBe(false);
@@ -584,7 +480,7 @@ describe("messenger messages API", () => {
     });
 
     await expect(
-      getMessageWindowAroundMessage(
+      getMessagePagesAroundResolvedMessage(
         { accessToken: "access-token", fetchImpl: fetchMock },
         { messageUuid: MESSAGE_UUID, streamUuid: STREAM_UUID },
       ),

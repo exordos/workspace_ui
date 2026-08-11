@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -69,6 +71,19 @@ function setWorkspaceSession(session = createSession()): void {
   });
 }
 
+function seedWindow(conversationId: MessengerConversationId): void {
+  const store = useWorkspaceMessageStore.getState();
+  store.replaceConversationWindow({
+    conversationId,
+    expectedRevision: store.conversationWindowsById[conversationId]?.revision ?? null,
+    capturedMutationRevision: store.messageMutationRevision,
+    mode: "tail",
+    anchorMessageUuid: null,
+    messages: [],
+    markers: { beforePageMarker: "stale-before", afterPageMarker: "stale-after" },
+  });
+}
+
 describe("useLayoutWorkspaceMessengerBootstrap", () => {
   beforeEach(() => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
@@ -80,16 +95,32 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
     fetchWorkspaceServerSettingsForOrganizationMock.mockResolvedValue({
       meet_url: "https://meet.workspace.example.com",
     });
-    useMessengerStore.getState().clear();
-    useWorkspaceJitsiSettingsStore.getState().clear();
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    act(() => {
+      useMessengerStore.getState().clear();
+      useWorkspaceMessageStore.getState().clear();
+      useWorkspaceMessageStore.getState().setOwner(null, false);
+      useWorkspaceJitsiSettingsStore.getState().clear();
+      useWorkspaceAuthStore.setState({
+        sessions: [],
+        currentAccountId: null,
+        runtimeGeneration: 0,
+      });
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    useMessengerStore.getState().clear();
-    useWorkspaceJitsiSettingsStore.getState().clear();
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    act(() => {
+      useMessengerStore.getState().clear();
+      useWorkspaceMessageStore.getState().clear();
+      useWorkspaceMessageStore.getState().setOwner(null, false);
+      useWorkspaceJitsiSettingsStore.getState().clear();
+      useWorkspaceAuthStore.setState({
+        sessions: [],
+        currentAccountId: null,
+        runtimeGeneration: 0,
+      });
+    });
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
   });
@@ -135,6 +166,66 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("preserves a preloaded warm window on first mount for the canonical owner", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const conversationId = "stream:75309057-419c-4b12-a7c1-3932429ec4a6" as const;
+    setWorkspaceSession(session);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    seedWindow(conversationId);
+
+    renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+    await waitFor(() => expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1));
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toBeDefined();
+  });
+
+  it("clears the visible message window when the runtime owner changes", async () => {
+    const firstSession = createSession();
+    setWorkspaceSession(firstSession);
+    const { rerender } = renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+    await waitFor(() => expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1));
+
+    const conversationId = "stream:75309057-419c-4b12-a7c1-3932429ec4a6" as const;
+    seedWindow(conversationId);
+
+    const secondSession: WorkspaceAuthSession = {
+      ...firstSession,
+      accountId: "org-b:project-b:user-b",
+      organizationId: "org-b",
+      projectId: "project-b",
+      userUuid: "user-b",
+      runtimeGeneration: 8,
+    };
+    act(() => setWorkspaceSession(secondSession));
+    rerender();
+
+    await waitFor(() => {
+      expect(
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+      ).toBeUndefined();
+    });
+  });
+
+  it("keeps the visible cache-first window when only runtime generation changes", async () => {
+    const session = createSession();
+    setWorkspaceSession(session);
+    const { rerender } = renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+    await waitFor(() => expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1));
+
+    const conversationId = "stream:75309057-419c-4b12-a7c1-3932429ec4a6" as const;
+    seedWindow(conversationId);
+    act(() => setWorkspaceSession({ ...session, runtimeGeneration: 8 }));
+    rerender();
+
+    await waitFor(() => expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(2));
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toBeDefined();
   });
 
   it("stores Workspace Jitsi meet_url from server settings", async () => {

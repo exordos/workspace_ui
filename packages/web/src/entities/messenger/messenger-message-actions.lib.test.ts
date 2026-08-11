@@ -21,6 +21,7 @@ import {
 } from "./messenger-message-actions.lib";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerConversationId } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -97,13 +98,29 @@ function createDeferred<T>(): {
   return { promise, resolve };
 }
 
+function replaceTailWindow(
+  conversationId: MessengerConversationId,
+  messages: ReturnType<typeof adaptMessengerMessage>[],
+): void {
+  const state = useWorkspaceMessageStore.getState();
+  state.replaceConversationWindow({
+    conversationId,
+    expectedRevision: state.conversationWindowsById[conversationId]?.revision ?? null,
+    capturedMutationRevision: state.messageMutationRevision,
+    mode: "tail",
+    anchorMessageUuid: null,
+    messages,
+    markers: { beforePageMarker: null, afterPageMarker: null },
+  });
+}
+
 describe("messenger message actions", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
   });
 
-  it("creates a markdown message and indexes it into topic and stream buckets", async () => {
+  it("creates a markdown message without inventing a visible window", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
     const createMessage = vi.fn(
@@ -174,18 +191,15 @@ describe("messenger message actions", () => {
         source: "message-action",
       },
     );
-    expect(
-      selectWorkspaceMessagesForConversation(
-        useWorkspaceMessageStore.getState(),
-        `stream:${STREAM_A}`,
-      ),
-    ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ uuid: MESSAGE_A }),
+    );
     expect(
       selectWorkspaceMessagesForConversation(
         useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
-    ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    ).toEqual([]);
   });
 
   it("does not wait for the cache before reporting a sent message", async () => {
@@ -247,7 +261,7 @@ describe("messenger message actions", () => {
     const ownerKey = prepareStoreOwner(runtimeA);
     useWorkspaceMessageStore
       .getState()
-      .indexMessageIntoConversationBuckets(adaptMessengerMessage(createMessageDto()));
+      .applyLiveKnownBodyMutation(adaptMessengerMessage(createMessageDto()));
     const editRequest = createDeferred<WorkspaceMessengerMessageDto>();
     const editMessage = vi.fn(
       (
@@ -279,6 +293,127 @@ describe("messenger message actions", () => {
       "Edited",
     );
     expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late edit response overwrite a newer realtime update", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
+    const editRequest = createDeferred<WorkspaceMessengerMessageDto>();
+
+    const action = editMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      markdown: "Old action response",
+      client: { editMessage: () => editRequest.promise },
+      cache: { patchCachedMessage: vi.fn(() => Promise.resolve()) },
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveKnownBodyMutation(
+        adaptMessengerMessage(
+          createMessageDto({ payload: { kind: "markdown", content: "New realtime body" } }),
+        ),
+      );
+    editRequest.resolve(
+      createMessageDto({ payload: { kind: "markdown", content: "Old action response" } }),
+    );
+
+    await action;
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
+      "New realtime body",
+    );
+  });
+
+  it("does not resurrect a realtime-deleted message from a late read response", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
+    const readRequest = createDeferred<WorkspaceMessengerMessageDto>();
+
+    const action = markMessengerMessageRead({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      client: { markMessagesReadUpTo: () => readRequest.promise },
+      cache: {},
+    });
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
+    readRequest.resolve(createMessageDto({ read: true }));
+
+    await action;
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("writes the effective body to cache after a newer realtime update wins the read fence", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const initial = adaptMessengerMessage(createMessageDto());
+    replaceTailWindow(initial.conversationId, [initial]);
+    const readRequest = createDeferred<WorkspaceMessengerMessageDto>();
+    const cache = {
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+    };
+    const action = markMessengerMessagesReadUpTo({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      conversationIds: [initial.conversationId],
+      client: { markMessagesReadUpTo: () => readRequest.promise },
+      cache,
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveKnownBodyMutation(
+        adaptMessengerMessage(
+          createMessageDto({ payload: { kind: "markdown", content: "New realtime body" } }),
+        ),
+      );
+    readRequest.resolve(
+      createMessageDto({ read: true, payload: { kind: "markdown", content: "Old HTTP body" } }),
+    );
+
+    await action;
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "New realtime body" },
+        read: true,
+      }),
+    );
+  });
+
+  it("does not cache a late read body after realtime delete", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const initial = adaptMessengerMessage(createMessageDto());
+    replaceTailWindow(initial.conversationId, [initial]);
+    const readRequest = createDeferred<WorkspaceMessengerMessageDto>();
+    const cache = {
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+    };
+    const action = markMessengerMessagesReadUpTo({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      conversationIds: [initial.conversationId],
+      client: { markMessagesReadUpTo: () => readRequest.promise },
+      cache,
+    });
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
+    readRequest.resolve(createMessageDto({ read: true }));
+
+    await action;
+    expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+    expect(cache.markCachedMessagesRead).not.toHaveBeenCalled();
   });
 
   it("deletes and marks messages as read through Workspace actions", async () => {
@@ -352,9 +487,7 @@ describe("messenger message actions", () => {
         created_at: "2026-06-22T10:10:00Z",
       }),
     );
-    useWorkspaceMessageStore
-      .getState()
-      .mergeConversationMessagesPage(earlier.conversationId, [earlier, anchor]);
+    replaceTailWindow(earlier.conversationId, [earlier, anchor]);
 
     const markMessagesReadUpTo = vi.fn(() =>
       Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
@@ -411,9 +544,7 @@ describe("messenger message actions", () => {
         created_at: "2026-06-22T10:10:00Z",
       }),
     );
-    useWorkspaceMessageStore
-      .getState()
-      .mergeConversationMessagesPage(earlier.conversationId, [earlier, anchor]);
+    replaceTailWindow(earlier.conversationId, [earlier, anchor]);
     const cache = {
       markCachedMessagesRead: vi.fn(() => Promise.resolve()),
     };

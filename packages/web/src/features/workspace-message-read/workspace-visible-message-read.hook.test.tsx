@@ -25,6 +25,11 @@ const MESSAGE_C_UUID = "66666666-6666-4666-8666-666666666666";
 const conversationId: MessengerConversationId = `stream:${STREAM_UUID}`;
 const otherConversationId: MessengerConversationId = `topic:${STREAM_UUID}:${TOPIC_A_UUID}`;
 
+function seedWorkspaceMessageBody(item: MessengerMessage): void {
+  const state = useWorkspaceMessageStore.getState();
+  state.upsertMessageBodyFromSnapshot(item, state.messageMutationRevision);
+}
+
 const runtimeContext: WorkspaceRuntimeContext = {
   accountId: "account-1",
   instanceId: "instance-1",
@@ -89,7 +94,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
     const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
     const third = message(MESSAGE_C_UUID, TOPIC_B_UUID, "2026-08-07T10:02:00Z");
     for (const item of [first, second, third]) {
-      useWorkspaceMessageStore.getState().upsertMessage(item);
+      seedWorkspaceMessageBody(item);
     }
     const { result } = renderHook(() =>
       useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
@@ -111,8 +116,8 @@ describe("useWorkspaceVisibleMessageRead", () => {
   it("keeps one request in flight per topic and sends a later pending boundary afterwards", async () => {
     const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
     const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
-    useWorkspaceMessageStore.getState().upsertMessage(first);
-    useWorkspaceMessageStore.getState().upsertMessage(second);
+    seedWorkspaceMessageBody(first);
+    seedWorkspaceMessageBody(second);
     let releaseFirst: (() => void) | undefined;
     captured.markReadUpTo.mockImplementationOnce(
       () =>
@@ -151,7 +156,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
 
   it("retries a failed boundary with bounded exponential backoff", async () => {
     const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
-    useWorkspaceMessageStore.getState().upsertMessage(first);
+    seedWorkspaceMessageBody(first);
     captured.markReadUpTo.mockRejectedValue(new Error("temporary failure"));
     const { result } = renderHook(() =>
       useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
@@ -194,8 +199,8 @@ describe("useWorkspaceVisibleMessageRead", () => {
   it("retries the later pending boundary when an earlier request fails", async () => {
     const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
     const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
-    useWorkspaceMessageStore.getState().upsertMessage(first);
-    useWorkspaceMessageStore.getState().upsertMessage(second);
+    seedWorkspaceMessageBody(first);
+    seedWorkspaceMessageBody(second);
     let rejectFirst: (() => void) | undefined;
     captured.markReadUpTo.mockImplementationOnce(
       () =>
@@ -254,8 +259,8 @@ describe("useWorkspaceVisibleMessageRead", () => {
     async ({ nextContext, nextConversationId }) => {
       const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
       const second = message(MESSAGE_C_UUID, TOPIC_B_UUID, "2026-08-07T10:01:00Z");
-      useWorkspaceMessageStore.getState().upsertMessage(first);
-      useWorkspaceMessageStore.getState().upsertMessage(second);
+      seedWorkspaceMessageBody(first);
+      seedWorkspaceMessageBody(second);
       let secondSignal: AbortSignal | undefined;
       captured.markReadUpTo.mockImplementation((options) => {
         if (options.messageUuid === first.uuid) {

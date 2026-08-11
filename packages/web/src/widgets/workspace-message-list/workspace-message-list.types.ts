@@ -4,6 +4,7 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
+import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
@@ -97,7 +98,11 @@ export interface WorkspaceMessageListProps {
   scrollToBottomAfterSendNonce?: number;
   firstUnreadUuid?: MessengerUuid;
   unreadCount?: number;
-  focusedMessageUuid?: MessengerUuid | null;
+  focusedMessageTarget?: WorkspaceMessageAnchorFocusTarget | null;
+  anchorHandoffPending?: boolean;
+  anchorNavigationActive?: boolean;
+  onFocusedMessageApplied?: (target: WorkspaceMessageAnchorFocusTarget) => void;
+  onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
   isLoadingOlder?: boolean;
@@ -109,6 +114,7 @@ export interface WorkspaceMessageListProps {
   onLoadNewer?: () => void;
   onLoadLatestWindow?: (lastMessageUuid: MessengerUuid) => void | Promise<void>;
   onCancelLatestWindowLoad?: (lastMessageUuid: MessengerUuid) => void;
+  onTailNavigationRequested?: () => void;
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;

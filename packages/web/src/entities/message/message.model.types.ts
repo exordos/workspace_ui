@@ -9,17 +9,14 @@ import type {
 } from "~/entities/messenger/messenger.types";
 
 export interface WorkspaceMessageStoreData {
+  ownerKey: string | null;
   messagesById: Record<MessengerUuid, MessengerMessage>;
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
-  messageWindowStateByConversationId: Partial<
-    Record<MessengerConversationId, WorkspaceConversationMessageWindowState>
-  >;
+  conversationWindowsById: Record<MessengerConversationId, WorkspaceConversationWindow>;
   messagesLoadingByConversationId: Record<MessengerConversationId, boolean>;
   messagesErrorByConversationId: Record<MessengerConversationId, string | null>;
-  nextPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
-  hasMoreByConversationId: Record<MessengerConversationId, boolean>;
-  beforePageMarkerByConversationId: Record<MessengerConversationId, string | null>;
-  afterPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
+  messageMutationRevision: number;
+  messageMutationRevisionById: Record<MessengerUuid, number>;
+  deletedMessageRevisionById: Record<MessengerUuid, number>;
 }
 
 export interface WorkspaceMessageBucketIndexOptions {
@@ -46,17 +43,43 @@ export interface WorkspaceMessageEditPatch {
   updatedAt?: string;
 }
 
-export interface WorkspaceConversationPagination {
-  nextPageMarker: string | null;
-  hasMore: boolean;
-}
-
 export interface WorkspaceConversationWindowMarkers {
   beforePageMarker: string | null;
   afterPageMarker: string | null;
 }
 
-export type WorkspaceConversationMessageWindowState = "staged" | "complete";
+export type WorkspaceConversationWindowMode = "tail" | "around-anchor";
+
+export interface WorkspaceConversationWindow {
+  mode: WorkspaceConversationWindowMode;
+  anchorMessageUuid: MessengerUuid | null;
+  messageUuids: MessengerUuid[];
+  beforePageMarker: string | null;
+  afterPageMarker: string | null;
+  revision: number;
+}
+
+export interface WorkspaceConversationWindowReplaceInput {
+  conversationId: MessengerConversationId;
+  expectedRevision: number | null;
+  capturedMutationRevision: number;
+  mode: WorkspaceConversationWindowMode;
+  anchorMessageUuid: MessengerUuid | null;
+  messages: readonly MessengerMessage[];
+  markers: WorkspaceConversationWindowMarkers;
+}
+
+export type WorkspaceConversationWindowPageDirection = "before" | "after";
+
+export interface WorkspaceConversationWindowPageMergeInput {
+  conversationId: MessengerConversationId;
+  expectedRevision: number;
+  expectedPageMarker: string | null;
+  capturedMutationRevision: number;
+  direction: WorkspaceConversationWindowPageDirection;
+  messages: readonly MessengerMessage[];
+  pageMarker: string | null;
+}
 
 export interface WorkspaceConversationMessagesStatus {
   loading: boolean;
@@ -66,24 +89,22 @@ export interface WorkspaceConversationMessagesStatus {
 }
 
 export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
-  replaceOrMergeConversationMessagesPage: (
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-  ) => void;
-  replaceConversationMessagesWindow: (
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-  ) => void;
-  mergeConversationMessagesPage: (
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-  ) => void;
-  indexMessageIntoConversationBuckets: (
+  setOwner: (ownerKey: string | null, preserveExisting: boolean) => void;
+  replaceConversationWindow: (input: WorkspaceConversationWindowReplaceInput) => number | null;
+  mergeConversationWindowPage: (input: WorkspaceConversationWindowPageMergeInput) => number | null;
+  applyLiveCreatedMessage: (message: MessengerMessage) => void;
+  applyLiveKnownBodyMutation: (
     message: MessengerMessage,
-    options?: WorkspaceMessageBucketIndexOptions,
-  ) => void;
-  upsertMessage: (message: MessengerMessage) => void;
-  upsertMessageBody: (message: MessengerMessage) => void;
+    capturedMutationRevision?: number,
+  ) => boolean;
+  upsertMessageBodyFromSnapshot: (
+    message: MessengerMessage,
+    capturedMutationRevision: number,
+  ) => boolean;
+  removeMessageFromSnapshot: (
+    messageUuid: MessengerUuid,
+    capturedMutationRevision: number,
+  ) => boolean;
   applyMessageEdit: (messageUuid: MessengerUuid, patch: WorkspaceMessageEditPatch) => void;
   applyOwnMessageReactions: (
     messageUuid: MessengerUuid,
@@ -116,10 +137,7 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
     messageUuid: MessengerUuid,
     aggregate: MessengerReactionCountsByName,
   ) => void;
-  removeMessage: (
-    messageUuid: MessengerUuid,
-    options?: WorkspaceScopedMessageMutationOptions,
-  ) => void;
+  removeMessage: (messageUuid: MessengerUuid) => void;
   markMessageRead: (
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,
@@ -138,18 +156,6 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   rollbackOptimisticMessagesRead: (change: WorkspaceOptimisticMessageReadChange) => void;
   setMessagesLoading: (conversationId: MessengerConversationId, loading: boolean) => void;
   setMessagesError: (conversationId: MessengerConversationId, error: string | null) => void;
-  setConversationPagination: (
-    conversationId: MessengerConversationId,
-    pagination: WorkspaceConversationPagination,
-  ) => void;
-  setConversationWindowMarkers: (
-    conversationId: MessengerConversationId,
-    markers: WorkspaceConversationWindowMarkers,
-  ) => void;
-  setConversationMessageWindowState: (
-    conversationId: MessengerConversationId,
-    state: WorkspaceConversationMessageWindowState,
-  ) => void;
   removeMessagesForStream: (streamUuid: MessengerUuid) => void;
   restoreMessagesForStream: (streamUuid: MessengerUuid) => void;
   clear: () => void;

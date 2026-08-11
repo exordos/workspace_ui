@@ -159,15 +159,3 @@ export function conversationBucketsForWorkspaceMessage(
 
   return conversationIds;
 }
-
-export function isWorkspaceMessageReferencedOutsideConversations(
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
-  excludedConversationIds: ReadonlySet<MessengerConversationId>,
-  messageId: MessengerUuid,
-): boolean {
-  for (const [conversationId, messageIds] of Object.entries(messageIdsByConversationId)) {
-    if (excludedConversationIds.has(conversationId)) continue;
-    if (messageIds.includes(messageId)) return true;
-  }
-  return false;
-}
