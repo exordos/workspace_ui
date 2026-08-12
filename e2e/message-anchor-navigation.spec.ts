@@ -257,9 +257,20 @@ async function startAnchorVisualSampler(page: Page, messageUuid: string): Promis
       const samples: Sample[] = [];
       let resolveResult: ((result: AnchorVisualSamplerResult) => void) | null = null;
       let finished = false;
+      let activated = false;
       const done = new Promise<AnchorVisualSamplerResult>((resolve) => {
         resolveResult = resolve;
       });
+      const activateAfterTargetClick = (event: MouseEvent): void => {
+        const eventTarget = event.target;
+        if (!(eventTarget instanceof Element)) return;
+        const quote = eventTarget.closest<HTMLElement>("[data-workspace-quote-message-uuid]");
+        if (quote?.getAttribute("data-workspace-quote-message-uuid") !== targetUuid) return;
+
+        activated = true;
+        document.removeEventListener("click", activateAfterTargetClick, true);
+      };
+      document.addEventListener("click", activateAfterTargetClick, true);
       const isVisible = (element: HTMLElement): boolean => {
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
@@ -273,7 +284,7 @@ async function startAnchorVisualSampler(page: Page, messageUuid: string): Promis
         );
       };
       const sample = (reason: Sample["reason"]): void => {
-        if (finished) return;
+        if (finished || !activated) return;
 
         const layer = document.querySelector<HTMLElement>(
           "[data-message-anchor-list-layer='true']",
@@ -308,6 +319,7 @@ async function startAnchorVisualSampler(page: Page, messageUuid: string): Promis
         if (canonicalLayerVisible && targetHighlighted) {
           finished = true;
           observer.disconnect();
+          document.removeEventListener("click", activateAfterTargetClick, true);
           resolveResult?.({ samples });
         }
       };
