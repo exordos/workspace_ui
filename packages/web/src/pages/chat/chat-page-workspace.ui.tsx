@@ -1346,6 +1346,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
                       {
                         file,
                         streamUuid: outgoing.streamUuid,
+                        name: file.name,
                       },
                     ),
                   {

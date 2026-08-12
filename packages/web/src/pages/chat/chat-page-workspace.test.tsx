@@ -3130,6 +3130,7 @@ describe("ChatPage Workspace route", () => {
       {
         file: pdfFile,
         streamUuid: STREAM_UUID,
+        name: pdfFile.name,
       },
     );
     expect(captured.uploadWorkspaceFile).toHaveBeenNthCalledWith(
@@ -3140,6 +3141,7 @@ describe("ChatPage Workspace route", () => {
       {
         file: imageFile,
         streamUuid: STREAM_UUID,
+        name: imageFile.name,
       },
     );
     await waitFor(() =>

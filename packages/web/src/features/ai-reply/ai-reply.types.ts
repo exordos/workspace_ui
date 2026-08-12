@@ -130,5 +130,4 @@ export interface AiActionMenuProps {
 export interface AiComposerButtonProps {
   onClick: () => void;
   active: boolean;
-  iconSize?: number;
 }

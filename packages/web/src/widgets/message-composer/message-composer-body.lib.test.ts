@@ -7,6 +7,7 @@ import {
   insertWorkspaceMention,
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,
+  prepareAttachmentFiles,
   resolveTomorrowMorningTimestamp,
   serializeWorkspaceComposerMentions,
 } from "./message-composer-body.lib";
@@ -172,6 +173,15 @@ describe("message-composer-body.lib", () => {
     it("formats KB", () => {
       expect(formatAttachmentSize(2048)).toBe("2 KB");
     });
+
+    it("formats MB with one decimal place when needed", () => {
+      expect(formatAttachmentSize(1.5 * 1024 * 1024)).toBe("1.5 MB");
+      expect(formatAttachmentSize(2 * 1024 * 1024)).toBe("2 MB");
+    });
+
+    it("formats GB with one decimal place when needed", () => {
+      expect(formatAttachmentSize(1.25 * 1024 * 1024 * 1024)).toBe("1.3 GB");
+    });
   });
 
   describe("resolveTomorrowMorningTimestamp", () => {
@@ -211,10 +221,12 @@ describe("message-composer-body.lib", () => {
     it("uses fallbackMime when File.type is empty", () => {
       const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", {
         type: "",
+        lastModified: 1234,
       });
       const normalized = normalizeImageAttachmentFile(file, "image/png");
       expect(normalized.type).toBe("image/png");
       expect(normalized.name).toBe("image.png");
+      expect(normalized.lastModified).toBe(1234);
     });
 
     it("returns the same file when type is already set", () => {
@@ -222,10 +234,86 @@ describe("message-composer-body.lib", () => {
       expect(normalizeImageAttachmentFile(file, "image/png")).toBe(file);
     });
 
+    it("does not replace a non-image file type with fallbackMime", () => {
+      const file = new File(["x"], "notes.txt", { type: "text/plain" });
+      expect(normalizeImageAttachmentFile(file, "application/pdf")).toBe(file);
+    });
+
     it("infers mime from extension when type and fallback are empty", () => {
       const file = new File(["x"], "screenshot.webp", { type: "" });
       const normalized = normalizeImageAttachmentFile(file);
       expect(normalized.type).toBe("image/webp");
+    });
+  });
+
+  describe("prepareAttachmentFiles", () => {
+    const now = new Date(2026, 7, 12, 14, 35, 22);
+
+    it("preserves meaningful names from the clipboard", () => {
+      const file = new File(["image"], "Снимок экрана 2026-08-12.png", {
+        type: "image/png",
+      });
+
+      expect(prepareAttachmentFiles([{ file }], { source: "clipboard", now })).toEqual([file]);
+    });
+
+    it("preserves generic names chosen through the system picker", () => {
+      const file = new File(["image"], "image.png", { type: "image/png" });
+
+      expect(prepareAttachmentFiles([{ file }], { source: "picker", now })).toEqual([file]);
+    });
+
+    it("replaces generic clipboard image names and adds an index on collision", () => {
+      const first = new File(["first"], "image.png", { type: "image/png", lastModified: 10 });
+      const second = new File(["second"], "blob.png", {
+        type: "image/png",
+        lastModified: 20,
+      });
+      const existing = new File(["existing"], "pasted-image-20260812-143522.png", {
+        type: "image/png",
+      });
+
+      const prepared = prepareAttachmentFiles([{ file: first }, { file: second }], {
+        source: "clipboard",
+        existingFiles: [existing],
+        now,
+      });
+
+      expect(prepared.map((file) => file.name)).toEqual([
+        "pasted-image-20260812-143522-2.png",
+        "pasted-image-20260812-143522-3.png",
+      ]);
+      expect(prepared.map((file) => file.lastModified)).toEqual([10, 20]);
+    });
+
+    it("generates a typed name for unnamed non-image clipboard files", () => {
+      const file = new File(["document"], "", { type: "application/pdf" });
+
+      const [prepared] = prepareAttachmentFiles([{ file }], { source: "clipboard", now });
+
+      expect(prepared?.name).toBe("pasted-file-20260812-143522.pdf");
+      expect(prepared?.type).toBe("application/pdf");
+    });
+
+    it("uses fallbackMime for an unnamed non-image clipboard file with an empty type", () => {
+      const file = new File(["document"], "", { type: "", lastModified: 1234 });
+
+      const [prepared] = prepareAttachmentFiles([{ file, fallbackMime: "application/pdf" }], {
+        source: "clipboard",
+        now,
+      });
+
+      expect(prepared?.name).toBe("pasted-file-20260812-143522.pdf");
+      expect(prepared?.type).toBe("application/pdf");
+      expect(prepared?.lastModified).toBe(1234);
+    });
+
+    it("uses the normalized MIME extension for generic clipboard images", () => {
+      const file = new File(["<svg />"], "image.svg+xml", { type: "image/svg+xml" });
+
+      const [prepared] = prepareAttachmentFiles([{ file }], { source: "clipboard", now });
+
+      expect(prepared?.name).toBe("pasted-image-20260812-143522.svg");
     });
   });
 });

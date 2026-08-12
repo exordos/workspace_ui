@@ -117,6 +117,33 @@ const EXTENSION_TO_IMAGE_MIME: Record<string, string> = {
   bmp: "image/bmp",
 };
 
+const MIME_TO_FILE_EXTENSION: Record<string, string> = {
+  "application/octet-stream": "bin",
+  "application/pdf": "pdf",
+  "image/bmp": "bmp",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/webp": "webp",
+  "text/plain": "txt",
+};
+
+const GENERIC_CLIPBOARD_FILE_STEM = /^(?:image|pasted[-_ ]?image|blob)(?:[-_ ]?\(?\d+\)?)?$/i;
+
+export type AttachmentInputSource = "picker" | "drop" | "clipboard";
+
+export interface AttachmentFileCandidate {
+  file: File;
+  fallbackMime?: string;
+}
+
+interface PrepareAttachmentFilesOptions {
+  source: AttachmentInputSource;
+  existingFiles?: readonly File[];
+  now?: Date;
+}
+
 function normalizeImageMime(mime: string): string {
   const normalized = mime.trim().toLowerCase();
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
@@ -130,8 +157,76 @@ function imageMimeFromFileName(fileName: string): string | null {
 }
 
 function defaultFileNameForImageMime(mime: string): string {
-  const subtype = normalizeImageMime(mime).split("/")[1] ?? "png";
-  return `pasted-image.${subtype}`;
+  const normalizedMime = normalizeImageMime(mime);
+  const extension =
+    MIME_TO_FILE_EXTENSION[normalizedMime] ?? normalizedMime.split("/")[1]?.split("+")[0] ?? "png";
+  return `pasted-image.${extension}`;
+}
+
+function fileExtension(file: File): string {
+  const normalizedMime = normalizeImageMime(file.type);
+  const mappedExtension = MIME_TO_FILE_EXTENSION[normalizedMime];
+  if (normalizedMime.startsWith("image/") && mappedExtension != null) {
+    return mappedExtension;
+  }
+
+  const trimmedName = file.name.trim();
+  const lastDot = trimmedName.lastIndexOf(".");
+  if (lastDot > 0 && lastDot < trimmedName.length - 1) {
+    return trimmedName.slice(lastDot + 1).toLowerCase();
+  }
+
+  if (mappedExtension != null) return mappedExtension;
+
+  const subtype = normalizedMime.split("/")[1]?.split("+")[0] ?? "";
+  const safeSubtype = subtype.replace(/[^a-z0-9]/g, "");
+  return safeSubtype.length > 0 && safeSubtype.length <= 10 ? safeSubtype : "bin";
+}
+
+function fileStem(fileName: string): string {
+  const trimmedName = fileName.trim();
+  const lastDot = trimmedName.lastIndexOf(".");
+  return lastDot > 0 ? trimmedName.slice(0, lastDot) : trimmedName;
+}
+
+function isGenericClipboardFileName(fileName: string): boolean {
+  const trimmedName = fileName.trim();
+  return trimmedName.length === 0 || GENERIC_CLIPBOARD_FILE_STEM.test(fileStem(trimmedName));
+}
+
+function formatAttachmentTimestamp(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function uniqueGeneratedFileName(file: File, date: Date, usedNames: Set<string>): string {
+  const prefix = isLikelyImageAttachment(file) ? "pasted-image" : "pasted-file";
+  const baseName = `${prefix}-${formatAttachmentTimestamp(date)}`;
+  const extension = fileExtension(file);
+  let candidate = `${baseName}.${extension}`;
+  let index = 2;
+
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${baseName}-${index}.${extension}`;
+    index += 1;
+  }
+
+  return candidate;
+}
+
+function renameFile(file: File, name: string): File {
+  return new File([file], name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
 }
 
 /** True when the file is an image by MIME type or by common image extension. */
@@ -141,24 +236,46 @@ export function isLikelyImageAttachment(file: File): boolean {
   return IMAGE_ATTACHMENT_EXTENSIONS.has(extension);
 }
 
-/** Ensures clipboard/dropped image files have a usable MIME type for preview and upload. */
+/** Ensures clipboard and dropped files have a usable MIME type for preview and upload. */
 export function normalizeImageAttachmentFile(file: File, fallbackMime?: string): File {
   const currentType = normalizeImageMime(file.type);
   if (currentType.startsWith("image/")) {
     if (file.type === currentType) return file;
-    return new File([file], file.name, { type: currentType });
+    return new File([file], file.name, { type: currentType, lastModified: file.lastModified });
   }
+  if (currentType.length > 0) return file;
 
   const fallback = fallbackMime != null ? normalizeImageMime(fallbackMime) : "";
-  const resolvedMime = fallback.startsWith("image/")
-    ? fallback
-    : (imageMimeFromFileName(file.name) ?? "");
-  if (!resolvedMime.startsWith("image/")) {
-    return file;
-  }
+  const resolvedMime = fallback || imageMimeFromFileName(file.name) || "";
+  if (resolvedMime.length === 0) return file;
 
-  const name = file.name.trim().length > 0 ? file.name : defaultFileNameForImageMime(resolvedMime);
-  return new File([file], name, { type: resolvedMime });
+  const name =
+    file.name.trim().length > 0 || !resolvedMime.startsWith("image/")
+      ? file.name
+      : defaultFileNameForImageMime(resolvedMime);
+  return new File([file], name, { type: resolvedMime, lastModified: file.lastModified });
+}
+
+/** Preserves real names and replaces browser clipboard placeholders with unique names. */
+export function prepareAttachmentFiles(
+  candidates: readonly AttachmentFileCandidate[],
+  options: PrepareAttachmentFilesOptions,
+): File[] {
+  const usedNames = new Set((options.existingFiles ?? []).map((file) => file.name.toLowerCase()));
+  const now = options.now ?? new Date();
+
+  return candidates.map(({ file, fallbackMime }) => {
+    const normalized = normalizeImageAttachmentFile(file, fallbackMime);
+    const needsGeneratedName =
+      normalized.name.trim().length === 0 ||
+      (options.source === "clipboard" && isGenericClipboardFileName(normalized.name));
+    const name = needsGeneratedName
+      ? uniqueGeneratedFileName(normalized, now, usedNames)
+      : normalized.name;
+    const prepared = name === normalized.name ? normalized : renameFile(normalized, name);
+    usedNames.add(prepared.name.toLowerCase());
+    return prepared;
+  });
 }
 
 export function getAttachmentExtensionLabel(fileName: string): string {
@@ -173,8 +290,10 @@ export function formatAttachmentSize(sizeBytes: number): string {
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return "0 B";
   if (sizeBytes < 1024) return `${sizeBytes} B`;
   if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  if (sizeBytes < 1024 * 1024 * 1024) return `${Math.round(sizeBytes / (1024 * 1024))} MB`;
-  return `${Math.round(sizeBytes / (1024 * 1024 * 1024))} GB`;
+  if (sizeBytes < 1024 * 1024 * 1024) {
+    return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
+  }
+  return `${Math.round((sizeBytes / (1024 * 1024 * 1024)) * 10) / 10} GB`;
 }
 
 export function resolveTomorrowMorningTimestamp(baseTimeMs: number): number {

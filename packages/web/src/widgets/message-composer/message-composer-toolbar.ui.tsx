@@ -1,23 +1,24 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { Icon } from "~/shared/ui/icon";
+import AddLinkSvg from "~/shared/assets/icons/composer-add-link.svg?react";
+import ChatDashedSvg from "~/shared/assets/icons/composer-chat-dashed.svg?react";
+import BoldSvg from "~/shared/assets/icons/composer-format-bold.svg?react";
+import ItalicSvg from "~/shared/assets/icons/composer-format-italic.svg?react";
+import FrameSourceSvg from "~/shared/assets/icons/composer-frame-source.svg?react";
+import InlineCodeSvg from "~/shared/assets/icons/composer-inline-code.svg?react";
+import BulletedListSvg from "~/shared/assets/icons/composer-list-bulleted.svg?react";
+import NumberedListSvg from "~/shared/assets/icons/composer-list-numbered.svg?react";
+import StrikethroughSvg from "~/shared/assets/icons/composer-strikethrough.svg?react";
+import VisibilitySvg from "~/shared/assets/icons/composer-visibility.svg?react";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
-import {
-  TOOLBAR_BTN,
-  TOOLBAR_GLYPH,
-  TOOLBAR_ICON_EMPHASIS_CLASS,
-  TOOLBAR_ICON_SIZE,
-  TOOLBAR_LINK_ICON_SIZE,
-  TOOLBAR_MONO_COMPACT_GLYPH,
-  TOOLBAR_MONO_GLYPH,
-  TOOLBAR_QUOTE_GLYPH,
-} from "./message-composer-styles.lib";
+import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import type { FormattingToolbarProps } from "./message-composer.types";
 
 export const FormattingToolbar = React.memo<FormattingToolbarProps>(function FormattingToolbar({
   textareaRef,
   onValueChange,
   fileTrigger,
+  emojiTrigger,
   callLinkTrigger,
   scheduleTrigger,
   snippetsTrigger,
@@ -124,15 +125,43 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
       };
     });
   }, [onValueChange, textareaRef]);
-  const hasMediaActions = fileTrigger != null || callLinkTrigger != null;
+  const hasMediaActions = fileTrigger != null || callLinkTrigger != null || emojiTrigger != null;
   const hasAssistActions = scheduleTrigger != null || snippetsTrigger != null || aiTrigger != null;
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-0.5 py-1"
+      className="flex min-w-0 flex-1 items-center gap-3"
       role="toolbar"
       aria-label={t("a11y.messageComposer")}
     >
+      {fileTrigger}
+      {callLinkTrigger}
+      {(fileTrigger != null || callLinkTrigger != null) &&
+        (emojiTrigger != null || hasAssistActions) && (
+          <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
+        )}
+      {emojiTrigger}
+      {scheduleTrigger}
+      {snippetsTrigger}
+      {aiTrigger}
+      {(hasMediaActions || hasAssistActions) && (
+        <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
+      )}
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={link}
+        title={t("composer.link")}
+        aria-label={t("composer.link")}
+      >
+        <AddLinkSvg
+          width={24}
+          height={14.769}
+          className="text-current"
+          data-composer-icon="add-link"
+          aria-hidden
+        />
+      </button>
       <button
         type="button"
         className={TOOLBAR_BTN}
@@ -140,7 +169,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.bold")}
         aria-label={t("composer.bold")}
       >
-        <span className={`${TOOLBAR_GLYPH} font-semibold`}>B</span>
+        <BoldSvg width={10.93} height={16.667} data-composer-icon="bold" aria-hidden />
       </button>
       <button
         type="button"
@@ -149,7 +178,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.italic")}
         aria-label={t("composer.italic")}
       >
-        <span className={`${TOOLBAR_GLYPH} italic`}>I</span>
+        <ItalicSvg width={15.448} height={16.747} data-composer-icon="italic" aria-hidden />
       </button>
       <button
         type="button"
@@ -158,17 +187,27 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.strikethrough")}
         aria-label={t("composer.strikethrough")}
       >
-        <span className={`${TOOLBAR_GLYPH} line-through`}>S</span>
+        <StrikethroughSvg
+          width={25.333}
+          height={19.79}
+          data-composer-icon="strikethrough"
+          aria-hidden
+        />
       </button>
-      <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
+      <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       <button
         type="button"
         className={TOOLBAR_BTN}
-        onClick={quote}
-        title={t("composer.quote")}
-        aria-label={t("composer.quote")}
+        onClick={numberedList}
+        title={t("composer.numberedList")}
+        aria-label={t("composer.numberedList")}
       >
-        <span className={TOOLBAR_QUOTE_GLYPH}>&gt;</span>
+        <NumberedListSvg
+          width={21.333}
+          height={24}
+          data-composer-icon="numbered-list"
+          aria-hidden
+        />
       </button>
       <button
         type="button"
@@ -177,35 +216,23 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.bulletedList")}
         aria-label={t("composer.bulletedList")}
       >
-        <Icon name="list_bulleted" size={TOOLBAR_ICON_SIZE} className="text-current" />
+        <BulletedListSvg
+          width={21.328}
+          height={19.533}
+          className="text-current"
+          data-composer-icon="bulleted-list"
+          aria-hidden
+        />
       </button>
+      <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       <button
         type="button"
         className={TOOLBAR_BTN}
-        onClick={numberedList}
-        title={t("composer.numberedList")}
-        aria-label={t("composer.numberedList")}
+        onClick={quote}
+        title={t("composer.quote")}
+        aria-label={t("composer.quote")}
       >
-        <span className={TOOLBAR_GLYPH}>1.</span>
-      </button>
-      <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={() => wrap("`")}
-        title={t("composer.code")}
-        aria-label={t("composer.code")}
-      >
-        <span className={TOOLBAR_MONO_COMPACT_GLYPH}>&lt;/&gt;</span>
-      </button>
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={() => wrap("||")}
-        title={t("composer.spoiler")}
-        aria-label={t("composer.spoiler")}
-      >
-        <span className={TOOLBAR_MONO_GLYPH}>||</span>
+        <ChatDashedSvg width={24} height={21.38} data-composer-icon="quote" aria-hidden />
       </button>
       <button
         type="button"
@@ -214,34 +241,34 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.codeBlock")}
         aria-label={t("composer.codeBlock")}
       >
-        <span className={TOOLBAR_MONO_COMPACT_GLYPH}>{"{ }"}</span>
+        <FrameSourceSvg
+          width={21.333}
+          height={21.333}
+          data-composer-icon="code-block"
+          aria-hidden
+        />
       </button>
       <button
         type="button"
         className={TOOLBAR_BTN}
-        onClick={link}
-        title={t("composer.link")}
-        aria-label={t("composer.link")}
+        onClick={() => wrap("`")}
+        title={t("composer.code")}
+        aria-label={t("composer.code")}
       >
-        <Icon
-          name="links"
-          size={TOOLBAR_LINK_ICON_SIZE}
-          className={`text-current ${TOOLBAR_ICON_EMPHASIS_CLASS}`}
-        />
+        <InlineCodeSvg width={22} height={18} data-composer-icon="inline-code" aria-hidden />
       </button>
-      {(hasMediaActions || hasAssistActions) && (
-        <>
-          <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
-          {fileTrigger}
-          {callLinkTrigger}
-          {hasMediaActions && hasAssistActions && (
-            <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
-          )}
-          {scheduleTrigger}
-          {snippetsTrigger}
-          {aiTrigger}
-        </>
-      )}
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("||")}
+        title={t("composer.spoiler")}
+        aria-label={t("composer.spoiler")}
+      >
+        <span className="relative flex h-6 w-[25.834px] items-center justify-center" aria-hidden>
+          <VisibilitySvg width={25.834} height={17.333} data-composer-icon="spoiler-eye-off" />
+          <span className="absolute h-px w-7 rotate-[-35deg] bg-current" />
+        </span>
+      </button>
     </div>
   );
 });

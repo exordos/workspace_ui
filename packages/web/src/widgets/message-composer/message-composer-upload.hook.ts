@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLikelyImageAttachment, normalizeImageAttachmentFile } from "./message-composer-body.lib";
+import {
+  isLikelyImageAttachment,
+  normalizeImageAttachmentFile,
+  prepareAttachmentFiles,
+} from "./message-composer-body.lib";
 
 interface ComposerUploadProgressLike {
   completed: number;
@@ -123,11 +127,15 @@ export function useMessageComposerUpload(options: {
       e.preventDefault();
       setIsDragOver(false);
       if (disabled) return;
-      const droppedFiles = Array.from(e.dataTransfer.files).map((file) =>
-        normalizeImageAttachmentFile(file),
-      );
+      const droppedFiles = Array.from(e.dataTransfer.files);
       if (droppedFiles.length > 0) {
-        setFiles((prev) => [...prev, ...droppedFiles]);
+        setFiles((prev) => [
+          ...prev,
+          ...prepareAttachmentFiles(
+            droppedFiles.map((file) => ({ file })),
+            { source: "drop", existingFiles: prev },
+          ),
+        ]);
       }
     },
     [disabled],
@@ -169,7 +177,13 @@ export function useMessageComposerUpload(options: {
       ) {
         return false;
       }
-      setFiles((prev) => [...prev, ...selectedFiles]);
+      setFiles((prev) => [
+        ...prev,
+        ...prepareAttachmentFiles(
+          selectedFiles.map((file) => ({ file })),
+          { source: "picker", existingFiles: prev },
+        ),
+      ]);
       fileSelectionSessionRef.current = {
         sessionId,
         handled: true,

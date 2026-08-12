@@ -141,6 +141,7 @@ export interface FormattingToolbarProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   onValueChange: (value: string) => void;
   fileTrigger?: ReactNode;
+  emojiTrigger?: ReactNode;
   callLinkTrigger?: ReactNode;
   scheduleTrigger?: ReactNode;
   snippetsTrigger?: ReactNode;
@@ -160,6 +161,7 @@ export type MediaPickerTab = "emoji" | "sticker";
 export interface MessageComposerPrefaceProps {
   uploadProgress: ComposerUploadProgress | null | undefined;
   uploadProgressPercent: number;
+  separateUploadProgress?: boolean;
   files: File[];
   filePreviewUrls: (string | null)[];
   showFiles?: boolean;

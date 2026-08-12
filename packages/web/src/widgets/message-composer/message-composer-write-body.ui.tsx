@@ -25,6 +25,9 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   onEditLastMessage,
   isEditing = false,
   onCancelEdit,
+  fillAvailableHeight = false,
+  reserveExpandControlSpace = false,
+  compactInline = false,
 }: MessageComposerWriteBodyProps) {
   const listboxId = `${textareaId}-suggestions`;
   const activeSuggestion = mentionSuggestions[activeMentionIndex];
@@ -104,7 +107,11 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
         aria-autocomplete="list"
         aria-haspopup="listbox"
         rows={1}
-        className={`max-h-32 min-h-10 w-full min-w-0 resize-none border-0 bg-transparent px-3 py-2 text-sm text-text-primary outline-none placeholder:text-composer-icon focus-visible:outline-none focus-visible:ring-0 ${SCROLL_AREA_CLASS}`}
+        className={`${
+          fillAvailableHeight ? "h-full max-h-none" : "max-h-32"
+        } min-h-10 w-full min-w-0 resize-none border-0 bg-transparent text-base text-text-primary outline-none placeholder:text-composer-icon focus-visible:outline-none focus-visible:ring-0 ${
+          compactInline ? "px-0 py-2" : "px-5 py-2"
+        } ${reserveExpandControlSpace ? "pr-16" : ""} ${SCROLL_AREA_CLASS}`}
         style={{ display: "block" }}
       />
     </>

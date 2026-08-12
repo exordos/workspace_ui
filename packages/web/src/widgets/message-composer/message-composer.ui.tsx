@@ -11,10 +11,11 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
+import AlternateEmailSvg from "~/shared/assets/icons/composer-alternate-email.svg?react";
+import ChatSvg from "~/shared/assets/icons/composer-chat.svg?react";
+import ScheduleSvg from "~/shared/assets/icons/composer-schedule.svg?react";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
-import { Icon } from "~/shared/ui/icon";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import {
   MessageComposerAiActionMenuLayer,
@@ -23,15 +24,16 @@ import {
 import {
   buildOutgoingMessageBody,
   insertWorkspaceMention,
-  isLikelyImageAttachment,
-  normalizeImageAttachmentFile,
+  prepareAttachmentFiles,
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 import {
   AI_UNAVAILABLE_POPOVER_HEIGHT,
   AI_UNAVAILABLE_POPOVER_WIDTH,
+  COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX,
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
+  COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX,
   EMOJI_PICKER_HEIGHT,
   EMOJI_PICKER_WIDTH,
   SAVED_SNIPPETS_MENU_HEIGHT,
@@ -44,6 +46,13 @@ import {
 } from "./message-composer-constants.lib";
 import { useComposerDraft } from "./message-composer-draft.hook";
 import { getFloatingPickerStyle } from "./message-composer-floating.lib";
+import {
+  MessageComposerAttachIcon,
+  MessageComposerBottomPanelCloseIcon,
+  MessageComposerBottomPanelOpenIcon,
+  MessageComposerEmojiIcon,
+  MessageComposerSendIcon,
+} from "./message-composer-icons.ui";
 import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inset.lib";
 import { MessageComposerMediaPickerPopover } from "./message-composer-media-picker-popover.ui";
 import { useComposerMentions } from "./message-composer-mentions.hook";
@@ -57,17 +66,17 @@ import {
   replaceWorkspaceComposerLinks,
   type WorkspaceComposerReference,
 } from "./message-composer-reference.lib";
+import { useMessageComposerResize } from "./message-composer-resize.hook";
+import {
+  MessageComposerHeightButton,
+  MessageComposerResizeHandle,
+} from "./message-composer-resize.ui";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
 import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { buildScheduledComposerMessage } from "./message-composer-schedule.lib";
 import { wrapSelection } from "./message-composer-selection.lib";
-import {
-  TOOLBAR_AI_ICON_SIZE,
-  TOOLBAR_BTN,
-  TOOLBAR_ICON_EMPHASIS_CLASS,
-  TOOLBAR_ICON_SIZE,
-} from "./message-composer-styles.lib";
+import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
@@ -114,7 +123,8 @@ function resolveToolbarActionLabel(
 }
 
 interface MessageComposerToolbarRowProps {
-  isToolbarVisible: boolean;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   mode: ComposerMode;
   onModeChange: (nextMode: ComposerMode) => void;
   showPreviewTab: boolean;
@@ -131,17 +141,113 @@ interface MessageComposerToolbarRowProps {
   onToggleScheduleMenu: () => void;
   onToggleSavedSnippetsMenu: () => void;
   onToggleAiUnavailablePopover: () => void;
+  onToggleMediaPicker: () => void;
   onValueChange: (value: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   scheduleButtonRef: React.RefObject<HTMLButtonElement | null>;
   savedSnippetsButtonRef: React.RefObject<HTMLButtonElement | null>;
   aiButtonAnchorRef: React.RefObject<HTMLSpanElement | null>;
+  emojiButtonRef: React.RefObject<HTMLButtonElement | null>;
   aiMenuOpen: boolean;
+  emojiPickerOpen: boolean;
 }
+
+interface MessageComposerCompactLeadingControlsProps {
+  onExpandedChange: (expanded: boolean) => void;
+}
+
+const MessageComposerCompactLeadingControls =
+  React.memo<MessageComposerCompactLeadingControlsProps>(
+    function MessageComposerCompactLeadingControls({ onExpandedChange }) {
+      return (
+        <div
+          data-testid="composer-compact-controls"
+          className="mb-1 flex flex-shrink-0 items-center self-end"
+        >
+          <button
+            type="button"
+            className={`${TOOLBAR_BTN} text-composer-icon`}
+            onClick={() => onExpandedChange(true)}
+            aria-label={t("composer.expandToolbar")}
+            title={t("composer.expandToolbar")}
+            aria-expanded="false"
+          >
+            <MessageComposerBottomPanelCloseIcon />
+          </button>
+        </div>
+      );
+    },
+  );
+
+interface MessageComposerCompactTrailingControlsProps {
+  isEditing: boolean;
+  disabled: boolean;
+  uploadSupported: boolean;
+  uploadCapability: MessageComposerActionCapability;
+  onAttachClick: () => void;
+  onToggleMediaPicker: () => void;
+  emojiButtonRef: React.RefObject<HTMLButtonElement | null>;
+  emojiPickerOpen: boolean;
+}
+
+const MessageComposerCompactTrailingControls =
+  React.memo<MessageComposerCompactTrailingControlsProps>(
+    function MessageComposerCompactTrailingControls({
+      isEditing,
+      disabled,
+      uploadSupported,
+      uploadCapability,
+      onAttachClick,
+      onToggleMediaPicker,
+      emojiButtonRef,
+      emojiPickerOpen,
+    }) {
+      const attachLabel = resolveToolbarActionLabel(
+        uploadSupported,
+        uploadCapability,
+        t("a11y.attachFile"),
+      );
+
+      return (
+        <div
+          data-testid="composer-compact-trailing-controls"
+          className="mb-1 flex flex-shrink-0 items-center gap-2 self-end"
+        >
+          {!isEditing ? (
+            <button
+              type="button"
+              className={`${TOOLBAR_BTN} text-composer-icon`}
+              onClick={onAttachClick}
+              disabled={disabled}
+              aria-label={attachLabel}
+              title={attachLabel}
+            >
+              <MessageComposerAttachIcon compact />
+            </button>
+          ) : null}
+          <button
+            ref={emojiButtonRef}
+            type="button"
+            className={`${TOOLBAR_BTN} flex-shrink-0 ${
+              emojiPickerOpen ? "text-icon-active" : "text-composer-icon"
+            }`}
+            onClick={onToggleMediaPicker}
+            disabled={disabled}
+            aria-label={t("a11y.emoji")}
+            title={t("a11y.emoji")}
+            aria-pressed={emojiPickerOpen}
+          >
+            <MessageComposerEmojiIcon />
+          </button>
+        </div>
+      );
+    },
+  );
 
 const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
   function MessageComposerToolbarRow({
-    isToolbarVisible,
+    expanded,
+    onExpandedChange,
     mode,
     onModeChange,
     showPreviewTab,
@@ -158,12 +264,15 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
     onToggleScheduleMenu,
     onToggleSavedSnippetsMenu,
     onToggleAiUnavailablePopover,
+    onToggleMediaPicker,
     onValueChange,
     textareaRef,
     scheduleButtonRef,
     savedSnippetsButtonRef,
     aiButtonAnchorRef,
+    emojiButtonRef,
     aiMenuOpen,
+    emojiPickerOpen,
   }) {
     const attachLabel = resolveToolbarActionLabel(
       uploadSupported,
@@ -184,7 +293,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
         aria-label={attachLabel}
         title={attachLabel}
       >
-        <Icon name="attach" size={TOOLBAR_ICON_SIZE} className={TOOLBAR_ICON_EMPHASIS_CLASS} />
+        <MessageComposerAttachIcon />
       </button>
     ) : undefined;
     const callLinkTrigger =
@@ -197,7 +306,12 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
           aria-label={t("call.createCallLink")}
           title={t("call.createCallLink")}
         >
-          <Icon name="phone" size={TOOLBAR_ICON_SIZE} className={TOOLBAR_ICON_EMPHASIS_CLASS} />
+          <AlternateEmailSvg
+            width={24}
+            height={24}
+            data-composer-icon="alternate-email"
+            aria-hidden
+          />
         </button>
       ) : undefined;
     const scheduleTrigger =
@@ -211,7 +325,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
           aria-label={scheduleLabel}
           title={scheduleLabel}
         >
-          <Icon name="calendar" size={TOOLBAR_ICON_SIZE} />
+          <ScheduleSvg width={24} height={24} data-composer-icon="schedule" aria-hidden />
         </button>
       ) : undefined;
     const snippetsTrigger =
@@ -225,46 +339,65 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
           aria-label={t("composer.savedSnippets")}
           title={t("composer.savedSnippets")}
         >
-          <Icon name="chat_bubble_outline" size={TOOLBAR_ICON_SIZE} />
+          <ChatSvg width={24} height={21.412} data-composer-icon="chat" aria-hidden />
         </button>
       ) : undefined;
     const aiTrigger = !isEditing ? (
       <span ref={aiButtonAnchorRef}>
-        <AiComposerButton
-          onClick={onToggleAiUnavailablePopover}
-          active={aiMenuOpen}
-          iconSize={TOOLBAR_AI_ICON_SIZE}
-        />
+        <AiComposerButton onClick={onToggleAiUnavailablePopover} active={aiMenuOpen} />
       </span>
     ) : undefined;
 
-    return (
-      <div
-        data-testid="composer-toolbar-row"
-        aria-hidden={!isToolbarVisible}
-        className={`overflow-hidden px-3 transition-[max-height,opacity,transform,padding] duration-200 ease-out ${
-          isToolbarVisible
-            ? "max-h-12 translate-y-0 pb-1 pt-2 opacity-100"
-            : "pointer-events-none max-h-0 -translate-y-1 pb-0 pt-0 opacity-0"
-        }`}
+    const emojiTrigger = (
+      <button
+        ref={emojiButtonRef}
+        type="button"
+        className={`${TOOLBAR_BTN} ${emojiPickerOpen ? "text-icon-active" : "text-composer-icon"}`}
+        onClick={onToggleMediaPicker}
+        disabled={disabled}
+        aria-label={t("a11y.emoji")}
+        title={t("a11y.emoji")}
+        aria-pressed={emojiPickerOpen}
       >
-        {isToolbarVisible && (
-          <div className="flex items-center gap-2">
-            <ComposerModeTabs mode={mode} onChange={onModeChange} showPreviewTab={showPreviewTab} />
+        <MessageComposerEmojiIcon />
+      </button>
+    );
 
-            {mode === "write" && (
-              <FormattingToolbar
-                textareaRef={textareaRef}
-                onValueChange={onValueChange}
-                fileTrigger={fileTrigger}
-                callLinkTrigger={callLinkTrigger}
-                scheduleTrigger={scheduleTrigger}
-                snippetsTrigger={snippetsTrigger}
-                aiTrigger={aiTrigger}
-              />
-            )}
-          </div>
-        )}
+    const toolbarToggle = (
+      <button
+        type="button"
+        className={`${TOOLBAR_BTN} text-composer-icon disabled:opacity-40`}
+        onClick={() => onExpandedChange(!expanded)}
+        disabled={mode === "preview"}
+        aria-label={expanded ? t("composer.collapseToolbar") : t("composer.expandToolbar")}
+        title={expanded ? t("composer.collapseToolbar") : t("composer.expandToolbar")}
+        aria-expanded={expanded}
+      >
+        <MessageComposerBottomPanelOpenIcon />
+      </button>
+    );
+
+    if (!expanded) return null;
+
+    return (
+      <div data-testid="composer-toolbar-row" className="h-10 flex-shrink-0 overflow-x-auto pb-2">
+        <div className="flex w-max min-w-full items-center gap-3 pl-5">
+          {toolbarToggle}
+          <ComposerModeTabs mode={mode} onChange={onModeChange} showPreviewTab={showPreviewTab} />
+
+          {mode === "write" && (
+            <FormattingToolbar
+              textareaRef={textareaRef}
+              onValueChange={onValueChange}
+              fileTrigger={fileTrigger}
+              emojiTrigger={emojiTrigger}
+              callLinkTrigger={callLinkTrigger}
+              scheduleTrigger={scheduleTrigger}
+              snippetsTrigger={snippetsTrigger}
+              aiTrigger={aiTrigger}
+            />
+          )}
+        </div>
       </div>
     );
   },
@@ -301,6 +434,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   // Capabilities preserve the composer layout while deciding whether an action can hit the backend.
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
+  const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
+  const [textareaContentHeight, setTextareaContentHeight] = useState(
+    COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
+  );
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [mediaPickerTab, setMediaPickerTab] = useState<MediaPickerTab>("emoji");
   const [mediaPickerStyle, setMediaPickerStyle] = useState<React.CSSProperties>({});
@@ -422,7 +559,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     : activeMentionIndex;
   const preservesWorkspaceReplyContext = editSession?.preserveWorkspaceReplyContext === true;
   const effectiveReplyQuote = isEditing && !preservesWorkspaceReplyContext ? null : replyQuote;
+  const composerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerResize = useMessageComposerResize({
+    composerRef,
+    enabled: textareaContentHeight >= COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX,
+    textareaContentHeight,
+    textareaRef,
+  });
   const textareaId = useId();
   const prevDisabledRef = useRef(disabled);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
@@ -496,7 +640,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   useEffect(() => {
     latestFilesRef.current = files;
   }, [files]);
-  const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
     () =>
       (!isEditing || preservesWorkspaceReplyContext) && outgoingBodyOverride != null
@@ -923,20 +1066,23 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       if (isEditing) return;
       const items = e.clipboardData?.items;
 
-      const imageFiles: File[] = [];
+      const clipboardFiles: { file: File; fallbackMime?: string }[] = [];
       for (const item of Array.from(items ?? [])) {
         if (item.kind !== "file") continue;
         const file = item.getAsFile();
         if (file == null) continue;
-        const normalized = normalizeImageAttachmentFile(file, item.type);
-        if (uploadSupported && isLikelyImageAttachment(normalized)) {
-          imageFiles.push(normalized);
-        }
+        clipboardFiles.push({ file, fallbackMime: item.type });
       }
 
-      if (imageFiles.length > 0) {
+      if (uploadSupported && clipboardFiles.length > 0) {
         e.preventDefault();
-        setFiles((prev) => [...prev, ...imageFiles]);
+        setFiles((prev) => [
+          ...prev,
+          ...prepareAttachmentFiles(clipboardFiles, {
+            source: "clipboard",
+            existingFiles: prev,
+          }),
+        ]);
         return;
       }
 
@@ -1026,12 +1172,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
+    const contentHeight = Math.max(textarea.scrollHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX);
+    setTextareaContentHeight(contentHeight);
+    if (composerResize.height != null) {
+      textarea.style.height = "100%";
+      return;
+    }
     const nextHeight = Math.min(
-      Math.max(textarea.scrollHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX),
+      Math.max(contentHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX),
       COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
     );
     textarea.style.height = `${nextHeight}px`;
-  }, []);
+  }, [composerResize.height]);
 
   React.useLayoutEffect(() => {
     if (mode !== "write") return;
@@ -1282,24 +1434,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     };
   }, [processDueScheduledMessage, scheduledMessages.length]);
 
-  const isToolbarVisible =
-    COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE ||
-    isComposerFocusWithin ||
-    value.length > 0 ||
-    mode === "preview";
-
-  const handleComposerFocusCapture = useCallback(() => {
-    setIsComposerFocusWithin(true);
-  }, []);
-
-  const handleComposerBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
-    const nextFocusedElement = event.relatedTarget;
-    if (nextFocusedElement instanceof Node && event.currentTarget.contains(nextFocusedElement)) {
-      return;
-    }
-    setIsComposerFocusWithin(false);
-  }, []);
-
   const handleModeChange = useCallback(
     (nextMode: ComposerMode) => {
       if (nextMode === "preview" && !previewSupported) {
@@ -1318,27 +1452,116 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     showAiMenuNotice(previewCapability);
   }, [mode, previewCapability, previewSupported, showAiMenuNotice]);
 
+  const resizeHandleVisible =
+    textareaContentHeight >= COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX ||
+    composerResize.height != null;
+  const heightButtonVisible =
+    textareaContentHeight >= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX ||
+    composerResize.height != null;
+  const toolbarRow = (
+    <MessageComposerToolbarRow
+      expanded={isToolbarExpanded}
+      onExpandedChange={setIsToolbarExpanded}
+      mode={mode}
+      onModeChange={handleModeChange}
+      showPreviewTab={previewSupported}
+      isEditing={isEditing}
+      disabled={disabled}
+      uploadSupported={uploadSupported}
+      uploadCapability={uploadCapability}
+      scheduledSendSupported={scheduledSendSupported}
+      scheduledSendCapability={scheduledSendCapability}
+      savedSnippetsSupported={savedSnippetsSupported}
+      onCreateCallLink={onCreateCallLink}
+      onAttachClick={handleAttachClick}
+      onCreateCallLinkClick={handleCreateCallLink}
+      onToggleScheduleMenu={toggleScheduleMenu}
+      onToggleSavedSnippetsMenu={toggleSavedSnippetsMenu}
+      onToggleAiUnavailablePopover={toggleAiUnavailablePopover}
+      onToggleMediaPicker={() => toggleMediaPicker("emoji")}
+      onValueChange={setValue}
+      textareaRef={textareaRef}
+      scheduleButtonRef={scheduleButtonRef}
+      savedSnippetsButtonRef={savedSnippetsButtonRef}
+      aiButtonAnchorRef={aiButtonAnchorRef}
+      emojiButtonRef={emojiButtonRef}
+      aiMenuOpen={aiMenuOpen}
+      emojiPickerOpen={mediaPickerOpen && mediaPickerTab === "emoji"}
+    />
+  );
+  const writeBody = (
+    <div
+      key="composer-write-body"
+      className="relative flex min-h-0 min-w-0 flex-1 items-center self-stretch"
+    >
+      <MessageComposerWriteBody
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled || sendInFlight}
+        textareaRef={textareaRef}
+        textareaId={textareaId}
+        showMentions={showComposerSuggestions}
+        mentionSuggestions={composerSuggestions}
+        activeMentionIndex={activeComposerSuggestionIndex}
+        onActiveMentionIndexChange={(nextIndex) => {
+          if (showWorkspaceReferences) {
+            setActiveWorkspaceReferenceIndex(nextIndex);
+          } else {
+            setActiveMentionIndex(nextIndex);
+          }
+        }}
+        onMentionSelect={handleComposerSuggestionSelect}
+        onHideMentionDropdown={handleHideComposerSuggestions}
+        onValueChange={setValue}
+        onDetectMention={detectMention}
+        applyFormattingShortcut={applyFormattingShortcut}
+        onPaste={handlePaste}
+        onSend={handleSend}
+        sendNewlineMode={sendNewlineMode}
+        onEditLastMessage={onEditLastMessage}
+        isEditing={isEditing}
+        onCancelEdit={onCancelEdit}
+        fillAvailableHeight={composerResize.height != null}
+        reserveExpandControlSpace={isToolbarExpanded && heightButtonVisible}
+        compactInline={!isToolbarExpanded}
+      />
+    </div>
+  );
+  const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
+  const inputRowLayout = isCompactWriteMode ? "items-end gap-5 py-1 pl-5 pr-5" : "";
+
   return (
     <div
-      className={`flex-shrink-0 rounded-lg bg-composer-outer ${isEditing ? "" : "border-t border-border-subtle"} ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
+      ref={composerRef}
+      className={`relative flex flex-shrink-0 flex-col overflow-visible rounded-xl bg-composer-outer ${
+        isEditing ? "" : "border-t border-border-subtle"
+      } ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
       data-focus-zone="composer"
       role="form"
       aria-label={t("a11y.messageComposer")}
-      style={
-        composerKeyboardInset > 0 ? { paddingBottom: `${composerKeyboardInset}px` } : undefined
-      }
+      style={{
+        ...(composerKeyboardInset > 0
+          ? { paddingBottom: `${composerKeyboardInset}px` }
+          : undefined),
+        ...(composerResize.height != null ? { height: `${composerResize.height}px` } : undefined),
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onFocusCapture={handleComposerFocusCapture}
-      onBlurCapture={handleComposerBlurCapture}
     >
+      {resizeHandleVisible && (
+        <MessageComposerResizeHandle
+          onPointerDown={composerResize.onResizeHandlePointerDown}
+          onKeyDown={composerResize.onResizeHandleKeyDown}
+        />
+      )}
       {isEditing && preservesWorkspaceReplyContext ? (
         <MessageComposerEditNotice onCancelEdit={onCancelEdit} />
       ) : null}
       <MessageComposerPreface
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}
+        separateUploadProgress={optimisticClearOnSend}
         files={files}
         filePreviewUrls={filePreviewUrls}
         showFiles={mode === "write"}
@@ -1358,34 +1581,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       {!isEditing && <MessageComposerSmartReplyStrip onAccept={setValue} />}
 
-      <MessageComposerToolbarRow
-        isToolbarVisible={isToolbarVisible}
-        mode={mode}
-        onModeChange={handleModeChange}
-        showPreviewTab={previewSupported}
-        isEditing={isEditing}
-        disabled={disabled}
-        uploadSupported={uploadSupported}
-        uploadCapability={uploadCapability}
-        scheduledSendSupported={scheduledSendSupported}
-        scheduledSendCapability={scheduledSendCapability}
-        savedSnippetsSupported={savedSnippetsSupported}
-        onCreateCallLink={onCreateCallLink}
-        onAttachClick={handleAttachClick}
-        onCreateCallLinkClick={handleCreateCallLink}
-        onToggleScheduleMenu={toggleScheduleMenu}
-        onToggleSavedSnippetsMenu={toggleSavedSnippetsMenu}
-        onToggleAiUnavailablePopover={toggleAiUnavailablePopover}
-        onValueChange={setValue}
-        textareaRef={textareaRef}
-        scheduleButtonRef={scheduleButtonRef}
-        savedSnippetsButtonRef={savedSnippetsButtonRef}
-        aiButtonAnchorRef={aiButtonAnchorRef}
-        aiMenuOpen={aiMenuOpen}
-      />
-
-      {/* Input row */}
-      <div className="relative p-3">
+      <div className="relative flex min-h-0 flex-1 flex-col p-2">
         {unsupportedActionText != null && (
           <div className="mb-2 px-1 text-xs text-notice-base" role="status">
             {unsupportedActionText}
@@ -1437,82 +1633,73 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             onStartCreate={startCreateSavedSnippet}
           />
         )}
-        <div className="flex items-center gap-1">
-          <div className="flex min-h-10 min-w-0 flex-1 items-stretch overflow-visible rounded-2xl bg-bg px-1.5 outline-none transition-[outline-color] focus-within:outline-1 focus-within:outline-offset-0 focus-within:outline-accent-soft">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={handleFileInputEvent}
-              onInput={handleFileInputEvent}
-              accept="*/*"
-            />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="sr-only"
+          onChange={handleFileInputEvent}
+          onInput={handleFileInputEvent}
+          accept="*/*"
+        />
 
-            <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center self-center">
-              <button
-                ref={emojiButtonRef}
-                type="button"
-                onClick={() => toggleMediaPicker("emoji")}
-                disabled={disabled}
-                className={`hover:bg-bg-elevated/50 absolute inset-0 flex items-center justify-center rounded-l-xl transition-colors hover:text-text-primary disabled:opacity-50 ${
-                  mediaPickerOpen && mediaPickerTab === "emoji"
-                    ? "text-text-primary"
-                    : "text-composer-icon"
-                }`}
-                aria-label={t("a11y.emoji")}
-              >
-                <Icon name="mood" size={20} />
-              </button>
-            </div>
+        {mediaPickerOpen && (
+          <MessageComposerMediaPickerPopover
+            mediaPickerStyle={mediaPickerStyle}
+            mediaPickerTab={mediaPickerTab}
+            onClose={() => setMediaPickerOpen(false)}
+            onTabChange={(tab) => {
+              setMediaPickerTab(tab);
+              updateMediaPickerPosition(tab);
+            }}
+            onEmojiClick={handleEmojiClick}
+            onStickerSelect={(markdown) => {
+              setValue((prev) => prev + markdown);
+              setMediaPickerOpen(false);
+            }}
+          />
+        )}
 
-            {mediaPickerOpen && (
-              <MessageComposerMediaPickerPopover
-                mediaPickerStyle={mediaPickerStyle}
-                mediaPickerTab={mediaPickerTab}
-                onClose={() => setMediaPickerOpen(false)}
-                onTabChange={(tab) => {
-                  setMediaPickerTab(tab);
-                  updateMediaPickerPosition(tab);
-                }}
-                onEmojiClick={handleEmojiClick}
-                onStickerSelect={(markdown) => {
-                  setValue((prev) => prev + markdown);
-                  setMediaPickerOpen(false);
-                }}
+        <div className="flex min-h-0 flex-1 items-end gap-3">
+          <div
+            className={`relative flex min-h-12 min-w-0 flex-1 flex-col overflow-visible rounded-xl bg-bg outline-none transition-[outline-color] focus-within:outline-1 focus-within:outline-offset-0 focus-within:outline-accent-soft ${
+              composerResize.height != null ? "self-stretch" : "self-end"
+            }`}
+          >
+            {heightButtonVisible && (
+              <MessageComposerHeightButton
+                isFullHeight={composerResize.isFullHeight}
+                onClick={composerResize.toggleFullHeight}
               />
             )}
 
-            <div className="relative min-w-0 flex-1">
+            <div
+              data-testid={isCompactWriteMode ? "composer-compact-input-row" : undefined}
+              className={`relative flex min-h-0 min-w-0 flex-1 ${inputRowLayout}`}
+            >
               {mode === "write" ? (
-                <MessageComposerWriteBody
-                  value={value}
-                  placeholder={placeholder}
-                  disabled={disabled || sendInFlight}
-                  textareaRef={textareaRef}
-                  textareaId={textareaId}
-                  showMentions={showComposerSuggestions}
-                  mentionSuggestions={composerSuggestions}
-                  activeMentionIndex={activeComposerSuggestionIndex}
-                  onActiveMentionIndexChange={(nextIndex) => {
-                    if (showWorkspaceReferences) {
-                      setActiveWorkspaceReferenceIndex(nextIndex);
-                    } else {
-                      setActiveMentionIndex(nextIndex);
-                    }
-                  }}
-                  onMentionSelect={handleComposerSuggestionSelect}
-                  onHideMentionDropdown={handleHideComposerSuggestions}
-                  onValueChange={setValue}
-                  onDetectMention={detectMention}
-                  applyFormattingShortcut={applyFormattingShortcut}
-                  onPaste={handlePaste}
-                  onSend={handleSend}
-                  sendNewlineMode={sendNewlineMode}
-                  onEditLastMessage={onEditLastMessage}
-                  isEditing={isEditing}
-                  onCancelEdit={onCancelEdit}
-                />
+                <>
+                  <div className="flex min-h-0 min-w-0 flex-1 items-end gap-2 self-stretch">
+                    {!isToolbarExpanded ? (
+                      <MessageComposerCompactLeadingControls
+                        onExpandedChange={setIsToolbarExpanded}
+                      />
+                    ) : null}
+                    {writeBody}
+                  </div>
+                  {!isToolbarExpanded ? (
+                    <MessageComposerCompactTrailingControls
+                      isEditing={isEditing}
+                      disabled={disabled}
+                      uploadSupported={uploadSupported}
+                      uploadCapability={uploadCapability}
+                      onAttachClick={handleAttachClick}
+                      onToggleMediaPicker={() => toggleMediaPicker("emoji")}
+                      emojiButtonRef={emojiButtonRef}
+                      emojiPickerOpen={mediaPickerOpen && mediaPickerTab === "emoji"}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <MessageComposerPreviewBody
                   outgoingBodyTrim={outgoingBody.trim()}
@@ -1536,12 +1723,13 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
               void handleSend();
             }}
             disabled={disabled || sendInFlight || (isEditing && value.trim().length === 0)}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-l-xl rounded-r-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}
           >
-            <Icon name="send" size={18} className="text-on-accent" />
+            <MessageComposerSendIcon className="text-on-accent" />
           </button>
         </div>
+        {isToolbarExpanded && <div className="mr-[60px] mt-2">{toolbarRow}</div>}
       </div>
     </div>
   );

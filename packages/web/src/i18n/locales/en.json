@@ -1246,7 +1246,21 @@
     "savedSnippetsCreateError": "Failed to create saved snippet",
     "savedSnippetsUnsupported": "Saved snippets are not connected yet.",
     "actionUnsupported": "This action is not available in this conversation yet.",
-    "aiTemporarilyUnavailable": "AI features are temporarily unavailable in your organization."
+    "aiTemporarilyUnavailable": "AI features are temporarily unavailable in your organization.",
+    "expandEditor": "Expand message editor",
+    "collapseEditor": "Collapse message editor",
+    "resizeEditor": "Resize message editor",
+    "expandToolbar": "Show formatting tools",
+    "collapseToolbar": "Hide formatting tools"
+  },
+  "attachmentCard": {
+    "remove": "Remove {{fileName}}",
+    "uploading": "Uploading · {{percent}}%",
+    "uploadProgress": "Uploading {{fileName}}: {{percent}}%",
+    "cancelUpload": "Cancel upload of {{fileName}}",
+    "uploadError": "Upload failed",
+    "retryUpload": "Retry upload of {{fileName}}",
+    "list": "Attached files"
   },
   "a11y": {
     "collapseTopics": "Collapse topics",

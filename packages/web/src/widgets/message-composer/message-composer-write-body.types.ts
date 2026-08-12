@@ -23,4 +23,7 @@ export interface MessageComposerWriteBodyProps {
   onEditLastMessage?: () => void;
   isEditing?: boolean;
   onCancelEdit?: () => void;
+  fillAvailableHeight?: boolean;
+  reserveExpandControlSpace?: boolean;
+  compactInline?: boolean;
 }

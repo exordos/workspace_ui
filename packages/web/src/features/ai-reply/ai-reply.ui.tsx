@@ -267,20 +267,20 @@ export const AiActionMenu: React.FC<AiActionMenuProps> = ({
 // AI Composer Button (trigger for the action menu)
 // ---------------------------------------------------------------------------
 
-export const AiComposerButton: React.FC<AiComposerButtonProps> = ({
-  onClick,
-  active,
-  iconSize = 14,
-}) => (
+export const AiComposerButton: React.FC<AiComposerButtonProps> = ({ onClick, active }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-      active ? "bg-accent/20 text-accent" : "text-composer-icon hover:text-text-primary"
+    // Same wrapper as composer toolbar icons (hover bg via .composer-toolbar-btn in app.styles.css)
+    className={`composer-toolbar-btn flex h-8 w-8 items-center justify-center ${
+      active ? "text-icon-active" : ""
     }`}
     aria-label="AI assistant"
     title="AI assistant"
+    aria-pressed={active}
   >
-    <Icon name="sparkles" size={iconSize} className="text-current" />
+    <span className="font-sans text-[20px] font-normal leading-none tracking-[-0.02em]" aria-hidden>
+      AI
+    </span>
   </button>
 );

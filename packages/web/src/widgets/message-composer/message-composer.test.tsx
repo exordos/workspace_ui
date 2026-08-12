@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -9,7 +9,6 @@ import { useMentionSuggestStore } from "~/features/mention-suggest/mention-sugge
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
-import { TOOLBAR_ICON_SIZE } from "./message-composer-styles.lib";
 import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
@@ -95,11 +94,26 @@ beforeEach(() => {
   resetComposerSavedSnippetsModelForTests();
 });
 
+const expandComposerToolbar = () => {
+  const expandToolbarButton = screen.queryByRole("button", { name: /show formatting tools/i });
+  if (expandToolbarButton != null) {
+    fireEvent.click(expandToolbarButton);
+  }
+};
+
 const focusComposerInput = () => {
   const textbox = screen.getByRole("textbox");
   fireEvent.focus(textbox);
+  expandComposerToolbar();
   return textbox;
 };
+
+const openComposerPreview = () => {
+  expandComposerToolbar();
+  fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+};
+
+const createRect = (height: number): DOMRect => new DOMRect(0, 0, 800, height);
 
 const TEST_USER_TIMESTAMP = new Date(0).toISOString();
 
@@ -509,6 +523,343 @@ describe("MessageComposer textarea autosize", () => {
     });
     expect(textbox.style.height).toBe("128px");
   });
+
+  it("reveals resize controls as each one fits without moving the emoji", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    const compactRow = screen.getByTestId("composer-compact-input-row");
+    const trailingControls = screen.getByTestId("composer-compact-trailing-controls");
+    const emojiButton = screen.getByRole("button", { name: /emoji/i });
+    let mockedScrollHeight = 40;
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      get: () => mockedScrollHeight,
+    });
+
+    fireEvent.change(textbox, { target: { value: "Line 1" } });
+    expect(
+      screen.queryByRole("button", { name: /resize message editor/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /expand message editor/i }),
+    ).not.toBeInTheDocument();
+    expect(compactRow).toHaveClass("pr-5");
+    expect(compactRow.lastElementChild).toBe(trailingControls);
+    expect(trailingControls.lastElementChild).toBe(emojiButton);
+
+    mockedScrollHeight = 64;
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2" } });
+
+    const resizeHandle = screen.getByRole("button", { name: /resize message editor/i });
+    expect(resizeHandle).toHaveClass("z-float", "pointer-events-auto", "cursor-ns-resize");
+    expect(resizeHandle).toHaveAttribute("data-composer-resize-handle", "true");
+    expect(
+      screen.queryByRole("button", { name: /expand message editor/i }),
+    ).not.toBeInTheDocument();
+    expect(compactRow).toHaveClass("pr-5");
+    expect(compactRow.lastElementChild).toBe(trailingControls);
+    expect(trailingControls.lastElementChild).toBe(emojiButton);
+
+    mockedScrollHeight = 96;
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2\nLine 3" } });
+
+    const expandButton = screen.getByRole("button", { name: /expand message editor/i });
+    expect(expandButton).toHaveClass(
+      "absolute",
+      "right-5",
+      "top-6",
+      "z-float",
+      "pointer-events-auto",
+      "cursor-pointer",
+    );
+    expect(compactRow).toHaveClass("pr-5");
+    expect(compactRow).not.toHaveClass("pr-16");
+    expect(compactRow.lastElementChild).toBe(trailingControls);
+    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(compactRow).not.toContainElement(expandButton);
+    expect(expandButton.querySelector('[data-composer-icon="full-height"]')).toHaveTextContent("⤢");
+  });
+
+  it("keeps both controls available after manual resizing when text becomes shorter", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    let mockedScrollHeight = 64;
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      get: () => mockedScrollHeight,
+    });
+
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2" } });
+    fireEvent.keyDown(screen.getByRole("button", { name: /resize message editor/i }), {
+      key: "ArrowUp",
+    });
+
+    mockedScrollHeight = 40;
+    fireEvent.change(textbox, { target: { value: "Line 1" } });
+
+    expect(screen.getByRole("button", { name: /resize message editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(composer).toHaveStyle({ height: "224px" });
+  });
+
+  it("allows shrinking below the previous natural height after text becomes shorter", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+
+    let naturalComposerHeight = 200;
+    vi.spyOn(composer, "getBoundingClientRect").mockImplementation(() =>
+      createRect(
+        composer.style.height === "auto"
+          ? naturalComposerHeight
+          : Number.parseFloat(composer.style.height) || naturalComposerHeight,
+      ),
+    );
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    let mockedScrollHeight = 96;
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      get: () => mockedScrollHeight,
+    });
+
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2\nLine 3" } });
+    fireEvent.keyDown(screen.getByRole("button", { name: /resize message editor/i }), {
+      key: "ArrowUp",
+    });
+    expect(composer).toHaveStyle({ height: "224px" });
+
+    naturalComposerHeight = 120;
+    mockedScrollHeight = 40;
+    fireEvent.change(textbox, { target: { value: "Line 1" } });
+
+    const resizeHandle = screen.getByRole("button", { name: /resize message editor/i });
+    fireEvent.pointerDown(resizeHandle, { clientY: 500 });
+    fireEvent.pointerMove(window, { clientY: 1000 });
+
+    expect(composer).toHaveStyle({ height: "120px" });
+    fireEvent.pointerUp(window);
+  });
+
+  it("expands to the available messenger height and collapses back", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      value: 300,
+    });
+
+    fireEvent.change(textbox, { target: { value: "A long message" } });
+    const expandButton = screen.getByRole("button", { name: /expand message editor/i });
+    const editor = textbox.closest(".flex.min-h-12.min-w-0.flex-1.flex-col");
+    expect(editor).toHaveClass("self-end");
+    expect(expandButton).toHaveClass("z-float", "pointer-events-auto");
+    fireEvent.click(expandButton);
+
+    expect(composer).toHaveStyle({ height: "796px" });
+    expect(editor).toHaveClass("self-stretch");
+    expect(textbox.style.height).toBe("100%");
+    expect(screen.getByRole("button", { name: /collapse message editor/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /collapse message editor/i }));
+
+    expect(composer.style.height).toBe("");
+    expect(editor).toHaveClass("self-end");
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+  });
+
+  it("resizes the composer from the keyboard-accessible handle", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      value: 300,
+    });
+
+    fireEvent.change(textbox, { target: { value: "A long message" } });
+    fireEvent.keyDown(screen.getByRole("button", { name: /resize message editor/i }), {
+      key: "ArrowUp",
+    });
+
+    expect(composer).toHaveStyle({ height: "224px" });
+  });
+
+  it("resizes the composer by dragging the top handle", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      value: 300,
+    });
+
+    fireEvent.change(textbox, { target: { value: "A long message" } });
+    const resizeHandle = screen.getByRole("button", { name: /resize message editor/i });
+    expect(window.getComputedStyle(resizeHandle).cursor).toBe("ns-resize");
+    fireEvent.pointerDown(resizeHandle, { clientY: 500 });
+    expect(document.body.style.cursor).toBe("ns-resize");
+    fireEvent.pointerMove(window, { clientY: -500 });
+
+    expect(composer).toHaveStyle({ height: "796px" });
+
+    fireEvent.pointerUp(window);
+    expect(document.body.style.cursor).toBe("");
+  });
+
+  it("keeps the top gap when the composer has no shrinkable message area", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const parent = composer.parentElement;
+    const textbox = screen.getByRole("textbox");
+    if (!(parent instanceof HTMLElement)) {
+      throw new Error("Expected composer parent");
+    }
+
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+    vi.spyOn(parent, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", { configurable: true, value: 300 });
+
+    fireEvent.change(textbox, { target: { value: "A long message" } });
+    fireEvent.click(screen.getByRole("button", { name: /expand message editor/i }));
+
+    expect(composer).toHaveStyle({ height: "596px" });
+  });
+
+  it("keeps the top gap when the available messenger area becomes small or grows again", async () => {
+    let onResize: ResizeObserverCallback | null = null;
+
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        onResize = callback;
+      }
+
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+
+    try {
+      const { container } = renderWithProviders(
+        <div>
+          <div data-message-anchor-layer-host="true" />
+          <MessageComposer onSend={vi.fn()} />
+        </div>,
+      );
+      const composer = screen.getByRole("form", { name: /message composer/i });
+      const messageArea = container.querySelector<HTMLElement>(
+        '[data-message-anchor-layer-host="true"]',
+      );
+      const textbox = screen.getByRole("textbox");
+      if (messageArea == null) {
+        throw new Error("Expected message area");
+      }
+
+      vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(createRect(200));
+      const messageAreaRect = vi.spyOn(messageArea, "getBoundingClientRect");
+      messageAreaRect.mockReturnValue(createRect(600));
+      Object.defineProperty(textbox, "scrollHeight", { configurable: true, value: 300 });
+
+      fireEvent.change(textbox, { target: { value: "A long message" } });
+      fireEvent.click(screen.getByRole("button", { name: /expand message editor/i }));
+      expect(composer).toHaveStyle({ height: "796px" });
+
+      await waitFor(() => {
+        expect(onResize).not.toBeNull();
+      });
+      const resizeObserver: ResizeObserver = {
+        disconnect: () => {},
+        observe: () => {},
+        unobserve: () => {},
+      };
+      messageAreaRect.mockReturnValue(createRect(4));
+      act(() => {
+        onResize?.([], resizeObserver);
+      });
+      expect(composer).toHaveStyle({ height: "200px" });
+
+      messageAreaRect.mockReturnValue(createRect(300));
+      act(() => {
+        onResize?.([], resizeObserver);
+      });
+      expect(composer).toHaveStyle({ height: "496px" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("MessageComposer scheduled send", () => {
@@ -543,8 +894,7 @@ describe("MessageComposer saved snippets", () => {
   it("opens an empty saved snippets stub without fetching legacy snippets", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
-    const textbox = screen.getByRole("textbox");
-    fireEvent.focus(textbox);
+    const textbox = focusComposerInput();
     fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
 
     expect(await screen.findByRole("textbox", { name: /filter snippets/i })).toBeInTheDocument();
@@ -555,7 +905,7 @@ describe("MessageComposer saved snippets", () => {
   it("keeps the empty stub when filtering snippets", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
-    fireEvent.focus(screen.getByRole("textbox"));
+    focusComposerInput();
     fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
 
     const filterInput = await screen.findByRole("textbox", { name: /filter snippets/i });
@@ -568,7 +918,7 @@ describe("MessageComposer saved snippets", () => {
   it("reopens the empty saved snippets stub without fetching", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
-    fireEvent.focus(screen.getByRole("textbox"));
+    focusComposerInput();
     const trigger = screen.getByRole("button", { name: /saved snippets/i });
 
     fireEvent.click(trigger);
@@ -584,7 +934,7 @@ describe("MessageComposer saved snippets", () => {
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "Current draft body" } });
-    fireEvent.focus(textbox);
+    focusComposerInput();
     fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
 
     fireEvent.click(await screen.findByRole("button", { name: /create new saved snippet/i }));
@@ -861,9 +1211,9 @@ describe("MessageComposer mention suggestions", () => {
     expect(dropdown).toHaveClass("overflow-y-auto");
     expect(dropdown?.className).toContain("max-w-[calc(100vw-1rem)]");
 
-    const inputRow = textbox.closest(".flex.min-h-10.items-stretch");
-    expect(inputRow).not.toBeNull();
-    expect(inputRow).toHaveClass("overflow-visible");
+    const editor = textbox.closest(".flex.min-h-12.min-w-0.flex-1.flex-col");
+    expect(editor).not.toBeNull();
+    expect(editor).toHaveClass("overflow-visible");
   });
 
   it("renders Workspace presence indicators in mention suggestions", async () => {
@@ -1059,6 +1409,7 @@ describe("MessageComposer formatting shortcuts", () => {
     }
     fireEvent.change(textbox, { target: { value: "secret text" } });
     textbox.setSelectionRange(0, 6);
+    expandComposerToolbar();
 
     fireEvent.click(screen.getByRole("button", { name: "Spoiler" }));
 
@@ -1076,6 +1427,7 @@ describe("MessageComposer formatting shortcuts", () => {
     }
     fireEvent.change(textbox, { target: { value: "line one\nline two" } });
     textbox.setSelectionRange(0, textbox.value.length);
+    expandComposerToolbar();
 
     fireEvent.click(screen.getByRole("button", { name: "Quote" }));
 
@@ -1093,6 +1445,7 @@ describe("MessageComposer formatting shortcuts", () => {
     }
     fireEvent.change(textbox, { target: { value: "release notes" } });
     textbox.setSelectionRange(0, textbox.value.length);
+    expandComposerToolbar();
 
     fireEvent.click(screen.getByRole("button", { name: "Link" }));
 
@@ -1111,7 +1464,7 @@ describe("MessageComposer preview mode", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
 
     const preview = screen.getByRole("region", { name: "Preview" });
     expect(within(preview).getByText("Reply from the first tab")).toBeInTheDocument();
@@ -1133,6 +1486,7 @@ describe("MessageComposer preview mode", () => {
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
+    expandComposerToolbar();
 
     expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
   });
@@ -1142,6 +1496,7 @@ describe("MessageComposer preview mode", () => {
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
+    expandComposerToolbar();
     const previewButton = screen.getByRole("button", { name: "Preview" });
     expect(previewButton).toBeInTheDocument();
     fireEvent.click(previewButton);
@@ -1152,19 +1507,41 @@ describe("MessageComposer preview mode", () => {
     expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
   });
 
+  it("disables toolbar collapse in preview mode", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "**Hello** world" },
+    });
+    openComposerPreview();
+
+    const collapseToolbarButton = screen.getByRole("button", {
+      name: /hide formatting tools/i,
+    });
+    expect(collapseToolbarButton).toBeDisabled();
+    expect(collapseToolbarButton).toHaveClass("disabled:opacity-40");
+    fireEvent.click(collapseToolbarButton);
+
+    expect(screen.getByTestId("composer-toolbar-row")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    expect(collapseToolbarButton).not.toBeDisabled();
+  });
+
   it("keeps preview mode available after switching back to write mode", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
     expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
     expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
     expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
   });
 
@@ -1173,7 +1550,7 @@ describe("MessageComposer preview mode", () => {
     renderWithProviders(<MessageComposer onSend={onSend} />);
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "**Hello** world" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
     expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
@@ -1190,7 +1567,7 @@ describe("MessageComposer preview mode", () => {
 
     const textbox = screen.getByRole("textbox");
     fireEvent.focus(textbox);
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
 
     await waitFor(() => {
       expect(screen.getByText("Nothing to preview yet")).toBeInTheDocument();
@@ -1227,7 +1604,7 @@ describe("MessageComposer preview mode", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
 
     const preview = screen.getByRole("region", { name: "Preview" });
     expect(within(preview).getByText("@Alice Reed")).toBeInTheDocument();
@@ -1260,7 +1637,7 @@ describe("MessageComposer preview mode", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      openComposerPreview();
 
       expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1309,7 +1686,7 @@ describe("MessageComposer preview mode", () => {
         type: "image/png",
       });
       fireEvent.change(input, { target: { files: [imageFile] } });
-      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      openComposerPreview();
 
       const preview = screen.getByRole("region", { name: "Preview" });
       const thumbnail = await within(preview).findByRole("img", { name: "preview.png" });
@@ -1336,7 +1713,7 @@ describe("MessageComposer preview mode", () => {
       type: "application/pdf",
     });
     fireEvent.change(input, { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    openComposerPreview();
 
     const preview = screen.getByRole("region", { name: "Preview" });
     expect(within(preview).getByText("brief.final.pdf")).toBeInTheDocument();
@@ -1361,7 +1738,7 @@ describe("MessageComposer preview mode", () => {
         type: "image/png",
       });
       fireEvent.change(input, { target: { files: [imageFile] } });
-      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      openComposerPreview();
 
       const preview = screen.getByRole("region", { name: "Preview" });
       await within(preview).findByRole("img", { name: "remove.png" });
@@ -1379,49 +1756,150 @@ describe("MessageComposer preview mode", () => {
 });
 
 describe("MessageComposer mode tabs", () => {
-  it("animates toolbar row visibility with a subtle transition", () => {
+  it("moves formatting tools from the compact footer to the bottom toolbar", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    expect(screen.queryByRole("toolbar", { name: /message composer/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
 
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
-    expect(toolbarRow).toHaveClass("transition-[max-height,opacity,transform,padding]");
-    expect(toolbarRow).toHaveClass("duration-200");
-    expect(toolbarRow).toHaveClass("max-h-12");
-    expect(toolbarRow).toHaveClass("opacity-100");
-    expect(toolbarRow).toHaveClass("translate-y-0");
+    expect(toolbarRow).toHaveClass("h-10", "overflow-x-auto", "pb-2");
+    expect(toolbarRow).not.toHaveClass("px-3");
+    expect(toolbarRow.firstElementChild).toHaveClass("gap-3", "pl-5");
+    expect(toolbarRow.firstElementChild).not.toHaveClass("pl-3");
+    expect(screen.getByRole("toolbar", { name: /message composer/i })).toBeInTheDocument();
+    const collapseToolbarButton = screen.getByRole("button", {
+      name: /hide formatting tools/i,
+    });
+    expect(collapseToolbarButton).toHaveAttribute("aria-expanded", "true");
+    expect(
+      collapseToolbarButton.querySelector('[data-composer-icon="bottom-panel-open"]'),
+    ).not.toBeNull();
   });
 
-  it("shows mode tabs row without requiring composer focus", () => {
+  it("places compact controls and the textarea in one row", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
-    expect(screen.getByRole("toolbar", { name: /message composer/i })).toBeInTheDocument();
+    const compactRow = screen.getByTestId("composer-compact-input-row");
+    const compactControls = screen.getByTestId("composer-compact-controls");
+    const trailingControls = screen.getByTestId("composer-compact-trailing-controls");
+    const textbox = screen.getByRole("textbox");
+    const attachButton = screen.getByRole("button", { name: /attach file/i });
+    const emojiButton = screen.getByRole("button", { name: /emoji/i });
+    const toolbarToggle = screen.getByRole("button", { name: /show formatting tools/i });
+
+    expect(screen.queryByTestId("composer-toolbar-row")).not.toBeInTheDocument();
+    expect(compactRow).toContainElement(compactControls);
+    expect(compactRow).toContainElement(trailingControls);
+    expect(compactRow).toContainElement(textbox);
+    expect(compactControls).toContainElement(toolbarToggle);
+    expect(compactControls).not.toContainElement(attachButton);
+    expect(trailingControls).toContainElement(attachButton);
+    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(
+      attachButton.compareDocumentPosition(emojiButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(compactRow.lastElementChild).toBe(trailingControls);
+    expect(compactRow).toHaveClass("items-end", "py-1");
+    expect(compactControls).toHaveClass("self-end", "mb-1");
+    expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-2");
+    expect(
+      toolbarToggle.querySelector('[data-composer-icon="bottom-panel-close"]'),
+    ).toHaveAttribute("width", "21.333");
+    expect(attachButton.querySelector('[data-composer-icon="attach"]')).toHaveAttribute(
+      "width",
+      "14",
+    );
+    expect(emojiButton.querySelector('[data-composer-icon="emoji"]')).toHaveAttribute(
+      "width",
+      "24",
+    );
+    expect(textbox.parentElement).toHaveClass("self-stretch");
+    expect(textbox).toHaveClass("px-0", "py-2");
   });
 
-  it("uses larger icon size and clearer inactive color", () => {
+  it("keeps compact controls bottom-aligned while the textarea grows", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    Object.defineProperty(textbox, "scrollHeight", {
+      configurable: true,
+      value: 120,
+    });
+    fireEvent.change(textbox, {
+      target: { value: "Line 1\nLine 2\nLine 3\nLine 4", selectionStart: 27 },
+    });
+
+    expect(textbox.style.height).toBe("120px");
+    expect(screen.getByTestId("composer-compact-input-row")).toHaveClass("items-end");
+    expect(screen.getByTestId("composer-compact-controls")).toHaveClass("self-end", "mb-1");
+    expect(screen.getByTestId("composer-compact-trailing-controls")).toHaveClass(
+      "self-end",
+      "mb-1",
+    );
+    expect(textbox.parentElement).toHaveClass("self-stretch");
+  });
+
+  it("keeps the same textarea when the formatting toolbar opens and closes", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    fireEvent.change(textbox, { target: { value: "Draft stays in place" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
+    expect(screen.getByRole("textbox")).toBe(textbox);
+
+    fireEvent.click(screen.getByRole("button", { name: /hide formatting tools/i }));
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(textbox).toHaveValue("Draft stays in place");
+  });
+
+  it("keeps the empty textarea vertically aligned when formatting tools open", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveClass("py-2");
+
+    fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
+
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(textbox.parentElement).toHaveClass("flex", "items-center");
+    expect(textbox).toHaveClass("px-5", "py-2");
+    expect(textbox).not.toHaveClass("py-4");
+  });
+
+  it("keeps the eye icon highlighted while preview mode is active", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
 
-    const writeButton = screen.getByRole("button", { name: "Write" });
     const previewButton = screen.getByRole("button", { name: "Preview" });
-    const writeIcon = writeButton.querySelector("svg");
     const previewIcon = previewButton.querySelector("svg");
 
-    expect(writeIcon).not.toBeNull();
     expect(previewIcon).not.toBeNull();
-    expect(writeIcon).toHaveAttribute("width", String(TOOLBAR_ICON_SIZE));
-    expect(previewIcon).toHaveAttribute("width", String(TOOLBAR_ICON_SIZE));
+    expect(previewIcon).toHaveAttribute("width", "25.834");
+    expect(previewIcon).toHaveAttribute("height", "17.333");
     expect(previewButton).toHaveClass("text-composer-icon");
+
+    fireEvent.click(previewButton);
+
+    const writeButton = screen.getByRole("button", { name: "Write" });
+    const activePreviewIcon = writeButton.querySelector('[data-composer-icon="visibility"]');
+    expect(activePreviewIcon).not.toBeNull();
+    expect(activePreviewIcon).toHaveAttribute("width", "25.834");
+    expect(activePreviewIcon).toHaveAttribute("height", "17.333");
     expect(writeButton).toHaveClass("text-icon-active");
-    expect(writeButton).not.toHaveClass("text-icon-base");
   });
 
-  it("adds bottom spacing between mode tabs row and input row", () => {
+  it("keeps compact bottom spacing in the expanded toolbar", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
 
     const modeTabsRow = screen.getByTestId("composer-toolbar-row");
 
     expect(modeTabsRow).not.toBeNull();
-    expect(modeTabsRow).toHaveClass("pb-1");
+    expect(modeTabsRow).toHaveClass("h-10", "pb-2");
   });
 });
 
@@ -1655,33 +2133,71 @@ describe("MessageComposer file attachments", () => {
         },
       });
 
-      const thumbnail = await screen.findByRole("img", { name: "image.png" });
+      const generatedName = /^pasted-image-\d{8}-\d{6}\.png$/;
+      const thumbnail = await screen.findByRole("img", { name: generatedName });
       expect(thumbnail).toHaveAttribute("src", "blob:test-paste-image");
       expect(createObjectURLMock).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "image.png", type: "image/png" }),
+        expect.objectContaining({ name: expect.stringMatching(generatedName), type: "image/png" }),
       );
     } finally {
       createObjectURLMock.mockRestore();
       revokeObjectURLMock.mockRestore();
     }
   });
+
+  it("preserves meaningful names when pasting non-image files", async () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+    const textbox = screen.getByRole("textbox");
+    const file = new File(["document"], "requirements.pdf", { type: "application/pdf" });
+
+    fireEvent.paste(textbox, {
+      clipboardData: {
+        items: [
+          {
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => file,
+          },
+        ],
+      },
+    });
+
+    expect(await screen.findByText("requirements.pdf")).toBeInTheDocument();
+    fireEvent.change(textbox, { target: { value: "pasted document" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("pasted document", "", [file]);
+    });
+  });
 });
 
 describe("MessageComposer upload progress", () => {
-  it("renders upload progress indicator while composer files are uploading", () => {
-    renderWithProviders(
+  it("renders upload progress inside the active attachment card", async () => {
+    const { container } = renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
         uploadProgress={{ completed: 1, total: 3, activeFileName: "report.pdf" }}
       />,
     );
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
 
-    expect(screen.getByText("Uploading files 1/3")).toBeInTheDocument();
-    expect(screen.getByText("33%")).toBeInTheDocument();
-    expect(screen.getByText("report.pdf")).toBeInTheDocument();
-    const progress = screen.getByRole("progressbar", { name: "Uploading files progress" });
-    expect(progress).toHaveAttribute("aria-valuenow", "1");
-    expect(progress).toHaveAttribute("aria-valuemax", "3");
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["report"], "report.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    const progress = await screen.findByRole("progressbar", {
+      name: "Uploading report.pdf: 33%",
+    });
+    expect(progress).toHaveAttribute("aria-valuenow", "33");
+    expect(progress).toHaveAttribute("aria-valuemax", "100");
+    expect(screen.queryByText("Uploading files 1/3")).not.toBeInTheDocument();
   });
 });
 
@@ -2202,20 +2718,27 @@ describe("MessageComposer send shortcuts", () => {
     expect(sendButton).toHaveClass("text-on-accent");
     expect(sendIcon).not.toBeNull();
     expect(sendIcon).toHaveClass("text-on-accent");
+    expect(sendIcon).toHaveAttribute("data-composer-icon", "send");
+    expect(sendIcon).toHaveAttribute("width", "24");
+    expect(sendIcon).toHaveAttribute("height", "20");
   });
 
-  it("uses compact send button sizing aligned with one-line input", () => {
+  it("uses a compact bottom-aligned send button and input shell", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
-    const paddedShell = textbox.closest(".p-3");
+    const paddedShell = textbox.closest(".p-2");
     const sendButton = screen.getByRole("button", { name: /write a message/i });
+    const inputAndSendRow = sendButton.parentElement;
+    const inputShell = inputAndSendRow?.firstElementChild;
 
     expect(paddedShell).not.toBeNull();
-    expect(sendButton).toHaveClass("h-9");
-    expect(sendButton).toHaveClass("w-9");
-    expect(sendButton).toHaveClass("self-center");
-    expect(sendButton).toHaveClass("rounded-r-xl");
+    expect(inputAndSendRow).toHaveClass("items-end");
+    expect(inputShell).toHaveClass("min-h-12", "self-end");
+    expect(sendButton).toHaveClass("h-12");
+    expect(sendButton).toHaveClass("w-12");
+    expect(sendButton).toHaveClass("self-end");
+    expect(sendButton).toHaveClass("rounded-xl");
   });
 
   it("sends message on Enter", async () => {
@@ -2295,17 +2818,18 @@ describe("MessageComposer send shortcuts", () => {
 });
 
 describe("MessageComposer emoji picker behavior", () => {
-  it("centers emoji trigger vertically in composer row", () => {
+  it("places the emoji trigger at the right edge of the compact input row", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const emojiButton = screen.getByRole("button", { name: /emoji/i });
-    const emojiContainer = emojiButton.parentElement;
+    const compactRow = screen.getByTestId("composer-compact-input-row");
+    const trailingControls = screen.getByTestId("composer-compact-trailing-controls");
 
-    expect(emojiContainer).not.toBeNull();
-    expect(emojiContainer).toHaveClass("h-9");
-    expect(emojiContainer).toHaveClass("w-9");
-    expect(emojiContainer).toHaveClass("self-center");
-    expect(emojiButton).toHaveClass("rounded-l-xl");
+    expect(compactRow).toContainElement(screen.getByRole("textbox"));
+    expect(compactRow.lastElementChild).toBe(trailingControls);
+    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(emojiButton).toHaveClass("h-8");
+    expect(emojiButton).toHaveClass("w-8");
   });
 
   it("returns focus to composer after emoji pick", async () => {
@@ -2468,19 +2992,20 @@ describe("MessageComposer AI context wiring", () => {
       });
 
     expect(labels).toEqual([
+      "Attach file",
+      "Emoji",
+      "Saved snippets",
+      "AI",
+      "Link",
       "Bold",
       "Italic",
       "Strikethrough",
-      "Quote",
-      "Bulleted list",
       "Numbered list",
+      "Bulleted list",
+      "Quote",
+      "Code block",
       "Code",
       "Spoiler",
-      "Code block",
-      "Link",
-      "Attach file",
-      "Saved snippets",
-      "AI",
     ]);
   });
 

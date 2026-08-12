@@ -1231,6 +1231,7 @@
     "spoiler": "Спойлер",
     "quote": "Цитата",
     "codeBlock": "Блок кода",
+    "checklist": "Чек-лист",
     "bulletedList": "Маркированный список",
     "numberedList": "Нумерованный список",
     "link": "Ссылка",
@@ -1255,7 +1256,21 @@
     "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет",
     "savedSnippetsUnsupported": "Сохраненные сниппеты пока не подключены.",
     "actionUnsupported": "Это действие пока недоступно в этом чате.",
-    "aiTemporarilyUnavailable": "AI-функции в вашей организации не подключены."
+    "aiTemporarilyUnavailable": "AI-функции в вашей организации не подключены.",
+    "expandEditor": "Развернуть поле сообщения",
+    "collapseEditor": "Свернуть поле сообщения",
+    "resizeEditor": "Изменить высоту поля сообщения",
+    "expandToolbar": "Показать инструменты форматирования",
+    "collapseToolbar": "Скрыть инструменты форматирования"
+  },
+  "attachmentCard": {
+    "remove": "Удалить {{fileName}}",
+    "uploading": "Загрузка · {{percent}}%",
+    "uploadProgress": "Загрузка {{fileName}}: {{percent}}%",
+    "cancelUpload": "Отменить загрузку {{fileName}}",
+    "uploadError": "Ошибка загрузки",
+    "retryUpload": "Повторить загрузку {{fileName}}",
+    "list": "Прикреплённые файлы"
   },
   "a11y": {
     "collapseTopics": "Свернуть темы",
