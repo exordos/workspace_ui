@@ -3,4 +3,6 @@ export interface ChatPageDeleteConfirmBarProps {
   bulkCount?: number;
   onConfirm: () => void;
   onCancel: () => void;
+  joinedAbove?: boolean;
+  joinedBelow?: boolean;
 }

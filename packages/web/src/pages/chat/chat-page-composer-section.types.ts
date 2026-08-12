@@ -65,4 +65,6 @@ export interface ChatPageComposerSectionProps {
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;
   readOnlyReason?: string;
+  /** Visually connects notices rendered immediately above the composer. */
+  joinedTop?: boolean;
 }

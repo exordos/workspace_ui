@@ -17,6 +17,7 @@ import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-me
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
@@ -469,12 +470,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const renderQuote = useCallback(
       (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode =>
         isPreview ? (
-          <div className="bg-bg/35 my-1 rounded-md border-l-2 border-accent px-2 py-1.5">
-            <span className="block text-xs font-medium text-accent">
-              {segment.reference.fallbackAuthorLabel}
-            </span>
+          <WorkspaceMessageQuoteFrame header={segment.reference.fallbackAuthorLabel}>
             {segment.reference.selectedText}
-          </div>
+          </WorkspaceMessageQuoteFrame>
         ) : (
           <WorkspaceMessageQuote
             reference={segment.reference}

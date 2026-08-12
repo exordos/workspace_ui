@@ -508,6 +508,7 @@
     "editLoadingMarkdown": "Loading message source…",
     "editPlaceholder": "Message text",
     "deleteConfirm": "Delete message?",
+    "deleteCannotUndo": "This action cannot be undone",
     "deleteError": "Failed to delete",
     "copied": "Copied",
     "copyFailed": "Failed to copy",

@@ -496,6 +496,38 @@ describe("MessageComposer async send behavior", () => {
 });
 
 describe("MessageComposer textarea autosize", () => {
+  it("keeps only bottom corners when joined to a notice", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} joinedTop />);
+
+    expect(screen.getByRole("form", { name: /message composer/i })).toHaveClass("rounded-b-xl");
+    expect(screen.getByRole("form", { name: /message composer/i })).not.toHaveClass(
+      "rounded-xl",
+      "border-t",
+    );
+  });
+
+  it("keeps full rounded corners when reply chrome is at the top", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        replyQuote={{
+          id: 1,
+          content: "quoted",
+          sender_full_name: "Alice",
+          permalinkUrl: null,
+        }}
+        leadingContent={<div data-testid="reply-tabs">Tabs</div>}
+      />,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    expect(composer).toHaveClass("rounded-xl", "border-t");
+    expect(composer).not.toHaveClass("rounded-b-xl");
+    const chrome = composer.querySelector("[data-composer-reply-chrome='true']");
+    expect(chrome).toHaveClass("rounded-t-xl");
+    expect(chrome).not.toHaveClass("border-b");
+  });
+
   it("starts with single-line height by default", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -799,13 +831,16 @@ describe("MessageComposer textarea autosize", () => {
 
   it("keeps the top gap when the available messenger area becomes small or grows again", async () => {
     let onResize: ResizeObserverCallback | null = null;
+    const observedElements: Element[] = [];
 
     class ResizeObserverMock {
       constructor(callback: ResizeObserverCallback) {
         onResize = callback;
       }
 
-      observe() {}
+      observe(element: Element) {
+        observedElements.push(element);
+      }
       disconnect() {}
       unobserve() {}
     }
@@ -840,6 +875,7 @@ describe("MessageComposer textarea autosize", () => {
       await waitFor(() => {
         expect(onResize).not.toBeNull();
       });
+      expect(observedElements).toContain(messageArea);
       const resizeObserver: ResizeObserver = {
         disconnect: () => {},
         observe: () => {},
@@ -2966,6 +3002,7 @@ describe("MessageComposer edit session", () => {
     renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
+        joinedTop
         replyQuote={replyQuote}
         leadingContent={<div data-testid="reply-tabs">Reply tabs</div>}
         outgoingBodyOverride="full restored body"
@@ -2981,6 +3018,16 @@ describe("MessageComposer edit session", () => {
     const editNotice = screen.getByText("Edit message");
     const replyTabs = screen.getByTestId("reply-tabs");
     const replyQuoteLabel = screen.getByText("Reply: Alice");
+    expect(editNotice.parentElement).toHaveClass(
+      "rounded-none",
+      "border-b",
+      "border-border-subtle",
+      "bg-composer-outer",
+      "py-1.5",
+    );
+    expect(editNotice.parentElement).not.toHaveClass("py-2.5");
+    expect(editNotice.parentElement).not.toHaveClass("text-notice-base");
+    expect(editNotice.parentElement?.querySelector("[data-notice-marker]")).toBeNull();
     expect(editNotice.compareDocumentPosition(replyTabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

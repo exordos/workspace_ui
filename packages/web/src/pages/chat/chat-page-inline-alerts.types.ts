@@ -5,4 +5,6 @@ export interface ChatPageInlineAlertsProps {
   onDismissRouteResolveError: () => void;
   onDismissActionError: () => void;
   onDismissSendError: () => void;
+  joinedAbove?: boolean;
+  joinedBelow?: boolean;
 }

@@ -24,10 +24,7 @@ function resolveComposerMaxHeight(composer: HTMLDivElement): number {
   const parent = composer.parentElement;
   if (parent == null) return currentHeight;
 
-  const shrinkableMessageArea = Array.from(parent.children).find(
-    (child): child is HTMLElement =>
-      child instanceof HTMLElement && child.dataset.messageAnchorLayerHost === "true",
-  );
+  const shrinkableMessageArea = findShrinkableMessageArea(parent);
   if (shrinkableMessageArea != null) {
     const availableHeight = shrinkableMessageArea.getBoundingClientRect().height;
     return currentHeight + Math.max(availableHeight - COMPOSER_RESIZE_SHELL_GAP_PX, 0);
@@ -36,6 +33,15 @@ function resolveComposerMaxHeight(composer: HTMLDivElement): number {
   return Math.max(
     currentHeight,
     parent.getBoundingClientRect().height - COMPOSER_RESIZE_SHELL_GAP_PX,
+  );
+}
+
+function findShrinkableMessageArea(parent: HTMLElement): HTMLElement | null {
+  return (
+    Array.from(parent.children).find(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement && child.dataset.messageAnchorLayerHost === "true",
+    ) ?? null
   );
 }
 
@@ -141,6 +147,8 @@ export function useMessageComposerResize({
       });
     });
     observer.observe(parent);
+    const shrinkableMessageArea = findShrinkableMessageArea(parent);
+    if (shrinkableMessageArea != null) observer.observe(shrinkableMessageArea);
     return () => observer.disconnect();
   }, [composerRef, height, isFullHeight]);
 

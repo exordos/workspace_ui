@@ -508,6 +508,7 @@
     "editLoadingMarkdown": "Загрузка исходного текста…",
     "editPlaceholder": "Текст сообщения",
     "deleteConfirm": "Удалить сообщение?",
+    "deleteCannotUndo": "Действие нельзя отменить",
     "deleteError": "Ошибка удаления",
     "copied": "Скопировано",
     "copyFailed": "Не удалось скопировать",

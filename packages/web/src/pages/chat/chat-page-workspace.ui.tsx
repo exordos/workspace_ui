@@ -2982,6 +2982,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           includeStreamConversation: resolvedComposerTarget.includeStreamConversation,
         }
       : null;
+  const hasInlineComposerNotice = Boolean(actionError) || Boolean(sendError);
+  const hasDeleteComposerNotice = pendingDeleteMessageUuid != null;
+  const hasSelectionComposerNotice = selectedMessageUuids.size > 0;
+  const showStreamTopicPrompt = selection.status === "conversation" && selection.kind === "stream";
+  const composerJoinedTop =
+    !showStreamTopicPrompt &&
+    (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice);
   const renderWorkspaceAttachmentComposer = useCallback(
     (controlledProps: WorkspaceComposerControlledProps) => (
       <ChatPageComposerSection
@@ -3023,6 +3030,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         aiMessagesContext={[]}
         aiChatContext={undefined}
         readOnlyReason={composerReadOnlyReason}
+        joinedTop={composerJoinedTop}
       />
     ),
     [
@@ -3030,6 +3038,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       activeWorkspaceReplyTab?.answer,
       activeWorkspaceReplyTab?.id,
       composerReadOnlyReason,
+      composerJoinedTop,
       conversation?.title,
       effectiveComposerEditSession,
       handleCancelEdit,
@@ -3070,6 +3079,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           onForward={handleForwardSelectedMessages}
           onDelete={noop}
           onCancel={handleCancelMessageSelection}
+          joinedBelow={hasInlineComposerNotice || hasDeleteComposerNotice || !showStreamTopicPrompt}
         />
         <ChatPageInlineAlerts
           routeResolveError={null}
@@ -3078,15 +3088,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           onDismissRouteResolveError={noop}
           onDismissActionError={() => setActionError(null)}
           onDismissSendError={() => setSendError(null)}
+          joinedAbove={hasSelectionComposerNotice}
+          joinedBelow={hasDeleteComposerNotice || !showStreamTopicPrompt}
         />
         {pendingDeleteMessageUuid != null ? (
           <ChatPageDeleteConfirmBar
             mode="single"
             onConfirm={handleConfirmDeleteMessage}
             onCancel={handleCancelDeleteMessage}
+            joinedAbove={hasSelectionComposerNotice || hasInlineComposerNotice}
+            joinedBelow={!showStreamTopicPrompt}
           />
         ) : null}
-        {selection.status === "conversation" && selection.kind === "stream" ? (
+        {showStreamTopicPrompt ? (
           <ChatPageStreamTopicPrompt
             topics={streamPromptTopics}
             onSelectTopic={handleSelectStreamPromptTopic}
@@ -3127,6 +3141,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             aiMessagesContext={[]}
             aiChatContext={undefined}
             readOnlyReason={composerReadOnlyReason}
+            joinedTop={composerJoinedTop}
           />
         )}
       </section>

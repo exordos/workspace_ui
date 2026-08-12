@@ -5086,6 +5086,10 @@ describe("ChatPage Workspace route", () => {
       captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
     });
 
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 2" });
+    expect(selectionToolbar).toHaveClass("rounded-t-xl", "border-b", "bg-composer-outer");
+    await waitFor(() => expect(captured.composerProps?.joinedTop).toBe(true));
+
     fireEvent.click(await screen.findByRole("button", { name: "Forward" }));
 
     await waitFor(() => {

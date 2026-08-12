@@ -5,4 +5,6 @@ export interface ChatPageSelectionBarProps {
   onForward: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  joinedAbove?: boolean;
+  joinedBelow?: boolean;
 }

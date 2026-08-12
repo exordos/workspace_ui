@@ -416,6 +416,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onCreateCallLink,
   onCancelUpload,
   disabled = false,
+  joinedTop = false,
   uploadProgress,
   placeholder = t("chat.sendPlaceholder"),
   activeTopic,
@@ -1583,12 +1584,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
   // pl-3 instead of pl-5: slightly closer leading toolbar toggle, more width for the message body
   const inputRowLayout = isCompactWriteMode ? "items-end gap-5 py-1 pl-3 pr-5" : "";
+  // Opaque reply chrome sits under overflow-visible; it must carry top radius itself.
+  const replyChromeRoundsTop = !joinedTop && !isEditing;
 
   return (
     <div
       ref={composerRef}
-      className={`relative flex flex-shrink-0 flex-col overflow-visible rounded-xl bg-composer-outer ${
-        isEditing ? "" : "border-t border-border-subtle"
+      className={`relative flex flex-shrink-0 flex-col overflow-visible bg-composer-outer ${
+        joinedTop ? "rounded-b-xl" : "rounded-xl"
+      } ${
+        isEditing || joinedTop ? "" : "border-t border-border-subtle"
       } ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
       data-focus-zone="composer"
       role="form"
@@ -1610,7 +1615,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         />
       )}
       {isEditing && preservesWorkspaceReplyContext ? (
-        <MessageComposerEditNotice onCancelEdit={onCancelEdit} />
+        <MessageComposerEditNotice onCancelEdit={onCancelEdit} joinedTop={joinedTop} />
       ) : null}
       <MessageComposerPreface
         uploadProgress={uploadProgress}
@@ -1633,6 +1638,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         isEditing={isEditing}
         showReplyWhileEditing={preservesWorkspaceReplyContext}
         hideEditNotice={preservesWorkspaceReplyContext}
+        joinedTop={joinedTop}
+        roundTop={replyChromeRoundsTop}
         onCancelEdit={onCancelEdit}
       />
 

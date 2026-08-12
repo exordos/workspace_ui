@@ -111,6 +111,8 @@ export interface MessageComposerProps {
   onCreateCallLink?: () => string | null;
   onCancelUpload?: () => void;
   disabled?: boolean;
+  /** Visually connects a notice rendered immediately before the composer. */
+  joinedTop?: boolean;
   uploadProgress?: ComposerUploadProgress | null;
   placeholder?: string;
   /** Topic comes from the sidebar selection, not chosen in the composer */
@@ -210,5 +212,11 @@ export interface MessageComposerPrefaceProps {
   isEditing?: boolean;
   showReplyWhileEditing?: boolean;
   hideEditNotice?: boolean;
+  joinedTop?: boolean;
+  /**
+   * When true, reply chrome is the top painted surface of a rounded composer shell.
+   * Parent keeps overflow-visible for popovers, so the chrome must carry top radius itself.
+   */
+  roundTop?: boolean;
   onCancelEdit?: () => void;
 }

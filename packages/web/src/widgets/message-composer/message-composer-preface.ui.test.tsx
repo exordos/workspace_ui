@@ -135,3 +135,103 @@ describe("MessageComposerPreface upload progress", () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith("error-id");
   });
 });
+
+describe("MessageComposerPreface reply chrome", () => {
+  beforeEach(() => {
+    setLocale("en");
+  });
+
+  it("uses the solid composer surface instead of a translucent overlay", () => {
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: 1,
+            content: "quoted text",
+            sender_full_name: "Alice",
+            permalinkUrl: null,
+          },
+          roundTop: true,
+        })}
+      />,
+    );
+
+    const chrome = container.querySelector("[data-composer-reply-chrome='true']");
+    expect(chrome).not.toBeNull();
+    expect(chrome).not.toHaveClass("bg-bg/50");
+    expect(chrome).not.toHaveClass("border-b");
+    expect(chrome).toHaveClass("rounded-t-xl");
+    expect(screen.getByText(/Reply: Alice/i)).toBeInTheDocument();
+  });
+
+  it("keeps reply chrome square on top when the shell is joined above", () => {
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: 1,
+            content: "quoted text",
+            sender_full_name: "Alice",
+            permalinkUrl: null,
+          },
+          joinedTop: true,
+          roundTop: false,
+        })}
+      />,
+    );
+
+    const chrome = container.querySelector("[data-composer-reply-chrome='true']");
+    expect(chrome).not.toBeNull();
+    expect(chrome).not.toHaveClass("rounded-t-xl");
+  });
+
+  it("wraps the reply preview in the shared workspace quote frame", () => {
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: 1,
+            content: "quoted text",
+            sender_full_name: "Alice",
+            permalinkUrl: null,
+          },
+        })}
+      />,
+    );
+
+    const quoteFrame = container.querySelector("[data-composer-reply-quote='true']");
+    expect(quoteFrame).not.toBeNull();
+    expect(quoteFrame).toHaveClass(
+      "border-l-2",
+      "border-accent",
+      "bg-composer-outer",
+      "rounded-md",
+    );
+    expect(quoteFrame).not.toHaveClass("bg-bg/35");
+    expect(screen.getByText(/Reply: Alice/i)).toHaveClass("text-accent");
+    expect(screen.getByText("quoted text")).toBeInTheDocument();
+  });
+
+  it("aligns reply chrome rows with the composer content inset", () => {
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyLeadingContent: <div data-testid="reply-tabs">tabs</div>,
+          replyQuote: {
+            id: 1,
+            content: "quoted text",
+            sender_full_name: "Alice",
+            permalinkUrl: null,
+          },
+        })}
+      />,
+    );
+
+    const tabsRow = screen.getByTestId("reply-tabs").parentElement?.parentElement;
+    const quoteRow = container.querySelector("[data-composer-reply-quote='true']")?.parentElement
+      ?.parentElement;
+    expect(tabsRow).toHaveClass("px-2");
+    expect(quoteRow).toHaveClass("px-2", "pt-2", "pb-1");
+    expect(quoteRow).not.toHaveClass("py-2");
+  });
+});
