@@ -78,13 +78,13 @@ function WorkspaceMessageAnchorPreviewRow({
       <div
         className="flex w-12 flex-shrink-0 flex-col justify-end pb-2"
         data-preview-peer-avatar-slot="true"
+        data-workspace-peer-avatar="true"
       >
         <WorkspaceAvatar
           size="lg"
           className="bg-bg-elevated text-accent-soft"
           avatarUrn={author?.avatarUrl}
           imageLoading="lazy"
-          data-workspace-peer-avatar="true"
         >
           {authorLabel.slice(0, 1)}
         </WorkspaceAvatar>
