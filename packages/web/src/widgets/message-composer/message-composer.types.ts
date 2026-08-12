@@ -59,6 +59,27 @@ export interface MessageComposerSendResult {
   shouldClearComposer?: boolean;
 }
 
+export type MessageComposerAttachmentStatus =
+  | "validating"
+  | "queued"
+  | "uploading"
+  | "ready"
+  | "error";
+
+export interface MessageComposerAttachmentView {
+  localId: string;
+  fileName: string;
+  sizeBytes: number;
+  contentType: string;
+  previewUrl: string | null;
+  status: MessageComposerAttachmentStatus;
+  loadedBytes: number;
+  totalBytes: number | null;
+  error: string | null;
+  retryable: boolean;
+  previewMarkdown?: string;
+}
+
 export type MessageComposerReplyClearReason = "manual" | "submit";
 
 // Capabilities keep the old composer layout while each backend controls action availability.
@@ -79,6 +100,12 @@ export interface MessageComposerProps {
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   /** Clears the composer after a send has been accepted locally, before the request settles. */
   optimisticClearOnSend?: boolean;
+  /** Enables externally owned attachments for Workspace upload-before-send. */
+  attachments?: readonly MessageComposerAttachmentView[];
+  attachmentsBlockSend?: boolean;
+  onAddAttachments?: (files: readonly File[]) => void;
+  onRemoveAttachment?: (localId: string) => void;
+  onRetryAttachment?: (localId: string) => void;
   onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;
@@ -168,6 +195,9 @@ export interface MessageComposerPrefaceProps {
   isUploadInProgress: boolean;
   onCancelUpload?: () => void;
   removeFile: (index: number) => void;
+  attachments?: readonly MessageComposerAttachmentView[];
+  onRemoveAttachment?: (localId: string) => void;
+  onRetryAttachment?: (localId: string) => void;
   scheduledMessages: ScheduledComposerMessage[];
   onCancelScheduled: (id: string) => void;
   replyQuote: ReplyQuote | null | undefined;

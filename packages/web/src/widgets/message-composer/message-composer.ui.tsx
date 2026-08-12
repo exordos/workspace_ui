@@ -406,6 +406,11 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
   optimisticClearOnSend = false,
+  attachments,
+  attachmentsBlockSend = false,
+  onAddAttachments,
+  onRemoveAttachment,
+  onRetryAttachment,
   onSubmitEdit,
   onCancelEdit,
   onCreateCallLink,
@@ -460,6 +465,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const mentionsCapability = resolveActionCapability(capabilities?.mentions);
   const scheduledSendCapability = resolveActionCapability(capabilities?.scheduledSend);
   const uploadSupported = isActionSupported(uploadCapability);
+  const controlledAttachmentsEnabled = attachments != null && onAddAttachments != null;
+  const controlledAttachmentFileNames = useMemo(
+    () => attachments?.map((attachment) => attachment.fileName) ?? [],
+    [attachments],
+  );
   const savedSnippetsSupported = isActionSupported(savedSnippetsCapability);
   const previewSupported = isActionSupported(previewCapability);
   const mentionsSupported = isActionSupported(mentionsCapability);
@@ -631,6 +641,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   } = useMessageComposerUpload({
     disabled: disabled || sendInFlight || isEditing || !uploadSupported,
     uploadProgress,
+    onAddFiles: controlledAttachmentsEnabled ? onAddAttachments : undefined,
+    existingFileNames: controlledAttachmentFileNames,
   });
   const latestValueRef = useRef(value);
   const latestFilesRef = useRef(files);
@@ -658,9 +670,22 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     allowEmptyActiveValueSend &&
     outgoingBodyOverride != null &&
     outgoingBodyOverride.trim().length > 0;
+  const previewOutgoingBody = useMemo(() => {
+    if (isEditing || !controlledAttachmentsEnabled) return outgoingBody;
+    const readyMarkdown = (attachments ?? []).flatMap((attachment) =>
+      attachment.status === "ready" && attachment.previewMarkdown != null
+        ? [attachment.previewMarkdown]
+        : [],
+    );
+    if (readyMarkdown.length === 0) return outgoingBody;
+    const trimmedBody = outgoingBody.trim();
+    return trimmedBody.length === 0
+      ? readyMarkdown.join("\n")
+      : `${trimmedBody}\n${readyMarkdown.join("\n")}`;
+  }, [attachments, controlledAttachmentsEnabled, isEditing, outgoingBody]);
   const preview = useMessageComposerPreview({
     mode,
-    outgoingBody,
+    outgoingBody: previewOutgoingBody,
     enabled: previewSupported,
     unsupportedText: previewCapability.unsupportedText,
     resolveMention,
@@ -971,8 +996,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
+    const hasControlledAttachments = controlledAttachmentsEnabled && attachments.length > 0;
     const hasSendableExternalBody = canSendWithEmptyActiveValue;
-    if ((!hasText && !hasSendableExternalBody && !hasFiles) || disabled || sendInFlight) return;
+    if (
+      (!hasText && !hasSendableExternalBody && !hasFiles && !hasControlledAttachments) ||
+      disabled ||
+      sendInFlight ||
+      attachmentsBlockSend
+    )
+      return;
     const subject = activeTopic ?? "";
     const bodyToSend = outgoingBody;
     const valueToSend = value;
@@ -1076,6 +1108,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       if (uploadSupported && clipboardFiles.length > 0) {
         e.preventDefault();
+        if (controlledAttachmentsEnabled) {
+          onAddAttachments(
+            prepareAttachmentFiles(clipboardFiles, {
+              source: "clipboard",
+              existingFiles: controlledAttachmentFileNames.map((name) => new File([], name)),
+            }),
+          );
+          return;
+        }
         setFiles((prev) => [
           ...prev,
           ...prepareAttachmentFiles(clipboardFiles, {
@@ -1108,7 +1149,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         textarea?.setSelectionRange(nextCursor, nextCursor);
       });
     },
-    [detectMention, isEditing, setFiles, setValue, streamsById, topicsById, uploadSupported, value],
+    [
+      controlledAttachmentFileNames,
+      controlledAttachmentsEnabled,
+      detectMention,
+      isEditing,
+      onAddAttachments,
+      setFiles,
+      setValue,
+      streamsById,
+      topicsById,
+      uploadSupported,
+      value,
+    ],
   );
 
   const handleAttachClick = () => {
@@ -1528,7 +1581,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     </div>
   );
   const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
-  const inputRowLayout = isCompactWriteMode ? "items-end gap-5 py-1 pl-5 pr-5" : "";
+  // pl-3 instead of pl-5: slightly closer leading toolbar toggle, more width for the message body
+  const inputRowLayout = isCompactWriteMode ? "items-end gap-5 py-1 pl-3 pr-5" : "";
 
   return (
     <div
@@ -1568,6 +1622,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         isUploadInProgress={isUploadInProgress}
         onCancelUpload={onCancelUpload}
         removeFile={removeFile}
+        attachments={!isEditing && mode === "write" ? attachments : []}
+        onRemoveAttachment={!isEditing ? onRemoveAttachment : undefined}
+        onRetryAttachment={!isEditing ? onRetryAttachment : undefined}
         scheduledMessages={scheduledMessages}
         onCancelScheduled={cancelScheduledMessage}
         replyQuote={effectiveReplyQuote}
@@ -1702,7 +1759,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                 </>
               ) : (
                 <MessageComposerPreviewBody
-                  outgoingBodyTrim={outgoingBody.trim()}
+                  outgoingBodyTrim={previewOutgoingBody.trim()}
                   previewLoading={previewLoading}
                   previewError={previewError}
                   previewHtml={previewHtml}
@@ -1712,6 +1769,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   files={!isEditing ? files : []}
                   filePreviewUrls={!isEditing ? filePreviewUrls : []}
                   removeFile={!isEditing ? removeFile : undefined}
+                  attachments={!isEditing ? attachments : []}
+                  onRemoveAttachment={!isEditing ? onRemoveAttachment : undefined}
+                  onRetryAttachment={!isEditing ? onRetryAttachment : undefined}
                 />
               )}
             </div>
@@ -1722,7 +1782,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             onClick={() => {
               void handleSend();
             }}
-            disabled={disabled || sendInFlight || (isEditing && value.trim().length === 0)}
+            disabled={
+              disabled ||
+              sendInFlight ||
+              (!isEditing && attachmentsBlockSend) ||
+              (isEditing && value.trim().length === 0)
+            }
             className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}
           >

@@ -9,6 +9,7 @@ import type {
   AttachmentErrorCardProps,
   AttachmentFileCardProps,
   AttachmentImageCardProps,
+  AttachmentPendingCardProps,
   AttachmentUploadingCardProps,
 } from "~/shared/ui/attachment-card.types";
 import { Icon } from "~/shared/ui/icon";
@@ -49,7 +50,7 @@ function AttachmentCardFrame({
           {details}
         </span>
       </span>
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center">{action}</span>
+      <span className="flex h-6 min-w-6 shrink-0 items-center justify-center">{action}</span>
     </article>
   );
 }
@@ -185,13 +186,13 @@ function AttachmentProgressPreview({
 }
 
 export const AttachmentUploadingCard = React.memo<AttachmentUploadingCardProps>(
-  ({ fileName, progress, onCancel, className }) => {
+  ({ fileName, progress, detailText, onCancel, className }) => {
     const safeProgress = clampProgress(progress);
     return (
       <AttachmentCardFrame
         fileName={fileName}
         preview={<AttachmentProgressPreview fileName={fileName} progress={safeProgress} />}
-        details={t("attachmentCard.uploading", { percent: safeProgress })}
+        details={detailText ?? t("attachmentCard.uploading", { percent: safeProgress })}
         action={
           <AttachmentActionButton
             ariaLabel={t("attachmentCard.cancelUpload", { fileName })}
@@ -208,8 +209,29 @@ export const AttachmentUploadingCard = React.memo<AttachmentUploadingCardProps>(
 
 AttachmentUploadingCard.displayName = "AttachmentUploadingCard";
 
+export const AttachmentPendingCard = React.memo<AttachmentPendingCardProps>(
+  ({ fileName, detailText, onRemove, className }) => (
+    <AttachmentCardFrame
+      fileName={fileName}
+      preview={<AttachmentFilePreview />}
+      details={detailText}
+      action={
+        <AttachmentActionButton
+          ariaLabel={t("attachmentCard.remove", { fileName })}
+          onClick={onRemove}
+        >
+          <Icon name="close" size={12} />
+        </AttachmentActionButton>
+      }
+      className={className}
+    />
+  ),
+);
+
+AttachmentPendingCard.displayName = "AttachmentPendingCard";
+
 export const AttachmentErrorCard = React.memo<AttachmentErrorCardProps>(
-  ({ fileName, errorMessage = t("attachmentCard.uploadError"), onRetry, className }) => (
+  ({ fileName, errorMessage = t("attachmentCard.uploadError"), onRetry, onRemove, className }) => (
     <AttachmentCardFrame
       fileName={fileName}
       preview={
@@ -219,12 +241,20 @@ export const AttachmentErrorCard = React.memo<AttachmentErrorCardProps>(
       }
       details={<span className="text-danger">{errorMessage}</span>}
       action={
-        <AttachmentActionButton
-          ariaLabel={t("attachmentCard.retryUpload", { fileName })}
-          onClick={onRetry}
-        >
-          <AttachmentRetryIcon className="h-[14px] w-3" aria-hidden />
-        </AttachmentActionButton>
+        <span className="flex items-center">
+          <AttachmentActionButton
+            ariaLabel={t("attachmentCard.retryUpload", { fileName })}
+            onClick={onRetry}
+          >
+            <AttachmentRetryIcon className="h-4 w-4" aria-hidden />
+          </AttachmentActionButton>
+          <AttachmentActionButton
+            ariaLabel={t("attachmentCard.remove", { fileName })}
+            onClick={onRemove}
+          >
+            <Icon name="close" size={12} />
+          </AttachmentActionButton>
+        </span>
       }
       tone="error"
       className={className}
@@ -240,6 +270,9 @@ export const AttachmentCard = React.memo<AttachmentCardProps>((props) => {
       return <AttachmentFileCard {...props} />;
     case "image":
       return <AttachmentImageCard {...props} />;
+    case "validating":
+    case "queued":
+      return <AttachmentPendingCard {...props} />;
     case "uploading":
       return <AttachmentUploadingCard {...props} />;
     case "error":

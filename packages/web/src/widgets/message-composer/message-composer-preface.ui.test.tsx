@@ -84,4 +84,54 @@ describe("MessageComposerPreface upload progress", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove new-draft.txt" }));
     expect(removeFile).toHaveBeenCalledWith(0);
   });
+
+  it("shows controlled progress and exposes retry and remove for an upload error", () => {
+    const onRemoveAttachment = vi.fn();
+    const onRetryAttachment = vi.fn();
+
+    render(
+      <MessageComposerPreface
+        {...createProps({
+          attachments: [
+            {
+              localId: "uploading-id",
+              fileName: "uploading.pdf",
+              sizeBytes: 10,
+              contentType: "application/pdf",
+              previewUrl: null,
+              status: "uploading",
+              loadedBytes: 4,
+              totalBytes: 10,
+              error: null,
+              retryable: false,
+            },
+            {
+              localId: "error-id",
+              fileName: "failed.pdf",
+              sizeBytes: 10,
+              contentType: "application/pdf",
+              previewUrl: null,
+              status: "error",
+              loadedBytes: 0,
+              totalBytes: 10,
+              error: "Upload failed",
+              retryable: true,
+            },
+          ],
+          onRemoveAttachment,
+          onRetryAttachment,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("progressbar", { name: "Uploading uploading.pdf: 40%" }),
+    ).toHaveAttribute("aria-valuenow", "40");
+    expect(screen.getByText("Upload failed")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry upload of failed.pdf" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove failed.pdf" }));
+    expect(onRetryAttachment).toHaveBeenCalledWith("error-id");
+    expect(onRemoveAttachment).toHaveBeenCalledWith("error-id");
+  });
 });

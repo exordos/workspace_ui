@@ -567,8 +567,8 @@ describe("MessageComposer textarea autosize", () => {
     const expandButton = screen.getByRole("button", { name: /expand message editor/i });
     expect(expandButton).toHaveClass(
       "absolute",
-      "right-5",
-      "top-6",
+      "right-4",
+      "top-4",
       "z-float",
       "pointer-events-auto",
       "cursor-pointer",
@@ -578,7 +578,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(compactRow.lastElementChild).toBe(trailingControls);
     expect(trailingControls.lastElementChild).toBe(emojiButton);
     expect(compactRow).not.toContainElement(expandButton);
-    expect(expandButton.querySelector('[data-composer-icon="full-height"]')).toHaveTextContent("⤢");
+    expect(expandButton.querySelector('[data-composer-icon="expand-content"]')).toBeInTheDocument();
   });
 
   it("keeps both controls available after manual resizing when text becomes shorter", () => {
@@ -1574,6 +1574,113 @@ describe("MessageComposer preview mode", () => {
     });
   });
 
+  it("renders controlled ready markdown and keeps pending/error actions in preview", () => {
+    const fileUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const onRemoveAttachment = vi.fn();
+    const onRetryAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[
+          {
+            localId: "ready-id",
+            fileName: "report.pdf",
+            sizeBytes: 3,
+            contentType: "application/pdf",
+            previewUrl: null,
+            status: "ready",
+            loadedBytes: 3,
+            totalBytes: 3,
+            error: null,
+            retryable: false,
+            previewMarkdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf&content_type=application%2Fpdf&size=3)`,
+          },
+          {
+            localId: "queued-id",
+            fileName: "waiting.txt",
+            sizeBytes: 4,
+            contentType: "text/plain",
+            previewUrl: null,
+            status: "queued",
+            loadedBytes: 0,
+            totalBytes: 4,
+            error: null,
+            retryable: false,
+          },
+          {
+            localId: "error-id",
+            fileName: "failed.txt",
+            sizeBytes: 4,
+            contentType: "text/plain",
+            previewUrl: null,
+            status: "error",
+            loadedBytes: 0,
+            totalBytes: 4,
+            error: "Upload failed",
+            retryable: true,
+          },
+        ]}
+        attachmentsBlockSend
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+        onRetryAttachment={onRetryAttachment}
+      />,
+    );
+
+    openComposerPreview();
+
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(preview.querySelectorAll(`[data-workspace-file-uuid="${fileUuid}"]`)).toHaveLength(1);
+    expect(preview.querySelector('[role="listitem"] [title="report.pdf"]')).toBeNull();
+    expect(within(preview).getByText("Waiting to upload")).toBeInTheDocument();
+    expect(within(preview).getByText("Upload failed")).toBeInTheDocument();
+    expect(within(preview).queryByRole("progressbar")).not.toBeInTheDocument();
+
+    fireEvent.click(within(preview).getByRole("button", { name: "Remove report.pdf" }));
+    fireEvent.click(within(preview).getByRole("button", { name: "Retry upload of failed.txt" }));
+    fireEvent.click(within(preview).getByRole("button", { name: "Remove waiting.txt" }));
+    expect(onRetryAttachment).toHaveBeenCalledWith("error-id");
+    expect(onRemoveAttachment).toHaveBeenNthCalledWith(1, "ready-id");
+    expect(onRemoveAttachment).toHaveBeenNthCalledWith(2, "queued-id");
+  });
+
+  it("does not duplicate a ready controlled image thumbnail in preview", () => {
+    const fileUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[
+          {
+            localId: "ready-image",
+            fileName: "screen.png",
+            sizeBytes: 8,
+            contentType: "image/png",
+            previewUrl: "blob:local-screen",
+            status: "ready",
+            loadedBytes: 8,
+            totalBytes: 8,
+            error: null,
+            retryable: false,
+            previewMarkdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng&size=8)`,
+          },
+        ]}
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+      "src",
+      "blob:local-screen",
+    );
+    openComposerPreview();
+
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(preview.querySelectorAll(`[data-workspace-file-uuid="${fileUuid}"]`)).toHaveLength(1);
+    expect(preview.querySelector('[src="blob:local-screen"]')).toBeNull();
+    expect(within(preview).getByRole("button", { name: "Remove screen.png" })).toBeInTheDocument();
+  });
+
   it("renders Workspace preview with mentions during edit session", () => {
     const userUuid = "11111111-1111-4111-8111-111111111111";
 
@@ -2173,6 +2280,135 @@ describe("MessageComposer file attachments", () => {
   });
 });
 
+describe("MessageComposer controlled attachments", () => {
+  const readyAttachment = {
+    localId: "attachment-ready",
+    fileName: "ready.pdf",
+    sizeBytes: 5,
+    contentType: "application/pdf",
+    previewUrl: null,
+    status: "ready" as const,
+    loadedBytes: 5,
+    totalBytes: 5,
+    error: null,
+    retryable: false,
+  };
+
+  it("renders a ready controlled image with its persistent local thumbnail", () => {
+    const onRemoveAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[
+          {
+            ...readyAttachment,
+            localId: "ready-image",
+            fileName: "screen.png",
+            contentType: "image/png",
+            previewUrl: "blob:workspace-image",
+          },
+        ]}
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+      "src",
+      "blob:workspace-image",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove screen.png" }));
+    expect(onRemoveAttachment).toHaveBeenCalledWith("ready-image");
+  });
+
+  it("hands picker, drop, and clipboard files to the controlled owner immediately", async () => {
+    const onAddAttachments = vi.fn();
+    const { container } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} attachments={[]} onAddAttachments={onAddAttachments} />,
+    );
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected hidden file input");
+
+    const pickedFile = new File(["picked"], "picked.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [pickedFile] } });
+
+    const droppedFile = new File(["dropped"], "dropped.png", { type: "image/png" });
+    fireEvent.drop(screen.getByRole("form", { name: /message composer/i }), {
+      dataTransfer: { types: ["Files"], files: [droppedFile] },
+    });
+
+    const pastedFile = new File(["pasted"], "", { type: "" });
+    fireEvent.paste(screen.getByRole("textbox"), {
+      clipboardData: {
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => pastedFile,
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(onAddAttachments).toHaveBeenCalledTimes(3));
+    expect(onAddAttachments).toHaveBeenNthCalledWith(1, [pickedFile]);
+    expect(onAddAttachments).toHaveBeenNthCalledWith(2, [droppedFile]);
+    const clipboardFiles = onAddAttachments.mock.calls[2]?.[0] as readonly File[] | undefined;
+    expect(clipboardFiles).toHaveLength(1);
+    expect(clipboardFiles?.[0]?.name).toMatch(/^pasted-image-\d{8}-\d{6}\.png$/);
+    expect(clipboardFiles?.[0]?.type).toBe("image/png");
+  });
+
+  it("blocks button and Enter while an attachment is pending without locking text or removal", () => {
+    const onSend = vi.fn();
+    const onRemoveAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        attachments={[
+          {
+            ...readyAttachment,
+            localId: "attachment-uploading",
+            fileName: "uploading.pdf",
+            status: "uploading",
+            loadedBytes: 2,
+          },
+        ]}
+        attachmentsBlockSend
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "text remains editable" } });
+    expect(textbox).toHaveValue("text remains editable");
+    expect(screen.getByRole("button", { name: "Write a message..." })).toBeDisabled();
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel upload of uploading.pdf" }));
+    expect(onRemoveAttachment).toHaveBeenCalledWith("attachment-uploading");
+  });
+
+  it("allows sending a ready attachment without text", async () => {
+    const onSend = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        attachments={[readyAttachment]}
+        attachmentsBlockSend={false}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Write a message..." }));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("", "", undefined));
+  });
+});
+
 describe("MessageComposer upload progress", () => {
   it("renders upload progress inside the active attachment card", async () => {
     const { container } = renderWithProviders(
@@ -2467,6 +2703,53 @@ describe("MessageComposer draft session", () => {
 });
 
 describe("MessageComposer edit session", () => {
+  it("keeps controlled attachments in the draft while edit save ignores their blocker", async () => {
+    const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
+    const attachment = {
+      localId: "pending-draft-attachment",
+      fileName: "draft-upload.pdf",
+      sizeBytes: 10,
+      contentType: "application/pdf",
+      previewUrl: null,
+      status: "uploading" as const,
+      loadedBytes: 4,
+      totalBytes: 10,
+      error: null,
+      retryable: false,
+    };
+    const baseProps = {
+      onSend: vi.fn(),
+      initialValue: "draft before edit",
+      attachments: [attachment],
+      attachmentsBlockSend: true,
+      onAddAttachments: vi.fn(),
+      onRemoveAttachment: vi.fn(),
+      onSubmitEdit,
+    };
+    const { rerender } = renderWithProviders(<MessageComposer {...baseProps} />);
+
+    expect(screen.getByText("draft-upload.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write a message..." })).toBeDisabled();
+
+    rerender(
+      <MessageComposer
+        {...baseProps}
+        editSession={{ messageId: 42, initialMarkdown: "message to edit" }}
+      />,
+    );
+
+    expect(screen.queryByText("draft-upload.pdf")).not.toBeInTheDocument();
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "edited body" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    await waitFor(() => expect(onSubmitEdit).toHaveBeenCalledWith(42, "edited body"));
+
+    rerender(<MessageComposer {...baseProps} />);
+    expect(screen.getByText("draft-upload.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write a message..." })).toBeDisabled();
+  });
+
   it("submits edited content and restores previous draft after session closes", async () => {
     const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
     const onValueChange = vi.fn();

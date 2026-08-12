@@ -72,6 +72,35 @@ describe("AttachmentCard", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it("announces validating and queued states without fake upload progress", () => {
+    const onRemove = vi.fn();
+    render(
+      <AttachmentCardList ariaLabel="Attached files">
+        <AttachmentCard
+          status="validating"
+          fileName="checking.pdf"
+          detailText="Checking file"
+          onRemove={onRemove}
+        />
+        <AttachmentCard
+          status="queued"
+          fileName="waiting.pdf"
+          detailText="Waiting to upload"
+          onRemove={onRemove}
+        />
+      </AttachmentCardList>,
+    );
+
+    expect(screen.getByText("Checking file")).toBeInTheDocument();
+    expect(screen.getByText("Waiting to upload")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cancel upload/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove checking.pdf" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove waiting.pdf" }));
+    expect(onRemove).toHaveBeenCalledTimes(2);
+  });
+
   it("renders the independent error state and only exposes retry when supported", () => {
     const onRetry = vi.fn();
     const { rerender } = render(

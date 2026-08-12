@@ -6,11 +6,17 @@ import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-mes
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  MessageComposerAttachmentView,
   MessageComposerReplyClearReason,
   MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
-import type { ComposerUploadProgressState } from "./chat-upload.lib";
+
+export interface ComposerUploadProgressState {
+  completed: number;
+  total: number;
+  activeFileName: string | null;
+}
 
 export interface ChatPageComposerSectionProps {
   isDmView: boolean;
@@ -28,6 +34,11 @@ export interface ChatPageComposerSectionProps {
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   optimisticClearOnSend?: boolean;
+  attachments?: readonly MessageComposerAttachmentView[];
+  attachmentsBlockSend?: boolean;
+  onAddAttachments?: (files: readonly File[]) => void;
+  onRemoveAttachment?: (localId: string) => void;
+  onRetryAttachment?: (localId: string) => void;
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;

@@ -3,8 +3,10 @@ import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-m
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { AttachmentCardList } from "~/shared/ui/attachment-card.ui";
 import { Icon } from "~/shared/ui/icon";
 import { formatAttachmentSize, getAttachmentExtensionLabel } from "./message-composer-body.lib";
+import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
 import type { MessageComposerPreviewBodyProps } from "./message-composer-preview-body.types";
 
 export const MessageComposerPreviewBody = React.memo(function MessageComposerPreviewBody({
@@ -18,9 +20,15 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
   files = [],
   filePreviewUrls = [],
   removeFile,
+  attachments = [],
+  onRemoveAttachment,
+  onRetryAttachment,
 }: MessageComposerPreviewBodyProps) {
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
   const hasFiles = files.length > 0;
+  const hasControlledAttachments = attachments.length > 0;
+  const readyAttachments = attachments.filter((attachment) => attachment.status === "ready");
+  const incompleteAttachments = attachments.filter((attachment) => attachment.status !== "ready");
 
   useWorkspaceMessageFilePreviews({
     bodyRef,
@@ -30,7 +38,7 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
   });
 
   const renderPreviewContent = () => {
-    if (outgoingBodyTrim.length === 0 && !hasFiles) {
+    if (outgoingBodyTrim.length === 0 && !hasFiles && !hasControlledAttachments) {
       return <p className="text-text-muted">{t("composer.previewEmpty")}</p>;
     }
     if (outgoingBodyTrim.length === 0) {
@@ -62,7 +70,25 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
       role="region"
       aria-label={t("composer.preview")}
     >
-      {renderPreviewContent()}
+      <div className="relative">
+        {renderPreviewContent()}
+        {readyAttachments.length > 0 && onRemoveAttachment != null ? (
+          <span className="bg-composer-outer/90 absolute right-0 top-0 flex items-center gap-1 rounded-md p-0.5 shadow-sm">
+            {readyAttachments.map((attachment) => (
+              <button
+                key={attachment.localId}
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.localId)}
+                className="rounded p-1 text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+                aria-label={t("attachmentCard.remove", { fileName: attachment.fileName })}
+                title={t("attachmentCard.remove", { fileName: attachment.fileName })}
+              >
+                <Icon name="close" size={12} />
+              </button>
+            ))}
+          </span>
+        ) : null}
+      </div>
       {hasFiles && (
         <div
           className={
@@ -117,6 +143,18 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
           })}
         </div>
       )}
+      {incompleteAttachments.length > 0 ? (
+        <AttachmentCardList
+          ariaLabel={t("attachmentCard.list")}
+          className={outgoingBodyTrim.length > 0 || hasFiles ? "mt-2" : undefined}
+        >
+          <MessageComposerControlledAttachmentCards
+            attachments={incompleteAttachments}
+            onRemoveAttachment={onRemoveAttachment}
+            onRetryAttachment={onRetryAttachment}
+          />
+        </AttachmentCardList>
+      ) : null}
     </div>
   );
 });

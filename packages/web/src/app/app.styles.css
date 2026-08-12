@@ -868,8 +868,8 @@ img {
  * Applied only when the primary pointer is coarse (finger).
  */
 @media (pointer: coarse) {
-  button,
-  [role="button"],
+  button:not([data-composer-resize-handle]),
+  [role="button"]:not([data-composer-resize-handle]),
   a,
   input[type="checkbox"],
   input[type="radio"],

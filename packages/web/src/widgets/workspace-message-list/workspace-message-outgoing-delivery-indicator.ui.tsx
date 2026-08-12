@@ -15,8 +15,8 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
     onRetry,
     onRemove,
   }: WorkspaceMessageOutgoingDeliveryIndicatorProps): React.ReactElement {
-    if (message.status === "uploading" || message.status === "sending") {
-      const label = message.status === "uploading" ? t("message.uploading") : t("message.sending");
+    if (message.status === "sending") {
+      const label = t("message.sending");
       return (
         <span
           className="inline-flex size-3.5 items-center justify-center text-text-muted"

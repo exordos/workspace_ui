@@ -27,10 +27,17 @@ export interface AttachmentImageCardProps
 
 export interface AttachmentUploadingCardProps extends AttachmentCardBaseProps {
   progress: number;
+  detailText?: string;
   onCancel?: () => void;
 }
 
-export interface AttachmentErrorCardProps extends AttachmentCardBaseProps {
+export interface AttachmentPendingCardProps
+  extends AttachmentCardBaseProps, AttachmentCardRemovableProps {
+  detailText: string;
+}
+
+export interface AttachmentErrorCardProps
+  extends AttachmentCardBaseProps, AttachmentCardRemovableProps {
   errorMessage?: string;
   onRetry?: () => void;
 }
@@ -38,6 +45,7 @@ export interface AttachmentErrorCardProps extends AttachmentCardBaseProps {
 export type AttachmentCardProps =
   | ({ status: "file" } & AttachmentFileCardProps)
   | ({ status: "image" } & AttachmentImageCardProps)
+  | ({ status: "validating" | "queued" } & AttachmentPendingCardProps)
   | ({ status: "uploading" } & AttachmentUploadingCardProps)
   | ({ status: "error" } & AttachmentErrorCardProps);
 

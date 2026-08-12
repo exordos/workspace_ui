@@ -3,6 +3,7 @@ import type {
   WorkspaceMessageBodyMetadata,
   WorkspaceMessageFileReference,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { MessageComposerAttachmentView } from "./message-composer.types";
 
 export interface MessageComposerPreviewBodyProps {
   outgoingBodyTrim: string;
@@ -15,4 +16,7 @@ export interface MessageComposerPreviewBodyProps {
   files?: File[];
   filePreviewUrls?: (string | null)[];
   removeFile?: (index: number) => void;
+  attachments?: readonly MessageComposerAttachmentView[];
+  onRemoveAttachment?: (localId: string) => void;
+  onRetryAttachment?: (localId: string) => void;
 }

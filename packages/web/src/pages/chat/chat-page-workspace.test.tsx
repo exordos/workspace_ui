@@ -93,7 +93,8 @@ const captured = vi.hoisted(() => ({
   loadMessengerQuoteMessage: vi.fn().mockResolvedValue({ status: "unavailable" }),
   loadWorkspaceFile: vi.fn(),
   downloadWorkspaceFile: vi.fn(),
-  uploadWorkspaceFile: vi.fn(),
+  uploadWorkspaceFileWithProgress: vi.fn(),
+  deleteWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
   markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
@@ -320,7 +321,8 @@ vi.mock("~/entities/messenger/messenger-quote-loader.lib", () => ({
 
 vi.mock("~/shared/api/messenger-files.api", () => ({
   downloadWorkspaceFile: captured.downloadWorkspaceFile,
-  uploadWorkspaceFile: captured.uploadWorkspaceFile,
+  uploadWorkspaceFileWithProgress: captured.uploadWorkspaceFileWithProgress,
+  deleteWorkspaceFile: captured.deleteWorkspaceFile,
 }));
 
 vi.mock("~/shared/lib/workspace-file-loader.lib", () => ({
@@ -813,13 +815,15 @@ describe("ChatPage Workspace route", () => {
       blob: new Blob(["workspace preview"], { type: "image/png" }),
       headers: new Headers(),
     });
-    captured.uploadWorkspaceFile.mockReset();
-    captured.uploadWorkspaceFile.mockResolvedValue({
+    captured.uploadWorkspaceFileWithProgress.mockReset();
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValue({
       uuid: "99999999-9999-4999-8999-999999999999",
       name: "workspace-report.txt",
       content_type: "text/plain",
       size_bytes: 14,
     });
+    captured.deleteWorkspaceFile.mockReset();
+    captured.deleteWorkspaceFile.mockResolvedValue(undefined);
     captured.sendMessengerMessage.mockReset();
     captured.sendMessengerMessage.mockResolvedValue({
       status: "applied",
@@ -3091,11 +3095,16 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
-  it("uploads composer files before Workspace send and appends logical markdown refs", async () => {
+  it("uploads composer files immediately and appends logical markdown refs on send", async () => {
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]);
     const pdfFile = new File(["pdf"], 'report<>:"q1?.pdf', { type: "application/pdf" });
     const imageFile = new File([pngBytes], "screen.png", { type: "image/png" });
-    captured.uploadWorkspaceFile
+    captured.uploadWorkspaceFileWithProgress
       .mockResolvedValueOnce({
         uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         name: "report.pdf",
@@ -3108,18 +3117,24 @@ describe("ChatPage Workspace route", () => {
         content_type: "image/png",
         size_bytes: 8,
       });
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
 
-    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
-    await act(async () => {
-      await captured.composerProps?.onSend("  hello  ", "", [pdfFile, imageFile]);
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([pdfFile, imageFile]));
+    await waitFor(() => expect(captured.composerProps?.attachmentsBlockSend).toBe(false));
+    let sendPromise: Promise<unknown> | undefined;
+    act(() => {
+      sendPromise = Promise.resolve(captured.composerProps?.onSend("  hello  ", ""));
     });
 
-    await waitFor(() => expect(captured.uploadWorkspaceFile).toHaveBeenCalledTimes(2));
-    expect(captured.uploadWorkspaceFile).toHaveBeenNthCalledWith(
+    await waitFor(() => expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledTimes(2));
+    expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         accessToken: "access-token",
@@ -3127,22 +3142,24 @@ describe("ChatPage Workspace route", () => {
         projectId: "project-a",
         signal: expect.any(AbortSignal),
       }),
-      {
+      expect.objectContaining({
         file: pdfFile,
         streamUuid: STREAM_UUID,
         name: pdfFile.name,
-      },
+        onProgress: expect.any(Function),
+      }),
     );
-    expect(captured.uploadWorkspaceFile).toHaveBeenNthCalledWith(
+    expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),
-      {
+      expect.objectContaining({
         file: imageFile,
         streamUuid: STREAM_UUID,
         name: imageFile.name,
-      },
+        onProgress: expect.any(Function),
+      }),
     );
     await waitFor(() =>
       expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
@@ -3158,13 +3175,125 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage.mock.calls[0]?.[0].markdown).not.toContain(
       "/user_uploads",
     );
+    await waitFor(() => {
+      const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+      expect(outgoing).toEqual(
+        expect.objectContaining({
+          markdown:
+            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
+          status: "sending",
+        }),
+      );
+      expect(outgoing == null ? false : "files" in outgoing).toBe(false);
+      expect(captured.composerProps?.attachments).toEqual([]);
+    });
+
+    await act(async () => {
+      sendRequest.resolve({
+        status: "applied",
+        ownerKey: "owner-key",
+        message: createMessage(),
+      });
+      await sendPromise;
+    });
     await waitFor(() => expect(captured.composerProps?.uploadProgress).toBeNull());
+  });
+
+  it("keeps the controlled image thumbnail ready until send and revokes it after transfer", async () => {
+    const createObjectUrl = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-draft")
+      .mockReturnValue("blob:workspace-dimensions");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const imageFile = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+      "screen.png",
+      { type: "image/png" },
+    );
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
+      uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      name: "screen.png",
+      content_type: "image/png",
+      size_bytes: 8,
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+
+    act(() => captured.composerProps?.onAddAttachments?.([imageFile]));
+    await waitFor(() => expect(captured.composerProps?.attachments?.[0]?.status).toBe("ready"));
+    expect(captured.composerProps?.attachments?.[0]).toEqual(
+      expect.objectContaining({ previewUrl: "blob:workspace-draft" }),
+    );
+    expect(createObjectUrl).toHaveBeenCalledTimes(2);
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:workspace-dimensions");
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith("blob:workspace-draft");
+
+    await act(async () => {
+      await captured.composerProps?.onSend("with image", "");
+    });
+
+    expect(captured.composerProps?.attachments).toEqual([]);
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:workspace-draft");
+
+    createObjectUrl.mockRestore();
+    revokeObjectUrl.mockRestore();
   });
 
   it("does not send Workspace message when composer file upload fails", async () => {
     const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
-    captured.uploadWorkspaceFile.mockRejectedValueOnce(new Error("upload failed"));
+    captured.uploadWorkspaceFileWithProgress.mockRejectedValueOnce(new Error("upload failed"));
 
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
+    await waitFor(() => expect(captured.composerProps?.attachments?.[0]?.status).toBe("error"));
+    expect(captured.composerProps?.attachments?.[0]).toEqual(
+      expect.objectContaining({ error: "Upload failed", retryable: true }),
+    );
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    expect(() => onSend("hello", "")).toThrow("Wait for all attachments to finish uploading.");
+
+    expect(captured.messageListProps?.outgoingMessages ?? []).toEqual([]);
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("localizes validation errors and does not offer upload retry", async () => {
+    const oversized = new File(["x"], "large.pdf", { type: "application/pdf" });
+    Object.defineProperty(oversized, "size", { value: 25 * 1024 * 1024 + 1 });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([oversized]));
+
+    await waitFor(() =>
+      expect(captured.composerProps?.attachments?.[0]).toEqual(
+        expect.objectContaining({
+          status: "error",
+          error: "The file is too large (maximum 25 MB)",
+          retryable: false,
+        }),
+      ),
+    );
+    expect(captured.uploadWorkspaceFileWithProgress).not.toHaveBeenCalled();
+  });
+
+  it("accepts 20,001 astral emoji because the backend counts Unicode code points", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -3172,47 +3301,169 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
     const onSend = captured.composerProps?.onSend;
     if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    const content = "😀".repeat(20_001);
+
     await act(async () => {
-      await expect(onSend("hello", "", [file])).rejects.toThrow();
+      await onSend(content, "");
     });
 
-    await waitFor(() => {
-      expect(captured.messageListProps?.outgoingMessages?.[0]).toEqual(
-        expect.objectContaining({
-          markdown: "hello",
-          status: "failed",
-          error: "upload failed",
-        }),
-      );
-    });
+    expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ markdown: content }),
+    );
+  });
+
+  it("blocks more than 40,000 Unicode code points", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    expect(() => onSend("😀".repeat(40_001), "")).toThrow(
+      "The message is too long (maximum 40,000 characters).",
+    );
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps ready attachments when their final markdown with the URN exceeds the limit", async () => {
+    const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
+      uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      name: "report.pdf",
+      content_type: "application/pdf",
+      size_bytes: 3,
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
+    await waitFor(() => expect(captured.composerProps?.attachmentsBlockSend).toBe(false));
+
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    expect(() => onSend("a".repeat(40_000), "")).toThrow(
+      "The message is too long (maximum 40,000 characters).",
+    );
+
+    expect(captured.composerProps?.attachments).toEqual([
+      expect.objectContaining({ fileName: "report.pdf", status: "ready" }),
+    ]);
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed message POST without uploading the attachment again", async () => {
+    const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
+      uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      name: "report.pdf",
+      content_type: "application/pdf",
+      size_bytes: 3,
+    });
+    captured.sendMessengerMessage
+      .mockRejectedValueOnce(new Error("send failed"))
+      .mockResolvedValueOnce({
+        status: "applied",
+        ownerKey: "owner-key",
+        message: createMessage(),
+      });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
+    await waitFor(() => expect(captured.composerProps?.attachmentsBlockSend).toBe(false));
+
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    await act(async () => {
+      await expect(onSend("message", "")).rejects.toThrow();
+    });
+    const failedOutgoing = captured.messageListProps?.outgoingMessages?.[0];
+    expect(failedOutgoing).toEqual(expect.objectContaining({ status: "failed" }));
+    if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
+
+    act(() => captured.messageListProps?.onRetryOutgoingMessage?.(failedOutgoing.localId));
+
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+    expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledTimes(1);
+    expect(captured.sendMessengerMessage.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        markdown:
+          "message\n[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)",
+      }),
+    );
+    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("removes a failed outgoing row without deleting its markdown files", async () => {
+    const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
+      uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      name: "report.pdf",
+      content_type: "application/pdf",
+      size_bytes: 3,
+    });
+    captured.sendMessengerMessage.mockRejectedValueOnce(new Error("send failed"));
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
+    await waitFor(() => expect(captured.composerProps?.attachmentsBlockSend).toBe(false));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    await act(async () => {
+      await expect(onSend("message", "")).rejects.toThrow();
+    });
+    const failedOutgoing = captured.messageListProps?.outgoingMessages?.[0];
+    if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
+
+    act(() => captured.messageListProps?.onRemoveOutgoingMessage?.(failedOutgoing.localId));
+
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
   });
 
   it("aborts an in-flight Workspace upload when the runtime context changes", async () => {
     const file = new File(["workspace file"], "report.txt", { type: "text/plain" });
     let uploadSignal: AbortSignal | undefined;
-    captured.uploadWorkspaceFile.mockImplementation((requestOptions: { signal?: AbortSignal }) => {
-      uploadSignal = requestOptions.signal;
-      return new Promise((_, reject) => {
-        requestOptions.signal?.addEventListener("abort", () => {
-          reject(new DOMException("Aborted", "AbortError"));
+    captured.uploadWorkspaceFileWithProgress.mockImplementation(
+      (requestOptions: { signal?: AbortSignal }) => {
+        uploadSignal = requestOptions.signal;
+        return new Promise((_, reject) => {
+          requestOptions.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
         });
-      });
-    });
+      },
+    );
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
 
-    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
-    const onSend = captured.composerProps?.onSend;
-    if (onSend == null) throw new Error("Workspace composer send handler is missing");
-    act(() => {
-      void Promise.resolve(onSend("hello", "", [file])).catch(() => undefined);
-    });
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
 
     await waitFor(() => {
-      expect(captured.uploadWorkspaceFile).toHaveBeenCalledTimes(1);
+      expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledTimes(1);
       expect(uploadSignal).toBeInstanceOf(AbortSignal);
       expect(uploadSignal?.aborted).toBe(false);
     });
@@ -3233,9 +3484,8 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => {
       expect(uploadSignal?.aborted).toBe(true);
     });
-    await waitFor(() => {
-      expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed");
-    });
+    expect(captured.messageListProps?.outgoingMessages ?? []).toEqual([]);
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
   it("opens a quoted Workspace message in its chat through a URL anchor", async () => {

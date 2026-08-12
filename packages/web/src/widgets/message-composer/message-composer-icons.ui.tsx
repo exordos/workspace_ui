@@ -3,7 +3,9 @@ import ComposerAttachCompactSvg from "~/shared/assets/icons/composer-attach-comp
 import ComposerAttachSvg from "~/shared/assets/icons/composer-attach.svg?react";
 import BottomPanelCloseSvg from "~/shared/assets/icons/composer-bottom-panel-close.svg?react";
 import BottomPanelOpenSvg from "~/shared/assets/icons/composer-bottom-panel-open.svg?react";
+import CollapseContentSvg from "~/shared/assets/icons/composer-collapse-content.svg?react";
 import ComposerEmojiSvg from "~/shared/assets/icons/composer-emoji.svg?react";
+import ExpandContentSvg from "~/shared/assets/icons/composer-expand-content.svg?react";
 import ComposerSendSvg from "~/shared/assets/icons/composer-send.svg?react";
 
 interface MessageComposerIconProps {
@@ -86,15 +88,30 @@ export const MessageComposerSendIcon = React.memo(function MessageComposerSendIc
   );
 });
 
-export const MessageComposerFullHeightGlyph = React.memo(function MessageComposerFullHeightGlyph() {
-  return (
-    <span
-      className="flex h-6 w-[22px] select-none items-center justify-center text-lg font-normal leading-6"
-      style={{ fontFamily: '"Helvetica Neue", Arial, sans-serif' }}
-      data-composer-icon="full-height"
-      aria-hidden
-    >
-      ⤢
-    </span>
-  );
-});
+export const MessageComposerExpandContentIcon = React.memo(
+  function MessageComposerExpandContentIcon({ className = "" }: MessageComposerIconProps) {
+    return (
+      <ExpandContentSvg
+        width={14}
+        height={14}
+        className={`shrink-0 ${className}`.trim()}
+        data-composer-icon="expand-content"
+        aria-hidden
+      />
+    );
+  },
+);
+
+export const MessageComposerCollapseContentIcon = React.memo(
+  function MessageComposerCollapseContentIcon({ className = "" }: MessageComposerIconProps) {
+    return (
+      <CollapseContentSvg
+        width={14}
+        height={14}
+        className={`shrink-0 ${className}`.trim()}
+        data-composer-icon="collapse-content"
+        aria-hidden
+      />
+    );
+  },
+);

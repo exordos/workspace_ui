@@ -153,7 +153,7 @@ async function parseErrorResponse(response: Response): Promise<unknown> {
 }
 
 // Public endpoints, for example server_settings, must not receive bearer auth.
-function buildHeaders(
+export function buildMessengerRequestHeaders(
   accessToken: string | null | undefined,
   body: unknown,
   isPublic: boolean,
@@ -176,7 +176,7 @@ function buildHeaders(
   };
 }
 
-async function resolveMessengerAccessToken(
+export async function resolveMessengerAccessToken(
   options: MessengerClientOptions,
   force = false,
 ): Promise<string | null | undefined> {
@@ -203,14 +203,18 @@ function hasAuthTypeMarker(data: unknown): boolean {
   return type?.includes("auth") === true || code?.includes("auth") === true;
 }
 
-function shouldRetryAfterAuthFailure(response: Response, data: unknown): boolean {
-  if (response.status === 401) {
+export function shouldRetryAfterAuthFailureStatus(status: number, data: unknown): boolean {
+  if (status === 401) {
     return true;
   }
-  return response.status === 403 && hasAuthTypeMarker(data);
+  return status === 403 && hasAuthTypeMarker(data);
 }
 
-function shouldAppendDevProxyTargetHeader(url: string): boolean {
+function shouldRetryAfterAuthFailure(response: Response, data: unknown): boolean {
+  return shouldRetryAfterAuthFailureStatus(response.status, data);
+}
+
+export function shouldAppendDevProxyTargetHeader(url: string): boolean {
   if (!import.meta.env.DEV || typeof window === "undefined") {
     return false;
   }
@@ -222,7 +226,7 @@ function shouldAppendDevProxyTargetHeader(url: string): boolean {
   }
 }
 
-// This is the only helper that performs authenticated network writes.
+// Authenticated request helpers share token, proxy, and header construction from this module.
 export async function sendJsonResult(
   method: MessengerHttpMethod,
   path: string,
@@ -235,7 +239,7 @@ export async function sendJsonResult(
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method,
-    headers: buildHeaders(
+    headers: buildMessengerRequestHeaders(
       await resolveMessengerAccessToken(options),
       body,
       false,
@@ -259,7 +263,7 @@ export async function sendJsonResult(
     const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
     response = await fetchImpl(retryUrl, {
       ...init,
-      headers: buildHeaders(
+      headers: buildMessengerRequestHeaders(
         await resolveMessengerAccessToken(options, true),
         body,
         false,
@@ -292,7 +296,7 @@ export async function sendFormDataResult(
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method: "POST",
-    headers: buildHeaders(
+    headers: buildMessengerRequestHeaders(
       await resolveMessengerAccessToken(options),
       undefined,
       false,
@@ -314,7 +318,7 @@ export async function sendFormDataResult(
     const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
     response = await fetchImpl(retryUrl, {
       ...init,
-      headers: buildHeaders(
+      headers: buildMessengerRequestHeaders(
         await resolveMessengerAccessToken(options, true),
         undefined,
         false,
@@ -355,7 +359,7 @@ export async function getBinaryResult(
     // File UUIDs identify immutable bytes for the client. Let the browser
     // reuse a cached response before making another authenticated request.
     cache: "force-cache",
-    headers: buildHeaders(
+    headers: buildMessengerRequestHeaders(
       await resolveMessengerAccessToken(options),
       undefined,
       false,
@@ -378,7 +382,7 @@ export async function getBinaryResult(
       const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
       response = await fetchImpl(retryUrl, {
         ...init,
-        headers: buildHeaders(
+        headers: buildMessengerRequestHeaders(
           await resolveMessengerAccessToken(options, true),
           undefined,
           false,
@@ -411,7 +415,7 @@ export async function publicGetJsonResult(
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method: "GET",
-    headers: buildHeaders(
+    headers: buildMessengerRequestHeaders(
       null,
       undefined,
       true,

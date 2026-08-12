@@ -1251,14 +1251,22 @@
     "collapseEditor": "Collapse message editor",
     "resizeEditor": "Resize message editor",
     "expandToolbar": "Show formatting tools",
-    "collapseToolbar": "Hide formatting tools"
+    "collapseToolbar": "Hide formatting tools",
+    "messageTooLong": "The message is too long (maximum 40,000 characters)."
   },
   "attachmentCard": {
     "remove": "Remove {{fileName}}",
+    "validating": "Checking file",
+    "queued": "Waiting to upload",
+    "uploadPending": "Wait for all attachments to finish uploading.",
     "uploading": "Uploading · {{percent}}%",
     "uploadProgress": "Uploading {{fileName}}: {{percent}}%",
     "cancelUpload": "Cancel upload of {{fileName}}",
     "uploadError": "Upload failed",
+    "fileEmpty": "The file is empty",
+    "fileTooLarge": "The file is too large (maximum 25 MB)",
+    "invalidImage": "The image file type does not match its contents",
+    "validationError": "The file could not be validated",
     "retryUpload": "Retry upload of {{fileName}}",
     "list": "Attached files"
   },

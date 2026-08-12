@@ -16,10 +16,9 @@ export interface MessengerOutboxStoreState {
   outgoingMessageLocalIdsByConversationId: Record<MessengerConversationId, readonly string[]>;
 
   enqueueOutgoingMessage: (draft: MessengerOutgoingMessageDraft) => MessengerOutgoingMessage;
-  markOutgoingMessageUploading: (localId: string) => void;
   markOutgoingMessageSending: (
     localId: string,
-    patch?: { markdown?: string; sourceMarkdown?: string; files?: readonly File[] | null },
+    patch?: { markdown?: string; sourceMarkdown?: string },
   ) => void;
   markOutgoingMessageFailed: (localId: string, error: string) => void;
   removeOutgoingMessage: (localId: string) => void;
@@ -123,7 +122,6 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
       attempt: 1,
       error: null,
       includeStreamConversation: draft.includeStreamConversation,
-      files: draft.files,
     };
 
     logStoreAction("messengerOutbox", "enqueueOutgoingMessage", {
@@ -131,7 +129,6 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
       ownerKey: draft.ownerKey,
       conversationId: draft.conversationId,
       status: draft.status,
-      hasFiles: draft.files != null && draft.files.length > 0,
     });
     set((state) => ({
       outgoingMessagesByLocalId: {
@@ -145,29 +142,6 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
       ),
     }));
     return get().outgoingMessagesByLocalId[localId] ?? message;
-  },
-
-  markOutgoingMessageUploading(localId) {
-    logStoreAction("messengerOutbox", "markOutgoingMessageUploading", { localId });
-    set((state) => {
-      const message = state.outgoingMessagesByLocalId[localId];
-      if (message == null) return state;
-
-      // Повторная отправка после ошибки загрузки должна остаться той же строкой:
-      // ревьюер видит один локальный bubble, а не новый дубль ниже в списке.
-      return {
-        outgoingMessagesByLocalId: {
-          ...state.outgoingMessagesByLocalId,
-          [localId]: {
-            ...message,
-            status: "uploading",
-            updatedAt: new Date().toISOString(),
-            attempt: message.status === "failed" ? message.attempt + 1 : message.attempt,
-            error: null,
-          },
-        },
-      };
-    });
   },
 
   markOutgoingMessageSending(localId, patch = {}) {
@@ -184,10 +158,6 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
         attempt: message.status === "failed" ? message.attempt + 1 : message.attempt,
         error: null,
       };
-      if (patch.files !== undefined) {
-        nextMessage.files = patch.files ?? undefined;
-      }
-
       return {
         outgoingMessagesByLocalId: {
           ...state.outgoingMessagesByLocalId,

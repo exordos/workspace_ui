@@ -4,8 +4,9 @@ import {
   MessageComposerAttachIcon,
   MessageComposerBottomPanelCloseIcon,
   MessageComposerBottomPanelOpenIcon,
+  MessageComposerCollapseContentIcon,
   MessageComposerEmojiIcon,
-  MessageComposerFullHeightGlyph,
+  MessageComposerExpandContentIcon,
   MessageComposerSendIcon,
 } from "./message-composer-icons.ui";
 
@@ -19,7 +20,8 @@ describe("message composer icons", () => {
         <MessageComposerAttachIcon compact />
         <MessageComposerEmojiIcon />
         <MessageComposerSendIcon />
-        <MessageComposerFullHeightGlyph />
+        <MessageComposerExpandContentIcon />
+        <MessageComposerCollapseContentIcon />
       </>,
     );
 
@@ -45,6 +47,11 @@ describe("message composer icons", () => {
     expect(icon("emoji")?.querySelector("path")).toHaveAttribute("fill", "currentColor");
     expect(icon("send")).toHaveAttribute("width", "24");
     expect(icon("send")).toHaveAttribute("height", "20");
-    expect(icon("full-height")).toHaveClass("h-6", "w-[22px]", "text-lg");
+    expect(icon("expand-content")).toHaveAttribute("width", "14");
+    expect(icon("expand-content")).toHaveAttribute("height", "14");
+    expect(icon("expand-content")).toHaveAttribute("viewBox", "0 0 14 14");
+    expect(icon("collapse-content")).toHaveAttribute("width", "14");
+    expect(icon("collapse-content")).toHaveAttribute("height", "14");
+    expect(icon("collapse-content")).toHaveAttribute("viewBox", "0 0 14 14");
   });
 });

@@ -1261,14 +1261,22 @@
     "collapseEditor": "Свернуть поле сообщения",
     "resizeEditor": "Изменить высоту поля сообщения",
     "expandToolbar": "Показать инструменты форматирования",
-    "collapseToolbar": "Скрыть инструменты форматирования"
+    "collapseToolbar": "Скрыть инструменты форматирования",
+    "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов)."
   },
   "attachmentCard": {
     "remove": "Удалить {{fileName}}",
+    "validating": "Проверка файла",
+    "queued": "Ожидает загрузки",
+    "uploadPending": "Дождитесь завершения загрузки всех вложений.",
     "uploading": "Загрузка · {{percent}}%",
     "uploadProgress": "Загрузка {{fileName}}: {{percent}}%",
     "cancelUpload": "Отменить загрузку {{fileName}}",
     "uploadError": "Ошибка загрузки",
+    "fileEmpty": "Файл пуст",
+    "fileTooLarge": "Файл слишком большой (не более 25 МБ)",
+    "invalidImage": "Тип изображения не соответствует его содержимому",
+    "validationError": "Не удалось проверить файл",
     "retryUpload": "Повторить загрузку {{fileName}}",
     "list": "Прикреплённые файлы"
   },

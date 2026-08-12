@@ -70,6 +70,11 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
 import { useWorkspaceMediaViewer } from "~/features/media-viewer/workspace-media-viewer.hook";
+import {
+  WorkspaceComposerAttachments,
+  type WorkspaceComposerAttachmentTarget,
+  type WorkspaceComposerControlledProps,
+} from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { useWorkspaceMessageAnchorNavigation } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.hook";
 import type {
@@ -97,10 +102,10 @@ import type {
 } from "~/features/workspace-reply/workspace-reply.types";
 import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
-import { uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
+import { countUnicodeCodePoints } from "~/shared/lib/unicode-string.lib";
 import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
@@ -139,11 +144,6 @@ import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import { useWorkspaceTransientRenderKeys } from "./chat-page-workspace-transient-render-keys.hook";
 import {
-  appendComposerMarkdownLinks,
-  uploadWorkspaceComposerFiles,
-  type ComposerUploadProgressState,
-} from "./chat-upload.lib";
-import {
   deriveWorkspaceDownloadFileName,
   parseWorkspaceDownloadTotalBytes,
   triggerWorkspaceBrowserDownload,
@@ -155,6 +155,8 @@ interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
   presentation?: "default" | "favorites";
 }
+
+const WORKSPACE_MESSAGE_MAX_LENGTH = 40_000;
 
 interface WorkspaceFilePreviewResource {
   blob: Blob;
@@ -275,22 +277,6 @@ function findDefaultTopic(
       return candidate.streamUuid === streamUuid && candidate.isDefault;
     }) ?? null
   );
-}
-
-function buildWorkspaceOutgoingPreviewMarkdown(
-  content: string,
-  files: readonly File[] | undefined,
-): string {
-  const trimmedContent = content.trim();
-  if (trimmedContent.length > 0) return content;
-  if (files == null || files.length === 0) return "";
-
-  // Before files are uploaded, there are no server workspace-file links yet.
-  // The local row shows file names so the user can see which send is queued or failed.
-  return files
-    .map((file) => file.name.trim())
-    .filter((name) => name.length > 0)
-    .join("\n");
 }
 
 function WorkspaceChatState({
@@ -491,7 +477,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   } | null>(null);
   const [workspaceReplyTabFocusKeySuppressed, setWorkspaceReplyTabFocusKeySuppressed] =
     useState(false);
-  const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
   const navigate = useNavigate();
   const navigationType = useNavigationType();
@@ -501,7 +486,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     return isMessengerUuid(parsed) ? parsed : null;
   }, [location.hash]);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
-  const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const queuedTailMessageUuidRef = useRef<MessengerUuid | null>(null);
   const tailWindowIntentRef = useRef<WorkspaceTailWindowIntent | null>(null);
   const tailWindowRequestRef = useRef<WorkspaceTailWindowRequest | null>(null);
@@ -1140,21 +1124,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         controller.abort();
       }
       actionAbortControllersRef.current.clear();
-      uploadAbortControllerRef.current = null;
       pendingWorkspaceJitsiHeaderCallRef.current = false;
       workspaceFileResourceCache.clear();
     };
   }, [workspaceFileResourceCache]);
 
   useEffect(() => {
-    setUploadProgress(null);
-
     return () => {
       for (const controller of actionAbortControllersRef.current) {
         controller.abort();
       }
       actionAbortControllersRef.current.clear();
-      uploadAbortControllerRef.current = null;
       pendingWorkspaceJitsiHeaderCallRef.current = false;
       workspaceFileResourceCache.clear();
     };
@@ -1273,9 +1253,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return await action(controller.signal);
       } finally {
         actionAbortControllersRef.current.delete(controller);
-        if (uploadAbortControllerRef.current === controller) {
-          uploadAbortControllerRef.current = null;
-        }
       }
     },
     [],
@@ -1322,110 +1299,66 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return Promise.resolve(false);
       }
 
-      const files = outgoing.files;
-      const hasFiles = files != null && files.length > 0;
-      if (hasFiles) {
-        useMessengerOutboxStore.getState().markOutgoingMessageUploading(localId);
-      } else {
-        useMessengerOutboxStore.getState().markOutgoingMessageSending(localId);
-      }
+      useMessengerOutboxStore.getState().markOutgoingMessageSending(localId);
 
-      return runWorkspaceAction(
-        async (signal) => {
-          try {
-            const uploadedLinks = hasFiles
-              ? await uploadWorkspaceComposerFiles(
-                  [...files],
-                  (file, uploadOptions) =>
-                    uploadWorkspaceFile(
-                      buildMessengerRequestOptions(
-                        runtimeContext,
-                        undefined,
-                        uploadOptions?.signal,
-                      ),
-                      {
-                        file,
-                        streamUuid: outgoing.streamUuid,
-                        name: file.name,
-                      },
-                    ),
-                  {
-                    onProgress: setUploadProgress,
-                    signal,
-                  },
-                )
-              : [];
-            const markdown = appendComposerMarkdownLinks(outgoing.sourceMarkdown, uploadedLinks);
-            if (markdown.trim().length === 0) {
-              useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
-              return false;
-            }
-
-            // After successful file upload, retry must not upload them again:
-            // the local row already has final markdown with workspace-file links,
-            // and the next possible failure is only POST /messages.
-            useMessengerOutboxStore.getState().markOutgoingMessageSending(localId, {
-              markdown,
-              sourceMarkdown: markdown,
-              files: null,
-            });
-
-            const result = await sendMessengerMessage({
-              runtimeContext,
-              getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-              signal,
-              streamUuid: outgoing.streamUuid,
-              topicUuid: outgoing.topicUuid,
-              markdown,
-              includeStreamConversation: outgoing.includeStreamConversation,
-              onBeforeMessageIndexed: (message) => {
-                registerDeliveredOutgoingMessage(
-                  outgoing.ownerKey,
-                  outgoing.conversationId,
-                  message.uuid,
-                  localId,
-                );
-              },
-            });
-
-            if (result.status === "applied" && result.message != null) {
-              useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
-              return true;
-            }
-
-            useMessengerOutboxStore
-              .getState()
-              .markOutgoingMessageFailed(localId, t("message.sendFailed"));
+      return runWorkspaceAction(async (signal) => {
+        try {
+          const markdown = outgoing.markdown;
+          if (markdown.trim().length === 0) {
+            useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
             return false;
-          } catch (error) {
-            useMessengerOutboxStore
-              .getState()
-              .markOutgoingMessageFailed(
-                localId,
-                normalizeWorkspaceActionError(error, t("message.sendFailed")),
-              );
-            return false;
-          } finally {
-            setUploadProgress(null);
           }
-        },
-        {
-          onController: (controller) => {
-            if (hasFiles) {
-              uploadAbortControllerRef.current = controller;
-            }
-          },
-        },
-      );
+
+          const result = await sendMessengerMessage({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+            streamUuid: outgoing.streamUuid,
+            topicUuid: outgoing.topicUuid,
+            markdown,
+            includeStreamConversation: outgoing.includeStreamConversation,
+            onBeforeMessageIndexed: (message) => {
+              registerDeliveredOutgoingMessage(
+                outgoing.ownerKey,
+                outgoing.conversationId,
+                message.uuid,
+                localId,
+              );
+            },
+          });
+
+          if (result.status === "applied" && result.message != null) {
+            useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+            return true;
+          }
+
+          useMessengerOutboxStore
+            .getState()
+            .markOutgoingMessageFailed(localId, t("message.sendFailed"));
+          return false;
+        } catch (error) {
+          useMessengerOutboxStore
+            .getState()
+            .markOutgoingMessageFailed(
+              localId,
+              normalizeWorkspaceActionError(error, t("message.sendFailed")),
+            );
+          return false;
+        }
+      });
     },
     [ownerKey, registerDeliveredOutgoingMessage, runWorkspaceAction, runtimeContext],
   );
 
   const handleSend = useCallback(
-    (content: string, _subjectOverride?: string, files?: File[]) => {
-      // Composer remains old, but sending goes only through Workspace POST /messages/.
+    (content: string) => {
+      // The shared composer shell sends only through Workspace POST /messages/.
       setSendError(null);
-      setUploadProgress(null);
+      if (countUnicodeCodePoints(content) > WORKSPACE_MESSAGE_MAX_LENGTH) {
+        const error = t("composer.messageTooLong");
+        setSendError(error);
+        throw new Error(error);
+      }
       if (runtimeContext == null) {
         const error = t("workspaceMessenger.runtimeUnavailable");
         setSendError(error);
@@ -1444,8 +1377,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
-      const previewMarkdown = buildWorkspaceOutgoingPreviewMarkdown(content, files);
-      if (previewMarkdown.trim().length === 0) return;
+      if (content.trim().length === 0) return;
       const draftAtSend = selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
         sendOwnerKey,
@@ -1461,11 +1393,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         streamUuid: target.streamUuid,
         topicUuid: target.topicUuid,
         authorUuid: runtimeContext.userUuid,
-        markdown: previewMarkdown,
+        markdown: content,
         sourceMarkdown: content,
-        status: files != null && files.length > 0 ? "uploading" : "sending",
+        status: "sending",
         includeStreamConversation: target.includeStreamConversation,
-        files,
       });
 
       // Scroll right after the local row appears. A later server snapshot can
@@ -1671,15 +1602,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     workspaceMeetUrl,
   ]);
 
-  const handleCancelUpload = useCallback(() => {
-    const controller = uploadAbortControllerRef.current;
-    if (controller == null || controller.signal.aborted) return;
-    controller.abort();
-  }, []);
-
   const handleRetryOutgoingMessage = useCallback(
     (localId: string) => {
-      deliverOutgoingMessage(localId);
+      deliverOutgoingMessage(localId).catch(() => undefined);
       setScrollToBottomAfterSendNonce((value) => value + 1);
     },
     [deliverOutgoingMessage],
@@ -2852,31 +2777,37 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const activeWorkspaceReplyTab = workspaceReplySession.tabs.find(
     (tab) => tab.id === workspaceReplySession.activeTabId,
   );
-  const effectiveComposerEditSession =
-    composerEditSession?.preserveWorkspaceReplyContext === true && activeWorkspaceReplyTab != null
-      ? {
-          ...composerEditSession,
-          initialMarkdown: activeWorkspaceReplyTab.answer,
-          sessionKey: `reply:${activeWorkspaceReplyTab.id}`,
-        }
-      : composerEditSession;
+  const effectiveComposerEditSession = useMemo(
+    () =>
+      composerEditSession?.preserveWorkspaceReplyContext === true && activeWorkspaceReplyTab != null
+        ? {
+            ...composerEditSession,
+            initialMarkdown: activeWorkspaceReplyTab.answer,
+            sessionKey: `reply:${activeWorkspaceReplyTab.id}`,
+          }
+        : composerEditSession,
+    [activeWorkspaceReplyTab, composerEditSession],
+  );
   const workspaceComposerDraftSessionKey =
     workspaceComposerDraftScopeKey == null
       ? null
       : `${workspaceComposerDraftScopeKey}:${
           hydratedComposerDraftScopeKey === workspaceComposerDraftScopeKey ? "hydrated" : "initial"
         }:${activeWorkspaceReplyTab == null ? "text" : `reply:${activeWorkspaceReplyTab.id}`}`;
-  const activeWorkspaceReplyQuote: ReplyQuote | null =
-    activeWorkspaceReplyTab == null
-      ? null
-      : {
-          id: activeWorkspaceReplyTab.id,
-          content: activeWorkspaceReplyTab.selectedText ?? activeWorkspaceReplyTab.quotedContent,
-          sender_full_name: activeWorkspaceReplyTab.senderName,
-          sender_uuid: activeWorkspaceReplyTab.senderUuid,
-          quoteFormat: "workspace",
-          permalinkUrl: null,
-        };
+  const activeWorkspaceReplyQuote = useMemo<ReplyQuote | null>(
+    () =>
+      activeWorkspaceReplyTab == null
+        ? null
+        : {
+            id: activeWorkspaceReplyTab.id,
+            content: activeWorkspaceReplyTab.selectedText ?? activeWorkspaceReplyTab.quotedContent,
+            sender_full_name: activeWorkspaceReplyTab.senderName,
+            sender_uuid: activeWorkspaceReplyTab.senderUuid,
+            quoteFormat: "workspace",
+            permalinkUrl: null,
+          },
+    [activeWorkspaceReplyTab],
+  );
   const workspaceReplyOutgoingBody =
     workspaceReplySession.tabs.length === 0
       ? undefined
@@ -3038,6 +2969,92 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     );
   }
 
+  const resolvedComposerTarget = resolveSendTarget();
+  const workspaceAttachmentTarget: WorkspaceComposerAttachmentTarget | null =
+    runtimeContext != null &&
+    ownerKey != null &&
+    conversationId != null &&
+    resolvedComposerTarget.status === "ready"
+      ? {
+          conversationId,
+          streamUuid: resolvedComposerTarget.streamUuid,
+          topicUuid: resolvedComposerTarget.topicUuid,
+          includeStreamConversation: resolvedComposerTarget.includeStreamConversation,
+        }
+      : null;
+  const renderWorkspaceAttachmentComposer = useCallback(
+    (controlledProps: WorkspaceComposerControlledProps) => (
+      <ChatPageComposerSection
+        {...controlledProps}
+        isDmView={false}
+        activeDmUserIds={null}
+        activeStream={stream?.name ?? conversation?.title}
+        showTopicPrompt={false}
+        streamSlug={undefined}
+        onExpandStreamTopics={noop}
+        uploadProgress={null}
+        optimisticClearOnSend
+        onCreateCallLink={undefined}
+        onCancelUpload={noop}
+        activeTopic={
+          selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
+        }
+        replyQuote={activeWorkspaceReplyQuote}
+        onClearReply={handleClearReply}
+        workspaceReplySession={workspaceReplySession}
+        onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
+        onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
+        onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
+        outgoingBodyOverride={workspaceReplyOutgoingBody}
+        allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
+        focusKey={
+          workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
+        }
+        draftSessionKey={workspaceComposerDraftSessionKey}
+        draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
+        onComposerValueChange={handleWorkspaceComposerValueChange}
+        onEditLastMessage={handleEditLastMessage}
+        editSession={effectiveComposerEditSession}
+        onSubmitEdit={handleSubmitEdit}
+        onCancelEdit={handleCancelEdit}
+        composerCapabilities={workspaceComposerCapabilities}
+        resolveMention={resolveMention}
+        onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
+        aiMessagesContext={[]}
+        aiChatContext={undefined}
+        readOnlyReason={composerReadOnlyReason}
+      />
+    ),
+    [
+      activeWorkspaceReplyQuote,
+      activeWorkspaceReplyTab?.answer,
+      activeWorkspaceReplyTab?.id,
+      composerReadOnlyReason,
+      conversation?.title,
+      effectiveComposerEditSession,
+      handleCancelEdit,
+      handleClearReply,
+      handleEditLastMessage,
+      handleLoadWorkspaceFilePreview,
+      handleRemoveWorkspaceReplyTab,
+      handleReorderWorkspaceReplyTab,
+      handleSelectWorkspaceReplyTab,
+      handleSubmitEdit,
+      handleWorkspaceComposerValueChange,
+      resolveMention,
+      selection,
+      stream?.name,
+      topicTitle,
+      workspaceComposerCapabilities,
+      workspaceComposerDraftSessionKey,
+      workspaceComposerText,
+      workspaceReplyHasAnswer,
+      workspaceReplyOutgoingBody,
+      workspaceReplySession,
+      workspaceReplyTabFocusKeySuppressed,
+    ],
+  );
+
   return (
     <div
       className="flex max-h-full min-h-0 min-w-chat-page flex-1 flex-col overflow-hidden"
@@ -3074,6 +3091,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             topics={streamPromptTopics}
             onSelectTopic={handleSelectStreamPromptTopic}
           />
+        ) : workspaceAttachmentTarget != null && runtimeContext != null && ownerKey != null ? (
+          <WorkspaceComposerAttachments
+            runtimeContext={runtimeContext}
+            ownerKey={ownerKey}
+            target={workspaceAttachmentTarget}
+            onSendFinalMarkdown={handleSend}
+            renderComposer={renderWorkspaceAttachmentComposer}
+          />
         ) : (
           <ChatPageComposerSection
             isDmView={false}
@@ -3082,26 +3107,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             showTopicPrompt={false}
             streamSlug={undefined}
             onExpandStreamTopics={noop}
-            uploadProgress={uploadProgress}
+            uploadProgress={null}
             onSend={handleSend}
             optimisticClearOnSend
             onCreateCallLink={undefined}
-            onCancelUpload={handleCancelUpload}
-            activeTopic={
-              selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
-            }
+            onCancelUpload={noop}
+            activeTopic={null}
             replyQuote={activeWorkspaceReplyQuote}
             onClearReply={handleClearReply}
-            workspaceReplySession={workspaceReplySession}
-            onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
-            onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
-            onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
-            outgoingBodyOverride={workspaceReplyOutgoingBody}
-            allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
-            focusKey={
-              workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
-            }
-            draftSessionKey={workspaceComposerDraftSessionKey}
             draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
             onComposerValueChange={handleWorkspaceComposerValueChange}
             onEditLastMessage={handleEditLastMessage}

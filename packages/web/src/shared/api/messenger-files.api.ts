@@ -1,8 +1,10 @@
 import {
+  messengerDeleteJson,
   messengerRequestBinaryResult,
   messengerRequestFormDataResult,
   parseDto,
 } from "./messenger-transport.internal";
+import { messengerUploadFormDataResult } from "./messenger-upload.internal";
 import type { MessengerBinaryResult, MessengerClientOptions } from "./messenger-transport.internal";
 
 export interface WorkspaceFileMetadata {
@@ -22,6 +24,15 @@ export interface UploadWorkspaceFileInput {
   streamUuid: string;
   name?: string;
   description?: string;
+}
+
+export interface WorkspaceFileUploadProgress {
+  loaded: number;
+  total: number;
+}
+
+export interface UploadWorkspaceFileWithProgressInput extends UploadWorkspaceFileInput {
+  onProgress?: (progress: WorkspaceFileUploadProgress) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,4 +88,29 @@ export async function uploadWorkspaceFile(
 
   const { data } = await messengerRequestFormDataResult("/files/", options, form);
   return parseDto(data, isWorkspaceFileMetadata, "workspace file upload response");
+}
+
+export async function uploadWorkspaceFileWithProgress(
+  options: MessengerClientOptions,
+  input: UploadWorkspaceFileWithProgressInput,
+): Promise<WorkspaceFileMetadata> {
+  const form = new FormData();
+  form.append("file", input.file);
+  form.append("stream_uuid", input.streamUuid);
+  if (input.name !== undefined) {
+    form.append("name", input.name);
+  }
+  if (input.description !== undefined) {
+    form.append("description", input.description);
+  }
+
+  const { data } = await messengerUploadFormDataResult("/files/", options, form, input.onProgress);
+  return parseDto(data, isWorkspaceFileMetadata, "workspace file upload response");
+}
+
+export async function deleteWorkspaceFile(
+  options: MessengerClientOptions,
+  fileUuid: string,
+): Promise<void> {
+  await messengerDeleteJson(`/files/${encodeURIComponent(fileUuid)}`, options);
 }

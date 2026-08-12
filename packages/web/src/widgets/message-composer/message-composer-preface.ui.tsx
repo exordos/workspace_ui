@@ -10,6 +10,7 @@ import {
   getAttachmentExtensionLabel,
 } from "./message-composer-body.lib";
 import { QUOTE_PREVIEW_MAX } from "./message-composer-constants.lib";
+import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
 import type { MessageComposerPrefaceProps } from "./message-composer.types";
 
 interface MessageComposerEditNoticeProps {
@@ -61,6 +62,9 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     isUploadInProgress,
     onCancelUpload,
     removeFile,
+    attachments = [],
+    onRemoveAttachment,
+    onRetryAttachment,
     scheduledMessages,
     onCancelScheduled,
     replyQuote,
@@ -107,13 +111,14 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
       activeUploadFileName.length > 0 &&
       (separateUploadProgress || !showFiles || activeUploadIndex < 0);
     const showDraftFiles = showFiles && files.length > 0;
+    const showControlledAttachments = showFiles && attachments.length > 0;
 
     return (
       <>
         {isEditing && !hideEditNotice && <MessageComposerEditNotice onCancelEdit={onCancelEdit} />}
 
-        {!isEditing && (showDetachedUpload || showDraftFiles) && (
-          <AttachmentCardList ariaLabel={t("attachmentCard.list")} className="px-3 pt-3">
+        {!isEditing && (showDetachedUpload || showDraftFiles || showControlledAttachments) && (
+          <AttachmentCardList ariaLabel={t("attachmentCard.list")} className="px-2 pt-2">
             {showDetachedUpload ? (
               <AttachmentCard
                 status="uploading"
@@ -162,6 +167,13 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
                   />
                 );
               })}
+            {showControlledAttachments ? (
+              <MessageComposerControlledAttachmentCards
+                attachments={attachments}
+                onRemoveAttachment={onRemoveAttachment}
+                onRetryAttachment={onRetryAttachment}
+              />
+            ) : null}
           </AttachmentCardList>
         )}
 
@@ -197,9 +209,10 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
         {showReplyChrome ? (
           <div className="bg-bg/50 border-b border-border-subtle">
             {replyLeadingContent != null ? (
+              // Tabs + quote stay separate blocks; drop the under-tabs line and tighten spacing.
               <div
-                className={`flex min-w-0 items-center gap-1.5 px-3 py-2 ${
-                  replyQuote != null ? "border-b border-border-subtle" : ""
+                className={`flex min-w-0 items-center gap-1.5 px-3 ${
+                  replyQuote != null ? "pb-1 pt-2" : "py-2"
                 }`}
               >
                 {/* Constrain width so tabs scroll inside; dismiss stays a sibling. */}
