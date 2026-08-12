@@ -555,10 +555,13 @@ test.describe("Message anchor navigation @mock", () => {
     windowGate.resolve();
     await authenticated.waitForURL(topicAnchorRoute(FIRST_ANCHOR_UUID));
     await expectFocusedAnchor(authenticated, FIRST_ANCHOR_UUID);
-    const animationName = await authenticated
-      .locator(`[data-message-uuid="${FIRST_ANCHOR_UUID}"]`)
-      .evaluate((node) => getComputedStyle(node, "::before").animationName);
-    expect(animationName).toBe("none");
+    await expect
+      .poll(() =>
+        authenticated
+          .locator(`[data-message-uuid="${FIRST_ANCHOR_UUID}"]`)
+          .evaluate((node) => getComputedStyle(node, "::before").animationName),
+      )
+      .toBe("none");
 
     const tailButton = authenticated.getByRole("button", {
       name: /прокрутить вниз|scroll to bottom/i,

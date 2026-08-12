@@ -481,6 +481,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const location = useLocation();
+  useEffect(() => {
+    const previousScrollRestoration = window.history.scrollRestoration;
+    // The messenger owns nested scroll positioning for tail, unread, and anchor routes.
+    window.history.scrollRestoration = "manual";
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
+  }, []);
   const messageAnchorUuid = useMemo(() => {
     const parsed = parseWorkspaceMessengerMessageAnchor(location.hash);
     return isMessengerUuid(parsed) ? parsed : null;
