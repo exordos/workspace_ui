@@ -226,7 +226,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           // so without rounded-t-xl this strip paints sharp corners over the shell curve.
           <div
             data-composer-reply-chrome="true"
-            className={`${CHAT_BOTTOM_NOTICE_REPLY_CHROME_CLASS_NAME}${
+            className={`${CHAT_BOTTOM_NOTICE_REPLY_CHROME_CLASS_NAME} ${
               roundTop ? "rounded-t-xl" : ""
             }`}
           >
