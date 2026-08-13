@@ -3,7 +3,10 @@
  */
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
-import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type {
+  WorkspaceMessageFileReference,
+  WorkspaceMessageMentionResolver,
+} from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { RefObject, ReactNode } from "react";
 
 interface ReplyQuoteBase {
@@ -78,6 +81,8 @@ export interface MessageComposerAttachmentView {
   error: string | null;
   retryable: boolean;
   previewMarkdown?: string;
+  /** Existing Workspace file restored from the message being edited. */
+  workspaceFile?: WorkspaceMessageFileReference;
 }
 
 export type MessageComposerReplyClearReason = "manual" | "submit";
@@ -200,6 +205,7 @@ export interface MessageComposerPrefaceProps {
   attachments?: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
+  onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   scheduledMessages: ScheduledComposerMessage[];
   onCancelScheduled: (id: string) => void;
   replyQuote: ReplyQuote | null | undefined;

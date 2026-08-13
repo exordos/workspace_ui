@@ -121,6 +121,9 @@ export interface WorkspaceComposerAttachmentsController {
   transferReady: <T>(
     consume: (attachments: readonly WorkspaceComposerReadyAttachmentTransfer[]) => T,
   ) => T | null;
+  commitReady: <T>(
+    consume: (attachments: readonly WorkspaceComposerReadyAttachmentTransfer[]) => Promise<T>,
+  ) => Promise<T | null>;
   dispose: () => void;
 }
 
@@ -517,6 +520,54 @@ export function createWorkspaceComposerAttachmentsController({
         deleteTransportByLocalId.delete(attachment.localId);
       }
       return result;
+    },
+
+    async commitReady<T>(
+      consume: (attachments: readonly WorkspaceComposerReadyAttachmentTransfer[]) => Promise<T>,
+    ) {
+      if (disposed) return null;
+      const attachments = store.getState().attachments;
+      if (attachments.length === 0) return await consume([]);
+      const transfer: WorkspaceComposerReadyAttachmentTransfer[] = [];
+      for (const attachment of attachments) {
+        if (attachment.status !== "ready" || attachment.serverMetadata == null) return null;
+        transfer.push({
+          localId: attachment.localId,
+          serverMetadata: attachment.serverMetadata,
+        });
+      }
+      const committedLocalIds = new Set(transfer.map((attachment) => attachment.localId));
+      store.setState((state) => ({
+        attachments: state.attachments.filter(
+          (attachment) => !committedLocalIds.has(attachment.localId),
+        ),
+      }));
+      try {
+        const result = await consume(transfer);
+        for (const attachment of attachments) {
+          revokeAttachmentPreview(attachment);
+          deleteTransportByLocalId.delete(attachment.localId);
+        }
+        return result;
+      } catch (error) {
+        if (!disposed) {
+          store.setState((state) => ({ attachments: [...attachments, ...state.attachments] }));
+        } else {
+          for (const attachment of attachments) {
+            if (attachment.serverMetadata != null) {
+              deleteBestEffort(
+                attachment.localId,
+                attachment.scope,
+                attachment.serverMetadata,
+                deleteTransportByLocalId.get(attachment.localId) ?? currentTransport.delete,
+              );
+            }
+            revokeAttachmentPreview(attachment);
+            deleteTransportByLocalId.delete(attachment.localId);
+          }
+        }
+        throw error;
+      }
     },
 
     dispose() {

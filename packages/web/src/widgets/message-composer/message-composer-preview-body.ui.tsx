@@ -152,6 +152,7 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
             attachments={incompleteAttachments}
             onRemoveAttachment={onRemoveAttachment}
             onRetryAttachment={onRetryAttachment}
+            onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
           />
         </AttachmentCardList>
       ) : null}

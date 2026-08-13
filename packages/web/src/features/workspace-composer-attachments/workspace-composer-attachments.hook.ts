@@ -33,6 +33,9 @@ export interface UseWorkspaceComposerAttachmentsResult {
   transferReady: <T>(
     consume: (attachments: readonly WorkspaceComposerReadyAttachmentTransfer[]) => T,
   ) => T | null;
+  commitReady: <T>(
+    consume: (attachments: readonly WorkspaceComposerReadyAttachmentTransfer[]) => Promise<T>,
+  ) => Promise<T | null>;
 }
 
 const pendingDisposals = new WeakMap<WorkspaceComposerAttachmentsController, object>();
@@ -103,6 +106,7 @@ export function useWorkspaceComposerAttachments({
       remove: controller.remove,
       discardAll: controller.discardAll,
       transferReady: controller.transferReady,
+      commitReady: controller.commitReady,
     }),
     [attachments, attachmentsBlockSend, attachmentsReady, controller, hasAttachmentErrors],
   );

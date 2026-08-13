@@ -564,6 +564,61 @@ describe("workspace composer attachments", () => {
     expect(deleteRequest).not.toHaveBeenCalled();
   });
 
+  it("commits ready edit attachments only after the async consumer succeeds", async () => {
+    const deleteRequest = vi.fn(() => Promise.resolve());
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(
+        (uploadFile) => Promise.resolve(metadata(uploadFile.name)),
+        deleteRequest,
+      ),
+    });
+    controller.add([file("edit.txt")]);
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]?.status).toBe("ready"),
+    );
+    const request = deferred<boolean>();
+    const consume = vi.fn(() => request.promise);
+
+    const result = controller.commitReady(consume);
+
+    expect(controller.store.getState().attachments).toEqual([]);
+    expect(consume).toHaveBeenCalledWith([
+      { localId: expect.any(String), serverMetadata: metadata("edit.txt") },
+    ]);
+    request.resolve(true);
+    await expect(result).resolves.toBe(true);
+    expect(controller.store.getState().attachments).toEqual([]);
+    expect(deleteRequest).not.toHaveBeenCalled();
+  });
+
+  it("restores ready edit attachments when the async consumer fails", async () => {
+    const deleteRequest = vi.fn(() => Promise.resolve());
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(
+        (uploadFile) => Promise.resolve(metadata(uploadFile.name)),
+        deleteRequest,
+      ),
+    });
+    controller.add([file("edit-failed.txt")]);
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]?.status).toBe("ready"),
+    );
+
+    await expect(
+      controller.commitReady(() => Promise.reject(new Error("edit failed"))),
+    ).rejects.toThrow("edit failed");
+
+    expect(controller.store.getState().attachments).toEqual([
+      expect.objectContaining({
+        file: expect.objectContaining({ name: "edit-failed.txt" }),
+        status: "ready",
+      }),
+    ]);
+    expect(deleteRequest).not.toHaveBeenCalled();
+  });
+
   it("revokes image previews on transfer, scope discard, and dispose exactly once", async () => {
     const createObjectUrl = vi
       .spyOn(URL, "createObjectURL")

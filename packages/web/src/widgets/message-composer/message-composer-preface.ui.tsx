@@ -76,6 +76,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     attachments = [],
     onRemoveAttachment,
     onRetryAttachment,
+    onLoadWorkspaceFilePreview,
     scheduledMessages,
     onCancelScheduled,
     replyQuote,
@@ -132,7 +133,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           <MessageComposerEditNotice onCancelEdit={onCancelEdit} joinedTop={joinedTop} />
         )}
 
-        {!isEditing && (showDetachedUpload || showDraftFiles || showControlledAttachments) && (
+        {(showDetachedUpload || showDraftFiles || showControlledAttachments) && (
           <AttachmentCardList ariaLabel={t("attachmentCard.list")} className="px-2 pt-2">
             {showDetachedUpload ? (
               <AttachmentCard
@@ -187,6 +188,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
                 attachments={attachments}
                 onRemoveAttachment={onRemoveAttachment}
                 onRetryAttachment={onRetryAttachment}
+                onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
               />
             ) : null}
           </AttachmentCardList>

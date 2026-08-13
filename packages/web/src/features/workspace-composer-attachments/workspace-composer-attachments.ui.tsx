@@ -14,6 +14,7 @@ import {
   buildWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMetadata,
 } from "./workspace-composer-attachments.lib";
+import { appendWorkspaceComposerEditAttachmentMarkdown } from "./workspace-composer-edit-attachments.lib";
 import type {
   WorkspaceComposerAttachmentRequestContext,
   WorkspaceComposerAttachmentUploadContext,
@@ -56,16 +57,20 @@ export interface WorkspaceComposerControlledProps {
   onAddAttachments: (files: readonly File[]) => void;
   onRemoveAttachment: (localId: string) => void;
   onRetryAttachment: (localId: string) => void;
+  onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
 }
 
 interface WorkspaceComposerAttachmentsProps {
   runtimeContext: WorkspaceRuntimeContext;
   ownerKey: string;
   target: WorkspaceComposerAttachmentTarget;
+  sessionKey?: string;
   onSendFinalMarkdown: (
     markdown: string,
     subjectOverride?: string,
   ) => void | WorkspaceComposerSendResult | Promise<void | WorkspaceComposerSendResult>;
+  editAttachmentMarkdown?: readonly string[];
+  onSubmitEditFinalMarkdown?: (messageId: number, markdown: string) => void | Promise<void>;
   renderComposer: (props: WorkspaceComposerControlledProps) => React.ReactNode;
 }
 
@@ -82,7 +87,10 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
   runtimeContext,
   ownerKey,
   target,
+  sessionKey = "compose",
   onSendFinalMarkdown,
+  editAttachmentMarkdown = [],
+  onSubmitEditFinalMarkdown,
   renderComposer,
 }: Readonly<WorkspaceComposerAttachmentsProps>) {
   const scope = useMemo(
@@ -94,6 +102,7 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
         target.streamUuid,
         target.topicUuid,
         target.includeStreamConversation,
+        sessionKey,
       ]),
     }),
     [
@@ -103,6 +112,7 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
       target.includeStreamConversation,
       target.streamUuid,
       target.topicUuid,
+      sessionKey,
     ],
   );
   const transport = useMemo(
@@ -141,7 +151,7 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     }),
     [runtimeContext, target.streamUuid],
   );
-  const { attachments, attachmentsBlockSend, add, remove, retry, transferReady } =
+  const { attachments, attachmentsBlockSend, add, remove, retry, transferReady, commitReady } =
     useWorkspaceComposerAttachments({ scope, transport });
   const composerAttachments = useMemo<WorkspaceComposerControlledAttachmentView[]>(
     () =>
@@ -177,6 +187,28 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     },
     [attachments.length, onSendFinalMarkdown, transferReady],
   );
+  const handleSubmitEdit = useCallback(
+    async (messageId: number, content: string) => {
+      if (onSubmitEditFinalMarkdown == null) return;
+      if (attachmentsBlockSend) {
+        throw new Error(t("attachmentCard.uploadPending"));
+      }
+      const result = await commitReady(async (ready) => {
+        const markdown = appendWorkspaceComposerEditAttachmentMarkdown(
+          appendWorkspaceComposerEditAttachmentMarkdown(content, editAttachmentMarkdown),
+          ready.map((attachment) =>
+            buildWorkspaceComposerAttachmentMarkdown(attachment.serverMetadata),
+          ),
+        );
+        await onSubmitEditFinalMarkdown(messageId, markdown);
+        return true;
+      });
+      if (result !== true) {
+        throw new Error(t("attachmentCard.uploadPending"));
+      }
+    },
+    [attachmentsBlockSend, commitReady, editAttachmentMarkdown, onSubmitEditFinalMarkdown],
+  );
 
   return renderComposer({
     onSend: handleSend,
@@ -185,5 +217,6 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     onAddAttachments: add,
     onRemoveAttachment: remove,
     onRetryAttachment: retry,
+    ...(onSubmitEditFinalMarkdown == null ? {} : { onSubmitEdit: handleSubmitEdit }),
   });
 });

@@ -2739,7 +2739,7 @@ describe("MessageComposer draft session", () => {
 });
 
 describe("MessageComposer edit session", () => {
-  it("keeps controlled attachments in the draft while edit save ignores their blocker", async () => {
+  it("shows controlled attachments during editing and blocks save while they upload", () => {
     const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
     const attachment = {
       localId: "pending-draft-attachment",
@@ -2774,12 +2774,12 @@ describe("MessageComposer edit session", () => {
       />,
     );
 
-    expect(screen.queryByText("draft-upload.pdf")).not.toBeInTheDocument();
+    expect(screen.getByText("draft-upload.pdf")).toBeInTheDocument();
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "edited body" } });
-    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.keyDown(textbox, { key: "Enter" });
-    await waitFor(() => expect(onSubmitEdit).toHaveBeenCalledWith(42, "edited body"));
+    expect(onSubmitEdit).not.toHaveBeenCalled();
 
     rerender(<MessageComposer {...baseProps} />);
     expect(screen.getByText("draft-upload.pdf")).toBeInTheDocument();
@@ -2834,6 +2834,30 @@ describe("MessageComposer edit session", () => {
     );
 
     expect(textbox).toHaveValue("draft before edit");
+  });
+
+  it("submits an edit only once while the save request is pending", async () => {
+    let resolveSubmit: () => void = () => undefined;
+    const pendingSubmit = new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    });
+    const onSubmitEdit = vi.fn(() => pendingSubmit);
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        onSubmitEdit={onSubmitEdit}
+        editSession={{ messageId: 42, initialMarkdown: "message to edit" }}
+      />,
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(onSubmitEdit).toHaveBeenCalledTimes(1);
+    expect(save).toBeDisabled();
+    resolveSubmit();
+    await waitFor(() => expect(save).not.toBeDisabled());
   });
 
   it("cancels edit session on Escape and restores previous draft", () => {

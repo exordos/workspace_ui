@@ -180,7 +180,6 @@ const MessageComposerCompactLeadingControls =
   );
 
 interface MessageComposerCompactTrailingControlsProps {
-  isEditing: boolean;
   disabled: boolean;
   uploadSupported: boolean;
   uploadCapability: MessageComposerActionCapability;
@@ -193,7 +192,6 @@ interface MessageComposerCompactTrailingControlsProps {
 const MessageComposerCompactTrailingControls =
   React.memo<MessageComposerCompactTrailingControlsProps>(
     function MessageComposerCompactTrailingControls({
-      isEditing,
       disabled,
       uploadSupported,
       uploadCapability,
@@ -213,18 +211,16 @@ const MessageComposerCompactTrailingControls =
           data-testid="composer-compact-trailing-controls"
           className="mb-1 flex flex-shrink-0 items-center gap-2 self-end"
         >
-          {!isEditing ? (
-            <button
-              type="button"
-              className={`${TOOLBAR_BTN} text-composer-icon`}
-              onClick={onAttachClick}
-              disabled={disabled}
-              aria-label={attachLabel}
-              title={attachLabel}
-            >
-              <MessageComposerAttachIcon compact />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={`${TOOLBAR_BTN} text-composer-icon`}
+            onClick={onAttachClick}
+            disabled={disabled}
+            aria-label={attachLabel}
+            title={attachLabel}
+          >
+            <MessageComposerAttachIcon compact />
+          </button>
           <button
             ref={emojiButtonRef}
             type="button"
@@ -284,7 +280,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
       scheduledSendCapability,
       t("a11y.messageMenu"),
     );
-    const fileTrigger = !isEditing ? (
+    const fileTrigger = (
       <button
         type="button"
         className={TOOLBAR_BTN}
@@ -295,7 +291,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
       >
         <MessageComposerAttachIcon />
       </button>
-    ) : undefined;
+    );
     const callLinkTrigger =
       !isEditing && onCreateCallLink != null ? (
         <button
@@ -458,6 +454,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
   const [sendInFlight, setSendInFlight] = useState(false);
+  const editSubmitInFlightRef = useRef(false);
   const [unsupportedActionText, setUnsupportedActionText] = useState<string | null>(null);
   const [aiMenuNotificationText, setAiMenuNotificationText] = useState<string | null>(null);
   const uploadCapability = resolveActionCapability(capabilities?.upload);
@@ -640,7 +637,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     uploadProgressPercent,
     isUploadInProgress,
   } = useMessageComposerUpload({
-    disabled: disabled || sendInFlight || isEditing || !uploadSupported,
+    disabled: disabled || sendInFlight || !uploadSupported,
     uploadProgress,
     onAddFiles: controlledAttachmentsEnabled ? onAddAttachments : undefined,
     existingFileNames: controlledAttachmentFileNames,
@@ -672,7 +669,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     outgoingBodyOverride != null &&
     outgoingBodyOverride.trim().length > 0;
   const previewOutgoingBody = useMemo(() => {
-    if (isEditing || !controlledAttachmentsEnabled) return outgoingBody;
+    if (!controlledAttachmentsEnabled) return outgoingBody;
     const readyMarkdown = (attachments ?? []).flatMap((attachment) =>
       attachment.status === "ready" && attachment.previewMarkdown != null
         ? [attachment.previewMarkdown]
@@ -683,7 +680,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     return trimmedBody.length === 0
       ? readyMarkdown.join("\n")
       : `${trimmedBody}\n${readyMarkdown.join("\n")}`;
-  }, [attachments, controlledAttachmentsEnabled, isEditing, outgoingBody]);
+  }, [attachments, controlledAttachmentsEnabled, outgoingBody]);
   const preview = useMessageComposerPreview({
     mode,
     outgoingBody: previewOutgoingBody,
@@ -983,14 +980,28 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handleSend = async () => {
     if (isEditing) {
-      if (disabled || sendInFlight || editSession == null || onSubmitEdit == null) return;
-      const trimmed = value.trim();
-      const content = preservesWorkspaceReplyContext ? outgoingBody : trimmed;
-      if (content.length === 0) return;
+      if (
+        disabled ||
+        sendInFlight ||
+        editSubmitInFlightRef.current ||
+        attachmentsBlockSend ||
+        editSession == null ||
+        onSubmitEdit == null
+      )
+        return;
+      const content = preservesWorkspaceReplyContext ? outgoingBody : value;
+      if (content.trim().length === 0 && (attachments?.length ?? 0) === 0) return;
+      editSubmitInFlightRef.current = true;
+      setSendInFlight(true);
       try {
         await onSubmitEdit(editSession.messageId, content);
       } catch {
         return;
+      } finally {
+        // The ref is the synchronous lock that prevents duplicate edit requests.
+        // eslint-disable-next-line require-atomic-updates
+        editSubmitInFlightRef.current = false;
+        setSendInFlight(false);
       }
       return;
     }
@@ -1096,7 +1107,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
-      if (isEditing) return;
       const items = e.clipboardData?.items;
 
       const clipboardFiles: { file: File; fallbackMime?: string }[] = [];
@@ -1154,7 +1164,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       controlledAttachmentFileNames,
       controlledAttachmentsEnabled,
       detectMention,
-      isEditing,
       onAddAttachments,
       setFiles,
       setValue,
@@ -1166,7 +1175,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   );
 
   const handleAttachClick = () => {
-    if (disabled || isEditing) return;
+    if (disabled) return;
     // Upload UI остаётся на месте, но без Workspace upload contract не открываем системный выбор файла.
     if (!uploadSupported) {
       showAiMenuNotice(uploadCapability);
@@ -1627,9 +1636,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         isUploadInProgress={isUploadInProgress}
         onCancelUpload={onCancelUpload}
         removeFile={removeFile}
-        attachments={!isEditing && mode === "write" ? attachments : []}
-        onRemoveAttachment={!isEditing ? onRemoveAttachment : undefined}
-        onRetryAttachment={!isEditing ? onRetryAttachment : undefined}
+        attachments={mode === "write" ? attachments : []}
+        onRemoveAttachment={onRemoveAttachment}
+        onRetryAttachment={onRetryAttachment}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         scheduledMessages={scheduledMessages}
         onCancelScheduled={cancelScheduledMessage}
         replyQuote={effectiveReplyQuote}
@@ -1753,7 +1763,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   </div>
                   {!isToolbarExpanded ? (
                     <MessageComposerCompactTrailingControls
-                      isEditing={isEditing}
                       disabled={disabled}
                       uploadSupported={uploadSupported}
                       uploadCapability={uploadCapability}
@@ -1773,12 +1782,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   previewMetadata={preview.metadata}
                   fileReferences={preview.fileReferences}
                   onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
-                  files={!isEditing ? files : []}
-                  filePreviewUrls={!isEditing ? filePreviewUrls : []}
-                  removeFile={!isEditing ? removeFile : undefined}
-                  attachments={!isEditing ? attachments : []}
-                  onRemoveAttachment={!isEditing ? onRemoveAttachment : undefined}
-                  onRetryAttachment={!isEditing ? onRetryAttachment : undefined}
+                  files={files}
+                  filePreviewUrls={filePreviewUrls}
+                  removeFile={removeFile}
+                  attachments={attachments}
+                  onRemoveAttachment={onRemoveAttachment}
+                  onRetryAttachment={onRetryAttachment}
                 />
               )}
             </div>
@@ -1792,8 +1801,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             disabled={
               disabled ||
               sendInFlight ||
-              (!isEditing && attachmentsBlockSend) ||
-              (isEditing && value.trim().length === 0)
+              attachmentsBlockSend ||
+              (isEditing && value.trim().length === 0 && (attachments?.length ?? 0) === 0)
             }
             className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}

@@ -75,6 +75,11 @@ import {
   type WorkspaceComposerAttachmentTarget,
   type WorkspaceComposerControlledProps,
 } from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
+import {
+  appendWorkspaceComposerExistingAttachmentMarkdown,
+  extractWorkspaceComposerEditContent,
+  type WorkspaceComposerExistingAttachment,
+} from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { useWorkspaceMessageAnchorNavigation } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.hook";
 import type {
@@ -464,6 +469,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   >(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
+  const [composerEditAttachments, setComposerEditAttachments] = useState<
+    WorkspaceComposerExistingAttachment[]
+  >([]);
   const [restoredWorkspaceReplySession, setRestoredWorkspaceReplySession] =
     useState<WorkspaceReplySession | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
@@ -1204,6 +1212,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   useEffect(() => {
     setPendingDeleteMessageUuid(null);
     setSelectedMessageUuids(new Set());
+    setRestoredWorkspaceReplySession(null);
+    setComposerEditSession(null);
+    setComposerEditMessageUuid(null);
+    setComposerEditAttachments([]);
     setWorkspaceReplyTabFocusKeySuppressed(false);
     workspaceComposerSendCleanupRef.current = null;
   }, [conversationId, ownerKey]);
@@ -1623,7 +1635,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
   }, []);
 
-  const handleSubmitEdit = useCallback(
+  const handleSubmitEditFinalMarkdown = useCallback(
     async (_editSessionId: number, markdown: string) => {
       setActionError(null);
       if (runtimeContext == null) {
@@ -1638,7 +1650,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
               useWorkspaceMessageStore.getState(),
               composerEditMessageUuid,
             );
-      if (!message?.isOwn) {
+      if (
+        !message?.isOwn ||
+        message.conversationId !== conversationId ||
+        message.projectId !== runtimeContext.projectId
+      ) {
         const error = t("message.editUnavailable");
         setActionError(error);
         throw new Error(error);
@@ -1657,13 +1673,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         setRestoredWorkspaceReplySession(null);
         setComposerEditSession(null);
         setComposerEditMessageUuid(null);
+        setComposerEditAttachments([]);
       } catch (error) {
         const messageText = normalizeWorkspaceActionError(error, t("message.editFailed"));
         setActionError(messageText);
         throw error instanceof Error ? error : new Error(messageText);
       }
     },
-    [composerEditMessageUuid, runWorkspaceAction, runtimeContext],
+    [composerEditMessageUuid, conversationId, runWorkspaceAction, runtimeContext],
+  );
+
+  const handleSubmitEdit = useCallback(
+    (editSessionId: number, markdown: string) =>
+      handleSubmitEditFinalMarkdown(
+        editSessionId,
+        appendWorkspaceComposerExistingAttachmentMarkdown(markdown, composerEditAttachments),
+      ),
+    [composerEditAttachments, handleSubmitEditFinalMarkdown],
   );
 
   const createWorkspaceReplyTabIdentity = useCallback(() => {
@@ -1684,9 +1710,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
 
+      const editContent = extractWorkspaceComposerEditContent(message.payload.content);
       void workspaceReplyEditRestoreController
         .restore({
-          markdown: message.payload.content,
+          markdown: editContent.markdown,
           runtimeContext,
           createIdentity: () => createWorkspaceReplyTabIdentity(),
         })
@@ -1696,9 +1723,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           const restoredReplySession = result.restored;
           setRestoredWorkspaceReplySession(restoredReplySession?.session ?? null);
           setComposerEditMessageUuid(message.uuid);
+          setComposerEditAttachments(editContent.attachments);
           setComposerEditSession({
             messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-            initialMarkdown: restoredReplySession?.activeAnswer ?? message.payload.content,
+            initialMarkdown: restoredReplySession?.activeAnswer ?? editContent.markdown,
             ...(restoredReplySession == null
               ? {}
               : {
@@ -1803,6 +1831,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
+      setComposerEditAttachments([]);
       setRestoredWorkspaceReplySession(null);
       setWorkspaceReplyTabFocusKeySuppressed(false);
       updateWorkspaceComposerDraft((content) => {
@@ -1831,6 +1860,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
+      setComposerEditAttachments([]);
       setRestoredWorkspaceReplySession(null);
       setWorkspaceReplyTabFocusKeySuppressed(false);
       setWorkspaceReplySession((current) =>
@@ -2328,7 +2358,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setRestoredWorkspaceReplySession(null);
     setComposerEditSession(null);
     setComposerEditMessageUuid(null);
+    setComposerEditAttachments([]);
   }, []);
+
+  const handleRemoveComposerAttachment = useCallback(
+    (localId: string, removeUploadedAttachment: (localId: string) => void) => {
+      if (localId.startsWith("existing:")) {
+        setComposerEditAttachments((attachments) =>
+          attachments.filter((attachment) => attachment.id !== localId),
+        );
+        return;
+      }
+      removeUploadedAttachment(localId);
+    },
+    [],
+  );
 
   const handleLoadNewer = useCallback(() => {
     if (
@@ -2999,54 +3043,75 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     !showStreamTopicPrompt &&
     (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice);
   const renderWorkspaceAttachmentComposer = useCallback(
-    (controlledProps: WorkspaceComposerControlledProps) => (
-      <ChatPageComposerSection
-        {...controlledProps}
-        isDmView={false}
-        activeDmUserIds={null}
-        activeStream={stream?.name ?? conversation?.title}
-        showTopicPrompt={false}
-        streamSlug={undefined}
-        onExpandStreamTopics={noop}
-        uploadProgress={null}
-        optimisticClearOnSend
-        onCreateCallLink={undefined}
-        onCancelUpload={noop}
-        activeTopic={
-          selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
-        }
-        replyQuote={activeWorkspaceReplyQuote}
-        onClearReply={handleClearReply}
-        workspaceReplySession={workspaceReplySession}
-        onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
-        onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
-        onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
-        outgoingBodyOverride={workspaceReplyOutgoingBody}
-        allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
-        focusKey={
-          workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
-        }
-        draftSessionKey={workspaceComposerDraftSessionKey}
-        draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
-        onComposerValueChange={handleWorkspaceComposerValueChange}
-        onEditLastMessage={handleEditLastMessage}
-        editSession={effectiveComposerEditSession}
-        onSubmitEdit={handleSubmitEdit}
-        onCancelEdit={handleCancelEdit}
-        composerCapabilities={workspaceComposerCapabilities}
-        resolveMention={resolveMention}
-        onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
-        aiMessagesContext={[]}
-        aiChatContext={undefined}
-        readOnlyReason={composerReadOnlyReason}
-        joinedTop={composerJoinedTop}
-      />
-    ),
+    (controlledProps: WorkspaceComposerControlledProps) => {
+      const restoredAttachments = composerEditAttachments.map((attachment) => ({
+        localId: attachment.id,
+        fileName: attachment.reference.name ?? "file",
+        sizeBytes: attachment.reference.sizeBytes ?? 0,
+        contentType: attachment.reference.contentType ?? "",
+        previewUrl: null,
+        status: "ready" as const,
+        loadedBytes: attachment.reference.sizeBytes ?? 0,
+        totalBytes: attachment.reference.sizeBytes ?? null,
+        error: null,
+        retryable: false,
+        previewMarkdown: attachment.markdown,
+        workspaceFile: attachment.reference,
+      }));
+      return (
+        <ChatPageComposerSection
+          {...controlledProps}
+          attachments={[...restoredAttachments, ...controlledProps.attachments]}
+          onRemoveAttachment={(localId) =>
+            handleRemoveComposerAttachment(localId, controlledProps.onRemoveAttachment)
+          }
+          isDmView={false}
+          activeDmUserIds={null}
+          activeStream={stream?.name ?? conversation?.title}
+          showTopicPrompt={false}
+          streamSlug={undefined}
+          onExpandStreamTopics={noop}
+          uploadProgress={null}
+          optimisticClearOnSend
+          onCreateCallLink={undefined}
+          onCancelUpload={noop}
+          activeTopic={
+            selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
+          }
+          replyQuote={activeWorkspaceReplyQuote}
+          onClearReply={handleClearReply}
+          workspaceReplySession={workspaceReplySession}
+          onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
+          onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
+          onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
+          outgoingBodyOverride={workspaceReplyOutgoingBody}
+          allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
+          focusKey={
+            workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
+          }
+          draftSessionKey={workspaceComposerDraftSessionKey}
+          draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
+          onComposerValueChange={handleWorkspaceComposerValueChange}
+          onEditLastMessage={handleEditLastMessage}
+          editSession={effectiveComposerEditSession}
+          onSubmitEdit={controlledProps.onSubmitEdit ?? handleSubmitEdit}
+          onCancelEdit={handleCancelEdit}
+          composerCapabilities={workspaceComposerCapabilities}
+          resolveMention={resolveMention}
+          onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
+          aiMessagesContext={[]}
+          aiChatContext={undefined}
+          readOnlyReason={composerReadOnlyReason}
+          joinedTop={composerJoinedTop}
+        />
+      );
+    },
     [
       activeWorkspaceReplyQuote,
       activeWorkspaceReplyTab?.answer,
       activeWorkspaceReplyTab?.id,
       composerReadOnlyReason,
+      composerEditAttachments,
       composerJoinedTop,
       conversation?.title,
       effectiveComposerEditSession,
@@ -3054,6 +3119,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       handleClearReply,
       handleEditLastMessage,
       handleLoadWorkspaceFilePreview,
+      handleRemoveComposerAttachment,
       handleRemoveWorkspaceReplyTab,
       handleReorderWorkspaceReplyTab,
       handleSelectWorkspaceReplyTab,
@@ -3119,7 +3185,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             runtimeContext={runtimeContext}
             ownerKey={ownerKey}
             target={workspaceAttachmentTarget}
+            sessionKey={
+              composerEditMessageUuid == null ? "compose" : `edit:${composerEditMessageUuid}`
+            }
             onSendFinalMarkdown={handleSend}
+            editAttachmentMarkdown={composerEditAttachments.map(
+              (attachment) => attachment.markdown,
+            )}
+            onSubmitEditFinalMarkdown={handleSubmitEditFinalMarkdown}
             renderComposer={renderWorkspaceAttachmentComposer}
           />
         ) : (
