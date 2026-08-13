@@ -24,6 +24,7 @@ import {
   useMessengerBackgroundProjectionStore,
 } from "./messenger-background-projection.model";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import { createMessengerRealtimeBackgroundApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -32,6 +33,7 @@ const INSTANCE_A = "instance-a";
 const ORGANIZATION_A = "organization-a";
 const PROJECT_A = "22222222-2222-4222-8222-222222222222";
 const USER_A = "11111111-1111-4111-8111-111111111111";
+const USER_B = "6d090876-5d47-4217-97b6-a90c515f2a75";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "c1ec1406-f498-409d-a513-5b0e53ee4049";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
@@ -43,9 +45,15 @@ const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const FOLDER_ITEM_C = "aee58fa0-8ab8-47ba-ae52-b504cfb383d9";
 const FOLDER_ITEM_D = "33a78fcf-24df-45f7-9fc5-349b10014baf";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_B = "b17f3c48-4fa8-46df-8265-6b49f7d5f769";
 const DATE = "2026-06-22T10:10:00Z";
 const DATE_LATER = "2026-06-22T10:15:00Z";
 const MESSAGE_MARKDOWN = "Вот **короткий** [анонс](https://workspace.local/private?token=1)";
+
+function clearTestReadBoundaries(): void {
+  clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createOwner()));
+  clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createOwner({ userUuid: USER_B })));
+}
 const MESSAGE_PREVIEW = "Вот короткий анонс";
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
@@ -226,10 +234,12 @@ describe("messenger background projection", () => {
     useMessengerBackgroundProjectionStore.getState().clear();
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    clearTestReadBoundaries();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    clearTestReadBoundaries();
   });
 
   it("records message.created notification candidate with workspace preview and route data", () => {
@@ -344,6 +354,129 @@ describe("messenger background projection", () => {
     expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
       expect.objectContaining({ messageUuid: MESSAGE_A }),
     );
+    expect(projection?.notificationCandidates).toEqual([]);
+  });
+
+  it("marks the topic prefix read when a message.read boundary arrives", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]?.read).toBe(true);
+    expect(projection?.messageIdSnapshotsById[MESSAGE_B]?.read).toBe(true);
+  });
+
+  it("marks every message in an exact messages.read batch", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [MESSAGE_A, MESSAGE_B],
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]?.read).toBe(true);
+    expect(projection?.messageIdSnapshotsById[MESSAGE_B]?.read).toBe(true);
+  });
+
+  it("suppresses a late created notification already covered by the read boundary", () => {
+    const context = createContext(createOwner({ userUuid: USER_B }));
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]?.read).toBe(true);
     expect(projection?.notificationCandidates).toEqual([]);
   });
 
