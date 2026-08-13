@@ -10,6 +10,7 @@
  */
 import { build } from "esbuild";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
@@ -79,7 +80,14 @@ async function main() {
   await waitForDevServer(DEV_URL);
   console.log("✓ Dev server ready");
 
-  const electronBin = resolve(root, "node_modules", ".bin", "electron");
+  const electronBinCandidates = [
+    resolve(root, "node_modules", ".bin", "electron"),
+    resolve(root, "..", "..", "node_modules", ".bin", "electron"),
+  ];
+  const electronBin = electronBinCandidates.find(existsSync);
+  if (electronBin == null) {
+    throw new Error("Electron binary not found. Run npm install from the workspace root.");
+  }
   const child = spawn(electronBin, [resolve(root, "dist", "main.js")], {
     stdio: "inherit",
     env: { ...process.env, NODE_ENV: "development" },
