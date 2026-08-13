@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 
 export interface RightPanelUserMenuProps {
   onOpenAboutDrawer?: () => void;
-  onOpenBuildsDrawer?: () => void;
   onOpenPersonalInfo?: () => void;
 }
 

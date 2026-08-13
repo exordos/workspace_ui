@@ -90,7 +90,6 @@ export const Layout: React.FC = () => {
   const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
-  const openRightDrawerBuilds = useRightDrawerStore((s) => s.openBuilds);
   const openRightDrawerPersonalInfo = useRightDrawerStore((s) => s.openPersonalInfo);
   const openRightDrawerUserMenu = useRightDrawerStore((s) => s.openUserMenu);
 
@@ -285,7 +284,6 @@ export const Layout: React.FC = () => {
             workspaceRightPanelInfo={workspaceRightPanelInfo}
             onOpenSettingsDrawer={openRightDrawerSettings}
             onOpenAboutDrawer={openRightDrawerAbout}
-            onOpenBuildsDrawer={openRightDrawerBuilds}
             onOpenPersonalInfoDrawer={openRightDrawerPersonalInfo}
           />
         </LayoutLoadingGate>

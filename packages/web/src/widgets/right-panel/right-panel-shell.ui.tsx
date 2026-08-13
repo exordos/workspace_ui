@@ -7,13 +7,12 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { RightPanelAbout } from "./right-panel-about.ui";
-import { RightPanelBuilds } from "./right-panel-builds.ui";
 import { RightPanelUserMenu } from "./right-panel-user-menu.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { RightPanelProps } from "./right-panel.types";
 
-type MenuSubview = "menu" | "about" | "builds" | "personal-info";
+type MenuSubview = "menu" | "about" | "personal-info";
 
 export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...props }) => {
   const [menuSubview, setMenuSubview] = useState<MenuSubview>("menu");
@@ -36,14 +35,6 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
     }
     setMenuSubview("about");
   }, [props.onOpenAboutDrawer]);
-
-  const handleOpenBuilds = useCallback(() => {
-    if (props.onOpenBuildsDrawer != null) {
-      props.onOpenBuildsDrawer();
-      return;
-    }
-    setMenuSubview("builds");
-  }, [props.onOpenBuildsDrawer]);
 
   const handleOpenPersonalInfo = useCallback(() => {
     if (props.onOpenPersonalInfoDrawer != null) {
@@ -75,7 +66,6 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
 
   if (mode === "settings" || mode === "user-menu") {
     if (menuSubview === "about") return <RightPanelAbout />;
-    if (menuSubview === "builds") return <RightPanelBuilds />;
     if (menuSubview === "personal-info" && ownProfileInfo != null) {
       return (
         <RightPanelUserProfile
@@ -89,14 +79,12 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
     return (
       <RightPanelUserMenu
         onOpenAboutDrawer={handleOpenAbout}
-        onOpenBuildsDrawer={handleOpenBuilds}
         onOpenPersonalInfo={handleOpenPersonalInfo}
       />
     );
   }
 
   if (mode === "about") return <RightPanelAbout />;
-  if (mode === "builds") return <RightPanelBuilds />;
 
   if (props.workspaceInfo != null) {
     return <RightPanelWorkspaceInfo info={props.workspaceInfo} />;

@@ -124,10 +124,10 @@ describe("WebView page registry", () => {
     const paths = pages.map((page) => page.path);
     expect(pages.length).toBeGreaterThan(0);
     expect(pages.some((p) => p.path === "/licenses")).toBe(true);
-    expect(pages.some((p) => p.path === "/updates")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/logs")).toBe(true);
-    expect(pages.some((p) => p.path === "/settings/build")).toBe(true);
+    expect(paths).not.toContain("/updates");
+    expect(paths).not.toContain("/settings/build");
     expect(paths).toContain("/org/:orgId/project/:projectId/stream/:streamUuid");
     expect(paths).toContain("/org/:orgId/project/:projectId/activity/:filter");
     expect(paths).toContain("/org/:orgId/project/:projectId/stream/:streamUuid/topic/:topicUuid");

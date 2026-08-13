@@ -22,7 +22,6 @@ export const BRAND_ENV_DEFAULTS = {
   VITE_BRAND_BG_COLOR: "#1B1B1D",
   VITE_BRAND_ACCENT_COLOR: "#FF8438",
   VITE_UNREAD_INDICATOR_COLOR: "#FF5500",
-  VITE_BRAND_UPDATE_URL: "https://update.workspace.example.com/releases",
   VITE_BRAND_ALLOW_REGISTRATION: "false",
   VITE_BRAND_SHOW_POWERED_BY: "false",
 } as const satisfies Record<string, string>;

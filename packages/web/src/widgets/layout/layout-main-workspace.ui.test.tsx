@@ -52,7 +52,6 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     workspaceRightPanelInfo: null,
     onOpenSettingsDrawer: vi.fn(),
     onOpenAboutDrawer: vi.fn(),
-    onOpenBuildsDrawer: vi.fn(),
     ...overrides,
   };
 }

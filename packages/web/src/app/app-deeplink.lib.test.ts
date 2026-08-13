@@ -33,6 +33,6 @@ describe("normalizeElectronDeeplinkRoute", () => {
   });
 
   it("keeps hash/query and strips duplicate slashes in relative prefix handling", () => {
-    expect(normalizeElectronDeeplinkRoute("settings/build#latest")).toBe("/settings/build#latest");
+    expect(normalizeElectronDeeplinkRoute("settings/logs#latest")).toBe("/settings/logs#latest");
   });
 });

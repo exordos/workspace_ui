@@ -69,9 +69,6 @@ export const brand = {
   /** Unread dot on favicon / tray (brighter than accent for small sizes). */
   unreadIndicatorColor: opt("VITE_UNREAD_INDICATOR_COLOR"),
 
-  /** Auto-update server URL (Electron). */
-  updateServerUrl: opt("VITE_BRAND_UPDATE_URL"),
-
   /** Public registration enabled. */
   allowRegistration: opt("VITE_BRAND_ALLOW_REGISTRATION") === "true",
 

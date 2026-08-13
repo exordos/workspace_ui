@@ -68,7 +68,6 @@ interface ImportMetaEnv {
   readonly VITE_BRAND_THEME_COLOR?: string;
   readonly VITE_BRAND_BG_COLOR?: string;
   readonly VITE_BRAND_ACCENT_COLOR?: string;
-  readonly VITE_BRAND_UPDATE_URL?: string;
   readonly VITE_BRAND_ALLOW_REGISTRATION?: string;
   readonly VITE_BRAND_SHOW_POWERED_BY?: string;
 }

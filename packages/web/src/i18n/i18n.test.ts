@@ -72,12 +72,12 @@ describe("i18n", () => {
 
     // {{variable}} placeholders must be replaced with provided values.
     it("interpolates variables", () => {
-      expect(t("settings.newVersion", { version: "1.2.3" })).toBe("New version 1.2.3 available");
+      expect(t("update.available", { version: "1.2.3" })).toBe("Version 1.2.3 available");
     });
 
     // Missing variable must leave the {{placeholder}} visible for debugging.
     it("handles missing variable gracefully", () => {
-      expect(t("settings.newVersion")).toBe("New version {{version}} available");
+      expect(t("update.available")).toBe("Version {{version}} available");
     });
   });
 

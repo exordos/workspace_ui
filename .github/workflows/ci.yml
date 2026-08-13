@@ -110,8 +110,14 @@ jobs:
         include:
           - os: ubuntu-latest
             cmd: package:electron:linux -- --linux rpm deb AppImage
+            release_cmd: package:electron:linux:with-updates -- --linux rpm deb AppImage
+            update_metadata: latest-linux.yml
+            update_blockmap: "*.AppImage.blockmap"
           - os: windows-latest
             cmd: package:electron:win
+            release_cmd: package:electron:win:with-updates
+            update_metadata: latest.yml
+            update_blockmap: "*.exe.blockmap"
 
     steps:
       - uses: actions/checkout@v6
@@ -138,18 +144,45 @@ jobs:
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
 
       - name: Build & Package
+        if: github.ref_type != 'tag'
         run: |
           echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run ${{ matrix.cmd }}
         env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
+
+      - name: Build & Package with auto-updates
+        if: github.ref_type == 'tag'
+        run: |
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run ${{ matrix.release_cmd }}
+        env:
+          VITE_APP_VERSION: ${{ github.ref_name }}
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
 
       - name: Collect release files
         id: collect
         shell: bash
         run: |
+          set -euo pipefail
+          shopt -s nullglob
           mkdir -p upload
-          cp "packages/electron/release"/Exordos\ Workspace* upload/ 2>/dev/null || true
+
+          release_files=("packages/electron/release"/Exordos-Workspace*)
+          test "${#release_files[@]}" -gt 0
+          cp "${release_files[@]}" upload/
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            metadata_files=("packages/electron/release"/latest*.yml)
+            test "${#metadata_files[@]}" -gt 0
+            cp "${metadata_files[@]}" upload/
+
+            test -f "upload/${{ matrix.update_metadata }}"
+            blockmaps=(upload/${{ matrix.update_blockmap }})
+            test "${#blockmaps[@]}" -gt 0
+          fi
+
           ls -la upload/
 
       - name: Upload artifacts
@@ -220,8 +253,9 @@ jobs:
       - name: Build, sign, and notarize
         run: |
           echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
-          npm run package:electron:mac
+          npm run package:electron:mac:with-updates
         env:
+          VITE_APP_VERSION: ${{ github.ref_name }}
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -280,10 +314,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
           mkdir -p upload
           find packages/electron/release -maxdepth 1 -type f \
-            -name 'Exordos Workspace*-mac-*' -exec cp {} upload/ \;
-          test "$(find upload -type f | wc -l)" -gt 0
+            -name 'Exordos-Workspace*-mac-*' -exec cp {} upload/ \;
+
+          metadata_files=(packages/electron/release/latest*.yml)
+          test "${#metadata_files[@]}" -gt 0
+          cp "${metadata_files[@]}" upload/
+
+          test -f upload/latest-mac.yml
+          blockmaps=(upload/*.zip.blockmap)
+          test "${#blockmaps[@]}" -gt 0
           ls -la upload/
 
       - name: Upload artifacts
@@ -415,7 +457,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/Exordos Workspace*
+          files: artifacts/*
+          fail_on_unmatched_files: true
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -18,13 +18,11 @@
  *   }
  */
 
-import { useEffect, useState } from "react";
-import { brand } from "./brand";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { getElectronAPI, isElectron } from "./electron";
 import { createLogger } from "./logger";
 
 const log = createLogger("updater");
-const VERSION_CONFIG_URL = brand.updateServerUrl;
 
 export type UpdateStatus =
   | "idle"
@@ -44,166 +42,101 @@ export interface UpdateState {
   install: () => void;
 }
 
-type ReleaseChannel = "stable" | "dev";
+type UpdateSnapshot = Omit<UpdateState, "check" | "install">;
 
-export interface UpdateVersionCatalogPlatform {
-  url: string;
+const IDLE_UPDATE_SNAPSHOT: UpdateSnapshot = { status: "idle" };
+const electronUpdateListeners = new Set<() => void>();
+let electronUpdateSnapshot: UpdateSnapshot = IDLE_UPDATE_SNAPSHOT;
+let unsubscribeElectronUpdate: (() => void) | null = null;
+
+function notifyElectronUpdateListeners(): void {
+  electronUpdateListeners.forEach((listener) => listener());
 }
 
-export interface UpdateVersionCatalogEntry {
-  version: string;
-  shortVersion: string;
-  linux: UpdateVersionCatalogPlatform;
-  win?: UpdateVersionCatalogPlatform;
-}
-
-export interface UpdateVersionCatalogLatestEntry {
-  version: string;
-  shortVersion: string;
-}
-
-export interface UpdateVersionCatalog {
-  latest: Record<ReleaseChannel, UpdateVersionCatalogLatestEntry>;
-  versions: Record<ReleaseChannel, UpdateVersionCatalogEntry[]>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parsePlatform(
-  value: unknown,
-  fieldPath: string,
-): UpdateVersionCatalogPlatform | undefined {
-  if (value == null) {
-    return undefined;
-  }
-  if (!isRecord(value) || typeof value.url !== "string" || value.url.trim().length === 0) {
-    throw new Error(`Invalid platform payload at ${fieldPath}`);
-  }
-  return { url: value.url.trim() };
-}
-
-function parseCatalogEntry(value: unknown, fieldPath: string): UpdateVersionCatalogEntry {
-  if (!isRecord(value)) {
-    throw new Error(`Invalid version entry payload at ${fieldPath}`);
-  }
-
-  const version = typeof value.version === "string" ? value.version.trim() : "";
-  const shortVersion = typeof value.short_version === "string" ? value.short_version.trim() : "";
-  const linux = parsePlatform(value.linux, `${fieldPath}.linux`);
-  const win = parsePlatform(value.win, `${fieldPath}.win`);
-
-  if (version.length === 0 || shortVersion.length === 0 || linux == null) {
-    throw new Error(`Invalid version entry fields at ${fieldPath}`);
-  }
-
-  return {
-    version,
-    shortVersion,
-    linux,
-    win,
-  };
-}
-
-function parseLatestEntry(value: unknown, fieldPath: string): UpdateVersionCatalogLatestEntry {
-  if (!isRecord(value)) {
-    throw new Error(`Invalid latest entry payload at ${fieldPath}`);
-  }
-  const version = typeof value.version === "string" ? value.version.trim() : "";
-  const shortVersion = typeof value.short_version === "string" ? value.short_version.trim() : "";
-  if (version.length === 0 || shortVersion.length === 0) {
-    throw new Error(`Invalid latest entry fields at ${fieldPath}`);
-  }
-  return { version, shortVersion };
-}
-
-function parseCatalog(payload: unknown): UpdateVersionCatalog {
-  if (!isRecord(payload) || !isRecord(payload.latest) || !isRecord(payload.versions)) {
-    throw new Error("Invalid version catalog payload");
-  }
-
-  const stableLatest = parseLatestEntry(payload.latest.stable, "latest.stable");
-  const devLatest = parseLatestEntry(payload.latest.dev, "latest.dev");
-
-  const stableRaw = payload.versions.stable;
-  const devRaw = payload.versions.dev;
-  if (!Array.isArray(stableRaw) || !Array.isArray(devRaw)) {
-    throw new Error("Invalid versions channels payload");
-  }
-
-  return {
-    latest: {
-      stable: stableLatest,
-      dev: devLatest,
-    },
-    versions: {
-      stable: stableRaw.map((entry, index) =>
-        parseCatalogEntry(entry, `versions.stable[${index}]`),
-      ),
-      dev: devRaw.map((entry, index) => parseCatalogEntry(entry, `versions.dev[${index}]`)),
-    },
-  };
-}
-
-export async function fetchVersionCatalog(signal?: AbortSignal): Promise<UpdateVersionCatalog> {
-  const response = await fetch(VERSION_CONFIG_URL, {
-    method: "GET",
-    cache: "no-store",
-    signal,
+function applyElectronUpdateStatus(data: { status: string; [key: string]: unknown }): void {
+  log.info("Update status", {
+    status: data.status,
+    version: typeof data.version === "string" ? data.version : undefined,
   });
-  if (!response.ok) {
-    throw new Error(`Version catalog request failed: ${response.status}`);
+
+  switch (data.status) {
+    case "checking":
+      electronUpdateSnapshot = { status: "checking" };
+      break;
+    case "available":
+      electronUpdateSnapshot = {
+        status: "available",
+        version: typeof data.version === "string" ? data.version : undefined,
+      };
+      break;
+    case "up-to-date":
+      electronUpdateSnapshot = { status: "up-to-date" };
+      break;
+    case "downloading":
+      electronUpdateSnapshot = {
+        status: "downloading",
+        percent: typeof data.percent === "number" ? data.percent : undefined,
+      };
+      break;
+    case "ready":
+      electronUpdateSnapshot = {
+        status: "ready",
+        version: typeof data.version === "string" ? data.version : undefined,
+      };
+      break;
+    case "error":
+      electronUpdateSnapshot = {
+        status: "error",
+        error: typeof data.message === "string" ? data.message : undefined,
+      };
+      break;
+    default:
+      return;
   }
 
-  const payload = (await response.json()) as unknown;
-  return parseCatalog(payload);
+  notifyElectronUpdateListeners();
+}
+
+function subscribeElectronUpdate(listener: () => void): () => void {
+  electronUpdateListeners.add(listener);
+
+  if (unsubscribeElectronUpdate == null) {
+    unsubscribeElectronUpdate =
+      getElectronAPI()?.updater.onStatus(applyElectronUpdateStatus) ?? null;
+  }
+
+  return () => {
+    electronUpdateListeners.delete(listener);
+    if (electronUpdateListeners.size === 0 && unsubscribeElectronUpdate != null) {
+      unsubscribeElectronUpdate();
+      unsubscribeElectronUpdate = null;
+    }
+  };
+}
+
+function getElectronUpdateSnapshot(): UpdateSnapshot {
+  return electronUpdateSnapshot;
+}
+
+function checkElectronUpdate(): void {
+  getElectronAPI()?.updater.check();
+}
+
+function installElectronUpdate(): void {
+  getElectronAPI()?.updater.install();
 }
 
 function useElectronUpdate(): UpdateState {
-  const [state, setState] = useState<Omit<UpdateState, "check" | "install">>({
-    status: "idle",
-  });
-
-  useEffect(() => {
-    const api = getElectronAPI();
-    if (!api) return;
-
-    const unsub = api.updater.onStatus((data) => {
-      log.info("Update status", { status: data.status, version: data.version as string });
-
-      switch (data.status) {
-        case "checking":
-          setState({ status: "checking" });
-          break;
-        case "available":
-          setState({ status: "available", version: data.version as string });
-          break;
-        case "up-to-date":
-          setState({ status: "up-to-date" });
-          break;
-        case "downloading":
-          setState({
-            status: "downloading",
-            percent: data.percent as number,
-          });
-          break;
-        case "ready":
-          setState({ status: "ready", version: data.version as string });
-          break;
-        case "error":
-          setState({ status: "error", error: data.message as string });
-          break;
-      }
-    });
-
-    return unsub;
-  }, []);
+  const state = useSyncExternalStore(
+    subscribeElectronUpdate,
+    getElectronUpdateSnapshot,
+    () => IDLE_UPDATE_SNAPSHOT,
+  );
 
   return {
     ...state,
-    check: () => getElectronAPI()?.updater.check(),
-    install: () => getElectronAPI()?.updater.install(),
+    check: checkElectronUpdate,
+    install: installElectronUpdate,
   };
 }
 

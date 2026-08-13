@@ -43,7 +43,11 @@
     "package:electron:win": "npm run package:win --workspace=exordos-workspace",
     "package:electron:mac": "npm run package:mac --workspace=exordos-workspace",
     "package:electron:linux": "npm run package:linux --workspace=exordos-workspace",
-    "package:electron:appimage": "npm run package:appimage --workspace=exordos-workspace"
+    "package:electron:win:with-updates": "npm run package:win:with-updates --workspace=exordos-workspace",
+    "package:electron:mac:with-updates": "npm run package:mac:with-updates --workspace=exordos-workspace",
+    "package:electron:linux:with-updates": "npm run package:linux:with-updates --workspace=exordos-workspace",
+    "package:electron:appimage": "npm run package:appimage --workspace=exordos-workspace",
+    "package:electron:appimage:with-updates": "npm run package:appimage:with-updates --workspace=exordos-workspace"
   },
   "simple-git-hooks": {
     "pre-commit": "sh scripts/pre-commit.sh",

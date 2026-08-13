@@ -807,7 +807,6 @@
   "settings": {
     "personalInfo": "Personal info",
     "appVersion": "App version",
-    "selectBuild": "Select build",
     "notificationSound": "Notification sound",
     "language": "Language",
     "authIdleTimeout": "Auto sign-out",
@@ -880,7 +879,6 @@
     "timezone": "Timezone",
     "shareProfile": "Share profile",
     "profileLinkCopied": "Profile link copied",
-    "newVersion": "New version {{version}} available",
     "logs": "Logs",
     "logsViewModal": "View logs",
     "logsList": "Session log entries",
@@ -968,8 +966,6 @@
     "logsLevelWarn": "Warn",
     "logsLevelError": "Error",
     "connections": "Connections",
-    "installNow": "Install the new version now",
-    "selectBuildHint": "Select a version to install or roll back…",
     "chatSortingHint": "Customize unread chat priority.",
     "chatSortingPrioritizeDirects": "Show unread personal chats above other unread chats",
     "chatSortingPrioritizeUnmuted": "Show unread unmuted channels above muted unread ones",
@@ -1058,7 +1054,9 @@
     "downloadingWithoutTotal": "Downloading… {{received}}"
   },
   "update": {
+    "title": "Application update",
     "check": "Check for updates",
+    "idle": "Check whether a new version is available",
     "checking": "Checking for updates…",
     "available": "Version {{version}} available",
     "downloading": "Downloading update… {{percent}}%",
@@ -1066,9 +1064,7 @@
     "install": "Update",
     "upToDate": "You're up to date",
     "error": "Failed to check updates",
-    "currentVersion": "Current version: {{version}}",
-    "forceRequiredTitle": "Update required",
-    "forceRequiredHint": "Install the required update to continue using Workspace."
+    "currentVersion": "Current version: {{version}}"
   },
   "licenses": {
     "title": "Open Source Licenses",

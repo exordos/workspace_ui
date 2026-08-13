@@ -35,7 +35,6 @@ document.title = brand.appName;           // "Workspace" or "Acme Chat"
 | **Default palette** | `VITE_BRAND_DEFAULT_PALETTE` | orange-warm |
 | **Default mode** | `VITE_BRAND_DEFAULT_THEME` | dark |
 | **Support URL** | `VITE_BRAND_SUPPORT_URL` | (empty) |
-| **Update server** | `VITE_BRAND_UPDATE_URL` | (default) |
 
 ## Creating a New Brand
 

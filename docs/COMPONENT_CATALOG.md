@@ -474,7 +474,6 @@ All pages are lazy-loaded via `React.lazy()` in `app/app.tsx`.
 | `SettingsPage`        | `/settings`                                         | `pages/settings/settings-page.ui.tsx`                 | App settings                     |
 | `LogsPage`            | `/logs`                                             | `pages/logs/logs-page.ui.tsx`                         | In-app log export                |
 | `ServicesPage`        | `/services`                                         | `pages/services/services-page.ui.tsx`                 | External services                |
-| `UpdatePage`          | `/update`                                           | `pages/update/update-page.ui.tsx`                     | App update status                |
 | `MessageRedirectPage` | `/message/:id`                                      | `pages/message-redirect/message-redirect-page.ui.tsx` | Deep link to message             |
 
 ### ChatPage

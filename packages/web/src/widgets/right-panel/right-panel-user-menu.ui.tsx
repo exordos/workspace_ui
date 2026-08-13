@@ -78,7 +78,6 @@ const MenuChevron: React.FC<{ open?: boolean }> = ({ open = false }) => (
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   onOpenAboutDrawer,
-  onOpenBuildsDrawer,
   onOpenPersonalInfo,
 }) => {
   const navigate = useNavigate();
@@ -239,14 +238,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const openDiagnostics = useCallback(() => {
     void navigate(withCurrentOrgRoute("/settings/logs"));
   }, [navigate]);
-
-  const openBuilds = useCallback(() => {
-    if (onOpenBuildsDrawer != null) {
-      onOpenBuildsDrawer();
-      return;
-    }
-    void navigate(withCurrentOrgRoute("/settings/build"));
-  }, [navigate, onOpenBuildsDrawer]);
 
   const openAbout = useCallback(() => {
     onOpenAboutDrawer?.();
@@ -646,13 +637,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.appVersion")}
             </SectionLabel>
             <div className={SECTION_LIST_CLASS}>
-              <RightPanelUserMenuMenuButton
-                label={t("settings.selectBuild")}
-                icon="build"
-                subtitle={t("settings.selectBuildHint")}
-                onClick={openBuilds}
-                right={<MenuChevron />}
-              />
               <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"

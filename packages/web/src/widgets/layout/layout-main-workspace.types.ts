@@ -18,6 +18,5 @@ export interface LayoutMainWorkspaceProps {
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
-  onOpenBuildsDrawer: () => void;
   onOpenPersonalInfoDrawer?: () => void;
 }

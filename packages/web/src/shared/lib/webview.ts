@@ -241,7 +241,6 @@ const webViewPages: WebViewPageDef[] = [
   { path: "/call", label: "Call" },
   { path: "/calls", label: "Calls" },
   { path: "/settings", label: "Settings" },
-  { path: "/settings/build", label: "Settings Build" },
   ...(IS_CONNECTION_DIAGNOSTICS_ENABLED
     ? ([
         { path: "/settings/logs", label: "Diagnostics" },
@@ -252,7 +251,6 @@ const webViewPages: WebViewPageDef[] = [
   { path: "/all-services", label: "All Services" },
   { path: "/org/:orgId/project/:projectId/inbox", label: "Inbox" },
   { path: "/org/:orgId/project/:projectId/feed", label: "Feed" },
-  { path: "/updates", label: "Update Center" },
 ];
 
 export function getWebViewPages(): readonly WebViewPageDef[] {

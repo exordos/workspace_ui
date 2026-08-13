@@ -29,7 +29,6 @@ import {
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
-import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
 import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-route-definitions";
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
@@ -59,18 +58,8 @@ const App: React.FC = () => {
         : "/",
     [currentSession],
   );
-  const forceUpdateRoute = useMemo(
-    () =>
-      currentOrgRouteId ? withOrgRoutePrefix("/force-update", currentOrgRouteId) : "/force-update",
-    [currentOrgRouteId],
-  );
   const shortcutHelpSections = useMemo(() => buildShortcutHelpSections(), []);
   const { status: updateStatus, check: checkUpdates } = useAppUpdate();
-  const forceUpdateEnabled = !import.meta.env.DEV;
-  const isForceUpdateRequired = useMemo(
-    () => isForceUpdateRequiredStatus(updateStatus),
-    [updateStatus],
-  );
 
   const navigateToMessenger = useCallback(() => {
     const instanceId = useWorkspaceAuthStore.getState().getCurrentSession()?.instanceId ?? null;
@@ -199,27 +188,6 @@ const App: React.FC = () => {
     currentSession,
     currentAccountId,
     setCurrentAccountId,
-  ]);
-
-  useEffect(() => {
-    if (
-      !shouldRedirectToForceUpdate({
-        hasInstances: hasSessions,
-        isForceUpdateRequired,
-        pathname: location.pathname,
-        forceUpdateEnabled,
-      })
-    ) {
-      return;
-    }
-    void navigate(forceUpdateRoute, { replace: true });
-  }, [
-    forceUpdateEnabled,
-    hasSessions,
-    isForceUpdateRequired,
-    location.pathname,
-    navigate,
-    forceUpdateRoute,
   ]);
 
   useEffect(() => {

@@ -17,10 +17,6 @@ describe("resolveLayoutRightPanelTitle", () => {
     expect(resolveLayoutRightPanelTitle("about", tr)).toBe("t:settings.appVersion");
   });
 
-  it("returns select-build label for builds mode", () => {
-    expect(resolveLayoutRightPanelTitle("builds", tr)).toBe("t:settings.selectBuild");
-  });
-
   it("returns channel info label for info mode without kind", () => {
     expect(resolveLayoutRightPanelTitle("info", tr)).toBe("t:info.channelInfo");
   });

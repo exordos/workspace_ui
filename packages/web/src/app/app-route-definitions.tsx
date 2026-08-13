@@ -46,10 +46,6 @@ const InboxPage = React.lazy(() =>
 const FeedPage = React.lazy(() =>
   import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })),
 );
-const UpdatePage = React.lazy(() =>
-  import("~/pages/update/update-page.ui").then((m) => ({ default: m.UpdatePage })),
-);
-
 function resolveWorkspaceMessengerRootFromSessions(params: {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
@@ -118,8 +114,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<Navigate to={defaultMessengerRoute} replace />} />
       <Route path="/org/:orgId" element={<WorkspaceMessengerRootRedirect />} />
-      <Route path="/force-update" element={<UpdatePage forceMode />} />
-      <Route path="/org/:orgId/force-update" element={<UpdatePage forceMode />} />
       <Route path="/licenses" element={<LicensesPage />} />
       <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
       <Route element={<Layout />}>
@@ -128,12 +122,10 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="/call" element={<CallsPage />} />
         <Route path="/calls" element={<CallsPage />} />
         <Route path="/settings/logs" element={diagnosticsRouteElement} />
-        <Route path="/settings/build" element={<UpdatePage />} />
         <Route path="/settings/*" element={<Navigate to={defaultMessengerRoute} replace />} />
         <Route path="/logs" element={diagnosticsRouteElement} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/all-services" element={<ServicesPage />} />
-        <Route path="/updates" element={<UpdatePage />} />
       </Route>
       <Route path="/org/:orgId" element={<Layout />}>
         <Route
@@ -167,12 +159,10 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="call" element={<CallsPage />} />
         <Route path="calls" element={<CallsPage />} />
         <Route path="settings/logs" element={diagnosticsRouteElement} />
-        <Route path="settings/build" element={<UpdatePage />} />
         <Route path="settings/*" element={<WorkspaceMessengerRootRedirect />} />
         <Route path="logs" element={diagnosticsRouteElement} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="all-services" element={<ServicesPage />} />
-        <Route path="updates" element={<UpdatePage />} />
       </Route>
       <Route path="/org/:orgId/*" element={<WorkspaceMessengerRootRedirect />} />
       <Route path="*" element={<Navigate to={defaultMessengerRoute} replace />} />

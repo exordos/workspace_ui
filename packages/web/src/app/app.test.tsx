@@ -160,6 +160,16 @@ describe("App default routing", () => {
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
   });
 
+  it("redirects the removed force-update route to the messenger root", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/force-update",
+    });
+
+    expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
   it("redirects unknown org routes to project Inbox", async () => {
     setAuthorizedSession();
 

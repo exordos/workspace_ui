@@ -31,7 +31,6 @@ export interface LayoutAppShellProps {
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
-  onOpenBuildsDrawer: () => void;
   onOpenPersonalInfoDrawer?: () => void;
 }
 
@@ -55,7 +54,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   workspaceRightPanelInfo,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
-  onOpenBuildsDrawer,
   onOpenPersonalInfoDrawer,
 }) {
   return (
@@ -92,7 +90,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             workspaceRightPanelInfo={workspaceRightPanelInfo}
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
-            onOpenBuildsDrawer={onOpenBuildsDrawer}
             onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
           />
         </div>

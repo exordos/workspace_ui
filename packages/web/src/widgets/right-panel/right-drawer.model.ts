@@ -2,13 +2,7 @@ import { create } from "zustand";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
-export type RightDrawerMode =
-  | "info"
-  | "settings"
-  | "user-menu"
-  | "about"
-  | "builds"
-  | "personal-info";
+export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "personal-info";
 
 interface RightDrawerState {
   open: boolean;
@@ -22,7 +16,6 @@ interface RightDrawerState {
   openSettings: () => void;
   openUserMenu: () => void;
   openAbout: () => void;
-  openBuilds: () => void;
   /** Own profile card opened from the account menu (shell title + back). */
   openPersonalInfo: () => void;
   openUserProfile: (userId: number) => void;
@@ -70,10 +63,6 @@ export const useRightDrawerStore = create<RightDrawerState>((set) => ({
   openAbout() {
     logStoreAction("rightDrawer", "openAbout", {});
     set({ open: true, mode: "about", userIdOverride: null, workspaceUserUuidOverride: null });
-  },
-  openBuilds() {
-    logStoreAction("rightDrawer", "openBuilds", {});
-    set({ open: true, mode: "builds", userIdOverride: null, workspaceUserUuidOverride: null });
   },
   openPersonalInfo() {
     logStoreAction("rightDrawer", "openPersonalInfo", {});

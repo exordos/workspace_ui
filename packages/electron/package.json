@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "npm run build:web && npm run build:electron",
+    "build:with-updates": "npm run build:web && npm run build:electron:with-updates",
     "build:web": "cd ../web && npx cross-env ELECTRON=1 vite build",
     "build:electron": "npx cross-env ELECTRON_DISABLE_AUTO_UPDATE=1 node scripts/build.mjs",
     "build:electron:with-updates": "node scripts/build.mjs",
@@ -18,8 +19,11 @@
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",
     "package:linux": "npm run build && electron-builder --linux",
+    "package:win:with-updates": "npm run build:with-updates && electron-builder --win",
+    "package:mac:with-updates": "npm run build:with-updates && electron-builder --mac",
+    "package:linux:with-updates": "npm run build:with-updates && electron-builder --linux",
     "package:appimage": "npx cross-env ELECTRON_DISABLE_AUTO_UPDATE=1  npm run build && electron-builder --linux AppImage",
-    "package:appimage:with-updates": "npm run build && electron-builder --linux AppImage",
+    "package:appimage:with-updates": "npm run build:with-updates && electron-builder --linux AppImage",
     "bake:icons": "node scripts/bake-icon-assets.mjs",
     "test": "node --test scripts/*.test.mjs",
     "typecheck": "tsc --noEmit"

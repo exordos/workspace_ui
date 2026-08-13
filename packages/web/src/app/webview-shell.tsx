@@ -57,9 +57,6 @@ const InboxPage = React.lazy(() =>
 const FeedPage = React.lazy(() =>
   import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })),
 );
-const UpdatePage = React.lazy(() =>
-  import("~/pages/update/update-page.ui").then((m) => ({ default: m.UpdatePage })),
-);
 const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
@@ -171,12 +168,10 @@ export const WebViewShell: React.FC = () => {
               <Route path="/call" element={<CallsPage />} />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/settings/logs" element={diagnosticsRouteElement} />
-              <Route path="/settings/build" element={<UpdatePage />} />
               <Route path="/settings/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
               <Route path="/logs" element={diagnosticsRouteElement} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/all-services" element={<ServicesPage />} />
-              <Route path="/updates" element={<UpdatePage />} />
               <Route path="/licenses" element={<LicensesPage />} />
               <Route
                 path="/org/:orgId/project/:projectId/messenger"
@@ -205,7 +200,6 @@ export const WebViewShell: React.FC = () => {
               <Route path="/org/:orgId/call" element={<CallsPage />} />
               <Route path="/org/:orgId/calls" element={<CallsPage />} />
               <Route path="/org/:orgId/settings/logs" element={diagnosticsRouteElement} />
-              <Route path="/org/:orgId/settings/build" element={<UpdatePage />} />
               <Route
                 path="/org/:orgId/settings/*"
                 element={<WebviewWorkspaceMessengerRootRedirect />}
@@ -213,7 +207,6 @@ export const WebViewShell: React.FC = () => {
               <Route path="/org/:orgId/logs" element={diagnosticsRouteElement} />
               <Route path="/org/:orgId/services" element={<ServicesPage />} />
               <Route path="/org/:orgId/all-services" element={<ServicesPage />} />
-              <Route path="/org/:orgId/updates" element={<UpdatePage />} />
               <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
               <Route path="/org/:orgId/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
               <Route path="*" element={<WebviewWorkspaceMessengerRootRedirect />} />

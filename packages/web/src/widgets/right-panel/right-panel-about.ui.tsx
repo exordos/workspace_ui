@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { AppUpdateSettings } from "~/features/app-update/app-update-settings.ui";
 import { t } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { env } from "~/shared/lib/env";
@@ -74,6 +75,8 @@ export const RightPanelAbout: React.FC = () => {
               </div>
             </div>
           </section>
+
+          <AppUpdateSettings />
 
           <section className="rounded-xl border border-border-subtle bg-card-bg p-4">
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">

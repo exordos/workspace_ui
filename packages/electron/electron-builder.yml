@@ -38,7 +38,7 @@ win:
         - x64
         - arm64
   icon: resources/icon.ico
-  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+  artifactName: "Exordos-Workspace-${version}-win-${arch}.${ext}"
 
 nsis:
   oneClick: false
@@ -79,7 +79,7 @@ mac:
         - x64
   icon: resources/icon.icns
   category: public.app-category.social-networking
-  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+  artifactName: "Exordos-Workspace-${version}-mac-${arch}.${ext}"
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: resources/entitlements.mac.plist
@@ -94,7 +94,7 @@ afterSign: scripts/notarize.mjs
 
 dmg:
   sign: false
-  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+  artifactName: "Exordos-Workspace-${version}-mac-${arch}.${ext}"
   contents:
     - x: 130
       y: 220
@@ -136,7 +136,7 @@ linux:
     entry:
       StartupWMClass: exordos-workspace
       MimeType: x-scheme-handler/ew
-  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+  artifactName: "Exordos-Workspace-${version}-linux-${arch}.${ext}"
 
 deb:
   depends:
@@ -168,8 +168,10 @@ rpm:
     - at-spi2-core
 
 # ──────────────────────────── Auto-update ────────────────────────────
-# Feed URL embedded when you build with `npm run build:electron:with-updates`.
-# Default `npm run build:electron` bakes in no updater (ELECTRON_DISABLE_AUTO_UPDATE=1).
+# GitHub Releases feed embedded when a `package:*:with-updates` command is used.
+# Default package commands bake in no updater (ELECTRON_DISABLE_AUTO_UPDATE=1).
+# Release CI uploads the generated latest*.yml and blockmaps together with installers.
 publish:
-  provider: generic
-  url: https://update.workspace.genesis-core.tech/releases
+  provider: github
+  owner: exordos
+  repo: workspace_ui

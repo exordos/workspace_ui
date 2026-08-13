@@ -200,6 +200,53 @@ describe("updater", () => {
       expect(() => result.current.check()).not.toThrow();
       expect(() => result.current.install()).not.toThrow();
     });
+
+    it("shares the latest Electron status with components mounted later", async () => {
+      vi.resetModules();
+      let statusHandler: ((data: { status: string; [key: string]: unknown }) => void) | undefined;
+      const unsubscribe = vi.fn();
+      const updaterApi = {
+        updater: {
+          onStatus: vi.fn((callback) => {
+            statusHandler = callback;
+            return unsubscribe;
+          }),
+          check: vi.fn(),
+          install: vi.fn(),
+        },
+      };
+
+      vi.doMock("./electron", () => ({
+        isElectron: vi.fn(() => true),
+        getElectronAPI: vi.fn(() => updaterApi),
+      }));
+      vi.doMock("./logger", () => ({
+        createLogger: () => ({
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        }),
+      }));
+
+      const updaterModule = await import("./updater");
+      const first = renderHook(() => updaterModule.useAppUpdate());
+
+      act(() => {
+        statusHandler?.({ status: "ready", version: "0.4.10" });
+      });
+
+      const second = renderHook(() => updaterModule.useAppUpdate());
+
+      expect(first.result.current).toMatchObject({ status: "ready", version: "0.4.10" });
+      expect(second.result.current).toMatchObject({ status: "ready", version: "0.4.10" });
+      expect(updaterApi.updater.onStatus).toHaveBeenCalledTimes(1);
+
+      first.unmount();
+      expect(unsubscribe).not.toHaveBeenCalled();
+      second.unmount();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
   });
 
   // PWA service worker integration — verifies subscription and cleanup paths
