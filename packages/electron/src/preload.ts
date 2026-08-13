@@ -1,4 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
+import {
+  WORKSPACE_DOWNLOAD_IPC,
+  type WorkspaceDownloadActionResult,
+  type WorkspaceDownloadChangedEvent,
+  type WorkspaceDownloadEntry,
+  type WorkspaceDownloadStartInput,
+  type WorkspaceDownloadStartResult,
+} from "./workspace-downloads.contract";
 
 export interface ElectronMainMemorySnapshot {
   collectedAt: string;
@@ -31,6 +39,27 @@ const electronAPI = {
   clipboard: {
     writeText: (text: string): Promise<boolean> => ipcRenderer.invoke("clipboard:writeText", text),
     readText: (): Promise<string | null> => ipcRenderer.invoke("clipboard:readText"),
+  },
+
+  downloads: {
+    start: (input: WorkspaceDownloadStartInput): Promise<WorkspaceDownloadStartResult> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.start, input),
+    getSnapshot: (): Promise<WorkspaceDownloadEntry[]> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.snapshot),
+    cancel: (id: string): Promise<WorkspaceDownloadActionResult> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.action, "cancel", id),
+    open: (id: string): Promise<WorkspaceDownloadActionResult> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.action, "open", id),
+    reveal: (id: string): Promise<WorkspaceDownloadActionResult> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.action, "reveal", id),
+    dismiss: (ids: readonly string[]): Promise<{ ok: true }> =>
+      ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.dismiss, ids),
+    onChanged: (callback: (event: WorkspaceDownloadChangedEvent) => void): (() => void) => {
+      const handler = (_event: unknown, changed: WorkspaceDownloadChangedEvent) =>
+        callback(changed);
+      ipcRenderer.on(WORKSPACE_DOWNLOAD_IPC.changed, handler);
+      return () => ipcRenderer.removeListener(WORKSPACE_DOWNLOAD_IPC.changed, handler);
+    },
   },
 
   theme: {

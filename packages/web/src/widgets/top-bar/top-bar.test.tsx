@@ -19,7 +19,41 @@ import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { TOP_BAR_PROFILE_STATUS_MAX_CH } from "./top-bar.lib";
 import { TopBar } from "./top-bar.ui";
 
+const downloadActions = vi.hoisted(() => ({
+  cancel: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+  dismiss: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+  open: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+  retry: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+  reveal: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+}));
+
+vi.mock("~/features/workspace-file-download/workspace-file-download.lib", () => ({
+  cancelWorkspaceDownload: downloadActions.cancel,
+  dismissWorkspaceDownloads: downloadActions.dismiss,
+  openWorkspaceDownload: downloadActions.open,
+  retryWorkspaceDownload: downloadActions.retry,
+  revealWorkspaceDownload: downloadActions.reveal,
+}));
+
+vi.mock("~/features/workspace-file-download/workspace-file-download-sync.hook", () => ({
+  useWorkspaceDownloadSync: vi.fn(),
+}));
+
 const CURRENT_USER_UUID = "a225223c-637c-4afa-918f-5f2798b9305f";
+
+function installElectronDownloadsBridge(): void {
+  (window as unknown as { electronAPI: Partial<ElectronAPI> }).electronAPI = {
+    downloads: {
+      start: vi.fn(),
+      getSnapshot: vi.fn(),
+      cancel: vi.fn(),
+      open: vi.fn(),
+      reveal: vi.fn(),
+      dismiss: vi.fn(),
+      onChanged: vi.fn(),
+    },
+  };
+}
 
 function LocationProbe() {
   return <span data-testid="location-path">{useLocation().pathname}</span>;
@@ -33,6 +67,7 @@ function resetTopBarRelatedStores(): void {
   setCurrentOrgRouteIdResolver(null);
   useSearchModalStore.getState().closeModal();
   useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+  for (const action of Object.values(downloadActions)) action.mockClear();
 }
 
 function createWorkspaceSession(
@@ -513,18 +548,20 @@ describe("TopBar", () => {
     expect(status).toHaveAttribute("title", longStatus);
   });
 
-  it("shows download center entries and allows clearing queue", () => {
+  it("shows download center entries and keeps active downloads when clearing", () => {
     useDownloadStore.setState({
       duplicateRequestTick: 0,
       entries: [
         {
-          path: "/user_uploads/1/report.pdf",
+          id: "download-1",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-1",
           fileName: "report.pdf",
           status: "downloading",
           receivedBytes: 512,
           totalBytes: 1024,
           startedAt: 1,
-          updatedAt: 2,
         },
       ],
     });
@@ -537,8 +574,13 @@ describe("TopBar", () => {
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByText(/50%/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^clear$/i }));
-    expect(useDownloadStore.getState().entries).toEqual([]);
+    expect(screen.getByRole("button", { name: /^clear$/i })).toBeDisabled();
+    const progress = screen.getByRole("progressbar", { name: /report\.pdf: 50%/i });
+    expect(progress).toHaveAttribute("aria-valuemin", "0");
+    expect(progress).toHaveAttribute("aria-valuemax", "100");
+    expect(progress).toHaveAttribute("aria-valuenow", "50");
+    expect(progress).not.toHaveAttribute("aria-live");
+    expect(screen.queryByRole("button", { name: /cancel download report\.pdf/i })).toBeNull();
   });
 
   it("marks download trigger as dialog popup control", () => {
@@ -546,13 +588,15 @@ describe("TopBar", () => {
       duplicateRequestTick: 0,
       entries: [
         {
-          path: "/user_uploads/2/spec.pdf",
+          id: "download-2",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-2",
           fileName: "spec.pdf",
           status: "downloading",
           receivedBytes: 256,
           totalBytes: 1024,
           startedAt: 10,
-          updatedAt: 11,
         },
       ],
     });
@@ -567,18 +611,21 @@ describe("TopBar", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("announces download status and provides file-specific remove labels", () => {
+  it("announces download status and provides file-specific actions", () => {
+    installElectronDownloadsBridge();
     useDownloadStore.setState({
       duplicateRequestTick: 0,
       entries: [
         {
-          path: "/user_uploads/3/report.pdf",
+          id: "download-3",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-3",
           fileName: "report.pdf",
-          status: "downloading",
+          status: "downloaded",
           receivedBytes: 512,
           totalBytes: 1024,
           startedAt: 20,
-          updatedAt: 21,
         },
       ],
     });
@@ -587,10 +634,97 @@ describe("TopBar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /open downloads/i }));
 
-    const status = screen.getByText(/50%/i);
+    const status = screen.getByText(/ready/i);
     expect(status).toHaveAttribute("role", "status");
     expect(status).toHaveAttribute("aria-live", "polite");
+    fireEvent.click(screen.getByRole("button", { name: /open file report\.pdf/i }));
+    const revealButton = screen.getByRole("button", { name: /show in folder report\.pdf/i });
+    expect(revealButton.querySelector("svg")).toHaveAttribute("width", "18");
+    expect(revealButton.querySelector("svg")).toHaveAttribute("height", "18");
+    fireEvent.click(revealButton);
     expect(screen.getByRole("button", { name: /remove report\.pdf/i })).toBeInTheDocument();
+    expect(downloadActions.open).toHaveBeenCalledWith("download-3");
+    expect(downloadActions.reveal).toHaveBeenCalledWith("download-3");
+  });
+
+  it("retries failed downloads and clears only dismissible entries", () => {
+    installElectronDownloadsBridge();
+    useDownloadStore.setState({
+      duplicateRequestTick: 0,
+      entries: [
+        {
+          id: "download-active",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-active",
+          fileName: "active.pdf",
+          status: "downloading",
+          receivedBytes: 0,
+          totalBytes: null,
+          startedAt: 1,
+        },
+        {
+          id: "download-error",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-error",
+          fileName: "failed.pdf",
+          status: "error",
+          receivedBytes: 0,
+          totalBytes: null,
+          startedAt: 2,
+          errorCode: "interrupted",
+        },
+      ],
+    });
+
+    renderWithProviders(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: /open downloads/i }));
+    fireEvent.click(screen.getByRole("button", { name: /retry download failed\.pdf/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+
+    expect(downloadActions.retry).toHaveBeenCalledWith("download-error");
+    expect(downloadActions.dismiss).toHaveBeenCalledWith(["download-error"]);
+  });
+
+  it("hides native file actions in a browser", () => {
+    useDownloadStore.setState({
+      duplicateRequestTick: 0,
+      entries: [
+        {
+          id: "download-ready",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-ready",
+          fileName: "ready.pdf",
+          status: "downloaded",
+          receivedBytes: 10,
+          totalBytes: 10,
+          startedAt: 1,
+        },
+        {
+          id: "download-failed",
+          ownerKey: "owner-a",
+          accountId: "account-a",
+          fileUuid: "file-failed",
+          fileName: "failed.pdf",
+          status: "error",
+          receivedBytes: 0,
+          totalBytes: null,
+          startedAt: 2,
+          errorCode: "interrupted",
+        },
+      ],
+    });
+
+    renderWithProviders(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: /open downloads/i }));
+
+    expect(screen.queryByRole("button", { name: /open file ready\.pdf/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /show in folder ready\.pdf/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /retry download failed\.pdf/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /remove ready\.pdf/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove failed\.pdf/i })).toBeInTheDocument();
   });
 });
 

@@ -1,30 +1,47 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { DownloadEntry } from "~/entities/download/download.types";
+import { useWorkspaceDownloadSync } from "~/features/workspace-file-download/workspace-file-download-sync.hook";
+import {
+  cancelWorkspaceDownload,
+  dismissWorkspaceDownloads,
+  openWorkspaceDownload,
+  retryWorkspaceDownload,
+  revealWorkspaceDownload,
+} from "~/features/workspace-file-download/workspace-file-download.lib";
 import { t } from "~/i18n/i18n";
 import { useDismissOnOutsideAndEscape } from "~/shared/lib/use-dismiss-on-outside-escape.hook";
 import { Icon } from "~/shared/ui/icon";
 import { TopBarDownloadRow } from "./top-bar-download-row.ui";
 import { formatDownloadBytes } from "./top-bar.lib";
 
+function isActive(entry: DownloadEntry): boolean {
+  return entry.status === "starting" || entry.status === "downloading";
+}
+
 export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
-  const downloads = useDownloadStore((s) => s.entries);
-  const duplicateRequestTick = useDownloadStore((s) => s.duplicateRequestTick);
-  const clearDownloads = useDownloadStore((s) => s.clearDownloads);
-  const removeDownload = useDownloadStore((s) => s.removeDownload);
+  useWorkspaceDownloadSync();
+
+  const downloads = useDownloadStore((state) => state.entries);
+  const duplicateRequestTick = useDownloadStore((state) => state.duplicateRequestTick);
+  const nativeActionsAvailable = window.electronAPI?.downloads != null;
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [buttonPulse, setButtonPulse] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const activeDownloadsCount = useMemo(
-    () => downloads.filter((entry) => entry.status === "downloading").length,
+  const activeDownloadsCount = useMemo(() => downloads.filter(isActive).length, [downloads]);
+  const dismissibleIds = useMemo(
+    () => downloads.filter((entry) => !isActive(entry)).map((entry) => entry.id),
     [downloads],
   );
 
   const getStatusLabel = useCallback((entry: DownloadEntry): string => {
     if (entry.status === "downloaded") return t("downloads.ready");
-    if (entry.status === "error") return t("downloads.failed");
+    if (entry.status === "error") {
+      return entry.errorCode === "cancelled" ? t("downloads.cancelled") : t("downloads.failed");
+    }
+    if (entry.status === "starting") return t("downloads.starting");
     if (entry.totalBytes != null && entry.totalBytes > 0) {
       const percent = Math.min(100, Math.round((entry.receivedBytes / entry.totalBytes) * 100));
       return t("downloads.downloadingWithTotal", {
@@ -38,9 +55,19 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
     });
   }, []);
 
-  const handleToggle = useCallback(() => {
-    setPanelOpen((prev) => !prev);
+  const handleToggle = useCallback(() => setPanelOpen((open) => !open), []);
+  const handleDismissPanel = useCallback(() => setPanelOpen(false), []);
+  const handleCancel = useCallback((id: string) => void cancelWorkspaceDownload(id), []);
+  const handleOpen = useCallback((id: string) => void openWorkspaceDownload(id), []);
+  const handleReveal = useCallback((id: string) => void revealWorkspaceDownload(id), []);
+  const handleRetry = useCallback((id: string) => void retryWorkspaceDownload(id), []);
+  const handleRemove = useCallback((id: string) => {
+    void dismissWorkspaceDownloads([id]);
   }, []);
+  const handleClear = useCallback(() => {
+    if (dismissibleIds.length === 0) return;
+    void dismissWorkspaceDownloads(dismissibleIds);
+  }, [dismissibleIds]);
 
   useEffect(() => {
     if (downloads.length > 0) return;
@@ -50,15 +77,9 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
   useEffect(() => {
     if (duplicateRequestTick === 0) return;
     setButtonPulse(true);
-    const timer = setTimeout(() => {
-      setButtonPulse(false);
-    }, 380);
+    const timer = setTimeout(() => setButtonPulse(false), 380);
     return () => clearTimeout(timer);
   }, [duplicateRequestTick]);
-
-  const handleDismissPanel = useCallback(() => {
-    setPanelOpen(false);
-  }, []);
 
   useDismissOnOutsideAndEscape({
     enabled: panelOpen,
@@ -66,9 +87,7 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
     onDismiss: handleDismissPanel,
   });
 
-  if (downloads.length === 0) {
-    return null;
-  }
+  if (downloads.length === 0) return null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -84,13 +103,13 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
         aria-controls="download-center-panel"
       >
         <Icon name="files" size={20} className="text-current" />
-        {activeDownloadsCount > 0 && (
+        {activeDownloadsCount > 0 ? (
           <span className="pointer-events-none absolute -right-1 -top-1 z-sticky min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-on-accent">
             {activeDownloadsCount}
           </span>
-        )}
+        ) : null}
       </button>
-      {panelOpen && (
+      {panelOpen ? (
         <div
           id="download-center-panel"
           role="dialog"
@@ -101,8 +120,9 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
             <span className="text-sm font-medium text-text-primary">{t("downloads.title")}</span>
             <button
               type="button"
-              onClick={clearDownloads}
-              className="text-xs text-text-muted transition-colors hover:text-text-primary"
+              onClick={handleClear}
+              disabled={dismissibleIds.length === 0}
+              className="text-xs text-text-muted transition-colors hover:text-text-primary disabled:cursor-default disabled:opacity-40"
             >
               {t("downloads.clear")}
             </button>
@@ -110,15 +130,20 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
           <ul className="max-h-64 overflow-y-auto p-1">
             {downloads.map((entry) => (
               <TopBarDownloadRow
-                key={entry.path}
+                key={entry.id}
                 entry={entry}
                 statusLabel={getStatusLabel(entry)}
-                onRemove={removeDownload}
+                nativeActionsAvailable={nativeActionsAvailable}
+                onCancel={handleCancel}
+                onOpen={handleOpen}
+                onReveal={handleReveal}
+                onRetry={handleRetry}
+                onRemove={handleRemove}
               />
             ))}
           </ul>
         </div>
-      )}
+      ) : null}
     </div>
   );
 });

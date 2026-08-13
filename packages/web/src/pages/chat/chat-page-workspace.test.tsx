@@ -743,6 +743,7 @@ function WorkspaceLocationProbe() {
 
 describe("ChatPage Workspace route", () => {
   beforeEach(async () => {
+    delete (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
     resetWorkspaceComposerDraftStoreForTests();
     const session = createSession();
     useWorkspaceAuthStore.setState({
@@ -857,7 +858,7 @@ describe("ChatPage Workspace route", () => {
     );
     useWorkspaceForwardMessageStore.getState().reset();
     captured.streamBindingsForRoute.mockClear();
-    useDownloadStore.getState().clearDownloads();
+    useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
   });
 
   afterEach(async () => {
@@ -873,7 +874,7 @@ describe("ChatPage Workspace route", () => {
     resetWorkspaceComposerDraftStoreForTests();
     await useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
-    useDownloadStore.getState().clearDownloads();
+    useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
     useMediaViewerStore.getState().close();
     try {
       const db = await openWorkspaceMessengerCacheDb();
@@ -5305,7 +5306,7 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => {
       expect(useDownloadStore.getState().entries[0]).toMatchObject({
-        path: "workspace-file:33333333-3333-4333-8333-333333333333",
+        fileUuid: "33333333-3333-4333-8333-333333333333",
         fileName: "hint.txt",
         status: "downloaded",
         receivedBytes: 17,
@@ -5363,7 +5364,7 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => {
       expect(useDownloadStore.getState().entries[0]).toMatchObject({
-        path: "workspace-file:44444444-4444-4444-8444-444444444444",
+        fileUuid: "44444444-4444-4444-8444-444444444444",
         fileName: "screen.png",
         status: "downloaded",
         receivedBytes: 17,
@@ -5496,7 +5497,7 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() =>
       expect(useDownloadStore.getState().entries[0]).toMatchObject({
-        fileName: "screen.png",
+        fileName: "server-screen.png",
         status: "downloaded",
       }),
     );

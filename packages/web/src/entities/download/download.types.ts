@@ -1,13 +1,32 @@
-export type DownloadEntryStatus = "downloading" | "downloaded" | "error";
+export type DownloadEntryStatus = "starting" | "downloading" | "downloaded" | "error";
+
+export type DownloadErrorCode =
+  | "start-timeout"
+  | "start-failed"
+  | "interrupted"
+  | "cancelled"
+  | "file-missing";
 
 export interface DownloadEntry {
-  path: string;
+  id: string;
+  ownerKey: string;
+  accountId: string;
+  fileUuid: string;
   fileName: string;
   status: DownloadEntryStatus;
   receivedBytes: number;
   totalBytes: number | null;
   startedAt: number;
-  updatedAt: number;
+  errorCode?: DownloadErrorCode;
+}
+
+export interface DownloadStartInput {
+  id: string;
+  ownerKey: string;
+  accountId: string;
+  fileUuid: string;
+  fileName: string;
+  status?: Extract<DownloadEntryStatus, "starting" | "downloading">;
 }
 
 export interface DownloadProgress {
@@ -18,9 +37,11 @@ export interface DownloadProgress {
 export interface DownloadState {
   entries: DownloadEntry[];
   duplicateRequestTick: number;
-  startDownload: (path: string, fileName: string) => boolean;
-  setProgress: (path: string, progress: DownloadProgress) => void;
-  finishDownload: (path: string, success: boolean) => void;
-  removeDownload: (path: string) => void;
+  startDownload: (input: DownloadStartInput) => boolean;
+  setProgress: (id: string, progress: DownloadProgress) => void;
+  finishDownload: (id: string, success: boolean, errorCode?: DownloadErrorCode) => void;
+  upsertDownload: (entry: DownloadEntry) => void;
+  replaceDownloads: (entries: readonly DownloadEntry[]) => void;
+  removeDownload: (id: string) => void;
   clearDownloads: () => void;
 }

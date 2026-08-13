@@ -29,6 +29,7 @@ import {
   resolveTrayIconFileName,
   TRAY_NAV_ROUTES,
 } from "./tray.lib";
+import { registerWorkspaceDownloadCoordinator } from "./workspace-downloads";
 
 /** Set at compile time via `ELECTRON_DISABLE_AUTO_UPDATE` in esbuild (`get-main-esbuild-define.mjs`). */
 declare const __ELECTRON_DISABLE_AUTO_UPDATE__: boolean;
@@ -765,6 +766,15 @@ app.whenReady().then(() => {
   configureSecurityPolicy();
   buildNativeMenu();
   registerIpcHandlers();
+  registerWorkspaceDownloadCoordinator({
+    ipcMain,
+    session: session.defaultSession,
+    shell,
+    downloadsPath: app.getPath("downloads"),
+    isDev: IS_DEV,
+    devServerUrl: DEV_SERVER_URL,
+    getMainWebContents: () => mainWindow?.webContents ?? null,
+  });
   if (!IS_AUTO_UPDATE_DISABLED) {
     configureAutoUpdater();
   }

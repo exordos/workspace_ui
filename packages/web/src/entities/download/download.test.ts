@@ -1,81 +1,134 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useDownloadStore } from "./download.model";
+import type { DownloadEntry, DownloadEntryStatus } from "./download.types";
 
-function resetStore() {
-  useDownloadStore.setState({
-    entries: [],
-    duplicateRequestTick: 0,
-  });
+function entry(
+  id: string,
+  status: DownloadEntryStatus = "downloaded",
+  overrides: Partial<DownloadEntry> = {},
+): DownloadEntry {
+  return {
+    id,
+    ownerKey: "owner-a",
+    accountId: "account-a",
+    fileUuid: `file-${id}`,
+    fileName: `${id}.pdf`,
+    status,
+    receivedBytes: 0,
+    totalBytes: null,
+    startedAt: 1,
+    ...overrides,
+  };
+}
+
+function resetStore(): void {
+  useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
 }
 
 describe("downloadStore", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
-  it("starts a new download entry", () => {
-    const started = useDownloadStore
-      .getState()
-      .startDownload("/user_uploads/1/report.pdf", "report.pdf");
+  it("starts and updates a browser fallback entry", () => {
+    const started = useDownloadStore.getState().startDownload({
+      id: "download-a",
+      ownerKey: "owner-a",
+      accountId: "account-a",
+      fileUuid: "file-a",
+      fileName: "report.pdf",
+    });
 
     expect(started).toBe(true);
-    const state = useDownloadStore.getState();
-    expect(state.entries).toHaveLength(1);
-    expect(state.entries[0]).toMatchObject({
-      path: "/user_uploads/1/report.pdf",
-      fileName: "report.pdf",
-      status: "downloading",
+    expect(useDownloadStore.getState().entries[0]).toMatchObject({
+      id: "download-a",
+      status: "starting",
       receivedBytes: 0,
       totalBytes: null,
     });
-  });
 
-  it("rejects duplicate start while the same path is downloading", () => {
-    useDownloadStore.getState().startDownload("/user_uploads/1/report.pdf", "report.pdf");
-    const startedDuplicate = useDownloadStore
-      .getState()
-      .startDownload("/user_uploads/1/report.pdf", "report.pdf");
-
-    const state = useDownloadStore.getState();
-    expect(startedDuplicate).toBe(false);
-    expect(state.entries).toHaveLength(1);
-    expect(state.duplicateRequestTick).toBe(1);
-  });
-
-  it("updates byte progress for active download", () => {
-    useDownloadStore.getState().startDownload("/user_uploads/1/report.pdf", "report.pdf");
-    useDownloadStore.getState().setProgress("/user_uploads/1/report.pdf", {
+    useDownloadStore.getState().setProgress("download-a", {
       receivedBytes: 512,
       totalBytes: 1024,
     });
-
-    expect(useDownloadStore.getState().entries[0]).toMatchObject({
-      receivedBytes: 512,
-      totalBytes: 1024,
-      status: "downloading",
-    });
-  });
-
-  it("marks download as finished", () => {
-    useDownloadStore.getState().startDownload("/user_uploads/1/report.pdf", "report.pdf");
-    useDownloadStore.getState().setProgress("/user_uploads/1/report.pdf", {
-      receivedBytes: 1024,
-      totalBytes: 1024,
-    });
-    useDownloadStore.getState().finishDownload("/user_uploads/1/report.pdf", true);
+    useDownloadStore.getState().finishDownload("download-a", true);
 
     expect(useDownloadStore.getState().entries[0]).toMatchObject({
       status: "downloaded",
-      receivedBytes: 1024,
+      receivedBytes: 512,
       totalBytes: 1024,
     });
   });
 
-  it("clears all entries", () => {
-    useDownloadStore.getState().startDownload("/user_uploads/1/report.pdf", "report.pdf");
-    useDownloadStore.getState().startDownload("/user_uploads/2/design.png", "design.png");
+  it("deduplicates active entries by owner and file UUID", () => {
+    useDownloadStore.getState().startDownload({
+      id: "download-a",
+      ownerKey: "owner-a",
+      accountId: "account-a",
+      fileUuid: "file-a",
+      fileName: "report.pdf",
+    });
+    const duplicate = useDownloadStore.getState().startDownload({
+      id: "download-b",
+      ownerKey: "owner-a",
+      accountId: "account-a",
+      fileUuid: "file-a",
+      fileName: "report.pdf",
+    });
+    const otherOwner = useDownloadStore.getState().startDownload({
+      id: "download-c",
+      ownerKey: "owner-b",
+      accountId: "account-b",
+      fileUuid: "file-a",
+      fileName: "report.pdf",
+    });
+
+    expect(duplicate).toBe(false);
+    expect(otherOwner).toBe(true);
+    expect(useDownloadStore.getState()).toMatchObject({ duplicateRequestTick: 1 });
+    expect(useDownloadStore.getState().entries).toHaveLength(2);
+  });
+
+  it("replaces and incrementally updates Electron state", () => {
+    useDownloadStore.getState().replaceDownloads([entry("a", "downloading"), entry("b")]);
+    useDownloadStore
+      .getState()
+      .upsertDownload(entry("a", "downloading", { receivedBytes: 25, totalBytes: 100 }));
+    useDownloadStore.getState().upsertDownload(entry("c", "starting"));
+
+    expect(useDownloadStore.getState().entries.map((item) => item.id)).toEqual(["c", "a", "b"]);
+    expect(useDownloadStore.getState().entries[1]).toMatchObject({ receivedBytes: 25 });
+  });
+
+  it("clears finished and failed entries without removing active entries", () => {
+    useDownloadStore
+      .getState()
+      .replaceDownloads([
+        entry("starting", "starting"),
+        entry("active", "downloading"),
+        entry("ready"),
+        entry("failed", "error"),
+      ]);
 
     useDownloadStore.getState().clearDownloads();
 
-    expect(useDownloadStore.getState().entries).toEqual([]);
+    expect(useDownloadStore.getState().entries.map((item) => item.id)).toEqual([
+      "starting",
+      "active",
+    ]);
+  });
+
+  it("limits only finished entries and never evicts active entries", () => {
+    const snapshot = [
+      entry("active-old", "downloading"),
+      ...Array.from({ length: 35 }, (_, index) => entry(`finished-${index}`)),
+      entry("active-new", "starting"),
+    ];
+
+    useDownloadStore.getState().replaceDownloads(snapshot);
+
+    const entries = useDownloadStore.getState().entries;
+    expect(entries.filter((item) => item.status === "downloaded")).toHaveLength(30);
+    expect(entries.map((item) => item.id)).toContain("active-old");
+    expect(entries.map((item) => item.id)).toContain("active-new");
   });
 });

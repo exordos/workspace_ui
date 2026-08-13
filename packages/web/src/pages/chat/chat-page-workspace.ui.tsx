@@ -14,7 +14,6 @@ import {
   useWorkspaceComposerDraftStore,
 } from "~/entities/composer-draft/composer-draft.model";
 import type { WorkspaceComposerDraftContent } from "~/entities/composer-draft/composer-draft.types";
-import { useDownloadStore } from "~/entities/download/download.model";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -80,6 +79,10 @@ import {
   extractWorkspaceComposerEditContent,
   type WorkspaceComposerExistingAttachment,
 } from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
+import {
+  deriveWorkspaceDownloadFileName,
+  startWorkspaceFileDownload,
+} from "~/features/workspace-file-download/workspace-file-download.lib";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { useWorkspaceMessageAnchorNavigation } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.hook";
 import type {
@@ -148,12 +151,6 @@ import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import { useWorkspaceTransientRenderKeys } from "./chat-page-workspace-transient-render-keys.hook";
-import {
-  deriveWorkspaceDownloadFileName,
-  parseWorkspaceDownloadTotalBytes,
-  triggerWorkspaceBrowserDownload,
-  workspaceFileDownloadKey,
-} from "./chat-workspace-file-download.lib";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
 interface WorkspaceChatPageProps {
@@ -2094,40 +2091,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
 
-      const downloadKey = workspaceFileDownloadKey(file.fileUuid);
-      const initialFileName = deriveWorkspaceDownloadFileName({
+      void startWorkspaceFileDownload({
+        runtimeContext,
         fileUuid: file.fileUuid,
         fileNameHint: file.name,
-      });
-      const downloadStore = useDownloadStore.getState();
-      if (!downloadStore.startDownload(downloadKey, initialFileName)) {
-        return;
-      }
-
-      void runWorkspaceAction(async (signal) => {
-        const result = await workspaceFileResourceCache.load({
-          ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-          runtimeGeneration: runtimeContext.runtimeGeneration,
-          fileUuid: file.fileUuid,
-          requestOptions: buildMessengerRequestOptions(runtimeContext),
-          signal,
-        });
-        const fileName = deriveWorkspaceDownloadFileName({
-          fileUuid: file.fileUuid,
-          fileNameHint: file.name,
-          contentDisposition: result.headers.get("content-disposition"),
-        });
-        const totalBytes =
-          parseWorkspaceDownloadTotalBytes(result.headers.get("content-length")) ??
-          result.blob.size;
-        useDownloadStore.getState().setProgress(downloadKey, {
-          receivedBytes: result.blob.size,
-          totalBytes,
-        });
-        triggerWorkspaceBrowserDownload(result.blob, fileName);
-        useDownloadStore.getState().finishDownload(downloadKey, true);
+        loadBrowserResource: (freshRuntimeContext) =>
+          runWorkspaceAction((signal) =>
+            workspaceFileResourceCache.load({
+              ownerKey: workspaceRuntimeOwnerKey(freshRuntimeContext),
+              runtimeGeneration: freshRuntimeContext.runtimeGeneration,
+              fileUuid: file.fileUuid,
+              requestOptions: buildMessengerRequestOptions(freshRuntimeContext),
+              signal,
+            }),
+          ),
       }).catch((error) => {
-        useDownloadStore.getState().finishDownload(downloadKey, false);
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setActionError(
             normalizeWorkspaceActionError(error, t("workspaceMessenger.fileDownloadFailed")),

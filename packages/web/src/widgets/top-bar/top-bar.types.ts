@@ -33,5 +33,10 @@ export interface TopBarSearchButtonProps {
 export interface TopBarDownloadRowProps {
   entry: DownloadEntry;
   statusLabel: string;
-  onRemove: (path: string) => void;
+  nativeActionsAvailable: boolean;
+  onCancel: (id: string) => void;
+  onOpen: (id: string) => void;
+  onReveal: (id: string) => void;
+  onRetry: (id: string) => void;
+  onRemove: (id: string) => void;
 }

@@ -112,6 +112,52 @@ interface ElectronRendererMemorySnapshot {
   };
 }
 
+type ElectronDownloadStatus = "starting" | "downloading" | "downloaded" | "error";
+type ElectronDownloadErrorCode =
+  | "start-timeout"
+  | "start-failed"
+  | "interrupted"
+  | "cancelled"
+  | "file-missing";
+
+interface ElectronDownloadEntry {
+  id: string;
+  ownerKey: string;
+  accountId: string;
+  fileUuid: string;
+  fileName: string;
+  status: ElectronDownloadStatus;
+  receivedBytes: number;
+  totalBytes: number | null;
+  startedAt: number;
+  errorCode?: ElectronDownloadErrorCode;
+}
+
+interface ElectronDownloadStartInput {
+  id: string;
+  ownerKey: string;
+  accountId: string;
+  fileUuid: string;
+  fileName: string;
+  organizationOrigin: string;
+  accessToken: string;
+}
+
+type ElectronDownloadStartResult =
+  | { ok: true; entry: ElectronDownloadEntry; reused: boolean }
+  | { ok: false; errorCode: "invalid-request" | "start-failed" };
+
+type ElectronDownloadCommandResult =
+  | { ok: true }
+  | {
+      ok: false;
+      errorCode: "invalid-request" | "not-found" | "not-ready" | "file-missing" | "open-failed";
+    };
+
+type ElectronDownloadChangedEvent =
+  | { type: "upsert"; entry: ElectronDownloadEntry }
+  | { type: "dismiss"; ids: string[] };
+
 declare module "zulip-js" {
   const init: (config: { realm: string; username: string; apiKey: string }) => Promise<unknown>;
   export default init;
@@ -181,6 +227,15 @@ interface ElectronAPI {
   logs: {
     append: (line: string) => Promise<boolean>;
     getFilePath: () => Promise<string | null>;
+  };
+  downloads: {
+    start: (input: ElectronDownloadStartInput) => Promise<ElectronDownloadStartResult>;
+    getSnapshot: () => Promise<ElectronDownloadEntry[]>;
+    cancel: (id: string) => Promise<ElectronDownloadCommandResult>;
+    open: (id: string) => Promise<ElectronDownloadCommandResult>;
+    reveal: (id: string) => Promise<ElectronDownloadCommandResult>;
+    dismiss: (ids: readonly string[]) => Promise<{ ok: true }>;
+    onChanged: (callback: (event: ElectronDownloadChangedEvent) => void) => () => void;
   };
   diagnostics?: {
     getMemorySnapshot: () => Promise<ElectronMainMemorySnapshot>;
