@@ -6,6 +6,39 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.11] — 2026-08-14
+
+### Changed
+
+- The message composer remembers whether its formatting toolbar is expanded and
+  uses a more compact, consistently aligned layout with refined manual resizing
+  and full-height controls.
+- Pinned streams stay ahead of unpinned streams in the sidebar, and expanding a
+  stream reveals active topics before completed topics with explicit staged
+  controls.
+- The About panel now focuses on the application version, update controls, and
+  open-source licenses instead of exposing low-level runtime details.
+- Release automation publishes Exordos elements only from release tags or an
+  explicit manual publish, and allows enough time for the current Linux artifact
+  bundle to reach the APT repository.
+
+### Fixed
+
+- Adding a quote while editing a message no longer exits the restored edit and
+  reply session.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.10`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The local messenger cache remains at schema version 7. No manual client or
+  server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.11`.
+- No manual migration is required.
+
 ## [0.4.10] — 2026-08-14
 
 ### Added

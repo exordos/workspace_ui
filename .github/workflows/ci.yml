@@ -350,7 +350,7 @@ jobs:
     # staying open to the internet.
     runs-on: [self-hosted, vm]
     if: github.ref_type == 'tag'
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       # This runner keeps its workspace between runs. Leftovers from an earlier
