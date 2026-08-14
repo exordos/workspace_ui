@@ -6,6 +6,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.12] — 2026-08-14
+
+### Changed
+
+- Desktop update installation now explains that the application will restart,
+  marks the install as an intentional quit before invoking Electron's updater,
+  and confirms the installed version with a success notification after restart.
+- Success notifications use a dedicated visual indicator and remain within the
+  viewport on narrow screens.
+
+### Fixed
+
+- Installing a downloaded desktop update no longer triggers the hide-to-tray
+  close guard or reopens the application through a concurrent second-instance
+  event, allowing the updater to replace the running application reliably.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.11`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The local messenger cache remains at schema version 7. No manual client or
+  server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.12`.
+- No manual migration is required.
+
 ## [0.4.11] — 2026-08-14
 
 ### Changed
