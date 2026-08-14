@@ -30,6 +30,7 @@ describe("ToastHost", () => {
     useToastStore.getState().push("Temporary", "success");
     render(<ToastHost />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("toast-success-icon")).toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(3000);
     });

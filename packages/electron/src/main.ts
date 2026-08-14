@@ -205,6 +205,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (_event, argv) => {
+    if (isQuitting) return;
+
     // Windows/Linux: deep link URL is in argv
     const url = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
     if (url) handleDeepLink(url);
@@ -1185,6 +1187,9 @@ function registerIpcHandlers(): void {
   });
   ipcMain.on("updater:install", () => {
     if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
+    // electron-updater closes windows before Electron emits app.before-quit.
+    // Mark this as a real quit so the tray close guard does not hide the window.
+    isQuitting = true;
     autoUpdater.quitAndInstall(false, true);
   });
 }

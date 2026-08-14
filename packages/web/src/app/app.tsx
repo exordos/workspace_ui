@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from "react-router-dom";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useInstalledAppUpdateToast } from "~/features/app-update/app-update-installation.hook";
 import { t } from "~/i18n/i18n";
 import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
@@ -60,6 +61,7 @@ const App: React.FC = () => {
   );
   const shortcutHelpSections = useMemo(() => buildShortcutHelpSections(), []);
   const { status: updateStatus, check: checkUpdates } = useAppUpdate();
+  useInstalledAppUpdateToast();
 
   const navigateToMessenger = useCallback(() => {
     const instanceId = useWorkspaceAuthStore.getState().getCurrentSession()?.instanceId ?? null;

@@ -20,7 +20,7 @@ export const ToastHost: React.FC = () => {
 
   const host = (
     <div
-      className="pointer-events-none fixed right-4 top-4 z-toast flex w-full max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed right-4 top-4 z-toast flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
       aria-live="polite"
       aria-atomic="false"
       data-testid="toast-host"

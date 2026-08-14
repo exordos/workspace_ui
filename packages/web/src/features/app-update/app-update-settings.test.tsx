@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "~/test/render";
+import { consumeInstalledAppUpdate } from "./app-update-installation.lib";
 import { shouldShowAppUpdateSettings } from "./app-update-settings.lib";
 import { AppUpdateSettings } from "./app-update-settings.ui";
 
@@ -17,6 +18,7 @@ describe("AppUpdateSettings", () => {
     checkSpy.mockReset();
     installSpy.mockReset();
     useAppUpdateMock.mockReset();
+    consumeInstalledAppUpdate("");
   });
 
   it.each([
@@ -43,7 +45,7 @@ describe("AppUpdateSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
 
     expect(checkSpy).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Install and restart" })).not.toBeInTheDocument();
   });
 
   it("shows a neutral status before the first update check", () => {
@@ -67,10 +69,16 @@ describe("AppUpdateSettings", () => {
     });
 
     renderWithProviders(<AppUpdateSettings />);
-    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    expect(
+      screen.getByText(
+        "Installation may take up to a minute. The application will restart automatically.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Install and restart" }));
 
     expect(installSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Update ready to install")).toBeInTheDocument();
+    expect(consumeInstalledAppUpdate("0.4.10")).toBe("0.4.10");
   });
 
   it("disables repeated checks while an update is downloading", () => {

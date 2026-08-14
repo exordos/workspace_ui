@@ -18,6 +18,14 @@ export const ToastItem = React.memo(function ToastItem({ toast, onDismiss }: Toa
       role="alert"
       className={`flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg ${variantClasses[toast.variant]}`}
     >
+      {toast.variant === "success" ? (
+        <span
+          className="bg-accent/15 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-accent"
+          data-testid="toast-success-icon"
+        >
+          <Icon name="check" size={14} />
+        </span>
+      ) : null}
       <p className="min-w-0 flex-1 leading-snug">{toast.message}</p>
       <button
         type="button"

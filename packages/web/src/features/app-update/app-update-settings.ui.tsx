@@ -5,6 +5,7 @@ import { env } from "~/shared/lib/env";
 import { useAppUpdate, type UpdateState } from "~/shared/lib/updater";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
+import { rememberPendingAppUpdate } from "./app-update-installation.lib";
 import { shouldShowAppUpdateSettings } from "./app-update-settings.lib";
 
 function getUpdateStatusText(
@@ -35,6 +36,10 @@ const AppUpdateSettingsContent: React.FC = () => {
   const update = useAppUpdate();
   const canCheck = update.status !== "checking" && update.status !== "downloading";
   const statusText = getUpdateStatusText(t, update);
+  const installUpdate = () => {
+    rememberPendingAppUpdate(update.version);
+    update.install();
+  };
 
   return (
     <section
@@ -53,9 +58,12 @@ const AppUpdateSettingsContent: React.FC = () => {
           </div>
         </div>
         {update.status === "ready" ? (
-          <Button type="button" size="sm" className="w-full" onClick={update.install}>
-            {t("update.install")}
-          </Button>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs leading-4 text-text-muted">{t("update.restartHint")}</p>
+            <Button type="button" size="sm" className="w-full" onClick={installUpdate}>
+              {t("update.installAndRestart")}
+            </Button>
+          </div>
         ) : (
           <Button
             type="button"

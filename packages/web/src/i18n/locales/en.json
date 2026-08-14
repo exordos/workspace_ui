@@ -1050,7 +1050,9 @@
     "available": "Version {{version}} available",
     "downloading": "Downloading update… {{percent}}%",
     "readyToInstall": "Update ready to install",
-    "install": "Update",
+    "installAndRestart": "Install and restart",
+    "restartHint": "Installation may take up to a minute. The application will restart automatically.",
+    "installedSuccessfully": "Update {{version}} installed successfully",
     "upToDate": "You're up to date",
     "error": "Failed to check updates",
     "currentVersion": "Current version: {{version}}"
