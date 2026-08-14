@@ -3,43 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { AppUpdateSettings } from "~/features/app-update/app-update-settings.ui";
 import { t } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import { env } from "~/shared/lib/env";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { getRuntime } from "~/shared/lib/pwa";
-import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
-
-function getBuildTypeLabel(): string {
-  return env.PROD ? t("settings.aboutBuildTypeRelease") : t("settings.aboutBuildTypeDebug");
-}
-
-function getRuntimeLabel(): string {
-  if (isWebView()) {
-    return t("settings.aboutRuntimeWebview");
-  }
-
-  const runtime = getRuntime();
-  if (runtime === "electron") return t("settings.aboutRuntimeElectron");
-  if (runtime === "pwa") return t("settings.aboutRuntimePwa");
-  return t("settings.aboutRuntimeBrowser");
-}
-
-function getPlatformLabel(): string {
-  if (typeof navigator === "undefined") {
-    return t("settings.aboutUnknown");
-  }
-
-  const userAgentDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } })
-    .userAgentData?.platform;
-
-  if (userAgentDataPlatform != null && userAgentDataPlatform.trim().length > 0) {
-    return userAgentDataPlatform;
-  }
-  return t("settings.aboutUnknown");
-}
 
 export const RightPanelAbout: React.FC = () => {
   const navigate = useNavigate();
@@ -49,14 +17,6 @@ export const RightPanelAbout: React.FC = () => {
     void navigate(withCurrentOrgRoute("/licenses"));
     rightDrawer?.setOpen(false);
   }, [navigate, rightDrawer]);
-
-  const technicalDetails = [
-    { label: t("settings.aboutEnvironment"), value: env.MODE },
-    { label: t("settings.aboutBuildType"), value: getBuildTypeLabel() },
-    { label: t("settings.aboutRuntime"), value: getRuntimeLabel() },
-    { label: t("settings.aboutPlatform"), value: getPlatformLabel() },
-    { label: t("settings.aboutBaseUrl"), value: env.BASE_URL || t("settings.aboutUnknown") },
-  ];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
@@ -77,20 +37,6 @@ export const RightPanelAbout: React.FC = () => {
           </section>
 
           <AppUpdateSettings />
-
-          <section className="rounded-xl border border-border-subtle bg-card-bg p-4">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">
-              {t("settings.aboutTechnicalDetails")}
-            </p>
-            <ul className="space-y-2">
-              {technicalDetails.map((detail) => (
-                <li key={detail.label} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-text-muted">{detail.label}</span>
-                  <span className="truncate text-text-primary">{detail.value}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
 
           <button
             type="button"

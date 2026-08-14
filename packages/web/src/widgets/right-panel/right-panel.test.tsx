@@ -135,6 +135,14 @@ describe("RightPanelShell", () => {
     expect(useSettingsStore.getState().notificationSound).toBe("digital");
   });
 
+  it("renders the about panel without user-facing technical details", () => {
+    renderWithProviders(<RightPanelShell mode="about" title="About" />);
+
+    expect(screen.getByText(t("settings.appVersion"))).toBeInTheDocument();
+    expect(screen.getByText(t("licenses.title"))).toBeInTheDocument();
+    expect(screen.queryByText("Technical details")).not.toBeInTheDocument();
+  });
+
   it("switches the stream and topic ordering mode from the user menu", () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
