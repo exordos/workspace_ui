@@ -398,13 +398,25 @@ describe("messenger sidebar selectors", () => {
     ).toBe(false);
   });
 
-  it("uses folder item unread and pinned order for selected folders", () => {
-    const rows = selectMessengerSidebarStreams(state(), {
-      organizationId: ORGANIZATION_ID,
-      projectId: PROJECT_ID,
-      selectedFolderUuid: FOLDER_A,
-      usersById: createUsersById(),
-    });
+  it("keeps a muted pinned stream above unpinned active streams", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream(),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Muted",
+            notificationMode: "muted",
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        usersById: createUsersById(),
+      },
+    );
 
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
     expect(rows[0]).toMatchObject({
@@ -445,13 +457,13 @@ describe("messenger sidebar selectors", () => {
           [FOLDER_A]: folder({
             items: [
               folder().items[0]!,
-              { ...folder().items[1]!, pinnedAt: DATE_B },
+              { ...folder().items[1]!, pinnedAt: null },
               {
                 ...folder().items[0]!,
                 uuid: FOLDER_ITEM_C,
                 streamUuid: STREAM_C,
                 conversationId: `stream:${STREAM_C}`,
-                pinnedAt: archivedMessageAt,
+                pinnedAt: null,
               },
             ],
           }),

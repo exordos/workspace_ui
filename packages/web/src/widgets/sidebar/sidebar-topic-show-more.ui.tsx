@@ -5,11 +5,13 @@ import {
   SIDEBAR_TOPIC_BAR_SPACER_CLASS,
   sidebarTopicShowMoreButtonClass,
 } from "./sidebar-chat-row-layout.lib";
+import type { SidebarTopicToggleAction } from "./sidebar-topic-collapse.lib";
 
 export interface SidebarTopicShowMoreButtonProps {
-  /** Full topic list is expanded. */
+  action: SidebarTopicToggleAction;
+  /** Some topics beyond the initial collapsed slice are visible. */
   expanded: boolean;
-  /** How many topics are currently hidden (for the parenthetical label). */
+  /** How many topics the next reveal action will show. */
   hiddenCount: number;
   onToggle: () => void;
   /** Match topic-row density when the sidebar is compact. */
@@ -17,16 +19,27 @@ export interface SidebarTopicShowMoreButtonProps {
 }
 
 export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonProps>(
-  function SidebarTopicShowMoreButton({ expanded, hiddenCount, onToggle, compact = false }) {
+  function SidebarTopicShowMoreButton({
+    action,
+    expanded,
+    hiddenCount,
+    onToggle,
+    compact = false,
+  }) {
     const label = useMemo(() => {
-      if (expanded) {
+      if (action === "collapse") {
         return t("channel.hideExtraTopics");
+      }
+      if (action === "showCompleted") {
+        return hiddenCount > 0
+          ? t("channel.showCompletedTopicsWithCount", { count: hiddenCount })
+          : t("channel.showCompletedTopics");
       }
       if (hiddenCount > 0) {
         return t("channel.showMoreTopicsWithCount", { count: hiddenCount });
       }
       return t("channel.showMoreTopics");
-    }, [expanded, hiddenCount]);
+    }, [action, hiddenCount]);
 
     return (
       <button
@@ -40,13 +53,13 @@ export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonP
         aria-expanded={expanded}
         aria-label={label}
       >
-        {/* Same bar gutter as topic rows so the label lines up with titles. */}
+        {/* Same bar gutter as topic rows; the button itself uses a tighter left inset. */}
         <span className={`flex min-w-0 flex-1 items-center ${compact ? "gap-2" : "gap-3"}`}>
           <span aria-hidden className={SIDEBAR_TOPIC_BAR_SPACER_CLASS} />
           <span className="min-w-0 truncate">{label}</span>
         </span>
         {/* Figma Arrow-b: instance height 16, viewBox 20 — Icon size={16} matches the shell. */}
-        {expanded ? (
+        {action === "collapse" ? (
           <Icon name="chevron-up" size={16} className="shrink-0 text-text-primary" />
         ) : (
           <Icon name="chevron-down" size={16} className="shrink-0 text-text-primary" />

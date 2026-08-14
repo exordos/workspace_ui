@@ -1,35 +1,51 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
-  getSidebarHiddenTopicCount,
-  getSidebarVisibleTopicCount,
+  resolveSidebarTopicCollapseState,
+  type SidebarTopicRevealLevel,
+  type SidebarTopicToggleAction,
 } from "./sidebar-topic-collapse.lib";
 
 /**
- * Local state for expanding the full channel topic list.
+ * Local state for revealing unfinished topics before completed topics.
  * The component unmounts when the channel collapses, so state resets automatically.
  */
-export function useSidebarTopicCollapse(totalTopics: number): {
-  allTopicsVisible: boolean;
+export function useSidebarTopicCollapse(topics: readonly { isDone: boolean }[]): {
+  expanded: boolean;
   hiddenCount: number;
-  showToggle: boolean;
+  toggleAction: SidebarTopicToggleAction | null;
   visibleCount: number;
-  toggleAllTopics: () => void;
+  toggleTopics: () => void;
 } {
-  const [allTopicsVisible, setAllTopicsVisible] = useState(false);
+  const [revealLevel, setRevealLevel] = useState<SidebarTopicRevealLevel>("collapsed");
+  const unfinishedTopics = useMemo(
+    () => topics.reduce((count, topic) => count + Number(!topic.isDone), 0),
+    [topics],
+  );
+  const collapseState = resolveSidebarTopicCollapseState(
+    topics.length,
+    unfinishedTopics,
+    revealLevel,
+  );
 
-  const hiddenCount = getSidebarHiddenTopicCount(totalTopics);
-  const showToggle = hiddenCount > 0;
-  const visibleCount = getSidebarVisibleTopicCount(totalTopics, allTopicsVisible);
-
-  const toggleAllTopics = useCallback(() => {
-    setAllTopicsVisible((prev) => !prev);
-  }, []);
+  const toggleTopics = useCallback(() => {
+    setRevealLevel((currentLevel) => {
+      const currentState = resolveSidebarTopicCollapseState(
+        topics.length,
+        unfinishedTopics,
+        currentLevel,
+      );
+      if (currentState.toggleAction === "showMore") return "unfinished";
+      if (currentState.toggleAction === "showCompleted") return "all";
+      if (currentState.toggleAction === "collapse") return "collapsed";
+      return currentLevel;
+    });
+  }, [topics.length, unfinishedTopics]);
 
   return {
-    allTopicsVisible,
-    hiddenCount,
-    showToggle,
-    visibleCount,
-    toggleAllTopics,
+    expanded: collapseState.expanded,
+    hiddenCount: collapseState.hiddenCount,
+    toggleAction: collapseState.toggleAction,
+    visibleCount: collapseState.visibleCount,
+    toggleTopics,
   };
 }

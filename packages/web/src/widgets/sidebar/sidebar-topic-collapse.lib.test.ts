@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  getSidebarHiddenTopicCount,
-  getSidebarVisibleTopicCount,
-  shouldTruncateSidebarTopics,
+  resolveSidebarTopicCollapseState,
   SIDEBAR_COLLAPSED_TOPIC_LIMIT,
 } from "./sidebar-topic-collapse.lib";
 
@@ -11,32 +9,51 @@ describe("sidebar-topic-collapse.lib", () => {
     expect(SIDEBAR_COLLAPSED_TOPIC_LIMIT).toBe(3);
   });
 
-  describe("getSidebarHiddenTopicCount", () => {
-    it("returns zero when topics fit the collapsed limit", () => {
-      expect(getSidebarHiddenTopicCount(0)).toBe(0);
-      expect(getSidebarHiddenTopicCount(3)).toBe(0);
+  it("reveals active topics before completed topics", () => {
+    expect(resolveSidebarTopicCollapseState(7, 5, "collapsed")).toEqual({
+      expanded: false,
+      hiddenCount: 2,
+      toggleAction: "showMore",
+      visibleCount: 3,
     });
-
-    it("returns overflow count above the collapsed limit", () => {
-      expect(getSidebarHiddenTopicCount(5)).toBe(2);
+    expect(resolveSidebarTopicCollapseState(7, 5, "unfinished")).toEqual({
+      expanded: true,
+      hiddenCount: 2,
+      toggleAction: "showCompleted",
+      visibleCount: 5,
+    });
+    expect(resolveSidebarTopicCollapseState(7, 5, "all")).toEqual({
+      expanded: true,
+      hiddenCount: 0,
+      toggleAction: "collapse",
+      visibleCount: 7,
     });
   });
 
-  describe("shouldTruncateSidebarTopics", () => {
-    it("truncates only when list is collapsed and has hidden topics", () => {
-      expect(shouldTruncateSidebarTopics(5, false)).toBe(true);
-      expect(shouldTruncateSidebarTopics(5, true)).toBe(false);
-      expect(shouldTruncateSidebarTopics(2, false)).toBe(false);
+  it("skips active reveal when all active topics fit in the initial three", () => {
+    expect(resolveSidebarTopicCollapseState(5, 2, "collapsed")).toEqual({
+      expanded: false,
+      hiddenCount: 2,
+      toggleAction: "showCompleted",
+      visibleCount: 3,
     });
   });
 
-  describe("getSidebarVisibleTopicCount", () => {
-    it("shows three topics while collapsed", () => {
-      expect(getSidebarVisibleTopicCount(10, false)).toBe(3);
+  it("offers collapse after revealing an active-only list", () => {
+    expect(resolveSidebarTopicCollapseState(5, 5, "unfinished")).toEqual({
+      expanded: true,
+      hiddenCount: 0,
+      toggleAction: "collapse",
+      visibleCount: 5,
     });
+  });
 
-    it("shows all topics after expand", () => {
-      expect(getSidebarVisibleTopicCount(10, true)).toBe(10);
+  it("hides the toggle when every topic fits in the initial three", () => {
+    expect(resolveSidebarTopicCollapseState(3, 2, "collapsed")).toEqual({
+      expanded: false,
+      hiddenCount: 0,
+      toggleAction: null,
+      visibleCount: 3,
     });
   });
 });

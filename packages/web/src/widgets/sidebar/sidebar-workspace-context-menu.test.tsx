@@ -8,6 +8,7 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
+import { t } from "~/i18n/i18n";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
@@ -103,6 +104,17 @@ function createStream(
     lastMessageCreatedAt: null,
     ...overrides,
   };
+}
+
+function createNamedTopic(title: string, index: number, isDone = false): MessengerSidebarTopicItem {
+  const topicUuid = `topic-${index}`;
+  return createTopic({
+    id: `topic:${STREAM_UUID}:${topicUuid}`,
+    topicUuid,
+    title,
+    isDone,
+    route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}/topic/${topicUuid}`,
+  });
 }
 
 function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
@@ -679,6 +691,77 @@ describe("WorkspaceSidebar context menu", () => {
     renderWorkspaceSidebar([createStream({ preview: null })]);
 
     expect(screen.queryByRole("link", { name: /latest update/i })).not.toBeInTheDocument();
+  });
+
+  it("reveals active topics before completed topics", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        topics: [
+          createNamedTopic("Active 1", 1),
+          createNamedTopic("Active 2", 2),
+          createNamedTopic("Active 3", 3),
+          createNamedTopic("Active 4", 4),
+          createNamedTopic("Active 5", 5),
+          createNamedTopic("Completed 1", 6, true),
+          createNamedTopic("Completed 2", 7, true),
+        ],
+      }),
+    ]);
+
+    expect(screen.getByText("#Active 3")).toBeInTheDocument();
+    expect(screen.queryByText("#Active 4")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Completed 1")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("channel.showMoreTopicsWithCount", { count: 2 }),
+      }),
+    );
+    expect(screen.getByText("#Active 5")).toBeInTheDocument();
+    expect(screen.queryByText("#Completed 1")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("channel.showCompletedTopicsWithCount", { count: 2 }),
+      }),
+    );
+    expect(screen.getByText("#Completed 1")).toBeInTheDocument();
+    expect(screen.getByText("#Completed 2")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("channel.hideExtraTopics"),
+      }),
+    );
+    expect(screen.queryByText("#Active 4")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Completed 1")).not.toBeInTheDocument();
+  });
+
+  it("offers completed topics immediately when active topics fit in the initial slice", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        topics: [
+          createNamedTopic("Active 1", 1),
+          createNamedTopic("Active 2", 2),
+          createNamedTopic("Completed 1", 3, true),
+          createNamedTopic("Completed 2", 4, true),
+          createNamedTopic("Completed 3", 5, true),
+        ],
+      }),
+    ]);
+
+    expect(screen.getByText("#Completed 1")).toBeInTheDocument();
+    expect(screen.queryByText("#Completed 2")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("channel.showCompletedTopicsWithCount", { count: 2 }),
+      }),
+    );
+    expect(screen.getByText("#Completed 2")).toBeInTheDocument();
+    expect(screen.getByText("#Completed 3")).toBeInTheDocument();
   });
 
   it("passes private chat type when adding a personal chat to a folder", async () => {

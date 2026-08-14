@@ -215,8 +215,8 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
     () => stream.topics.filter((topic) => workspaceTopicMatchesQuery(topic, normalizedQuery)),
     [normalizedQuery, stream.topics],
   );
-  const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
-    useSidebarTopicCollapse(topics.length);
+  const { expanded, hiddenCount, toggleAction, visibleCount, toggleTopics } =
+    useSidebarTopicCollapse(topics);
   const visibleTopics = topics.slice(0, visibleCount);
 
   return (
@@ -239,11 +239,12 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
           })}
         </div>
       ) : null}
-      {showToggle && (
+      {toggleAction != null && (
         <SidebarTopicShowMoreButton
-          expanded={allTopicsVisible}
+          action={toggleAction}
+          expanded={expanded}
           hiddenCount={hiddenCount}
-          onToggle={toggleAllTopics}
+          onToggle={toggleTopics}
           compact={compact}
         />
       )}

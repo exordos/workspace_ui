@@ -92,9 +92,9 @@ describe("SIDEBAR_TOPIC_LIST_CLASS", () => {
 });
 
 describe("sidebarTopicShowMoreButtonClass", () => {
-  it("matches Figma show-more strip: 38px left inset, 14/20 medium, inherits group fill", () => {
+  it("matches Figma show-more strip: 24px left inset, 14/20 medium, inherits group fill", () => {
     const classes = sidebarTopicShowMoreButtonClass(false);
-    expect(classes).toContain("pl-[38px]");
+    expect(classes).toContain("pl-6");
     expect(classes).toContain("pr-2");
     expect(classes).toContain("py-2");
     expect(classes).toContain("justify-between");
@@ -116,10 +116,11 @@ describe("sidebarTopicShowMoreButtonClass", () => {
     expect(sidebarTopicShowMoreButtonClass(true)).toContain("hover:bg-sidebar-hover");
   });
 
-  it("keeps the same left inset as topic cards", () => {
-    expect(sidebarTopicShowMoreButtonClass(false)).toContain("pl-[38px]");
+  it("uses a tighter left inset than topic cards so the label starts slightly left", () => {
+    expect(sidebarTopicShowMoreButtonClass(false)).toContain("pl-6");
+    expect(sidebarTopicShowMoreButtonClass(false)).not.toContain("pl-[38px]");
     expect(sidebarTopicRowLinkClass(false)).toContain("pl-[38px]");
-    expect(sidebarTopicShowMoreButtonClass(true)).toContain("pl-9");
+    expect(sidebarTopicShowMoreButtonClass(true)).toContain("pl-6");
     expect(sidebarTopicRowLinkClass(true)).toContain("pl-9");
   });
 });

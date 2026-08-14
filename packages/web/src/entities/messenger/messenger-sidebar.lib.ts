@@ -119,11 +119,11 @@ function compareSidebarStreams(
   b: MessengerSidebarStreamItem,
   sortMode: MessengerSidebarSortMode,
 ): number {
-  const groupCompare = streamGroupRank(a) - streamGroupRank(b);
-  if (groupCompare !== 0) return groupCompare;
-
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
+
+  const groupCompare = streamGroupRank(a) - streamGroupRank(b);
+  if (groupCompare !== 0) return groupCompare;
 
   if (sortMode === "unread_first" && streamGroupRank(a) === 0) {
     const unreadCompare =
