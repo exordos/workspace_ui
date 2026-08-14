@@ -4508,6 +4508,57 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("adds a reply tab without leaving restored Workspace reply editing", async () => {
+    const restoredMarkdown = [
+      `> [Alice](urn:user:${USER_UUID}) [wrote](urn:message:${MESSAGE_UUID}):`,
+      "> quoted A",
+      "",
+      "answer A",
+      "",
+      `> [Bob](urn:user:${USER_B_UUID}) [wrote](urn:message:${SECOND_MESSAGE_UUID}):`,
+      "> quoted B",
+      "",
+      "answer B",
+    ].join("\n");
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      {
+        ...createMessage(),
+        isOwn: true,
+        payload: { kind: "markdown", content: restoredMarkdown },
+      },
+      createSecondMessage(),
+      createThirdMessage(),
+    ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(2);
+    });
+
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(THIRD_MESSAGE_UUID);
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession?.preserveWorkspaceReplyContext).toBe(true);
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toEqual([
+        expect.objectContaining({ messageUuid: MESSAGE_UUID, answer: "answer A" }),
+        expect.objectContaining({ messageUuid: SECOND_MESSAGE_UUID, answer: "answer B" }),
+        expect.objectContaining({ messageUuid: THIRD_MESSAGE_UUID, answer: "" }),
+      ]);
+      expect(captured.composerProps?.outgoingBodyOverride).toContain(
+        `urn:quote:${THIRD_MESSAGE_UUID}`,
+      );
+    });
+  });
+
   it("restores a new quote reference from the source message and author stores", async () => {
     const restoredMarkdown = [
       `[Stale author](urn:quote:${SECOND_MESSAGE_UUID}?text=%20%20selected%20fragment%20%20)`,

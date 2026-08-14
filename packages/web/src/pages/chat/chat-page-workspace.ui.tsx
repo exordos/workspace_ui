@@ -1855,6 +1855,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const quote = resolveWorkspaceReplyQuote(messageUuid, selectedText);
       if (quote == null) return;
 
+      if (isRestoredWorkspaceReplyEdit) {
+        setRestoredWorkspaceReplySession((current) =>
+          current == null
+            ? current
+            : addWorkspaceReplyTab(current, quote, createWorkspaceReplyTabIdentity()),
+        );
+        setWorkspaceReplyTabFocusKeySuppressed(false);
+        return;
+      }
+
       setComposerEditMessageUuid(null);
       setComposerEditSession(null);
       setComposerEditAttachments([]);
@@ -1864,7 +1874,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         addWorkspaceReplyTab(current, quote, createWorkspaceReplyTabIdentity()),
       );
     },
-    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, setWorkspaceReplySession],
+    [
+      createWorkspaceReplyTabIdentity,
+      isRestoredWorkspaceReplyEdit,
+      resolveWorkspaceReplyQuote,
+      setWorkspaceReplySession,
+    ],
   );
 
   const handleClearReply = useCallback(
