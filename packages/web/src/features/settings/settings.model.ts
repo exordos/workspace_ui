@@ -66,6 +66,7 @@ function createDefaultSettings(): AppSettings {
     folderRailLayout: "vertical",
     showSystemFolders: true,
     chatListDensity: "standard",
+    composerToolbarExpanded: false,
     authIdleTimeout: "3d",
   };
 }
@@ -80,6 +81,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
+  composerToolbarExpanded: false,
   authIdleTimeout: "3d",
 };
 
@@ -151,6 +153,7 @@ function loadSettings(
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
+      composerToolbarExpanded: parsed.composerToolbarExpanded === true,
       authIdleTimeout: resolveAuthIdleTimeout(
         parsed.authIdleTimeout,
         FALLBACK_SETTINGS.authIdleTimeout,
@@ -183,6 +186,7 @@ interface SettingsState extends AppSettings {
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
   setChatListDensity: (density: ChatListDensity) => void;
+  setComposerToolbarExpanded: (expanded: boolean) => void;
   setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
   resetToDefaults: () => void;
 }
@@ -239,6 +243,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setChatListDensity", { chatListDensity });
     set({ chatListDensity });
     persistSettings({ ...get(), chatListDensity });
+  },
+
+  setComposerToolbarExpanded(composerToolbarExpanded) {
+    logStoreAction("settings", "setComposerToolbarExpanded", { composerToolbarExpanded });
+    set({ composerToolbarExpanded });
+    persistSettings({ ...get(), composerToolbarExpanded });
   },
 
   setAuthIdleTimeout(authIdleTimeout) {

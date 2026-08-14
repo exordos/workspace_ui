@@ -1,7 +1,24 @@
 /** Shared Tailwind class strings for composer toolbar and mode tabs. */
 
+/**
+ * Shared left inset for the compact expand toggle and the expanded toolbar
+ * collapse toggle. Compact input uses pl-3 (12px); the bottom toolbar must
+ * use the same inset so both 32px icons sit on one vertical axis.
+ */
+export const COMPOSER_LEADING_CONTROLS_INSET = "pl-3";
+/**
+ * Expanded toolbar must clear the send button (h-10 / 40px) plus the input-row
+ * gap-3 (12px). Keep this in sync if either size changes.
+ */
+export const COMPOSER_TOOLBAR_SEND_CLEARANCE = "mr-[52px]";
+
 /** Formatting toolbar icon/text buttons — uses shared icon hover contract (see app.styles.css). */
 export const TOOLBAR_BTN = "composer-toolbar-btn flex h-8 w-8 items-center justify-center";
+/**
+ * Link/B/I/S glyphs are narrower than the 32px hit area, so a group-level
+ * gap-2 looks emptier than attach/emoji. Sit this cluster flush.
+ */
+export const TOOLBAR_TEXT_STYLE_GROUP = "flex items-center gap-0";
 /** Text glyphs (B, I, S, 1.) inside the shared 32px button area. */
 export const TOOLBAR_GLYPH = "select-none text-[15px] font-medium leading-none text-current";
 /** Quote glyph (>) — punctuation metrics sit low; nudge up for optical centering in the button. */

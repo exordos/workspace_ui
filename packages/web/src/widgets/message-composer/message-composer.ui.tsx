@@ -10,6 +10,7 @@ import React, {
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import AlternateEmailSvg from "~/shared/assets/icons/composer-alternate-email.svg?react";
 import ChatSvg from "~/shared/assets/icons/composer-chat.svg?react";
@@ -30,7 +31,6 @@ import {
 import {
   AI_UNAVAILABLE_POPOVER_HEIGHT,
   AI_UNAVAILABLE_POPOVER_WIDTH,
-  COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX,
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX,
@@ -68,6 +68,10 @@ import {
 } from "./message-composer-reference.lib";
 import { useMessageComposerResize } from "./message-composer-resize.hook";
 import {
+  isComposerHeightButtonVisible,
+  isComposerResizeHandleVisible,
+} from "./message-composer-resize.lib";
+import {
   MessageComposerHeightButton,
   MessageComposerResizeHandle,
 } from "./message-composer-resize.ui";
@@ -76,7 +80,11 @@ import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { buildScheduledComposerMessage } from "./message-composer-schedule.lib";
 import { wrapSelection } from "./message-composer-selection.lib";
-import { TOOLBAR_BTN } from "./message-composer-styles.lib";
+import {
+  COMPOSER_LEADING_CONTROLS_INSET,
+  COMPOSER_TOOLBAR_SEND_CLEARANCE,
+  TOOLBAR_BTN,
+} from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
@@ -376,8 +384,10 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
     if (!expanded) return null;
 
     return (
-      <div data-testid="composer-toolbar-row" className="h-10 flex-shrink-0 overflow-x-auto pb-2">
-        <div className="flex w-max min-w-full items-center gap-3 pl-5">
+      <div data-testid="composer-toolbar-row" className="h-8 flex-shrink-0 overflow-x-auto">
+        <div
+          className={`flex w-max min-w-full items-center gap-2 ${COMPOSER_LEADING_CONTROLS_INSET}`}
+        >
           {toolbarToggle}
           <ComposerModeTabs mode={mode} onChange={onModeChange} showPreviewTab={showPreviewTab} />
 
@@ -436,7 +446,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   // Capabilities preserve the composer layout while deciding whether an action can hit the backend.
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
-  const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
+  const isToolbarExpanded = useSettingsStore((state) => state.composerToolbarExpanded);
+  const setToolbarExpanded = useSettingsStore((state) => state.setComposerToolbarExpanded);
   const [textareaContentHeight, setTextareaContentHeight] = useState(
     COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   );
@@ -1515,16 +1526,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     showAiMenuNotice(previewCapability);
   }, [mode, previewCapability, previewSupported, showAiMenuNotice]);
 
-  const resizeHandleVisible =
-    textareaContentHeight >= COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX ||
-    composerResize.height != null;
-  const heightButtonVisible =
-    textareaContentHeight >= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX ||
-    composerResize.height != null;
+  const resizeHandleVisible = isComposerResizeHandleVisible(
+    textareaContentHeight,
+    composerResize.height,
+  );
+  const heightButtonVisible = isComposerHeightButtonVisible(
+    textareaContentHeight,
+    composerResize.isFullHeight,
+  );
   const toolbarRow = (
     <MessageComposerToolbarRow
       expanded={isToolbarExpanded}
-      onExpandedChange={setIsToolbarExpanded}
+      onExpandedChange={setToolbarExpanded}
       mode={mode}
       onModeChange={handleModeChange}
       showPreviewTab={previewSupported}
@@ -1591,8 +1604,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     </div>
   );
   const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
-  // pl-3 instead of pl-5: slightly closer leading toolbar toggle, more width for the message body
-  const inputRowLayout = isCompactWriteMode ? "items-end gap-5 py-1 pl-3 pr-5" : "";
+  // Same leading inset as the expanded toolbar so expand/collapse stay on one axis.
+  const inputRowLayout = isCompactWriteMode
+    ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} pr-5`
+    : "";
   // Opaque reply chrome sits under overflow-visible; it must carry top radius itself.
   const replyChromeRoundsTop = !joinedTop && !isEditing;
 
@@ -1736,7 +1751,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
         <div className="flex min-h-0 flex-1 items-end gap-3">
           <div
-            className={`relative flex min-h-12 min-w-0 flex-1 flex-col overflow-visible rounded-xl bg-bg outline-none transition-[outline-color] focus-within:outline-1 focus-within:outline-offset-0 focus-within:outline-accent-soft ${
+            className={`relative flex min-h-10 min-w-0 flex-1 flex-col overflow-visible rounded-xl bg-bg outline-none transition-[outline-color] focus-within:outline-1 focus-within:outline-offset-0 focus-within:outline-accent-soft ${
               composerResize.height != null ? "self-stretch" : "self-end"
             }`}
           >
@@ -1756,7 +1771,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   <div className="flex min-h-0 min-w-0 flex-1 items-end gap-2 self-stretch">
                     {!isToolbarExpanded ? (
                       <MessageComposerCompactLeadingControls
-                        onExpandedChange={setIsToolbarExpanded}
+                        onExpandedChange={setToolbarExpanded}
                       />
                     ) : null}
                     {writeBody}
@@ -1804,13 +1819,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
               attachmentsBlockSend ||
               (isEditing && value.trim().length === 0 && (attachments?.length ?? 0) === 0)
             }
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}
           >
             <MessageComposerSendIcon className="text-on-accent" />
           </button>
         </div>
-        {isToolbarExpanded && <div className="mr-[60px] mt-2">{toolbarRow}</div>}
+        {isToolbarExpanded && (
+          <div className={`${COMPOSER_TOOLBAR_SEND_CLEARANCE} mt-1`}>{toolbarRow}</div>
+        )}
       </div>
     </div>
   );

@@ -75,6 +75,7 @@ describe("useSettingsStore", () => {
       expect(state.folderRailLayout).toBe("vertical");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.composerToolbarExpanded).toBe(false);
       expect(state.authIdleTimeout).toBe("3d");
     });
   });
@@ -141,6 +142,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setLanguage("ru");
       useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
+      useSettingsStore.getState().setComposerToolbarExpanded(true);
       useSettingsStore.getState().setAuthIdleTimeout("never");
 
       useSettingsStore.getState().resetToDefaults();
@@ -153,6 +155,7 @@ describe("useSettingsStore", () => {
       expect(state.language).toBe("en");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.composerToolbarExpanded).toBe(false);
       expect(state.authIdleTimeout).toBe("3d");
     });
 
@@ -229,6 +232,16 @@ describe("useSettingsStore", () => {
     });
   });
 
+  describe("setComposerToolbarExpanded", () => {
+    it("updates and persists toolbar expansion", () => {
+      useSettingsStore.getState().setComposerToolbarExpanded(true);
+
+      expect(useSettingsStore.getState().composerToolbarExpanded).toBe(true);
+      const raw = localStorage.getItem("workspace-settings");
+      expect(JSON.parse(raw!).composerToolbarExpanded).toBe(true);
+    });
+  });
+
   describe("setAuthIdleTimeout", () => {
     it("updates auth idle timeout", () => {
       useSettingsStore.getState().setAuthIdleTimeout("7d");
@@ -257,6 +270,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setFolderRailLayout("horizontal");
       useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
+      useSettingsStore.getState().setComposerToolbarExpanded(true);
       useSettingsStore.getState().setAuthIdleTimeout("7d");
 
       const raw = localStorage.getItem("workspace-settings");
@@ -268,6 +282,7 @@ describe("useSettingsStore", () => {
       expect(parsed.folderRailLayout).toBe("horizontal");
       expect(parsed.showSystemFolders).toBe(true);
       expect(parsed.chatListDensity).toBe("compact");
+      expect(parsed.composerToolbarExpanded).toBe(true);
       expect(parsed.authIdleTimeout).toBe("7d");
     });
   });
@@ -308,12 +323,13 @@ describe("useSettingsStore", () => {
       expect(useSettingsStore.getState().notificationSound).toBe("subtle");
     });
 
-    it("remembers notification sound and unread-priority flags per workspace owner", () => {
+    it("remembers settings per workspace owner", () => {
       setWorkspaceSessionScope("account-a");
 
       useSettingsStore.getState().setNotificationSound("glass");
       useSettingsStore.getState().setPrioritizePersonalUnread(true);
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(false);
+      useSettingsStore.getState().setComposerToolbarExpanded(true);
 
       useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
       useSettingsStore.getState().setNotificationSound("none");
@@ -323,11 +339,13 @@ describe("useSettingsStore", () => {
       expect(useSettingsStore.getState().notificationSound).toBe("none");
       expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(false);
       expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(useSettingsStore.getState().composerToolbarExpanded).toBe(false);
 
       useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
       expect(useSettingsStore.getState().notificationSound).toBe("glass");
       expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(true);
       expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(useSettingsStore.getState().composerToolbarExpanded).toBe(true);
     });
 
     it("reads legacy instance-scoped settings without writing back to legacy keys", () => {
@@ -401,6 +419,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("vertical");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
+    expect(state.composerToolbarExpanded).toBe(false);
     expect(state.authIdleTimeout).toBe("3d");
   });
 
@@ -416,6 +435,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("vertical");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
+    expect(state.composerToolbarExpanded).toBe(false);
     expect(state.authIdleTimeout).toBe("3d");
   });
 
@@ -431,6 +451,7 @@ describe("loadSettings (module reload)", () => {
         folderRailLayout: "horizontal",
         showSystemFolders: true,
         chatListDensity: "compact",
+        composerToolbarExpanded: true,
         authIdleTimeout: "never",
       }),
     );
@@ -445,6 +466,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("horizontal");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("compact");
+    expect(state.composerToolbarExpanded).toBe(true);
     expect(state.authIdleTimeout).toBe("never");
   });
 

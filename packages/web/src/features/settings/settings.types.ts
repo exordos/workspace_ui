@@ -22,5 +22,6 @@ export interface AppSettings {
   folderRailLayout: FolderRailLayout;
   showSystemFolders: boolean;
   chatListDensity: ChatListDensity;
+  composerToolbarExpanded: boolean;
   authIdleTimeout: AuthIdleTimeout;
 }

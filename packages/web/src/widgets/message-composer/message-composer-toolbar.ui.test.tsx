@@ -19,7 +19,10 @@ describe("FormattingToolbar", () => {
     );
 
     const toolbar = screen.getByRole("toolbar");
-    expect(toolbar).toHaveClass("gap-3");
+    expect(toolbar).toHaveClass("gap-2");
+    const textStyleGroup = screen.getByTestId("composer-text-style-group");
+    expect(textStyleGroup).toHaveClass("gap-0");
+    expect(textStyleGroup.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(4);
     expect(toolbar.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(10);
     for (const button of toolbar.querySelectorAll("button.composer-toolbar-btn")) {
       expect(button).toHaveClass("h-8", "w-8");

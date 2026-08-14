@@ -11,7 +11,7 @@ import NumberedListSvg from "~/shared/assets/icons/composer-list-numbered.svg?re
 import StrikethroughSvg from "~/shared/assets/icons/composer-strikethrough.svg?react";
 import VisibilitySvg from "~/shared/assets/icons/composer-visibility.svg?react";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
-import { TOOLBAR_BTN } from "./message-composer-styles.lib";
+import { TOOLBAR_BTN, TOOLBAR_TEXT_STYLE_GROUP } from "./message-composer-styles.lib";
 import type { FormattingToolbarProps } from "./message-composer.types";
 
 export const FormattingToolbar = React.memo<FormattingToolbarProps>(function FormattingToolbar({
@@ -130,7 +130,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-3"
+      className="flex min-w-0 flex-1 items-center gap-2"
       role="toolbar"
       aria-label={t("a11y.messageComposer")}
     >
@@ -147,53 +147,55 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
       {(hasMediaActions || hasAssistActions) && (
         <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       )}
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={link}
-        title={t("composer.link")}
-        aria-label={t("composer.link")}
-      >
-        <AddLinkSvg
-          width={24}
-          height={14.769}
-          className="text-current"
-          data-composer-icon="add-link"
-          aria-hidden
-        />
-      </button>
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={() => wrap("**")}
-        title={t("composer.bold")}
-        aria-label={t("composer.bold")}
-      >
-        <BoldSvg width={10.93} height={16.667} data-composer-icon="bold" aria-hidden />
-      </button>
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={() => wrap("*")}
-        title={t("composer.italic")}
-        aria-label={t("composer.italic")}
-      >
-        <ItalicSvg width={15.448} height={16.747} data-composer-icon="italic" aria-hidden />
-      </button>
-      <button
-        type="button"
-        className={TOOLBAR_BTN}
-        onClick={() => wrap("~~")}
-        title={t("composer.strikethrough")}
-        aria-label={t("composer.strikethrough")}
-      >
-        <StrikethroughSvg
-          width={25.333}
-          height={19.79}
-          data-composer-icon="strikethrough"
-          aria-hidden
-        />
-      </button>
+      <div className={TOOLBAR_TEXT_STYLE_GROUP} data-testid="composer-text-style-group">
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={link}
+          title={t("composer.link")}
+          aria-label={t("composer.link")}
+        >
+          <AddLinkSvg
+            width={24}
+            height={14.769}
+            className="text-current"
+            data-composer-icon="add-link"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={() => wrap("**")}
+          title={t("composer.bold")}
+          aria-label={t("composer.bold")}
+        >
+          <BoldSvg width={10.93} height={16.667} data-composer-icon="bold" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={() => wrap("*")}
+          title={t("composer.italic")}
+          aria-label={t("composer.italic")}
+        >
+          <ItalicSvg width={15.448} height={16.747} data-composer-icon="italic" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={() => wrap("~~")}
+          title={t("composer.strikethrough")}
+          aria-label={t("composer.strikethrough")}
+        >
+          <StrikethroughSvg
+            width={25.333}
+            height={19.79}
+            data-composer-icon="strikethrough"
+            aria-hidden
+          />
+        </button>
+      </div>
       <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       <button
         type="button"
