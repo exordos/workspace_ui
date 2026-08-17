@@ -42,7 +42,7 @@ describe("VISIBLE_MY_ACTIVITY", () => {
     ]);
   });
 
-  it("keeps compact activity glyphs inset inside the 28px hit target", () => {
+  it("keeps compact activity glyphs optically inset inside the Figma 24px icon frame", () => {
     expect(VISIBLE_MY_ACTIVITY.map((item) => [item.key, item.compactIconSize])).toEqual([
       ["inbox", 20],
       ["favorites", 18],

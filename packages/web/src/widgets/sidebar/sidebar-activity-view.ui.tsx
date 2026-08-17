@@ -31,23 +31,32 @@ export interface SidebarActivityViewProps {
   markedMessagesError?: string | null;
 }
 
-// Figma activity rail: 28×28 hit target, ~21px glyph (Exordos Core Frame 2087327346).
-const compactRowClass =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
-const compactRowActiveClass = "border border-border-subtle bg-card-bg-active text-text-primary";
-const compactBadgeClass = "pointer-events-none absolute right-0 top-0";
-const compactListItemClass = "relative h-7 w-7 shrink-0";
-/** Compact shell: icons scroll horizontally; chevron stays pinned outside the scroll viewport. */
-// gap-2.5 (10px): compact activity icon / chevron spacing from design review
-const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-2.5";
-const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
-const compactIconsListClass = "flex w-max flex-nowrap items-center gap-2.5";
 /**
- * Glyph size inside the 28px compact hit target.
- * Keep inset (~5px) so cropped/solid glyphs are not flush with the button edge.
+ * Compact My Activity rail (Figma 14484:31210).
+ * Activity cards share leftover width (`flex-1`); the chevron keeps a fixed 32px slot.
+ * Idle/active fills are mutually exclusive so Tailwind does not fight `bg-card-bg`.
+ *
+ * Figma icon nodes are 24×24 Material frames with optical padding. Our compact SVGs
+ * are cropped tight, so rendering them at 24px looks larger than the mockup.
+ * `compactIconSize` (18–20) restores that inset inside the 4px-padded card.
  */
-const COMPACT_ACTIVITY_ICON_SIZE_FALLBACK = 18;
+const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-2";
+const compactIconsListClass = "flex min-w-0 w-full flex-1 items-center gap-2";
+const compactListItemClass = "relative min-w-0 flex-1";
+const compactBadgeClass = "pointer-events-none absolute right-0 top-0";
+const compactButtonBaseClass =
+  "flex h-8 items-center justify-center rounded-lg p-1 transition-colors";
+const compactButtonIdleClass =
+  "bg-card-bg text-text-muted hover:bg-card-bg-active hover:text-text-primary";
+const compactButtonActiveClass = "bg-card-bg-active text-text-primary";
 const COMPACT_ACTIVITY_CHEVRON_SIZE = 16;
+
+function compactButtonClass(options: { stretch: boolean; active?: boolean }): string {
+  const widthClass = options.stretch ? "min-w-0 w-full" : "w-8 shrink-0";
+  const toneClass = options.active ? compactButtonActiveClass : compactButtonIdleClass;
+  return `${compactButtonBaseClass} ${toneClass} ${widthClass}`;
+}
+
 // Figma card: padding 8, gap 12, radius 8. Idle Card/base; hover → card-bg-active.
 const expandedRowBaseClass =
   "group flex w-full items-center gap-3 rounded-lg bg-card-bg p-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active";
@@ -104,6 +113,72 @@ function countForActivityKey(
 function badgeVariantForActivityKey(key: SidebarActivityItemKey): "muted" | "unread" {
   return key === "inbox" || key === "mentions" ? "unread" : "muted";
 }
+
+interface CompactActivityItemProps {
+  item: (typeof VISIBLE_MY_ACTIVITY)[number];
+  route: string;
+  isActive: boolean;
+  disabledReason?: string;
+  label: string;
+  count: number | null;
+  canShowCount: boolean;
+}
+
+const CompactActivityItem = React.memo<CompactActivityItemProps>(function CompactActivityItem({
+  item,
+  route,
+  isActive,
+  disabledReason,
+  label,
+  count,
+  canShowCount,
+}) {
+  const icon = (
+    <Icon name={item.compactIcon} size={item.compactIconSize} className="shrink-0 text-current" />
+  );
+  const badge =
+    canShowCount && count != null ? (
+      <span className={compactBadgeClass}>
+        <Badge
+          count={count}
+          variant={badgeVariantForActivityKey(item.key)}
+          size="sm"
+          textTone="primary"
+        />
+      </span>
+    ) : null;
+
+  return (
+    <li className={`${compactListItemClass} ${canShowCount ? "z-sticky" : ""}`}>
+      {disabledReason == null ? (
+        <>
+          <Link
+            to={route}
+            aria-label={label}
+            aria-current={isActive ? "page" : undefined}
+            className={compactButtonClass({ stretch: true, active: isActive })}
+          >
+            {icon}
+          </Link>
+          {badge}
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            aria-label={label}
+            aria-disabled
+            title={disabledReason}
+            className={`${compactButtonClass({ stretch: true })} opacity-60`}
+          >
+            {icon}
+          </button>
+          {badge}
+        </>
+      )}
+    </li>
+  );
+});
 
 export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
   open,
@@ -178,90 +253,36 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
       )}
       {!open && (
         <div className={compactRowShellClass}>
-          <div className={compactIconsScrollClass} data-testid="sidebar-activity-compact-scroll">
-            <ul
-              id={activityListId}
-              className={compactIconsListClass}
-              aria-label={t("nav.activity")}
-            >
-              {VISIBLE_MY_ACTIVITY.map((item) => {
-                const route = resolveActivityRoute(item.key);
-                const disabledReason = disabledItems[item.key];
-                const isActive = disabledReason == null && isActivityRouteActive(item.key);
-                const label = t(item.labelKey);
-                const count = countForActivityKey(item.key, counts);
-                const canShowCount =
-                  count != null &&
-                  count > 0 &&
-                  (item.key !== "markedMessages" || markedMessagesError == null);
-                return (
-                  <li
-                    key={`compact-${item.key}`}
-                    className={`${compactListItemClass} ${canShowCount ? "z-sticky" : ""}`}
-                  >
-                    {disabledReason == null ? (
-                      <>
-                        <Link
-                          to={route}
-                          aria-label={label}
-                          aria-current={isActive ? "page" : undefined}
-                          className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
-                        >
-                          <Icon
-                            name={item.compactIcon}
-                            size={item.compactIconSize ?? COMPACT_ACTIVITY_ICON_SIZE_FALLBACK}
-                            className="shrink-0 text-current"
-                          />
-                        </Link>
-                        {canShowCount && count != null && (
-                          <span className={compactBadgeClass}>
-                            <Badge
-                              count={count}
-                              variant={badgeVariantForActivityKey(item.key)}
-                              size="sm"
-                              textTone="primary"
-                            />
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          aria-label={label}
-                          aria-disabled={disabledReason != null}
-                          title={disabledReason}
-                          className={`${compactRowClass} ${disabledReason != null ? "opacity-60" : ""}`}
-                        >
-                          <Icon
-                            name={item.compactIcon}
-                            size={item.compactIconSize ?? COMPACT_ACTIVITY_ICON_SIZE_FALLBACK}
-                            className="shrink-0 text-current"
-                          />
-                        </button>
-                        {canShowCount && count != null && (
-                          <span className={compactBadgeClass}>
-                            <Badge
-                              count={count}
-                              variant={badgeVariantForActivityKey(item.key)}
-                              size="sm"
-                              textTone="primary"
-                            />
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          <ul id={activityListId} className={compactIconsListClass} aria-label={t("nav.activity")}>
+            {VISIBLE_MY_ACTIVITY.map((item) => {
+              const route = resolveActivityRoute(item.key);
+              const disabledReason = disabledItems[item.key];
+              const isActive = disabledReason == null && isActivityRouteActive(item.key);
+              const count = countForActivityKey(item.key, counts);
+              const canShowCount =
+                count != null &&
+                count > 0 &&
+                (item.key !== "markedMessages" || markedMessagesError == null);
+              return (
+                <CompactActivityItem
+                  key={`compact-${item.key}`}
+                  item={item}
+                  route={route}
+                  isActive={isActive}
+                  disabledReason={disabledReason}
+                  label={t(item.labelKey)}
+                  count={count}
+                  canShowCount={canShowCount}
+                />
+              );
+            })}
+          </ul>
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={false}
             aria-label={t("nav.activity")}
-            className={compactRowClass}
+            className={compactButtonClass({ stretch: false })}
             data-testid="sidebar-activity-compact-toggle"
           >
             <Icon
