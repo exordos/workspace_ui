@@ -6,6 +6,35 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.13] — 2026-08-17
+
+### Added
+
+- Electron clients now show a top-bar indicator while an application update is
+  available, downloading, or ready to install, with direct access to the update
+  controls in the About panel.
+
+### Changed
+
+- The compact activity rail uses balanced full-width controls, clearer active
+  states, and notification badges that remain aligned across sidebar widths.
+- Stream and topic notification controls use dedicated visual indicators for
+  default, muted, subscribed, unmuted, and followed states.
+- Message actions are presented through the contextual message menu instead of
+  a separate hover action strip, reducing visual noise around conversations.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.12`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The local messenger cache remains at schema version 7. No manual client or
+  server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.13`.
+- No manual migration is required.
+
 ## [0.4.12] — 2026-08-14
 
 ### Changed
