@@ -106,12 +106,14 @@ const ICONS: Record<string, IconSvgComponent> = {
   attach: AttachIcon,
   search: SearchIcon,
   selected_bookmark_icon: SelectedBookmarkIcon,
+  // Followed-topic waves — 28×28 padded to match Material notification frames
   topic_follow: TopicFollowIcon,
   topic_inherit: TopicInheritIcon,
   topic_mute: TopicMuteIcon,
   topic_unmute: TopicUnmuteIcon,
   star: StarIcon,
   pin: PinIcon,
+  // Material alternate_email — 28×28 padded frame (Figma 13072:28514)
   at: AtIcon,
   smile: SmileIcon,
   pen: PenIcon,
@@ -140,6 +142,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   profile: ProfileIcon,
   reply: ReplyIcon,
   close: CloseIcon,
+  // Material notifications / notifications_off — 28×28 padded (Figma 13072:28507 / 28503)
   bell: BellIcon,
   bell_off: BellOffIcon,
   block: BlockIcon,
