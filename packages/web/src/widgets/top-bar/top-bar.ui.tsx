@@ -14,6 +14,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { isWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
+import { TopBarAppUpdateIndicator } from "./top-bar-app-update-indicator.ui";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
 import { TopBarNotificationDev } from "./top-bar-notification-dev.ui";
 import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
@@ -132,6 +133,7 @@ export const TopBar: React.FC = () => {
             <TopBarNotificationDev />
             <TopBarSearchButton onOpenSearch={openSearchModal} />
             <TopBarDownloadCenter />
+            <TopBarAppUpdateIndicator />
             <TopBarProfileTrigger />
           </div>
         </div>
