@@ -2,19 +2,13 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
-import {
-  DropdownMenu,
-  type DropdownMenuContentProps,
-  type DropdownMenuItem,
-} from "~/shared/ui/dropdown-menu";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import type {
   WorkspaceMessageBubbleMenuProps,
   WorkspaceReactionEmojiPickerProps,
 } from "./workspace-message-bubble-menu.types";
 
-const MENU_TRIGGER_CLASS_NAME =
-  "hover:bg-sidebar-hover absolute -top-2 z-float rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-text-primary";
 const MENU_ITEM_CLASS_NAME =
   "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
 const REACTION_BUTTON_CLASS_NAME =
@@ -170,9 +164,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   message,
   isOwn,
   open,
-  source,
   contextAnchor,
-  onSourceChange,
   onOpenChange,
   onReplyMessage,
   onAddReplyMessage,
@@ -371,15 +363,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onToggleMessageReaction,
   ]);
 
-  const triggerContentProps = useMemo<DropdownMenuContentProps>(
-    () => ({
-      sideOffset: 4,
-      align: isOwn ? "end" : "start",
-    }),
-    [isOwn],
-  );
-
   return (
+    // Why: no hover ellipsis. The bubble opens this menu only via right-click / keyboard.
     <DropdownMenu
       open={open}
       onOpenChange={(nextOpen) => {
@@ -388,29 +373,14 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         }
         onOpenChange(nextOpen);
       }}
-      source={source}
-      onSourceChange={onSourceChange}
+      source="context"
       contextAnchor={contextAnchor}
-      trigger={
-        <button
-          type="button"
-          data-context-menu-trigger-source="trigger"
-          className={`${MENU_TRIGGER_CLASS_NAME} ${isOwn ? "-left-8" : "-right-8"}`}
-          aria-label={t("a11y.messageMenu")}
-          onPointerDown={() => {
-            onSourceChange("trigger");
-          }}
-        >
-          <Icon name="more" size={16} className="text-current" />
-        </button>
-      }
       items={menuItems}
       modal={false}
       contentVariant="message"
       itemClassName={MENU_ITEM_CLASS_NAME}
       submenuTriggerClassName={MENU_ITEM_CLASS_NAME}
       checkboxItemClassName={MENU_ITEM_CLASS_NAME}
-      triggerContentProps={triggerContentProps}
       contextContentProps={{
         sideOffset: 0,
         align: "start",

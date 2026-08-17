@@ -88,6 +88,24 @@ describe("Icon", () => {
     expect(path?.getAttribute("fill")).toBe("currentColor");
   });
 
+  it("keeps stream notification switch icons on padded 28×28 Material frames", () => {
+    // Figma 13072:28501 — 28×28 bounding box, glyph ~21px. Cropped 29×32 bells filled
+    // the lg segment (size={28} in a 36px button) and looked oversized.
+    // topic_follow uses the same padded frame so menu size={22} stays optically even.
+    const at = readFileSync(resolve(ICONS_DIR, "at.svg"), "utf8");
+    const bell = readFileSync(resolve(ICONS_DIR, "bell.svg"), "utf8");
+    const bellOff = readFileSync(resolve(ICONS_DIR, "bell_off.svg"), "utf8");
+    expect(at).toMatch(/viewBox="0 0 28 28"/);
+    expect(bell).toMatch(/viewBox="0 0 28 28"/);
+    expect(bellOff).toMatch(/viewBox="0 0 28 28"/);
+    expect(bell).not.toMatch(/viewBox="0 0 29 32"/);
+    expect(bellOff).not.toMatch(/viewBox="0 0 29 32"/);
+
+    const topicFollow = readFileSync(resolve(ICONS_DIR, "topic_follow.svg"), "utf8");
+    expect(topicFollow).toMatch(/viewBox="0 0 28 28"/);
+    expect(topicFollow).not.toMatch(/viewBox="0 0 16 16"/);
+  });
+
   it("uses tight Figma viewBoxes for edit-avatar camera/gallery/delete glyphs", () => {
     // Figma 12719:27019 / 12719:27025 / 12719:27525 — glyphs without 32px artboard padding,
     // otherwise size={24} draws icons noticeably smaller/heavier than neighbors.

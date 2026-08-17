@@ -419,14 +419,12 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const fileReferences = passiveContentEnabled ? renderedBody.fileReferences : [];
     const {
       menuOpen,
-      menuSource,
       contextMenuAnchor,
       getSelectedText,
       handleBodyClick,
       handleContextMenu,
       handleKeyDown,
       handleMenuOpenChange,
-      handleMenuSourceChange,
     } = useWorkspaceMessageBodyInteractions({
       bodyRef,
       renderedHtml: renderedBody.html,
@@ -515,7 +513,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     return (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
       <div
-        className={`group relative ${bubbleClassName}`}
+        className={`relative ${bubbleClassName}`}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-message-owner={owner}
@@ -530,9 +528,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             message={interactiveServerMessage}
             isOwn={isOwn}
             open={menuOpen}
-            source={menuSource}
             contextAnchor={contextMenuAnchor}
-            onSourceChange={handleMenuSourceChange}
             onOpenChange={handleMenuOpenChange}
             onReplyMessage={interactiveActions?.onReplyMessage}
             onAddReplyMessage={interactiveActions?.onAddReplyMessage}

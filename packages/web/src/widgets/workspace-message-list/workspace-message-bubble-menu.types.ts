@@ -1,8 +1,5 @@
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
-import type { DropdownMenuSource } from "~/shared/ui/dropdown-menu";
 import type { EmojiClickData } from "emoji-picker-react";
-
-export type WorkspaceMessageBubbleMenuSource = DropdownMenuSource;
 
 export interface WorkspaceMessageBubbleMenuAnchor {
   left: number;
@@ -13,9 +10,7 @@ export interface WorkspaceMessageBubbleMenuProps {
   message: MessengerMessage;
   isOwn: boolean;
   open: boolean;
-  source: WorkspaceMessageBubbleMenuSource;
   contextAnchor: WorkspaceMessageBubbleMenuAnchor | null;
-  onSourceChange: (source: WorkspaceMessageBubbleMenuSource) => void;
   onOpenChange: (open: boolean) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

@@ -20,7 +20,8 @@ export function isSidebarSystemFolderScope(folderId: string | undefined): boolea
  *
  * `icon` — expanded list on colored chips (filled / chip glyphs).
  * `compactIcon` — collapsed horizontal rail; outline (unfilled) glyphs.
- * `compactIconSize` — glyph px inside the 28×28 hit target (leave inset, not flush).
+ * `compactIconSize` — optical glyph px; compact SVGs are cropped tighter than
+ * Figma's padded 24×24 Material frames, so 18–20px matches the mockup.
  */
 export const MY_ACTIVITY = [
   {

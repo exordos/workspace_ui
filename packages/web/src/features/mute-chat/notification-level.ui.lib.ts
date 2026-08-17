@@ -43,18 +43,19 @@ export const NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES: Record<
   NotificationLevelSwitchSize,
   NotificationLevelSwitchSizeStyles
 > = {
-  // Half padding (p-0.5) for compact menus
+  // Menus: 22px on padded 28×28 frames ≈ 16px glyph — 14px looked undersized.
   sm: {
-    iconSize: 14,
+    iconSize: 22,
     containerClass: "flex gap-0.5 rounded-md bg-bg p-0.5",
     segmentButtonClass: "h-7 min-w-7 flex-1 rounded-md",
   },
   md: {
-    iconSize: 18,
+    iconSize: 24,
     containerClass: "flex gap-1 rounded-lg bg-bg p-1",
     segmentButtonClass: "h-8 min-w-8 flex-1 rounded-lg",
   },
-  // Info panel: 28px icons, 4px pad, 8px gap — button group height 44px (Figma)
+  // Info panel (Figma 13072:28501): 28px Material frames, 4px pad, 8px gap, 44px group.
+  // SVGs include optical padding (~21px glyph); do not crop the viewBox or they overfill.
   lg: {
     iconSize: 28,
     containerClass: "flex gap-2 rounded-lg bg-bg p-1",
@@ -85,8 +86,8 @@ export const STREAM_NOTIFICATION_LEVEL_OPTIONS: readonly NotificationLevelOption
 ];
 
 const TOPIC_VISIBILITY_OPTION_BY_LEVEL: Record<TopicVisibilityLevel, TopicVisibilityLevelOption> = {
-  muted: { level: "muted", icon: "topic_mute", labelKey: "channel.topicVisibilityMuted" },
-  inherit: { level: "inherit", icon: "topic_inherit", labelKey: "channel.topicVisibilityDefault" },
+  muted: { level: "muted", icon: "bell_off", labelKey: "channel.topicVisibilityMuted" },
+  inherit: { level: "inherit", icon: "bell", labelKey: "channel.topicVisibilityDefault" },
   unmuted: { level: "unmuted", icon: "at", labelKey: "channel.topicVisibilityUnmuted" },
   followed: {
     level: "followed",

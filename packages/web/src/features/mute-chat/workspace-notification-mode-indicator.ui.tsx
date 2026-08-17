@@ -27,7 +27,8 @@ function NotificationModeIndicator({
       title={label}
       data-testid="workspace-notification-mode-indicator"
     >
-      <Icon name={option.icon} size={12} className="text-current" />
+      {/* 16px on padded 28×28 frames ≈ old 12px cropped optical size */}
+      <Icon name={option.icon} size={16} className="text-current" />
     </span>
   );
 }
