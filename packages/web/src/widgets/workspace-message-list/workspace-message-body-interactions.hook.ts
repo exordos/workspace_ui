@@ -14,10 +14,7 @@ import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import type {
-  WorkspaceMessageBubbleMenuAnchor,
-  WorkspaceMessageBubbleMenuSource,
-} from "./workspace-message-bubble-menu.types";
+import type { WorkspaceMessageBubbleMenuAnchor } from "./workspace-message-bubble-menu.types";
 import type { WorkspaceMessageConversationReference } from "./workspace-message-list.types";
 
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
@@ -48,14 +45,26 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
 
 export interface UseWorkspaceMessageBodyInteractionsResult {
   menuOpen: boolean;
-  menuSource: WorkspaceMessageBubbleMenuSource;
   contextMenuAnchor: WorkspaceMessageBubbleMenuAnchor | null;
   getSelectedText: () => string | undefined;
   handleBodyClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   handleMenuOpenChange: (nextOpen: boolean) => void;
-  handleMenuSourceChange: (nextSource: WorkspaceMessageBubbleMenuSource) => void;
+}
+
+function resolveKeyboardContextMenuAnchor(
+  currentTarget: EventTarget,
+): WorkspaceMessageBubbleMenuAnchor {
+  // Why: Shift+F10 / ContextMenu have no cursor; pin the menu to the bubble edge.
+  if (currentTarget instanceof HTMLElement) {
+    const rect = currentTarget.getBoundingClientRect();
+    return {
+      left: rect.right,
+      top: rect.top + rect.height / 2,
+    };
+  }
+  return { left: 0, top: 0 };
 }
 
 function resolveSelectionInsideBody(bodyElement: HTMLDivElement | null): string | undefined {
@@ -300,7 +309,6 @@ export function useWorkspaceMessageBodyInteractions({
   onOpenUnsupportedFilePreview,
 }: UseWorkspaceMessageBodyInteractionsParams): UseWorkspaceMessageBodyInteractionsResult {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuSource, setMenuSource] = useState<WorkspaceMessageBubbleMenuSource>("trigger");
   const [contextMenuAnchor, setContextMenuAnchor] =
     useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
   const capturedSelectionRef = useRef<string | undefined>(undefined);
@@ -315,13 +323,6 @@ export function useWorkspaceMessageBodyInteractions({
     return capturedSelectionRef.current ?? resolveSelectionInsideBody(bodyRef.current);
   }, [bodyRef]);
 
-  const openTriggerMenu = useCallback(() => {
-    capturedSelectionRef.current = resolveSelectionInsideBody(bodyRef.current);
-    setContextMenuAnchor(null);
-    setMenuSource("trigger");
-    setMenuOpen(true);
-  }, [bodyRef]);
-
   const openContextMenuAt = useCallback(
     (clientX: number, clientY: number) => {
       capturedSelectionRef.current = resolveSelectionInsideBody(bodyRef.current);
@@ -329,7 +330,6 @@ export function useWorkspaceMessageBodyInteractions({
         left: clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
         top: clientY,
       });
-      setMenuSource("context");
       setMenuOpen(true);
     },
     [bodyRef],
@@ -445,11 +445,12 @@ export function useWorkspaceMessageBodyInteractions({
       }
 
       event.preventDefault();
-      openTriggerMenu();
+      const keyboardAnchor = resolveKeyboardContextMenuAnchor(event.currentTarget);
+      openContextMenuAt(keyboardAnchor.left, keyboardAnchor.top);
     },
     [
       onOpenUnsupportedFilePreview,
-      openTriggerMenu,
+      openContextMenuAt,
       requestWorkspaceFileDownload,
       requestWorkspaceMediaOpen,
     ],
@@ -459,13 +460,6 @@ export function useWorkspaceMessageBodyInteractions({
     setMenuOpen(nextOpen);
     if (!nextOpen) {
       capturedSelectionRef.current = undefined;
-      setContextMenuAnchor(null);
-    }
-  }, []);
-
-  const handleMenuSourceChange = useCallback((nextSource: WorkspaceMessageBubbleMenuSource) => {
-    setMenuSource(nextSource);
-    if (nextSource === "trigger") {
       setContextMenuAnchor(null);
     }
   }, []);
@@ -620,13 +614,11 @@ export function useWorkspaceMessageBodyInteractions({
 
   return {
     menuOpen,
-    menuSource,
     contextMenuAnchor,
     getSelectedText,
     handleBodyClick,
     handleContextMenu,
     handleKeyDown,
     handleMenuOpenChange,
-    handleMenuSourceChange,
   };
 }

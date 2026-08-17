@@ -112,10 +112,11 @@ function createOutgoingMessage(
 }
 
 function openWorkspaceMessageMenu(): void {
-  fireEvent.pointerDown(screen.getByLabelText("Message menu"), {
-    button: 0,
-    ctrlKey: false,
-  });
+  const bubble = document.querySelector("[data-workspace-message-bubble='true']");
+  if (bubble == null) {
+    throw new Error("Workspace message bubble not found");
+  }
+  fireEvent.contextMenu(bubble, { clientX: 120, clientY: 80 });
 }
 
 function selectMessageBodyText(
@@ -5172,7 +5173,7 @@ describe("WorkspaceMessageList", () => {
     ).toHaveAttribute("loading", "eager");
   });
 
-  it("opens the Workspace bubble menu from the trigger button", async () => {
+  it("does not render a hover ellipsis trigger and opens the menu from right click", async () => {
     const onReplyMessage = vi.fn();
     const onEditMessage = vi.fn();
     const onRequestDeleteMessage = vi.fn();
@@ -5200,9 +5201,13 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
+    expect(screen.queryByLabelText("Message menu")).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-context-menu-trigger-source="trigger"]'),
+    ).not.toBeInTheDocument();
+
     openWorkspaceMessageMenu();
 
-    expect(screen.getByLabelText("Message menu")).toHaveClass("hover:bg-sidebar-hover");
     expect(await screen.findByRole("menu")).toHaveClass("bg-bg-elevated");
     expect(await screen.findByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
