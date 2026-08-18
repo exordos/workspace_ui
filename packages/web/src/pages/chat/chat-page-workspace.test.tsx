@@ -1176,6 +1176,138 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("keeps ordinary older pagination classified for the full deferred request", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const pageRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      conversationId: string;
+      nextPageMarker: null;
+      hasMore: false;
+      pageLimit: number;
+    }>();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce());
+    act(() => {
+      updateTestConversationWindow(conversationId, { beforePageMarker: "older-page" });
+    });
+    await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
+    captured.loadWorkspaceMessages.mockReturnValueOnce(pageRequest.promise);
+
+    act(() => {
+      captured.messageListProps?.onLoadOlder();
+      captured.messageListProps?.onLoadOlder();
+    });
+
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(2));
+    expect(captured.loadWorkspaceMessages).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        conversationId,
+        pageMarker: "older-page",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.messageListProps?.messagesLoading).toBe(false);
+    expect(captured.messageListProps?.isLoadingOlder).toBe(true);
+
+    await act(async () => {
+      pageRequest.resolve({
+        status: "applied",
+        ownerKey: "owner-key",
+        conversationId,
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: 50,
+      });
+      await pageRequest.promise;
+    });
+    await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(false));
+  });
+
+  it("does not let a canceled older request clear a newer conversation request", async () => {
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    const oldRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      conversationId: string;
+      nextPageMarker: null;
+      hasMore: false;
+      pageLimit: number;
+    }>();
+    const newRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      conversationId: string;
+      nextPageMarker: null;
+      hasMore: false;
+      pageLimit: number;
+    }>();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce());
+    act(() => {
+      updateTestConversationWindow(topicConversationId, { beforePageMarker: "topic-older" });
+    });
+    captured.loadWorkspaceMessages.mockReturnValueOnce(oldRequest.promise);
+    act(() => {
+      captured.messageListProps?.onLoadOlder();
+    });
+    await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(true));
+    const oldSignal = captured.loadWorkspaceMessages.mock.calls[1]?.[0].signal;
+    const streamMessage = createMessage();
+    streamMessage.conversationId = streamConversationId;
+
+    act(() => {
+      replaceTestConversationWindow(streamConversationId, [streamMessage], {
+        beforePageMarker: "stream-older",
+      });
+      void navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(streamConversationId),
+    );
+    expect(oldSignal?.aborted).toBe(true);
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
+    captured.loadWorkspaceMessages.mockReturnValueOnce(newRequest.promise);
+    act(() => {
+      captured.messageListProps?.onLoadOlder();
+    });
+    await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(true));
+
+    await act(async () => {
+      oldRequest.resolve({
+        status: "applied",
+        ownerKey: "owner-key",
+        conversationId: topicConversationId,
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: 50,
+      });
+      await oldRequest.promise;
+    });
+    expect(captured.messageListProps?.isLoadingOlder).toBe(true);
+
+    await act(async () => {
+      newRequest.resolve({
+        status: "applied",
+        ownerKey: "owner-key",
+        conversationId: streamConversationId,
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: 50,
+      });
+      await newRequest.promise;
+    });
+    await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(false));
+  });
+
   it("aborts an in-flight latest-window request when scrolling cancels the intent", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
