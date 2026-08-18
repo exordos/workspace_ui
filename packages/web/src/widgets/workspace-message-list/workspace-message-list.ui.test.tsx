@@ -2158,6 +2158,107 @@ describe("WorkspaceMessageList", () => {
     }
   });
 
+  it.each([
+    { label: "without StrictMode", strictMode: false },
+    { label: "with StrictMode", strictMode: true },
+  ])("tracks user movement during deferred prepend $label", ({ strictMode }) => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "deferred-prepend-target" });
+    const realtime = createWorkspaceMessage({
+      uuid: "deferred-prepend-realtime",
+      createdAt: "2026-07-03T09:01:00.000Z",
+      updatedAt: "2026-07-03T09:01:00.000Z",
+    });
+    const older = createWorkspaceMessage({
+      uuid: "deferred-prepend-older",
+      createdAt: "2026-07-03T08:59:00.000Z",
+      updatedAt: "2026-07-03T08:59:00.000Z",
+    });
+    const focusTarget = {
+      intentId: 104,
+      messageUuid: target.uuid,
+      focusAttempt: 0,
+    };
+    const renderList = (
+      messages: readonly MessengerMessage[],
+      initialPositionReady: boolean,
+      isLoadingOlder: boolean,
+    ) => {
+      const list = (
+        <WorkspaceMessageList
+          messages={messages}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={initialPositionReady}
+          focusedMessageTarget={focusTarget}
+          hasOlderMessages
+          isLoadingOlder={isLoadingOlder}
+          onLoadOlder={onLoadOlder}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      );
+      return strictMode ? <StrictMode>{list}</StrictMode> : list;
+    };
+
+    try {
+      const { container, rerender } = render(renderList([target], false, false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='deferred-prepend-target']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected deferred prepend nodes");
+      let scrollHeight = 1000;
+      let targetDocumentTop = 90;
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop - feed.scrollTop + 40,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+      rerender(renderList([target], true, false));
+      while (scheduledFrames.length > 0) scheduledFrames.shift()?.(0);
+
+      feed.scrollTop = 50;
+      fireEvent.wheel(feed, { deltaY: -1 });
+      fireEvent.scroll(feed);
+      expect(onLoadOlder).toHaveBeenCalledOnce();
+
+      rerender(renderList([target], true, true));
+      feed.scrollTop = 20;
+      fireEvent.scroll(feed);
+
+      scrollHeight = 1040;
+      rerender(renderList([target, realtime], true, true));
+      scrollHeight = 1240;
+      targetDocumentTop = 290;
+      rerender(renderList([older, target, realtime], true, true));
+
+      expect(feed.scrollTop).toBe(220);
+      expect(container.querySelector("[data-message-uuid='deferred-prepend-target']")).toBe(
+        targetNode,
+      );
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
   it("keeps the StrictMode anchor handoff scroll inside one programmatic window", () => {
     const scheduledFrames: FrameRequestCallback[] = [];
     const requestFrame = vi

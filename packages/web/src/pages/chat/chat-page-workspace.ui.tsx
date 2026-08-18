@@ -197,6 +197,17 @@ interface WorkspaceAnchorPaginationRequest {
   token: symbol;
 }
 
+interface WorkspaceConversationPaginationState {
+  conversationId: MessengerConversationId;
+  direction: "before";
+  marker: string;
+  requestToken: symbol;
+}
+
+interface WorkspaceConversationPaginationRequest extends WorkspaceConversationPaginationState {
+  controller: AbortController | null;
+}
+
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
@@ -464,6 +475,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const [windowPaginationErrorDirection, setWindowPaginationErrorDirection] = useState<
     "before" | "after" | null
   >(null);
+  const [conversationPaginationState, setConversationPaginationState] =
+    useState<WorkspaceConversationPaginationState | null>(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [composerEditAttachments, setComposerEditAttachments] = useState<
@@ -506,6 +519,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const cancelAnchorTailRef = useRef<() => void>(noop);
   const anchorPaginationRequestRef = useRef<WorkspaceAnchorPaginationRequest | null>(null);
   const cancelAnchorPaginationRef = useRef<() => void>(noop);
+  const conversationPaginationRequestRef = useRef<WorkspaceConversationPaginationRequest | null>(
+    null,
+  );
   const pendingTailBaseRouteRef = useRef<{
     baseRoute: string;
     sourceLocationKey: string;
@@ -2218,6 +2234,27 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const anchorPaginationScopeKey =
     focusedAnchorIntentId == null ? null : `${tailRequestScopeKey}:${focusedAnchorIntentId}`;
 
+  const cancelActiveConversationPagination = useCallback(() => {
+    const request = conversationPaginationRequestRef.current;
+    if (request == null) return;
+    conversationPaginationRequestRef.current = null;
+    request.controller?.abort();
+    setConversationPaginationState((current) =>
+      current?.requestToken === request.requestToken ? null : current,
+    );
+  }, []);
+  useLayoutEffect(() => {
+    return () => {
+      cancelActiveConversationPagination();
+    };
+  }, [
+    cancelActiveConversationPagination,
+    conversationId,
+    hasAnchorRoute,
+    ownerKey,
+    runtimeContext?.runtimeGeneration,
+  ]);
+
   const cancelActiveAnchorPagination = useCallback(() => {
     const request = anchorPaginationRequestRef.current;
     setWindowPaginationErrorDirection(null);
@@ -2302,7 +2339,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
 
   const handleLoadOlder = useCallback(() => {
-    if (runtimeContext == null || conversationId == null || messagesStatus.loading) return;
+    if (
+      runtimeContext == null ||
+      conversationId == null ||
+      messagesStatus.loading ||
+      conversationPaginationRequestRef.current != null
+    )
+      return;
 
     if (hasAnchorRoute) {
       if (focusedAnchorIntentId == null || beforePageMarker == null) return;
@@ -2310,19 +2353,44 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       return;
     }
 
-    if (!messagesStatus.hasMore || messagesStatus.nextPageMarker == null) {
-      return;
-    }
+    const marker = messagesStatus.nextPageMarker;
+    if (!messagesStatus.hasMore || marker == null) return;
 
-    void runWorkspaceAction((signal) =>
-      loadMessengerConversationMessages({
-        runtimeContext,
-        conversationId,
-        pageMarker: messagesStatus.nextPageMarker ?? undefined,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        signal,
-      }),
-    );
+    const requestToken = Symbol("conversation-pagination-request");
+    const requestState: WorkspaceConversationPaginationState = {
+      conversationId,
+      direction: "before",
+      marker,
+      requestToken,
+    };
+    conversationPaginationRequestRef.current = { ...requestState, controller: null };
+    setConversationPaginationState(requestState);
+    void runWorkspaceAction(
+      (signal) =>
+        loadMessengerConversationMessages({
+          runtimeContext,
+          conversationId,
+          pageMarker: marker,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+        }),
+      {
+        onController: (controller) => {
+          const request = conversationPaginationRequestRef.current;
+          if (request?.requestToken !== requestToken) {
+            controller.abort();
+            return;
+          }
+          request.controller = controller;
+        },
+      },
+    ).finally(() => {
+      if (conversationPaginationRequestRef.current?.requestToken !== requestToken) return;
+      conversationPaginationRequestRef.current = null;
+      setConversationPaginationState((current) =>
+        current?.requestToken === requestToken ? null : current,
+      );
+    });
   }, [
     beforePageMarker,
     conversationId,
@@ -2915,9 +2983,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             })}
             onLoadOlder={handleLoadOlder}
             isLoadingOlder={
-              messagesStatus.loading &&
               routeMessages.length > 0 &&
-              windowPaginationDirection === "before"
+              ((!hasAnchorRoute &&
+                conversationPaginationState?.conversationId === selection.conversationId &&
+                conversationPaginationState.direction === "before") ||
+                (messagesStatus.loading && windowPaginationDirection === "before"))
             }
             isLoadingNewer={
               messagesStatus.loading &&

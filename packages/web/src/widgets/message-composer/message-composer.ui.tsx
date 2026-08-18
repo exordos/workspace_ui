@@ -6,6 +6,7 @@ import React, {
   useLayoutEffect,
   useEffect,
   useId,
+  type ReactNode,
 } from "react";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
@@ -81,6 +82,9 @@ import { MessageComposerSchedulePopover } from "./message-composer-schedule-popo
 import { buildScheduledComposerMessage } from "./message-composer-schedule.lib";
 import { wrapSelection } from "./message-composer-selection.lib";
 import {
+  COMPOSER_COMPACT_INLINE_FIELD_GAP,
+  COMPOSER_COMPACT_RAIL_FIELD_GAP,
+  COMPOSER_COMPACT_RAIL_STACK,
   COMPOSER_LEADING_CONTROLS_INSET,
   COMPOSER_TOOLBAR_SEND_CLEARANCE,
   TOOLBAR_BTN,
@@ -162,16 +166,28 @@ interface MessageComposerToolbarRowProps {
 
 interface MessageComposerCompactLeadingControlsProps {
   onExpandedChange: (expanded: boolean) => void;
+  verticalRail: boolean;
+  railActions: ReactNode;
 }
 
 const MessageComposerCompactLeadingControls =
   React.memo<MessageComposerCompactLeadingControlsProps>(
-    function MessageComposerCompactLeadingControls({ onExpandedChange }) {
+    function MessageComposerCompactLeadingControls({
+      onExpandedChange,
+      verticalRail,
+      railActions,
+    }) {
       return (
         <div
           data-testid="composer-compact-controls"
-          className="mb-1 flex flex-shrink-0 items-center self-end"
+          className={
+            verticalRail
+              ? COMPOSER_COMPACT_RAIL_STACK
+              : "mb-1 flex flex-shrink-0 items-center self-end"
+          }
         >
+          {/* Rail actions first so the formatting toggle stays the bottom-most icon. */}
+          {verticalRail ? railActions : null}
           <button
             type="button"
             className={`${TOOLBAR_BTN} text-composer-icon`}
@@ -187,7 +203,7 @@ const MessageComposerCompactLeadingControls =
     },
   );
 
-interface MessageComposerCompactTrailingControlsProps {
+interface MessageComposerCompactActionControlsProps {
   disabled: boolean;
   uploadSupported: boolean;
   uploadCapability: MessageComposerActionCapability;
@@ -195,11 +211,12 @@ interface MessageComposerCompactTrailingControlsProps {
   onToggleMediaPicker: () => void;
   emojiButtonRef: React.RefObject<HTMLButtonElement | null>;
   emojiPickerOpen: boolean;
+  verticalRail?: boolean;
 }
 
-const MessageComposerCompactTrailingControls =
-  React.memo<MessageComposerCompactTrailingControlsProps>(
-    function MessageComposerCompactTrailingControls({
+const MessageComposerCompactSecondaryActionControls =
+  React.memo<MessageComposerCompactActionControlsProps>(
+    function MessageComposerCompactSecondaryActionControls({
       disabled,
       uploadSupported,
       uploadCapability,
@@ -207,6 +224,7 @@ const MessageComposerCompactTrailingControls =
       onToggleMediaPicker,
       emojiButtonRef,
       emojiPickerOpen,
+      verticalRail = false,
     }) {
       const attachLabel = resolveToolbarActionLabel(
         uploadSupported,
@@ -216,8 +234,12 @@ const MessageComposerCompactTrailingControls =
 
       return (
         <div
-          data-testid="composer-compact-trailing-controls"
-          className="mb-1 flex flex-shrink-0 items-center gap-2 self-end"
+          data-testid={
+            verticalRail ? "composer-compact-rail-actions" : "composer-compact-trailing-controls"
+          }
+          className={`flex flex-shrink-0 ${
+            verticalRail ? "flex-col gap-1" : "mb-1 items-center gap-2 self-end"
+          }`}
         >
           <button
             type="button"
@@ -1534,6 +1556,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     textareaContentHeight,
     composerResize.isFullHeight,
   );
+  const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
+  const compactControlRailVisible = isCompactWriteMode && heightButtonVisible;
   const toolbarRow = (
     <MessageComposerToolbarRow
       expanded={isToolbarExpanded}
@@ -1568,7 +1592,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const writeBody = (
     <div
       key="composer-write-body"
-      className="relative flex min-h-0 min-w-0 flex-1 items-center self-stretch"
+      className={`relative flex min-h-0 min-w-0 flex-1 self-stretch ${
+        compactControlRailVisible ? "items-end" : "items-center"
+      }`}
     >
       <MessageComposerWriteBody
         value={value}
@@ -1598,15 +1624,28 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         isEditing={isEditing}
         onCancelEdit={onCancelEdit}
         fillAvailableHeight={composerResize.height != null}
-        reserveExpandControlSpace={isToolbarExpanded && heightButtonVisible}
+        reserveExpandControlSpace={heightButtonVisible && !compactControlRailVisible}
         compactInline={!isToolbarExpanded}
       />
     </div>
   );
-  const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
+  const compactSecondaryActions = isCompactWriteMode ? (
+    <MessageComposerCompactSecondaryActionControls
+      disabled={disabled}
+      uploadSupported={uploadSupported}
+      uploadCapability={uploadCapability}
+      onAttachClick={handleAttachClick}
+      onToggleMediaPicker={() => toggleMediaPicker("emoji")}
+      emojiButtonRef={emojiButtonRef}
+      emojiPickerOpen={mediaPickerOpen && mediaPickerTab === "emoji"}
+      verticalRail={compactControlRailVisible}
+    />
+  ) : null;
   // Same leading inset as the expanded toolbar so expand/collapse stay on one axis.
   const inputRowLayout = isCompactWriteMode
-    ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} pr-5`
+    ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} ${
+        compactControlRailVisible ? "pr-2" : "pr-5"
+      }`
     : "";
   // Opaque reply chrome sits under overflow-visible; it must carry top radius itself.
   const replyChromeRoundsTop = !joinedTop && !isEditing;
@@ -1768,25 +1807,25 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             >
               {mode === "write" ? (
                 <>
-                  <div className="flex min-h-0 min-w-0 flex-1 items-end gap-2 self-stretch">
+                  <div
+                    className={`flex min-h-0 min-w-0 flex-1 items-end self-stretch ${
+                      compactControlRailVisible
+                        ? COMPOSER_COMPACT_RAIL_FIELD_GAP
+                        : COMPOSER_COMPACT_INLINE_FIELD_GAP
+                    }`}
+                  >
                     {!isToolbarExpanded ? (
                       <MessageComposerCompactLeadingControls
                         onExpandedChange={setToolbarExpanded}
+                        verticalRail={compactControlRailVisible}
+                        railActions={compactSecondaryActions}
                       />
                     ) : null}
                     {writeBody}
                   </div>
-                  {!isToolbarExpanded ? (
-                    <MessageComposerCompactTrailingControls
-                      disabled={disabled}
-                      uploadSupported={uploadSupported}
-                      uploadCapability={uploadCapability}
-                      onAttachClick={handleAttachClick}
-                      onToggleMediaPicker={() => toggleMediaPicker("emoji")}
-                      emojiButtonRef={emojiButtonRef}
-                      emojiPickerOpen={mediaPickerOpen && mediaPickerTab === "emoji"}
-                    />
-                  ) : null}
+                  {!isToolbarExpanded && !compactControlRailVisible
+                    ? compactSecondaryActions
+                    : null}
                 </>
               ) : (
                 <MessageComposerPreviewBody
