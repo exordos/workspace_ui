@@ -56,7 +56,6 @@ jobs:
           echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run build --workspace=web
         env:
-          VITE_APP_VERSION: ${{ github.sha }}
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
 
   e2e:

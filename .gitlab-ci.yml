@@ -58,7 +58,6 @@ build-web:
     npm install
     npm run build --workspace=web
   variables:
-    VITE_APP_VERSION: $CI_COMMIT_SHA
     WEB_ENVS: "$WEB_ENVS"
   artifacts:
     paths:
