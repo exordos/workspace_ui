@@ -7,6 +7,25 @@
  */
 export const COMPOSER_LEADING_CONTROLS_INSET = "pl-3";
 /**
+ * Compact left rail when the field is tall enough to stack actions.
+ * Keep the column on the bottom of the field: gap-1 separates 32px hover
+ * pills, mb-1 matches the single-line optical inset above the rounded
+ * container edge. Children render attach/emoji first, then the expand
+ * toggle last, so the formatting icon stays first from the bottom.
+ */
+export const COMPOSER_COMPACT_RAIL_STACK = "flex w-8 flex-shrink-0 flex-col gap-1 self-end mb-1";
+/**
+ * Space between the 32px rail and the textarea. Matches
+ * COMPOSER_LEADING_CONTROLS_INSET (12px) so the rail sits in a symmetric
+ * gutter between the container edge and the text.
+ */
+export const COMPOSER_COMPACT_RAIL_FIELD_GAP = "gap-3";
+/**
+ * Single-line compact row: expand control sits beside the textarea, attach
+ * and emoji stay on the trailing edge.
+ */
+export const COMPOSER_COMPACT_INLINE_FIELD_GAP = "gap-2";
+/**
  * Expanded toolbar must clear the send button (h-10 / 40px) plus the input-row
  * gap-3 (12px). Keep this in sync if either size changes.
  */

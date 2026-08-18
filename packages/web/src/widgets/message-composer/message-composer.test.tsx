@@ -558,13 +558,13 @@ describe("MessageComposer textarea autosize", () => {
     expect(textbox.style.height).toBe("128px");
   });
 
-  it("reveals resize controls as each one fits without moving the emoji", () => {
+  it("moves compact actions into a left rail when the expand control appears", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
     const compactRow = screen.getByTestId("composer-compact-input-row");
     const trailingControls = screen.getByTestId("composer-compact-trailing-controls");
-    const emojiButton = screen.getByRole("button", { name: /emoji/i });
+    const shortEmojiButton = screen.getByRole("button", { name: /emoji/i });
     let mockedScrollHeight = 40;
     Object.defineProperty(textbox, "scrollHeight", {
       configurable: true,
@@ -580,7 +580,7 @@ describe("MessageComposer textarea autosize", () => {
     ).not.toBeInTheDocument();
     expect(compactRow).toHaveClass("pr-5");
     expect(compactRow.lastElementChild).toBe(trailingControls);
-    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
     mockedScrollHeight = 64;
     fireEvent.change(textbox, { target: { value: "Line 1\nLine 2" } });
@@ -593,12 +593,17 @@ describe("MessageComposer textarea autosize", () => {
     ).not.toBeInTheDocument();
     expect(compactRow).toHaveClass("pr-5");
     expect(compactRow.lastElementChild).toBe(trailingControls);
-    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
     mockedScrollHeight = 96;
     fireEvent.change(textbox, { target: { value: "Line 1\nLine 2\nLine 3" } });
 
     const expandButton = screen.getByRole("button", { name: /expand message editor/i });
+    const compactControls = screen.getByTestId("composer-compact-controls");
+    const railActions = screen.getByTestId("composer-compact-rail-actions");
+    const toolbarToggle = screen.getByRole("button", { name: /show formatting tools/i });
+    const attachButton = screen.getByRole("button", { name: /attach file/i });
+    const emojiButton = screen.getByRole("button", { name: /emoji/i });
     expect(expandButton).toHaveClass(
       "absolute",
       "right-4",
@@ -607,10 +612,26 @@ describe("MessageComposer textarea autosize", () => {
       "pointer-events-auto",
       "cursor-pointer",
     );
-    expect(compactRow).toHaveClass("pr-5");
-    expect(compactRow).not.toHaveClass("pr-16");
-    expect(compactRow.lastElementChild).toBe(trailingControls);
-    expect(trailingControls.lastElementChild).toBe(emojiButton);
+    expect(compactRow).toHaveClass("pr-2");
+    expect(compactRow).not.toHaveClass("pr-5", "pr-16");
+    expect(screen.queryByTestId("composer-compact-trailing-controls")).not.toBeInTheDocument();
+    expect(compactControls).toHaveClass("flex-col", "self-end", "w-8", "gap-1", "mb-1");
+    expect(compactControls).not.toHaveClass("gap-2");
+    expect(railActions).toHaveClass("flex-col", "gap-1");
+    expect(railActions).not.toHaveClass("mb-1", "gap-2");
+    expect(compactControls.parentElement).toHaveClass("gap-3");
+    expect(compactControls.parentElement).not.toHaveClass("gap-2");
+    expect(textbox.parentElement).toHaveClass("items-end");
+    expect(compactControls).toContainElement(attachButton);
+    expect(railActions).toContainElement(emojiButton);
+    // Vertical rail grows upward: attach/emoji above, formatting toggle stays first from the bottom.
+    expect(Array.from(compactControls.querySelectorAll("button"))).toEqual([
+      attachButton,
+      emojiButton,
+      toolbarToggle,
+    ]);
+    expect(compactControls.lastElementChild).toBe(toolbarToggle);
+    expect(textbox).not.toHaveClass("pr-16");
     expect(compactRow).not.toContainElement(expandButton);
     expect(expandButton.querySelector('[data-composer-icon="expand-content"]')).toBeInTheDocument();
   });
@@ -2055,6 +2076,10 @@ describe("MessageComposer mode tabs", () => {
     expect(compactRow).toHaveClass("items-end", "pl-3");
     expect(compactRow).not.toHaveClass("py-1");
     expect(compactControls).toHaveClass("self-end", "mb-1");
+    expect(compactControls).not.toHaveClass("flex-col");
+    expect(compactControls).not.toHaveClass("w-8");
+    expect(compactControls.parentElement).toHaveClass("gap-2");
+    expect(compactControls.parentElement).not.toHaveClass("gap-3");
     expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-2");
     expect(
       toolbarToggle.querySelector('[data-composer-icon="bottom-panel-close"]'),
@@ -2071,7 +2096,7 @@ describe("MessageComposer mode tabs", () => {
     expect(textbox).toHaveClass("px-0", "py-2");
   });
 
-  it("keeps compact controls bottom-aligned while the textarea grows", () => {
+  it("keeps the compact action rail aligned with a tall textarea", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
@@ -2085,12 +2110,17 @@ describe("MessageComposer mode tabs", () => {
 
     expect(textbox.style.height).toBe("120px");
     expect(screen.getByTestId("composer-compact-input-row")).toHaveClass("items-end");
-    expect(screen.getByTestId("composer-compact-controls")).toHaveClass("self-end", "mb-1");
-    expect(screen.getByTestId("composer-compact-trailing-controls")).toHaveClass(
+    expect(screen.getByTestId("composer-compact-controls")).toHaveClass(
       "self-end",
+      "flex-col",
+      "w-8",
+      "gap-1",
       "mb-1",
     );
-    expect(textbox.parentElement).toHaveClass("self-stretch");
+    expect(screen.getByTestId("composer-compact-rail-actions")).toHaveClass("flex-col", "gap-1");
+    expect(screen.queryByTestId("composer-compact-trailing-controls")).not.toBeInTheDocument();
+    expect(textbox.parentElement).toHaveClass("self-stretch", "items-end");
+    expect(screen.getByTestId("composer-compact-controls").parentElement).toHaveClass("gap-3");
   });
 
   it("keeps the same textarea when the formatting toolbar opens and closes", () => {
