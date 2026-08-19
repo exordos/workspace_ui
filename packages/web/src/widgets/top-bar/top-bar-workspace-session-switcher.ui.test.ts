@@ -3,6 +3,7 @@ import type {
   MessengerBackgroundMessageIdSnapshot,
   MessengerBackgroundNotificationCandidate,
   MessengerBackgroundProjection,
+  MessengerBackgroundStreamSnapshot,
 } from "~/entities/messenger/messenger-background-projection.model";
 import { getBackgroundProjectionUnreadCount } from "./top-bar-workspace-session-unread.lib";
 
@@ -60,6 +61,27 @@ function createMessageSnapshot(
   };
 }
 
+function createStreamSnapshot(
+  overrides: Partial<MessengerBackgroundStreamSnapshot> = {},
+): MessengerBackgroundStreamSnapshot {
+  return {
+    ownerKey: OWNER_KEY,
+    streamUuid: "stream-a",
+    streamName: "Stream A",
+    unreadCount: 2,
+    activeUnreadCount: 2,
+    passiveUnreadCount: 0,
+    notificationMode: "all_messages",
+    isPrivate: false,
+    lastMessageUuid: MESSAGE_UUID,
+    isArchived: false,
+    epochVersion: 2,
+    updatedAt: "2026-07-25T08:01:00Z",
+    observedAt: 2,
+    ...overrides,
+  };
+}
+
 function createProjection(
   overrides: Partial<MessengerBackgroundProjection> = {},
 ): MessengerBackgroundProjection {
@@ -111,6 +133,102 @@ describe("getBackgroundProjectionUnreadCount", () => {
     ).toBe(0);
   });
 
+  it("sums active unread from stream snapshots when folder topology is unavailable", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          streamSnapshotsById: {
+            "stream-a": createStreamSnapshot(),
+            "stream-b": createStreamSnapshot({
+              streamUuid: "stream-b",
+              unreadCount: 7,
+              activeUnreadCount: 3,
+              passiveUnreadCount: 4,
+            }),
+          },
+        }),
+      ),
+    ).toBe(5);
+  });
+
+  it("tracks repeated unread updates for the same stream beyond the candidate fallback", () => {
+    expect(
+      [1, 2, 3].map((activeUnreadCount) =>
+        getBackgroundProjectionUnreadCount(
+          createProjection({
+            streamSnapshotsById: {
+              "stream-a": createStreamSnapshot({
+                unreadCount: activeUnreadCount,
+                activeUnreadCount,
+              }),
+            },
+          }),
+        ),
+      ),
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("uses active rather than raw unread for muted stream traffic", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          streamSnapshotsById: {
+            "stream-a": createStreamSnapshot({
+              unreadCount: 8,
+              activeUnreadCount: 2,
+              passiveUnreadCount: 6,
+            }),
+          },
+        }),
+      ),
+    ).toBe(2);
+  });
+
+  it("ignores archived streams and suppresses their stale candidates", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          streamSnapshotsById: {
+            "stream-a": createStreamSnapshot({ isArchived: true, activeUnreadCount: 4 }),
+          },
+        }),
+      ),
+    ).toBe(0);
+  });
+
+  it("uses an authoritative zero stream snapshot over a stale candidate", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          streamSnapshotsById: {
+            "stream-a": createStreamSnapshot({
+              unreadCount: 0,
+              activeUnreadCount: 0,
+              passiveUnreadCount: 0,
+            }),
+          },
+        }),
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps a conservative candidate fallback until its stream snapshot arrives", () => {
+    expect(
+      getBackgroundProjectionUnreadCount(
+        createProjection({
+          streamSnapshotsById: {
+            "stream-b": createStreamSnapshot({
+              streamUuid: "stream-b",
+              unreadCount: 0,
+              activeUnreadCount: 0,
+              passiveUnreadCount: 0,
+            }),
+          },
+        }),
+      ),
+    ).toBe(1);
+  });
+
   it("prefers a positive authoritative folder count over candidate state", () => {
     expect(
       getBackgroundProjectionUnreadCount(
@@ -141,6 +259,9 @@ describe("getBackgroundProjectionUnreadCount", () => {
       getBackgroundProjectionUnreadCount(
         createProjection({
           unreadByFolderId: { "folder-a": 0 },
+          streamSnapshotsById: {
+            "stream-a": createStreamSnapshot({ activeUnreadCount: 7 }),
+          },
         }),
       ),
     ).toBe(0);
