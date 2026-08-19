@@ -6,6 +6,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The Workspace UI load balancer now has 1024 MiB of RAM to provide additional
+  headroom for nginx and element update operations.
+
 ## [0.4.14] — 2026-08-19
 
 ### Changed
