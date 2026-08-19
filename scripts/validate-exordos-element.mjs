@@ -21,8 +21,13 @@ if (versions.length !== 1) {
 
 const manifestPath = path.join(elementRoot, versions[0], "manifests", "workspace_ui.yaml");
 const manifest = parse(fs.readFileSync(manifestPath, "utf8"));
+const loadBalancer = manifest.resources["$core.network.lb"]?.workspace_ui_lb;
 const vhostKey = Object.keys(manifest.resources).find((key) => key.endsWith(".vhosts"));
 const routesKey = Object.keys(manifest.resources).find((key) => key.endsWith(".routes"));
+
+if (loadBalancer?.type?.ram !== 1024) {
+  throw new Error("Workspace UI load balancer must have 1024 MiB of RAM");
+}
 
 if (!vhostKey || !routesKey) {
   throw new Error("Workspace UI manifest has no load-balancer vhost or routes");
