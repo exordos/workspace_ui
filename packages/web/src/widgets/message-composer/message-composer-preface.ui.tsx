@@ -6,17 +6,15 @@ import {
   CHAT_BOTTOM_COMPOSER_CONTENT_INSET_X,
   chatBottomNoticeBarClassName,
 } from "~/shared/lib/chat-bottom-notice-bar.lib";
-import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { AttachmentCard, AttachmentCardList } from "~/shared/ui/attachment-card.ui";
 import { Icon } from "~/shared/ui/icon";
-import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
 import {
   formatAttachmentSize,
   formatScheduledTimestamp,
   getAttachmentExtensionLabel,
 } from "./message-composer-body.lib";
-import { QUOTE_PREVIEW_MAX } from "./message-composer-constants.lib";
 import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
+import { MessageComposerReplyQuotePreview } from "./message-composer-reply-quote-preview.ui";
 import type { MessageComposerPrefaceProps } from "./message-composer.types";
 
 interface MessageComposerEditNoticeProps {
@@ -89,16 +87,6 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     roundTop = false,
     onCancelEdit,
   }) => {
-    const replyQuotePreview = useMemo(() => {
-      if (replyQuote == null) return "";
-      return summarizeWorkspaceMessageMarkdown(replyQuote.content, {
-        maxLength: QUOTE_PREVIEW_MAX,
-        includeMediaLabel: true,
-        includeAttachmentLabel: true,
-        includeQuotePrefix: false,
-      }).text.trim();
-    }, [replyQuote]);
-
     const showReplyChrome =
       (!isEditing || showReplyWhileEditing) && (replyQuote != null || replyLeadingContent != null);
     const clearReplyOnTabsRow = replyLeadingContent != null;
@@ -252,19 +240,10 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
                 className={`flex items-start gap-2 ${CHAT_BOTTOM_COMPOSER_CONTENT_INSET_X} pb-1 pt-2`}
               >
                 <div className="min-w-0 flex-1">
-                  {/* Accent bar + header; composer surface so fill matches the card (not message soft fill). */}
-                  <WorkspaceMessageQuoteFrame
-                    className="my-0"
-                    surface="composer"
-                    data-composer-reply-quote="true"
-                    header={`${t("message.replyTo")}: ${replyQuote.sender_full_name}`}
-                  >
-                    {replyQuotePreview.length > 0 ? (
-                      <p className="line-clamp-2 whitespace-pre-wrap break-words text-sm text-text-primary">
-                        {replyQuotePreview}
-                      </p>
-                    ) : null}
-                  </WorkspaceMessageQuoteFrame>
+                  <MessageComposerReplyQuotePreview
+                    replyQuote={replyQuote}
+                    onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+                  />
                 </div>
                 {!clearReplyOnTabsRow && showClearReply ? (
                   <MessageComposerClearReplyButton onClearReply={onClearReply} />

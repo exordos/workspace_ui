@@ -18,6 +18,8 @@ export interface WorkspaceMessageQuoteFrameProps extends Omit<
    * `composer` is a reply-preface exception so the quote blends into the composer card.
    */
   surface?: WorkspaceMessageQuoteFrameSurface;
+  /** Optional media shown before both the header and quoted body. */
+  leading?: ReactNode;
   children?: ReactNode;
   /** Extra props for the header `<span>` (open-quote marker attrs, etc.). */
   headerProps?: HTMLAttributes<HTMLSpanElement> & DataAttrProps;

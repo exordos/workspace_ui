@@ -48,6 +48,21 @@ describe("workspace message summary core", () => {
     expect(summary.text).not.toContain("urn:image:");
   });
 
+  it("keeps unsupported image alt text when Workspace media labels are hidden", () => {
+    const document = parseWorkspaceMessageBody(
+      "![External diagram](https://example.com/diagram.png)",
+    );
+    const summary = summarizeWorkspaceMessageBody(document, {
+      maxLength: 120,
+      includeMediaLabel: false,
+      includeAttachmentLabel: true,
+      includeQuotePrefix: false,
+      hiddenWorkspaceMediaFileUuids: new Set(["file-image"]),
+    });
+
+    expect(summary.text).toBe("External diagram");
+  });
+
   it("keeps html-like input as text preview", () => {
     const document = parseWorkspaceMessageBody("<script>alert(1)</script>");
     const summary = summarizeWorkspaceMessageBody(document);

@@ -31,6 +31,20 @@ describe("WorkspaceMessageQuoteFrame", () => {
     expect(screen.getByText("Unavailable")).not.toHaveClass("text-accent");
   });
 
+  it("places leading media before the header and quoted body", () => {
+    render(
+      <WorkspaceMessageQuoteFrame header="Alice" leading={<div data-testid="quote-thumbnail" />}>
+        quoted body
+      </WorkspaceMessageQuoteFrame>,
+    );
+
+    const thumbnail = screen.getByTestId("quote-thumbnail");
+    const contentColumn = thumbnail.nextElementSibling;
+    expect(thumbnail.parentElement).toHaveClass("items-stretch");
+    expect(contentColumn).toContainElement(screen.getByText("Alice"));
+    expect(contentColumn).toContainElement(screen.getByText("quoted body"));
+  });
+
   it("uses composer surface fill without the message soft background", () => {
     const { container } = render(
       <WorkspaceMessageQuoteFrame header="Alice" surface="composer">

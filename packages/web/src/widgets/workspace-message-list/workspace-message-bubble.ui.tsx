@@ -478,11 +478,15 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
             resolveMention={resolveMention}
             onOpenMessage={interactiveActions?.onOpenMessageInChat}
+            onLoadWorkspaceFilePreview={
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+            }
             loadEnabled={passiveContentEnabled}
           />
         ),
       [
         interactiveActions?.onOpenMessageInChat,
+        interactiveActions?.onLoadWorkspaceFilePreview,
         isPreview,
         quoteRenderMode,
         resolveMention,
