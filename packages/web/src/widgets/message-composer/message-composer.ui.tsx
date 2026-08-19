@@ -18,6 +18,7 @@ import ChatSvg from "~/shared/assets/icons/composer-chat.svg?react";
 import ScheduleSvg from "~/shared/assets/icons/composer-schedule.svg?react";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import {
   MessageComposerAiActionMenuLayer,
@@ -113,6 +114,8 @@ export type { ReplyQuote } from "./message-composer.types";
 const ENABLE_SCHEDULED_SEND_UI = false;
 
 const DEFAULT_ACTION_CAPABILITY: MessageComposerActionCapability = { mode: "enabled" };
+
+type ComposerTextEditingCommand = "cut" | "copy" | "paste" | "selectAll";
 
 function resolveActionCapability(
   capability: MessageComposerActionCapability | undefined,
@@ -602,6 +605,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const effectiveReplyQuote = isEditing && !preservesWorkspaceReplyContext ? null : replyQuote;
   const composerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [textEditingContextAnchor, setTextEditingContextAnchor] = useState<{
+    left: number;
+    top: number;
+    hasSelection: boolean;
+  } | null>(null);
+  const textEditingSelectionRef = useRef({
+    start: 0,
+    end: 0,
+    direction: "none",
+  });
   const composerResize = useMessageComposerResize({
     composerRef,
     enabled: textareaContentHeight >= COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX,
@@ -1207,6 +1220,109 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     ],
   );
 
+  const snapshotTextEditingSelection = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (textarea == null) return;
+    const selection = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+      direction: textarea.selectionDirection,
+    };
+    textEditingSelectionRef.current = selection;
+    return selection;
+  }, []);
+
+  const restoreTextEditingSelection = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (textarea == null) return;
+    const selection = textEditingSelectionRef.current;
+    const start = Math.min(selection.start, textarea.value.length);
+    const end = Math.min(selection.end, textarea.value.length);
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(start, end, selection.direction);
+  }, []);
+
+  const executeTextEditingCommand = useCallback(
+    (command: ComposerTextEditingCommand) => {
+      const execute = window.electronAPI?.textEditing?.execute;
+      if (execute == null) return;
+      restoreTextEditingSelection();
+      execute(command);
+    },
+    [restoreTextEditingSelection],
+  );
+
+  const handleComposerContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLTextAreaElement>) => {
+      if (window.electronAPI?.textEditing == null) return;
+      event.preventDefault();
+      const selection = snapshotTextEditingSelection();
+      if (selection == null) return;
+      setTextEditingContextAnchor({
+        left: event.clientX,
+        top: event.clientY,
+        hasSelection: selection.start !== selection.end,
+      });
+    },
+    [snapshotTextEditingSelection],
+  );
+
+  const handleComposerContextMenuKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      const textarea = textareaRef.current;
+      const opensContextMenu =
+        event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
+      if (!opensContextMenu || window.electronAPI?.textEditing == null || textarea == null) {
+        return;
+      }
+      event.preventDefault();
+      const selection = snapshotTextEditingSelection();
+      if (selection == null) return;
+      const bounds = textarea.getBoundingClientRect();
+      setTextEditingContextAnchor({
+        left: bounds.left + 12,
+        top: bounds.top + 12,
+        hasSelection: selection.start !== selection.end,
+      });
+    },
+    [snapshotTextEditingSelection],
+  );
+
+  const textEditingMenuItems = useMemo<DropdownMenuItem[]>(() => {
+    const hasSelection = textEditingContextAnchor?.hasSelection ?? false;
+    const textEditingDisabled = disabled || sendInFlight;
+    return [
+      {
+        type: "action",
+        key: "cut",
+        label: t("composer.cut"),
+        disabled: textEditingDisabled || !hasSelection,
+        onSelect: () => executeTextEditingCommand("cut"),
+      },
+      {
+        type: "action",
+        key: "copy",
+        label: t("composer.copy"),
+        disabled: textEditingDisabled || !hasSelection,
+        onSelect: () => executeTextEditingCommand("copy"),
+      },
+      {
+        type: "action",
+        key: "paste",
+        label: t("composer.paste"),
+        disabled: textEditingDisabled,
+        onSelect: () => executeTextEditingCommand("paste"),
+      },
+      {
+        type: "action",
+        key: "select-all",
+        label: t("composer.selectAll"),
+        disabled: textEditingDisabled || value.length === 0,
+        onSelect: () => executeTextEditingCommand("selectAll"),
+      },
+    ];
+  }, [disabled, executeTextEditingCommand, sendInFlight, textEditingContextAnchor, value.length]);
+
   const handleAttachClick = () => {
     if (disabled) return;
     // Upload UI остаётся на месте, но без Workspace upload contract не открываем системный выбор файла.
@@ -1618,6 +1734,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         onDetectMention={detectMention}
         applyFormattingShortcut={applyFormattingShortcut}
         onPaste={handlePaste}
+        onContextMenu={handleComposerContextMenu}
+        onContextMenuKeyDown={handleComposerContextMenuKeyDown}
         onSend={handleSend}
         sendNewlineMode={sendNewlineMode}
         onEditLastMessage={onEditLastMessage}
@@ -1671,6 +1789,25 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {window.electronAPI?.textEditing != null ? (
+        <DropdownMenu
+          open={textEditingContextAnchor != null}
+          onOpenChange={(open) => {
+            if (!open) setTextEditingContextAnchor(null);
+          }}
+          source="context"
+          contextAnchor={textEditingContextAnchor}
+          items={textEditingMenuItems}
+          contentVariant="narrow"
+          modal={false}
+          contextContentProps={{
+            onCloseAutoFocus: (event) => {
+              event.preventDefault();
+            },
+            onEscapeKeyDown: restoreTextEditingSelection,
+          }}
+        />
+      ) : null}
       {resizeHandleVisible && (
         <MessageComposerResizeHandle
           onPointerDown={composerResize.onResizeHandlePointerDown}

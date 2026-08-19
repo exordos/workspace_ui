@@ -173,6 +173,9 @@ interface ElectronAPI {
     writeText: (text: string) => Promise<boolean>;
     readText: () => Promise<string | null>;
   };
+  textEditing: {
+    execute: (command: "cut" | "copy" | "paste" | "selectAll") => void;
+  };
   theme: {
     shouldUseDarkColors: () => Promise<boolean>;
     set: (mode: "light" | "dark" | "system") => void;

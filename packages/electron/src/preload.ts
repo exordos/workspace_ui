@@ -41,6 +41,11 @@ const electronAPI = {
     readText: (): Promise<string | null> => ipcRenderer.invoke("clipboard:readText"),
   },
 
+  textEditing: {
+    execute: (command: "cut" | "copy" | "paste" | "selectAll"): void =>
+      ipcRenderer.send("textEditing:execute", command),
+  },
+
   downloads: {
     start: (input: WorkspaceDownloadStartInput): Promise<WorkspaceDownloadStartResult> =>
       ipcRenderer.invoke(WORKSPACE_DOWNLOAD_IPC.start, input),

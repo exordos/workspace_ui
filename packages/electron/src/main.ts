@@ -954,6 +954,22 @@ function registerIpcHandlers(): void {
       return null;
     }
   });
+  ipcMain.on("textEditing:execute", (event, command: unknown) => {
+    switch (command) {
+      case "cut":
+        event.sender.cut();
+        break;
+      case "copy":
+        event.sender.copy();
+        break;
+      case "paste":
+        event.sender.paste();
+        break;
+      case "selectAll":
+        event.sender.selectAll();
+        break;
+    }
+  });
 
   // Theme
   ipcMain.handle("theme:shouldUseDarkColors", () => nativeTheme.shouldUseDarkColors);

@@ -20,6 +20,8 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   onDetectMention,
   applyFormattingShortcut,
   onPaste,
+  onContextMenu,
+  onContextMenuKeyDown,
   onSend,
   sendNewlineMode,
   onEditLastMessage,
@@ -63,6 +65,7 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
         ref={textareaRef}
         value={value}
         onPaste={onPaste}
+        onContextMenu={onContextMenu}
         onChange={(e) => {
           onValueChange(e.target.value);
           onDetectMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
@@ -80,6 +83,8 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
           }
         }}
         onKeyDown={(e) => {
+          onContextMenuKeyDown(e);
+          if (e.defaultPrevented) return;
           handleComposerWriteBodyKeyDown({
             event: e,
             value,

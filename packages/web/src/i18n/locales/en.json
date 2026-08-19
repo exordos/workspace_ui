@@ -1246,6 +1246,10 @@
     "resizeEditor": "Resize message editor",
     "expandToolbar": "Show formatting tools",
     "collapseToolbar": "Hide formatting tools",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
     "messageTooLong": "The message is too long (maximum 40,000 characters)."
   },
   "attachmentCard": {
