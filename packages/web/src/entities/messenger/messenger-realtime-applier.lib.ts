@@ -31,6 +31,10 @@ import {
   applyMessengerReadBoundary,
   type MessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
+import {
+  applyMessengerRealtimeEventToCache,
+  type MessengerRealtimeCacheWriter,
+} from "./messenger-realtime-cache.lib";
 import { removeMessengerStreamProjection } from "./messenger-stream-projection-cleanup.lib";
 import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
 import type {
@@ -130,13 +134,7 @@ export interface MessengerRealtimeBackgroundApplierOptions {
   cache?: MessengerRealtimeBackgroundCacheWriter;
 }
 
-export interface MessengerRealtimeBackgroundCacheWriter {
-  advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
-  markCachedMessagesRead?: (
-    ownerKey: string,
-    messageUuids: readonly MessengerUuid[],
-  ) => Promise<void> | void;
-}
+export type MessengerRealtimeBackgroundCacheWriter = Partial<MessengerRealtimeCacheWriter>;
 
 const log = createLogger("realtime:workspace-messenger");
 
@@ -683,9 +681,12 @@ export function createMessengerRealtimeActiveApplier(
 export function createMessengerRealtimeBackgroundApplier(
   options: MessengerRealtimeBackgroundApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
-  const backgroundCache = options.cache ?? messengerRealtimeBackgroundCache;
+  const backgroundCache: MessengerRealtimeCacheWriter = {
+    ...messengerRealtimeBackgroundCache,
+    ...options.cache,
+  };
   return {
-    applyEvent(event, context) {
+    async applyEvent(event, context) {
       if (!isBackgroundCurrentOwner(context, options)) return;
 
       const store = useMessengerBackgroundProjectionStore.getState();
@@ -695,19 +696,9 @@ export function createMessengerRealtimeBackgroundApplier(
         return;
       }
 
-      if (event.type === "messages") {
-        const cacheWrite = backgroundCache.markCachedMessagesRead?.(
-          context.ownerKey,
-          event.messageUuids,
-        );
-        store.recordAppliedEvent(context.ownerKey, event, context);
-        return cacheWrite;
-      }
-
-      let requiredCacheWrite: Promise<void> | void = undefined;
       if (event.type === "message" && event.kind === "message.read") {
         const message = adaptMessengerMessage(event.message);
-        const boundary = advanceMessengerReadBoundary({
+        advanceMessengerReadBoundary({
           ownerKey: context.ownerKey,
           streamUuid: message.streamUuid,
           topicUuid: message.topicUuid,
@@ -715,31 +706,44 @@ export function createMessengerRealtimeBackgroundApplier(
           messageUuid: message.uuid,
           epochVersion: event.epoch_version,
         });
-        requiredCacheWrite = backgroundCache.advanceReadBoundary?.(boundary);
       }
 
-      // Background projection хранит только легкие снимки, compact preview и route-данные.
-      // Побочных эффектов нотификаций и записей в messengerStore тут по-прежнему нет.
+      if (event.type === "stream" && event.kind === "stream.created") {
+        restoreMessengerStream(context.ownerKey, event.stream.uuid);
+        restoreMessengerStreamCache(context.ownerKey, event.stream.uuid);
+        restoreWorkspaceComposerDraftsForStream(context.ownerKey, event.stream.uuid);
+      }
+
+      const cacheStatus = await applyMessengerRealtimeEventToCache({
+        event,
+        ownerKey: context.ownerKey,
+        writer: backgroundCache,
+        isWriteCurrent: () => isBackgroundCurrentOwner(context, options),
+      });
+      if (!isBackgroundCurrentOwner(context, options)) return;
+
+      if (cacheStatus === "deferred") {
+        if (event.type === "file") {
+          store.recordSkippedEvent(context.ownerKey, event, "background_apply_deferred", context);
+        }
+        return;
+      }
+
+      if (event.type === "stream" && event.kind === "stream.deleted") {
+        await (options.removeProjection ?? removeMessengerStreamProjection)({
+          ownerKey: context.ownerKey,
+          streamUuid: event.stream.uuid,
+          removeActiveProjection: false,
+          isOwnerCurrent: () => isBackgroundCurrentOwner(context, options),
+          deleteCachedStream: () => undefined,
+        });
+        if (!isBackgroundCurrentOwner(context, options)) return;
+      }
+
+      // Background state keeps notification data without writing into active messenger stores.
       if (isBackgroundLightweightEvent(event)) {
-        if (event.kind === "stream.created") {
-          restoreMessengerStream(context.ownerKey, event.stream.uuid);
-          restoreMessengerStreamCache(context.ownerKey, event.stream.uuid);
-          restoreWorkspaceComposerDraftsForStream(context.ownerKey, event.stream.uuid);
-        }
-        if (event.kind === "stream.deleted") {
-          void (options.removeProjection ?? removeMessengerStreamProjection)({
-            ownerKey: context.ownerKey,
-            streamUuid: event.stream.uuid,
-            removeActiveProjection: false,
-            isOwnerCurrent: () => isBackgroundCurrentOwner(context, options),
-          }).catch(() => undefined);
-        }
         store.recordAppliedEvent(context.ownerKey, event, context);
-        return requiredCacheWrite;
       }
-
-      store.recordSkippedEvent(context.ownerKey, event, "background_apply_deferred", context);
-      return requiredCacheWrite;
     },
 
     skipEvent(event, reason, context) {
