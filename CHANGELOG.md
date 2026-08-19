@@ -6,10 +6,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.15] — 2026-08-20
+
 ### Changed
 
 - The Workspace UI load balancer now has 1024 MiB of RAM to provide additional
   headroom for nginx and element update operations.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.14`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The upstream public load-balancer contract is unchanged: terminate TLS,
+  preserve the client `Host`, and proxy HTTP to Workspace UI port 80.
+- The local messenger cache remains at schema version 7. No client or server
+  data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.15`.
+- The update raises the Workspace UI load balancer's requested memory from
+  512 MiB to 1024 MiB. No manual data migration is required.
 
 ## [0.4.14] — 2026-08-19
 
