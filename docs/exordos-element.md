@@ -31,28 +31,30 @@ Published manifests download the artifact from:
 ```
 
 For an isolated development repository, override `repository` while building
-the manifest. If its public origin differs from the production default, also
-set the exact forwarded host and scheme used by clients:
+the manifest:
 
 ```bash
 exordos build . \
   --exordos-cfg-file exordos/exordos.yaml \
   --output-dir output \
   --manifest-var repository=http://dev-repository.example/exordos-elements \
-  --manifest-var public_domain=workspace.example \
-  --manifest-var forwarded_host=workspace.example:8443 \
-  --manifest-var forwarded_proto=https \
   --force
 ```
 
-The public TLS or port-forwarding layer remains site-specific. It must forward
-the Workspace origin to port 80 of the load balancer reported by the deployed
-`workspace_ui` element. `public_domain` selects the virtual host served by that
-load balancer. The element sets the backend `Host` and `X-Forwarded-Proto`
-headers from `forwarded_host` and `forwarded_proto` so realm URLs remain
-canonical behind an external TLS or port-forwarding layer.
+The published element is host-agnostic. The public load balancer must terminate
+TLS, preserve the client `Host`, and forward HTTP to port 80 of the load
+balancer exported by `workspace_ui`. A user can then point any DNS name at the
+public load balancer without rebuilding or editing the element manifest.
+
+The Workspace load balancer accepts every non-empty hostname and forwards
+nginx's normalized `$host` value to the backend. It also identifies the
+external scheme as `https`, so IAM redirects remain on the hostname chosen by
+the user. The public load balancer is therefore the trust boundary: rewriting
+`Host` changes the hostname visible to Workspace and breaks this one-click DNS
+contract.
 
 The element also replaces the load-balancer image's packaged default site with
-an HTTP-only port 80 catch-all. This keeps TLS certificates and the public 443
-listener at the site-specific edge instead of exposing an unconfigured fallback
-TLS listener on the internal Workspace load balancer.
+an HTTP-only port 80 fallback that rejects requests which do not contain a
+matching hostname. This keeps TLS certificates and the public 443 listener at
+the site-specific edge instead of exposing an unconfigured fallback TLS
+listener on the internal Workspace load balancer.

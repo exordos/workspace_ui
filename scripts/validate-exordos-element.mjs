@@ -29,8 +29,10 @@ if (!vhostKey || !routesKey) {
 }
 
 const vhost = manifest.resources[vhostKey].workspace_http;
-if (vhost?.domains?.length !== 1 || vhost.domains[0] === "_") {
-  throw new Error("workspace_http must use the configured public domain");
+// The TLS edge preserves the user-selected Host. Match every non-empty Host so
+// pointing DNS at that edge is enough; malformed or missing hosts still miss.
+if (vhost?.domains?.length !== 1 || vhost.domains[0] !== "~^.+$") {
+  throw new Error("workspace_http must accept every non-empty hostname");
 }
 
 const routes = manifest.resources[routesKey];
@@ -76,6 +78,19 @@ if (webAction?.kind !== "local_dir_download" || !webAction.url.endsWith("/worksp
 const apiAction = routes.workspace_api?.condition?.actions?.[0];
 if (apiAction?.kind !== "backend") {
   throw new Error("workspace_api must proxy requests to the backend pool");
+}
+
+const apiModifiers = routes.workspace_api?.condition?.modifiers ?? [];
+const automaticHeaders = apiModifiers.find((modifier) => modifier.kind === "auto_header");
+if (!automaticHeaders?.headers?.includes("Host")) {
+  throw new Error("workspace_api must forward nginx's normalized request host");
+}
+
+const forwardedProto = apiModifiers.find(
+  (modifier) => modifier.kind === "set_header" && modifier.name === "X-Forwarded-Proto",
+);
+if (forwardedProto?.value !== "https") {
+  throw new Error("workspace_api must identify the TLS edge scheme as https");
 }
 
 console.log(`Validated ${manifestPath}`);
