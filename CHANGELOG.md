@@ -6,6 +6,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.14] — 2026-08-19
+
+### Changed
+
+- Loading older messages keeps the current viewport anchored and suppresses
+  duplicate or stale pagination requests, preventing visible scroll jumps while
+  message history is extended.
+- The expanded message composer uses its available height more consistently and
+  keeps editing controls aligned in tall layouts.
+- The published Exordos element is host-agnostic: it accepts every non-empty
+  hostname and forwards nginx's normalized host to Workspace Core, so users can
+  point their own DNS name at the public load balancer without rebuilding the
+  manifest or setting per-domain variables.
+- The Workspace UI load balancer remains HTTP-only on port 80 and identifies the
+  external scheme as HTTPS. The upstream public load balancer owns TLS
+  termination and must preserve the client `Host` header.
+- Playwright system-dependency installation uses the Yandex Ubuntu mirror,
+  including current GitHub runner configurations that use `mirror+file` sources.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.13`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The public load balancer must terminate TLS, preserve the client `Host`, and
+  proxy plain HTTP to port 80 of the load balancer exported by `workspace_ui`.
+- The local messenger cache remains at schema version 7. No client or server
+  data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.14`.
+- Remove any deployment-specific `public_domain` or `forwarded_host` manifest
+  overrides; the published element now derives the public hostname from the
+  preserved request host.
+
 ## [0.4.13] — 2026-08-17
 
 ### Added
