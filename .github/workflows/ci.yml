@@ -75,6 +75,42 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Use Yandex Ubuntu mirror
+        run: |
+          set -euo pipefail
+
+          mapfile -t apt_sources < <(
+            find -L /etc/apt -maxdepth 2 -type f \
+              \( -name sources.list -o -name '*.list' -o -name '*.sources' \) -print
+          )
+          ((${#apt_sources[@]} > 0))
+
+          configured=0
+          for source in "${apt_sources[@]}"; do
+            if grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' "${source}"; then
+              printf '%s\tpriority:1\n' \
+                'https://mirror.yandex.ru/ubuntu/' \
+                | sudo tee /etc/apt/apt-mirrors.txt
+              configured=1
+            fi
+
+            if grep -Eq \
+              'https?://([[:alnum:].-]+\.)?archive\.ubuntu\.com/ubuntu/?|https?://security\.ubuntu\.com/ubuntu/?' \
+              "${source}"; then
+              sudo sed -i -E \
+                -e 's#https?://([[:alnum:].-]+\.)?archive\.ubuntu\.com/ubuntu/?#https://mirror.yandex.ru/ubuntu#g' \
+                -e 's#https?://security\.ubuntu\.com/ubuntu/?#https://mirror.yandex.ru/ubuntu#g' \
+                "${source}"
+              configured=1
+            fi
+          done
+
+          ((configured == 1))
+          grep -H --fixed-strings \
+            'https://mirror.yandex.ru/ubuntu' "${apt_sources[@]}" \
+            || grep -H --fixed-strings \
+              'https://mirror.yandex.ru/ubuntu' /etc/apt/apt-mirrors.txt
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 

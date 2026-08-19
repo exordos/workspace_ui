@@ -70,7 +70,8 @@ resources:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       parent: $core.network.lb.$workspace_ui_lb:uuid
       domains:
-        - "{{ public_domain | default('workspace.exordos.com') }}"
+        # Nginx regex: accept every non-empty Host preserved by the TLS edge.
+        - "~^.+$"
       protocol: http
       port: 80
 
@@ -92,13 +93,11 @@ resources:
         modifiers:
           - kind: auto_header
             headers:
+              - Host
               - X-Forwarded-For
           - kind: set_header
-            name: Host
-            value: "{{ forwarded_host | default('workspace.exordos.com') }}"
-          - kind: set_header
             name: X-Forwarded-Proto
-            value: "{{ forwarded_proto | default('https') }}"
+            value: "https"
     workspace_web:
       name: workspace-web
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
