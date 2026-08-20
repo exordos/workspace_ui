@@ -28,6 +28,7 @@
   },
   "auth": {
     "server": "Сервер",
+    "organization": "Организация",
     "selectServer": "Выбрать аккаунт",
     "removeServer": "Удалить сервер",
     "login": "Войти",
@@ -79,7 +80,9 @@
     "noProjectsAvailable": "У вашего аккаунта нет доступа к проектам этой организации.",
     "organizationSettingsLoadError": "Не удалось загрузить настройки организации. Проверьте адрес сервера и попробуйте ещё раз.",
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
-    "defaultOrganizationName": "Exordos Core Public"
+    "defaultOrganizationName": "Exordos Core Public",
+    "registrationHint": "Нет аккаунта?",
+    "register": "Зарегистрироваться"
   },
   "configureExternalChats": {
     "action": "Настроить чаты",

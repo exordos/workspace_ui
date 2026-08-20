@@ -551,6 +551,7 @@ export interface WorkspaceMessengerServerSettingsDto {
   meet_url: string;
   external_authentication_methods: unknown[];
   realm_uri: string;
+  registration_url?: string;
   ignored_parameters_unsupported?: string[];
 }
 
@@ -1486,6 +1487,7 @@ export function isWorkspaceMessengerServerSettingsDto(
     typeof value.meet_url === "string" &&
     Array.isArray(value.external_authentication_methods) &&
     typeof value.realm_uri === "string" &&
+    (value.registration_url === undefined || typeof value.registration_url === "string") &&
     isOptionalStringArray(value.ignored_parameters_unsupported)
   );
 }

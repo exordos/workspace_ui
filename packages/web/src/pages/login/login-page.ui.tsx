@@ -10,6 +10,7 @@ import {
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { isWorkspaceIamOtpRequiredError } from "~/shared/api/workspace-iam-auth";
+import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
@@ -21,12 +22,14 @@ import {
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
+import { resolveInitialLoginOrganization } from "./login-initial-organization.lib";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
 import { LoginPageOtpForm } from "./login-page-otp-form.ui";
 import { LoginPageProjectForm } from "./login-page-project-form.ui";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
+import { normalizeLoginRegistrationUrl } from "./login-registration-url.lib";
 
 type LoginStep = "organization" | "credentials" | "otp" | "project";
 
@@ -45,6 +48,7 @@ interface LoginServerSettings {
     display_icon?: string;
     login_url: string;
   }[];
+  registrationUrl: string | null;
 }
 
 export const LoginPage: React.FC = () => {
@@ -56,8 +60,15 @@ export const LoginPage: React.FC = () => {
     const raw = new URLSearchParams(location.search).get("realm");
     return raw?.trim() ? raw : null;
   }, [location.search]);
+  const [initialOrganization] = useState(() =>
+    resolveInitialLoginOrganization({
+      realmPrefill,
+      browserOrigin: !isElectron() && typeof window !== "undefined" ? window.location.origin : null,
+      defaultOrganizationUrl: env.DEFAULT_LOGIN_ORGANIZATION_URL,
+    }),
+  );
 
-  const [realm, setRealm] = useState(() => realmPrefill ?? "");
+  const [realm, setRealm] = useState(() => initialOrganization.organizationUrl);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -71,7 +82,7 @@ export const LoginPage: React.FC = () => {
   const [serverSettings, setServerSettings] = useState<LoginServerSettings | null>(null);
   const fetchIdRef = useRef(0);
   const pendingAuthRealmRef = useRef<string | null>(null);
-  const prefillAutoFetchRef = useRef<string | null>(null);
+  const initialOrganizationFetchRef = useRef<string | null>(null);
   const redirectTarget = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
     const explicit = sanitizeInternalRedirectTarget(searchParams.get("redirectTo"));
@@ -116,6 +127,7 @@ export const LoginPage: React.FC = () => {
         realm_uri: data.realm_uri,
         realm_url: data.realm_url,
         external_authentication_methods: [],
+        registrationUrl: normalizeLoginRegistrationUrl(data.registration_url),
       };
 
       setServerSettings(nextSettings);
@@ -154,16 +166,19 @@ export const LoginPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const prefilledRealm = realmPrefill?.trim() ?? "";
-    if (prefilledRealm.length === 0 || realmTrim !== prefilledRealm) {
+    const initialRealm = initialOrganization.organizationUrl;
+    if (initialRealm.length === 0 || realmTrim !== initialRealm) {
       return;
     }
-    if (prefillAutoFetchRef.current === prefilledRealm) {
+    if (initialOrganizationFetchRef.current === initialRealm) {
       return;
     }
-    prefillAutoFetchRef.current = prefilledRealm;
+    initialOrganizationFetchRef.current = initialRealm;
+    if (initialOrganization.autoAdvance) {
+      pendingAuthRealmRef.current = initialRealm;
+    }
     void fetchSettings(realmTrim);
-  }, [fetchSettings, realmPrefill, realmTrim]);
+  }, [fetchSettings, initialOrganization, realmTrim]);
 
   const handleRealmChange = useCallback(
     (value: string) => {
@@ -371,14 +386,19 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
       <div className="flex w-full max-w-md flex-col gap-6">
-        {isAddServer && (
+        {(step !== "organization" || isAddServer) && (
           <button
             type="button"
-            onClick={() => navigate("/", { replace: true })}
-            className="flex items-center gap-2 self-start text-sm text-text-muted transition-colors hover:text-text-primary"
+            disabled={step !== "organization" && loading}
+            onClick={
+              step === "organization"
+                ? () => navigate("/", { replace: true })
+                : handleBackToOrganizationStep
+            }
+            className="flex items-center gap-2 self-start text-sm text-text-muted transition-colors hover:text-text-primary disabled:pointer-events-none disabled:opacity-50"
           >
             <Icon name="chevron-right" size={16} className="rotate-180" />
-            {t("common.back")}
+            {step === "organization" ? t("common.back") : t("auth.organization")}
           </button>
         )}
         <div className="text-center">
@@ -454,15 +474,19 @@ export const LoginPage: React.FC = () => {
               onSubmit={handleCredentialsSubmit}
             />
 
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleBackToOrganizationStep}
-              disabled={loading}
-              className="w-full"
-            >
-              {t("common.back")}
-            </Button>
+            {serverSettings?.registrationUrl != null && (
+              <div className="flex flex-col gap-2 text-center text-sm text-text-muted">
+                <p>{t("auth.registrationHint")}</p>
+                <a
+                  href={serverSettings.registrationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:bg-bg-elevated/60 inline-flex h-9 w-full items-center justify-center rounded-lg border border-border-subtle bg-bg-elevated px-4 font-medium text-text-primary transition-colors"
+                >
+                  {t("auth.register")}
+                </a>
+              </div>
+            )}
           </div>
         )}
         {step === "project" && (
