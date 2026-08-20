@@ -6,6 +6,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.16] — 2026-08-20
+
+### Added
+
+- Message quotes now render safe media thumbnails for quoted image attachments,
+  including the composer reply preview and sent-message history.
+- Electron text fields expose native editing actions, while message context
+  menus can copy links and image content through the desktop clipboard bridge.
+
+### Changed
+
+- Realtime messenger events are persisted for inactive Workspace accounts, so
+  switching accounts restores current conversations without waiting for a full
+  reload.
+- Organization login starts from the server-provided organization when one is
+  available and keeps registration links aligned with the selected server.
+
+### Fixed
+
+- Unread badges for background Workspace accounts now update as realtime
+  events arrive instead of waiting until the account becomes active.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.4.15`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.30` or newer.
+- The local messenger cache remains at schema version 7. No client or server
+  data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.4.16`.
+- No manual migration is required.
+
 ## [0.4.15] — 2026-08-20
 
 ### Changed
