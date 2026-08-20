@@ -1003,7 +1003,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     const backgroundContext = startedContexts[backgroundIndex]!;
     useMessengerStore.getState().startBootstrap(backgroundContext.ownerKey);
 
-    factoryOptions[backgroundIndex]!.applier.applyEvent(
+    await factoryOptions[backgroundIndex]!.applier.applyEvent(
       {
         epoch_version: 8,
         type: "message",

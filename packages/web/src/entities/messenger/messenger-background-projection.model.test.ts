@@ -242,12 +242,12 @@ describe("messenger background projection", () => {
     clearTestReadBoundaries();
   });
 
-  it("records message.created notification candidate with workspace preview and route data", () => {
+  it("records message.created notification candidate with workspace preview and route data", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 9,
         type: "stream",
@@ -260,7 +260,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 10,
         type: "topic",
@@ -269,7 +269,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -336,11 +336,11 @@ describe("messenger background projection", () => {
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 
-  it("keeps message snapshots but suppresses notification candidates before realtime is ready", () => {
+  it("keeps message snapshots but suppresses notification candidates before realtime is ready", async () => {
     const context = createContext(createOwner(), { notificationsEnabled: false });
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -357,11 +357,11 @@ describe("messenger background projection", () => {
     expect(projection?.notificationCandidates).toEqual([]);
   });
 
-  it("marks the topic prefix read when a message.read boundary arrives", () => {
+  it("marks the topic prefix read when a message.read boundary arrives", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -370,7 +370,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -383,7 +383,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 13,
         type: "message",
@@ -404,11 +404,11 @@ describe("messenger background projection", () => {
     expect(projection?.messageIdSnapshotsById[MESSAGE_B]?.read).toBe(true);
   });
 
-  it("marks every message in an exact messages.read batch", () => {
+  it("marks every message in an exact messages.read batch", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -417,7 +417,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -430,7 +430,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 13,
         type: "messages",
@@ -446,11 +446,11 @@ describe("messenger background projection", () => {
     expect(projection?.messageIdSnapshotsById[MESSAGE_B]?.read).toBe(true);
   });
 
-  it("suppresses a late created notification already covered by the read boundary", () => {
+  it("suppresses a late created notification already covered by the read boundary", async () => {
     const context = createContext(createOwner({ userUuid: USER_B }));
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -464,7 +464,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -496,11 +496,11 @@ describe("messenger background projection", () => {
       deliveryClass: "live" as const,
       notificationEligible: false,
     },
-  ])("keeps $label snapshots without creating notification candidates", (providerState) => {
+  ])("keeps $label snapshots without creating notification candidates", async (providerState) => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -526,11 +526,11 @@ describe("messenger background projection", () => {
     expect(projection?.notificationCandidates).toEqual([]);
   });
 
-  it("creates a candidate for eligible live and legacy provider messages", () => {
+  it("creates a candidate for eligible live and legacy provider messages", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -547,7 +547,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 13,
         type: "message",
@@ -580,11 +580,11 @@ describe("messenger background projection", () => {
     ]);
   });
 
-  it("keeps notification names and modes null when message arrives before stream and topic snapshots", () => {
+  it("keeps notification names and modes null when message arrives before stream and topic snapshots", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -607,11 +607,11 @@ describe("messenger background projection", () => {
     ]);
   });
 
-  it("stores precomputed notification mention flags without keeping full markdown", () => {
+  it("stores precomputed notification mention flags without keeping full markdown", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -637,11 +637,11 @@ describe("messenger background projection", () => {
     expect(JSON.stringify(projection)).not.toContain(`<@${USER_A}>`);
   });
 
-  it("uses the backend mention flag instead of re-parsing markdown when it is present", () => {
+  it("uses the backend mention flag instead of re-parsing markdown when it is present", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -666,11 +666,11 @@ describe("messenger background projection", () => {
     ]);
   });
 
-  it("does not guess current-user mention from plain display text in background mode", () => {
+  it("does not guess current-user mention from plain display text in background mode", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 11,
         type: "message",
@@ -695,11 +695,11 @@ describe("messenger background projection", () => {
     ]);
   });
 
-  it("records folder unread counters from folder snapshot", () => {
+  it("records folder unread counters from folder snapshot", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -734,11 +734,11 @@ describe("messenger background projection", () => {
     );
   });
 
-  it("projects stream unread snapshots into matching background folder items and totals", () => {
+  it("projects stream unread snapshots into matching background folder items and totals", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -759,7 +759,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 22,
         type: "folder",
@@ -780,7 +780,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 23,
         type: "folder",
@@ -808,7 +808,7 @@ describe("messenger background projection", () => {
     const unaffectedFolder = before?.folderSnapshotsById[FOLDER_C];
     const unaffectedItem = before?.folderItemSnapshotsById[FOLDER_ITEM_D];
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 24,
         type: "stream",
@@ -844,7 +844,7 @@ describe("messenger background projection", () => {
 
     const matchingFolder = projection?.folderSnapshotsById[FOLDER_A];
     const matchingItem = projection?.folderItemSnapshotsById[FOLDER_ITEM_A];
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 25,
         type: "stream",
@@ -863,11 +863,11 @@ describe("messenger background projection", () => {
     expect(repeatedProjection?.folderItemSnapshotsById[FOLDER_ITEM_A]).toBe(matchingItem);
   });
 
-  it("does not create background folder state from a stream snapshot alone", () => {
+  it("does not create background folder state from a stream snapshot alone", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "stream",
@@ -885,11 +885,11 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderItemId).toEqual({});
   });
 
-  it("projects active stream unread into folder totals while preserving passive unread", () => {
+  it("projects active stream unread into folder totals while preserving passive unread", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -907,7 +907,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 22,
         type: "stream",
@@ -932,11 +932,11 @@ describe("messenger background projection", () => {
     });
   });
 
-  it("projects a zero stream unread count into existing background folder state", () => {
+  it("projects a zero stream unread count into existing background folder state", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -957,7 +957,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 22,
         type: "stream",
@@ -983,13 +983,13 @@ describe("messenger background projection", () => {
     expect(projection?.folderSnapshotsById[FOLDER_A]?.unreadCount).toBe(4);
   });
 
-  it("keeps unread topology after lightweight snapshots expire", () => {
+  it("keeps unread topology after lightweight snapshots expire", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-25T08:00:00Z"));
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -1009,7 +1009,7 @@ describe("messenger background projection", () => {
     );
 
     vi.advanceTimersByTime(31 * 60 * 1000);
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 22,
         type: "stream",
@@ -1036,7 +1036,7 @@ describe("messenger background projection", () => {
 
     const unreadByFolderId = projection?.unreadByFolderId;
     const unreadByFolderItemId = projection?.unreadByFolderItemId;
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 23,
         type: "stream",
@@ -1055,7 +1055,7 @@ describe("messenger background projection", () => {
     expect(repeatedProjection?.unreadByFolderItemId).toBe(unreadByFolderItemId);
   });
 
-  it("keeps complete unread totals when lightweight item snapshots are capped", () => {
+  it("keeps complete unread totals when lightweight item snapshots are capped", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
     const folderItems = Array.from({ length: 201 }, (_, index) =>
@@ -1070,7 +1070,7 @@ describe("messenger background projection", () => {
     const lastItem = folderItems[200];
     if (lastItem == null) throw new Error("Expected the last folder item");
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 21,
         type: "folder",
@@ -1088,7 +1088,7 @@ describe("messenger background projection", () => {
     expect(Object.keys(compactedProjection?.folderItemSnapshotsById ?? {})).toHaveLength(200);
     expect(Object.keys(compactedProjection?.folderItemTopologyById ?? {})).toHaveLength(201);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 22,
         type: "stream",
@@ -1109,11 +1109,11 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderId[FOLDER_A]).toBe(205);
   });
 
-  it("stores lightweight stream topic folder and message snapshots without PII fields", () => {
+  it("stores lightweight stream topic folder and message snapshots without PII fields", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 31,
         type: "stream",
@@ -1122,7 +1122,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 32,
         type: "topic",
@@ -1131,7 +1131,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 33,
         type: "folder",
@@ -1140,7 +1140,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 34,
         type: "message",
@@ -1189,11 +1189,11 @@ describe("messenger background projection", () => {
     expect(serializedProjection).not.toContain("Private folder title");
   });
 
-  it("records unsupported and skipped diagnostics as a bounded list", () => {
+  it("records unsupported and skipped diagnostics as a bounded list", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       { epoch_version: 1, type: "unknown" } as unknown as WorkspaceRealtimeEvent,
       context,
     );
@@ -1212,13 +1212,13 @@ describe("messenger background projection", () => {
     );
   });
 
-  it("keeps recent events candidates skipped events and snapshot ids bounded", () => {
+  it("keeps recent events candidates skipped events and snapshot ids bounded", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
     for (let index = 0; index < 260; index++) {
       const suffix = index.toString(16).padStart(12, "0");
-      applier.applyEvent(
+      await applier.applyEvent(
         {
           epoch_version: index + 1,
           type: "message",
@@ -1249,14 +1249,14 @@ describe("messenger background projection", () => {
     expect(JSON.stringify(projection)).not.toContain("private-body-0");
   });
 
-  it("expires stale lightweight snapshots on the next background event", () => {
+  it("expires stale lightweight snapshots on the next background event", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-22T10:00:00Z"));
 
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 41,
         type: "stream",
@@ -1267,7 +1267,7 @@ describe("messenger background projection", () => {
     );
 
     vi.setSystemTime(new Date("2026-06-22T10:31:00Z"));
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 42,
         type: "stream",
@@ -1285,11 +1285,11 @@ describe("messenger background projection", () => {
     );
   });
 
-  it("removes deleted folder stream topic and folder item snapshots", () => {
+  it("removes deleted folder stream topic and folder item snapshots", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 51,
         type: "stream",
@@ -1298,7 +1298,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 52,
         type: "topic",
@@ -1307,7 +1307,7 @@ describe("messenger background projection", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 53,
         type: "folder",
@@ -1317,7 +1317,7 @@ describe("messenger background projection", () => {
       context,
     );
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 54,
         type: "folder_item",
@@ -1332,7 +1332,7 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderItemId[FOLDER_ITEM_A]).toBeUndefined();
     expect(projection?.folderSnapshotsById[FOLDER_A]?.folderItemIds).toEqual([FOLDER_ITEM_B]);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 55,
         type: "topic",
@@ -1345,7 +1345,7 @@ describe("messenger background projection", () => {
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
     expect(projection?.topicSnapshotsById[TOPIC_A]).toBeUndefined();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 56,
         type: "stream",
@@ -1363,7 +1363,7 @@ describe("messenger background projection", () => {
       projection?.notificationCandidates.some((candidate) => candidate.streamUuid === STREAM_A),
     ).toBe(false);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 57,
         type: "folder",
@@ -1378,11 +1378,11 @@ describe("messenger background projection", () => {
     expect(projection?.unreadByFolderId[FOLDER_A]).toBeUndefined();
   });
 
-  it("ignores active-surface events so active apply path stays separate", () => {
+  it("ignores active-surface events so active apply path stays separate", async () => {
     const context = createContext(createOwner(), { surface: "active" });
     const applier = createMessengerRealtimeBackgroundApplier();
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 31,
         type: "message",

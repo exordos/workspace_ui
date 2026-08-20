@@ -610,7 +610,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     top: number;
     hasSelection: boolean;
   } | null>(null);
-  const textEditingSelectionRef = useRef({
+  const textEditingSelectionRef = useRef<{
+    start: number;
+    end: number;
+    direction: SelectionDirection;
+  }>({
     start: 0,
     end: 0,
     direction: "none",

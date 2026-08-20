@@ -23,9 +23,18 @@ interface TestFixtures {
 }
 
 const LOGIN_BUTTON = /login|log in|войти/i;
+const LOGIN_EMAIL_FIELD = /email|логин/i;
 const LOGIN_NEXT_BUTTON = /next|далее/i;
 const LOGIN_SERVER_FIELD = /адрес сервера|server url/i;
-export { LOGIN_BUTTON, LOGIN_NEXT_BUTTON, LOGIN_SERVER_FIELD };
+export { LOGIN_BUTTON, LOGIN_EMAIL_FIELD, LOGIN_NEXT_BUTTON, LOGIN_SERVER_FIELD };
+
+export async function expectLoginCredentialsStep(
+  page: Page,
+  options: { timeout?: number } = {},
+): Promise<void> {
+  await baseExpect(page.getByLabel(LOGIN_EMAIL_FIELD)).toBeVisible(options);
+  await baseExpect(page.getByRole("button", { name: LOGIN_NEXT_BUTTON })).toBeVisible(options);
+}
 
 export async function expectLoginOrganizationStep(
   page: Page,

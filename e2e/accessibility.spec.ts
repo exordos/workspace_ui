@@ -1,4 +1,4 @@
-import { test, expect, expectLoginOrganizationStep } from "./fixtures";
+import { test, expect, expectLoginCredentialsStep } from "./fixtures";
 
 test.describe("Accessibility", () => {
   test("login page has a non-empty document title", async ({ guestPage }) => {
@@ -17,7 +17,7 @@ test.describe("Accessibility", () => {
 
   test("login form fields have labels or placeholders", async ({ guestPage }) => {
     await guestPage.goto("/");
-    await expectLoginOrganizationStep(guestPage);
+    await expectLoginCredentialsStep(guestPage);
     const inputs = guestPage.locator("input");
     const count = await inputs.count();
     expect(count).toBeGreaterThanOrEqual(1);

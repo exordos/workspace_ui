@@ -43,6 +43,7 @@ vi.mock("~/shared/lib/analytics/usePageView", () => ({
 
 vi.mock("~/shared/lib/electron", () => ({
   getElectronAPI: () => null,
+  isElectron: () => false,
 }));
 
 vi.mock("~/shared/lib/focus", () => ({

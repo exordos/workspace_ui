@@ -3633,7 +3633,7 @@ describe("MessageComposer Electron text editing context menu", () => {
     installElectronTextEditingApi();
     renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
 
-    const textbox = screen.getByRole("textbox");
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
     textbox.focus();
     textbox.setSelectionRange(0, 8);
 
@@ -3668,7 +3668,7 @@ describe("MessageComposer Electron text editing context menu", () => {
     installElectronTextEditingApi();
     renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
 
-    const textbox = screen.getByRole("textbox");
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
     textbox.focus();
     textbox.setSelectionRange(1, 8, "forward");
     fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
@@ -3689,7 +3689,7 @@ describe("MessageComposer Electron text editing context menu", () => {
       <MessageComposer onSend={vi.fn()} initialValue="Composer text" />,
     );
 
-    const textbox = screen.getByRole("textbox");
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
     textbox.setSelectionRange(3, 3);
     fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
 
@@ -3715,7 +3715,7 @@ describe("MessageComposer Electron text editing context menu", () => {
     installElectronTextEditingApi();
     renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" disabled />);
 
-    const textbox = screen.getByRole("textbox");
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
     textbox.setSelectionRange(0, 8);
     fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
 
@@ -3728,7 +3728,7 @@ describe("MessageComposer Electron text editing context menu", () => {
     installElectronTextEditingApi();
     renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
 
-    const textbox = screen.getByRole("textbox");
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
     const commands = [
       ["Cut", "cut"],
       ["Copy", "copy"],
