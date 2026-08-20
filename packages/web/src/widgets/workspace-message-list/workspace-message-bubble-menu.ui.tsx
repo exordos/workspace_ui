@@ -2,7 +2,7 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
-import { writeText } from "~/shared/lib/clipboard";
+import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import type {
@@ -160,6 +160,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   open,
   contextAnchor,
   contextLinkUrl,
+  contextImageFile,
   onOpenChange,
   onReplyMessage,
   onAddReplyMessage,
@@ -169,6 +170,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onRequestDeleteMessage,
   onCopyMessageText,
   onToggleMessageReaction,
+  onLoadWorkspaceFilePreview,
   getSelectedText,
 }: WorkspaceMessageBubbleMenuProps): React.ReactElement {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -279,6 +281,22 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     pushActionSection(primaryActionItems);
 
     const secondaryActionItems: DropdownMenuItem[] = [];
+    if (contextImageFile != null && onLoadWorkspaceFilePreview != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy-image",
+        icon: "images",
+        label: t("message.copyImage"),
+        onSelect: () => {
+          const controller = new AbortController();
+          const imageBlob = Promise.resolve().then(() =>
+            onLoadWorkspaceFilePreview(contextImageFile, controller.signal),
+          );
+          void writeImage(imageBlob);
+          closeMenu();
+        },
+      });
+    }
     if (contextLinkUrl != null) {
       secondaryActionItems.push({
         type: "action",
@@ -352,6 +370,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     return items;
   }, [
     closeMenu,
+    contextImageFile,
     contextLinkUrl,
     emojiPickerOpen,
     getSelectedText,
@@ -364,6 +383,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onCopyMessageText,
     onEditMessage,
     onForwardMessage,
+    onLoadWorkspaceFilePreview,
     onReplyMessage,
     onRequestDeleteMessage,
     onToggleMessageSelection,

@@ -5400,6 +5400,65 @@ describe("WorkspaceMessageList", () => {
     expect(screen.queryByRole("menuitem", { name: "Copy link" })).not.toBeInTheDocument();
   });
 
+  it("offers to copy image bytes only from an image context", async () => {
+    let clipboardItemData: Record<string, string | Blob | PromiseLike<string | Blob>> | undefined;
+    vi.stubGlobal(
+      "ClipboardItem",
+      class ClipboardItemMock {
+        constructor(data: Record<string, string | Blob | PromiseLike<string | Blob>>) {
+          clipboardItemData = data;
+        }
+      },
+    );
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+    const imageUuid = "44444444-4444-4444-8444-444444444444";
+    const fileUuid = "55555555-5555-4555-8555-555555555555";
+    const imageBlob = new Blob(["png-bytes"], { type: "image/png" });
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(imageBlob);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "copy-image-context-message",
+            markdown: `![screen.png](urn:image:${imageUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+          createWorkspaceMessage({
+            uuid: "copy-file-context-message",
+            markdown: `[notes.pdf](urn:file:${fileUuid}?name=notes.pdf&content_type=application%2Fpdf)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+    const imagePlaceholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${imageUuid}"]`,
+    );
+    const filePlaceholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+
+    fireEvent.contextMenu(imagePlaceholder!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy image" }));
+
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(await clipboardItemData?.["image/png"]).toBe(imageBlob);
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({ fileUuid: imageUuid, mediaKind: "image" }),
+      expect.any(AbortSignal),
+    );
+
+    fireEvent.contextMenu(filePlaceholder!, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy image" })).not.toBeInTheDocument();
+  });
+
   it("opens the Workspace bubble menu from keyboard context menu shortcut", async () => {
     const { container } = render(
       <WorkspaceMessageList

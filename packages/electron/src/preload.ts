@@ -38,6 +38,8 @@ const electronAPI = {
 
   clipboard: {
     writeText: (text: string): Promise<boolean> => ipcRenderer.invoke("clipboard:writeText", text),
+    writeImage: (bytes: Uint8Array): Promise<boolean> =>
+      ipcRenderer.invoke("clipboard:writeImage", bytes),
     readText: (): Promise<string | null> => ipcRenderer.invoke("clipboard:readText"),
   },
 

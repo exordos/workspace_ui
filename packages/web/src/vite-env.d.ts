@@ -171,6 +171,7 @@ interface ElectronAPI {
   };
   clipboard: {
     writeText: (text: string) => Promise<boolean>;
+    writeImage?: (bytes: Uint8Array) => Promise<boolean>;
     readText: () => Promise<string | null>;
   };
   textEditing: {

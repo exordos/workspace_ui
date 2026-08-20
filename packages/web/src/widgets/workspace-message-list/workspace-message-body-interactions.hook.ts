@@ -47,6 +47,7 @@ export interface UseWorkspaceMessageBodyInteractionsResult {
   menuOpen: boolean;
   contextMenuAnchor: WorkspaceMessageBubbleMenuAnchor | null;
   contextLinkUrl: string | null;
+  contextImageFile: WorkspaceMessageFileReference | null;
   getSelectedText: () => string | undefined;
   handleBodyClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -329,6 +330,9 @@ export function useWorkspaceMessageBodyInteractions({
   const [contextMenuAnchor, setContextMenuAnchor] =
     useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
   const [contextLinkUrl, setContextLinkUrl] = useState<string | null>(null);
+  const [contextImageFile, setContextImageFile] = useState<WorkspaceMessageFileReference | null>(
+    null,
+  );
   const capturedSelectionRef = useRef<string | undefined>(undefined);
   const pendingDownloadFileUuidsRef = useRef<Set<string>>(new Set());
   const latestFileReferencesRef = useRef(fileReferences);
@@ -342,9 +346,15 @@ export function useWorkspaceMessageBodyInteractions({
   }, [bodyRef]);
 
   const openContextMenuAt = useCallback(
-    (clientX: number, clientY: number, linkUrl: string | null = null) => {
+    (
+      clientX: number,
+      clientY: number,
+      linkUrl: string | null = null,
+      imageFile: WorkspaceMessageFileReference | null = null,
+    ) => {
       capturedSelectionRef.current = resolveSelectionInsideBody(bodyRef.current);
       setContextLinkUrl(linkUrl);
+      setContextImageFile(imageFile);
       setContextMenuAnchor({
         left: clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
         top: clientY,
@@ -417,10 +427,24 @@ export function useWorkspaceMessageBodyInteractions({
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
+      const bodyElement = bodyRef.current;
+      const workspaceFile =
+        event.target instanceof HTMLElement && bodyElement != null
+          ? resolveWorkspaceFileReferenceFromClick(
+              event.target,
+              bodyElement,
+              latestFileReferencesRef.current,
+            )
+          : null;
+      const imageFile =
+        workspaceFile?.kind === "media" && workspaceFile.mediaKind === "image"
+          ? workspaceFile
+          : null;
       openContextMenuAt(
         event.clientX,
         event.clientY,
-        resolveContextLinkUrl(event.target, bodyRef.current),
+        resolveContextLinkUrl(event.target, bodyElement),
+        imageFile,
       );
     },
     [bodyRef, openContextMenuAt],
@@ -484,6 +508,7 @@ export function useWorkspaceMessageBodyInteractions({
     if (!nextOpen) {
       capturedSelectionRef.current = undefined;
       setContextLinkUrl(null);
+      setContextImageFile(null);
       setContextMenuAnchor(null);
     }
   }, []);
@@ -640,6 +665,7 @@ export function useWorkspaceMessageBodyInteractions({
     menuOpen,
     contextMenuAnchor,
     contextLinkUrl,
+    contextImageFile,
     getSelectedText,
     handleBodyClick,
     handleContextMenu,

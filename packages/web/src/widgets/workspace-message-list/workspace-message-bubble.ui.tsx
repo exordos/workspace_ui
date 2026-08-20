@@ -421,6 +421,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       menuOpen,
       contextMenuAnchor,
       contextLinkUrl,
+      contextImageFile,
       getSelectedText,
       handleBodyClick,
       handleContextMenu,
@@ -535,6 +536,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             open={menuOpen}
             contextAnchor={contextMenuAnchor}
             contextLinkUrl={contextLinkUrl}
+            contextImageFile={contextImageFile}
             onOpenChange={handleMenuOpenChange}
             onReplyMessage={interactiveActions?.onReplyMessage}
             onAddReplyMessage={interactiveActions?.onAddReplyMessage}
@@ -544,6 +546,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
             onCopyMessageText={interactiveActions?.onCopyMessageText}
             onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
+            onLoadWorkspaceFilePreview={
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+            }
             getSelectedText={getSelectedText}
           />
         ) : null}

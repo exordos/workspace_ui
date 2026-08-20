@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readText, writeText } from "./clipboard";
+import { readText, writeImage, writeText } from "./clipboard";
+
+type ClipboardItemPayload = Record<string, string | Blob | PromiseLike<string | Blob>>;
 
 describe("clipboard", () => {
   const originalElectronApi = window.electronAPI;
@@ -15,6 +17,8 @@ describe("clipboard", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     if (originalElectronApi != null) {
       (window as unknown as Record<string, unknown>).electronAPI = originalElectronApi;
     } else {
@@ -24,6 +28,98 @@ describe("clipboard", () => {
       value: originalClipboard,
       configurable: true,
       writable: true,
+    });
+  });
+
+  describe("writeImage", () => {
+    it("writes a PNG blob in browser runtime", async () => {
+      let clipboardItemData: ClipboardItemPayload | undefined;
+      vi.stubGlobal(
+        "ClipboardItem",
+        class ClipboardItemMock {
+          constructor(data: ClipboardItemPayload) {
+            clipboardItemData = data;
+          }
+        },
+      );
+      const writeMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write: writeMock },
+        configurable: true,
+        writable: true,
+      });
+      const image = new Blob(["png-bytes"], { type: "image/png" });
+
+      await expect(writeImage(Promise.resolve(image))).resolves.toBe(true);
+
+      expect(writeMock).toHaveBeenCalledTimes(1);
+      expect(await clipboardItemData?.["image/png"]).toBe(image);
+    });
+
+    it("writes image bytes through Electron API", async () => {
+      const writeImageMock = vi.fn().mockResolvedValue(true);
+      (window as unknown as Record<string, unknown>).electronAPI = {
+        clipboard: { writeImage: writeImageMock },
+      };
+
+      await expect(
+        writeImage(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" })),
+      ).resolves.toBe(true);
+
+      expect(writeImageMock).toHaveBeenCalledTimes(1);
+      expect(Array.from(writeImageMock.mock.calls[0]?.[0] as Uint8Array)).toEqual([1, 2, 3]);
+    });
+
+    it("converts non-PNG browser images before writing", async () => {
+      let clipboardItemData: ClipboardItemPayload | undefined;
+      vi.stubGlobal(
+        "ClipboardItem",
+        class ClipboardItemMock {
+          constructor(data: ClipboardItemPayload) {
+            clipboardItemData = data;
+          }
+        },
+      );
+      const writeMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write: writeMock },
+        configurable: true,
+        writable: true,
+      });
+      const pngImage = new Blob(["converted-png"], { type: "image/png" });
+      const close = vi.fn();
+      vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width: 4, height: 3, close }));
+      const drawImage = vi.fn();
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn().mockReturnValue({ drawImage }),
+        toBlob: vi.fn((callback: BlobCallback) => callback(pngImage)),
+      };
+      const createElement = vi
+        .spyOn(document, "createElement")
+        .mockReturnValue(canvas as unknown as HTMLCanvasElement);
+
+      await expect(writeImage(new Blob(["jpeg-bytes"], { type: "image/jpeg" }))).resolves.toBe(
+        true,
+      );
+
+      expect(await clipboardItemData?.["image/png"]).toBe(pngImage);
+      expect(canvas.width).toBe(4);
+      expect(canvas.height).toBe(3);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      createElement.mockRestore();
+    });
+
+    it("returns false when image clipboard APIs are unavailable", async () => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+
+      await expect(writeImage(new Blob(["image"], { type: "image/png" }))).resolves.toBe(false);
     });
   });
 
