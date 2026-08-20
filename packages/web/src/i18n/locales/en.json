@@ -537,6 +537,7 @@
     "pin": "Pin message",
     "unpin": "Unpin",
     "copy": "Copy text",
+    "copyLink": "Copy link",
     "openInChat": "Open in chat",
     "joinCall": "Join call",
     "copyCallLink": "Copy call link",

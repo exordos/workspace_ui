@@ -5366,6 +5366,40 @@ describe("WorkspaceMessageList", () => {
     expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
   });
 
+  it("offers to copy a safe link from its right-click context", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const url = "https://example.com/docs?section=messenger#links";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "copy-link-context-message",
+            markdown: `Open [docs](${url})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "docs" });
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+
+    fireEvent.contextMenu(link, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(url));
+
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy link" })).not.toBeInTheDocument();
+  });
+
   it("opens the Workspace bubble menu from keyboard context menu shortcut", async () => {
     const { container } = render(
       <WorkspaceMessageList

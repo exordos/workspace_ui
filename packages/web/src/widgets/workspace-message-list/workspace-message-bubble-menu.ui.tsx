@@ -2,6 +2,7 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
+import { writeText } from "~/shared/lib/clipboard";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import type {
@@ -76,13 +77,6 @@ function emojiGlyphFromPickerData(data: EmojiClickData): string | null {
   if (data.isCustom === true) return null;
   const emoji = data.emoji.trim();
   return emoji.length > 0 ? emoji : null;
-}
-
-function copyTextToClipboard(text: string): void {
-  if (typeof navigator === "undefined" || navigator.clipboard == null) {
-    return;
-  }
-  void navigator.clipboard.writeText(text);
 }
 
 const WorkspaceReactionEmojiPicker = React.memo(function WorkspaceReactionEmojiPicker({
@@ -165,6 +159,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   isOwn,
   open,
   contextAnchor,
+  contextLinkUrl,
   onOpenChange,
   onReplyMessage,
   onAddReplyMessage,
@@ -283,24 +278,35 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     // menu, where the message is already shown in its conversation.
     pushActionSection(primaryActionItems);
 
-    const secondaryActionItems: DropdownMenuItem[] = [
-      {
+    const secondaryActionItems: DropdownMenuItem[] = [];
+    if (contextLinkUrl != null) {
+      secondaryActionItems.push({
         type: "action",
-        key: "copy",
-        icon: "copy",
-        label: t("message.copy"),
+        key: "copy-link",
+        icon: "links_compact",
+        label: t("message.copyLink"),
         onSelect: () => {
-          const selectedText = getSelectedText();
-          const textToCopy = selectedText ?? message.payload.content;
-          if (onCopyMessageText != null) {
-            void onCopyMessageText(message.uuid, textToCopy);
-          } else {
-            copyTextToClipboard(textToCopy);
-          }
+          void writeText(contextLinkUrl);
           closeMenu();
         },
+      });
+    }
+    secondaryActionItems.push({
+      type: "action",
+      key: "copy",
+      icon: "copy",
+      label: t("message.copy"),
+      onSelect: () => {
+        const selectedText = getSelectedText();
+        const textToCopy = selectedText ?? message.payload.content;
+        if (onCopyMessageText != null) {
+          void onCopyMessageText(message.uuid, textToCopy);
+        } else {
+          void writeText(textToCopy);
+        }
+        closeMenu();
       },
-    ];
+    });
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",
@@ -346,6 +352,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     return items;
   }, [
     closeMenu,
+    contextLinkUrl,
     emojiPickerOpen,
     getSelectedText,
     handleEmojiPick,

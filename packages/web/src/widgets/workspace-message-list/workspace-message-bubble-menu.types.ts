@@ -11,6 +11,7 @@ export interface WorkspaceMessageBubbleMenuProps {
   isOwn: boolean;
   open: boolean;
   contextAnchor: WorkspaceMessageBubbleMenuAnchor | null;
+  contextLinkUrl: string | null;
   onOpenChange: (open: boolean) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

@@ -420,6 +420,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const {
       menuOpen,
       contextMenuAnchor,
+      contextLinkUrl,
       getSelectedText,
       handleBodyClick,
       handleContextMenu,
@@ -533,6 +534,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             isOwn={isOwn}
             open={menuOpen}
             contextAnchor={contextMenuAnchor}
+            contextLinkUrl={contextLinkUrl}
             onOpenChange={handleMenuOpenChange}
             onReplyMessage={interactiveActions?.onReplyMessage}
             onAddReplyMessage={interactiveActions?.onAddReplyMessage}
