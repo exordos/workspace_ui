@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
 import { MessageComposerPreface } from "./message-composer-preface.ui";
 import type { MessageComposerPrefaceProps } from "./message-composer.types";
@@ -17,6 +17,10 @@ const createProps = (
   onCancelScheduled: vi.fn(),
   replyQuote: null,
   ...overrides,
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("MessageComposerPreface upload progress", () => {
@@ -233,5 +237,165 @@ describe("MessageComposerPreface reply chrome", () => {
     expect(tabsRow).toHaveClass("px-2");
     expect(quoteRow).toHaveClass("px-2", "pt-2", "pb-1");
     expect(quoteRow).not.toHaveClass("py-2");
+  });
+
+  it("shows the preferred Workspace media thumbnail beside the reply text", async () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const videoUuid = "22222222-2222-4222-8222-222222222222";
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:composer-quote-image");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob(["image"]));
+
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: "33333333-3333-4333-8333-333333333333",
+            content: [
+              `[clip.mp4](urn:video:${videoUuid}?content_type=video%2Fmp4)`,
+              `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+              "Caption",
+            ].join("\n\n"),
+            sender_full_name: "Alice",
+            sender_uuid: "44444444-4444-4444-8444-444444444444",
+            quoteFormat: "workspace",
+            permalinkUrl: null,
+          },
+          onLoadWorkspaceFilePreview,
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[src='blob:composer-quote-image']")).not.toBeNull();
+    });
+    const thumbnailImage = container.querySelector("img[src='blob:composer-quote-image']");
+    expect(screen.getByText(/Изображение/)).toBeInTheDocument();
+    fireEvent.load(thumbnailImage!);
+    expect(onLoadWorkspaceFilePreview.mock.calls[0]?.[0]).toMatchObject({
+      fileUuid: imageUuid,
+      mediaKind: "image",
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/Изображение/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Видео/)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/Caption/)).toBeInTheDocument();
+    const thumbnail = container.querySelector("[data-workspace-quote-media-thumbnail='true']");
+    expect(thumbnail?.nextElementSibling).toContainElement(screen.getByText(/Reply: Alice/i));
+    expect(thumbnail?.nextElementSibling).toContainElement(screen.getByText(/Caption/));
+
+    fireEvent.error(thumbnailImage!);
+    await waitFor(() => {
+      expect(screen.getByText(/Изображение/)).toBeInTheDocument();
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail='true']")).toBeNull();
+    });
+  });
+
+  it("keeps the Workspace media label when a thumbnail cannot be loaded", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+
+    render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: "33333333-3333-4333-8333-333333333333",
+            content: `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+            sender_full_name: "Alice",
+            sender_uuid: "44444444-4444-4444-8444-444444444444",
+            quoteFormat: "workspace",
+            permalinkUrl: null,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+  });
+
+  it("keeps the Workspace media label when the thumbnail loader fails", async () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+
+    const { container } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: "33333333-3333-4333-8333-333333333333",
+            content: `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+            sender_full_name: "Alice",
+            sender_uuid: "44444444-4444-4444-8444-444444444444",
+            quoteFormat: "workspace",
+            permalinkUrl: null,
+          },
+          onLoadWorkspaceFilePreview: vi.fn().mockRejectedValue(new Error("preview failed")),
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail='true']")).toBeNull();
+    });
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+  });
+
+  it("does not load Workspace media for a legacy reply", () => {
+    const onLoadWorkspaceFilePreview = vi.fn();
+
+    render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: {
+            id: 1,
+            content: "![screen.png](urn:image:11111111-1111-4111-8111-111111111111)",
+            sender_full_name: "Alice",
+            quoteFormat: "zulip",
+            permalinkUrl: null,
+          },
+          onLoadWorkspaceFilePreview,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+    expect(onLoadWorkspaceFilePreview).not.toHaveBeenCalled();
+  });
+
+  it("does not reload media when an equivalent Workspace reply object replaces the previous one", async () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const content = `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`;
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:stable-composer-quote-image");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob(["image"]));
+    const buildWorkspaceQuote = () => ({
+      id: "33333333-3333-4333-8333-333333333333",
+      content,
+      sender_full_name: "Alice",
+      sender_uuid: "44444444-4444-4444-8444-444444444444",
+      quoteFormat: "workspace" as const,
+      permalinkUrl: null,
+    });
+
+    const { container, rerender } = render(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: buildWorkspaceQuote(),
+          onLoadWorkspaceFilePreview,
+        })}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector("img[src='blob:stable-composer-quote-image']")).not.toBeNull();
+    });
+
+    rerender(
+      <MessageComposerPreface
+        {...createProps({
+          replyQuote: buildWorkspaceQuote(),
+          onLoadWorkspaceFilePreview,
+        })}
+      />,
+    );
+
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
   });
 });

@@ -36,6 +36,7 @@ import {
   selectMessengerSidebarConversations,
   useMessengerStore,
 } from "./messenger.model";
+import type { RemoveMessengerStreamProjectionOptions } from "./messenger-stream-projection-cleanup.lib";
 
 const ACCOUNT_A = "account-a";
 const INSTANCE_A = "instance-a";
@@ -419,12 +420,12 @@ describe("messenger realtime active applier", () => {
     expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(context.ownerKey, [MESSAGE_A]);
   });
 
-  it("persists a background message.read boundary without touching the active message store", () => {
+  it("persists a background message.read boundary without touching the active message store", async () => {
     const context = createContext(createOwner(), { surface: "background" });
     const cache = { advanceReadBoundary: vi.fn(), markCachedMessagesRead: vi.fn() };
     const applier = createMessengerRealtimeBackgroundApplier({ cache });
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 14,
         type: "message",
@@ -490,6 +491,189 @@ describe("messenger realtime active applier", () => {
     await application;
 
     expect(settled).toBe(true);
+  });
+
+  it("awaits a background message cache write before publishing its lightweight projection", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    let releaseMessageWrite: (() => void) | undefined;
+    const messageWrite = new Promise<void>((resolve) => {
+      releaseMessageWrite = resolve;
+    });
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => messageWrite),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 15,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid: MESSAGE_C,
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      ),
+    );
+
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]).toBeUndefined();
+
+    releaseMessageWrite?.();
+    await application;
+
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 15);
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
+        ?.messageIdSnapshotsById[MESSAGE_C],
+    ).toEqual(expect.objectContaining({ messageUuid: MESSAGE_C }));
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]).toBeUndefined();
+  });
+
+  it("does not start background cache work for an initially stale owner", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const cache = {
+      writeConversationMessagePage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache,
+      isOwnerCurrent: () => false,
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 16,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    expect(cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
+  });
+
+  it("does not start background cache work for an initially aborted owner", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+    const context = createContext(createOwner(), {
+      surface: "background",
+      signal: abortController.signal,
+    });
+    const cache = {
+      writeConversationMessagePage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 17,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    expect(cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
+  });
+
+  it("does not publish a cursor or projection when the owner becomes stale during a cache write", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    let isCurrent = true;
+    let releaseMessageWrite: (() => void) | undefined;
+    const messageWrite = new Promise<void>((resolve) => {
+      releaseMessageWrite = resolve;
+    });
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => messageWrite),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 18,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto(),
+        },
+        context,
+      ),
+    );
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+
+    isCurrent = false;
+    releaseMessageWrite?.();
+    await application;
+
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
+  });
+
+  it("does not publish a cursor or projection when the owner aborts during a cache write", async () => {
+    const abortController = new AbortController();
+    const context = createContext(createOwner(), {
+      surface: "background",
+      signal: abortController.signal,
+    });
+    let releaseMessageWrite: (() => void) | undefined;
+    const messageWrite = new Promise<void>((resolve) => {
+      releaseMessageWrite = resolve;
+    });
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => messageWrite),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 19,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto(),
+        },
+        context,
+      ),
+    );
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+
+    abortController.abort();
+    releaseMessageWrite?.();
+    await application;
+
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
   });
 
   it("publishes initial sync readiness only after active catch-up finishes", () => {
@@ -1470,26 +1654,118 @@ describe("messenger realtime active applier", () => {
 
   it("runs full owner-scoped cleanup for a background stream deletion", async () => {
     const context = createContext(createOwner(), { surface: "background" });
-    const removeProjection = vi.fn(() => Promise.resolve());
-    const applier = createMessengerRealtimeBackgroundApplier({ removeProjection });
+    let releaseCleanup: (() => void) | undefined;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const deleteCachedStream = vi.fn();
+    const writeRealtimeCursor = vi.fn();
+    const removeProjection = vi.fn((options: RemoveMessengerStreamProjectionOptions) => {
+      void options.deleteCachedStream?.(options.ownerKey, options.streamUuid);
+      return cleanup;
+    });
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache: { deleteCachedStream, writeRealtimeCursor },
+      removeProjection,
+    });
 
-    applier.applyEvent(
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 43,
+          type: "stream",
+          kind: "stream.deleted",
+          stream: createStreamDto(),
+        },
+        context,
+      ),
+    );
+    let settled = false;
+    void application.then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
+    expect(deleteCachedStream).toHaveBeenCalledOnce();
+    expect(deleteCachedStream).toHaveBeenCalledWith(context.ownerKey, STREAM_A);
+    expect(writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 43);
+    expect(removeProjection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerKey: context.ownerKey,
+        streamUuid: STREAM_A,
+        removeActiveProjection: false,
+        isOwnerCurrent: expect.any(Function),
+        deleteCachedStream: expect.any(Function),
+      }),
+    );
+    expect(deleteCachedStream).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    releaseCleanup?.();
+    await application;
+
+    expect(settled).toBe(true);
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
+        ?.lastEpochVersion,
+    ).toBe(43);
+  });
+
+  it("writes background stream bindings without adding a deferred projection event", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const cache = {
+      upsertCachedStreamBindings: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+
+    await applier.applyEvent(
       {
-        epoch_version: 43,
-        type: "stream",
-        kind: "stream.deleted",
-        stream: createStreamDto(),
+        epoch_version: 44,
+        type: "stream_binding",
+        kind: "stream_bindings.created",
+        stream_uuid: STREAM_A,
+        stream_bindings: [createStreamBindingDto()],
       },
       context,
     );
 
-    await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
-    expect(removeProjection).toHaveBeenCalledWith({
-      ownerKey: context.ownerKey,
-      streamUuid: STREAM_A,
-      removeActiveProjection: false,
-      isOwnerCurrent: expect.any(Function),
+    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(context.ownerKey, [
+      expect.objectContaining({ uuid: STREAM_BINDING_A, streamUuid: STREAM_A }),
+    ]);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 44);
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
+  });
+
+  it("keeps background file events deferred", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const writeRealtimeCursor = vi.fn();
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache: { writeRealtimeCursor },
     });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 45,
+        type: "file",
+        kind: "file.deleted",
+        file: { uuid: MESSAGE_A, stream_uuid: STREAM_A },
+      },
+      context,
+    );
+
+    expect(writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
+        ?.skippedEvents,
+    ).toEqual([
+      expect.objectContaining({
+        epochVersion: 45,
+        reason: "background_apply_deferred",
+      }),
+    ]);
   });
 
   it("accepts a lawful stream.created after deleting the same stream UUID", () => {

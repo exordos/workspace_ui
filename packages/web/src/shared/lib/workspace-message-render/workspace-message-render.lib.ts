@@ -68,6 +68,64 @@ function renderWorkspaceMessageGap(token: Tokens.Space): string {
   return `<span class="workspace-message-gap workspace-message-gap--${blankLineCount}" aria-hidden="true"></span>`;
 }
 
+function isHiddenWorkspaceMediaInlineToken(
+  token: Token,
+  hiddenWorkspaceMediaFileUuids: ReadonlySet<string>,
+): boolean {
+  if (token.type === WORKSPACE_FILE_TOKEN_TYPE) {
+    const reference = (token as WorkspaceFileMarkedToken).reference;
+    return reference.kind === "media" && hiddenWorkspaceMediaFileUuids.has(reference.fileUuid);
+  }
+  return token.type === "text" && token.raw.trim().length === 0;
+}
+
+function isHiddenWorkspaceMediaOnlyBlock(
+  token: Token,
+  hiddenWorkspaceMediaFileUuids: ReadonlySet<string>,
+): boolean {
+  if (token.type !== "paragraph" && token.type !== "text") return false;
+  const inlineTokens = token.tokens;
+  return (
+    inlineTokens != null &&
+    inlineTokens.length > 0 &&
+    inlineTokens.every((inlineToken) =>
+      isHiddenWorkspaceMediaInlineToken(inlineToken, hiddenWorkspaceMediaFileUuids),
+    )
+  );
+}
+
+function findNearestContentToken(
+  tokens: readonly Token[],
+  startIndex: number,
+  step: -1 | 1,
+): Token | undefined {
+  for (let index = startIndex; index >= 0 && index < tokens.length; index += step) {
+    const token = tokens[index];
+    if (token != null && token.type !== "space" && token.type !== "def") return token;
+  }
+  return undefined;
+}
+
+function removeHiddenWorkspaceMediaBlocksAndAdjacentSpaces(
+  tokens: readonly Token[],
+  hiddenWorkspaceMediaFileUuids: ReadonlySet<string>,
+): Token[] {
+  const hiddenBlocks = new Set(
+    tokens.filter((token) => isHiddenWorkspaceMediaOnlyBlock(token, hiddenWorkspaceMediaFileUuids)),
+  );
+  if (hiddenBlocks.size === 0) return [...tokens];
+
+  return tokens.filter((token, index) => {
+    if (hiddenBlocks.has(token)) return false;
+    if (token.type !== "space") return true;
+    const previous = findNearestContentToken(tokens, index - 1, -1);
+    const next = findNearestContentToken(tokens, index + 1, 1);
+    return (
+      (previous == null || !hiddenBlocks.has(previous)) && (next == null || !hiddenBlocks.has(next))
+    );
+  });
+}
+
 function isSafeLinkHref(href: string): boolean {
   const trimmed = href.trim();
   if (trimmed.includes("\\")) {
@@ -186,6 +244,12 @@ function renderFileReference(
   reference: WorkspaceMessageFileReference,
   options: WorkspaceMessageRenderOptions,
 ): string {
+  if (
+    reference.kind === "media" &&
+    options.hiddenWorkspaceMediaFileUuids?.has(reference.fileUuid) === true
+  ) {
+    return "";
+  }
   const enabled =
     reference.kind === "media" ? options.enableProtectedMedia : options.enableAttachments;
   return enabled
@@ -387,7 +451,10 @@ function createWorkspaceMarkdownRenderer(options: WorkspaceMessageRenderOptions)
         return escapeHtmlText(token.text);
       },
       paragraph(this: { parser: RendererThis["parser"] }, token) {
-        return `<p>${this.parser.parseInline(token.tokens)}</p>`;
+        const content = this.parser.parseInline(token.tokens);
+        return options.hiddenWorkspaceMediaFileUuids != null && content.trim().length === 0
+          ? ""
+          : `<p>${content}</p>`;
       },
       heading(this: { parser: RendererThis["parser"] }, token) {
         return `<h${token.depth}>${this.parser.parseInline(token.tokens)}</h${token.depth}>`;
@@ -445,8 +512,16 @@ function renderTokenGroup(
   if (tokens.length === 0) {
     return "";
   }
+  const visibleTokens =
+    options.hiddenWorkspaceMediaFileUuids == null
+      ? [...tokens]
+      : removeHiddenWorkspaceMediaBlocksAndAdjacentSpaces(
+          tokens,
+          options.hiddenWorkspaceMediaFileUuids,
+        );
+  if (visibleTokens.length === 0) return "";
   const renderer = createWorkspaceMarkdownRenderer(options);
-  const html = renderer.parser([...tokens]);
+  const html = renderer.parser(visibleTokens);
   return sanitizeWorkspaceMessageHtml(typeof html === "string" ? html.trim() : "");
 }
 

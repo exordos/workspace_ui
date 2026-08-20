@@ -523,7 +523,7 @@ export function resolveWorkspaceMarkdownLastBlockKind(
 
   // A trailing file placeholder is a fixed-size box, not text flow.
   const fileReferences: WorkspaceMessageFileReference[] = [];
-  collectFiles([lastToken], fileReferences);
+  collectFiles([lastToken], fileReferences, true);
   return fileReferences.length > 0 ? "block" : "paragraph";
 }
 
@@ -632,7 +632,11 @@ export function inspectWorkspaceMarkdownTokens(tokens: TokensList): WorkspaceMar
   return facts;
 }
 
-function collectFiles(tokens: readonly Token[], references: WorkspaceMessageFileReference[]): void {
+function collectFiles(
+  tokens: readonly Token[],
+  references: WorkspaceMessageFileReference[],
+  includeQuotedOrSpoilerContent: boolean,
+): void {
   for (const token of tokens) {
     if (token.type === WORKSPACE_FILE_TOKEN_TYPE) {
       references.push((token as WorkspaceFileMarkedToken).reference);
@@ -645,28 +649,28 @@ function collectFiles(tokens: readonly Token[], references: WorkspaceMessageFile
       case "em":
       case "del":
       case "link":
-        collectFiles(token.tokens ?? [], references);
+        collectFiles(token.tokens ?? [], references, includeQuotedOrSpoilerContent);
         break;
       case "text":
-        collectFiles(token.tokens ?? [], references);
-        break;
-      case "blockquote":
-        collectFiles(token.tokens ?? [], references);
+        collectFiles(token.tokens ?? [], references, includeQuotedOrSpoilerContent);
         break;
       case "list":
         for (const item of token.items) {
-          collectFiles(item.tokens, references);
+          collectFiles(item.tokens, references, includeQuotedOrSpoilerContent);
         }
         break;
       case "table":
         for (const cell of [...token.header, ...token.rows.flat()]) {
-          collectFiles(cell.tokens, references);
+          collectFiles(cell.tokens, references, includeQuotedOrSpoilerContent);
         }
         break;
       case WORKSPACE_INLINE_SPOILER_TOKEN_TYPE:
       case WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE:
       case WORKSPACE_HISTORICAL_QUOTE_TOKEN_TYPE:
-        collectFiles(token.tokens ?? [], references);
+      case "blockquote":
+        if (includeQuotedOrSpoilerContent) {
+          collectFiles(token.tokens ?? [], references, true);
+        }
         break;
       default:
         break;
@@ -678,6 +682,14 @@ export function collectWorkspaceMarkdownFileReferences(
   tokens: TokensList,
 ): readonly WorkspaceMessageFileReference[] {
   const references: WorkspaceMessageFileReference[] = [];
-  collectFiles(tokens, references);
+  collectFiles(tokens, references, true);
+  return references;
+}
+
+export function collectWorkspaceMarkdownPreviewFileReferences(
+  tokens: TokensList,
+): readonly WorkspaceMessageFileReference[] {
+  const references: WorkspaceMessageFileReference[] = [];
+  collectFiles(tokens, references, false);
   return references;
 }

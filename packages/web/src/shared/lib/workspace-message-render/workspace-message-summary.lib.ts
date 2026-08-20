@@ -59,6 +59,12 @@ function summarizeFileInline(
   options: WorkspaceMessageSummaryOptions,
 ): SummaryBuildResult {
   const { reference } = inline;
+  if (
+    reference.kind === "media" &&
+    options.hiddenWorkspaceMediaFileUuids?.has(reference.fileUuid) === true
+  ) {
+    return { text: "", leadingKind: "text" };
+  }
   if (reference.kind === "media") {
     const mediaLabel = reference.mediaKind === "video" ? "Видео" : "Изображение";
     return {

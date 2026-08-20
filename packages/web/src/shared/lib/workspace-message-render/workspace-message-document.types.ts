@@ -26,6 +26,7 @@ export interface WorkspaceMessageRenderOptions {
   enableProtectedMedia: boolean;
   enableAttachments: boolean;
   enableGallery: boolean;
+  hiddenWorkspaceMediaFileUuids?: ReadonlySet<string>;
 }
 
 export interface WorkspaceMessageBodyMetadata {
@@ -238,6 +239,7 @@ export interface WorkspaceMessageSummaryOptions {
   includeMediaLabel: boolean;
   includeAttachmentLabel: boolean;
   includeQuotePrefix: boolean;
+  hiddenWorkspaceMediaFileUuids?: ReadonlySet<string>;
 }
 
 export type WorkspaceMessageSummaryLeadingKind =

@@ -420,6 +420,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const {
       menuOpen,
       contextMenuAnchor,
+      contextLinkUrl,
+      contextImageFile,
       getSelectedText,
       handleBodyClick,
       handleContextMenu,
@@ -478,11 +480,15 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
             resolveMention={resolveMention}
             onOpenMessage={interactiveActions?.onOpenMessageInChat}
+            onLoadWorkspaceFilePreview={
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+            }
             loadEnabled={passiveContentEnabled}
           />
         ),
       [
         interactiveActions?.onOpenMessageInChat,
+        interactiveActions?.onLoadWorkspaceFilePreview,
         isPreview,
         quoteRenderMode,
         resolveMention,
@@ -529,6 +535,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             isOwn={isOwn}
             open={menuOpen}
             contextAnchor={contextMenuAnchor}
+            contextLinkUrl={contextLinkUrl}
+            contextImageFile={contextImageFile}
             onOpenChange={handleMenuOpenChange}
             onReplyMessage={interactiveActions?.onReplyMessage}
             onAddReplyMessage={interactiveActions?.onAddReplyMessage}
@@ -538,6 +546,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
             onCopyMessageText={interactiveActions?.onCopyMessageText}
             onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
+            onLoadWorkspaceFilePreview={
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+            }
             getSelectedText={getSelectedText}
           />
         ) : null}

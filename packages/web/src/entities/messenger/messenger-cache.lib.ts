@@ -154,6 +154,59 @@ function withoutRemovedCachedFolderItems(
       };
 }
 
+function projectStreamUnreadIntoCachedFolders(
+  folders: readonly MessengerFolder[],
+  stream: Pick<
+    MessengerStream,
+    "uuid" | "unreadCount" | "activeUnreadCount" | "passiveUnreadCount"
+  >,
+): MessengerFolder[] {
+  const activeUnreadCount = stream.activeUnreadCount ?? stream.unreadCount;
+  const passiveUnreadCount = stream.passiveUnreadCount ?? 0;
+
+  return folders.map((folder) => {
+    let unreadDelta = 0;
+    let nextItems: MessengerFolder["items"] | null = null;
+
+    for (const [index, item] of folder.items.entries()) {
+      if (item.streamUuid !== stream.uuid) continue;
+      const previousActiveUnreadCount = item.activeUnreadCount ?? item.unreadCount;
+      if (
+        item.unreadCount === stream.unreadCount &&
+        previousActiveUnreadCount === activeUnreadCount &&
+        (item.passiveUnreadCount ?? 0) === passiveUnreadCount
+      ) {
+        continue;
+      }
+
+      nextItems ??= [...folder.items];
+      nextItems[index] = {
+        ...item,
+        unreadCount: stream.unreadCount,
+        activeUnreadCount,
+        passiveUnreadCount,
+      };
+      unreadDelta += activeUnreadCount - previousActiveUnreadCount;
+    }
+
+    return nextItems == null
+      ? folder
+      : {
+          ...folder,
+          unreadCount: Math.max(0, folder.unreadCount + unreadDelta),
+          items: nextItems,
+        };
+  });
+}
+
+function recalculateCachedFolderUnread(folder: MessengerFolder): MessengerFolder {
+  const unreadCount = folder.items.reduce(
+    (total, item) => total + (item.activeUnreadCount ?? item.unreadCount),
+    0,
+  );
+  return unreadCount === folder.unreadCount ? folder : { ...folder, unreadCount };
+}
+
 // Entity-слой оставляет низкоуровневую IndexedDB-схему внутри shared/lib, но
 // отдает будущим action/loaders уже доменно названные helpers для своих реакций.
 export type MessengerOwnMessageReactionCacheRow = WorkspaceMessengerOwnMessageReactionCacheRow;
@@ -321,6 +374,11 @@ export async function upsertMessengerStreamCache(
   const snapshot = await readMessengerCatalogCache(ownerKey);
   if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
+  const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
+  const projectedFolders = projectStreamUnreadIntoCachedFolders(cachedFolders, stream);
+  const changedFolders = projectedFolders.filter(
+    (folder, index) => folder !== cachedFolders[index],
+  );
   await Promise.all([
     upsertMessengerStreamsCache(ownerKey, [stream]),
     upsertMessengerConversationsCache(ownerKey, [
@@ -332,6 +390,13 @@ export async function upsertMessengerStreamCache(
         ),
       ),
     ]),
+    changedFolders.length === 0
+      ? Promise.resolve()
+      : upsertMessengerFolderSnapshotsCache(
+          ownerKey,
+          changedFolders,
+          changedFolders.flatMap((folder) => folder.items),
+        ),
   ]);
   await purgeRemovedStreamCaches(ownerKey, [stream.uuid]);
 }
@@ -345,6 +410,19 @@ export async function deleteMessengerStreamCache(
     deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
     deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
   ]);
+  const snapshot = await readMessengerCatalogCache(ownerKey);
+  const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
+  const recalculatedFolders = cachedFolders.map(recalculateCachedFolderUnread);
+  const changedFolders = recalculatedFolders.filter(
+    (folder, index) => folder !== cachedFolders[index],
+  );
+  if (changedFolders.length > 0) {
+    await upsertMessengerFolderSnapshotsCache(
+      ownerKey,
+      changedFolders,
+      changedFolders.flatMap((folder) => folder.items),
+    );
+  }
 }
 
 export async function upsertMessengerStreamBindingsCache(
@@ -643,6 +721,5 @@ export const messengerRealtimeActiveCache = {
 };
 
 export const messengerRealtimeBackgroundCache = {
-  advanceReadBoundary: advanceMessengerCachedReadBoundary,
-  markCachedMessagesRead: markMessengerCachedMessagesRead,
+  ...messengerRealtimeActiveCache,
 };

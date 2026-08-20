@@ -28,6 +28,7 @@
   },
   "auth": {
     "server": "Сервер",
+    "organization": "Организация",
     "selectServer": "Выбрать аккаунт",
     "removeServer": "Удалить сервер",
     "login": "Войти",
@@ -79,7 +80,9 @@
     "noProjectsAvailable": "У вашего аккаунта нет доступа к проектам этой организации.",
     "organizationSettingsLoadError": "Не удалось загрузить настройки организации. Проверьте адрес сервера и попробуйте ещё раз.",
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
-    "defaultOrganizationName": "Exordos Core Public"
+    "defaultOrganizationName": "Exordos Core Public",
+    "registrationHint": "Нет аккаунта?",
+    "register": "Зарегистрироваться"
   },
   "configureExternalChats": {
     "action": "Настроить чаты",
@@ -537,6 +540,8 @@
     "pin": "Закрепить сообщение",
     "unpin": "Открепить",
     "copy": "Копировать текст",
+    "copyImage": "Копировать изображение",
+    "copyLink": "Копировать ссылку",
     "openInChat": "Открыть в чате",
     "joinCall": "Присоединиться к звонку",
     "copyCallLink": "Скопировать ссылку на звонок",
@@ -1256,6 +1261,10 @@
     "resizeEditor": "Изменить высоту поля сообщения",
     "expandToolbar": "Показать инструменты форматирования",
     "collapseToolbar": "Скрыть инструменты форматирования",
+    "cut": "Вырезать",
+    "copy": "Копировать",
+    "paste": "Вставить",
+    "selectAll": "Выбрать всё",
     "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов)."
   },
   "attachmentCard": {

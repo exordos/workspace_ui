@@ -15,6 +15,14 @@ import { MessageComposer } from "./message-composer.ui";
 const isWebViewMock = vi.fn(() => false);
 const useViewportKeyboardMock = vi.fn(() => ({ isOpen: false, keyboardHeight: 0 }));
 const emojiPickerMock = vi.hoisted(() => vi.fn());
+const textEditingExecuteMock = vi.hoisted(() => vi.fn());
+const originalElectronAPI = window.electronAPI;
+
+function installElectronTextEditingApi(): void {
+  (window as unknown as { electronAPI: Partial<ElectronAPI> }).electronAPI = {
+    textEditing: { execute: textEditingExecuteMock },
+  };
+}
 
 vi.mock("~/shared/config/constants", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/config/constants")>();
@@ -89,6 +97,12 @@ afterEach(() => {
   useViewportKeyboardMock.mockReset();
   useViewportKeyboardMock.mockReturnValue({ isOpen: false, keyboardHeight: 0 });
   emojiPickerMock.mockReset();
+  textEditingExecuteMock.mockReset();
+  if (originalElectronAPI == null) {
+    delete (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+  } else {
+    window.electronAPI = originalElectronAPI;
+  }
 });
 
 beforeEach(() => {
@@ -3599,5 +3613,147 @@ describe("MessageComposer AI context wiring", () => {
     expect(screen.getByTestId("composer-media-picker")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
     expect(screen.queryByTestId("composer-media-picker")).not.toBeInTheDocument();
+  });
+});
+
+describe("MessageComposer Electron text editing context menu", () => {
+  it("leaves the browser context menu untouched when Electron text editing is unavailable", () => {
+    delete (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Browser text" />);
+
+    const textbox = screen.getByRole("textbox");
+    const contextMenuAllowed = fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
+
+    expect(contextMenuAllowed).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Cut" })).not.toBeInTheDocument();
+  });
+
+  it("opens the narrow Electron menu on right click with actions in the expected order", () => {
+    installElectronTextEditingApi();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
+
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+    textbox.focus();
+    textbox.setSelectionRange(0, 8);
+
+    expect(fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 })).toBe(false);
+
+    const menu = screen.getByRole("menu");
+    expect(menu).toHaveClass("min-w-context-menu-narrow");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Cut", "Copy", "Paste", "Select All"]);
+  });
+
+  it("opens from both keyboard context-menu shortcuts", async () => {
+    installElectronTextEditingApi();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
+
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+
+    expect(fireEvent.keyDown(textbox, { key: "ContextMenu" })).toBe(false);
+    expect(screen.getByRole("menuitem", { name: "Paste" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Paste" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    expect(fireEvent.keyDown(textbox, { key: "F10", shiftKey: true })).toBe(false);
+    expect(screen.getByRole("menuitem", { name: "Paste" })).toBeInTheDocument();
+  });
+
+  it("restores textarea focus and selection when Escape closes the menu", async () => {
+    installElectronTextEditingApi();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
+
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+    textbox.focus();
+    textbox.setSelectionRange(1, 8, "forward");
+    fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
+
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(textbox);
+    expect(textbox.selectionStart).toBe(1);
+    expect(textbox.selectionEnd).toBe(8);
+    expect(textEditingExecuteMock).not.toHaveBeenCalled();
+  });
+
+  it("disables selection actions without a selection and Select All for empty text", () => {
+    installElectronTextEditingApi();
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} initialValue="Composer text" />,
+    );
+
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+    textbox.setSelectionRange(3, 3);
+    fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
+
+    expect(screen.getByRole("menuitem", { name: "Cut" })).toHaveAttribute("data-disabled", "");
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toHaveAttribute("data-disabled", "");
+    expect(screen.getByRole("menuitem", { name: "Paste" })).not.toHaveAttribute("data-disabled");
+    expect(screen.getByRole("menuitem", { name: "Select All" })).not.toHaveAttribute(
+      "data-disabled",
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Paste" }));
+    rerender(<MessageComposer onSend={vi.fn()} initialValue="" draftSessionKey="empty" />);
+    const emptyTextbox = screen.getByRole("textbox");
+    fireEvent.contextMenu(emptyTextbox, { clientX: 30, clientY: 40 });
+
+    expect(screen.getByRole("menuitem", { name: "Select All" })).toHaveAttribute(
+      "data-disabled",
+      "",
+    );
+  });
+
+  it("disables every action when the composer is disabled", () => {
+    installElectronTextEditingApi();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" disabled />);
+
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+    textbox.setSelectionRange(0, 8);
+    fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
+
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item).toHaveAttribute("data-disabled", "");
+    }
+  });
+
+  it("restores textarea focus and selection before each exact Electron command", async () => {
+    installElectronTextEditingApi();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} initialValue="Composer text" />);
+
+    const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+    const commands = [
+      ["Cut", "cut"],
+      ["Copy", "copy"],
+      ["Paste", "paste"],
+      ["Select All", "selectAll"],
+    ] as const;
+
+    for (const [label, command] of commands) {
+      textbox.focus();
+      textbox.setSelectionRange(1, 8, "forward");
+      fireEvent.contextMenu(textbox, { clientX: 30, clientY: 40 });
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+
+      expect(textEditingExecuteMock).toHaveBeenLastCalledWith(command);
+      expect(document.activeElement).toBe(textbox);
+      expect(textbox.selectionStart).toBe(1);
+      expect(textbox.selectionEnd).toBe(8);
+      await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    }
+
+    expect(textEditingExecuteMock.mock.calls).toEqual([
+      ["cut"],
+      ["copy"],
+      ["paste"],
+      ["selectAll"],
+    ]);
   });
 });

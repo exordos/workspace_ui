@@ -4,7 +4,7 @@
  * Verifies that security headers, CSP, and auth guards work correctly
  * at the browser level — catching issues that unit tests cannot.
  */
-import { test, expect, expectLoginOrganizationStep } from "./fixtures";
+import { test, expect, expectLoginCredentialsStep } from "./fixtures";
 
 test.describe("Security Headers", () => {
   // The server should set X-Content-Type-Options
@@ -35,9 +35,8 @@ test.describe("Auth Guard", () => {
   // Without credentials, the app should show the login page
   test("unauthenticated user sees login form", async ({ guestPage }) => {
     await guestPage.goto("/");
-    await expectLoginOrganizationStep(guestPage);
+    await expectLoginCredentialsStep(guestPage);
   });
-
 });
 
 test.describe("XSS Prevention", () => {

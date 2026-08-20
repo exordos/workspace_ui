@@ -46,6 +46,8 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
 export interface UseWorkspaceMessageBodyInteractionsResult {
   menuOpen: boolean;
   contextMenuAnchor: WorkspaceMessageBubbleMenuAnchor | null;
+  contextLinkUrl: string | null;
+  contextImageFile: WorkspaceMessageFileReference | null;
   getSelectedText: () => string | undefined;
   handleBodyClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -236,6 +238,22 @@ function resolveExternalHttpUrl(href: string): string | null {
   return trimmed;
 }
 
+function resolveContextLinkUrl(
+  target: EventTarget,
+  bodyElement: HTMLDivElement | null,
+): string | null {
+  if (!(target instanceof Element) || bodyElement == null) {
+    return null;
+  }
+
+  const link = target.closest<HTMLAnchorElement>("a[href]");
+  if (link == null || !bodyElement.contains(link)) {
+    return null;
+  }
+
+  return resolveExternalHttpUrl(link.getAttribute("href") ?? "");
+}
+
 function resolveWorkspaceFileReferenceFromClick(
   target: HTMLElement,
   bodyElement: HTMLDivElement,
@@ -311,6 +329,10 @@ export function useWorkspaceMessageBodyInteractions({
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextMenuAnchor, setContextMenuAnchor] =
     useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
+  const [contextLinkUrl, setContextLinkUrl] = useState<string | null>(null);
+  const [contextImageFile, setContextImageFile] = useState<WorkspaceMessageFileReference | null>(
+    null,
+  );
   const capturedSelectionRef = useRef<string | undefined>(undefined);
   const pendingDownloadFileUuidsRef = useRef<Set<string>>(new Set());
   const latestFileReferencesRef = useRef(fileReferences);
@@ -324,8 +346,15 @@ export function useWorkspaceMessageBodyInteractions({
   }, [bodyRef]);
 
   const openContextMenuAt = useCallback(
-    (clientX: number, clientY: number) => {
+    (
+      clientX: number,
+      clientY: number,
+      linkUrl: string | null = null,
+      imageFile: WorkspaceMessageFileReference | null = null,
+    ) => {
       capturedSelectionRef.current = resolveSelectionInsideBody(bodyRef.current);
+      setContextLinkUrl(linkUrl);
+      setContextImageFile(imageFile);
       setContextMenuAnchor({
         left: clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
         top: clientY,
@@ -398,9 +427,27 @@ export function useWorkspaceMessageBodyInteractions({
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
-      openContextMenuAt(event.clientX, event.clientY);
+      const bodyElement = bodyRef.current;
+      const workspaceFile =
+        event.target instanceof HTMLElement && bodyElement != null
+          ? resolveWorkspaceFileReferenceFromClick(
+              event.target,
+              bodyElement,
+              latestFileReferencesRef.current,
+            )
+          : null;
+      const imageFile =
+        workspaceFile?.kind === "media" && workspaceFile.mediaKind === "image"
+          ? workspaceFile
+          : null;
+      openContextMenuAt(
+        event.clientX,
+        event.clientY,
+        resolveContextLinkUrl(event.target, bodyElement),
+        imageFile,
+      );
     },
-    [openContextMenuAt],
+    [bodyRef, openContextMenuAt],
   );
 
   const handleKeyDown = useCallback(
@@ -460,6 +507,8 @@ export function useWorkspaceMessageBodyInteractions({
     setMenuOpen(nextOpen);
     if (!nextOpen) {
       capturedSelectionRef.current = undefined;
+      setContextLinkUrl(null);
+      setContextImageFile(null);
       setContextMenuAnchor(null);
     }
   }, []);
@@ -615,6 +664,8 @@ export function useWorkspaceMessageBodyInteractions({
   return {
     menuOpen,
     contextMenuAnchor,
+    contextLinkUrl,
+    contextImageFile,
     getSelectedText,
     handleBodyClick,
     handleContextMenu,

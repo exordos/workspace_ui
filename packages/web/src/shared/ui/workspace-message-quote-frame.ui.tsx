@@ -27,18 +27,15 @@ export const WorkspaceMessageQuoteFrame = React.memo(function WorkspaceMessageQu
   header,
   headerMuted = false,
   surface = "message",
+  leading,
   children,
   className = "",
   headerProps,
   ...frameProps
 }: WorkspaceMessageQuoteFrameProps): React.ReactElement {
   const { className: headerClassName = "", ...restHeaderProps } = headerProps ?? {};
-
-  return (
-    <div
-      {...frameProps}
-      className={`${SURFACE_CLASS_NAME[surface]} ${WORKSPACE_MESSAGE_QUOTE_FRAME_LAYOUT_CLASS_NAME} ${className}`.trim()}
-    >
+  const content = (
+    <>
       <span
         {...restHeaderProps}
         className={`${HEADER_BASE_CLASS_NAME} ${
@@ -48,6 +45,22 @@ export const WorkspaceMessageQuoteFrame = React.memo(function WorkspaceMessageQu
         {header}
       </span>
       {children}
+    </>
+  );
+
+  return (
+    <div
+      {...frameProps}
+      className={`${SURFACE_CLASS_NAME[surface]} ${WORKSPACE_MESSAGE_QUOTE_FRAME_LAYOUT_CLASS_NAME} ${className}`.trim()}
+    >
+      {leading == null ? (
+        content
+      ) : (
+        <div className="flex min-w-0 items-stretch gap-2">
+          {leading}
+          <div className="min-w-0 flex-1">{content}</div>
+        </div>
+      )}
     </div>
   );
 });

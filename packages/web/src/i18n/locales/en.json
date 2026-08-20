@@ -28,6 +28,7 @@
   },
   "auth": {
     "server": "Server",
+    "organization": "Organization",
     "selectServer": "Select account",
     "removeServer": "Remove server",
     "login": "Login",
@@ -79,7 +80,9 @@
     "noProjectsAvailable": "Your account does not have access to any projects in this organization.",
     "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again.",
     "defaultOrganizationHint": "Or connect to our public service.",
-    "defaultOrganizationName": "Exordos Core Public"
+    "defaultOrganizationName": "Exordos Core Public",
+    "registrationHint": "No account?",
+    "register": "Register"
   },
   "configureExternalChats": {
     "action": "Configure chats",
@@ -537,6 +540,8 @@
     "pin": "Pin message",
     "unpin": "Unpin",
     "copy": "Copy text",
+    "copyImage": "Copy image",
+    "copyLink": "Copy link",
     "openInChat": "Open in chat",
     "joinCall": "Join call",
     "copyCallLink": "Copy call link",
@@ -1246,6 +1251,10 @@
     "resizeEditor": "Resize message editor",
     "expandToolbar": "Show formatting tools",
     "collapseToolbar": "Hide formatting tools",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
     "messageTooLong": "The message is too long (maximum 40,000 characters)."
   },
   "attachmentCard": {

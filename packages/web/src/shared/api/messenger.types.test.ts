@@ -270,6 +270,21 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts an optional registration URL and rejects invalid field types", () => {
+    expect(
+      isWorkspaceMessengerServerSettingsDto({
+        ...serverSettingsDto,
+        registration_url: "https://iam.example.com/register",
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerServerSettingsDto({
+        ...serverSettingsDto,
+        registration_url: 42,
+      }),
+    ).toBe(false);
+  });
+
   it("validates topic summary fields", () => {
     expect(
       isWorkspaceMessengerTopicDto({

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -87,6 +87,10 @@ describe("WorkspaceMessageQuote", () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders nested references only in full-history mode", () => {
     const { rerender } = render(
       <WorkspaceMessageQuote
@@ -126,6 +130,134 @@ describe("WorkspaceMessageQuote", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText("<b>saved fragment</b>")).toBeInTheDocument();
     expect(screen.queryByText("Old Bob")).not.toBeInTheDocument();
+  });
+
+  it("shows the preferred media thumbnail without changing quote navigation", async () => {
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    const videoUuid = "66666666-6666-4666-8666-666666666666";
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        [
+          `[clip.mp4](urn:video:${videoUuid}?content_type=video%2Fmp4)`,
+          `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+          "Caption",
+        ].join("\n\n"),
+      ),
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:bubble-quote-image");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob(["image"]));
+    const onOpenMessage = vi.fn();
+
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Old Bob" }}
+        onOpenMessage={onOpenMessage}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[src='blob:bubble-quote-image']")).not.toBeNull();
+    });
+    const thumbnailImage = container.querySelector("img[src='blob:bubble-quote-image']");
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+    fireEvent.load(thumbnailImage!);
+    expect(onLoadWorkspaceFilePreview.mock.calls[0]?.[0]).toMatchObject({
+      fileUuid: imageUuid,
+      mediaKind: "image",
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Изображение")).not.toBeInTheDocument();
+      expect(screen.queryByText("Видео")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Caption")).toBeInTheDocument();
+    const thumbnail = container.querySelector("[data-workspace-quote-media-thumbnail='true']");
+    expect(thumbnail?.nextElementSibling).toContainElement(screen.getByText("Bob"));
+    expect(thumbnail?.nextElementSibling).toContainElement(screen.getByText("Caption"));
+
+    fireEvent.click(thumbnailImage!);
+    expect(onOpenMessage).toHaveBeenCalledWith(MESSAGE_B);
+
+    fireEvent.error(thumbnailImage!);
+    await waitFor(() => {
+      expect(screen.getByText("Изображение")).toBeInTheDocument();
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail='true']")).toBeNull();
+    });
+  });
+
+  it("keeps the media label when a thumbnail cannot be loaded", () => {
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+      ),
+    });
+
+    render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Old Bob" }}
+      />,
+    );
+
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+  });
+
+  it("keeps the media label when the thumbnail loader fails", async () => {
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+      ),
+    });
+
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Old Bob" }}
+        onLoadWorkspaceFilePreview={vi.fn().mockRejectedValue(new Error("preview failed"))}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail='true']")).toBeNull();
+    });
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+  });
+
+  it("does not load media when selected text is the quote source", () => {
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        `![screen.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+      ),
+    });
+    const onLoadWorkspaceFilePreview = vi.fn();
+
+    render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_B,
+          fallbackAuthorLabel: "Old Bob",
+          selectedText: "saved fragment",
+        }}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+      />,
+    );
+
+    expect(screen.getByText("saved fragment")).toBeInTheDocument();
+    expect(onLoadWorkspaceFilePreview).not.toHaveBeenCalled();
   });
 
   it("opens the quote by click or keyboard and shows one unavailable state", () => {

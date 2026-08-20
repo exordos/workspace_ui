@@ -10,6 +10,7 @@ const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchWorkspaceServerSettingsForOrganization = vi.hoisted(() => vi.fn());
 const prepareWorkspaceProjectLogin = vi.hoisted(() => vi.fn());
 const completeWorkspaceProjectLogin = vi.hoisted(() => vi.fn());
+const isElectron = vi.hoisted(() => vi.fn(() => true));
 
 const VALID_SERVER_SETTINGS = {
   result: "success",
@@ -96,6 +97,8 @@ vi.mock("~/entities/workspace-auth/workspace-auth.lib", async (importOriginal) =
   };
 });
 
+vi.mock("~/shared/lib/electron", () => ({ isElectron }));
+
 async function moveToCredentialsStep(): Promise<void> {
   fireEvent.change(screen.getByLabelText(/^server address$/i), {
     target: { value: "https://chat.example.com" },
@@ -121,6 +124,7 @@ async function moveToProjectStep(): Promise<void> {
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    isElectron.mockReturnValue(true);
     fetchWorkspaceServerSettingsForOrganization.mockResolvedValue(VALID_SERVER_SETTINGS);
     prepareWorkspaceProjectLogin.mockResolvedValue(PREPARED_LOGIN);
     completeWorkspaceProjectLogin.mockResolvedValue({
@@ -160,6 +164,52 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText(/^password$/i)).toHaveAttribute("type", "password");
     expect(screen.queryByLabelText(/show password|hide password/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/workspace project/i)).not.toBeInTheDocument();
+  });
+
+  it("advances from an explicit browser organization without showing the first step", async () => {
+    isElectron.mockReturnValue(false);
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    expect(await screen.findByLabelText(/email or login/i)).toBeInTheDocument();
+    expect(fetchWorkspaceServerSettingsForOrganization).toHaveBeenCalledWith(
+      "https://chat.example.com",
+    );
+    expect(screen.queryByLabelText(/^server address$/i)).not.toBeInTheDocument();
+  });
+
+  it("returns to organization selection from the compact top action", async () => {
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    await moveToCredentialsStep();
+
+    fireEvent.click(screen.getByRole("button", { name: /^organization$/i }));
+
+    expect(screen.getByLabelText(/^server address$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^back$/i })).not.toBeInTheDocument();
+  });
+
+  it("shows registration only when server settings provide a safe URL", async () => {
+    fetchWorkspaceServerSettingsForOrganization.mockResolvedValue({
+      ...VALID_SERVER_SETTINGS,
+      registration_url: "https://iam.example.com/register",
+    });
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    await moveToCredentialsStep();
+
+    const registrationLink = screen.getByRole("link", { name: /^register$/i });
+    expect(registrationLink).toHaveAttribute("href", "https://iam.example.com/register");
+    expect(registrationLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("hides registration when server settings omit the URL", async () => {
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    await moveToCredentialsStep();
+
+    expect(screen.queryByText(/no account/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^register$/i })).not.toBeInTheDocument();
   });
 
   it("accepts a username that is not an email address", async () => {

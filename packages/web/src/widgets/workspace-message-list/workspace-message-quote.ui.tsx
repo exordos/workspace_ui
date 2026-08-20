@@ -1,5 +1,13 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
+import {
+  WorkspaceMessageMediaThumbnail,
+  type WorkspaceMessageMediaThumbnailStatus,
+} from "~/entities/messenger/messenger-workspace-media-thumbnail.ui";
+import {
+  collectWorkspaceMessagePreviewFileReferences,
+  selectWorkspaceMessageMediaPreviewReference,
+} from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -31,9 +39,17 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   visitedMessageUuids = new Set<string>(),
   resolveMention,
   onOpenMessage,
+  onLoadWorkspaceFilePreview,
   loadEnabled = true,
 }: WorkspaceMessageQuoteProps): React.ReactElement {
   const resolved = useResolvedMessengerQuoteMessage(reference.messageUuid, loadEnabled);
+  const [readyMediaFileUuid, setReadyMediaFileUuid] = useState<string | null>(null);
+  const handleMediaThumbnailStatusChange = useCallback(
+    (fileUuid: string, status: WorkspaceMessageMediaThumbnailStatus) => {
+      setReadyMediaFileUuid(status === "ready" ? fileUuid : null);
+    },
+    [],
+  );
   const author = useUsersStore((state) =>
     resolved.message == null ? undefined : state.usersById[resolved.message.authorUuid],
   );
@@ -48,13 +64,33 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   }
   const sourceMarkdown =
     resolved.status === "ready" && resolved.message != null ? resolved.message.payload.content : "";
-  const renderedSource = useMemo(() => {
+  const sourceDocument = useMemo(() => {
     if (resolved.status !== "ready" || reference.selectedText != null) {
       return null;
     }
     const document = parseWorkspaceMessageBody(sourceMarkdown, { resolveMention });
-    return renderWorkspaceMessageBodySegments(document, QUOTE_RENDER_OPTIONS);
+    const previewReferences = collectWorkspaceMessagePreviewFileReferences(document);
+    return {
+      document,
+      mediaReference: selectWorkspaceMessageMediaPreviewReference(document),
+      mediaFileUuids: new Set(
+        previewReferences
+          .filter((reference) => reference.kind === "media")
+          .map((reference) => reference.fileUuid),
+      ),
+    };
   }, [reference.selectedText, resolveMention, resolved.status, sourceMarkdown]);
+  const renderedSource = useMemo(() => {
+    if (sourceDocument == null) return null;
+    const { document, mediaFileUuids, mediaReference } = sourceDocument;
+    const renderOptions =
+      readyMediaFileUuid != null &&
+      mediaReference?.fileUuid === readyMediaFileUuid &&
+      onLoadWorkspaceFilePreview != null
+        ? { ...QUOTE_RENDER_OPTIONS, hiddenWorkspaceMediaFileUuids: mediaFileUuids }
+        : QUOTE_RENDER_OPTIONS;
+    return renderWorkspaceMessageBodySegments(document, renderOptions);
+  }, [onLoadWorkspaceFilePreview, readyMediaFileUuid, sourceDocument]);
   const isCycle = visitedMessageUuids.has(reference.messageUuid);
   const canExpandNestedQuotes =
     mode === "full-history" && !isCycle && depth < Math.max(0, maxDepth);
@@ -88,10 +124,20 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
         visitedMessageUuids={nextVisitedMessageUuids}
         resolveMention={resolveMention}
         onOpenMessage={onOpenMessage}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         loadEnabled={loadEnabled}
       />
     ),
-    [depth, loadEnabled, maxDepth, mode, nextVisitedMessageUuids, onOpenMessage, resolveMention],
+    [
+      depth,
+      loadEnabled,
+      maxDepth,
+      mode,
+      nextVisitedMessageUuids,
+      onLoadWorkspaceFilePreview,
+      onOpenMessage,
+      resolveMention,
+    ],
   );
   const openMessage = useCallback(() => {
     onOpenMessage?.(reference.messageUuid);
@@ -164,6 +210,16 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     <WorkspaceMessageQuoteFrame
       header={headerLabel}
       headerMuted={resolved.status === "unavailable"}
+      leading={
+        sourceDocument?.mediaReference != null && onLoadWorkspaceFilePreview != null ? (
+          <WorkspaceMessageMediaThumbnail
+            key={sourceDocument.mediaReference.fileUuid}
+            reference={sourceDocument.mediaReference}
+            onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+            onStatusChange={handleMediaThumbnailStatusChange}
+          />
+        ) : null
+      }
       headerProps={{ "data-workspace-quote-open": "true" }}
       className={onOpenMessage == null ? "" : "cursor-pointer"}
       data-workspace-quote="true"

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
+import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import {
   renderWorkspaceMessageBody,
   renderWorkspaceMessageBodySegments,
@@ -38,6 +39,43 @@ describe("workspace message render core", () => {
     // Soft breaks stay inside one paragraph, so the meta can still share the last line.
     expect(result.metadata.preferredMetaPlacement).toBe("inline");
     expect(document.safeTextPreview).toBe("Hello workspace again");
+  });
+
+  it("removes empty media-only paragraphs when quote media labels are hidden", () => {
+    const imageA = "11111111-1111-4111-8111-111111111111";
+    const imageB = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(
+      [
+        `![first.png](urn:image:${imageA}?content_type=image%2Fpng)`,
+        `![second.png](urn:image:${imageB}?content_type=image%2Fpng)`,
+        "Caption",
+      ].join("\n\n"),
+    );
+
+    const result = renderWorkspaceMessageBody(document, {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      hiddenWorkspaceMediaFileUuids: new Set([imageA, imageB]),
+    });
+
+    expect(result.html).toBe("<p>Caption</p>");
+  });
+
+  it("keeps unsupported image alt text when Workspace media labels are hidden", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(
+      [
+        `![workspace.png](urn:image:${imageUuid}?content_type=image%2Fpng)`,
+        "![External diagram](https://example.com/diagram.png)",
+      ].join("\n\n"),
+    );
+
+    const result = renderWorkspaceMessageBody(document, {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      hiddenWorkspaceMediaFileUuids: new Set([imageUuid]),
+    });
+
+    expect(result.html).not.toContain("workspace.png");
+    expect(result.html).toContain("External diagram");
   });
 
   it("renders basic markdown blocks and inline rich nodes", () => {

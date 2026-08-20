@@ -171,7 +171,11 @@ interface ElectronAPI {
   };
   clipboard: {
     writeText: (text: string) => Promise<boolean>;
+    writeImage?: (bytes: Uint8Array) => Promise<boolean>;
     readText: () => Promise<string | null>;
+  };
+  textEditing: {
+    execute: (command: "cut" | "copy" | "paste" | "selectAll") => void;
   };
   theme: {
     shouldUseDarkColors: () => Promise<boolean>;

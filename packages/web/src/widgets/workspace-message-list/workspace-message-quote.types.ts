@@ -1,3 +1,4 @@
+import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import type {
   WorkspaceMessageMentionResolver,
@@ -17,5 +18,6 @@ export interface WorkspaceMessageQuoteProps {
   visitedMessageUuids?: ReadonlySet<MessengerUuid>;
   resolveMention?: WorkspaceMessageMentionResolver;
   onOpenMessage?: (messageUuid: MessengerUuid) => void;
+  onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   loadEnabled?: boolean;
 }

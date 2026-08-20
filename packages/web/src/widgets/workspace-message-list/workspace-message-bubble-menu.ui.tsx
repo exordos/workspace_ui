@@ -2,6 +2,7 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
+import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import type {
@@ -76,13 +77,6 @@ function emojiGlyphFromPickerData(data: EmojiClickData): string | null {
   if (data.isCustom === true) return null;
   const emoji = data.emoji.trim();
   return emoji.length > 0 ? emoji : null;
-}
-
-function copyTextToClipboard(text: string): void {
-  if (typeof navigator === "undefined" || navigator.clipboard == null) {
-    return;
-  }
-  void navigator.clipboard.writeText(text);
 }
 
 const WorkspaceReactionEmojiPicker = React.memo(function WorkspaceReactionEmojiPicker({
@@ -165,6 +159,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   isOwn,
   open,
   contextAnchor,
+  contextLinkUrl,
+  contextImageFile,
   onOpenChange,
   onReplyMessage,
   onAddReplyMessage,
@@ -174,6 +170,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onRequestDeleteMessage,
   onCopyMessageText,
   onToggleMessageReaction,
+  onLoadWorkspaceFilePreview,
   getSelectedText,
 }: WorkspaceMessageBubbleMenuProps): React.ReactElement {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -283,24 +280,51 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     // menu, where the message is already shown in its conversation.
     pushActionSection(primaryActionItems);
 
-    const secondaryActionItems: DropdownMenuItem[] = [
-      {
+    const secondaryActionItems: DropdownMenuItem[] = [];
+    if (contextImageFile != null && onLoadWorkspaceFilePreview != null) {
+      secondaryActionItems.push({
         type: "action",
-        key: "copy",
-        icon: "copy",
-        label: t("message.copy"),
+        key: "copy-image",
+        icon: "images",
+        label: t("message.copyImage"),
         onSelect: () => {
-          const selectedText = getSelectedText();
-          const textToCopy = selectedText ?? message.payload.content;
-          if (onCopyMessageText != null) {
-            void onCopyMessageText(message.uuid, textToCopy);
-          } else {
-            copyTextToClipboard(textToCopy);
-          }
+          const controller = new AbortController();
+          const imageBlob = Promise.resolve().then(() =>
+            onLoadWorkspaceFilePreview(contextImageFile, controller.signal),
+          );
+          void writeImage(imageBlob);
           closeMenu();
         },
+      });
+    }
+    if (contextLinkUrl != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy-link",
+        icon: "links_compact",
+        label: t("message.copyLink"),
+        onSelect: () => {
+          void writeText(contextLinkUrl);
+          closeMenu();
+        },
+      });
+    }
+    secondaryActionItems.push({
+      type: "action",
+      key: "copy",
+      icon: "copy",
+      label: t("message.copy"),
+      onSelect: () => {
+        const selectedText = getSelectedText();
+        const textToCopy = selectedText ?? message.payload.content;
+        if (onCopyMessageText != null) {
+          void onCopyMessageText(message.uuid, textToCopy);
+        } else {
+          void writeText(textToCopy);
+        }
+        closeMenu();
       },
-    ];
+    });
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",
@@ -346,6 +370,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     return items;
   }, [
     closeMenu,
+    contextImageFile,
+    contextLinkUrl,
     emojiPickerOpen,
     getSelectedText,
     handleEmojiPick,
@@ -357,6 +383,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onCopyMessageText,
     onEditMessage,
     onForwardMessage,
+    onLoadWorkspaceFilePreview,
     onReplyMessage,
     onRequestDeleteMessage,
     onToggleMessageSelection,

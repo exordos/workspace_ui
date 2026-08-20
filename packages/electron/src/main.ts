@@ -39,6 +39,7 @@ const IS_AUTO_UPDATE_DISABLED = __ELECTRON_DISABLE_AUTO_UPDATE__;
 const DEV_SERVER_URL = "http://localhost:5173";
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const RESOURCES_PATH = path.join(__dirname, "..", "resources");
+const MAX_CLIPBOARD_IMAGE_BYTES = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Application identity
@@ -946,12 +947,43 @@ function registerIpcHandlers(): void {
       return false;
     }
   });
+  ipcMain.handle("clipboard:writeImage", (_event, bytes: unknown) => {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_CLIPBOARD_IMAGE_BYTES) {
+      return false;
+    }
+    try {
+      const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+      if (image.isEmpty()) {
+        return false;
+      }
+      clipboard.writeImage(image, "clipboard");
+      return true;
+    } catch {
+      return false;
+    }
+  });
   ipcMain.handle("clipboard:readText", () => {
     try {
       const text = clipboard.readText("clipboard");
       return typeof text === "string" ? text : null;
     } catch {
       return null;
+    }
+  });
+  ipcMain.on("textEditing:execute", (event, command: unknown) => {
+    switch (command) {
+      case "cut":
+        event.sender.cut();
+        break;
+      case "copy":
+        event.sender.copy();
+        break;
+      case "paste":
+        event.sender.paste();
+        break;
+      case "selectAll":
+        event.sender.selectAll();
+        break;
     }
   });
 
