@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 5173;
 const BASE_URL = `http://localhost:${PORT}`;
+const E2E_DEFAULT_LOGIN_ORGANIZATION_URL = "https://workspace.example.test";
 const ENABLE_WSL_FIREFOX = process.env.PW_WSL_FIREFOX === "1";
 
 export default defineConfig({
@@ -65,6 +66,9 @@ export default defineConfig({
   webServer: {
     command: "npm run dev:web",
     url: BASE_URL,
+    env: {
+      VITE_DEFAULT_LOGIN_ORGANIZATION_URL: E2E_DEFAULT_LOGIN_ORGANIZATION_URL,
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
