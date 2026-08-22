@@ -12,8 +12,12 @@ import {
   addWorkspaceStreamMembers,
   removeWorkspaceStreamMember,
 } from "~/entities/messenger/messenger-stream-member-actions.lib";
+import {
+  resolveMessengerTopicSummaryPermissions,
+  type MessengerTopicSummaryPermissionResolution,
+} from "~/entities/messenger/messenger-topic-summary-permissions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   isSelectableWorkspaceUser,
   resolveUserPresenceVisual,
@@ -25,7 +29,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
+import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
@@ -327,6 +334,48 @@ const WorkspaceAddStreamMembersDialog: React.FC<WorkspaceAddStreamMembersDialogP
   );
 };
 
+interface WorkspaceTopicSummarySettingsControlProps {
+  readonly summary: NonNullable<WorkspaceRightPanelChannelInfoView["topicSummary"]>;
+  readonly runtimeContext: WorkspaceRuntimeContext | null;
+  readonly topic: MessengerTopic | null;
+  readonly permissions: MessengerTopicSummaryPermissionResolution;
+}
+
+const WorkspaceTopicSummarySettingsControl = React.memo(
+  function WorkspaceTopicSummarySettingsControl({
+    summary,
+    runtimeContext,
+    topic,
+    permissions,
+  }: WorkspaceTopicSummarySettingsControlProps) {
+    const [open, setOpen] = useState(false);
+    const canOpen = runtimeContext != null && topic != null && permissions.isGearVisible;
+    const handleOpen = useCallback(() => setOpen(true), []);
+
+    return (
+      <>
+        <div className="px-2">
+          <RightPanelTopicSummary
+            summary={summary}
+            onOpenSettings={canOpen ? handleOpen : undefined}
+          />
+        </div>
+        {topic != null ? (
+          <TopicSummarySettingsDialog
+            open={open && canOpen}
+            onOpenChange={setOpen}
+            runtimeContext={runtimeContext}
+            topic={topic}
+            topicPermission={permissions.topic}
+            gatesPermission={permissions.gates}
+            endpointsPermission={permissions.endpoints}
+          />
+        ) : null}
+      </>
+    );
+  },
+);
+
 const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
   info: WorkspaceRightPanelDirectPrivateInfoView;
 }> = ({ info }) => {
@@ -354,6 +403,12 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const storeNotificationMode = useMessengerStore((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
   );
+  const summaryStream = useMessengerStore((state) =>
+    info.streamUuid == null ? null : (state.streamsById[info.streamUuid] ?? null),
+  );
+  const summaryTopic = useMessengerStore((state) =>
+    info.topicSummary == null ? null : (state.topicsById[info.topicSummary.topicUuid] ?? null),
+  );
   const workspaceUsersById = useUsersStore((state) => state.usersById);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -361,6 +416,18 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],
   );
+  const summaryPermissions = useMemo(
+    () =>
+      resolveMessengerTopicSummaryPermissions({
+        currentUserUuid: runtimeContext?.userUuid,
+        stream: summaryStream,
+      }),
+    [runtimeContext?.userUuid, summaryStream],
+  );
+  const summaryRuntimeKey =
+    runtimeContext == null
+      ? null
+      : `${workspaceRuntimeOwnerKey(runtimeContext)}:${runtimeContext.runtimeGeneration}`;
   const notificationMode = storeNotificationMode ?? info.notificationMode;
   const channelAvatarStyle = useMemo(
     () =>
@@ -665,9 +732,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
 
         {info.topicSummary != null ? (
-          <div className="px-2">
-            <RightPanelTopicSummary key={info.topicSummary.topicUuid} summary={info.topicSummary} />
-          </div>
+          <WorkspaceTopicSummarySettingsControl
+            key={`${summaryRuntimeKey ?? "no-runtime"}:${info.streamUuid ?? "no-stream"}:${info.topicSummary.topicUuid}:${summaryPermissions.isGearVisible ? "visible" : "hidden"}`}
+            summary={info.topicSummary}
+            runtimeContext={runtimeContext}
+            topic={summaryTopic}
+            permissions={summaryPermissions}
+          />
         ) : null}
 
         {info.description && (
