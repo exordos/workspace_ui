@@ -242,9 +242,9 @@ export interface MessengerSidebarMessagePreview {
   senderName?: string;
 }
 
-// These types describe the ready sidebar view, not backend data:
-// title for the row, route for navigation, and unreadCount for the badge.
-export interface MessengerSidebarTopicItem {
+// Ready topic-list projection shared by messenger surfaces, not a backend DTO:
+// title is display-ready, route handles navigation, and counts drive badges.
+export interface MessengerTopicListItem {
   id: MessengerConversationId;
   streamUuid: MessengerUuid;
   topicUuid: MessengerUuid;
@@ -264,6 +264,9 @@ export interface MessengerSidebarTopicItem {
   updatedAt: string;
 }
 
+/** Compatibility alias for sidebar call sites while topic projections are shared across surfaces. */
+export type MessengerSidebarTopicItem = MessengerTopicListItem;
+
 export interface MessengerSidebarStreamItem {
   id: MessengerConversationId;
   streamUuid: MessengerUuid;
@@ -282,7 +285,7 @@ export interface MessengerSidebarStreamItem {
   pinnedAt: string | null;
   orderIndex: number | null;
   route: string;
-  topics: MessengerSidebarTopicItem[];
+  topics: MessengerTopicListItem[];
   preview: MessengerSidebarMessagePreview | null;
   color?: number | null;
   avatarUrl?: string | null;

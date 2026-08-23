@@ -637,28 +637,46 @@ describe("RightPanelWorkspaceInfo", () => {
           topics: [
             {
               id: "active-topic",
-              name: "Active topic",
+              streamUuid: STREAM_UUID,
+              topicUuid: "active-topic",
+              title: "Active topic",
               unreadCount: 9,
               activeUnreadCount: 2,
               passiveUnreadCount: 7,
+              hasUnreadPersonalMention: false,
+              isDefault: false,
+              isDone: false,
               notificationMode: "follow",
+              color: null,
               route: "/active-topic",
+              preview: null,
+              lastMessageCreatedAt: null,
+              updatedAt: DATE,
             },
             {
               id: "passive-topic",
-              name: "Muted topic",
+              streamUuid: STREAM_UUID,
+              topicUuid: "passive-topic",
+              title: "Muted topic",
               unreadCount: 5,
               activeUnreadCount: 0,
               passiveUnreadCount: 5,
+              hasUnreadPersonalMention: false,
+              isDefault: false,
+              isDone: false,
               notificationMode: "default",
+              color: null,
               route: "/passive-topic",
+              preview: null,
+              lastMessageCreatedAt: null,
+              updatedAt: DATE,
             },
           ],
         })}
       />,
     );
 
-    expect(screen.getByText("2")).toHaveClass("bg-accent", "text-on-accent");
+    expect(screen.getByText("2")).toHaveClass("bg-sidebar-unread", "text-badge-text");
     expect(screen.getByText("5")).toHaveClass("bg-notice-disable", "text-badge-text");
     expect(screen.queryByText("7")).not.toBeInTheDocument();
     expect(screen.queryByText("9")).not.toBeInTheDocument();

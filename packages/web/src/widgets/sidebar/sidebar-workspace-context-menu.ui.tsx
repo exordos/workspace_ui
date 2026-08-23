@@ -3,42 +3,30 @@ import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
-import {
-  runWorkspaceStreamRead,
-  runWorkspaceTopicRead,
-} from "~/entities/messenger/messenger-read-actions.lib";
+import { runWorkspaceStreamRead } from "~/entities/messenger/messenger-read-actions.lib";
 import {
   runWorkspaceCreateTopicRequest,
   runWorkspaceFolderAssignmentToggle,
   runWorkspaceFolderItemPinToggle,
   runWorkspaceStreamNotificationUpdate,
-  runWorkspaceTopicDoneToggle,
-  runWorkspaceTopicNotificationUpdate,
-  runWorkspaceTopicRenameRequest,
 } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { selectMessengerFolders, useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerFolder,
   MessengerFolderItem,
   MessengerSidebarStreamItem,
-  MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
-import type { TopicVisibilityLevel } from "~/features/mute-chat/notification-level.lib";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
-import { TopicVisibilityLevelSwitch } from "~/features/mute-chat/topic-visibility-level-switch.ui";
 import { t } from "~/i18n/i18n";
-import type {
-  WorkspaceMessengerStreamNotificationMode,
-  WorkspaceMessengerTopicNotificationMode,
-} from "~/shared/api/messenger.types";
+import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
-import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import {
-  useSidebarChatContextMenuAnchor,
+  useDropdownContextMenuAnchor,
   wrapChildWithContextMenuHandlers,
-} from "./sidebar-chat-context-menu-clone.lib";
+} from "~/shared/ui/dropdown-context-menu.lib";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =
@@ -46,36 +34,6 @@ const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =
 
 function reportWorkspaceMenuActionError(action: string, error: unknown): void {
   reportUnexpectedError("workspace-sidebar-menu", error, { action });
-}
-
-function mapWorkspaceTopicNotificationModeToLevel(
-  mode: WorkspaceMessengerTopicNotificationMode,
-): TopicVisibilityLevel {
-  switch (mode) {
-    case "default":
-      return "inherit";
-    case "unmute":
-      return "unmuted";
-    case "follow":
-      return "followed";
-    case "mute":
-      return "muted";
-  }
-}
-
-function mapTopicVisibilityLevelToWorkspaceMode(
-  level: TopicVisibilityLevel,
-): WorkspaceMessengerTopicNotificationMode {
-  switch (level) {
-    case "inherit":
-      return "default";
-    case "unmuted":
-      return "unmute";
-    case "followed":
-      return "follow";
-    case "muted":
-      return "mute";
-  }
 }
 
 function isUserCreatedWorkspaceFolder(folder: MessengerFolder): boolean {
@@ -121,16 +79,6 @@ function useWorkspaceStreamNotificationMode(
   streamUuid: string,
 ): WorkspaceMessengerStreamNotificationMode {
   return useMessengerStore((s) => s.streamsById[streamUuid]?.notificationMode ?? "mentions_only");
-}
-
-function useWorkspaceTopicNotificationMode(
-  topicUuid: string,
-): WorkspaceMessengerTopicNotificationMode {
-  return useMessengerStore((s) => s.topicsById[topicUuid]?.notificationMode ?? "default");
-}
-
-function useWorkspaceTopicDone(topicUuid: string): boolean {
-  return useMessengerStore((s) => s.topicsById[topicUuid]?.isDone ?? false);
 }
 
 interface WorkspaceTopicNameDialogProps {
@@ -226,7 +174,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     handleContextMenuCapture,
     handleKeyboardContextMenu,
     handleMenuOpenChange,
-  } = useSidebarChatContextMenuAnchor();
+  } = useDropdownContextMenuAnchor();
   const notificationMode = useWorkspaceStreamNotificationMode(stream.streamUuid);
   const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(stream.streamUuid);
   const rightDrawer = useRightDrawer();
@@ -509,226 +457,6 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         onTopicNameChange={setNewTopicName}
         onOpenChange={setCreateTopicDialogOpen}
         onSubmit={handleSubmitCreateTopic}
-      />
-    </div>
-  );
-});
-
-interface WorkspaceTopicContextMenuProps {
-  topic: MessengerSidebarTopicItem;
-  streamTitle: string;
-  children: React.ReactNode;
-}
-
-export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicContextMenu({
-  topic,
-  streamTitle,
-  children,
-}: WorkspaceTopicContextMenuProps): React.ReactElement {
-  const {
-    menuOpen,
-    contextAnchor,
-    handleContextMenuCapture,
-    handleKeyboardContextMenu,
-    handleMenuOpenChange,
-  } = useSidebarChatContextMenuAnchor();
-  const notificationMode = useWorkspaceTopicNotificationMode(topic.topicUuid);
-  const streamNotificationMode = useWorkspaceStreamNotificationMode(topic.streamUuid);
-  const isDone = useWorkspaceTopicDone(topic.topicUuid);
-  const [notificationPending, setNotificationPending] = useState(false);
-  const [readPending, setReadPending] = useState(false);
-  const [topicActionPending, setTopicActionPending] = useState(false);
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [renameTopicName, setRenameTopicName] = useState(topic.title);
-  const [renamePending, setRenamePending] = useState(false);
-
-  const handleSetNotificationMode = useCallback(
-    (mode: WorkspaceMessengerTopicNotificationMode): void => {
-      if (notificationPending || notificationMode === mode) return;
-      handleMenuOpenChange(false);
-      setNotificationPending(true);
-      void runWorkspaceTopicNotificationUpdate({
-        streamUuid: topic.streamUuid,
-        topicUuid: topic.topicUuid,
-        notificationMode: mode,
-      })
-        .catch((error) => reportWorkspaceMenuActionError("topic-notifications", error))
-        .finally(() => {
-          setNotificationPending(false);
-        });
-    },
-    [
-      handleMenuOpenChange,
-      notificationMode,
-      notificationPending,
-      topic.streamUuid,
-      topic.topicUuid,
-    ],
-  );
-
-  const handleRenameTopic = useCallback((): void => {
-    handleMenuOpenChange(false);
-    setRenameTopicName(topic.title);
-    setRenameDialogOpen(true);
-  }, [handleMenuOpenChange, topic.title]);
-
-  const handleMarkRead = useCallback((): void => {
-    if (readPending) return;
-    handleMenuOpenChange(false);
-    setReadPending(true);
-    void runWorkspaceTopicRead({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-    })
-      .catch((error) => reportWorkspaceMenuActionError("topic-read", error))
-      .finally(() => {
-        setReadPending(false);
-      });
-  }, [handleMenuOpenChange, readPending, topic.streamUuid, topic.topicUuid]);
-
-  const handleSubmitRenameTopic = useCallback((): void => {
-    const name = renameTopicName.trim();
-    if (renamePending || name.length === 0) {
-      return;
-    }
-    if (name === topic.title) {
-      setRenameDialogOpen(false);
-      return;
-    }
-
-    setRenamePending(true);
-    void runWorkspaceTopicRenameRequest({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-      name,
-    })
-      .catch((error) => reportWorkspaceMenuActionError("rename-topic", error))
-      .finally(() => {
-        setRenamePending(false);
-        setRenameDialogOpen(false);
-      });
-  }, [renamePending, renameTopicName, topic.streamUuid, topic.title, topic.topicUuid]);
-
-  const handleDoneToggle = useCallback((): void => {
-    if (topicActionPending) return;
-    handleMenuOpenChange(false);
-    setTopicActionPending(true);
-    void runWorkspaceTopicDoneToggle({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-      done: !isDone,
-    })
-      .catch((error) => reportWorkspaceMenuActionError("toggle-topic-done", error))
-      .finally(() => {
-        setTopicActionPending(false);
-      });
-  }, [handleMenuOpenChange, isDone, topic.streamUuid, topic.topicUuid, topicActionPending]);
-
-  const topicNotificationPickerItem = useMemo<DropdownMenuItem>(
-    () => ({
-      type: "custom",
-      key: "topic-notifications",
-      render: () => (
-        <div className="px-2 py-1">
-          <p className="mb-1 text-[10px] font-medium text-text-muted">
-            {t("channel.topicNotifications")}
-          </p>
-          <TopicVisibilityLevelSwitch
-            value={mapWorkspaceTopicNotificationModeToLevel(notificationMode)}
-            streamMuted={streamNotificationMode === "muted"}
-            topicExplicitlyUnmuted={notificationMode === "unmute"}
-            disabled={notificationPending}
-            size="sm"
-            onChange={(level) =>
-              handleSetNotificationMode(mapTopicVisibilityLevelToWorkspaceMode(level))
-            }
-          />
-        </div>
-      ),
-    }),
-    [handleSetNotificationMode, notificationMode, notificationPending, streamNotificationMode],
-  );
-
-  const menuItems = useMemo<DropdownMenuItem[]>(() => {
-    const items: DropdownMenuItem[] = [topicNotificationPickerItem];
-    if (topic.unreadCount > 0) {
-      items.push({
-        type: "action",
-        key: "mark-read",
-        icon: "check",
-        label: t("sidebar.markAsRead"),
-        disabled: readPending,
-        onSelect: handleMarkRead,
-      });
-    }
-    items.push(
-      {
-        type: "action",
-        key: "rename-topic",
-        icon: "pen",
-        label: t("channel.renameTopic"),
-        disabled: topicActionPending || renamePending,
-        onSelect: handleRenameTopic,
-      },
-      {
-        type: "action",
-        key: "toggle-topic-done",
-        icon: "check",
-        label: isDone ? t("channel.markTopicAsNotDone") : t("channel.markTopicAsDone"),
-        disabled: topicActionPending,
-        onSelect: handleDoneToggle,
-      },
-    );
-    return items;
-  }, [
-    handleDoneToggle,
-    handleMarkRead,
-    handleRenameTopic,
-    isDone,
-    readPending,
-    renamePending,
-    topic.unreadCount,
-    topicActionPending,
-    topicNotificationPickerItem,
-  ]);
-
-  const contentWithContextMenu = useMemo(
-    (): React.ReactElement =>
-      wrapChildWithContextMenuHandlers(children, {
-        handleContextMenuCapture,
-        handleKeyboardContextMenu,
-      }),
-    [children, handleContextMenuCapture, handleKeyboardContextMenu],
-  );
-
-  return (
-    <div className="relative">
-      {contentWithContextMenu}
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={handleMenuOpenChange}
-        source="context"
-        contextAnchor={contextAnchor}
-        items={menuItems}
-        contentVariant="narrow"
-        itemClassName={SIDEBAR_WORKSPACE_MENU_ITEM_CLASS}
-        submenuTriggerClassName={SIDEBAR_WORKSPACE_MENU_ITEM_CLASS}
-        checkboxItemClassName={SIDEBAR_WORKSPACE_MENU_ITEM_CLASS}
-        contextContentProps={{
-          sideOffset: 4,
-          align: "start",
-        }}
-      />
-      <WorkspaceTopicNameDialog
-        open={renameDialogOpen}
-        title={t("channel.renameTopicTitle")}
-        streamName={streamTitle}
-        topicName={renameTopicName}
-        pending={renamePending}
-        submitLabel={t("common.save")}
-        onTopicNameChange={setRenameTopicName}
-        onOpenChange={setRenameDialogOpen}
-        onSubmit={handleSubmitRenameTopic}
       />
     </div>
   );

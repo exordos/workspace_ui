@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
-  resolveWorkspaceDisplayedUnread,
   type WorkspaceStreamNotificationLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
@@ -35,7 +34,6 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   AppDialogShell,
@@ -47,6 +45,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
@@ -475,7 +474,6 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     },
     [navigate],
   );
-
   const handleSetNotificationLevel = useCallback(
     async (level: WorkspaceStreamNotificationLevel): Promise<void> => {
       if (info.streamUuid == null || notificationPending) return;
@@ -752,45 +750,12 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           </div>
         )}
 
-        <div>
-          <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
-            {t("channel.topics")}
-          </h3>
-          {info.topics.length === 0 ? (
-            <p className="px-2 py-2 text-sm text-text-muted">{t("channel.noTopics")}</p>
-          ) : (
-            <ul className="space-y-1">
-              {info.topics.map((topic) => {
-                const topicDisplay = resolveTopicDisplayInfo(topic.name);
-                const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
-                return (
-                  <li key={topic.id}>
-                    <button
-                      type="button"
-                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active"
-                      onClick={() => handleOpenTopic(topic.route)}
-                    >
-                      <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
-                        {topicDisplay.label}
-                      </span>
-                      {displayedUnread != null && (
-                        <span
-                          className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                            displayedUnread.passive
-                              ? "bg-notice-disable text-badge-text"
-                              : "bg-accent text-on-accent"
-                          }`}
-                        >
-                          {displayedUnread.count}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <RightPanelTopicList
+          topics={info.topics}
+          streamTitle={info.title.startsWith("#") ? info.title.slice(1) : info.title}
+          streamNotificationMode={notificationMode}
+          onOpenTopic={handleOpenTopic}
+        />
 
         <div>
           {/* Members block: title + person_add only (no leading profile icon). Hit area 32×32. */}

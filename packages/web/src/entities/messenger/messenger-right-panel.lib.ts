@@ -3,22 +3,27 @@ import {
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
-import type {
-  WorkspaceMessengerStreamNotificationMode,
-  WorkspaceMessengerTopicNotificationMode,
-} from "~/shared/api/messenger.types";
+import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
-import {
-  type WorkspaceMessengerRouteMatch,
-  workspaceMessengerTopicRoute,
-} from "~/shared/lib/workspace-messenger-route.lib";
+import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
+import {
+  selectMessengerTopicsForStream,
+  type MessengerTopicListSortMode,
+} from "./messenger-topic-list.lib";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerStreamBinding, MessengerUuid } from "./messenger.types";
+import type {
+  MessengerMessage,
+  MessengerStreamBinding,
+  MessengerTopicListItem,
+  MessengerUuid,
+} from "./messenger.types";
+
+const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 
 type WorkspaceRightPanelState = Pick<
   MessengerStoreState,
@@ -30,15 +35,7 @@ type WorkspaceRightPanelState = Pick<
   | "streamBindingIdsByStreamId"
 >;
 
-export interface WorkspaceRightPanelTopicView {
-  id: string;
-  name: string;
-  unreadCount: number;
-  activeUnreadCount?: number;
-  passiveUnreadCount?: number;
-  notificationMode: WorkspaceMessengerTopicNotificationMode;
-  route: string;
-}
+export type WorkspaceRightPanelTopicView = MessengerTopicListItem;
 
 export interface WorkspaceRightPanelTopicSummaryView {
   topicUuid: MessengerUuid;
@@ -127,6 +124,8 @@ export interface SelectWorkspaceRightPanelInfoViewOptions {
   usersById: UsersById;
   fallbackTitle: string;
   currentUserUuid?: MessengerUuid | null;
+  messagesById?: Record<MessengerUuid, MessengerMessage>;
+  sortMode?: MessengerTopicListSortMode;
   workspaceUserUuidOverride?: MessengerUuid | null;
   temporarilyNotConnectedText: string;
 }
@@ -259,6 +258,8 @@ export function selectWorkspaceRightPanelInfoView(
     usersById,
     fallbackTitle,
     currentUserUuid = null,
+    messagesById = EMPTY_MESSAGES_BY_ID,
+    sortMode = "last_message",
     workspaceUserUuidOverride = null,
     temporarilyNotConnectedText,
   }: SelectWorkspaceRightPanelInfoViewOptions,
@@ -341,24 +342,17 @@ export function selectWorkspaceRightPanelInfoView(
   const participantsCount = members.length;
   const onlineCount = members.reduce((total, member) => total + (member.isOnline ? 1 : 0), 0);
 
-  const topics = state.topicIds
-    .map((topicId) => state.topicsById[topicId])
-    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate != null)
-    .filter((candidate) => candidate.streamUuid === selection.streamUuid)
-    .map((candidate) => ({
-      id: candidate.uuid,
-      name: candidate.name,
-      unreadCount: candidate.unreadCount,
-      activeUnreadCount: candidate.activeUnreadCount,
-      passiveUnreadCount: candidate.passiveUnreadCount,
-      notificationMode: candidate.notificationMode,
-      route: workspaceMessengerTopicRoute({
-        orgId: route.orgId,
-        projectId: route.projectId,
-        streamUuid: candidate.streamUuid,
-        topicUuid: candidate.uuid,
-      }),
-    }));
+  const topics = selectMessengerTopicsForStream({
+    organizationId: route.orgId,
+    projectId: route.projectId,
+    state,
+    streamUuid: selection.streamUuid,
+    streamNotificationMode: stream?.notificationMode ?? null,
+    messagesById,
+    usersById,
+    currentUserUuid: effectiveCurrentUserUuid,
+    sortMode,
+  }).filter((topic) => !topic.isDone);
 
   const rawDescription = stream?.description?.trim();
   const selectedTopic =

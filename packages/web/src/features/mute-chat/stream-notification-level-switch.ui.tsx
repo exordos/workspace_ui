@@ -4,10 +4,10 @@ import { Icon } from "~/shared/ui/icon";
 import {
   STREAM_NOTIFICATION_LEVEL_OPTIONS,
   getNotificationLevelSwitchSizeStyles,
+  type NotificationLevel,
   type NotificationLevelOption,
   type NotificationLevelSwitchSize,
-} from "./notification-level.ui.lib";
-import type { NotificationLevel } from "./notification-level.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
 export interface StreamNotificationLevelSwitchProps {
   value: NotificationLevel;

@@ -5,8 +5,9 @@ import {
   createWorkspaceRightPanelUserProfileView,
   selectWorkspaceRightPanelInfoView,
 } from "./messenger-right-panel.lib";
+import { selectMessengerTopicsForStream } from "./messenger-topic-list.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerBootstrapPayload } from "./messenger.types";
+import type { MessengerBootstrapPayload, MessengerMessage } from "./messenger.types";
 
 const OWNER_KEY = "account-a:org-a:project-a";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
@@ -18,6 +19,31 @@ const DIRECT_USER_UUID = "88888888-8888-4888-8888-888888888888";
 const DIRECT_TOPIC_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const BINDING_A_UUID = "55555555-5555-4555-8555-555555555555";
 const BINDING_B_UUID = "66666666-6666-4666-8666-666666666666";
+const MESSAGE_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+  return {
+    uuid: MESSAGE_UUID,
+    conversationId: `topic:${STREAM_UUID}:${TOPIC_A_UUID}`,
+    projectId: "project-a",
+    streamUuid: STREAM_UUID,
+    topicUuid: TOPIC_A_UUID,
+    authorUuid: USER_A_UUID,
+    userUuid: USER_A_UUID,
+    payload: { kind: "markdown", content: "Updated roadmap" },
+    read: false,
+    pinned: false,
+    starred: false,
+    isOwn: false,
+    mentioned: true,
+    reactions: {},
+    reactionUserUuidsByEmojiName: {},
+    ownReactionUuidsByEmojiName: {},
+    createdAt: "2026-06-30T09:02:00.000Z",
+    updatedAt: "2026-06-30T09:02:00.000Z",
+    ...overrides,
+  };
+}
 
 function createBootstrapPayload(): MessengerBootstrapPayload {
   return {
@@ -255,6 +281,16 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
+    const expectedTopics = selectMessengerTopicsForStream({
+      organizationId: route.orgId,
+      projectId: route.projectId,
+      state: useMessengerStore.getState(),
+      streamUuid: route.streamUuid,
+      streamNotificationMode: "all_messages",
+      messagesById: {},
+      usersById: createUsersById(),
+      currentUserUuid: USER_A_UUID,
+    }).filter((topic) => !topic.isDone);
 
     expect(headerView).toEqual(
       expect.objectContaining({
@@ -301,27 +337,12 @@ describe("selectWorkspaceRightPanelInfoView", () => {
           canRemove: true,
         },
       ],
-      topics: [
-        {
-          id: TOPIC_A_UUID,
-          name: "Roadmap",
-          unreadCount: 3,
-          activeUnreadCount: 1,
-          passiveUnreadCount: 2,
-          notificationMode: "default",
-          route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_A_UUID}`,
-        },
-        {
-          id: TOPIC_B_UUID,
-          name: "Support",
-          unreadCount: 0,
-          activeUnreadCount: undefined,
-          passiveUnreadCount: undefined,
-          notificationMode: "default",
-          route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_B_UUID}`,
-        },
-      ],
+      topics: expectedTopics,
     });
+    expect(view?.kind === "channel" ? view.topics.map((topic) => topic.title) : []).toEqual([
+      "Support",
+      "Roadmap",
+    ]);
   });
 
   it("keeps stream title on topic route because the panel shows channel info", () => {
@@ -355,7 +376,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(headerView.kind === "channel" ? headerView.topic : null).toBe("Roadmap");
     expect(view?.participantsCount).toBe(2);
     expect(view?.onlineCount).toBe(1);
-    expect(view?.topics.map((topic) => topic.name)).toEqual(["Roadmap", "Support"]);
+    expect(view?.topics.map((topic) => topic.title)).toEqual(["Support", "Roadmap"]);
     expect(view.topicSummary).toEqual({
       topicUuid: TOPIC_A_UUID,
       topicName: "Roadmap",
@@ -363,6 +384,95 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       hasNewMessages: true,
       enabled: true,
     });
+  });
+
+  it("uses the shared topic projection for ordering, mentions, and preview metadata", () => {
+    const storedState = useMessengerStore.getState();
+    const roadmap = storedState.topicsById[TOPIC_A_UUID];
+    if (roadmap == null) throw new Error("Expected roadmap topic");
+    const message = createMessage();
+    const view = selectWorkspaceRightPanelInfoView(
+      {
+        ...storedState,
+        topicsById: {
+          ...storedState.topicsById,
+          [TOPIC_A_UUID]: { ...roadmap, lastMessageUuid: message.uuid },
+        },
+      },
+      {
+        route: {
+          kind: "stream",
+          orgId: "org-a",
+          projectId: "project-a",
+          streamUuid: STREAM_UUID,
+        },
+        usersById: createUsersById(),
+        fallbackTitle: "Messenger",
+        messagesById: { [message.uuid]: message },
+        sortMode: "unread_first",
+        temporarilyNotConnectedText: "Temporarily not connected",
+      },
+    );
+
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
+    expect(view.topics.map((topic) => topic.title)).toEqual(["Roadmap", "Support"]);
+    expect(view.topics[0]).toEqual(
+      expect.objectContaining({
+        topicUuid: TOPIC_A_UUID,
+        activeUnreadCount: 1,
+        passiveUnreadCount: 2,
+        hasUnreadPersonalMention: true,
+        isDone: false,
+        notificationMode: "default",
+        preview: {
+          messageUuid: MESSAGE_UUID,
+          route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_A_UUID}`,
+          text: "Updated roadmap",
+          senderName: "You",
+        },
+      }),
+    );
+  });
+
+  it("hides completed topics while keeping muted topics interactive in the view", () => {
+    const storedState = useMessengerStore.getState();
+    const roadmap = storedState.topicsById[TOPIC_A_UUID];
+    const support = storedState.topicsById[TOPIC_B_UUID];
+    if (roadmap == null || support == null) throw new Error("Expected channel topics");
+
+    const view = selectWorkspaceRightPanelInfoView(
+      {
+        ...storedState,
+        topicsById: {
+          ...storedState.topicsById,
+          [TOPIC_A_UUID]: { ...roadmap, notificationMode: "mute" },
+          [TOPIC_B_UUID]: { ...support, isDone: true },
+        },
+      },
+      {
+        route: {
+          kind: "stream",
+          orgId: "org-a",
+          projectId: "project-a",
+          streamUuid: STREAM_UUID,
+        },
+        usersById: createUsersById(),
+        fallbackTitle: "Messenger",
+        temporarilyNotConnectedText: "Temporarily not connected",
+      },
+    );
+
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
+    expect(view.topics).toEqual([
+      expect.objectContaining({
+        topicUuid: TOPIC_A_UUID,
+        title: "Roadmap",
+        isDone: false,
+        notificationMode: "mute",
+      }),
+    ]);
   });
 
   it("maps members from stream bindings and keeps binding order", () => {

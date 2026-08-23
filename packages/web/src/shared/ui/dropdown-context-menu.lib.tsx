@@ -1,18 +1,16 @@
 import React, { useCallback, useState } from "react";
-import type { DropdownMenuContextAnchor } from "~/shared/ui/dropdown-menu";
+import type { DropdownMenuContextAnchor } from "./dropdown-menu";
 
 export function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
   return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
 }
 
-/** Anchor at cursor for right-click; Radix positions content relative to this point. */
 function resolveContextMenuAnchorFromMouseEvent(
   event: React.MouseEvent,
 ): DropdownMenuContextAnchor {
   return { left: event.clientX, top: event.clientY };
 }
 
-/** Keyboard context menu: anchor at the focused row's trailing edge. */
 function resolveContextMenuAnchorFromKeyboardEvent(
   event: React.KeyboardEvent,
 ): DropdownMenuContextAnchor {
@@ -24,8 +22,8 @@ function resolveContextMenuAnchorFromKeyboardEvent(
   return { left: 0, top: 0 };
 }
 
-/** Shared open/anchor state for sidebar chat rows (context menu only, no visible trigger). */
-export function useSidebarChatContextMenuAnchor() {
+/** Context-only dropdown state anchored at the pointer or focused element. */
+export function useDropdownContextMenuAnchor() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextAnchor, setContextAnchor] = useState<DropdownMenuContextAnchor | null>(null);
 

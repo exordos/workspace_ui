@@ -5,22 +5,21 @@ import {
   getNotificationLevelSwitchSizeStyles,
   getTopicVisibilityLevelOptions,
   type NotificationLevelSwitchSize,
+  type TopicVisibilityLevel,
   type TopicVisibilityLevelOption,
-} from "./notification-level.ui.lib";
-import type { TopicVisibilityLevel } from "./notification-level.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
-export interface TopicVisibilityLevelSwitchProps {
+export interface WorkspaceTopicNotificationSwitchProps {
   value: TopicVisibilityLevel;
   onChange: (level: TopicVisibilityLevel) => void;
   streamMuted: boolean;
   topicExplicitlyUnmuted: boolean;
   disabled?: boolean;
-  /** sm = menus, md = dialogs, lg = info panel (Figma). */
   size?: NotificationLevelSwitchSize;
   className?: string;
 }
 
-export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchProps>(
+export const WorkspaceTopicNotificationSwitch = React.memo<WorkspaceTopicNotificationSwitchProps>(
   ({
     value,
     onChange,
@@ -68,7 +67,7 @@ export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchP
   },
 );
 
-TopicVisibilityLevelSwitch.displayName = "TopicVisibilityLevelSwitch";
+WorkspaceTopicNotificationSwitch.displayName = "WorkspaceTopicNotificationSwitch";
 
 interface TopicVisibilitySegmentProps {
   option: TopicVisibilityLevelOption;

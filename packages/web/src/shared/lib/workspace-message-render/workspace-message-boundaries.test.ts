@@ -6,7 +6,7 @@ const SRC_ROOT = resolve(import.meta.dirname, "../../..");
 const WORKSPACE_MESSAGE_LIST_DIR = resolve(SRC_ROOT, "widgets/workspace-message-list");
 const WORKSPACE_RENDER_CORE_DIR = import.meta.dirname;
 const WORKSPACE_COMPACT_SUMMARY_FILES = [
-  resolve(SRC_ROOT, "entities/messenger/messenger-sidebar.lib.ts"),
+  resolve(SRC_ROOT, "entities/messenger/messenger-topic-list.lib.ts"),
   resolve(SRC_ROOT, "pages/feed/feed-page.ui.tsx"),
 ] as const;
 const WORKSPACE_RICH_RENDER_SURFACE_FILES = [

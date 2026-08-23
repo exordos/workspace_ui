@@ -8,7 +8,7 @@ import {
 import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import type {
   MessengerSidebarStreamItem,
-  MessengerSidebarTopicItem,
+  MessengerTopicListItem,
 } from "~/entities/messenger/messenger.types";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import {
@@ -17,6 +17,7 @@ import {
 } from "~/features/mute-chat/workspace-notification-mode-indicator.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
+import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
@@ -51,10 +52,7 @@ import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
-import {
-  WorkspaceStreamContextMenu,
-  WorkspaceTopicContextMenu,
-} from "./sidebar-workspace-context-menu.ui";
+import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
 
 const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic"] as const;
 
@@ -83,7 +81,7 @@ function workspaceStreamMatchesQuery(
 }
 
 function workspaceTopicMatchesQuery(
-  topic: MessengerSidebarTopicItem,
+  topic: MessengerTopicListItem,
   normalizedQuery: string,
 ): boolean {
   return normalizedQuery.length === 0 || topic.title.toLowerCase().includes(normalizedQuery);
@@ -143,7 +141,7 @@ function WorkspaceSidebarTopicRow({
   compact,
   barColor,
 }: Readonly<{
-  topic: MessengerSidebarTopicItem;
+  topic: MessengerTopicListItem;
   streamNotificationMode: MessengerSidebarStreamItem["notificationMode"];
   streamTitle: string;
   activeTopicUuid: string | null;
@@ -156,7 +154,11 @@ function WorkspaceSidebarTopicRow({
   const title = formatSidebarTopicTitle(topic.title);
 
   return (
-    <WorkspaceTopicContextMenu topic={topic} streamTitle={streamTitle}>
+    <WorkspaceTopicContextMenu
+      topic={topic}
+      streamTitle={streamTitle}
+      streamNotificationMode={streamNotificationMode}
+    >
       <Link
         to={topic.route}
         className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)} ${

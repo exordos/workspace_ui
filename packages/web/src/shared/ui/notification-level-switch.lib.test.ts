@@ -5,9 +5,9 @@ import {
   getTopicVisibilityLevelOption,
   getTopicVisibilityLevelOptions,
   shouldShowTopicUnmuteOption,
-} from "./notification-level.ui.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
-describe("notification-level.ui.lib", () => {
+describe("notification-level-switch.lib", () => {
   it("maps notification levels to their existing icons", () => {
     expect(getStreamNotificationLevelOption("default").icon).toBe("at");
     expect(getStreamNotificationLevelOption("muted").icon).toBe("bell_off");
