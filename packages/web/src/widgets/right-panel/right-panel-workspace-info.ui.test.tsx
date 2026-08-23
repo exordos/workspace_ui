@@ -254,7 +254,7 @@ describe("RightPanelWorkspaceInfo", () => {
       "border-border-subtle",
     );
     expect(
-      screen.getByText("New messages appeared. The summary will update automatically."),
+      screen.getByText("There are new messages that are not yet included in the summary."),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse topic context" }));

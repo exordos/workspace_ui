@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { updateMessengerTopicSummaryConfiguration as defaultUpdateTopic } from "~/entities/messenger/messenger-topic-summary-actions.lib";
 import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
@@ -701,32 +701,17 @@ export function useTopicSummarySettings({
     })();
   }, [startRequest, updateState]);
 
-  return useMemo(
-    () => ({
-      ...state,
-      setTopicEnabled,
-      setTopicSystemPrompt,
-      setTopicReasoningEffort,
-      resetTopicDraft,
-      saveTopic,
-      setGlobalEnabled,
-      setProjectEnabled,
-      resetGatesDraft,
-      loadGates,
-      saveGates,
-    }),
-    [
-      loadGates,
-      resetGatesDraft,
-      resetTopicDraft,
-      saveGates,
-      saveTopic,
-      setGlobalEnabled,
-      setProjectEnabled,
-      setTopicEnabled,
-      setTopicReasoningEffort,
-      setTopicSystemPrompt,
-      state,
-    ],
-  );
+  return {
+    ...state,
+    setTopicEnabled,
+    setTopicSystemPrompt,
+    setTopicReasoningEffort,
+    resetTopicDraft,
+    saveTopic,
+    setGlobalEnabled,
+    setProjectEnabled,
+    resetGatesDraft,
+    loadGates,
+    saveGates,
+  };
 }

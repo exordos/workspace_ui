@@ -478,7 +478,7 @@
       "openSettings": "Open AI summary settings",
       "pending": "The summary will appear after the messages are processed.",
       "disabledEmpty": "There is no summary for this topic.",
-      "hasNewMessages": "New messages appeared. The summary will update automatically.",
+      "hasNewMessages": "There are new messages that are not yet included in the summary.",
       "disabled": "Automatic summary updates are disabled for this topic."
     }
   },
