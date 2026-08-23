@@ -180,6 +180,12 @@ export interface WorkspaceMessengerCachedMessage {
   updatedAt?: string | null;
 }
 
+export interface WorkspaceMessengerMessagePointerCacheTargets {
+  stream?: boolean;
+  topic?: boolean;
+  conversationIds?: readonly string[];
+}
+
 export interface WorkspaceMessengerCachedMessagePayload {
   kind: "markdown";
   content: string;
@@ -996,6 +1002,31 @@ function shouldApplyMessagePointer(
   // look newer than a later authoritative topic or stream snapshot.
   const currentPointerCreatedAt = row.lastMessageCreatedAt ?? row.updatedAt;
   return messageCreatedAt >= currentPointerCreatedAt;
+}
+
+function shouldRepairMessagePointer(
+  row: { updatedAt: string; lastMessageCreatedAt?: string | null },
+  currentMessageUuid: string | null | undefined,
+  message: WorkspaceMessengerCachedMessage,
+): boolean {
+  if (currentMessageUuid == null || currentMessageUuid === message.uuid) return true;
+  return (
+    workspaceMessengerMessageOrderKey(message) >=
+    workspaceMessengerMessageOrderKey({
+      createdAt: row.lastMessageCreatedAt ?? row.updatedAt,
+      uuid: currentMessageUuid,
+    })
+  );
+}
+
+function shouldReplaceCachedMessage(
+  previous: WorkspaceMessengerMessageCacheRow | undefined,
+  message: WorkspaceMessengerCachedMessage,
+): boolean {
+  if (previous == null) return true;
+  const previousUpdatedAt = previous.message.updatedAt ?? previous.message.createdAt;
+  const incomingUpdatedAt = message.updatedAt ?? message.createdAt;
+  return incomingUpdatedAt >= previousUpdatedAt;
 }
 
 function updateCatalogRowsAtomically<TRow extends { id: string }>(
@@ -1910,6 +1941,89 @@ export async function applyMessengerMessagePointerCache(
         cacheRowId(ownerKey, conversationId),
         (row) =>
           shouldApplyMessagePointer(row, message.createdAt)
+            ? {
+                ...row,
+                conversation: { ...row.conversation, lastMessageUuid: message.uuid },
+                lastMessageUuid: message.uuid,
+                lastMessageCreatedAt: message.createdAt,
+                cacheUpdatedAt,
+              }
+            : null,
+      );
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function repairMessengerMessagePointerCache(
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+  targets: WorkspaceMessengerMessagePointerCacheTargets,
+): Promise<void> {
+  const conversationIds = [...new Set(targets.conversationIds ?? [])];
+  if (
+    !isIndexedDBAvailable() ||
+    (targets.stream !== true && targets.topic !== true && conversationIds.length === 0)
+  ) {
+    return;
+  }
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      [stores.messages, stores.streams, stores.topics, stores.conversations],
+      "readwrite",
+    );
+    const messageStore = transaction.objectStore(stores.messages);
+    const messageRequest = messageStore.get(cacheRowId(ownerKey, message.uuid));
+    messageRequest.onsuccess = () => {
+      const previous = messageRequest.result as WorkspaceMessengerMessageCacheRow | undefined;
+      if (shouldReplaceCachedMessage(previous, message)) {
+        messageStore.put(toMessageRow(ownerKey, message, previous));
+      }
+    };
+
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    if (targets.stream === true) {
+      updateRowById<WorkspaceMessengerStreamCacheRow>(
+        transaction.objectStore(stores.streams),
+        cacheRowId(ownerKey, message.streamUuid),
+        (row) =>
+          shouldRepairMessagePointer(row, row.stream.lastMessageUuid, message)
+            ? {
+                ...row,
+                stream: { ...row.stream, lastMessageUuid: message.uuid },
+                lastMessageCreatedAt: message.createdAt,
+                cacheUpdatedAt,
+              }
+            : null,
+      );
+    }
+    if (targets.topic === true) {
+      updateRowById<WorkspaceMessengerTopicCacheRow>(
+        transaction.objectStore(stores.topics),
+        cacheRowId(ownerKey, message.topicUuid),
+        (row) =>
+          shouldRepairMessagePointer(row, row.topic.lastMessageUuid, message)
+            ? {
+                ...row,
+                topic: { ...row.topic, lastMessageUuid: message.uuid },
+                lastMessageCreatedAt: message.createdAt,
+                cacheUpdatedAt,
+              }
+            : null,
+      );
+    }
+    const conversationStore = transaction.objectStore(stores.conversations);
+    for (const conversationId of conversationIds) {
+      updateRowById<WorkspaceMessengerConversationCacheRow>(
+        conversationStore,
+        cacheRowId(ownerKey, conversationId),
+        (row) =>
+          shouldRepairMessagePointer(row, row.lastMessageUuid, message)
             ? {
                 ...row,
                 conversation: { ...row.conversation, lastMessageUuid: message.uuid },

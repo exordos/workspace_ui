@@ -9,9 +9,17 @@ import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerStreamDto,
+  WorkspaceMessengerTopicDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import {
+  adaptMessengerMessage,
+  adaptMessengerStream,
+  adaptMessengerTopic,
+  adaptStreamToMessengerConversation,
+  adaptTopicToMessengerConversation,
+} from "./messenger-adapters.lib";
 import {
   deleteMessengerMessage,
   editMessengerMessage,
@@ -37,6 +45,7 @@ const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "b93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_C = "c93dca35-3061-4748-bda4-7f6f8c660ea5";
 const DATE = "2026-06-22T10:10:00Z";
 
 function createRuntimeContext(
@@ -75,6 +84,55 @@ function createMessageDto(
     is_own: true,
     reactions: {},
     reaction_users: {},
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createStreamDto(
+  overrides: Partial<WorkspaceMessengerStreamDto> = {},
+): WorkspaceMessengerStreamDto {
+  return {
+    uuid: STREAM_A,
+    name: "Engineering",
+    description: "Engineering workspace",
+    project_id: PROJECT_A,
+    owner: USER_A,
+    user_uuid: USER_A,
+    role: "owner",
+    notification_mode: "all_messages",
+    unread_count: 0,
+    active_unread_count: 0,
+    passive_unread_count: 0,
+    source_name: "native",
+    source: { kind: "native" },
+    invite_only: false,
+    announce: false,
+    private: false,
+    is_archived: false,
+    direct_user_uuid: null,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createTopicDto(
+  overrides: Partial<WorkspaceMessengerTopicDto> = {},
+): WorkspaceMessengerTopicDto {
+  return {
+    uuid: TOPIC_A,
+    project_id: PROJECT_A,
+    name: "General",
+    stream_uuid: STREAM_A,
+    user_uuid: USER_A,
+    unread_count: 0,
+    active_unread_count: 0,
+    passive_unread_count: 0,
+    is_default: true,
+    is_done: false,
+    notification_mode: "default",
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -466,6 +524,70 @@ describe("messenger message actions", () => {
     ]);
     expect(useMessengerStore.getState().ownerKey).toBe(ownerKey);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("repairs sidebar last-message pointers after deleting the current tail", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const previousDto = createMessageDto({
+      uuid: MESSAGE_B,
+      payload: { kind: "markdown", content: "Previous message" },
+      created_at: "2026-06-22T10:05:00Z",
+      updated_at: "2026-06-22T10:05:00Z",
+    });
+    const deletedDto = createMessageDto();
+    const serverPreviousDto = createMessageDto({
+      uuid: MESSAGE_C,
+      payload: { kind: "markdown", content: "Authoritative previous message" },
+      created_at: "2026-06-22T10:08:00Z",
+      updated_at: "2026-06-22T10:08:00Z",
+    });
+    const streamDto = createStreamDto({ last_message_uuid: MESSAGE_A });
+    const topicDto = createTopicDto({ last_message_uuid: MESSAGE_A });
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(streamDto)],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(topicDto)],
+      conversations: [
+        adaptStreamToMessengerConversation(streamDto),
+        adaptTopicToMessengerConversation(topicDto, streamDto),
+      ],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(adaptMessengerMessage(previousDto));
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(adaptMessengerMessage(deletedDto));
+    const getMessagesPage = vi.fn(() =>
+      Promise.resolve({ items: [serverPreviousDto], nextPageMarker: null, pageLimit: 1 }),
+    );
+    const repairMessagePointers = vi.fn(() => Promise.resolve());
+
+    await deleteMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      client: { deleteMessage: vi.fn(() => Promise.resolve()), getMessagesPage },
+      cache: { repairMessagePointers },
+    });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_C);
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_C);
+    expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(MESSAGE_C);
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.lastMessageUuid).toBe(
+      MESSAGE_C,
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]).toBeDefined();
+    expect(getMessagesPage).toHaveBeenCalledTimes(2);
+    expect(repairMessagePointers).toHaveBeenNthCalledWith(1, ownerKey, expect.any(Object), {
+      stream: true,
+      conversationIds: [`stream:${STREAM_A}`],
+    });
+    expect(repairMessagePointers).toHaveBeenNthCalledWith(2, ownerKey, expect.any(Object), {
+      topic: true,
+      conversationIds: [`topic:${STREAM_A}:${TOPIC_A}`],
+    });
   });
 
   it("uses read_up_to and updates loaded messages after the response", async () => {

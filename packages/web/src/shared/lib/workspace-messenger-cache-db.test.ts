@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   advanceMessengerReadBoundaryCache,
+  clearMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
   deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
@@ -25,6 +26,7 @@ import {
   readMessengerSearchResults,
   replaceOwnMessageReactionsForOwner,
   replaceOwnMessageReactionsForMessage,
+  repairMessengerMessagePointerCache,
   resetWorkspaceMessengerCacheDbSingletonForTests,
   WORKSPACE_MESSENGER_CACHE_DB_NAME,
   WORKSPACE_MESSENGER_CACHE_DB_VERSION,
@@ -268,6 +270,121 @@ describe("workspace-messenger-cache-db", () => {
     expect(otherOwnerMessages).toEqual([]);
     expect(topicWindow.messages).toEqual([]);
     expect(topicWindow.window).toBeNull();
+  });
+
+  it("repairs only selected deleted-message pointers without replacing newer activity", async () => {
+    const otherTopic = "topic-b";
+    const otherTopicConversation = `topic:${STREAM}:${otherTopic}`;
+    const deletedMessageUuid = "msg-deleted";
+    const newerMessageUuid = "msg-newer-topic";
+    const replacement = message("msg-replacement", "2026-07-01T08:10:00.000Z");
+    const newerCachedReplacement = {
+      ...replacement,
+      payload: { kind: "markdown" as const, content: "Edited replacement" },
+      updatedAt: "2026-07-01T08:40:00.000Z",
+    };
+
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          lastMessageUuid: newerMessageUuid,
+          updatedAt: "2026-07-01T08:30:00.000Z",
+        },
+      ],
+      topics: [
+        {
+          uuid: TOPIC,
+          streamUuid: STREAM,
+          lastMessageUuid: deletedMessageUuid,
+          updatedAt: "2026-07-01T08:20:00.000Z",
+        },
+        {
+          uuid: otherTopic,
+          streamUuid: STREAM,
+          lastMessageUuid: newerMessageUuid,
+          updatedAt: "2026-07-01T08:30:00.000Z",
+        },
+      ],
+      conversations: [
+        {
+          id: STREAM_CONVERSATION,
+          streamUuid: STREAM,
+          title: "Stream",
+          unreadCount: 0,
+          lastMessageUuid: newerMessageUuid,
+          updatedAt: "2026-07-01T08:30:00.000Z",
+        },
+        {
+          id: TOPIC_CONVERSATION,
+          streamUuid: STREAM,
+          topicUuid: TOPIC,
+          title: "Topic A",
+          unreadCount: 0,
+          lastMessageUuid: deletedMessageUuid,
+          updatedAt: "2026-07-01T08:20:00.000Z",
+        },
+        {
+          id: otherTopicConversation,
+          streamUuid: STREAM,
+          topicUuid: otherTopic,
+          title: "Topic B",
+          unreadCount: 0,
+          lastMessageUuid: newerMessageUuid,
+          updatedAt: "2026-07-01T08:30:00.000Z",
+        },
+      ],
+    });
+    await upsertCachedMessages(OWNER, [newerCachedReplacement]);
+
+    await clearMessengerMessagePointerCache(OWNER, deletedMessageUuid);
+
+    const cleared = await readMessengerCatalogCache(OWNER);
+    expect(cleared.topics.find((topic) => topic.uuid === TOPIC)?.lastMessageUuid).toBeNull();
+    expect(
+      cleared.conversations.find((conversation) => conversation.id === TOPIC_CONVERSATION)
+        ?.lastMessageUuid,
+    ).toBeNull();
+
+    await repairMessengerMessagePointerCache(OWNER, replacement, {
+      stream: true,
+      topic: true,
+      conversationIds: [STREAM_CONVERSATION, TOPIC_CONVERSATION],
+    });
+    await repairMessengerMessagePointerCache(
+      OWNER,
+      {
+        ...replacement,
+        uuid: "aaa-stale-same-timestamp",
+        createdAt: "2026-07-01T08:30:00.000Z",
+        updatedAt: "2026-07-01T08:30:00.000Z",
+      },
+      { stream: true, conversationIds: [STREAM_CONVERSATION] },
+    );
+
+    const repaired = await readMessengerCatalogCache(OWNER);
+    expect(repaired.streams[0]?.lastMessageUuid).toBe(newerMessageUuid);
+    expect(repaired.topics.find((topic) => topic.uuid === TOPIC)?.lastMessageUuid).toBe(
+      replacement.uuid,
+    );
+    expect(repaired.topics.find((topic) => topic.uuid === otherTopic)?.lastMessageUuid).toBe(
+      newerMessageUuid,
+    );
+    expect(
+      repaired.conversations.find((conversation) => conversation.id === STREAM_CONVERSATION)
+        ?.lastMessageUuid,
+    ).toBe(newerMessageUuid);
+    expect(
+      repaired.conversations.find((conversation) => conversation.id === TOPIC_CONVERSATION)
+        ?.lastMessageUuid,
+    ).toBe(replacement.uuid);
+    expect(
+      repaired.conversations.find((conversation) => conversation.id === otherTopicConversation)
+        ?.lastMessageUuid,
+    ).toBe(newerMessageUuid);
+    await expect(readCachedMessagesByUuids(OWNER, [replacement.uuid])).resolves.toEqual([
+      newerCachedReplacement,
+    ]);
   });
 
   it("merges catalog snapshots without deleting omitted or empty collections", async () => {

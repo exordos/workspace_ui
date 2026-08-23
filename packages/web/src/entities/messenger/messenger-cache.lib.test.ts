@@ -17,12 +17,14 @@ import {
   readMessengerCatalogPayloadCache,
   readMessengerConversationWindowCache,
   readMessengerMessageBodyCache,
+  repairMessengerCachedMessagePointers,
   writeMessengerMessageBodyCache,
   restoreMessengerStreamCache,
   writeMessengerCatalogPayloadCache,
 } from "./messenger-cache.lib";
 import type {
   MessengerBootstrapPayload,
+  MessengerConversation,
   MessengerFolder,
   MessengerMessage,
   MessengerStream,
@@ -106,6 +108,20 @@ function createTopic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
     lastMessageUuid: null,
     createdAt: DATE,
     updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createConversation(overrides: Partial<MessengerConversation> = {}): MessengerConversation {
+  return {
+    id: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+    streamUuid: STREAM_UUID,
+    topicUuid: TOPIC_UUID,
+    title: "general chat",
+    audience: "channel",
+    isPrivate: false,
+    unreadCount: 0,
+    lastMessageUuid: null,
     ...overrides,
   };
 }
@@ -326,6 +342,40 @@ describe("messenger cache", () => {
     expect(cached?.payload.topics[0]?.lastMessageUuid).toBe(latestMessageUuid);
   });
 
+  it("exposes target-aware pointer repair through the messenger cache adapter", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic()],
+      conversations: [
+        {
+          id: conversationId,
+          streamUuid: STREAM_UUID,
+          topicUuid: TOPIC_UUID,
+          title: "general chat",
+          audience: "channel",
+          isPrivate: false,
+          unreadCount: 0,
+          lastMessageUuid: null,
+        },
+      ],
+    });
+
+    await repairMessengerCachedMessagePointers(OWNER_KEY, createMessage(), {
+      topic: true,
+      conversationIds: [conversationId],
+    });
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.streams[0]?.lastMessageUuid).toBeNull();
+    expect(cached?.payload.topics[0]?.lastMessageUuid).toBe(MESSAGE_UUID);
+    expect(cached?.payload.conversations[0]?.lastMessageUuid).toBe(MESSAGE_UUID);
+    await expect(readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID])).resolves.toEqual([
+      expect.objectContaining({ uuid: MESSAGE_UUID }),
+    ]);
+  });
+
   it("removes a realtime-deleted stream binding without touching other catalog rows", async () => {
     await upsertMessengerStreamBindingsCache(OWNER_KEY, [createStreamBinding()]);
 
@@ -490,6 +540,144 @@ describe("messenger cache", () => {
     await expect(readMessengerConversationWindowCache(OWNER_KEY, conversationId)).resolves.toEqual(
       expect.objectContaining({ messages: [] }),
     );
+  });
+
+  it("restores cached stream and topic predecessors after a background-like tail delete", async () => {
+    const streamConversationId = `stream:${STREAM_UUID}` as const;
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+    const predecessor = createMessage({
+      uuid: "88888888-8888-4888-8888-888888888888",
+      createdAt: "2026-07-01T08:05:00.000Z",
+      updatedAt: "2026-07-01T08:05:00.000Z",
+    });
+    const deleted = createMessage({
+      createdAt: "2026-07-01T08:10:00.000Z",
+      updatedAt: "2026-07-01T08:10:00.000Z",
+    });
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream({ lastMessageUuid: deleted.uuid })],
+      topics: [createTopic({ lastMessageUuid: deleted.uuid })],
+      conversations: [
+        createConversation({
+          id: streamConversationId,
+          topicUuid: undefined,
+          lastMessageUuid: deleted.uuid,
+        }),
+        createConversation({ id: topicConversationId, lastMessageUuid: deleted.uuid }),
+      ],
+    });
+    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
+      OWNER_KEY,
+      topicConversationId,
+      { messages: [predecessor, deleted] },
+    );
+
+    await messengerRealtimeBackgroundCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
+      streamConversationId,
+      topicConversationId,
+    ]);
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.streams[0]?.lastMessageUuid).toBe(predecessor.uuid);
+    expect(cached?.payload.topics[0]?.lastMessageUuid).toBe(predecessor.uuid);
+    expect(
+      cached?.payload.conversations.find(({ id }) => id === streamConversationId)?.lastMessageUuid,
+    ).toBe(predecessor.uuid);
+    expect(
+      cached?.payload.conversations.find(({ id }) => id === topicConversationId)?.lastMessageUuid,
+    ).toBe(predecessor.uuid);
+    await expect(
+      readMessengerConversationWindowCache(OWNER_KEY, topicConversationId),
+    ).resolves.toEqual(
+      expect.objectContaining({ messages: [expect.objectContaining({ uuid: predecessor.uuid })] }),
+    );
+
+    const authoritativePredecessor = createMessage({
+      uuid: "77777777-7777-4777-8777-777777777777",
+      createdAt: "2026-07-01T08:08:00.000Z",
+      updatedAt: "2026-07-01T08:08:00.000Z",
+    });
+    await repairMessengerCachedMessagePointers(OWNER_KEY, authoritativePredecessor, {
+      stream: true,
+      topic: true,
+      conversationIds: [streamConversationId, topicConversationId],
+    });
+    const refreshed = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(refreshed?.payload.streams[0]?.lastMessageUuid).toBe(authoritativePredecessor.uuid);
+    expect(refreshed?.payload.topics[0]?.lastMessageUuid).toBe(authoritativePredecessor.uuid);
+  });
+
+  it("keeps a newer cached stream tail when repairing a deleted topic tail", async () => {
+    const otherTopicUuid = "99999999-9999-4999-8999-999999999999";
+    const streamConversationId = `stream:${STREAM_UUID}` as const;
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+    const otherTopicConversationId = `topic:${STREAM_UUID}:${otherTopicUuid}` as const;
+    const predecessor = createMessage({
+      uuid: "88888888-8888-4888-8888-888888888888",
+      createdAt: "2026-07-01T08:05:00.000Z",
+      updatedAt: "2026-07-01T08:05:00.000Z",
+    });
+    const deleted = createMessage({
+      createdAt: "2026-07-01T08:10:00.000Z",
+      updatedAt: "2026-07-01T08:10:00.000Z",
+    });
+    const newerStreamTail = createMessage({
+      uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      conversationId: otherTopicConversationId,
+      topicUuid: otherTopicUuid,
+      createdAt: "2026-07-01T08:15:00.000Z",
+      updatedAt: "2026-07-01T08:15:00.000Z",
+    });
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream({ lastMessageUuid: newerStreamTail.uuid })],
+      topics: [
+        createTopic({ lastMessageUuid: deleted.uuid }),
+        createTopic({ uuid: otherTopicUuid, lastMessageUuid: newerStreamTail.uuid }),
+      ],
+      conversations: [
+        createConversation({
+          id: streamConversationId,
+          topicUuid: undefined,
+          lastMessageUuid: newerStreamTail.uuid,
+        }),
+        createConversation({ id: topicConversationId, lastMessageUuid: deleted.uuid }),
+        createConversation({
+          id: otherTopicConversationId,
+          topicUuid: otherTopicUuid,
+          title: "other topic",
+          lastMessageUuid: newerStreamTail.uuid,
+        }),
+      ],
+    });
+    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
+      OWNER_KEY,
+      topicConversationId,
+      { messages: [predecessor, deleted] },
+    );
+    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
+      OWNER_KEY,
+      otherTopicConversationId,
+      { messages: [newerStreamTail] },
+    );
+
+    await messengerRealtimeBackgroundCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
+      streamConversationId,
+      topicConversationId,
+    ]);
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.streams[0]?.lastMessageUuid).toBe(newerStreamTail.uuid);
+    expect(cached?.payload.topics.find(({ uuid }) => uuid === TOPIC_UUID)?.lastMessageUuid).toBe(
+      predecessor.uuid,
+    );
+    expect(
+      cached?.payload.conversations.find(({ id }) => id === streamConversationId)?.lastMessageUuid,
+    ).toBe(newerStreamTail.uuid);
+    expect(
+      cached?.payload.conversations.find(({ id }) => id === topicConversationId)?.lastMessageUuid,
+    ).toBe(predecessor.uuid);
   });
 
   it("adjusts cached folder unread and keeps the deletion fence after stream deletion", async () => {

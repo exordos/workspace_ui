@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
+import {
+  applyDeletedMessagePointerRepair,
+  restoreMessengerStream,
+  useMessengerStore,
+} from "./messenger.model";
 import type {
+  MessengerConversation,
   MessengerFolder,
   MessengerFolderItem,
+  MessengerMessage,
   MessengerStream,
   MessengerStreamBinding,
   MessengerTopic,
@@ -26,6 +32,10 @@ const FOLDER_ITEM_C = "aee58fa0-8ab8-47ba-ae52-b504cfb383d9";
 const FOLDER_ITEM_D = "33a78fcf-24df-45f7-9fc5-349b10014baf";
 const DATE = "2026-06-22T10:10:00Z";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const TOPIC_B = "5ec0b996-b778-45f8-8ef4-ef863be0c047";
+const DELETED_MESSAGE = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const TOPIC_REPLACEMENT_MESSAGE = "b93dca35-3061-4748-bda4-7f6f8c660ea5";
+const STREAM_TAIL_MESSAGE = "c93dca35-3061-4748-bda4-7f6f8c660ea5";
 
 function createStreamBinding(
   overrides: Partial<MessengerStreamBinding> = {},
@@ -120,6 +130,42 @@ function createTopic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
   };
 }
 
+function createConversation(overrides: Partial<MessengerConversation> = {}): MessengerConversation {
+  return {
+    id: `stream:${STREAM_A}`,
+    streamUuid: STREAM_A,
+    title: "Stream",
+    audience: "channel",
+    isPrivate: false,
+    unreadCount: 0,
+    lastMessageUuid: null,
+    ...overrides,
+  };
+}
+
+function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+  return {
+    uuid: TOPIC_REPLACEMENT_MESSAGE,
+    conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+    projectId: PROJECT_A,
+    streamUuid: STREAM_A,
+    topicUuid: TOPIC_A,
+    authorUuid: USER_A,
+    userUuid: USER_A,
+    payload: { kind: "markdown", content: "Message" },
+    read: true,
+    pinned: false,
+    starred: false,
+    isOwn: true,
+    reactions: {},
+    reactionUserUuidsByEmojiName: {},
+    ownReactionUuidsByEmojiName: {},
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
 describe("messenger store", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
@@ -143,6 +189,105 @@ describe("messenger store", () => {
       realtimeReadyOwnerKey: null,
       realtimeReadyRuntimeGeneration: null,
     });
+  });
+
+  it("repairs only topic targets while preserving a newer stream tail", () => {
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream({ lastMessageUuid: STREAM_TAIL_MESSAGE })],
+      streamBindings: [],
+      topics: [
+        createTopic({ lastMessageUuid: DELETED_MESSAGE }),
+        createTopic({ uuid: TOPIC_B, lastMessageUuid: STREAM_TAIL_MESSAGE }),
+      ],
+      conversations: [
+        createConversation({ lastMessageUuid: STREAM_TAIL_MESSAGE }),
+        createConversation({
+          id: `topic:${STREAM_A}:${TOPIC_A}`,
+          topicUuid: TOPIC_A,
+          lastMessageUuid: DELETED_MESSAGE,
+        }),
+        createConversation({
+          id: `topic:${STREAM_A}:${TOPIC_B}`,
+          topicUuid: TOPIC_B,
+          lastMessageUuid: STREAM_TAIL_MESSAGE,
+        }),
+      ],
+      folders: [],
+    });
+    const deletedMessage = {
+      uuid: DELETED_MESSAGE,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+    };
+    const targets = {
+      stream: false,
+      topic: true,
+      streamConversation: false,
+      topicConversation: true,
+    };
+    const topicReplacement = createMessage();
+
+    useMessengerStore.getState().clearMessagePointer(OWNER_KEY, deletedMessage);
+    applyDeletedMessagePointerRepair(OWNER_KEY, deletedMessage, targets, {
+      stream: null,
+      topic: topicReplacement,
+    });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(STREAM_TAIL_MESSAGE);
+    expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(
+      STREAM_TAIL_MESSAGE,
+    );
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(TOPIC_REPLACEMENT_MESSAGE);
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.lastMessageUuid).toBe(
+      TOPIC_REPLACEMENT_MESSAGE,
+    );
+  });
+
+  it("does not overwrite a target filled by a newer message while repair is pending", () => {
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream({ lastMessageUuid: DELETED_MESSAGE })],
+      streamBindings: [],
+      topics: [createTopic({ lastMessageUuid: DELETED_MESSAGE })],
+      conversations: [
+        createConversation({ lastMessageUuid: DELETED_MESSAGE }),
+        createConversation({
+          id: `topic:${STREAM_A}:${TOPIC_A}`,
+          topicUuid: TOPIC_A,
+          lastMessageUuid: DELETED_MESSAGE,
+        }),
+      ],
+      folders: [],
+    });
+    const deletedMessage = {
+      uuid: DELETED_MESSAGE,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+    };
+    const targets = {
+      stream: true,
+      topic: true,
+      streamConversation: true,
+      topicConversation: true,
+    };
+    const newerMessage = createMessage({ uuid: STREAM_TAIL_MESSAGE });
+
+    useMessengerStore.getState().clearMessagePointer(OWNER_KEY, deletedMessage);
+    useMessengerStore.getState().applyMessagePointer(OWNER_KEY, newerMessage);
+    applyDeletedMessagePointerRepair(OWNER_KEY, deletedMessage, targets, {
+      stream: createMessage(),
+      topic: createMessage(),
+    });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(STREAM_TAIL_MESSAGE);
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(STREAM_TAIL_MESSAGE);
+    expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(
+      STREAM_TAIL_MESSAGE,
+    );
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.lastMessageUuid).toBe(
+      STREAM_TAIL_MESSAGE,
+    );
   });
 
   it("removes a stream binding from id and stream indexes for the current owner only", () => {

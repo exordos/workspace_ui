@@ -38,6 +38,18 @@ type MessengerFreshnessState = Pick<
   "streamsById" | "topicsById" | "conversationsById"
 >;
 
+export interface MessengerDeletedMessagePointerTargets {
+  stream: boolean;
+  topic: boolean;
+  streamConversation: boolean;
+  topicConversation: boolean;
+}
+
+export interface MessengerDeletedMessagePointerReplacements {
+  stream: MessengerMessage | null;
+  topic: MessengerMessage | null;
+}
+
 // Store keeps Workspace data separate from old Zulip stores.
 // This matters for migration: the new backend must not adapt to the old source of truth.
 // This store is scoped by ownerKey so several accounts/projects can coexist safely.
@@ -1221,6 +1233,99 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 }));
+
+export function applyDeletedMessagePointerRepair(
+  ownerKey: string,
+  message: MessengerDeletedMessage,
+  targets: MessengerDeletedMessagePointerTargets,
+  replacements: MessengerDeletedMessagePointerReplacements,
+): void {
+  logStoreAction("messenger", "applyDeletedMessagePointerRepair", {
+    ownerKey,
+    messageUuid: message.uuid,
+  });
+  useMessengerStore.setState((state) => {
+    if (state.ownerKey !== ownerKey) return state;
+    if (removedStreamsForOwner(ownerKey).has(message.streamUuid)) return state;
+
+    const streamReplacement =
+      replacements.stream?.streamUuid === message.streamUuid ? replacements.stream : null;
+    const topicReplacement =
+      replacements.topic?.streamUuid === message.streamUuid &&
+      replacements.topic.topicUuid === message.topicUuid
+        ? replacements.topic
+        : null;
+    let nextStreamsById = state.streamsById;
+    let nextTopicsById = state.topicsById;
+    let nextConversationsById = state.conversationsById;
+
+    const stream = state.streamsById[message.streamUuid];
+    if (
+      targets.stream &&
+      stream != null &&
+      stream.lastMessageUuid == null &&
+      streamReplacement != null
+    ) {
+      nextStreamsById = {
+        ...nextStreamsById,
+        [stream.uuid]: { ...stream, lastMessageUuid: streamReplacement.uuid },
+      };
+    }
+
+    const topic = state.topicsById[message.topicUuid];
+    if (
+      targets.topic &&
+      topic != null &&
+      topic.lastMessageUuid == null &&
+      topicReplacement != null
+    ) {
+      nextTopicsById = {
+        ...nextTopicsById,
+        [topic.uuid]: { ...topic, lastMessageUuid: topicReplacement.uuid },
+      };
+    }
+
+    const streamConversationId = conversationIdForStream(message.streamUuid);
+    const streamConversation = state.conversationsById[streamConversationId];
+    if (
+      targets.streamConversation &&
+      streamConversation != null &&
+      streamConversation.lastMessageUuid == null &&
+      streamReplacement != null
+    ) {
+      nextConversationsById = {
+        ...nextConversationsById,
+        [streamConversationId]: {
+          ...streamConversation,
+          lastMessageUuid: streamReplacement.uuid,
+        },
+      };
+    }
+
+    const topicConversationId = conversationIdForTopic(message.streamUuid, message.topicUuid);
+    const topicConversation = state.conversationsById[topicConversationId];
+    if (
+      targets.topicConversation &&
+      topicConversation != null &&
+      topicConversation.lastMessageUuid == null &&
+      topicReplacement != null
+    ) {
+      nextConversationsById = {
+        ...nextConversationsById,
+        [topicConversationId]: {
+          ...topicConversation,
+          lastMessageUuid: topicReplacement.uuid,
+        },
+      };
+    }
+
+    return {
+      streamsById: nextStreamsById,
+      topicsById: nextTopicsById,
+      conversationsById: nextConversationsById,
+    };
+  });
+}
 
 let sidebarConversationCacheIds = EMPTY_IDS;
 let sidebarConversationCacheMap = EMPTY_CONVERSATIONS_BY_ID;
