@@ -126,8 +126,8 @@ describe("defaultPaletteId", () => {
     expect(palettes.some((p) => p.id === defaultPaletteId)).toBe(true);
   });
 
-  it("uses blue-mist as the product default palette", () => {
-    expect(defaultPaletteId).toBe("blue-mist");
+  it("uses blue-cold as the product default palette", () => {
+    expect(defaultPaletteId).toBe("blue-cold");
   });
 });
 

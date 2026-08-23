@@ -6,7 +6,7 @@ import type { ThemePalette } from "./tokens";
 
 export const palettes: readonly ThemePalette[] = [orangeWarm, blueCold, blueMist, emeraldChat];
 
-export const defaultPaletteId = "blue-mist";
+export const defaultPaletteId = "blue-cold";
 
 export function getPalette(id: string): ThemePalette {
   return palettes.find((p) => p.id === id) ?? palettes[0]!;

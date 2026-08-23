@@ -65,14 +65,14 @@ describe("themeStore", () => {
   });
 
   // Default must be applied for first launch when localStorage is empty.
-  it("has blue-mist system as default when no persisted settings", async () => {
+  it("has blue-cold system as default when no persisted settings", async () => {
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
     vi.resetModules();
     const { useThemeStore: freshStore } = await import("./theme.model");
 
     const { paletteId, mode } = freshStore.getState();
-    expect(paletteId).toBe("blue-mist");
+    expect(paletteId).toBe("blue-cold");
     expect(mode).toBe("system");
   });
 
