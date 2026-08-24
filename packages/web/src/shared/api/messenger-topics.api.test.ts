@@ -8,6 +8,7 @@ import {
   markStreamTopicRead,
   renameStreamTopic,
   setStreamTopicNotificationMode,
+  setStreamTopicSummaryConfiguration,
   toggleStreamTopicDone,
 } from "./messenger-topics.api";
 
@@ -222,6 +223,62 @@ describe("messenger topics API", () => {
     );
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ notification_mode: "follow" }));
+  });
+
+  it("updates any supported topic summary configuration fields", async () => {
+    const updatedTopic = {
+      ...topicDto,
+      summary_enabled: true,
+      summary_system_prompt: null,
+      summary_reasoning_effort: null,
+    };
+    const fetchMock = createFetchMock(updatedTopic);
+    const body = {
+      summary_enabled: true,
+      summary_system_prompt: null,
+      summary_reasoning_effort: null,
+    } as const;
+
+    await expect(
+      setStreamTopicSummaryConfiguration(
+        { accessToken: "access-token", fetchImpl: fetchMock },
+        TOPIC_UUID,
+        body,
+      ),
+    ).resolves.toEqual(updatedTopic);
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(
+      `/api/workspace/v1/messenger/stream_topics/${TOPIC_UUID}/actions/set_summary_prompt/invoke`,
+    );
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify(body));
+  });
+
+  it("accepts a one-field topic summary configuration body and validates the full response", async () => {
+    const fetchMock = createFetchMock({ ...topicDto, summary_enabled: false });
+
+    await expect(
+      setStreamTopicSummaryConfiguration(
+        { accessToken: "access-token", fetchImpl: fetchMock },
+        TOPIC_UUID,
+        { summary_enabled: false },
+      ),
+    ).resolves.toEqual({ ...topicDto, summary_enabled: false });
+
+    expect(firstFetchCall(fetchMock)[1]?.body).toBe(JSON.stringify({ summary_enabled: false }));
+
+    const invalidFetchMock = createFetchMock({
+      ...topicDto,
+      summary_reasoning_effort: "maximum",
+    });
+    await expect(
+      setStreamTopicSummaryConfiguration(
+        { accessToken: "access-token", fetchImpl: invalidFetchMock },
+        TOPIC_UUID,
+        { summary_reasoning_effort: "high" },
+      ),
+    ).rejects.toThrow("Expected valid messenger stream topic response");
   });
 
   it("accepts 204 delete without parsing a DTO", async () => {

@@ -1,4 +1,5 @@
 import React from "react";
+import { mapWorkspaceTopicNotificationModeToLevel } from "~/entities/messenger/messenger-notification-mode.lib";
 import { t } from "~/i18n/i18n";
 import type {
   WorkspaceMessengerStreamNotificationMode,
@@ -10,8 +11,7 @@ import {
   getTopicVisibilityLevelOption,
   type NotificationLevelOption,
   type TopicVisibilityLevelOption,
-} from "./notification-level.ui.lib";
-import type { TopicVisibilityLevel } from "./notification-level.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
 function NotificationModeIndicator({
   option,
@@ -44,19 +44,6 @@ export const WorkspaceStreamNotificationModeIndicator = React.memo(
     return <NotificationModeIndicator option={getStreamNotificationLevelOption("muted")} />;
   },
 );
-
-function mapWorkspaceTopicNotificationModeToLevel(
-  mode: Exclude<WorkspaceMessengerTopicNotificationMode, "default">,
-): Exclude<TopicVisibilityLevel, "inherit"> {
-  switch (mode) {
-    case "mute":
-      return "muted";
-    case "unmute":
-      return "unmuted";
-    case "follow":
-      return "followed";
-  }
-}
 
 export const WorkspaceTopicNotificationModeIndicator = React.memo(
   function WorkspaceTopicNotificationModeIndicator({

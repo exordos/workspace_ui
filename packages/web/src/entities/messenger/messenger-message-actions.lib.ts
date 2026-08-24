@@ -6,7 +6,10 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import type { MessengerClientOptions } from "~/shared/api/messenger-client";
+import type {
+  MessengerClientOptions,
+  MessengerCollectionPage,
+} from "~/shared/api/messenger-client";
 import {
   createMessage as defaultCreateMessage,
   deleteMessage as defaultDeleteMessage,
@@ -19,7 +22,14 @@ import type {
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
-import { messengerMessageActionCache } from "./messenger-cache.lib";
+import {
+  messengerMessageActionCache,
+  type MessengerMessagePointerCacheTargets,
+} from "./messenger-cache.lib";
+import {
+  captureDeletedMessagePointerRepair,
+  repairDeletedMessagePointers,
+} from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
   advanceMessengerReadBoundary,
@@ -43,6 +53,16 @@ export interface MessengerMessageActionClientDeps {
     body: WorkspaceMessengerUpdateMessageRequestBody,
   ) => Promise<WorkspaceMessengerMessageDto>;
   deleteMessage?: (options: MessengerClientOptions, messageUuid: string) => Promise<void>;
+  getMessagesPage?: (
+    options: MessengerClientOptions,
+    query: {
+      streamUuid: MessengerUuid;
+      topicUuid?: MessengerUuid;
+      pageLimit: number;
+      sortKey: "created_at";
+      sortDir: "desc";
+    },
+  ) => Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>>;
   markMessagesReadUpTo?: (
     options: MessengerClientOptions,
     messageUuid: string,
@@ -57,6 +77,11 @@ export interface MessengerMessageActionCacheConversationPage {
 export interface MessengerMessageActionCacheWriter {
   advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
   patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  repairMessagePointers?: (
+    ownerKey: string,
+    message: MessengerMessage,
+    targets: MessengerMessagePointerCacheTargets,
+  ) => Promise<void> | void;
   markCachedMessagesRead?: (
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
@@ -302,6 +327,8 @@ export async function deleteMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const deletedMessage = { uuid: messageUuid, streamUuid, topicUuid };
+  const pointerRepairPlan = captureDeletedMessagePointerRepair(action.ownerKey, deletedMessage);
   await (client.deleteMessage ?? defaultDeleteMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
@@ -310,11 +337,7 @@ export async function deleteMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   store.getState().removeMessage(messageUuid);
-  useMessengerStore.getState().clearMessagePointer(action.ownerKey, {
-    uuid: messageUuid,
-    streamUuid,
-    topicUuid,
-  });
+  useMessengerStore.getState().clearMessagePointer(action.ownerKey, deletedMessage);
   if (cache?.deleteCachedMessage != null) {
     await writeActionCacheBestEffort(() =>
       cache.deleteCachedMessage?.(
@@ -324,6 +347,15 @@ export async function deleteMessengerMessage({
       ),
     );
   }
+  await repairDeletedMessagePointers({
+    runtimeContext,
+    plan: pointerRepairPlan,
+    getRuntimeContext,
+    clientOptions,
+    client,
+    cache,
+    signal,
+  });
   return { status: "applied", ownerKey: action.ownerKey, message: null };
 }
 

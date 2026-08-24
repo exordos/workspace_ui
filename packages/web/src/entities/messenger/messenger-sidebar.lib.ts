@@ -2,35 +2,37 @@ import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
-import { t } from "~/i18n/i18n";
-import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
-import {
-  workspaceMessengerStreamRoute,
-  workspaceMessengerTopicRoute,
-} from "~/shared/lib/workspace-messenger-route.lib";
+import type { UsersById } from "~/entities/user/user.types";
+import { workspaceMessengerStreamRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
 import {
   isWorkspaceStreamFullyMuted,
-  isWorkspaceTopicEffectivelyMuted,
   resolveWorkspaceActiveUnreadCount,
   resolveWorkspacePassiveUnreadCount,
 } from "./messenger-notification-mode.lib";
 import { isWorkspaceSelfChat } from "./messenger-self-chat.lib";
+import {
+  createMessengerTopicMessagePreview,
+  createMessengerTopicUnreadMentionIndex,
+  hasMessengerTopicListItemActiveUnread,
+  isMessengerTopicListItemActive,
+  selectMessengerMessageCreatedAt,
+  selectMessengerTopicsForStream,
+  type MessengerTopicListSortMode,
+  type MessengerTopicUnreadMentionIndex,
+} from "./messenger-topic-list.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
   MessengerConversation,
   MessengerMessage,
-  MessengerSidebarMessagePreview,
   MessengerSidebarFolderView,
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
   MessengerStream,
-  MessengerTopic,
   MessengerUuid,
 } from "./messenger.types";
 
@@ -56,7 +58,8 @@ export interface MessengerSidebarSelectorOptions {
   usersById?: UsersById;
 }
 
-export type MessengerSidebarSortMode = "last_message" | "unread_first";
+/** Sidebar compatibility name for the shared topic-list ordering mode. */
+export type MessengerSidebarSortMode = MessengerTopicListSortMode;
 
 export type MessengerSidebarStreamsState = Pick<
   MessengerStoreState,
@@ -96,10 +99,8 @@ export interface MessengerSidebarActivityCounts {
   mentionsCount: number | null;
 }
 
-export interface MessengerSidebarUnreadMentionIndex {
-  streamUuids: ReadonlySet<MessengerUuid>;
-  topicUuids: ReadonlySet<MessengerUuid>;
-}
+/** Sidebar compatibility name for the shared unread-mention index. */
+export type MessengerSidebarUnreadMentionIndex = MessengerTopicUnreadMentionIndex;
 
 let sidebarStreamsCache: SidebarStreamsCacheEntry | null = null;
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
@@ -154,100 +155,12 @@ function streamGroupRank(stream: MessengerSidebarStreamItem): number {
     : 0;
 }
 
-function topicGroupRank(
-  topic: MessengerSidebarTopicItem,
-  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
-): number {
-  if (topic.isDone) return 2;
-  return isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode) ? 1 : 0;
-}
-
-function isActiveSidebarTopic(
-  topic: MessengerSidebarTopicItem,
-  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
-): boolean {
-  return topicGroupRank(topic, streamNotificationMode) === 0;
-}
-
-function hasActiveUnreadSidebarTopic(topic: MessengerSidebarTopicItem): boolean {
-  return (topic.activeUnreadCount ?? 0) > 0;
-}
-
 function streamHasActiveUnreadTopics(stream: MessengerSidebarStreamItem): boolean {
   return stream.topics.some(
     (topic) =>
-      isActiveSidebarTopic(topic, stream.notificationMode) && hasActiveUnreadSidebarTopic(topic),
+      isMessengerTopicListItemActive(topic, stream.notificationMode) &&
+      hasMessengerTopicListItemActiveUnread(topic),
   );
-}
-
-function compareSidebarTopics(
-  a: MessengerSidebarTopicItem,
-  b: MessengerSidebarTopicItem,
-  streamNotificationMode: MessengerSidebarStreamItem["notificationMode"],
-  sortMode: MessengerSidebarSortMode,
-): number {
-  const groupCompare =
-    topicGroupRank(a, streamNotificationMode) - topicGroupRank(b, streamNotificationMode);
-  if (groupCompare !== 0) return groupCompare;
-
-  if (sortMode === "unread_first" && topicGroupRank(a, streamNotificationMode) === 0) {
-    const unreadCompare =
-      Number(hasActiveUnreadSidebarTopic(b)) - Number(hasActiveUnreadSidebarTopic(a));
-    if (unreadCompare !== 0) return unreadCompare;
-  }
-
-  return compareNullableStringsDesc(
-    a.lastMessageCreatedAt ?? a.updatedAt,
-    b.lastMessageCreatedAt ?? b.updatedAt,
-  );
-}
-
-function resolveUserDisplayName(user: User | undefined): string | undefined {
-  if (user == null) return undefined;
-  return selectUserDisplayName(user);
-}
-
-function previewFromMessage(input: {
-  messageUuid: MessengerUuid | null;
-  organizationId: string;
-  projectId: string;
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: UsersById;
-  currentUserUuid: MessengerUuid | null;
-}): MessengerSidebarMessagePreview | null {
-  if (input.messageUuid == null) return null;
-
-  const message = input.messagesById[input.messageUuid];
-  if (message == null) return null;
-
-  const senderName =
-    message.authorUuid === input.currentUserUuid
-      ? t("common.you")
-      : resolveUserDisplayName(input.usersById[message.authorUuid]);
-  const summary = summarizeWorkspaceMessageMarkdown(message.payload.content);
-
-  return {
-    messageUuid: message.uuid,
-    route: workspaceMessengerTopicRoute({
-      orgId: input.organizationId,
-      projectId: input.projectId,
-      streamUuid: message.streamUuid,
-      topicUuid: message.topicUuid,
-    }),
-    // Сайдбар не рендерит HTML и не показывает исходный markdown: короткая
-    // сводка скрывает приватные file URL и одинаково работает для текста,
-    // mentions, картинок и вложений.
-    text: summary.text,
-    ...(senderName != null ? { senderName } : {}),
-  };
-}
-
-function messageCreatedAt(
-  messageUuid: MessengerUuid | null | undefined,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-): string | null {
-  if (messageUuid == null) return null;
-  return messagesById[messageUuid]?.createdAt ?? null;
 }
 
 function latestMessageCreatedAt(
@@ -256,7 +169,7 @@ function latestMessageCreatedAt(
 ): string | null {
   let latest: string | null = null;
   for (const messageUuid of messageUuids) {
-    const createdAt = messageCreatedAt(messageUuid, messagesById);
+    const createdAt = selectMessengerMessageCreatedAt(messageUuid, messagesById);
     if (createdAt == null) continue;
     if (latest == null || createdAt > latest) {
       latest = createdAt;
@@ -271,63 +184,7 @@ export function createMessengerSidebarUnreadMentionIndex(input: {
   projectId: string;
   messagesById: Record<MessengerUuid, MessengerMessage>;
 }): MessengerSidebarUnreadMentionIndex {
-  const streamUuids = new Set<MessengerUuid>();
-  const topicUuids = new Set<MessengerUuid>();
-
-  for (const message of Object.values(input.messagesById)) {
-    if (message.projectId !== input.projectId || message.read || message.mentioned !== true) {
-      continue;
-    }
-
-    streamUuids.add(message.streamUuid);
-    topicUuids.add(message.topicUuid);
-  }
-
-  return { streamUuids, topicUuids };
-}
-
-function topicItemFromTopic(input: {
-  organizationId: string;
-  projectId: string;
-  topic: MessengerTopic;
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: UsersById;
-  currentUserUuid: MessengerUuid | null;
-  unreadMentionIndex: MessengerSidebarUnreadMentionIndex;
-}): MessengerSidebarTopicItem {
-  // topic:<streamUuid>:<topicUuid> is a temporary frontend key for row selection.
-  // The API has no separate "conversation" entity; real ids remain streamUuid and topicUuid.
-  return {
-    id: `topic:${input.topic.streamUuid}:${input.topic.uuid}`,
-    streamUuid: input.topic.streamUuid,
-    topicUuid: input.topic.uuid,
-    title: input.topic.name,
-    unreadCount: input.topic.unreadCount,
-    activeUnreadCount: resolveWorkspaceActiveUnreadCount(input.topic),
-    passiveUnreadCount: resolveWorkspacePassiveUnreadCount(input.topic),
-    hasUnreadPersonalMention: input.unreadMentionIndex.topicUuids.has(input.topic.uuid),
-    // Default/general is still tracked for other UX; the sidebar strip has no special case.
-    isDefault: input.topic.isDefault,
-    isDone: input.topic.isDone,
-    notificationMode: input.topic.notificationMode,
-    color: input.topic.color ?? null,
-    route: workspaceMessengerTopicRoute({
-      orgId: input.organizationId,
-      projectId: input.projectId,
-      streamUuid: input.topic.streamUuid,
-      topicUuid: input.topic.uuid,
-    }),
-    preview: previewFromMessage({
-      messageUuid: input.topic.lastMessageUuid,
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      messagesById: input.messagesById,
-      usersById: input.usersById,
-      currentUserUuid: input.currentUserUuid,
-    }),
-    lastMessageCreatedAt: messageCreatedAt(input.topic.lastMessageUuid, input.messagesById),
-    updatedAt: input.topic.updatedAt,
-  };
+  return createMessengerTopicUnreadMentionIndex(input);
 }
 
 function streamItemFromStream(input: {
@@ -360,7 +217,9 @@ function streamItemFromStream(input: {
       input.topics.map((topic) => topic.notificationMode),
     );
   const activeTopics = isActiveStream
-    ? input.topics.filter((topic) => isActiveSidebarTopic(topic, input.stream.notificationMode))
+    ? input.topics.filter((topic) =>
+        isMessengerTopicListItemActive(topic, input.stream.notificationMode),
+      )
     : input.topics;
   const streamLastMessageTopicUuid =
     input.stream.lastMessageUuid != null
@@ -372,7 +231,7 @@ function streamItemFromStream(input: {
   const streamLastMessageUuid =
     isActiveStream &&
     streamLastMessageTopic != null &&
-    !isActiveSidebarTopic(streamLastMessageTopic, input.stream.notificationMode)
+    !isMessengerTopicListItemActive(streamLastMessageTopic, input.stream.notificationMode)
       ? null
       : input.stream.lastMessageUuid;
 
@@ -402,7 +261,7 @@ function streamItemFromStream(input: {
       streamUuid: input.stream.uuid,
     }),
     topics: input.topics,
-    preview: previewFromMessage({
+    preview: createMessengerTopicMessagePreview({
       messageUuid: input.stream.lastMessageUuid,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -479,7 +338,7 @@ function streamItemFromConversation(input: {
       streamUuid: input.conversation.streamUuid,
     }),
     topics: EMPTY_SIDEBAR_TOPICS,
-    preview: previewFromMessage({
+    preview: createMessengerTopicMessagePreview({
       messageUuid: input.conversation.lastMessageUuid ?? null,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -493,7 +352,10 @@ function streamItemFromConversation(input: {
     statusEmoji: uiKind === "directPrivate" ? (directUser?.statusEmoji ?? null) : undefined,
     statusText: uiKind === "directPrivate" ? (directUser?.statusText ?? null) : undefined,
     updatedAt: input.updatedAt ?? "",
-    lastMessageCreatedAt: messageCreatedAt(input.conversation.lastMessageUuid, input.messagesById),
+    lastMessageCreatedAt: selectMessengerMessageCreatedAt(
+      input.conversation.lastMessageUuid,
+      input.messagesById,
+    ),
   };
 }
 
@@ -509,32 +371,7 @@ export function selectMessengerSidebarTopicsForStream(input: {
   sortMode?: MessengerSidebarSortMode;
   unreadMentionIndex?: MessengerSidebarUnreadMentionIndex;
 }): MessengerSidebarTopicItem[] {
-  const unreadMentionIndex =
-    input.unreadMentionIndex ??
-    createMessengerSidebarUnreadMentionIndex({
-      projectId: input.projectId,
-      messagesById: input.messagesById,
-    });
-  // Topics currently live in a flat store list, so this links them to the relevant stream.
-  const topics = input.state.topicIds
-    .map((topicId) => input.state.topicsById[topicId])
-    .filter((topic): topic is MessengerTopic => topic?.streamUuid === input.streamUuid)
-    .map((topic) =>
-      topicItemFromTopic({
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        topic,
-        messagesById: input.messagesById,
-        usersById: input.usersById,
-        currentUserUuid: input.currentUserUuid,
-        unreadMentionIndex,
-      }),
-    );
-
-  if (topics.length === 0) return EMPTY_SIDEBAR_TOPICS;
-  return topics.sort((a, b) =>
-    compareSidebarTopics(a, b, input.streamNotificationMode, input.sortMode ?? "last_message"),
-  );
+  return selectMessengerTopicsForStream(input);
 }
 
 export function selectMessengerSidebarStreams(

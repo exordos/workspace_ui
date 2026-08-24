@@ -279,7 +279,13 @@ const HealthSectionContent = React.memo<{
       <Notice>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>{t("manageExternalProvider.health.loadError")}</span>
-          <Button type="button" variant="ghost" size="sm" onClick={vm.refreshHealth}>
+          <Button
+            type="button"
+            variant="neutral"
+            appearance="ghost"
+            size="sm"
+            onClick={vm.refreshHealth}
+          >
             {t("common.retry")}
           </Button>
         </div>
@@ -298,7 +304,13 @@ const HealthSectionContent = React.memo<{
           <Notice>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>{t("manageExternalProvider.health.refreshError")}</span>
-              <Button type="button" variant="ghost" size="sm" onClick={vm.refreshHealth}>
+              <Button
+                type="button"
+                variant="neutral"
+                appearance="ghost"
+                size="sm"
+                onClick={vm.refreshHealth}
+              >
                 {t("common.retry")}
               </Button>
             </div>
@@ -356,7 +368,8 @@ const DangerActions = React.memo<{
     return (
       <Button
         type="button"
-        className="border-danger/30 hover:bg-danger/10 border bg-transparent text-danger"
+        variant="danger"
+        appearance="outline"
         disabled={actionLocked}
         onClick={() => setConfirmSuspend(true)}
       >
@@ -386,7 +399,8 @@ const DangerActions = React.memo<{
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
-          className="hover:bg-danger/90 bg-danger text-white"
+          variant="danger"
+          appearance="filled"
           disabled={actionLocked || vm.actionStatus === "suspending"}
           onClick={vm.suspend}
         >
@@ -394,7 +408,8 @@ const DangerActions = React.memo<{
         </Button>
         <Button
           type="button"
-          variant="ghost"
+          variant="neutral"
+          appearance="ghost"
           disabled={actionLocked || vm.actionStatus === "suspending"}
           onClick={() => setConfirmSuspend(false)}
         >
@@ -476,7 +491,13 @@ export const ManageExternalProviderForm = React.memo<ManageExternalProviderFormP
       return (
         <div role="alert" className="py-10 text-center">
           <p className="text-sm text-danger">{t("manageExternalProvider.policyLoadError")}</p>
-          <Button type="button" variant="ghost" className="mt-3" onClick={vm.refreshPolicy}>
+          <Button
+            type="button"
+            variant="neutral"
+            appearance="ghost"
+            className="mt-3"
+            onClick={vm.refreshPolicy}
+          >
             {t("common.retry")}
           </Button>
         </div>
@@ -541,7 +562,8 @@ export const ManageExternalProviderForm = React.memo<ManageExternalProviderFormP
             </span>
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               size="sm"
               disabled={policyRefreshing || vm.healthStatus === "loading" || mutationPending}
               onClick={() => {
@@ -557,7 +579,13 @@ export const ManageExternalProviderForm = React.memo<ManageExternalProviderFormP
               <Notice>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>{t("manageExternalProvider.policyRefreshError")}</span>
-                  <Button type="button" variant="ghost" size="sm" onClick={vm.refreshPolicy}>
+                  <Button
+                    type="button"
+                    variant="neutral"
+                    appearance="ghost"
+                    size="sm"
+                    onClick={vm.refreshPolicy}
+                  >
                     {t("common.retry")}
                   </Button>
                 </div>
@@ -580,7 +608,13 @@ export const ManageExternalProviderForm = React.memo<ManageExternalProviderFormP
               >
                 {t("manageExternalProvider.conflict.loadCurrent")}
               </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={vm.resetOperationState}>
+              <Button
+                type="button"
+                variant="neutral"
+                appearance="ghost"
+                size="sm"
+                onClick={vm.resetOperationState}
+              >
                 {t("manageExternalProvider.conflict.keepDraft")}
               </Button>
             </div>

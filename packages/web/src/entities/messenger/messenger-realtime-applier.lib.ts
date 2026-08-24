@@ -24,6 +24,10 @@ import {
   messengerRealtimeBackgroundCache,
   restoreMessengerStreamCache,
 } from "./messenger-cache.lib";
+import {
+  captureDeletedMessagePointerRepair,
+  type DeletedMessagePointerRepairPlan,
+} from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
 import {
@@ -115,6 +119,12 @@ export interface MessengerRealtimeActiveApplierOptions {
     ownerKey: string,
     message: MessengerMessage,
     stream: MessengerStream | null,
+    context: WorkspaceRealtimeEventContext,
+  ) => void | Promise<void>;
+  onMessageDeleted?: (
+    ownerKey: string,
+    message: MessengerDeletedMessage,
+    repairPlan: DeletedMessagePointerRepairPlan,
     context: WorkspaceRealtimeEventContext,
   ) => void | Promise<void>;
   // message.updated приносит только новый aggregate счетчиков, но не reactionUuid
@@ -318,13 +328,13 @@ function applyMessageRealtimeEvent(
       streamUuid: event.message.stream_uuid,
       topicUuid: event.message.topic_uuid,
     };
+    const pointerRepairPlan = captureDeletedMessagePointerRepair(ownerKey, deletedMessage);
     messageStore.removeMessage(event.message.uuid);
-    store.clearMessagePointer(ownerKey, {
-      uuid: event.message.uuid,
-      streamUuid: event.message.stream_uuid,
-      topicUuid: event.message.topic_uuid,
-    });
+    store.clearMessagePointer(ownerKey, deletedMessage);
     deleteRealtimeCachedMessage(activeCache, ownerKey, deletedMessage);
+    writeRealtimeCacheBestEffort(() =>
+      options.onMessageDeleted?.(ownerKey, deletedMessage, pointerRepairPlan, context),
+    );
     return;
   }
 

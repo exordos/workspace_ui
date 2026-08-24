@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
-  resolveWorkspaceDisplayedUnread,
   type WorkspaceStreamNotificationLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
@@ -12,8 +11,12 @@ import {
   addWorkspaceStreamMembers,
   removeWorkspaceStreamMember,
 } from "~/entities/messenger/messenger-stream-member-actions.lib";
+import {
+  resolveMessengerTopicSummaryPermissions,
+  type MessengerTopicSummaryPermissionResolution,
+} from "~/entities/messenger/messenger-topic-summary-permissions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   isSelectableWorkspaceUser,
   resolveUserPresenceVisual,
@@ -25,10 +28,12 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
+import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   AppDialogShell,
@@ -40,6 +45,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
@@ -327,6 +333,48 @@ const WorkspaceAddStreamMembersDialog: React.FC<WorkspaceAddStreamMembersDialogP
   );
 };
 
+interface WorkspaceTopicSummarySettingsControlProps {
+  readonly summary: NonNullable<WorkspaceRightPanelChannelInfoView["topicSummary"]>;
+  readonly runtimeContext: WorkspaceRuntimeContext | null;
+  readonly topic: MessengerTopic | null;
+  readonly permissions: MessengerTopicSummaryPermissionResolution;
+}
+
+const WorkspaceTopicSummarySettingsControl = React.memo(
+  function WorkspaceTopicSummarySettingsControl({
+    summary,
+    runtimeContext,
+    topic,
+    permissions,
+  }: WorkspaceTopicSummarySettingsControlProps) {
+    const [open, setOpen] = useState(false);
+    const canOpen = runtimeContext != null && topic != null && permissions.isGearVisible;
+    const handleOpen = useCallback(() => setOpen(true), []);
+
+    return (
+      <>
+        <div className="px-2">
+          <RightPanelTopicSummary
+            summary={summary}
+            onOpenSettings={canOpen ? handleOpen : undefined}
+          />
+        </div>
+        {topic != null ? (
+          <TopicSummarySettingsDialog
+            open={open && canOpen}
+            onOpenChange={setOpen}
+            runtimeContext={runtimeContext}
+            topic={topic}
+            topicPermission={permissions.topic}
+            gatesPermission={permissions.gates}
+            endpointsPermission={permissions.endpoints}
+          />
+        ) : null}
+      </>
+    );
+  },
+);
+
 const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
   info: WorkspaceRightPanelDirectPrivateInfoView;
 }> = ({ info }) => {
@@ -354,6 +402,12 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const storeNotificationMode = useMessengerStore((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
   );
+  const summaryStream = useMessengerStore((state) =>
+    info.streamUuid == null ? null : (state.streamsById[info.streamUuid] ?? null),
+  );
+  const summaryTopic = useMessengerStore((state) =>
+    info.topicSummary == null ? null : (state.topicsById[info.topicSummary.topicUuid] ?? null),
+  );
   const workspaceUsersById = useUsersStore((state) => state.usersById);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -361,6 +415,18 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],
   );
+  const summaryPermissions = useMemo(
+    () =>
+      resolveMessengerTopicSummaryPermissions({
+        currentUserUuid: runtimeContext?.userUuid,
+        stream: summaryStream,
+      }),
+    [runtimeContext?.userUuid, summaryStream],
+  );
+  const summaryRuntimeKey =
+    runtimeContext == null
+      ? null
+      : `${workspaceRuntimeOwnerKey(runtimeContext)}:${runtimeContext.runtimeGeneration}`;
   const notificationMode = storeNotificationMode ?? info.notificationMode;
   const channelAvatarStyle = useMemo(
     () =>
@@ -408,7 +474,6 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     },
     [navigate],
   );
-
   const handleSetNotificationLevel = useCallback(
     async (level: WorkspaceStreamNotificationLevel): Promise<void> => {
       if (info.streamUuid == null || notificationPending) return;
@@ -665,9 +730,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
 
         {info.topicSummary != null ? (
-          <div className="px-2">
-            <RightPanelTopicSummary key={info.topicSummary.topicUuid} summary={info.topicSummary} />
-          </div>
+          <WorkspaceTopicSummarySettingsControl
+            key={`${summaryRuntimeKey ?? "no-runtime"}:${info.streamUuid ?? "no-stream"}:${info.topicSummary.topicUuid}:${summaryPermissions.isGearVisible ? "visible" : "hidden"}`}
+            summary={info.topicSummary}
+            runtimeContext={runtimeContext}
+            topic={summaryTopic}
+            permissions={summaryPermissions}
+          />
         ) : null}
 
         {info.description && (
@@ -681,45 +750,12 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           </div>
         )}
 
-        <div>
-          <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
-            {t("channel.topics")}
-          </h3>
-          {info.topics.length === 0 ? (
-            <p className="px-2 py-2 text-sm text-text-muted">{t("channel.noTopics")}</p>
-          ) : (
-            <ul className="space-y-1">
-              {info.topics.map((topic) => {
-                const topicDisplay = resolveTopicDisplayInfo(topic.name);
-                const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
-                return (
-                  <li key={topic.id}>
-                    <button
-                      type="button"
-                      className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active"
-                      onClick={() => handleOpenTopic(topic.route)}
-                    >
-                      <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
-                        {topicDisplay.label}
-                      </span>
-                      {displayedUnread != null && (
-                        <span
-                          className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                            displayedUnread.passive
-                              ? "bg-notice-disable text-badge-text"
-                              : "bg-accent text-on-accent"
-                          }`}
-                        >
-                          {displayedUnread.count}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <RightPanelTopicList
+          topics={info.topics}
+          streamTitle={info.title.startsWith("#") ? info.title.slice(1) : info.title}
+          streamNotificationMode={notificationMode}
+          onOpenTopic={handleOpenTopic}
+        />
 
         <div>
           {/* Members block: title + person_add only (no leading profile icon). Hit area 32×32. */}

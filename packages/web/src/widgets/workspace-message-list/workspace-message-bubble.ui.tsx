@@ -59,15 +59,10 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
 
 const BASE_BUBBLE_CLASS_NAME =
   "max-w-[88%] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
-const OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-own-bg`;
-// Peer bubbles use msg-bg (aligned with card-bg chrome in dark palettes)
-const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-bg`;
-const COMPACT_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-own-bg`;
-const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-msg-bg`;
-const JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-call-bg`;
-const JITSI_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-call-bg`;
-const COMPACT_JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-call-bg`;
-const COMPACT_JITSI_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-msg-call-bg`;
+const OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px]`;
+const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px]`;
+const COMPACT_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px]`;
+const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px]`;
 
 function resolveMessageOwner(
   message: WorkspaceMessageListItem,
@@ -105,24 +100,41 @@ function resolvePeerAuthorLabel(
   return safeUuidPart.length > 0 ? `#${safeUuidPart}` : "";
 }
 
-function resolveBubbleClassName(
-  owner: WorkspaceMessageOwner,
-  isLastInGroup: boolean,
-  isJitsiCall: boolean,
-): string {
-  if (isJitsiCall) {
-    if (owner === "own") {
-      return isLastInGroup ? JITSI_OWN_BUBBLE_CLASS_NAME : COMPACT_JITSI_OWN_BUBBLE_CLASS_NAME;
-    }
-
-    return isLastInGroup ? JITSI_PEER_BUBBLE_CLASS_NAME : COMPACT_JITSI_PEER_BUBBLE_CLASS_NAME;
-  }
-
+function resolveBubbleShapeClassName(owner: WorkspaceMessageOwner, isLastInGroup: boolean): string {
   if (owner === "own") {
     return isLastInGroup ? OWN_BUBBLE_CLASS_NAME : COMPACT_OWN_BUBBLE_CLASS_NAME;
   }
 
   return isLastInGroup ? PEER_BUBBLE_CLASS_NAME : COMPACT_PEER_BUBBLE_CLASS_NAME;
+}
+
+function resolveBubbleBackgroundClassName(
+  owner: WorkspaceMessageOwner,
+  isJitsiCall: boolean,
+  isSelected: boolean,
+): string {
+  if (isSelected) {
+    return owner === "own" ? "bg-msg-selected" : "bg-card-bg-active";
+  }
+
+  if (isJitsiCall) {
+    return "bg-msg-call-bg";
+  }
+
+  return owner === "own" ? "bg-msg-own-bg" : "bg-msg-bg";
+}
+
+function resolveBubbleClassName(
+  owner: WorkspaceMessageOwner,
+  isLastInGroup: boolean,
+  isJitsiCall: boolean,
+  isSelected: boolean,
+): string {
+  return `${resolveBubbleShapeClassName(owner, isLastInGroup)} ${resolveBubbleBackgroundClassName(
+    owner,
+    isJitsiCall,
+    isSelected,
+  )}`;
 }
 
 function hasWorkspaceReactions(message: MessengerMessage): boolean {
@@ -333,7 +345,6 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     isFirstInGroup,
     isLastInGroup,
     isSelected = false,
-    selectionMode = false,
     resolveAuthorLabel,
     usersById,
     topicLabel,
@@ -383,9 +394,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       displayMessage.authorUuid,
       resolveAuthorLabel?.(displayMessage.authorUuid),
     );
-    const bubbleClassName = `${resolveBubbleClassName(owner, isLastInGroup, isJitsiCall)} ${
-      isSelected ? "ring-2 ring-accent-soft" : ""
-    }`;
+    const bubbleClassName = resolveBubbleClassName(owner, isLastInGroup, isJitsiCall, isSelected);
     const bodyRef = useRef<HTMLDivElement>(null);
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
@@ -551,23 +560,6 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             }
             getSelectedText={getSelectedText}
           />
-        ) : null}
-        {selectionMode && interactiveServerMessage != null ? (
-          <button
-            type="button"
-            aria-label={t("message.select")}
-            aria-pressed={isSelected}
-            className={`absolute top-2 z-base flex h-5 w-5 items-center justify-center rounded border text-[11px] ${
-              isOwn
-                ? "-left-7 border-accent bg-accent text-bg"
-                : "-right-7 border-accent bg-accent text-bg"
-            } ${isSelected ? "opacity-100" : "opacity-70"}`}
-            onClick={() =>
-              interactiveActions?.onToggleMessageSelection?.(interactiveServerMessage.uuid)
-            }
-          >
-            {isSelected ? "✓" : ""}
-          </button>
         ) : null}
         {peerAuthorLabel.length > 0 || normalizedTopicLabel.length > 0 ? (
           <div className="mb-1 flex min-w-0 items-baseline gap-1.5 text-xs font-medium">

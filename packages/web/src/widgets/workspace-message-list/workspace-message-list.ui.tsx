@@ -22,6 +22,7 @@ import {
 } from "./workspace-message-list-grouping.lib";
 import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
+import { WorkspaceMessageSelectionControl } from "./workspace-message-selection-control.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-grouping.lib";
 import type {
@@ -36,6 +37,27 @@ const PEER_ROW_CLASS_NAME = "relative flex w-full justify-start self-stretch";
 const OWN_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-end";
 const PEER_AUTHOR_GROUP_CLASS_NAME = "flex w-full items-stretch gap-2";
 const PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME = "flex min-w-0 flex-1 flex-col items-start gap-1";
+const MESSAGE_SELECTION_INTERACTIVE_TARGET_SELECTOR = [
+  "a",
+  "audio",
+  "button",
+  "details",
+  "iframe",
+  "input",
+  "label",
+  "select",
+  "summary",
+  "textarea",
+  "video",
+  "[contenteditable]:not([contenteditable='false'])",
+  "[role='button']",
+  "[role='checkbox']",
+  "[role='link']",
+  "[role='menuitem']",
+  "[role='option']",
+  "[role='switch']",
+  "[data-workspace-message-selection-control='true']",
+].join(",");
 const EMPTY_SELECTED_MESSAGE_UUIDS = new Set<MessengerUuid>();
 const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
 
@@ -72,6 +94,80 @@ function formatWorkspaceTopicLabel(label: string | null | undefined): string | n
   }
 
   return normalizedLabel.startsWith("#") ? normalizedLabel : `#${normalizedLabel}`;
+}
+
+function formatMessageSelectionTime(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function isMessageSelectionInteractiveTarget(target: EventTarget | null): boolean {
+  return (
+    !(target instanceof Element) ||
+    target.closest(MESSAGE_SELECTION_INTERACTIVE_TARGET_SELECTOR) != null
+  );
+}
+
+function hasTextSelectionWithin(container: HTMLElement): boolean {
+  if (typeof window === "undefined" || typeof window.getSelection !== "function") {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  return (
+    selection != null &&
+    !selection.isCollapsed &&
+    selection.toString().trim().length > 0 &&
+    (container.contains(selection.anchorNode) || container.contains(selection.focusNode))
+  );
+}
+
+function shouldToggleMessageFromRow(event: React.MouseEvent<HTMLElement>): boolean {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    typeof Node === "undefined" ||
+    !(event.target instanceof Node) ||
+    !event.currentTarget.contains(event.target)
+  ) {
+    return false;
+  }
+
+  if (isMessageSelectionInteractiveTarget(event.target)) {
+    return false;
+  }
+
+  return !hasTextSelectionWithin(event.currentTarget);
+}
+
+interface MessageSelectionContext {
+  id: string;
+  authorLabel: string;
+  timeLabel: string;
+}
+
+function createMessageSelectionContext(
+  messageAnchorId: string | undefined,
+  message: WorkspaceMessageListItem,
+  resolveAuthorLabel: WorkspaceMessageListRowProps["resolveAuthorLabel"],
+): Readonly<MessageSelectionContext> | null {
+  if (messageAnchorId == null) {
+    return null;
+  }
+
+  const resolvedAuthorLabel = resolveAuthorLabel?.(message.authorUuid)?.trim();
+  return {
+    id: `${messageAnchorId}-selection-context`,
+    authorLabel:
+      resolvedAuthorLabel != null && resolvedAuthorLabel.length > 0
+        ? resolvedAuthorLabel
+        : `#${message.authorUuid.trim().slice(0, 8)}`,
+    timeLabel: formatMessageSelectionTime(message.createdAt),
+  };
 }
 
 const WorkspaceUnreadMessagesDivider: React.FC<{ label: string }> = ({ label }) => (
@@ -116,16 +212,39 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   actions,
   passiveLoadersEnabled,
 }: WorkspaceMessageListRowProps): React.ReactElement {
-  const serverMessageUuid = message.kind === "server" ? message.message.uuid : undefined;
+  const serverMessage = message.kind === "server" ? message.message : null;
+  const serverMessageUuid = serverMessage?.uuid;
   const messageUuid = serverMessageUuid ?? message.key;
+  const messageAnchorId =
+    serverMessageUuid == null
+      ? undefined
+      : workspaceMessengerMessageAnchor(serverMessageUuid).slice(1);
+  const rendersSelectionControl = selectionMode && serverMessage != null;
+  const handleRowSelectionClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (
+      !rendersSelectionControl ||
+      serverMessageUuid == null ||
+      !shouldToggleMessageFromRow(event)
+    ) {
+      return;
+    }
+
+    actions?.onToggleMessageSelection?.(serverMessageUuid);
+  };
+  const selectionContext = rendersSelectionControl
+    ? createMessageSelectionContext(messageAnchorId, message, resolveAuthorLabel)
+    : null;
+  /* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- The article contains links and buttons, so it cannot expose button semantics. Keyboard selection stays on the native checkbox. */
   return (
     <article
-      id={
-        serverMessageUuid == null
-          ? undefined
-          : workspaceMessengerMessageAnchor(serverMessageUuid).slice(1)
-      }
-      className={owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME}
+      id={messageAnchorId}
+      className={`${owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME} ${
+        selectionMode ? "items-end" : ""
+      } ${
+        rendersSelectionControl
+          ? "cursor-pointer rounded-lg transition-colors hover:bg-card-bg-active"
+          : ""
+      }`}
       data-message-uuid={messageUuid}
       data-message-render-key={message.key}
       data-server-message-uuid={serverMessageUuid}
@@ -133,25 +252,59 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
       data-author-uuid={message.authorUuid}
       data-message-owner={owner}
       data-message-kind={message.kind}
+      data-workspace-message-selectable-row={rendersSelectionControl ? "true" : undefined}
+      onClick={rendersSelectionControl ? handleRowSelectionClick : undefined}
     >
       {/* The article remains the list row and the DOM anchor for scrolling. The
           bubble below only handles message presentation, so later phases can
           reshape the bubble without rewriting the scroll controller. */}
-      <WorkspaceMessageBubble
-        message={message}
-        currentUserUuid={currentUserUuid}
-        isFirstInGroup={isFirstInGroup}
-        isLastInGroup={isLastInGroup}
-        isSelected={isSelected}
-        selectionMode={selectionMode}
-        resolveAuthorLabel={resolveAuthorLabel}
-        usersById={usersById}
-        topicLabel={topicLabel}
-        resolveMention={resolveMention}
-        quoteRenderMode={quoteRenderMode}
-        actions={actions}
-        passiveLoadersEnabled={passiveLoadersEnabled}
-      />
+      {selectionMode ? (
+        <span
+          aria-hidden="true"
+          className="w-14 shrink-0 self-stretch"
+          data-workspace-message-selection-outer-rail="true"
+        />
+      ) : null}
+      {rendersSelectionControl ? (
+        <WorkspaceMessageSelectionControl
+          checked={isSelected}
+          label={t(isSelected ? "message.deselect" : "message.select")}
+          descriptionId={selectionContext?.id}
+          onChange={() => actions?.onToggleMessageSelection?.(serverMessage.uuid)}
+        />
+      ) : null}
+      <div
+        className={`min-w-0 ${
+          selectionMode ? "flex min-w-0 flex-1" : "contents"
+        } ${rendersSelectionControl ? "ml-2" : ""} ${
+          owner === "own" ? "justify-end" : "justify-start"
+        }`}
+      >
+        <WorkspaceMessageBubble
+          message={message}
+          currentUserUuid={currentUserUuid}
+          isFirstInGroup={isFirstInGroup}
+          isLastInGroup={isLastInGroup}
+          isSelected={isSelected}
+          resolveAuthorLabel={resolveAuthorLabel}
+          usersById={usersById}
+          topicLabel={topicLabel}
+          resolveMention={resolveMention}
+          quoteRenderMode={quoteRenderMode}
+          actions={actions}
+          passiveLoadersEnabled={passiveLoadersEnabled}
+        />
+      </div>
+      {selectionContext != null ? (
+        <span
+          id={selectionContext.id}
+          className="sr-only"
+          data-workspace-message-selection-context="true"
+        >
+          {selectionContext.authorLabel}{" "}
+          <time dateTime={message.createdAt}>{selectionContext.timeLabel}</time>
+        </span>
+      ) : null}
       <span
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
@@ -159,6 +312,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
       />
     </article>
   );
+  /* eslint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */
 });
 
 interface WorkspaceMessageAuthorGroupViewProps {
@@ -202,6 +356,15 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   const handleAuthorClick = () => {
     actions?.onOpenAuthorProfile?.(group.authorUuid);
   };
+  let authorGroupClassName = PEER_AUTHOR_GROUP_CLASS_NAME;
+  let authorGroupContentClassName = PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME;
+  if (groupOwner === "own") {
+    authorGroupClassName = `${OWN_AUTHOR_GROUP_CLASS_NAME} ${selectionMode ? "w-full" : ""}`;
+    authorGroupContentClassName = "contents";
+  } else if (selectionMode) {
+    authorGroupClassName = "relative flex w-full items-stretch";
+    authorGroupContentClassName = `${PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME} w-full`;
+  }
   const messageRows = group.messages.map((message, messageIndex) => (
     <WorkspaceMessageListRow
       key={message.key}
@@ -228,17 +391,23 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
 
   return (
     <section
-      className={groupOwner === "own" ? OWN_AUTHOR_GROUP_CLASS_NAME : PEER_AUTHOR_GROUP_CLASS_NAME}
+      className={authorGroupClassName}
       data-author-group="true"
       data-author-uuid={group.authorUuid}
       data-message-owner={groupOwner}
     >
       {groupOwner === "peer" ? (
-        <div className="flex w-12 flex-shrink-0 flex-col justify-end pb-2">
+        <div
+          className={
+            selectionMode
+              ? "pointer-events-none absolute bottom-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
+              : "flex w-12 flex-shrink-0 flex-col justify-end pb-2"
+          }
+        >
           <button
             type="button"
             onClick={handleAuthorClick}
-            className="group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            className={`${selectionMode ? "pointer-events-auto" : ""} group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
@@ -261,9 +430,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           </button>
         </div>
       ) : null}
-      <div className={groupOwner === "peer" ? PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME : "contents"}>
-        {messageRows}
-      </div>
+      <div className={authorGroupContentClassName}>{messageRows}</div>
     </section>
   );
 });

@@ -42,7 +42,11 @@ import {
 import { useWorkspaceForwardMessageStore } from "./workspace-forward-message.model";
 import type { WorkspaceForwardTarget } from "./workspace-forward-message.types";
 
-const CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`;
+// Channel tab stays hug-content (two selects). DM tab fills most of the viewport
+// so long user lists show many rows at once instead of a 12rem clip.
+const FORWARD_DIALOG_BASE_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[80vh] max-w-md -translate-y-1/2 flex-col overflow-hidden p-0`;
+const FORWARD_DIALOG_CHANNEL_CLASS = FORWARD_DIALOG_BASE_CLASS;
+const FORWARD_DIALOG_DIRECT_CLASS = `${FORWARD_DIALOG_BASE_CLASS} h-[80vh]`;
 const log = createLogger("workspace-forward-message");
 type ForwardTab = "channel" | "direct";
 
@@ -86,6 +90,8 @@ interface WorkspaceForwardTargetPickerProps {
   error: string | null;
   streams: readonly MessengerStream[];
   topics: readonly MessengerTopic[];
+  tab: ForwardTab;
+  onTabChange: (tab: ForwardTab) => void;
   onForward: (target: WorkspaceForwardTarget) => void;
   onClose: () => void;
 }
@@ -97,10 +103,11 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
     error,
     streams,
     topics,
+    tab,
+    onTabChange,
     onForward,
     onClose,
   }) {
-    const [tab, setTab] = useState<ForwardTab>("channel");
     const [selectedStream, setSelectedStream] = useState("");
     const [selectedTopic, setSelectedTopic] = useState("");
     const [selectedUserUuid, setSelectedUserUuid] = useState("");
@@ -141,7 +148,7 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
 
     return (
       <>
-        <div className="flex border-b border-border-subtle">
+        <div className="flex shrink-0 border-b border-border-subtle">
           <button
             type="button"
             className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
@@ -150,7 +157,7 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
                 : "text-text-muted hover:text-text-primary"
             }`}
             disabled={isSubmitting}
-            onClick={() => setTab("channel")}
+            onClick={() => onTabChange("channel")}
           >
             {t("message.channel")}
           </button>
@@ -162,12 +169,18 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
                 : "text-text-muted hover:text-text-primary"
             }`}
             disabled={isSubmitting}
-            onClick={() => setTab("direct")}
+            onClick={() => onTabChange("direct")}
           >
             {t("message.directMessage")}
           </button>
         </div>
-        <div className="flex flex-col gap-3 overflow-hidden p-4">
+        <div
+          className={
+            tab === "direct"
+              ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4"
+              : "flex flex-col gap-3 overflow-hidden p-4"
+          }
+        >
           {tab === "channel" ? (
             <>
               <label className="text-sm text-text-muted">{t("channel.name")}</label>
@@ -213,11 +226,14 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
                 type="text"
                 value={directSearch}
                 onChange={(event) => setDirectSearch(event.target.value)}
-                className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                className="w-full shrink-0 rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
                 placeholder={t("message.searchUsers")}
                 disabled={isSubmitting}
               />
-              <div className="max-h-48 overflow-y-auto rounded-lg border border-border-subtle">
+              <div
+                data-testid="workspace-forward-user-list"
+                className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border-subtle"
+              >
                 {showFavoritesOption ? (
                   <button
                     type="button"
@@ -278,7 +294,7 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
               {error}
             </p>
           ) : null}
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="mt-auto flex shrink-0 justify-end gap-2 pt-2">
             <Dialog.Close asChild>
               <button
                 type="button"
@@ -317,6 +333,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
   const selectedText = useWorkspaceForwardMessageStore((state) => state.selectedText);
   const isSubmitting = useWorkspaceForwardMessageStore((state) => state.isSubmitting);
   const error = useWorkspaceForwardMessageStore((state) => state.error);
+  const [tab, setTab] = useState<ForwardTab>("channel");
   const runtimeContext = useWorkspaceForwardRuntime();
   const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const streamsById = useMessengerStore((state) => state.streamsById);
@@ -350,7 +367,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
     async function loadMissingMessages() {
       try {
         useWorkspaceForwardMessageStore.getState().setError(null);
-        // Forward хранит только UUID, поэтому полные тексты догружаем из нового Workspace API.
+        // Forward stores UUIDs only, so full message bodies are loaded from Workspace API.
         const dtos = await getMessagesByUuids(
           buildMessengerRequestOptions(loadRuntimeContext, undefined, abortController.signal),
           missingMessageUuids,
@@ -376,6 +393,12 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
 
     return () => abortController.abort();
   }, [isOpen, messageUuids, messagesById, runtimeContext]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setTab("channel");
+    }
+  }, [isOpen]);
 
   const handleClose = useCallback(() => {
     if (useWorkspaceForwardMessageStore.getState().isSubmitting) return;
@@ -494,8 +517,14 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
   }, []);
 
   return (
-    <AppDialogShell open={isOpen} onOpenChange={handleOpenChange} contentClassName={CONTENT_CLASS}>
-      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+    <AppDialogShell
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      contentClassName={
+        tab === "direct" ? FORWARD_DIALOG_DIRECT_CLASS : FORWARD_DIALOG_CHANNEL_CLASS
+      }
+    >
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
         <Dialog.Title className="text-sm font-semibold text-text-primary">
           {t("message.forwardToChannel")}
         </Dialog.Title>
@@ -519,15 +548,19 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
           </p>
         </div>
       ) : (
-        <WorkspaceForwardTargetPicker
-          currentUserUuid={runtimeContext.userUuid}
-          isSubmitting={isSubmitting}
-          error={error}
-          streams={streams}
-          topics={topics}
-          onForward={handleForward}
-          onClose={handleClose}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <WorkspaceForwardTargetPicker
+            currentUserUuid={runtimeContext.userUuid}
+            isSubmitting={isSubmitting}
+            error={error}
+            streams={streams}
+            topics={topics}
+            tab={tab}
+            onTabChange={setTab}
+            onForward={handleForward}
+            onClose={handleClose}
+          />
+        </div>
       )}
     </AppDialogShell>
   );

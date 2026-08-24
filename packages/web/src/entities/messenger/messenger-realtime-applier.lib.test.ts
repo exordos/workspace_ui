@@ -18,6 +18,7 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
 import { applyMessengerMessageWindow } from "./messenger-messages-loader.lib";
 import {
   clearMessengerReadBoundariesForOwner,
@@ -813,6 +814,135 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
+  });
+
+  it("repairs last-message pointers when the deleted tail arrives through realtime", async () => {
+    const context = createContext();
+    const runtimeContext = {
+      ...context.owner,
+      organizationOrigin: "https://organization-a.example.com",
+      accessToken: "access-token-a",
+    };
+    const previousDto = createMessageDto({
+      uuid: MESSAGE_A,
+      created_at: "2026-06-22T10:00:00Z",
+      updated_at: "2026-06-22T10:00:00Z",
+    });
+    const deletedDto = createMessageDto({
+      uuid: MESSAGE_B,
+      created_at: DATE_LATER,
+      updated_at: DATE_LATER,
+    });
+    const getMessagesPage = vi.fn(() =>
+      Promise.resolve({ items: [previousDto], nextPageMarker: null, pageLimit: 1 }),
+    );
+    const applier = createMessengerRealtimeActiveApplier({
+      onMessageDeleted: (_ownerKey, _message, plan) =>
+        repairDeletedMessagePointers({
+          runtimeContext,
+          plan,
+          getRuntimeContext: () => runtimeContext,
+          client: { getMessagesPage },
+        }),
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: { last_message_uuid: MESSAGE_B, updated_at: DATE_LATER },
+      topic: { last_message_uuid: MESSAGE_B, updated_at: DATE_LATER },
+    });
+    applier.applyEvent(
+      {
+        epoch_version: 3,
+        type: "message",
+        kind: "message.created",
+        message: previousDto,
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 4,
+        type: "message",
+        kind: "message.created",
+        message: deletedDto,
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 5,
+        type: "message",
+        kind: "message.deleted",
+        message: { uuid: MESSAGE_B, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+      },
+      context,
+    );
+
+    await vi.waitFor(() => {
+      const state = useMessengerStore.getState();
+      expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_A);
+      expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
+      expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(MESSAGE_A);
+      expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.lastMessageUuid).toBe(
+        MESSAGE_A,
+      );
+    });
+    expect(getMessagesPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes the deleted-message cursor without waiting for pointer repair", async () => {
+    const context = createContext();
+    let releaseRepair: (() => void) | undefined;
+    const repair = new Promise<void>((resolve) => {
+      releaseRepair = resolve;
+    });
+    const cache = { writeRealtimeCursor: vi.fn() };
+    const onMessageDeleted = vi.fn(() => repair);
+    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageDeleted });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    const application = applier.applyEvent(
+      {
+        epoch_version: 5,
+        type: "message",
+        kind: "message.deleted",
+        message: { uuid: MESSAGE_B, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+      },
+      context,
+    );
+
+    expect(application).toBeUndefined();
+    expect(onMessageDeleted).toHaveBeenCalledOnce();
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(5);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 5);
+
+    releaseRepair?.();
+    await repair;
+  });
+
+  it("treats a rejected deleted-message pointer repair as best effort", async () => {
+    const context = createContext();
+    const cache = { writeRealtimeCursor: vi.fn() };
+    const onMessageDeleted = vi.fn(() => Promise.reject(new Error("repair unavailable")));
+    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageDeleted });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    expect(() =>
+      applier.applyEvent(
+        {
+          epoch_version: 5,
+          type: "message",
+          kind: "message.deleted",
+          message: { uuid: MESSAGE_B, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+        },
+        context,
+      ),
+    ).not.toThrow();
+
+    await Promise.resolve();
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(5);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 5);
   });
 
   it("preserves realtime body and pointers when an older fetched anchor window is applied", async () => {

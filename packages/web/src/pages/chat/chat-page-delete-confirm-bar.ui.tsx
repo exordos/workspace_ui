@@ -1,10 +1,10 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import {
-  chatBottomNoticeActionButtonClassName,
   chatBottomNoticeBarClassName,
   chatBottomNoticeMarkerClassName,
 } from "~/shared/lib/chat-bottom-notice-bar.lib";
+import { Button } from "~/shared/ui/button";
 import type { ChatPageDeleteConfirmBarProps } from "./chat-page-delete-confirm-bar.types";
 
 export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfirmBar({
@@ -41,20 +41,12 @@ export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfir
         <span className="mt-1 block text-sm text-text-muted">{t("message.deleteCannotUndo")}</span>
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          className={chatBottomNoticeActionButtonClassName("danger")}
-          onClick={onConfirm}
-        >
+        <Button type="button" variant="danger" appearance="filled" size="md" onClick={onConfirm}>
           {t("message.delete")}
-        </button>
-        <button
-          type="button"
-          className={chatBottomNoticeActionButtonClassName("neutral", { transparent: true })}
-          onClick={onCancel}
-        >
+        </Button>
+        <Button type="button" variant="neutral" appearance="filled" size="md" onClick={onCancel}>
           {t("common.cancel")}
-        </button>
+        </Button>
       </span>
     </div>
   );

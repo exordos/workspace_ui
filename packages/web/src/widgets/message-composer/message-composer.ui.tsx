@@ -70,8 +70,8 @@ import {
 } from "./message-composer-reference.lib";
 import { useMessageComposerResize } from "./message-composer-resize.hook";
 import {
-  isComposerHeightButtonVisible,
   isComposerResizeHandleVisible,
+  resolveComposerHeightButtonVisibility,
 } from "./message-composer-resize.lib";
 import {
   MessageComposerHeightButton,
@@ -476,6 +476,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [textareaContentHeight, setTextareaContentHeight] = useState(
     COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   );
+  const [heightButtonVisible, setHeightButtonVisible] = useState(false);
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [mediaPickerTab, setMediaPickerTab] = useState<MediaPickerTab>("emoji");
   const [mediaPickerStyle, setMediaPickerStyle] = useState<React.CSSProperties>({});
@@ -625,6 +626,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     textareaContentHeight,
     textareaRef,
   });
+  const manualResizeReleaseVersionRef = useRef(composerResize.manualResizeReleaseVersion);
   const textareaId = useId();
   const prevDisabledRef = useRef(disabled);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
@@ -1390,16 +1392,39 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     textarea.style.height = "auto";
     const contentHeight = Math.max(textarea.scrollHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX);
     setTextareaContentHeight(contentHeight);
-    if (composerResize.height != null) {
-      textarea.style.height = "100%";
-      return;
-    }
-    const nextHeight = Math.min(
+    const autoEditorHeight = Math.min(
       Math.max(contentHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX),
       COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
     );
-    textarea.style.height = `${nextHeight}px`;
-  }, [composerResize.height]);
+    let effectiveEditorHeight: number;
+    if (composerResize.height != null) {
+      textarea.style.height = "100%";
+      const measuredEditorHeight = textarea.getBoundingClientRect().height;
+      effectiveEditorHeight =
+        composerResize.manualEditorHeight ??
+        (measuredEditorHeight > 0 ? measuredEditorHeight : autoEditorHeight);
+    } else {
+      textarea.style.height = `${autoEditorHeight}px`;
+      effectiveEditorHeight = autoEditorHeight;
+    }
+    const resetHysteresis =
+      manualResizeReleaseVersionRef.current !== composerResize.manualResizeReleaseVersion;
+    manualResizeReleaseVersionRef.current = composerResize.manualResizeReleaseVersion;
+    setHeightButtonVisible((wasVisible) =>
+      resolveComposerHeightButtonVisibility({
+        effectiveEditorHeight,
+        isFullHeight: composerResize.isFullHeight,
+        isManualResize: composerResize.height != null,
+        resetHysteresis,
+        wasVisible,
+      }),
+    );
+  }, [
+    composerResize.height,
+    composerResize.isFullHeight,
+    composerResize.manualEditorHeight,
+    composerResize.manualResizeReleaseVersion,
+  ]);
 
   React.useLayoutEffect(() => {
     if (mode !== "write") return;
@@ -1672,10 +1697,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     textareaContentHeight,
     composerResize.height,
   );
-  const heightButtonVisible = isComposerHeightButtonVisible(
-    textareaContentHeight,
-    composerResize.isFullHeight,
-  );
   const isCompactWriteMode = mode === "write" && !isToolbarExpanded;
   const compactControlRailVisible = isCompactWriteMode && heightButtonVisible;
   const toolbarRow = (
@@ -1713,7 +1734,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     <div
       key="composer-write-body"
       className={`relative flex min-h-0 min-w-0 flex-1 self-stretch ${
-        compactControlRailVisible ? "items-end" : "items-center"
+        compactControlRailVisible ? "items-start" : "items-center"
       }`}
     >
       <MessageComposerWriteBody

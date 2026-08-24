@@ -4,6 +4,7 @@ import type {
 } from "~/shared/api/messenger.types";
 
 export type WorkspaceStreamNotificationLevel = "default" | "muted" | "subscribed";
+export type WorkspaceTopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
 
 export function isWorkspaceTopicEffectivelyMuted(
   topicMode: WorkspaceMessengerTopicNotificationMode,
@@ -78,5 +79,35 @@ export function mapNotificationLevelToWorkspaceStreamMode(
       return "all_messages";
     case "muted":
       return "muted";
+  }
+}
+
+export function mapWorkspaceTopicNotificationModeToLevel(
+  mode: WorkspaceMessengerTopicNotificationMode,
+): WorkspaceTopicVisibilityLevel {
+  switch (mode) {
+    case "default":
+      return "inherit";
+    case "unmute":
+      return "unmuted";
+    case "follow":
+      return "followed";
+    case "mute":
+      return "muted";
+  }
+}
+
+export function mapTopicVisibilityLevelToWorkspaceMode(
+  level: WorkspaceTopicVisibilityLevel,
+): WorkspaceMessengerTopicNotificationMode {
+  switch (level) {
+    case "inherit":
+      return "default";
+    case "unmuted":
+      return "unmute";
+    case "followed":
+      return "follow";
+    case "muted":
+      return "mute";
   }
 }

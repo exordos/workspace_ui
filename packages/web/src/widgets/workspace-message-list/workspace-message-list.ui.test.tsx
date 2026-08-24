@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -144,6 +144,35 @@ function selectMessageBodyText(
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+}
+
+function WorkspaceMessageSelectionHarness({
+  message,
+}: Readonly<{ message: MessengerMessage }>): React.ReactElement {
+  const [selectedMessageUuids, setSelectedMessageUuids] = useState<ReadonlySet<string>>(new Set());
+
+  return (
+    <WorkspaceMessageList
+      messages={[message]}
+      currentUserUuid="current-user-uuid"
+      conversationId="topic:stream-uuid-1:topic-uuid-1"
+      selectionMode
+      selectedMessageUuids={selectedMessageUuids}
+      actions={{
+        onToggleMessageSelection: (messageUuid) => {
+          setSelectedMessageUuids((currentMessageUuids) => {
+            const nextMessageUuids = new Set(currentMessageUuids);
+            if (nextMessageUuids.has(messageUuid)) {
+              nextMessageUuids.delete(messageUuid);
+            } else {
+              nextMessageUuids.add(messageUuid);
+            }
+            return nextMessageUuids;
+          });
+        },
+      }}
+    />
+  );
 }
 
 describe("WorkspaceMessageList", () => {
@@ -2959,6 +2988,564 @@ describe("WorkspaceMessageList", () => {
     );
   });
 
+  it("renders row-level selection controls in one rail without changing the bubble contract", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-selection-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own selected message",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-selection-message",
+            authorUuid: "peer-user-uuid-1",
+            userUuid: "peer-user-uuid-1",
+            markdown: "Peer message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["own-selection-message", "peer-selection-message"])}
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    const ownArticle = container.querySelector("[data-message-uuid='own-selection-message']");
+    const peerArticle = container.querySelector("[data-message-uuid='peer-selection-message']");
+    const controls = container.querySelectorAll(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const ownControl = ownArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const peerControl = peerArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const ownGroup = ownArticle?.closest("[data-author-group='true']");
+    const peerGroup = peerArticle?.closest("[data-author-group='true']");
+    const ownBubble = ownArticle?.querySelector("[data-workspace-message-bubble='true']");
+    const peerBubble = peerArticle?.querySelector("[data-workspace-message-bubble='true']");
+
+    expect(controls).toHaveLength(2);
+    expect(ownControl).toBeInTheDocument();
+    expect(peerControl).toBeInTheDocument();
+    for (const article of [ownArticle, peerArticle]) {
+      expect(article).toHaveAttribute("data-workspace-message-selectable-row", "true");
+      expect(article).toHaveClass(
+        "w-full",
+        "cursor-pointer",
+        "rounded-lg",
+        "transition-colors",
+        "hover:bg-card-bg-active",
+      );
+      expect(article).not.toHaveAttribute("role", "button");
+    }
+    expect(ownArticle?.firstElementChild?.nextElementSibling).toBe(ownControl);
+    expect(peerArticle?.firstElementChild?.nextElementSibling).toBe(peerControl);
+    expect(ownControl).toHaveClass("mb-0.5", "h-8", "w-8", "shrink-0", "items-center");
+    expect(peerControl).toHaveClass("mb-0.5", "h-8", "w-8", "shrink-0", "items-center");
+    expect(ownControl?.getAttribute("class")).toBe(peerControl?.getAttribute("class"));
+    for (const control of controls) {
+      expect(control).not.toHaveClass("absolute", "left-0", "right-0", "-left-7", "-right-7");
+    }
+    expect(ownGroup).toHaveClass("w-full");
+    expect(ownGroup).not.toHaveClass("pl-14");
+    expect(peerGroup).toHaveClass("relative", "w-full");
+    expect(peerGroup).not.toHaveClass("gap-2");
+    expect(
+      peerGroup?.querySelector("[data-workspace-peer-avatar='true']")?.parentElement,
+    ).toHaveClass("pointer-events-none", "absolute", "left-0", "w-12");
+    expect(peerGroup?.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
+      "pointer-events-auto",
+    );
+    const ownOuterRail = ownArticle?.querySelector(
+      "[data-workspace-message-selection-outer-rail='true']",
+    );
+    const peerOuterRail = peerArticle?.querySelector(
+      "[data-workspace-message-selection-outer-rail='true']",
+    );
+    expect(ownOuterRail).toHaveClass("w-14", "self-stretch");
+    expect(peerOuterRail).toHaveClass("w-14", "self-stretch");
+    expect(ownOuterRail?.parentElement).toBe(ownArticle);
+    expect(peerOuterRail?.parentElement).toBe(peerArticle);
+    expect(
+      ownArticle?.querySelector(
+        "[data-workspace-message-bubble='true'] [data-workspace-message-selection-control='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      ownArticle?.querySelector<HTMLInputElement>(
+        "[data-workspace-message-selection-control='true'] input",
+      ),
+    ).toBeChecked();
+    expect(
+      peerArticle?.querySelector<HTMLInputElement>(
+        "[data-workspace-message-selection-control='true'] input",
+      ),
+    ).toBeChecked();
+    const backgroundClassNames = [
+      "bg-msg-own-bg",
+      "bg-msg-bg",
+      "bg-msg-call-bg",
+      "bg-msg-selected",
+      "bg-card-bg-active",
+    ];
+    expect(
+      backgroundClassNames.filter((className) => ownBubble?.classList.contains(className)),
+    ).toEqual(["bg-msg-selected"]);
+    expect(
+      backgroundClassNames.filter((className) => peerBubble?.classList.contains(className)),
+    ).toEqual(["bg-card-bg-active"]);
+    expect(ownBubble).not.toHaveClass("ring-2");
+    expect(peerBubble).not.toHaveClass("ring-2");
+    const ownCheckbox = ownControl?.querySelector<HTMLInputElement>("input[type='checkbox']");
+    const peerCheckbox = peerArticle?.querySelector<HTMLInputElement>(
+      "[data-workspace-message-selection-control='true'] input",
+    );
+    const ownContextId = ownCheckbox?.getAttribute("aria-describedby");
+    const peerContextId = peerCheckbox?.getAttribute("aria-describedby");
+    expect(ownContextId).toBeTruthy();
+    expect(peerContextId).toBeTruthy();
+    expect(ownContextId).not.toBe(peerContextId);
+    if (ownContextId == null || peerContextId == null) {
+      throw new Error("Selection context ids must be present");
+    }
+    expect(ownCheckbox).toHaveAccessibleDescription();
+    expect(peerCheckbox).toHaveAccessibleDescription();
+    expect(document.getElementById(ownContextId)).toHaveTextContent("#current-");
+    expect(document.getElementById(peerContextId)).toHaveTextContent("#peer-us");
+    expect(document.getElementById(ownContextId)).not.toHaveTextContent("Own selected message");
+    expect(document.getElementById(peerContextId)).not.toHaveTextContent("Peer message");
+    expect(peerCheckbox).not.toBeNull();
+    fireEvent.click(peerCheckbox as HTMLInputElement);
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(1);
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("peer-selection-message");
+    fireEvent.click(peerGroup?.querySelector("[data-workspace-peer-avatar='true']") as HTMLElement);
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles the correct own and peer UUID from the full-width outer rail", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-row-selection-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own selectable body",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-row-selection-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Peer selectable body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const ownOuterRail = container.querySelector(
+      "[data-message-uuid='own-row-selection-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+    const peerOuterRail = container.querySelector(
+      "[data-message-uuid='peer-row-selection-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+
+    fireEvent.click(ownOuterRail as HTMLElement);
+    fireEvent.click(peerOuterRail as HTMLElement);
+
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(2);
+    expect(onToggleMessageSelection).toHaveBeenNthCalledWith(1, "own-row-selection-message");
+    expect(onToggleMessageSelection).toHaveBeenNthCalledWith(2, "peer-row-selection-message");
+  });
+
+  it("keeps bubble text inside the full-row selection target", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "bubble-body-row-selection-message",
+            markdown: "Selectable bubble body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const body = container.querySelector(
+      "[data-message-uuid='bubble-body-row-selection-message'] [data-message-body='true']",
+    );
+
+    fireEvent.click(body as HTMLElement);
+
+    expect(onToggleMessageSelection).toHaveBeenCalledOnce();
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("bubble-body-row-selection-message");
+  });
+
+  it("unselects a selected message on the second row click", () => {
+    const { container } = render(
+      <WorkspaceMessageSelectionHarness
+        message={createWorkspaceMessage({
+          uuid: "repeated-row-selection-message",
+          markdown: "Toggle this row twice",
+        })}
+      />,
+    );
+    const article = container.querySelector("[data-message-uuid='repeated-row-selection-message']");
+    const checkbox = article?.querySelector<HTMLInputElement>("input[type='checkbox']");
+
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(article as HTMLElement);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(article as HTMLElement);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it("keeps interactive message descendants independent from row selection", () => {
+    const onToggleMessageSelection = vi.fn();
+    const onOpenAuthorProfile = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "interactive-row-selection-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: `[Docs](https://example.com/docs)\n\n![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+            reactions: { "👍": 1 },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{
+          onToggleMessageSelection,
+          onOpenAuthorProfile,
+          onToggleMessageReaction,
+          onOpenWorkspaceMedia,
+        }}
+      />,
+    );
+    const article = container.querySelector(
+      "[data-message-uuid='interactive-row-selection-message']",
+    );
+    const authorButton = article?.querySelector("button[data-peer-author-label='true']");
+    const link = article?.querySelector("a[href='https://example.com/docs']");
+    const reactionButton = article?.querySelector(
+      "button[data-workspace-message-reaction-chip='true']",
+    );
+    const mediaButton = article?.querySelector("[data-workspace-file-kind='media']");
+
+    fireEvent.click(authorButton as HTMLElement);
+    fireEvent.click(link as HTMLElement);
+    fireEvent.click(reactionButton as HTMLElement);
+    fireEvent.click(mediaButton as HTMLElement);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+    expect(onOpenAuthorProfile).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(onToggleMessageReaction).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores synthetic clicks from a real portal outside the message row", async () => {
+    const onToggleMessageSelection = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "portal-row-selection-message",
+            markdown: "Portal selection guard",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection, onToggleMessageReaction }}
+      />,
+    );
+    const article = container.querySelector("[data-message-uuid='portal-row-selection-message']");
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByLabelText("More reactions"));
+    const portalBackdrop = await screen.findByTestId(
+      "workspace-message-reaction-emoji-picker-backdrop",
+    );
+    expect(article).not.toContainElement(portalBackdrop);
+
+    fireEvent.click(portalBackdrop);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+  });
+
+  it("does not toggle a selectable row after selecting message text", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "text-selection-row-message",
+            markdown: "Keep this selected text",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const body = container.querySelector(
+      "[data-message-uuid='text-selection-row-message'] [data-message-body='true']",
+    );
+
+    selectMessageBodyText(container, "text-selection-row-message", "selected text");
+    fireEvent.click(body as HTMLElement);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+    window.getSelection()?.removeAllRanges();
+  });
+
+  it("toggles normally when the selection API is unavailable", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "missing-selection-api-message",
+            markdown: "No selection API",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const outerRail = container.querySelector(
+      "[data-message-uuid='missing-selection-api-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+    const getSelectionDescriptor = Object.getOwnPropertyDescriptor(window, "getSelection");
+    Object.defineProperty(window, "getSelection", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      fireEvent.click(outerRail as HTMLElement);
+      expect(onToggleMessageSelection).toHaveBeenCalledWith("missing-selection-api-message");
+    } finally {
+      if (getSelectionDescriptor == null) {
+        Reflect.deleteProperty(window, "getSelection");
+      } else {
+        Object.defineProperty(window, "getSelection", getSelectionDescriptor);
+      }
+    }
+  });
+
+  it("centers the hit area on a short bubble and bottom-anchors it on a tall bubble", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "short-control-alignment-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Short",
+          }),
+          createWorkspaceMessage({
+            uuid: "tall-control-alignment-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Tall message\nwith multiple lines\nand a stable bottom edge",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+      />,
+    );
+    const shortArticle = container.querySelector(
+      "[data-message-uuid='short-control-alignment-message']",
+    );
+    const tallArticle = container.querySelector(
+      "[data-message-uuid='tall-control-alignment-message']",
+    );
+    const shortControl = shortArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const tallControl = tallArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const shortBubble = shortArticle?.querySelector("[data-workspace-message-bubble='true']");
+
+    expect(shortBubble).toHaveClass("py-2", "text-sm");
+    for (const article of [shortArticle, tallArticle]) {
+      expect(article).toHaveClass("items-end");
+      expect(article).not.toHaveClass("items-center");
+    }
+    for (const control of [shortControl, tallControl]) {
+      expect(control).toHaveClass("mb-0.5", "h-8", "items-center");
+      expect(control).not.toHaveClass("items-end");
+    }
+  });
+
+  it("does not render selection controls outside selection mode or for outgoing messages", () => {
+    const outgoingMessage = createOutgoingMessage({ localId: "outgoing-selection-message" });
+    const onToggleMessageSelection = vi.fn();
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "normal-message" })]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    expect(
+      container.querySelectorAll("[data-workspace-message-selection-control='true']"),
+    ).toHaveLength(0);
+    const normalArticle = container.querySelector("[data-message-uuid='normal-message']");
+    const outgoingArticle = container.querySelector(
+      "[data-outgoing-message-id='outgoing-selection-message']",
+    );
+    expect(normalArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    expect(normalArticle).not.toHaveClass(
+      "cursor-pointer",
+      "transition-colors",
+      "hover:bg-card-bg-active",
+    );
+    expect(outgoingArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    fireEvent.click(normalArticle as HTMLElement);
+    fireEvent.click(outgoingArticle as HTMLElement);
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "normal-message" })]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    expect(
+      container.querySelector(
+        "[data-outgoing-message-id='outgoing-selection-message'] [data-workspace-message-selection-control='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelectorAll("[data-workspace-message-selection-control='true']"),
+    ).toHaveLength(1);
+    const selectableArticle = container.querySelector("[data-message-uuid='normal-message']");
+    const selectionOutgoingArticle = container.querySelector(
+      "[data-outgoing-message-id='outgoing-selection-message']",
+    );
+    expect(selectableArticle).toHaveAttribute("data-workspace-message-selectable-row", "true");
+    expect(selectableArticle).toHaveClass(
+      "cursor-pointer",
+      "rounded-lg",
+      "transition-colors",
+      "hover:bg-card-bg-active",
+    );
+    expect(selectableArticle).not.toHaveAttribute("role", "button");
+    expect(selectionOutgoingArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    expect(selectionOutgoingArticle).not.toHaveClass("cursor-pointer", "hover:bg-card-bg-active");
+    fireEvent.click(selectionOutgoingArticle as HTMLElement);
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+  });
+
+  it("builds selection context only for a rendered server-message control", () => {
+    const message = createWorkspaceMessage({
+      uuid: "selection-context-message",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+    });
+    const outgoingMessage = createOutgoingMessage({ localId: "selection-context-outgoing" });
+    const resolveAuthorLabel = vi.fn(() => "Current user");
+    const actions = { onToggleMessageSelection: vi.fn() };
+    const toLocaleTimeString = vi
+      .spyOn(Date.prototype, "toLocaleTimeString")
+      .mockReturnValue("09:00");
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[message]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).not.toHaveBeenCalled();
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[message]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          selectionMode
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).toHaveBeenCalledTimes(1);
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).toBeInTheDocument();
+
+      toLocaleTimeString.mockClear();
+      rerender(
+        <WorkspaceMessageList
+          messages={[]}
+          outgoingMessages={[outgoingMessage]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          selectionMode
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).not.toHaveBeenCalled();
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).not.toBeInTheDocument();
+    } finally {
+      toLocaleTimeString.mockRestore();
+    }
+  });
+
   it("falls back to a short uuid label when a peer author is unresolved", () => {
     const { container } = render(
       <WorkspaceMessageList
@@ -5276,6 +5863,7 @@ describe("WorkspaceMessageList", () => {
 
   it("does not render a hover ellipsis trigger and opens the menu from right click", async () => {
     const onReplyMessage = vi.fn();
+    const onForwardMessage = vi.fn();
     const onEditMessage = vi.fn();
     const onRequestDeleteMessage = vi.fn();
     const onToggleMessageReaction = vi.fn();
@@ -5295,6 +5883,7 @@ describe("WorkspaceMessageList", () => {
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
           onReplyMessage,
+          onForwardMessage,
           onEditMessage,
           onRequestDeleteMessage,
           onToggleMessageReaction,
@@ -5310,7 +5899,14 @@ describe("WorkspaceMessageList", () => {
     openWorkspaceMessageMenu();
 
     expect(await screen.findByRole("menu")).toHaveClass("bg-bg-elevated");
-    expect(await screen.findByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
+    const replyItem = await screen.findByRole("menuitem", { name: "Reply" });
+    const forwardItem = await screen.findByRole("menuitem", { name: "Forward" });
+    expect(replyItem).toBeInTheDocument();
+    expect(forwardItem).toBeInTheDocument();
+    expect(replyItem.querySelector("svg")).not.toHaveClass("rotate-180");
+    expect(forwardItem.querySelector("svg")).not.toHaveClass("rotate-180");
+    expect(replyItem.querySelector("svg")).toHaveAttribute("viewBox", "0 0 28 28");
+    expect(forwardItem.querySelector("svg")).toHaveAttribute("viewBox", "0 0 28 28");
     expect(screen.getByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();

@@ -58,12 +58,21 @@ export function resolveTopBarAvatarSrc(url: string | undefined | null): string |
   return resolveAvatarUrl(url);
 }
 
+/** Glyph size; the button hit-area stays 48×48 so hover matches the active chip. */
+export const TOP_BAR_SECTION_ICON_SIZE_PX = 32;
+
+/** Active, idle, and hover share one 48×48 chip (`h-12`) with 12px radius. */
+export function resolveTopBarSectionButtonLayoutClassName(): string {
+  return "h-12 w-12 rounded-2xl";
+}
+
 export function resolveTopBarSectionButtonClassName(isActive: boolean, available: boolean): string {
   if (isActive) {
-    return "border border-border-subtle bg-card-bg-active text-text-primary";
+    // Active glyph must use icon-active: global icon-only CSS overrides text-text-primary.
+    return "border border-border-subtle bg-card-bg-active text-icon-active";
   }
   if (available) {
-    return "hover:bg-card-bg-active text-text-muted hover:text-text-primary";
+    return "border border-transparent hover:border-border-subtle hover:bg-card-bg-active text-text-muted hover:text-text-primary";
   }
   return "text-text-muted/60 cursor-not-allowed";
 }

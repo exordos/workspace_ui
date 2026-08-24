@@ -7,4 +7,5 @@ export interface ChatPageSelectionBarProps {
   onCancel: () => void;
   joinedAbove?: boolean;
   joinedBelow?: boolean;
+  omitBottomBorder?: boolean;
 }

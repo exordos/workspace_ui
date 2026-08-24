@@ -11,10 +11,13 @@ import { createExternalChatRealtimeApplier } from "~/entities/external-chat/exte
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
+import { messengerRealtimeActiveCache } from "~/entities/messenger/messenger-cache.lib";
+import { repairDeletedMessagePointers } from "~/entities/messenger/messenger-deleted-message-pointer-repair.lib";
 import { createMessengerReactionAggregateRevalidateHandler } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import {
   createMessengerRealtimeActiveApplier,
   createMessengerRealtimeBackgroundApplier,
+  type MessengerRealtimeActiveApplierOptions,
 } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -158,6 +161,26 @@ function shouldStartWorkspaceRealtimeForRoute(
 function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
+
+const repairDeletedMessagePointersFromRealtime: NonNullable<
+  MessengerRealtimeActiveApplierOptions["onMessageDeleted"]
+> = (ownerKey, _message, repairPlan, eventContext) => {
+  const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  if (
+    currentRuntimeContext == null ||
+    workspaceRuntimeOwnerKey(currentRuntimeContext) !== ownerKey ||
+    currentRuntimeContext.runtimeGeneration !== eventContext.owner.runtimeGeneration
+  ) {
+    return;
+  }
+  return repairDeletedMessagePointers({
+    runtimeContext: currentRuntimeContext,
+    plan: repairPlan,
+    getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+    cache: messengerRealtimeActiveCache,
+    signal: eventContext.signal,
+  });
+};
 
 async function defaultWorkspaceRealtimeRefreshSession(
   accountId: string,
@@ -340,6 +363,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
             }),
             createMessengerRealtimeActiveApplier({
               isOwnerCurrent,
+              onMessageDeleted: repairDeletedMessagePointersFromRealtime,
               onMessageCreated: (ownerKey, message, stream, eventContext) => {
                 const usersById = useUsersStore.getState().usersById;
                 const currentUser = usersById[eventContext.owner.userUuid];

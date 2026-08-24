@@ -50,38 +50,8 @@ const CHAT_BOTTOM_NOTICE_MARKER_CLASS_NAME: Record<ChatBottomNoticeTone, string>
   info: "bg-accent",
 };
 
-const CHAT_BOTTOM_NOTICE_ACTION_CLASS_NAME: Record<ChatBottomNoticeTone, string> = {
-  neutral: "border-border-subtle text-text-primary hover:bg-bg-elevated",
-  danger: "border-danger bg-danger/10 text-danger hover:bg-danger/20",
-  warning:
-    "border-indicator-yellow bg-indicator-yellow/10 text-text-primary hover:bg-indicator-yellow/20",
-  info: "border-accent bg-accent/10 text-text-primary hover:bg-accent/20",
-};
-
-/** Shared geometry for notice-bar action buttons (selection + delete confirm). */
-export const CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE =
-  "rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50";
-
 export function chatBottomNoticeMarkerClassName(tone: ChatBottomNoticeTone): string {
   return CHAT_BOTTOM_NOTICE_MARKER_CLASS_NAME[tone];
-}
-
-export function chatBottomNoticeActionClassName(tone: ChatBottomNoticeTone): string {
-  return CHAT_BOTTOM_NOTICE_ACTION_CLASS_NAME[tone];
-}
-
-/** Tone + shared button chrome used by selection and delete-confirm bars. */
-export function chatBottomNoticeActionButtonClassName(
-  tone: ChatBottomNoticeTone,
-  { transparent = false }: { transparent?: boolean } = {},
-): string {
-  return [
-    CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE,
-    transparent ? "bg-transparent" : null,
-    chatBottomNoticeActionClassName(tone),
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 export function chatBottomNoticeBarClassName({

@@ -45,8 +45,14 @@ describe("RightPanelUserProfileActions", () => {
     );
 
     expect(screen.getByTestId("right-panel-user-profile-actions-other")).toBeInTheDocument();
-    expect(screen.getByTestId("right-panel-profile-message")).toHaveTextContent(
-      t("info.openDirectMessages"),
+    const message = screen.getByTestId("right-panel-profile-message");
+    expect(message).toHaveTextContent(t("info.openDirectMessages"));
+    expect(message.querySelector("svg")).toHaveClass("text-icon-active");
+    expect(screen.getByTestId("right-panel-profile-call").querySelector("svg")).toHaveClass(
+      "text-icon-active",
+    );
+    expect(screen.getByTestId("right-panel-profile-share").querySelector("svg")).toHaveClass(
+      "text-icon-active",
     );
     expect(screen.getByTestId("right-panel-profile-call")).toHaveTextContent(t("call.call"));
     expect(screen.getByTestId("right-panel-profile-share")).toHaveTextContent(t("info.share"));

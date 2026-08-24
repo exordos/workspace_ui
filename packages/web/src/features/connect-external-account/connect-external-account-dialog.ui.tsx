@@ -32,7 +32,13 @@ const AccountLifecycle = React.memo<{
         <p className="mt-1 break-words text-xs">{account.safeError}</p>
       ) : null}
       {needsCredentials ? (
-        <Button type="button" variant="ghost" className="mt-3" onClick={onReset}>
+        <Button
+          type="button"
+          variant="neutral"
+          appearance="ghost"
+          className="mt-3"
+          onClick={onReset}
+        >
           {t("connectExternalAccount.reenterCredentials")}
         </Button>
       ) : null}

@@ -3218,6 +3218,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           onDelete={noop}
           onCancel={handleCancelMessageSelection}
           joinedBelow={hasInlineComposerNotice || hasDeleteComposerNotice || !showStreamTopicPrompt}
+          omitBottomBorder={!hasInlineComposerNotice && !hasDeleteComposerNotice}
         />
         <ChatPageInlineAlerts
           routeResolveError={null}
@@ -3242,6 +3243,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           <ChatPageStreamTopicPrompt
             topics={streamPromptTopics}
             onSelectTopic={handleSelectStreamPromptTopic}
+            topBorderVisible={!hasInlineComposerNotice && !hasDeleteComposerNotice}
           />
         ) : workspaceAttachmentTarget != null && runtimeContext != null && ownerKey != null ? (
           <WorkspaceComposerAttachments

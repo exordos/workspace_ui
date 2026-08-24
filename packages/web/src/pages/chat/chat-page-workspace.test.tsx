@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -5423,7 +5423,20 @@ describe("ChatPage Workspace route", () => {
     });
 
     const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 2" });
-    expect(selectionToolbar).toHaveClass("rounded-t-xl", "border-b", "bg-composer-outer");
+    expect(selectionToolbar).toHaveClass(
+      "rounded-t-xl",
+      "rounded-b-none",
+      "border-b-0",
+      "bg-composer-outer",
+    );
+    expect(selectionToolbar).not.toHaveClass("border-b");
+    expect(selectionToolbar).not.toHaveClass("!bg-transparent");
+    expect(
+      within(selectionToolbar)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Cancel", "Forward"]);
+    expect(captured.messageListProps?.selectionMode).toBe(true);
     await waitFor(() => expect(captured.composerProps?.joinedTop).toBe(true));
 
     fireEvent.click(await screen.findByRole("button", { name: "Forward" }));
@@ -5439,6 +5452,15 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(2);
 
     act(() => {
+      useWorkspaceForwardMessageStore.getState().close();
+    });
+    expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(false);
+    expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(2);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Forward" }));
+    await waitFor(() => expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(true));
+
+    act(() => {
       useWorkspaceForwardMessageStore.getState().onSuccess?.();
     });
 
@@ -5446,6 +5468,189 @@ describe("ChatPage Workspace route", () => {
       expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
     });
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps one shared separator between selection and an action alert", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function));
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
+    });
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+      captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    const actionAlert = await screen.findByRole("alert");
+    expect(selectionToolbar).toHaveClass("border-b", "border-border-subtle");
+    expect(selectionToolbar).not.toHaveClass("border-b-0");
+    expect(selectionToolbar.querySelector('[data-notice-marker="danger"]')).toHaveClass("left-0");
+    expect(actionAlert).not.toHaveClass("border-t");
+  });
+
+  it("keeps one shared separator between selection and delete confirmation", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownMessage]);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function));
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
+    });
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+      captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    const deleteDialog = await screen.findByRole("alertdialog");
+    expect(selectionToolbar).toHaveClass("border-b", "border-border-subtle");
+    expect(selectionToolbar).not.toHaveClass("border-b-0");
+    expect(deleteDialog).not.toHaveClass("border-t");
+    for (const marker of [
+      selectionToolbar.querySelector('[data-notice-marker="danger"]'),
+      deleteDialog.querySelector('[data-notice-marker="danger"]'),
+    ]) {
+      expect(marker).toHaveClass(
+        "absolute",
+        "bottom-2.5",
+        "left-0",
+        "top-2.5",
+        "w-1",
+        "rounded-r-full",
+        "bg-danger",
+      );
+    }
+  });
+
+  it("lets the stream topic prompt own the only separator below selection", async () => {
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    const topicPrompt = screen.getByTestId("stream-topic-prompt");
+    expect(selectionToolbar).toHaveClass("border-b-0", "bg-composer-outer");
+    expect(selectionToolbar).not.toHaveClass("border-b");
+    expect(topicPrompt).toHaveClass("border-t", "border-border-subtle");
+  });
+
+  it("lets the action alert own the separator before the stream topic prompt", async () => {
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function));
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
+    });
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+      captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    const actionAlert = await screen.findByRole("alert");
+    const topicPrompt = screen.getByTestId("stream-topic-prompt");
+    expect(selectionToolbar).toHaveClass("border-b", "border-border-subtle");
+    expect(actionAlert).toHaveClass("border-b", "border-border-subtle");
+    expect(topicPrompt).not.toHaveClass("border-t", "border-border-subtle");
+  });
+
+  it("lets delete confirmation own the separator before the stream topic prompt", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`stream:${STREAM_UUID}`, [ownMessage]);
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function));
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
+    });
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+      captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    const deleteDialog = await screen.findByRole("alertdialog");
+    const topicPrompt = screen.getByTestId("stream-topic-prompt");
+    expect(selectionToolbar).toHaveClass("border-b", "border-border-subtle");
+    expect(deleteDialog).toHaveClass("border-b", "border-border-subtle");
+    expect(topicPrompt).not.toHaveClass("border-t", "border-border-subtle");
+  });
+
+  it("clears message selection on Cancel without opening the forward modal", async () => {
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      createMessage(),
+      createSecondMessage(),
+    ]);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+      captured.messageListProps?.onToggleMessageSelection?.(SECOND_MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 2" });
+    fireEvent.click(within(selectionToolbar).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Selected: 2" })).not.toBeInTheDocument();
+      expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
+      expect(captured.messageListProps?.selectionMode).toBe(false);
+    });
+    expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(false);
+  });
+
+  it("leaves selection mode after toggling off the last selected message", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onToggleMessageSelection).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+    });
+
+    await screen.findByRole("toolbar", { name: "Selected: 1" });
+    expect(captured.messageListProps?.selectedMessageUuids).toEqual(new Set([MESSAGE_UUID]));
+    expect(captured.messageListProps?.selectionMode).toBe(true);
+
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+    });
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
+      expect(captured.messageListProps?.selectionMode).toBe(false);
+      expect(screen.queryByRole("toolbar", { name: "Selected: 1" })).not.toBeInTheDocument();
+    });
   });
 
   it("downloads Workspace file attachments through the shared file resource cache", async () => {

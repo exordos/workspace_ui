@@ -4,7 +4,10 @@ import {
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
 } from "./message-composer-constants.lib";
-import { shouldReleaseManualComposerResize } from "./message-composer-resize.lib";
+import {
+  resolveComposerManualEditorMinHeight,
+  shouldReleaseManualComposerResize,
+} from "./message-composer-resize.lib";
 
 interface UseMessageComposerResizeOptions {
   composerRef: React.RefObject<HTMLDivElement | null>;
@@ -16,6 +19,7 @@ interface UseMessageComposerResizeOptions {
 interface ComposerResizeSession {
   maxHeight: number;
   minHeight: number;
+  startEditorHeight: number;
   startHeight: number;
   startY: number;
 }
@@ -50,29 +54,16 @@ function clampComposerHeight(value: number, minHeight: number, maxHeight: number
   return Math.min(Math.max(value, minHeight), maxHeight);
 }
 
-function measureComposerNaturalHeight(
-  composer: HTMLDivElement,
+function resolveCurrentEditorHeight(
   textarea: HTMLTextAreaElement | null,
   textareaContentHeight: number,
 ): number {
-  const previousComposerHeight = composer.style.height;
-  const previousTextareaHeight = textarea?.style.height;
-
-  composer.style.height = "auto";
-  if (textarea != null) {
-    textarea.style.height = `${clampComposerHeight(
-      textareaContentHeight,
-      COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
-      COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
-    )}px`;
-  }
-
-  const naturalHeight = composer.getBoundingClientRect().height;
-  composer.style.height = previousComposerHeight;
-  if (textarea != null && previousTextareaHeight != null) {
-    textarea.style.height = previousTextareaHeight;
-  }
-  return naturalHeight;
+  const measuredHeight = textarea?.getBoundingClientRect().height ?? 0;
+  if (measuredHeight > 0) return measuredHeight;
+  return Math.min(
+    Math.max(textareaContentHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX),
+    COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
+  );
 }
 
 export function useMessageComposerResize({
@@ -83,18 +74,29 @@ export function useMessageComposerResize({
 }: UseMessageComposerResizeOptions) {
   const [height, setHeight] = React.useState<number | null>(null);
   const [isFullHeight, setIsFullHeight] = React.useState(false);
-  const naturalHeightRef = React.useRef(0);
-  const previousContentHeightRef = React.useRef(textareaContentHeight);
+  const [manualEditorHeight, setManualEditorHeight] = React.useState<number | null>(null);
+  const [manualResizeReleaseVersion, setManualResizeReleaseVersion] = React.useState(0);
   const resizeSessionRef = React.useRef<ComposerResizeSession | null>(null);
+  const manualEditorMinHeight = resolveComposerManualEditorMinHeight(textareaContentHeight);
+  const manualEditorFloorAdjustment =
+    !isFullHeight && manualEditorHeight != null
+      ? Math.max(manualEditorMinHeight - manualEditorHeight, 0)
+      : 0;
+  const resolvedHeight = height == null ? null : height + manualEditorFloorAdjustment;
+  const resolvedManualEditorHeight =
+    manualEditorHeight == null ? null : manualEditorHeight + manualEditorFloorAdjustment;
 
   const releaseManualResize = React.useCallback(() => {
     setHeight(null);
     setIsFullHeight(false);
+    setManualEditorHeight(null);
+    setManualResizeReleaseVersion((version) => version + 1);
   }, []);
 
   const commitManualHeight = React.useCallback(
-    (nextHeight: number, minHeight: number, maxHeight: number) => {
+    (nextHeight: number, nextEditorHeight: number, minHeight: number, maxHeight: number) => {
       const clampedHeight = clampComposerHeight(nextHeight, minHeight, maxHeight);
+      const clampedEditorHeight = nextEditorHeight + clampedHeight - nextHeight;
       if (
         shouldReleaseManualComposerResize({
           textareaContentHeight,
@@ -107,36 +109,11 @@ export function useMessageComposerResize({
         return;
       }
       setHeight(clampedHeight);
+      setManualEditorHeight(clampedEditorHeight);
       setIsFullHeight(clampedHeight >= maxHeight - 1);
     },
     [releaseManualResize, textareaContentHeight],
   );
-
-  React.useLayoutEffect(() => {
-    const composer = composerRef.current;
-    if (composer == null) return;
-    naturalHeightRef.current = measureComposerNaturalHeight(
-      composer,
-      textareaRef.current,
-      textareaContentHeight,
-    );
-    // Deleted text and the two-line floor must drop a locked shell; measuring
-    // natural height first keeps the snap aligned with the current content.
-    const contentShrunk = textareaContentHeight < previousContentHeightRef.current;
-    previousContentHeightRef.current = textareaContentHeight;
-    if (
-      height != null &&
-      shouldReleaseManualComposerResize({
-        textareaContentHeight,
-        nextHeight: height,
-        minHeight: naturalHeightRef.current,
-        isFullHeight,
-        contentShrunk,
-      })
-    ) {
-      releaseManualResize();
-    }
-  });
 
   const stopResize = React.useCallback(() => {
     resizeSessionRef.current = null;
@@ -151,6 +128,7 @@ export function useMessageComposerResize({
 
       commitManualHeight(
         session.startHeight + session.startY - clientY,
+        session.startEditorHeight + session.startY - clientY,
         session.minHeight,
         session.maxHeight,
       );
@@ -183,36 +161,50 @@ export function useMessageComposerResize({
     if (composer == null || parent == null || typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver(() => {
-      if (height == null) return;
+      if (resolvedHeight == null) return;
       const maxHeight = resolveComposerMaxHeight(composer);
-      setHeight((currentHeight) => {
-        if (currentHeight == null) return null;
-        return isFullHeight ? maxHeight : Math.min(currentHeight, maxHeight);
-      });
+      const nextHeight = isFullHeight ? maxHeight : Math.min(resolvedHeight, maxHeight);
+      const heightDelta = nextHeight - resolvedHeight;
+      setHeight(nextHeight);
+      setManualEditorHeight(
+        resolvedManualEditorHeight == null ? null : resolvedManualEditorHeight + heightDelta,
+      );
     });
     observer.observe(parent);
     const shrinkableMessageArea = findShrinkableMessageArea(parent);
     if (shrinkableMessageArea != null) observer.observe(shrinkableMessageArea);
     return () => observer.disconnect();
-  }, [composerRef, height, isFullHeight]);
+  }, [composerRef, isFullHeight, resolvedHeight, resolvedManualEditorHeight]);
 
   const startResize = React.useCallback(
     (clientY: number) => {
       const composer = composerRef.current;
-      if ((!enabled && height == null) || composer == null) return;
+      if ((!enabled && resolvedHeight == null) || composer == null) return;
 
-      const startHeight = composer.getBoundingClientRect().height;
+      const startHeight = resolvedHeight ?? composer.getBoundingClientRect().height;
+      const startEditorHeight =
+        resolvedManualEditorHeight ??
+        resolveCurrentEditorHeight(textareaRef.current, textareaContentHeight);
       const maxHeight = resolveComposerMaxHeight(composer);
       resizeSessionRef.current = {
         startY: clientY,
         startHeight,
-        minHeight: Math.min(naturalHeightRef.current || startHeight, maxHeight),
+        startEditorHeight,
+        minHeight: Math.min(startHeight - startEditorHeight + manualEditorMinHeight, maxHeight),
         maxHeight,
       };
       document.body.style.cursor = "ns-resize";
       document.body.style.userSelect = "none";
     },
-    [composerRef, enabled, height],
+    [
+      composerRef,
+      enabled,
+      manualEditorMinHeight,
+      resolvedHeight,
+      resolvedManualEditorHeight,
+      textareaContentHeight,
+      textareaRef,
+    ],
   );
 
   const onResizeHandlePointerDown = React.useCallback(
@@ -227,14 +219,29 @@ export function useMessageComposerResize({
   const resizeBy = React.useCallback(
     (delta: number) => {
       const composer = composerRef.current;
-      if ((!enabled && height == null) || composer == null) return;
+      if ((!enabled && resolvedHeight == null) || composer == null) return;
 
-      const currentHeight = composer.getBoundingClientRect().height;
+      const currentHeight = resolvedHeight ?? composer.getBoundingClientRect().height;
+      const currentEditorHeight =
+        resolvedManualEditorHeight ??
+        resolveCurrentEditorHeight(textareaRef.current, textareaContentHeight);
       const maxHeight = resolveComposerMaxHeight(composer);
-      const minHeight = Math.min(naturalHeightRef.current || currentHeight, maxHeight);
-      commitManualHeight(currentHeight + delta, minHeight, maxHeight);
+      const minHeight = Math.min(
+        currentHeight - currentEditorHeight + manualEditorMinHeight,
+        maxHeight,
+      );
+      commitManualHeight(currentHeight + delta, currentEditorHeight + delta, minHeight, maxHeight);
     },
-    [commitManualHeight, composerRef, enabled, height],
+    [
+      commitManualHeight,
+      composerRef,
+      enabled,
+      manualEditorMinHeight,
+      resolvedHeight,
+      resolvedManualEditorHeight,
+      textareaContentHeight,
+      textareaRef,
+    ],
   );
 
   const onResizeHandleKeyDown = React.useCallback(
@@ -252,20 +259,37 @@ export function useMessageComposerResize({
 
   const toggleFullHeight = React.useCallback(() => {
     const composer = composerRef.current;
-    if ((!enabled && height == null) || composer == null) return;
+    if ((!enabled && resolvedHeight == null) || composer == null) return;
 
     if (isFullHeight) {
       releaseManualResize();
       return;
     }
 
-    setHeight(resolveComposerMaxHeight(composer));
+    const currentHeight = resolvedHeight ?? composer.getBoundingClientRect().height;
+    const currentEditorHeight =
+      resolvedManualEditorHeight ??
+      resolveCurrentEditorHeight(textareaRef.current, textareaContentHeight);
+    const maxHeight = resolveComposerMaxHeight(composer);
+    setHeight(maxHeight);
+    setManualEditorHeight(currentEditorHeight + maxHeight - currentHeight);
     setIsFullHeight(true);
-  }, [composerRef, enabled, height, isFullHeight, releaseManualResize]);
+  }, [
+    composerRef,
+    enabled,
+    isFullHeight,
+    releaseManualResize,
+    resolvedHeight,
+    resolvedManualEditorHeight,
+    textareaContentHeight,
+    textareaRef,
+  ]);
 
   return {
-    height,
+    height: resolvedHeight,
     isFullHeight,
+    manualEditorHeight: resolvedManualEditorHeight,
+    manualResizeReleaseVersion,
     onResizeHandleKeyDown,
     onResizeHandlePointerDown,
     toggleFullHeight,

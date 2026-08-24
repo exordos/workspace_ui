@@ -4,6 +4,9 @@ import {
   getTopBarProfileStatusMaxWidthClass,
   getTopBarSectionNavItems,
   resolveTopBarActiveSection,
+  resolveTopBarSectionButtonClassName,
+  resolveTopBarSectionButtonLayoutClassName,
+  TOP_BAR_SECTION_ICON_SIZE_PX,
   shouldShowTopBarProfileStatusTooltip,
   TOP_BAR_PROFILE_STATUS_MAX_CH,
 } from "./top-bar.lib";
@@ -73,6 +76,30 @@ describe("getTopBarSectionNavItems", () => {
   it("includes calls and services when both flags are on", () => {
     const items = getTopBarSectionNavItems({ showCallsNav: true, showServicesNav: true });
     expect(items.map((i) => i.id)).toEqual(["chat", "calendar", "mail", "calls", "services"]);
+  });
+});
+
+describe("resolveTopBarSectionButtonLayoutClassName", () => {
+  it("uses a 48px chip for active, idle, and hover", () => {
+    expect(resolveTopBarSectionButtonLayoutClassName()).toContain("h-12");
+    expect(resolveTopBarSectionButtonLayoutClassName()).toContain("w-12");
+    expect(resolveTopBarSectionButtonLayoutClassName()).toContain("rounded-2xl");
+    expect(TOP_BAR_SECTION_ICON_SIZE_PX).toBe(32);
+  });
+});
+
+describe("resolveTopBarSectionButtonClassName", () => {
+  it("uses the bright icon-active token for the current section", () => {
+    expect(resolveTopBarSectionButtonClassName(true, true)).toContain("text-icon-active");
+    expect(resolveTopBarSectionButtonClassName(true, true)).not.toContain("text-text-muted");
+  });
+
+  it("keeps idle available sections muted with an active-sized hover chip", () => {
+    const idle = resolveTopBarSectionButtonClassName(false, true);
+    expect(idle).toContain("text-text-muted");
+    expect(idle).not.toContain("text-icon-active");
+    expect(idle).toContain("hover:bg-card-bg-active");
+    expect(idle).toContain("hover:border-border-subtle");
   });
 });
 

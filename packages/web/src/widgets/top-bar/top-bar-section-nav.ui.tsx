@@ -15,14 +15,13 @@ export const TopBarSectionNav = React.memo<TopBarSectionNavProps>(
     return (
       <div
         data-testid="topbar-sections-slot"
-        className={[
-          "flex min-w-0 flex-1 flex-col items-start justify-center gap-1.5 pl-2",
-          className,
-        ]
+        className={["flex min-w-0 flex-col items-center justify-center gap-1.5", className]
           .filter(Boolean)
           .join(" ")}
       >
-        <div className={`flex min-w-0 items-center gap-2 overflow-x-auto ${SCROLL_AREA_CLASS}`}>
+        {/* Do not use justify-center here: overflow-x-auto would clip the first buttons. */}
+        {/* 12px (`gap-3`): one step tighter than Figma `tabbar` M (16px). */}
+        <div className={`flex min-w-0 items-center gap-3 overflow-x-auto ${SCROLL_AREA_CLASS}`}>
           {sections.map(({ id, icon, label, available }) => (
             <TopBarSectionButton
               key={id}

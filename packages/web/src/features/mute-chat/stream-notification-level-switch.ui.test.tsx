@@ -39,8 +39,13 @@ describe("StreamNotificationLevelSwitch", () => {
 
     const selected = screen.getByRole("radio", { name: /muted/i });
     expect(selected.className).toContain("bg-card-bg");
+    expect(selected.className).toContain("text-icon-active");
     expect(selected.className).not.toMatch(/(?:^|\s)ring-/);
     expect(selected.className).not.toContain("accent-soft");
+
+    const idle = screen.getByRole("radio", { name: /mentions only/i });
+    expect(idle.className).toContain("text-text-muted");
+    expect(idle.className).not.toContain("text-icon-active");
   });
 
   it("uses half-padding sm density for compact surfaces", () => {

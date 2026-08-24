@@ -59,7 +59,8 @@ export const ExternalChatHistorySettings = React.memo<{
         </h3>
         <Button
           type="button"
-          variant={vm.canSaveSettings ? "primary" : "ghost"}
+          variant={vm.canSaveSettings ? "primary" : "neutral"}
+          appearance={vm.canSaveSettings ? "filled" : "ghost"}
           disabled={!vm.canSaveSettings}
           onClick={vm.saveSettings}
         >
@@ -186,7 +187,8 @@ export const ExternalChatHistorySettings = React.memo<{
           <span>{t("configureExternalChats.historyDepth.conflict")}</span>
           <Button
             type="button"
-            variant="ghost"
+            variant="neutral"
+            appearance="ghost"
             disabled={vm.settingsBusy || vm.submitting}
             onClick={vm.reloadAccountSettings}
           >
@@ -236,7 +238,13 @@ export const ExternalChatCatalogContent = React.memo<{
       ) : vm.loadStatus === "error" ? (
         <div role="alert" className="py-6 text-center text-sm text-danger">
           <p>{t("configureExternalChats.loadError")}</p>
-          <Button type="button" variant="ghost" className="mt-2" onClick={vm.refresh}>
+          <Button
+            type="button"
+            variant="neutral"
+            appearance="ghost"
+            className="mt-2"
+            onClick={vm.refresh}
+          >
             {t("common.retry")}
           </Button>
         </div>
@@ -250,7 +258,13 @@ export const ExternalChatCatalogContent = React.memo<{
                 : t("configureExternalChats.empty")}
           </p>
           {emptyPreparing ? (
-            <Button type="button" variant="ghost" className="mt-2" onClick={vm.refresh}>
+            <Button
+              type="button"
+              variant="neutral"
+              appearance="ghost"
+              className="mt-2"
+              onClick={vm.refresh}
+            >
               {t("common.retry")}
             </Button>
           ) : null}
@@ -322,7 +336,8 @@ export const ExternalChatCatalogActions = React.memo<{
           {vm.failed.size > 0 ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               disabled={vm.submitting || vm.selectionBlockedBySettings}
               onClick={vm.retryFailed}
             >

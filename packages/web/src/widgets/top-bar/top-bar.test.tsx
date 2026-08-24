@@ -198,19 +198,27 @@ describe("TopBar", () => {
   it("sets aria-current on the section that matches the URL", () => {
     renderWithProviders(<TopBar />, { route: "/calendar" });
 
-    expect(screen.getByRole("button", { name: /calendar/i })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.getByRole("button", { name: /chats\s*&\s*channels/i })).not.toHaveAttribute(
-      "aria-current",
-    );
+    const calendarButton = screen.getByRole("button", { name: /calendar/i });
+    expect(calendarButton).toHaveAttribute("aria-current", "page");
+    expect(calendarButton).toHaveClass("h-12", "w-12");
+
+    const chatsButton = screen.getByRole("button", { name: /chats\s*&\s*channels/i });
+    expect(chatsButton).not.toHaveAttribute("aria-current");
+    expect(chatsButton).toHaveClass("h-12", "w-12");
   });
 
   it("hides the unfinished global search action", () => {
     renderWithProviders(<TopBar />);
 
     expect(screen.queryByRole("button", { name: /search/i })).not.toBeInTheDocument();
+  });
+
+  it("does not render temporary notification debug controls", () => {
+    renderWithProviders(<TopBar />);
+
+    expect(screen.queryByTestId("topbar-notification-dev")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Perm" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "OS" })).not.toBeInTheDocument();
   });
 
   it("opens Workspace people search without legacy message filters", () => {
@@ -339,18 +347,37 @@ describe("TopBar", () => {
     expect(leftSlot).toHaveClass("pl-5");
   });
 
-  it("uses compact section buttons aligned from the left with a small inset", () => {
+  it("centers compact section buttons in the toolbar", () => {
     renderWithProviders(<TopBar />);
 
+    const toolbar = screen.getByTestId("topbar-toolbar-row");
+    expect(toolbar).toHaveClass("relative");
+    expect(toolbar).toHaveClass("justify-between");
+
+    const sectionsCenter = screen.getByTestId("topbar-sections-center");
+    expect(sectionsCenter).toHaveClass("absolute");
+    expect(sectionsCenter).toHaveClass("inset-0");
+    expect(sectionsCenter).toHaveClass("justify-center");
+    expect(sectionsCenter).toHaveClass("pointer-events-none");
+
     const sectionsSlot = screen.getByTestId("topbar-sections-slot");
-    expect(sectionsSlot).toHaveClass("items-start");
-    expect(sectionsSlot).toHaveClass("pl-2");
+    expect(sectionsSlot).toHaveClass("items-center");
+    expect(sectionsSlot).toHaveClass("pointer-events-auto");
+    expect(sectionsSlot).not.toHaveClass("items-start");
+    expect(sectionsSlot).not.toHaveClass("pl-2");
+    expect(sectionsSlot.querySelector(".gap-3")).toBeTruthy();
 
     const chatsButton = screen.getByRole("button", { name: /chats\s*&\s*channels/i });
-    expect(chatsButton).toHaveClass("h-10");
-    expect(chatsButton).toHaveClass("w-10");
-    expect(chatsButton).toHaveClass("rounded-lg");
-    expect(chatsButton.querySelector("svg")).toHaveAttribute("width", "24");
+    expect(chatsButton).toHaveClass("h-12");
+    expect(chatsButton).toHaveClass("w-12");
+    expect(chatsButton).toHaveClass("rounded-2xl");
+    expect(chatsButton.querySelector("svg")).toHaveAttribute("width", "32");
+
+    const calendarButton = screen.getByRole("button", { name: /calendar/i });
+    expect(calendarButton).toHaveClass("h-12");
+    expect(calendarButton).toHaveClass("w-12");
+    expect(calendarButton).toHaveClass("hover:bg-card-bg-active");
+    expect(calendarButton.querySelector("svg")).toHaveAttribute("width", "32");
   });
 
   it("uses semantic token classes for presence indicators", () => {

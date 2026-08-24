@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNotificationLevelSegmentToneClass,
   getNotificationLevelSwitchSizeStyles,
   getStreamNotificationLevelOption,
   getTopicVisibilityLevelOption,
   getTopicVisibilityLevelOptions,
   shouldShowTopicUnmuteOption,
-} from "./notification-level.ui.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
-describe("notification-level.ui.lib", () => {
+describe("notification-level-switch.lib", () => {
   it("maps notification levels to their existing icons", () => {
     expect(getStreamNotificationLevelOption("default").icon).toBe("at");
     expect(getStreamNotificationLevelOption("muted").icon).toBe("bell_off");
@@ -39,6 +40,13 @@ describe("notification-level.ui.lib", () => {
       expect(lg.containerClass).not.toContain("border");
       expect(lg.segmentButtonClass).toContain("h-9");
       expect(lg.segmentButtonClass).not.toContain("py-");
+    });
+
+    it("uses the bright icon-active token only for the selected segment", () => {
+      expect(getNotificationLevelSegmentToneClass(true)).toContain("text-icon-active");
+      expect(getNotificationLevelSegmentToneClass(true)).not.toContain("text-text-muted");
+      expect(getNotificationLevelSegmentToneClass(false)).toContain("text-text-muted");
+      expect(getNotificationLevelSegmentToneClass(false)).not.toContain("text-icon-active");
     });
 
     it("defaults to md when size is omitted", () => {

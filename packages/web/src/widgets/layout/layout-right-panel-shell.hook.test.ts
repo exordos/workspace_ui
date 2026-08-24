@@ -168,15 +168,19 @@ describe("useLayoutRightPanelShell", () => {
       throw new Error("Expected channel right-panel view");
     }
     expect(result.current.workspaceRightPanelInfo?.topics).toEqual([
-      {
-        id: TOPIC_UUID,
-        name: "Roadmap",
+      expect.objectContaining({
+        id: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        title: "Roadmap",
         unreadCount: 2,
-        activeUnreadCount: undefined,
-        passiveUnreadCount: undefined,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 0,
+        hasUnreadPersonalMention: false,
+        isDone: false,
         notificationMode: "default",
         route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-      },
+      }),
     ]);
   });
 

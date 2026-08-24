@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -15,6 +15,8 @@ import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 const runWorkspaceStreamNotificationUpdateMock = vi.hoisted(() => vi.fn());
 const addWorkspaceStreamMembersMock = vi.hoisted(() => vi.fn());
 const removeWorkspaceStreamMemberMock = vi.hoisted(() => vi.fn());
+const getTopicSummarySettingsMock = vi.hoisted(() => vi.fn());
+const getTopicSummaryEndpointsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
   runWorkspaceStreamNotificationUpdate: (...args: unknown[]) =>
@@ -24,6 +26,12 @@ vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
 vi.mock("~/entities/messenger/messenger-stream-member-actions.lib", () => ({
   addWorkspaceStreamMembers: (...args: unknown[]) => addWorkspaceStreamMembersMock(...args),
   removeWorkspaceStreamMember: (...args: unknown[]) => removeWorkspaceStreamMemberMock(...args),
+}));
+
+vi.mock("~/shared/api/messenger-topic-summary-management.api", async (importOriginal) => ({
+  ...(await importOriginal()),
+  getTopicSummarySettings: (...args: unknown[]) => getTopicSummarySettingsMock(...args),
+  getTopicSummaryEndpoints: (...args: unknown[]) => getTopicSummaryEndpointsMock(...args),
 }));
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
@@ -99,6 +107,29 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
     isArchived: false,
     directUserUuid: null,
     lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createTopic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
+  return {
+    uuid: "99999999-9999-4999-8999-999999999999",
+    projectId: RUNTIME_CONTEXT.projectId,
+    streamUuid: STREAM_UUID,
+    userUuid: CURRENT_USER_UUID,
+    name: "Roadmap",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    summary: "Release scope is approved.",
+    summaryHasNewMessages: false,
+    summaryEnabled: true,
+    summarySystemPrompt: null,
+    summaryReasoningEffort: null,
     createdAt: DATE,
     updatedAt: DATE,
     ...overrides,
@@ -191,6 +222,8 @@ describe("RightPanelWorkspaceInfo", () => {
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     addWorkspaceStreamMembersMock.mockReset();
     removeWorkspaceStreamMemberMock.mockReset();
+    getTopicSummarySettingsMock.mockReset();
+    getTopicSummaryEndpointsMock.mockReset();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
@@ -221,7 +254,7 @@ describe("RightPanelWorkspaceInfo", () => {
       "border-border-subtle",
     );
     expect(
-      screen.getByText("New messages appeared. The summary will update automatically."),
+      screen.getByText("There are new messages that are not yet included in the summary."),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse topic context" }));
@@ -245,6 +278,205 @@ describe("RightPanelWorkspaceInfo", () => {
 
     expect(screen.queryByText("Release scope is approved.")).not.toBeInTheDocument();
     expect(screen.getByText("Support queue is clear.")).toBeInTheDocument();
+  });
+
+  it("renders a topic summary as sanitized Markdown", () => {
+    const { container } = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: "topic-markdown",
+            topicName: "Markdown",
+            text: [
+              "## Decision",
+              "",
+              "The **release** is ready.",
+              "",
+              "- Web",
+              "- Desktop",
+              "",
+              '<script data-summary-script="true">alert("unsafe")</script>',
+            ].join("\n"),
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    const summary = screen.getByTestId("topic-summary-content");
+    expect(summary.querySelector("h2")).toHaveTextContent("Decision");
+    expect(summary.querySelector("strong")).toHaveTextContent("release");
+    expect(summary.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("[data-summary-script='true']")).toBeNull();
+    expect(summary).toHaveTextContent('<script data-summary-script="true">');
+  });
+
+  it("opens the combined topic and common summary settings without collapsing the summary", async () => {
+    seedWorkspaceAuth();
+    const currentTopic = createTopic();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          ownerUuid: CURRENT_USER_UUID,
+          userUuid: CURRENT_USER_UUID,
+          role: "owner",
+        }),
+      );
+      useMessengerStore.getState().upsertTopic(OWNER_KEY, currentTopic);
+    });
+    getTopicSummarySettingsMock.mockResolvedValue({
+      project_id: RUNTIME_CONTEXT.projectId,
+      global_enabled: true,
+      project_enabled: true,
+    });
+    getTopicSummaryEndpointsMock.mockResolvedValue([]);
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: currentTopic.uuid,
+            topicName: currentTopic.name,
+            text: currentTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    const settingsButton = screen.getByRole("button", { name: "Open AI summary settings" });
+    const chevronButton = screen.getByRole("button", { name: "Collapse topic context" });
+    expect(settingsButton.nextElementSibling).toBe(chevronButton);
+
+    fireEvent.click(settingsButton);
+
+    expect(screen.getByText("Release scope is approved.")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "AI summary settings" })).toBeInTheDocument();
+    expect(screen.getByText("This topic")).toBeInTheDocument();
+    expect(screen.getByText("Common settings")).toBeInTheDocument();
+    expect(screen.getByText("LLM endpoints")).toBeInTheDocument();
+  });
+
+  it("hides summary settings from a member while IAM capabilities are unavailable", () => {
+    seedWorkspaceAuth();
+    const currentTopic = createTopic();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          ownerUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          userUuid: CURRENT_USER_UUID,
+          role: "member",
+        }),
+      );
+      useMessengerStore.getState().upsertTopic(OWNER_KEY, currentTopic);
+    });
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: currentTopic.uuid,
+            topicName: currentTopic.name,
+            text: currentTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Open AI summary settings" }),
+    ).not.toBeInTheDocument();
+    expect(getTopicSummarySettingsMock).not.toHaveBeenCalled();
+    expect(getTopicSummaryEndpointsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen summary settings after switching away from and back to a topic", async () => {
+    seedWorkspaceAuth();
+    const firstTopic = createTopic();
+    const secondTopic = createTopic({
+      uuid: "88888888-8888-4888-8888-888888888888",
+      name: "Delivery",
+      summary: "Delivery scope is approved.",
+    });
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          ownerUuid: CURRENT_USER_UUID,
+          userUuid: CURRENT_USER_UUID,
+          role: "owner",
+        }),
+      );
+      useMessengerStore.getState().upsertTopic(OWNER_KEY, firstTopic);
+      useMessengerStore.getState().upsertTopic(OWNER_KEY, secondTopic);
+    });
+    getTopicSummarySettingsMock.mockResolvedValue({
+      project_id: RUNTIME_CONTEXT.projectId,
+      global_enabled: true,
+      project_enabled: true,
+    });
+    getTopicSummaryEndpointsMock.mockResolvedValue([]);
+
+    const view = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: firstTopic.uuid,
+            topicName: firstTopic.name,
+            text: firstTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open AI summary settings" }));
+    expect(await screen.findByRole("dialog", { name: "AI summary settings" })).toBeInTheDocument();
+
+    view.rerender(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: secondTopic.uuid,
+            topicName: secondTopic.name,
+            text: secondTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "AI summary settings" })).not.toBeInTheDocument();
+    });
+
+    view.rerender(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: firstTopic.uuid,
+            topicName: firstTopic.name,
+            text: firstTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByRole("dialog", { name: "AI summary settings" })).not.toBeInTheDocument();
   });
 
   it("starts with an empty topic context collapsed and lets the user expand it", () => {
@@ -375,7 +607,7 @@ describe("RightPanelWorkspaceInfo", () => {
     // Figma members block: title + person_add only (24px glyph in 32px hit area), no profile icon.
     seedWorkspaceAuth();
 
-    const { container } = renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
     const membersHeading = screen.getByText("Members").closest("h3");
     expect(membersHeading).not.toBeNull();
@@ -387,7 +619,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(addIcon).not.toBeNull();
     expect(addIcon).toHaveAttribute("width", "24");
     expect(addIcon).toHaveAttribute("height", "24");
-    expect(container.querySelector('h3 svg[width="16"]')).toBeNull();
+    expect(membersHeading!.querySelector('svg[width="16"]')).toBeNull();
   });
 
   it("renders workspace direct private profile without channel-only actions", () => {
@@ -438,28 +670,46 @@ describe("RightPanelWorkspaceInfo", () => {
           topics: [
             {
               id: "active-topic",
-              name: "Active topic",
+              streamUuid: STREAM_UUID,
+              topicUuid: "active-topic",
+              title: "Active topic",
               unreadCount: 9,
               activeUnreadCount: 2,
               passiveUnreadCount: 7,
+              hasUnreadPersonalMention: false,
+              isDefault: false,
+              isDone: false,
               notificationMode: "follow",
+              color: null,
               route: "/active-topic",
+              preview: null,
+              lastMessageCreatedAt: null,
+              updatedAt: DATE,
             },
             {
               id: "passive-topic",
-              name: "Muted topic",
+              streamUuid: STREAM_UUID,
+              topicUuid: "passive-topic",
+              title: "Muted topic",
               unreadCount: 5,
               activeUnreadCount: 0,
               passiveUnreadCount: 5,
+              hasUnreadPersonalMention: false,
+              isDefault: false,
+              isDone: false,
               notificationMode: "default",
+              color: null,
               route: "/passive-topic",
+              preview: null,
+              lastMessageCreatedAt: null,
+              updatedAt: DATE,
             },
           ],
         })}
       />,
     );
 
-    expect(screen.getByText("2")).toHaveClass("bg-accent", "text-on-accent");
+    expect(screen.getByText("2")).toHaveClass("bg-sidebar-unread", "text-badge-text");
     expect(screen.getByText("5")).toHaveClass("bg-notice-disable", "text-badge-text");
     expect(screen.queryByText("7")).not.toBeInTheDocument();
     expect(screen.queryByText("9")).not.toBeInTheDocument();

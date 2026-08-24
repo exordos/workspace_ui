@@ -1,15 +1,18 @@
 import { useMemo } from "react";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
 } from "~/entities/messenger/messenger-right-panel.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -17,6 +20,8 @@ import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import { useLayoutRightDrawerContext } from "./layout-right-drawer-context.hook";
 import { resolveLayoutRightPanelTitle } from "./layout-right-drawer-title.lib";
+
+const EMPTY_WORKSPACE_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 
 export interface UseLayoutRightPanelShellParams {
   streamsFromStore: StreamWithLast[];
@@ -105,6 +110,18 @@ export function useLayoutRightPanelShell(
     [workspaceCurrentAccountId, workspaceSessions],
   );
   const workspaceCurrentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
+  const workspaceOwnerKey =
+    workspaceRuntimeContext == null ? null : workspaceRuntimeOwnerKey(workspaceRuntimeContext);
+  const shouldSelectWorkspaceTopicMessages =
+    workspaceMessengerActive && rightDrawerOpen && rightDrawerMode === "info";
+  const workspaceMessagesById = useWorkspaceMessageStore((state) =>
+    shouldSelectWorkspaceTopicMessages &&
+    workspaceOwnerKey != null &&
+    state.ownerKey === workspaceOwnerKey
+      ? state.messagesById
+      : EMPTY_WORKSPACE_MESSAGES_BY_ID,
+  );
+  const workspaceTopicSortMode = useSettingsStore((state) => state.messengerSidebarSortMode);
   // Workspace right panel reads chat structure from messenger store and user cards
   // from the new user store.
   const workspaceRightPanelInfo = useMemo(
@@ -123,6 +140,8 @@ export function useLayoutRightPanelShell(
           usersById: workspaceUsersById,
           fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
           currentUserUuid: workspaceCurrentUserUuid,
+          messagesById: workspaceMessagesById,
+          sortMode: workspaceTopicSortMode,
           workspaceUserUuidOverride: rightDrawerWorkspaceUserUuidOverride,
           temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),
         },
@@ -137,6 +156,8 @@ export function useLayoutRightPanelShell(
       workspaceTopicIds,
       workspaceTopicsById,
       workspaceCurrentUserUuid,
+      workspaceMessagesById,
+      workspaceTopicSortMode,
       rightDrawerWorkspaceUserUuidOverride,
       workspaceUsersById,
     ],

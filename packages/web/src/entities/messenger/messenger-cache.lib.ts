@@ -22,6 +22,7 @@ import {
   readMessengerReadBoundaries,
   readOwnMessageReaction,
   readOwnMessageReactions,
+  repairMessengerMessagePointerCache,
   replaceOwnMessageReactionsForOwner,
   replaceOwnMessageReactionsForMessage,
   upsertCachedMessages,
@@ -580,6 +581,96 @@ export async function patchMessengerCachedMessage(
   }
 }
 
+export interface MessengerMessagePointerCacheTargets {
+  stream?: boolean;
+  topic?: boolean;
+  conversationIds?: readonly MessengerConversationId[];
+}
+
+interface CachedDeletedMessagePointerRepair {
+  replacement: MessengerMessage;
+  targets: MessengerMessagePointerCacheTargets;
+}
+
+function latestCachedMessageExcluding(
+  messages: readonly MessengerMessage[],
+  excludedMessageUuid: MessengerUuid,
+): MessengerMessage | null {
+  let latest: MessengerMessage | null = null;
+  for (const message of messages) {
+    if (message.uuid === excludedMessageUuid) continue;
+    if (
+      latest == null ||
+      message.createdAt > latest.createdAt ||
+      (message.createdAt === latest.createdAt && message.uuid > latest.uuid)
+    ) {
+      latest = message;
+    }
+  }
+  return latest;
+}
+
+async function captureCachedDeletedMessagePointerRepairs(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  conversationIds: readonly MessengerConversationId[],
+): Promise<CachedDeletedMessagePointerRepair[]> {
+  const uniqueConversationIds = [...new Set(conversationIds)];
+  const [catalog, ...windows] = await Promise.all([
+    readMessengerCatalogCache(ownerKey),
+    ...uniqueConversationIds.map((conversationId) =>
+      readConversationMessageWindow(ownerKey, conversationId),
+    ),
+  ]);
+
+  return uniqueConversationIds.flatMap((conversationId, index) => {
+    const parsed = parseMessengerConversationId(conversationId);
+    const replacement = latestCachedMessageExcluding(
+      normalizeCachedMessages(windows[index]?.messages ?? []),
+      messageUuid,
+    );
+    if (parsed == null || replacement == null) return [];
+
+    const conversationTarget = catalog.conversations.some(
+      (conversation) =>
+        conversation.id === conversationId && conversation.lastMessageUuid === messageUuid,
+    );
+    const targets: MessengerMessagePointerCacheTargets = {
+      stream:
+        parsed.kind === "stream" &&
+        catalog.streams.some(
+          (stream) => stream.uuid === parsed.streamUuid && stream.lastMessageUuid === messageUuid,
+        ),
+      topic:
+        parsed.kind === "topic" &&
+        catalog.topics.some(
+          (topic) => topic.uuid === parsed.topicUuid && topic.lastMessageUuid === messageUuid,
+        ),
+      conversationIds: conversationTarget ? [conversationId] : [],
+    };
+    if (
+      targets.stream !== true &&
+      targets.topic !== true &&
+      targets.conversationIds?.length === 0
+    ) {
+      return [];
+    }
+    return [{ replacement, targets }];
+  });
+}
+
+export async function repairMessengerCachedMessagePointers(
+  ownerKey: string,
+  message: MessengerMessage,
+  targets: MessengerMessagePointerCacheTargets,
+): Promise<void> {
+  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
+  await repairMessengerMessagePointerCache(ownerKey, withoutRuntimeReactionState(message), targets);
+  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
+    await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
+  }
+}
+
 export async function markMessengerCachedMessagesRead(
   ownerKey: string,
   messageUuids: readonly MessengerUuid[],
@@ -613,8 +704,16 @@ export async function deleteMessengerCachedMessage(
   messageUuid: MessengerUuid,
   conversationIds: readonly MessengerConversationId[],
 ): Promise<void> {
+  const repairs = await captureCachedDeletedMessagePointerRepairs(
+    ownerKey,
+    messageUuid,
+    conversationIds,
+  );
   await deleteCachedMessage(ownerKey, messageUuid, conversationIds);
   await clearMessengerMessagePointerCache(ownerKey, messageUuid);
+  for (const repair of repairs) {
+    await repairMessengerCachedMessagePointers(ownerKey, repair.replacement, repair.targets);
+  }
 }
 
 // Эти helpers хранят не сами счетчики reactions, а только локальную карту
@@ -697,6 +796,7 @@ export async function writeMessengerRealtimeCursorCache(
 export const messengerMessageActionCache = {
   advanceReadBoundary: advanceMessengerCachedReadBoundary,
   patchCachedMessage: patchMessengerCachedMessage,
+  repairMessagePointers: repairMessengerCachedMessagePointers,
   markCachedMessagesRead: markMessengerCachedMessagesRead,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
@@ -706,6 +806,7 @@ export const messengerRealtimeActiveCache = {
   advanceReadBoundary: advanceMessengerCachedReadBoundary,
   markCachedMessagesRead: markMessengerCachedMessagesRead,
   patchCachedMessage: patchMessengerCachedMessage,
+  repairMessagePointers: repairMessengerCachedMessagePointers,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
   upsertCachedStream: upsertMessengerStreamCache,

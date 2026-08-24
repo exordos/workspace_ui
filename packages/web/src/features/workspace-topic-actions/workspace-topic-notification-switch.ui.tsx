@@ -2,25 +2,25 @@ import React, { useCallback, useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import {
+  getNotificationLevelSegmentToneClass,
   getNotificationLevelSwitchSizeStyles,
   getTopicVisibilityLevelOptions,
   type NotificationLevelSwitchSize,
+  type TopicVisibilityLevel,
   type TopicVisibilityLevelOption,
-} from "./notification-level.ui.lib";
-import type { TopicVisibilityLevel } from "./notification-level.lib";
+} from "~/shared/ui/notification-level-switch.lib";
 
-export interface TopicVisibilityLevelSwitchProps {
+export interface WorkspaceTopicNotificationSwitchProps {
   value: TopicVisibilityLevel;
   onChange: (level: TopicVisibilityLevel) => void;
   streamMuted: boolean;
   topicExplicitlyUnmuted: boolean;
   disabled?: boolean;
-  /** sm = menus, md = dialogs, lg = info panel (Figma). */
   size?: NotificationLevelSwitchSize;
   className?: string;
 }
 
-export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchProps>(
+export const WorkspaceTopicNotificationSwitch = React.memo<WorkspaceTopicNotificationSwitchProps>(
   ({
     value,
     onChange,
@@ -68,7 +68,7 @@ export const TopicVisibilityLevelSwitch = React.memo<TopicVisibilityLevelSwitchP
   },
 );
 
-TopicVisibilityLevelSwitch.displayName = "TopicVisibilityLevelSwitch";
+WorkspaceTopicNotificationSwitch.displayName = "WorkspaceTopicNotificationSwitch";
 
 interface TopicVisibilitySegmentProps {
   option: TopicVisibilityLevelOption;
@@ -91,11 +91,7 @@ const TopicVisibilitySegment = React.memo<TopicVisibilitySegmentProps>(
         title={label}
         disabled={disabled}
         onClick={() => onSelect(option.level)}
-        className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
-          selected
-            ? "bg-card-bg text-text-primary"
-            : "text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
-        } disabled:cursor-not-allowed disabled:opacity-50`}
+        className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${getNotificationLevelSegmentToneClass(selected)} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <Icon name={option.icon} size={iconSize} className="shrink-0 text-current" />
       </button>

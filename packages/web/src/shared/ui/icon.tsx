@@ -79,6 +79,7 @@ import SearchIcon from "../assets/icons/search.svg?react";
 import SelectedBookmarkIcon from "../assets/icons/selected_bookmark_icon.svg?react";
 import SendIcon from "../assets/icons/send.svg?react";
 import SentimentSatisfiedIcon from "../assets/icons/sentiment_satisfied.svg?react";
+import SettingsIcon from "../assets/icons/settings.svg?react";
 import SidePanelIcon from "../assets/icons/side_panel.svg?react";
 import SmileIcon from "../assets/icons/smile.svg?react";
 import SparklesIcon from "../assets/icons/sparkles.svg?react";
@@ -105,6 +106,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   flag: FlagIcon,
   attach: AttachIcon,
   search: SearchIcon,
+  settings: SettingsIcon,
   selected_bookmark_icon: SelectedBookmarkIcon,
   // Followed-topic waves — 28×28 padded to match Material notification frames
   topic_follow: TopicFollowIcon,

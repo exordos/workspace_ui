@@ -19,6 +19,7 @@ import type {
   WorkspaceMessengerCreateTopicRequestBody,
   WorkspaceMessengerTopicDto,
   WorkspaceMessengerTopicNotificationRequestBody,
+  WorkspaceMessengerTopicSummaryConfigurationRequestBody,
   WorkspaceMessengerUpdateTopicRequestBody,
   WorkspaceMessengerUuid,
 } from "./messenger.types";
@@ -118,6 +119,19 @@ export async function setStreamTopicNotificationMode(
 ): Promise<WorkspaceMessengerTopicDto> {
   const data = await messengerPostJson(
     `/stream_topics/${topicUuid}/actions/notifications/invoke`,
+    options,
+    body,
+  );
+  return parseTopic(data);
+}
+
+export async function setStreamTopicSummaryConfiguration(
+  options: MessengerClientOptions,
+  topicUuid: WorkspaceMessengerUuid,
+  body: WorkspaceMessengerTopicSummaryConfigurationRequestBody,
+): Promise<WorkspaceMessengerTopicDto> {
+  const data = await messengerPostJson(
+    `/stream_topics/${topicUuid}/actions/set_summary_prompt/invoke`,
     options,
     body,
   );

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE,
   CHAT_BOTTOM_NOTICE_PREFACE_STRIP_CLASS_NAME,
   CHAT_BOTTOM_NOTICE_REPLY_CHROME_CLASS_NAME,
-  chatBottomNoticeActionButtonClassName,
-  chatBottomNoticeActionClassName,
   chatBottomNoticeBarClassName,
   chatBottomNoticeMarkerClassName,
 } from "./chat-bottom-notice-bar.lib";
@@ -72,25 +69,8 @@ describe("chatBottomNoticeBarClassName", () => {
 
   it("keeps severity color out of the shared surface", () => {
     expect(chatBottomNoticeMarkerClassName("danger")).toBe("bg-danger");
-    expect(chatBottomNoticeActionClassName("danger")).toContain("text-danger");
     expect(chatBottomNoticeMarkerClassName("warning")).toBe("bg-indicator-yellow");
     expect(chatBottomNoticeMarkerClassName("info")).toBe("bg-accent");
     expect(chatBottomNoticeMarkerClassName("neutral")).toBe("bg-text-muted");
-  });
-
-  it("builds shared action button chrome with optional transparent cancel style", () => {
-    expect(CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE).toContain("rounded-lg");
-    expect(CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE).toContain("px-3");
-    expect(CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE).toContain("py-1.5");
-
-    const danger = chatBottomNoticeActionButtonClassName("danger");
-    expect(danger).toContain(CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE);
-    expect(danger).toContain("text-danger");
-    expect(danger).not.toContain("bg-transparent");
-
-    const cancel = chatBottomNoticeActionButtonClassName("neutral", { transparent: true });
-    expect(cancel).toContain(CHAT_BOTTOM_NOTICE_ACTION_BUTTON_BASE);
-    expect(cancel).toContain("bg-transparent");
-    expect(cancel).toContain("border-border-subtle");
   });
 });

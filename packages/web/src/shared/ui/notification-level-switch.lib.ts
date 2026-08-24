@@ -1,7 +1,8 @@
-import type { IconName } from "~/shared/ui/icon";
-import type { NotificationLevel, TopicVisibilityLevel } from "./notification-level.lib";
+import type { IconName } from "./icon";
 
-/** Topic notification options shared by the Workspace sidebar controls. */
+export type NotificationLevel = "default" | "muted" | "subscribed";
+
+export type TopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
 
 type StreamNotificationLabelKey =
   | "channel.notificationDefault"
@@ -26,10 +27,7 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
-/**
- * Visual density for segmented notification switches.
- * Context-agnostic: sm = dropdowns, md = dialogs, lg = info panels (Figma).
- */
+/** Visual density for segmented notification switches. */
 export type NotificationLevelSwitchSize = "sm" | "md" | "lg";
 
 export interface NotificationLevelSwitchSizeStyles {
@@ -38,12 +36,10 @@ export interface NotificationLevelSwitchSizeStyles {
   segmentButtonClass: string;
 }
 
-/** Shared layout tokens — no outer border, no selected ring (Figma Exordos Core). */
 export const NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES: Record<
   NotificationLevelSwitchSize,
   NotificationLevelSwitchSizeStyles
 > = {
-  // Menus: 22px on padded 28×28 frames ≈ 16px glyph — 14px looked undersized.
   sm: {
     iconSize: 22,
     containerClass: "flex gap-0.5 rounded-md bg-bg p-0.5",
@@ -54,8 +50,6 @@ export const NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES: Record<
     containerClass: "flex gap-1 rounded-lg bg-bg p-1",
     segmentButtonClass: "h-8 min-w-8 flex-1 rounded-lg",
   },
-  // Info panel (Figma 13072:28501): 28px Material frames, 4px pad, 8px gap, 44px group.
-  // SVGs include optical padding (~21px glyph); do not crop the viewBox or they overfill.
   lg: {
     iconSize: 28,
     containerClass: "flex gap-2 rounded-lg bg-bg p-1",
@@ -67,6 +61,20 @@ export function getNotificationLevelSwitchSizeStyles(
   size: NotificationLevelSwitchSize = "md",
 ): NotificationLevelSwitchSizeStyles {
   return NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES[size];
+}
+
+/**
+ * A selected segment uses the bright icon-active glyph.
+ * Idle segments stay muted.
+ */
+export const NOTIFICATION_LEVEL_SEGMENT_SELECTED_CLASS = "bg-card-bg text-icon-active";
+export const NOTIFICATION_LEVEL_SEGMENT_IDLE_CLASS =
+  "text-text-muted hover:bg-sidebar-hover hover:text-text-primary";
+
+export function getNotificationLevelSegmentToneClass(selected: boolean): string {
+  return selected
+    ? NOTIFICATION_LEVEL_SEGMENT_SELECTED_CLASS
+    : NOTIFICATION_LEVEL_SEGMENT_IDLE_CLASS;
 }
 
 const STREAM_NOTIFICATION_OPTION_BY_LEVEL: Record<NotificationLevel, NotificationLevelOption> = {

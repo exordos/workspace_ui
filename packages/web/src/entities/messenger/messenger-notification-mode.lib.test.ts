@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isWorkspaceStreamFullyMuted,
+  mapTopicVisibilityLevelToWorkspaceMode,
+  mapWorkspaceTopicNotificationModeToLevel,
   resolveWorkspaceDisplayedUnread,
 } from "./messenger-notification-mode.lib";
 
@@ -33,5 +35,17 @@ describe("Workspace notification projections", () => {
         passiveUnreadCount: 0,
       }),
     ).toBeNull();
+  });
+
+  it("maps topic notification modes through the shared visibility levels", () => {
+    expect(mapWorkspaceTopicNotificationModeToLevel("default")).toBe("inherit");
+    expect(mapWorkspaceTopicNotificationModeToLevel("mute")).toBe("muted");
+    expect(mapWorkspaceTopicNotificationModeToLevel("unmute")).toBe("unmuted");
+    expect(mapWorkspaceTopicNotificationModeToLevel("follow")).toBe("followed");
+
+    expect(mapTopicVisibilityLevelToWorkspaceMode("inherit")).toBe("default");
+    expect(mapTopicVisibilityLevelToWorkspaceMode("muted")).toBe("mute");
+    expect(mapTopicVisibilityLevelToWorkspaceMode("unmuted")).toBe("unmute");
+    expect(mapTopicVisibilityLevelToWorkspaceMode("followed")).toBe("follow");
   });
 });

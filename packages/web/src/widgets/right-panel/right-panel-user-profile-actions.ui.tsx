@@ -35,7 +35,8 @@ const RightPanelUserProfileActionButton = React.memo<RightPanelUserProfileAction
       >
         {/* 40×40 hit area matches Figma action icon bounding box */}
         <span className="flex h-10 w-10 items-center justify-center">
-          <Icon name={icon} size={iconSize} className="text-text-secondary" />
+          {/* Keep the action glyph bright while the label stays secondary. */}
+          <Icon name={icon} size={iconSize} className="text-icon-active" />
         </span>
         {/* Hug buttons keep full label; fill buttons may ellipsis if space is tight */}
         <span
