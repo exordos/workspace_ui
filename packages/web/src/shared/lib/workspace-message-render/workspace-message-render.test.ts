@@ -565,6 +565,100 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain(["", "user_uploads"].join("/"));
   });
 
+  it("groups newline-separated Workspace images into a compact composition", () => {
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        [
+          `![first.png](urn:image:${first}?content_type=image%2Fpng&w=400&h=200)`,
+          `![second.png](urn:image:${second}?content_type=image%2Fpng)`,
+        ].join("\n"),
+      ),
+      {
+        ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+        enableProtectedMedia: true,
+      },
+    );
+
+    expect(result.html).toContain('class="workspace-message-image-composition"');
+    expect(result.html).toContain(
+      'class="workspace-message-file-placeholder workspace-message-file-placeholder--composition"',
+    );
+    expect(result.html).toContain('style="width:200px"');
+    expect(result.html).toContain('style="width:240px"');
+    expect(result.html).not.toContain("<br>");
+    expect(sanitizeWorkspaceMessageHtml(result.html)).toContain('style="width:200px"');
+  });
+
+  it("keeps a single Workspace image on the existing placeholder path", () => {
+    const image = "11111111-1111-4111-8111-111111111111";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        `![single.png](urn:image:${image}?content_type=image%2Fpng&w=640&h=960)`,
+      ),
+      { ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS, enableProtectedMedia: true },
+    );
+
+    expect(result.html).not.toContain("workspace-message-image-composition");
+    expect(result.html).not.toContain("workspace-message-file-placeholder--composition");
+    expect(result.html).not.toContain('style="width:67px"');
+  });
+
+  it("fits two portrait composer images into one 100px composition row", () => {
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        [
+          `![first.png](urn:image:${first}?content_type=image%2Fpng&w=640&h=960)`,
+          `![second.png](urn:image:${second}?content_type=image%2Fpng&w=640&h=960)`,
+        ].join("\n"),
+      ),
+      { ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS, enableProtectedMedia: true },
+    );
+
+    expect(result.html.match(/workspace-message-file-placeholder--composition/g)).toHaveLength(2);
+    expect(result.html.match(/style="width:67px"/g)).toHaveLength(2);
+    expect(result.html).not.toContain("<br>");
+  });
+
+  it("preserves text before a grouped image composition", () => {
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        [
+          "Screenshots:",
+          `![first.png](urn:image:${first}?w=640&h=960)`,
+          `![second.png](urn:image:${second}?w=640&h=960)`,
+        ].join("\n"),
+      ),
+      { ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS, enableProtectedMedia: true },
+    );
+
+    expect(result.html).toContain("Screenshots:");
+    expect(result.html).toContain('class="workspace-message-image-composition"');
+  });
+
+  it("does not group images separated by non-image content", () => {
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const result = renderWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        [
+          `![first.png](urn:image:${first}?w=640&h=960)`,
+          "separator",
+          `![second.png](urn:image:${second}?w=640&h=960)`,
+        ].join("\n"),
+      ),
+      { ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS, enableProtectedMedia: true },
+    );
+
+    expect(result.html).not.toContain("workspace-message-image-composition");
+    expect(result.html).toContain("separator");
+  });
+
   it("renders Workspace video references as protected media placeholders", () => {
     const fileUuid = "22222222-2222-4222-8222-222222222222";
     const document = parseWorkspaceMessageBody(

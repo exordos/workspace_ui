@@ -192,12 +192,29 @@ function renderWorkspaceFileLabel(reference: WorkspaceMessageFileReference): str
   return reference.name != null ? `Файл: ${reference.name}` : "Файл";
 }
 
-function renderWorkspaceFilePlaceholder(reference: WorkspaceMessageFileReference): string {
+function renderWorkspaceFilePlaceholder(
+  reference: WorkspaceMessageFileReference,
+  inImageComposition = false,
+): string {
   const label = renderWorkspaceFileLabel(reference);
   const isImage = reference.kind === "media" && reference.mediaKind === "image";
   const isVideo = reference.kind === "media" && reference.mediaKind === "video";
   const videoLayout = isVideo ? deriveWorkspaceMediaPlaceholderLayout(reference) : null;
-  const videoPlaceholderStyle = videoLayout != null ? ` style="width:${videoLayout.width}px"` : "";
+  const compositionWidth =
+    inImageComposition && isImage
+      ? reference.width != null &&
+        reference.height != null &&
+        reference.width > 0 &&
+        reference.height > 0
+        ? Math.round((reference.width / reference.height) * 100)
+        : 240
+      : null;
+  const placeholderStyle =
+    compositionWidth != null
+      ? ` style="width:${compositionWidth}px"`
+      : videoLayout != null
+        ? ` style="width:${videoLayout.width}px"`
+        : "";
   const videoVisualStyle =
     videoLayout != null ? ` style="aspect-ratio:${videoLayout.aspectRatio}"` : "";
   const optionalAttributes = [
@@ -237,12 +254,16 @@ function renderWorkspaceFilePlaceholder(reference: WorkspaceMessageFileReference
     ? "workspace-message-file-placeholder__label sr-only"
     : "workspace-message-file-placeholder__label";
   const labelHtml = isVideo ? "" : `<span class="${labelClass}">${escapeHtmlText(label)}</span>`;
-  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${videoPlaceholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
+  const compositionClass = inImageComposition
+    ? " workspace-message-file-placeholder--composition"
+    : "";
+  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder${compositionClass}" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${placeholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
 }
 
 function renderFileReference(
   reference: WorkspaceMessageFileReference,
   options: WorkspaceMessageRenderOptions,
+  inImageComposition = false,
 ): string {
   if (
     reference.kind === "media" &&
@@ -253,8 +274,59 @@ function renderFileReference(
   const enabled =
     reference.kind === "media" ? options.enableProtectedMedia : options.enableAttachments;
   return enabled
-    ? renderWorkspaceFilePlaceholder(reference)
+    ? renderWorkspaceFilePlaceholder(reference, inImageComposition)
     : escapeHtmlText(renderWorkspaceFileLabel(reference));
+}
+
+function isWorkspaceImageToken(token: Token): token is WorkspaceFileMarkedToken {
+  return (
+    token.type === WORKSPACE_FILE_TOKEN_TYPE &&
+    (token as WorkspaceFileMarkedToken).reference.kind === "media" &&
+    (token as WorkspaceFileMarkedToken).reference.mediaKind === "image"
+  );
+}
+
+function renderParagraphInlineTokens(
+  parser: RendererThis["parser"],
+  tokens: readonly Token[],
+  options: WorkspaceMessageRenderOptions,
+): string {
+  const result: string[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (token == null) {
+      index += 1;
+      continue;
+    }
+    if (!isWorkspaceImageToken(token)) {
+      result.push(parser.parseInline([token]));
+      index += 1;
+      continue;
+    }
+    const images: WorkspaceFileMarkedToken[] = [token];
+    let cursor = index + 1;
+    while (cursor + 1 < tokens.length) {
+      const separator = tokens[cursor];
+      const nextToken = tokens[cursor + 1];
+      const isSoftBreak =
+        separator?.type === "br" || (separator?.type === "text" && separator.raw.trim() === "");
+      if (!isSoftBreak || nextToken == null || !isWorkspaceImageToken(nextToken)) {
+        break;
+      }
+      images.push(nextToken);
+      cursor += 2;
+    }
+    if (images.length < 2) {
+      result.push(parser.parseInline([token]));
+    } else {
+      result.push(
+        `<span class="workspace-message-image-composition">${images.map((token) => renderFileReference(token.reference, options, true)).join("")}</span>`,
+      );
+    }
+    index = cursor;
+  }
+  return result.join("");
 }
 
 function renderMentionToken(
@@ -451,7 +523,7 @@ function createWorkspaceMarkdownRenderer(options: WorkspaceMessageRenderOptions)
         return escapeHtmlText(token.text);
       },
       paragraph(this: { parser: RendererThis["parser"] }, token) {
-        const content = this.parser.parseInline(token.tokens);
+        const content = renderParagraphInlineTokens(this.parser, token.tokens ?? [], options);
         return options.hiddenWorkspaceMediaFileUuids != null && content.trim().length === 0
           ? ""
           : `<p>${content}</p>`;
