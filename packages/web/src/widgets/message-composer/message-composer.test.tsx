@@ -635,7 +635,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(railActions).not.toHaveClass("mb-1", "gap-2");
     expect(compactControls.parentElement).toHaveClass("gap-3");
     expect(compactControls.parentElement).not.toHaveClass("gap-2");
-    expect(textbox.parentElement).toHaveClass("items-end");
+    expect(textbox.parentElement).toHaveClass("items-start");
     expect(compactControls).toContainElement(attachButton);
     expect(railActions).toContainElement(emojiButton);
     // Vertical rail grows upward: attach/emoji above, formatting toggle stays first from the bottom.
@@ -650,7 +650,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(expandButton.querySelector('[data-composer-icon="expand-content"]')).toBeInTheDocument();
   });
 
-  it("returns to auto-resize and hides both controls when text shrinks to two lines", () => {
+  it("keeps a manual resize after text shrinks until the user drags it down", () => {
     const { container } = renderWithProviders(
       <div>
         <div data-message-anchor-layer-host="true" />
@@ -683,17 +683,13 @@ describe("MessageComposer textarea autosize", () => {
     mockedScrollHeight = 40;
     fireEvent.change(textbox, { target: { value: "Line 1" } });
 
-    expect(
-      screen.queryByRole("button", { name: /resize message editor/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /expand message editor/i }),
-    ).not.toBeInTheDocument();
-    expect(composer.style.height).toBe("");
-    expect(textbox.style.height).toBe("40px");
+    expect(screen.getByRole("button", { name: /resize message editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(composer).toHaveStyle({ height: "224px" });
+    expect(textbox.style.height).toBe("100%");
   });
 
-  it("hides the expand button when text drops below four lines but keeps the handle", () => {
+  it("keeps the tall layout stable inside the height hysteresis window", () => {
     const { container } = renderWithProviders(
       <div>
         <div data-message-anchor-layer-host="true" />
@@ -718,19 +714,32 @@ describe("MessageComposer textarea autosize", () => {
     });
 
     fireEvent.change(textbox, { target: { value: "Line 1\nLine 2\nLine 3" } });
-    fireEvent.keyDown(screen.getByRole("button", { name: /resize message editor/i }), {
-      key: "ArrowUp",
-    });
     expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
 
     mockedScrollHeight = 80;
     fireEvent.change(textbox, { target: { value: "Line 1\nLine 2" } });
 
     expect(screen.getByRole("button", { name: /resize message editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-rail-actions")).toBeInTheDocument();
+    expect(textbox.parentElement).toHaveClass("items-start");
+    expect(textbox.parentElement).not.toHaveClass("items-end");
+    expect(composer.style.height).toBe("");
+
+    mockedScrollHeight = 96;
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2x" } });
+
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-rail-actions")).toBeInTheDocument();
+
+    mockedScrollHeight = 64;
+    fireEvent.change(textbox, { target: { value: "Line 1" } });
+
     expect(
       screen.queryByRole("button", { name: /expand message editor/i }),
     ).not.toBeInTheDocument();
-    expect(composer.style.height).toBe("");
+    expect(screen.queryByTestId("composer-compact-rail-actions")).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-trailing-controls")).toBeInTheDocument();
   });
 
   it("returns to auto-resize when the handle is dragged back to natural height", () => {
@@ -780,6 +789,109 @@ describe("MessageComposer textarea autosize", () => {
     fireEvent.pointerUp(window);
   });
 
+  it("switches a two-line editor to wide when dragged above 96px and back at natural height", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+
+    const shellChromeHeight = 36;
+    vi.spyOn(composer, "getBoundingClientRect").mockImplementation(() => {
+      const textareaHeight = Number.parseFloat(textbox.style.height) || 64;
+      if (composer.style.height === "auto") return createRect(shellChromeHeight + textareaHeight);
+      return createRect(Number.parseFloat(composer.style.height) || shellChromeHeight + 64);
+    });
+    vi.spyOn(textbox, "getBoundingClientRect").mockImplementation(() => {
+      const intendedHeight = composer.style.height
+        ? Number.parseFloat(composer.style.height) - shellChromeHeight
+        : 64;
+      const railVisible = container.querySelector('[data-testid="composer-compact-rail-actions"]');
+      return createRect(railVisible == null ? intendedHeight : Math.max(intendedHeight, 96));
+    });
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", { configurable: true, value: 64 });
+
+    fireEvent.change(textbox, { target: { value: "Line 1\nLine 2" } });
+    const resizeHandle = screen.getByRole("button", { name: /resize message editor/i });
+    fireEvent.pointerDown(resizeHandle, { clientY: 500 });
+    fireEvent.pointerMove(window, { clientY: 460 });
+
+    expect(composer).toHaveStyle({ height: "140px" });
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-rail-actions")).toBeInTheDocument();
+
+    fireEvent.pointerMove(window, { clientY: 484 });
+
+    expect(composer).toHaveStyle({ height: "116px" });
+    expect(
+      screen.queryByRole("button", { name: /expand message editor/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-trailing-controls")).toBeInTheDocument();
+
+    fireEvent.pointerMove(window, { clientY: 600 });
+
+    expect(composer.style.height).toBe("");
+    expect(
+      screen.queryByRole("button", { name: /expand message editor/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-trailing-controls")).toBeInTheDocument();
+    fireEvent.pointerUp(window);
+  });
+
+  it("limits a long editor to the 96px field floor when dragged down", () => {
+    const { container } = renderWithProviders(
+      <div>
+        <div data-message-anchor-layer-host="true" />
+        <MessageComposer onSend={vi.fn()} />
+      </div>,
+    );
+
+    const composer = screen.getByRole("form", { name: /message composer/i });
+    const messageArea = container.querySelector<HTMLElement>(
+      '[data-message-anchor-layer-host="true"]',
+    );
+    const textbox = screen.getByRole("textbox");
+    if (messageArea == null) {
+      throw new Error("Expected message area");
+    }
+
+    const shellChromeHeight = 36;
+    vi.spyOn(composer, "getBoundingClientRect").mockImplementation(() => {
+      const textareaHeight = Number.parseFloat(textbox.style.height) || 128;
+      if (composer.style.height === "auto") return createRect(shellChromeHeight + textareaHeight);
+      return createRect(Number.parseFloat(composer.style.height) || shellChromeHeight + 128);
+    });
+    vi.spyOn(textbox, "getBoundingClientRect").mockImplementation(() =>
+      createRect(
+        composer.style.height ? Number.parseFloat(composer.style.height) - shellChromeHeight : 128,
+      ),
+    );
+    vi.spyOn(messageArea, "getBoundingClientRect").mockReturnValue(createRect(600));
+    Object.defineProperty(textbox, "scrollHeight", { configurable: true, value: 300 });
+
+    fireEvent.change(textbox, { target: { value: "A long message" } });
+    const resizeHandle = screen.getByRole("button", { name: /resize message editor/i });
+    fireEvent.pointerDown(resizeHandle, { clientY: 500 });
+    fireEvent.pointerMove(window, { clientY: 700 });
+
+    expect(composer).toHaveStyle({ height: "132px" });
+    expect(textbox.style.height).toBe("100%");
+    expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
+    expect(screen.getByTestId("composer-compact-rail-actions")).toBeInTheDocument();
+    fireEvent.pointerUp(window);
+  });
+
   it("expands to the available messenger height and collapses back", () => {
     const { container } = renderWithProviders(
       <div>
@@ -822,7 +934,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(screen.getByRole("button", { name: /expand message editor/i })).toBeInTheDocument();
   });
 
-  it("keeps fullscreen after a content shrink until text is back at two lines", () => {
+  it("keeps fullscreen after content shrinks to one line", () => {
     const { container } = renderWithProviders(
       <div>
         <div data-message-anchor-layer-host="true" />
@@ -857,16 +969,9 @@ describe("MessageComposer textarea autosize", () => {
 
     mockedScrollHeight = 40;
     fireEvent.change(textbox, { target: { value: "Hi" } });
-    expect(composer.style.height).toBe("");
-    expect(
-      screen.queryByRole("button", { name: /collapse message editor/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /expand message editor/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /resize message editor/i }),
-    ).not.toBeInTheDocument();
+    expect(composer).toHaveStyle({ height: "796px" });
+    expect(screen.getByRole("button", { name: /collapse message editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /resize message editor/i })).toBeInTheDocument();
   });
 
   it("resizes the composer from the keyboard-accessible handle", () => {
@@ -2133,7 +2238,7 @@ describe("MessageComposer mode tabs", () => {
     );
     expect(screen.getByTestId("composer-compact-rail-actions")).toHaveClass("flex-col", "gap-1");
     expect(screen.queryByTestId("composer-compact-trailing-controls")).not.toBeInTheDocument();
-    expect(textbox.parentElement).toHaveClass("self-stretch", "items-end");
+    expect(textbox.parentElement).toHaveClass("self-stretch", "items-start");
     expect(screen.getByTestId("composer-compact-controls").parentElement).toHaveClass("gap-3");
   });
 

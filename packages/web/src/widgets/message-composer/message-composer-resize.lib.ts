@@ -8,6 +8,7 @@
  */
 import {
   COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX,
+  COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX,
 } from "./message-composer-constants.lib";
 
@@ -21,39 +22,34 @@ export interface ShouldReleaseManualComposerResizeInput {
   /** Natural auto-sized shell height. Omit when only content is known. */
   minHeight?: number;
   isFullHeight: boolean;
-  /** True when the textarea content height just decreased. */
-  contentShrunk?: boolean;
 }
 
 /**
  * Whether a locked shell should drop `height` and return to auto-resize.
  *
- * Two-line content (handle threshold) always releases, including fullscreen:
- * there is nothing left for a manual override to do. Dragging/keying the
- * shell down to its natural size also releases. A content shrink outside
- * fullscreen releases so deleted text can pull the field down.
+ * Short content returns to auto when the shell reaches its natural height.
+ * Long content stays locked at the four-line floor, and fullscreen stays
+ * locked until the user collapses or drags it down.
  */
 export function shouldReleaseManualComposerResize({
   textareaContentHeight,
   nextHeight,
   minHeight,
   isFullHeight,
-  contentShrunk = false,
 }: ShouldReleaseManualComposerResizeInput): boolean {
-  if (textareaContentHeight <= COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX) {
-    return true;
-  }
-  // Fullscreen tracks the messenger max. A tiny viewport can make max ===
-  // natural; that is not "the user dragged back to auto".
-  if (
-    !isFullHeight &&
-    nextHeight != null &&
-    minHeight != null &&
+  if (isFullHeight || nextHeight == null || minHeight == null) return false;
+  return (
+    textareaContentHeight <= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX &&
     nextHeight <= minHeight + COMPOSER_RESIZE_AUTO_SNAP_PX
-  ) {
-    return true;
-  }
-  return contentShrunk && !isFullHeight;
+  );
+}
+
+/** The manual drag floor is natural for short text and four lines for long text. */
+export function resolveComposerManualEditorMinHeight(textareaContentHeight: number): number {
+  return Math.min(
+    Math.max(textareaContentHeight, COMPOSER_TEXTAREA_MIN_HEIGHT_PX),
+    COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX,
+  );
 }
 
 /** Drag handle appears at two lines, and stays while a taller override is locked. */
@@ -67,13 +63,33 @@ export function isComposerResizeHandleVisible(
 }
 
 /**
- * Expand/collapse is a fullscreen control, not a "manual mode is on" badge.
- * Hide it once content is back below the four-line threshold, unless the
- * shell is currently expanded to the messenger.
+ * Keep the tall layout inside a two-to-four-line hysteresis window.
+ *
+ * Moving compact actions into the left rail gives the textarea more width.
+ * Without separate enter and exit thresholds, that width change can make the
+ * measured content height alternate on every typed character.
  */
-export function isComposerHeightButtonVisible(
-  textareaContentHeight: number,
-  isFullHeight: boolean,
-): boolean {
-  return isFullHeight || textareaContentHeight >= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX;
+export interface ResolveComposerHeightButtonVisibilityInput {
+  effectiveEditorHeight: number;
+  isFullHeight: boolean;
+  isManualResize: boolean;
+  resetHysteresis?: boolean;
+  wasVisible: boolean;
+}
+
+export function resolveComposerHeightButtonVisibility({
+  effectiveEditorHeight,
+  isFullHeight,
+  isManualResize,
+  resetHysteresis = false,
+  wasVisible,
+}: ResolveComposerHeightButtonVisibilityInput): boolean {
+  if (isFullHeight) return true;
+  if (isManualResize || resetHysteresis) {
+    return effectiveEditorHeight >= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX;
+  }
+  if (wasVisible) {
+    return effectiveEditorHeight > COMPOSER_TEXTAREA_RESIZE_HANDLE_MIN_HEIGHT_PX;
+  }
+  return effectiveEditorHeight >= COMPOSER_TEXTAREA_HEIGHT_BUTTON_MIN_HEIGHT_PX;
 }
