@@ -46,14 +46,25 @@ const compactListItemClass = "relative min-w-0 flex-1";
 const compactBadgeClass = "pointer-events-none absolute right-0 top-0";
 const compactButtonBaseClass =
   "flex h-8 items-center justify-center rounded-lg p-1 transition-colors";
-const compactButtonIdleClass =
+// Activity items are actions, so their glyphs stay bright.
+const compactActionIdleClass = "bg-card-bg text-icon-active hover:bg-card-bg-active";
+const compactActionCurrentClass = "bg-card-bg-active text-icon-active";
+// The chevron is not an action and stays muted.
+const compactChevronClass =
   "bg-card-bg text-text-muted hover:bg-card-bg-active hover:text-text-primary";
-const compactButtonActiveClass = "bg-card-bg-active text-text-primary";
 const COMPACT_ACTIVITY_CHEVRON_SIZE = 16;
 
-function compactButtonClass(options: { stretch: boolean; active?: boolean }): string {
+function compactButtonClass(options: {
+  stretch: boolean;
+  active?: boolean;
+  mutedIcon?: boolean;
+}): string {
   const widthClass = options.stretch ? "min-w-0 w-full" : "w-8 shrink-0";
-  const toneClass = options.active ? compactButtonActiveClass : compactButtonIdleClass;
+  const toneClass = options.mutedIcon
+    ? compactChevronClass
+    : options.active
+      ? compactActionCurrentClass
+      : compactActionIdleClass;
   return `${compactButtonBaseClass} ${toneClass} ${widthClass}`;
 }
 
@@ -156,6 +167,7 @@ const CompactActivityItem = React.memo<CompactActivityItemProps>(function Compac
             to={route}
             aria-label={label}
             aria-current={isActive ? "page" : undefined}
+            data-icon-tone="active"
             className={compactButtonClass({ stretch: true, active: isActive })}
           >
             {icon}
@@ -282,7 +294,7 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
             onClick={onToggle}
             aria-expanded={false}
             aria-label={t("nav.activity")}
-            className={compactButtonClass({ stretch: false })}
+            className={compactButtonClass({ stretch: false, mutedIcon: true })}
             data-testid="sidebar-activity-compact-toggle"
           >
             <Icon

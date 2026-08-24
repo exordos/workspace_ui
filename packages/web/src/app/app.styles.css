@@ -831,6 +831,30 @@ button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn)
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
 }
 
+/*
+ * Active icon-only controls use a bright glyph like primary text.
+ * The base preset above applies text-icon-base and would otherwise override
+ * text-text-primary on selected notification, top-bar, and pressed controls.
+ *
+ * Chevrons and idle siblings have no current, checked, or pressed state.
+ * Chat cards are not icon-only buttons, so this rule does not affect them.
+ * data-icon-tone="active" explicitly opts in a button or link with one SVG.
+ */
+button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn):not(
+    .composer-mode-tab-btn
+  ):not([class*="gap-"]):has(> svg):not(:has(> *:not(svg))):is(
+    [aria-checked="true"],
+    [aria-current]:not([aria-current="false"]),
+    [aria-pressed="true"],
+    [data-icon-tone="active"]
+  ),
+a:not([data-icon-hover="custom"]):not([class*="gap-"]):has(> svg):not(:has(> *:not(svg))):is(
+    [aria-current]:not([aria-current="false"]),
+    [data-icon-tone="active"]
+  ) {
+  @apply text-icon-active;
+}
+
 /* Skip-to-content link — visible only on keyboard focus */
 .skip-link {
   position: absolute;

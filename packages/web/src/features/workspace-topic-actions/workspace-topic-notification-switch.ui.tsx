@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import {
+  getNotificationLevelSegmentToneClass,
   getNotificationLevelSwitchSizeStyles,
   getTopicVisibilityLevelOptions,
   type NotificationLevelSwitchSize,
@@ -90,11 +91,7 @@ const TopicVisibilitySegment = React.memo<TopicVisibilitySegmentProps>(
         title={label}
         disabled={disabled}
         onClick={() => onSelect(option.level)}
-        className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${
-          selected
-            ? "bg-card-bg text-text-primary"
-            : "text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
-        } disabled:cursor-not-allowed disabled:opacity-50`}
+        className={`focus-visible:ring-accent/40 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 ${segmentButtonClass} ${getNotificationLevelSegmentToneClass(selected)} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <Icon name={option.icon} size={iconSize} className="shrink-0 text-current" />
       </button>

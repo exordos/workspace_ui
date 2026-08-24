@@ -445,6 +445,23 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
+  it("keeps the channel tab compact and expands the DM user list to 80vh", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);
+
+    useWorkspaceForwardMessageStore.getState().open({ messageUuids: [MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+
+    await waitForForwardMessageInStore();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className.split(" ")).not.toContain("h-[80vh]");
+    expect(screen.queryByTestId("workspace-forward-user-list")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "DM" }));
+    expect(dialog.className.split(" ")).toContain("h-[80vh]");
+    expect(screen.getByTestId("workspace-forward-user-list")).toHaveClass("flex-1");
+  });
+
   it("sends a direct forward through an existing private stream default topic", async () => {
     const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
     const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);

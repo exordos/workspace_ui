@@ -1,7 +1,11 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { resolveTopBarSectionButtonClassName } from "./top-bar.lib";
+import {
+  resolveTopBarSectionButtonClassName,
+  resolveTopBarSectionButtonLayoutClassName,
+  TOP_BAR_SECTION_ICON_SIZE_PX,
+} from "./top-bar.lib";
 import type { TopBarSectionButtonProps } from "./top-bar.types";
 
 export const TopBarSectionButton = React.memo<TopBarSectionButtonProps>(
@@ -16,11 +20,11 @@ export const TopBarSectionButton = React.memo<TopBarSectionButtonProps>(
         onClick={handleClick}
         disabled={!available}
         title={!available ? t("app.webModeUnavailable") : undefined}
-        className={`flex h-10 w-10 items-center justify-center rounded-lg opacity-100 transition-colors ${resolveTopBarSectionButtonClassName(isActive, available)}`}
+        className={`flex shrink-0 items-center justify-center opacity-100 transition-colors ${resolveTopBarSectionButtonLayoutClassName()} ${resolveTopBarSectionButtonClassName(isActive, available)}`}
         aria-label={label}
         aria-current={isActive ? "page" : undefined}
       >
-        <Icon name={icon} size={24} className="text-current" />
+        <Icon name={icon} size={TOP_BAR_SECTION_ICON_SIZE_PX} className="text-current" />
       </button>
     );
   },

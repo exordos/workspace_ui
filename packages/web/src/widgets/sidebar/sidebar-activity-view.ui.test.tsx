@@ -59,13 +59,32 @@ describe("SidebarActivityView compact rail", () => {
 
     const inbox = screen.getByRole("link", { name: "Inbox" });
     expect(inbox).toHaveAttribute("aria-current", "page");
-    expect(inbox).toHaveClass("bg-card-bg-active");
+    expect(inbox).toHaveClass("bg-card-bg-active", "text-icon-active");
     expect(inbox).not.toHaveClass("border");
 
     const mentions = screen.getByRole("link", { name: "Mentions" });
     expect(mentions).not.toHaveAttribute("aria-current");
-    expect(mentions).toHaveClass("bg-card-bg");
+    expect(mentions).toHaveClass("bg-card-bg", "text-icon-active");
     expect(mentions).not.toHaveClass("bg-card-bg-active");
+
+    const chevron = screen.getByTestId("sidebar-activity-compact-toggle");
+    expect(chevron).toHaveClass("text-text-muted");
+    expect(chevron).not.toHaveClass("text-icon-active");
+  });
+
+  it("keeps compact activity action icons bright on a chat route", () => {
+    renderCompact("/org/acme/project/project-1/channel/general");
+
+    const list = screen.getByRole("list", { name: "My Activity" });
+    const actionLinks = list.querySelectorAll("a");
+    expect(actionLinks.length).toBeGreaterThan(1);
+    actionLinks.forEach((link) => {
+      expect(link).toHaveClass("text-icon-active");
+      expect(link).toHaveAttribute("data-icon-tone", "active");
+      expect(link).not.toHaveAttribute("aria-current");
+    });
+
+    expect(screen.getByTestId("sidebar-activity-compact-toggle")).toHaveClass("text-text-muted");
   });
 
   it("does not wrap compact icons in a horizontal scroll viewport", () => {

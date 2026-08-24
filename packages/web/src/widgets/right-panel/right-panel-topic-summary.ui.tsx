@@ -1,11 +1,31 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { WorkspaceRightPanelTopicSummaryView } from "~/entities/messenger/messenger-right-panel.lib";
+import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { t } from "~/i18n/i18n";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { Icon } from "~/shared/ui/icon";
 
 interface RightPanelTopicSummaryProps {
   readonly summary: WorkspaceRightPanelTopicSummaryView;
   readonly onOpenSettings?: () => void;
+}
+
+function TopicSummaryMarkdown({ markdown }: { readonly markdown: string }) {
+  const rendered = useMemo(
+    () => renderWorkspaceMessageBody(parseWorkspaceMessageBody(markdown)),
+    [markdown],
+  );
+
+  return (
+    <div className="text-xs leading-5 text-text-primary [&_[data-message-body='true']]:text-xs [&_[data-message-body='true']]:leading-5 [&_pre]:!text-xs">
+      <WorkspaceMessageBody
+        html={rendered.html}
+        metadata={rendered.metadata}
+        useInlineMeta={false}
+      />
+    </div>
+  );
 }
 
 export function RightPanelTopicSummary({ summary, onOpenSettings }: RightPanelTopicSummaryProps) {
@@ -56,9 +76,7 @@ export function RightPanelTopicSummary({ summary, onOpenSettings }: RightPanelTo
           className="mt-3 max-h-[218px] overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated px-2 py-2"
         >
           {summary.text != null ? (
-            <p className="whitespace-pre-wrap text-xs leading-5 text-text-primary">
-              {summary.text}
-            </p>
+            <TopicSummaryMarkdown markdown={summary.text} />
           ) : (
             <p className="text-xs leading-5 text-text-muted">
               {summary.enabled

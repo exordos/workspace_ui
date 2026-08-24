@@ -280,6 +280,39 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.getByText("Support queue is clear.")).toBeInTheDocument();
   });
 
+  it("renders a topic summary as sanitized Markdown", () => {
+    const { container } = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: "topic-markdown",
+            topicName: "Markdown",
+            text: [
+              "## Decision",
+              "",
+              "The **release** is ready.",
+              "",
+              "- Web",
+              "- Desktop",
+              "",
+              '<script data-summary-script="true">alert("unsafe")</script>',
+            ].join("\n"),
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    const summary = screen.getByTestId("topic-summary-content");
+    expect(summary.querySelector("h2")).toHaveTextContent("Decision");
+    expect(summary.querySelector("strong")).toHaveTextContent("release");
+    expect(summary.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("[data-summary-script='true']")).toBeNull();
+    expect(summary).toHaveTextContent('<script data-summary-script="true">');
+  });
+
   it("opens the combined topic and common summary settings without collapsing the summary", async () => {
     seedWorkspaceAuth();
     const currentTopic = createTopic();
@@ -574,7 +607,7 @@ describe("RightPanelWorkspaceInfo", () => {
     // Figma members block: title + person_add only (24px glyph in 32px hit area), no profile icon.
     seedWorkspaceAuth();
 
-    const { container } = renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
     const membersHeading = screen.getByText("Members").closest("h3");
     expect(membersHeading).not.toBeNull();
@@ -586,7 +619,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(addIcon).not.toBeNull();
     expect(addIcon).toHaveAttribute("width", "24");
     expect(addIcon).toHaveAttribute("height", "24");
-    expect(container.querySelector('h3 svg[width="16"]')).toBeNull();
+    expect(membersHeading!.querySelector('svg[width="16"]')).toBeNull();
   });
 
   it("renders workspace direct private profile without channel-only actions", () => {

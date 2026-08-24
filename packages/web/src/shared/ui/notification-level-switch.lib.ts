@@ -63,6 +63,20 @@ export function getNotificationLevelSwitchSizeStyles(
   return NOTIFICATION_LEVEL_SWITCH_SIZE_STYLES[size];
 }
 
+/**
+ * A selected segment uses the bright icon-active glyph.
+ * Idle segments stay muted.
+ */
+export const NOTIFICATION_LEVEL_SEGMENT_SELECTED_CLASS = "bg-card-bg text-icon-active";
+export const NOTIFICATION_LEVEL_SEGMENT_IDLE_CLASS =
+  "text-text-muted hover:bg-sidebar-hover hover:text-text-primary";
+
+export function getNotificationLevelSegmentToneClass(selected: boolean): string {
+  return selected
+    ? NOTIFICATION_LEVEL_SEGMENT_SELECTED_CLASS
+    : NOTIFICATION_LEVEL_SEGMENT_IDLE_CLASS;
+}
+
 const STREAM_NOTIFICATION_OPTION_BY_LEVEL: Record<NotificationLevel, NotificationLevelOption> = {
   default: { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
   muted: { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },

@@ -28,6 +28,16 @@ describe("icon-only button preset contract", () => {
     expect(appStyles).toContain(':not([class*="gap-"])');
     expect(appStyles).toContain("text-icon-base");
   });
+
+  it("keeps selected icon-only controls on the bright icon-active token", () => {
+    // Default icon-only preset is more specific than Tailwind text-text-primary,
+    // so selected radios / current nav links need an explicit override.
+    expect(appStyles).toContain('[aria-checked="true"]');
+    expect(appStyles).toContain('[aria-current]:not([aria-current="false"])');
+    expect(appStyles).toContain('[aria-pressed="true"]');
+    expect(appStyles).toContain('[data-icon-tone="active"]');
+    expect(appStyles).toContain("text-icon-active");
+  });
 });
 
 describe("focus-outline styles contract", () => {
