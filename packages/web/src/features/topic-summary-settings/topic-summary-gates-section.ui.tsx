@@ -38,7 +38,13 @@ export function GatesSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
             className={`${ERROR_NOTICE_CLASS} flex flex-wrap items-center justify-between gap-2`}
           >
             <p role="alert">{t("topicSummarySettings.gates.loadFailed")}</p>
-            <Button type="button" variant="ghost" size="sm" onClick={vm.loadGates}>
+            <Button
+              type="button"
+              variant="neutral"
+              appearance="ghost"
+              size="sm"
+              onClick={vm.loadGates}
+            >
               {t("common.retry")}
             </Button>
           </div>
@@ -89,7 +95,8 @@ export function GatesSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
             <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-border-subtle pt-4">
               <Button
                 type="button"
-                variant="ghost"
+                variant="neutral"
+                appearance="ghost"
                 disabled={!gates.dirty || pending || denied}
                 onClick={vm.resetGatesDraft}
               >

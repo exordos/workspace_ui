@@ -502,7 +502,8 @@ export const LoginPage: React.FC = () => {
 
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               onClick={handleBackToCredentialsStep}
               disabled={loading}
               className="w-full"
@@ -523,7 +524,8 @@ export const LoginPage: React.FC = () => {
 
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               onClick={handleBackToCredentialsFromOtp}
               disabled={loading}
               className="w-full"

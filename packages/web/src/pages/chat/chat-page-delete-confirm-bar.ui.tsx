@@ -41,10 +41,10 @@ export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfir
         <span className="mt-1 block text-sm text-text-muted">{t("message.deleteCannotUndo")}</span>
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-2">
-        <Button type="button" tone="danger" size="md" onClick={onConfirm}>
+        <Button type="button" variant="danger" appearance="filled" size="md" onClick={onConfirm}>
           {t("message.delete")}
         </Button>
-        <Button type="button" tone="neutral" size="md" onClick={onCancel}>
+        <Button type="button" variant="neutral" appearance="filled" size="md" onClick={onCancel}>
           {t("common.cancel")}
         </Button>
       </span>

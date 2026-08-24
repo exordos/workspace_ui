@@ -51,7 +51,8 @@ export const IncomingCallCompact: React.FC<IncomingCallCompactProps> = ({
         <div className="flex items-center justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="neutral"
+            appearance="ghost"
             size="sm"
             onClick={onDecline}
             data-testid="incoming-call-decline"
@@ -61,6 +62,7 @@ export const IncomingCallCompact: React.FC<IncomingCallCompactProps> = ({
           <Button
             type="button"
             variant="primary"
+            appearance="filled"
             size="sm"
             onClick={onAccept}
             data-testid="incoming-call-accept"

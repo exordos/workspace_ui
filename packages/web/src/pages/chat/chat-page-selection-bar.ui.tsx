@@ -50,12 +50,20 @@ export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
       </span>
       <div className="flex items-center gap-2.5">
         {/* Keep selection actions at the same height as the delete-confirm actions. */}
-        <Button type="button" tone="neutral" size="md" className="shrink-0" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="neutral"
+          appearance="filled"
+          size="md"
+          className="shrink-0"
+          onClick={onCancel}
+        >
           {t("common.cancel")}
         </Button>
         <Button
           type="button"
-          tone="neutral"
+          variant="neutral"
+          appearance="filled"
           size="md"
           className="shrink-0"
           leadingIcon={<Icon name="forward" size={28} className="text-current" />}
@@ -68,7 +76,8 @@ export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
         {DELETE_ACTION_AVAILABLE && !deleteDisabled ? (
           <Button
             type="button"
-            tone="danger"
+            variant="danger"
+            appearance="filled"
             size="md"
             className="shrink-0"
             leadingIcon={<Icon name="delete" size={28} className="text-current" />}

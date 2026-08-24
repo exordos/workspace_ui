@@ -225,7 +225,13 @@ function EndpointEditor({
           </p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2 border-t border-border-subtle pt-4 md:col-span-2">
-          <Button type="button" variant="ghost" disabled={pending} onClick={cancel}>
+          <Button
+            type="button"
+            variant="neutral"
+            appearance="ghost"
+            disabled={pending}
+            onClick={cancel}
+          >
             {t("common.cancel")}
           </Button>
           <Button type="button" disabled={pending || hasValidationErrors} onClick={submit}>
@@ -338,7 +344,8 @@ function EndpointCard({
         <div className="flex shrink-0 gap-1">
           <Button
             type="button"
-            variant="ghost"
+            variant="neutral"
+            appearance="ghost"
             size="sm"
             disabled={endpointActionsDisabled}
             onClick={() => vm.startEdit(endpoint.uuid)}
@@ -347,7 +354,8 @@ function EndpointCard({
           </Button>
           <Button
             type="button"
-            variant="ghost"
+            variant="neutral"
+            appearance="ghost"
             size="sm"
             disabled={endpointActionsDisabled}
             onClick={() => onDeleteCandidateChange(endpoint.uuid)}
@@ -368,7 +376,8 @@ function EndpointCard({
           <div className="mt-3 flex justify-end gap-2">
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               size="sm"
               onClick={() => onDeleteCandidateChange(null)}
             >
@@ -440,7 +449,13 @@ export function EndpointsSettingsSection({ vm }: Readonly<{ vm: UseTopicSummaryE
             className={`${ERROR_NOTICE_CLASS} flex flex-wrap items-center justify-between gap-2`}
           >
             <p role="alert">{loadError ?? t("topicSummarySettings.endpoints.loadFailed")}</p>
-            <Button type="button" variant="ghost" size="sm" onClick={vm.reload}>
+            <Button
+              type="button"
+              variant="neutral"
+              appearance="ghost"
+              size="sm"
+              onClick={vm.reload}
+            >
               {t("common.retry")}
             </Button>
           </div>

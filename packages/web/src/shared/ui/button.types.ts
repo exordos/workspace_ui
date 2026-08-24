@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonVariant = "primary" | "ghost";
-export type ButtonTone = "accent" | "neutral" | "danger";
+export type ButtonVariant = "primary" | "neutral" | "danger";
+export type ButtonAppearance = "filled" | "outline" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonBehaviorProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -11,17 +11,10 @@ interface ButtonBehaviorProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
-interface LegacyButtonStyleProps {
+interface ButtonStyleProps {
   variant?: ButtonVariant;
-  appearance?: never;
-  tone?: never;
-  size?: Exclude<ButtonSize, "lg">;
-}
-
-interface SemanticButtonStyleProps {
-  variant?: never;
-  tone?: ButtonTone;
+  appearance?: ButtonAppearance;
   size?: ButtonSize;
 }
 
-export type ButtonProps = ButtonBehaviorProps & (LegacyButtonStyleProps | SemanticButtonStyleProps);
+export type ButtonProps = ButtonBehaviorProps & ButtonStyleProps;

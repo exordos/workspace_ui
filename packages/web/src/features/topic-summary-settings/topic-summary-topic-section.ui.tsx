@@ -72,7 +72,8 @@ export function TopicSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
             </span>
             <Button
               type="button"
-              variant="ghost"
+              variant="neutral"
+              appearance="ghost"
               size="sm"
               disabled={pending || denied || draft.summarySystemPrompt == null}
               onClick={() => vm.setTopicSystemPrompt(null)}
@@ -117,7 +118,8 @@ export function TopicSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle pt-4">
           <Button
             type="button"
-            variant="ghost"
+            variant="neutral"
+            appearance="ghost"
             disabled={!dirty || pending || denied}
             onClick={vm.resetTopicDraft}
           >

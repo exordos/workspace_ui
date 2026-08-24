@@ -5,12 +5,12 @@ import { Button } from "./button";
 
 const SEMANTIC_CASES = [
   {
-    tone: "accent",
+    variant: "primary",
     classes: ["bg-accent", "text-on-accent", "hover:bg-accent/90", "active:bg-accent/80"],
     disabledClasses: ["disabled:hover:bg-accent", "disabled:active:bg-accent"],
   },
   {
-    tone: "neutral",
+    variant: "neutral",
     classes: [
       "bg-card-bg-active",
       "text-text-primary",
@@ -27,14 +27,52 @@ const SEMANTIC_CASES = [
     ],
   },
   {
-    tone: "danger",
+    variant: "danger",
     classes: ["bg-danger", "text-white", "hover:bg-danger/90", "active:bg-danger/80"],
     disabledClasses: ["disabled:hover:bg-danger", "disabled:active:bg-danger"],
   },
 ] as const;
 
+const APPEARANCE_CASES = [
+  {
+    appearance: "filled",
+    variant: "primary",
+    classes: ["bg-accent", "text-on-accent"],
+  },
+  {
+    appearance: "outline",
+    variant: "primary",
+    classes: ["border", "border-accent", "bg-transparent", "text-accent"],
+  },
+  {
+    appearance: "outline",
+    variant: "neutral",
+    classes: ["border", "border-border-subtle", "bg-transparent", "text-text-primary"],
+  },
+  {
+    appearance: "outline",
+    variant: "danger",
+    classes: ["border", "border-danger/30", "bg-transparent", "text-danger"],
+  },
+  {
+    appearance: "ghost",
+    variant: "neutral",
+    classes: ["bg-transparent", "text-text-muted", "hover:bg-bg-elevated/60"],
+  },
+  {
+    appearance: "ghost",
+    variant: "primary",
+    classes: ["bg-transparent", "text-accent", "hover:bg-accent/10"],
+  },
+  {
+    appearance: "ghost",
+    variant: "danger",
+    classes: ["bg-transparent", "text-danger", "hover:bg-danger/10"],
+  },
+] as const;
+
 describe("Button", () => {
-  it("keeps the default button as the legacy primary medium button", () => {
+  it("uses primary filled medium as the default", () => {
     render(<Button data-testid="default-button">Connect</Button>);
 
     expect(screen.getByTestId("default-button")).toHaveClass(
@@ -48,38 +86,11 @@ describe("Button", () => {
     expect(screen.getByTestId("default-button")).not.toHaveAttribute("type");
   });
 
-  it("keeps legacy primary and ghost styles pixel-compatible", () => {
-    render(
-      <>
-        <Button variant="primary" data-testid="primary-button">
-          Connect
-        </Button>
-        <Button variant="ghost" data-testid="ghost-button">
-          Cancel
-        </Button>
-      </>,
-    );
-
-    const button = screen.getByTestId("primary-button");
-    expect(button).toHaveClass("bg-accent", "text-on-accent", "font-semibold");
-    expect(button).not.toHaveClass("text-black");
-    // Opacity hover washes label + icon; fill-only hover keeps text solid
-    expect(button.className).not.toMatch(/hover:opacity-/);
-    expect(button.className).not.toMatch(/hover:bg-accent-soft/);
-    expect(button.className).toMatch(/hover:bg-accent\/90/);
-    expect(screen.getByTestId("ghost-button")).toHaveClass(
-      "bg-transparent",
-      "text-text-muted",
-      "hover:bg-bg-elevated/60",
-      "hover:text-text-primary",
-    );
-  });
-
   it.each(SEMANTIC_CASES)(
-    "keeps the complete filled $tone state contract",
-    ({ tone, classes, disabledClasses }) => {
+    "supports the complete filled $variant state contract",
+    ({ variant, classes, disabledClasses }) => {
       render(
-        <Button tone={tone} data-testid="semantic-button">
+        <Button variant={variant} appearance="filled" data-testid="semantic-button">
           Action
         </Button>,
       );
@@ -98,46 +109,31 @@ describe("Button", () => {
     },
   );
 
-  it("maps the neutral filled large style to selection action states", () => {
-    render(
-      <Button tone="neutral" size="lg" data-testid="selection-button">
-        Forward
-      </Button>,
-    );
+  it.each(APPEARANCE_CASES)(
+    "supports the $appearance $variant combination",
+    ({ appearance, variant, classes }) => {
+      render(
+        <Button appearance={appearance} variant={variant} data-testid="appearance-button">
+          Action
+        </Button>,
+      );
 
-    expect(screen.getByTestId("selection-button")).toHaveClass(
-      "h-10",
-      "rounded-lg",
-      "border",
-      "border-transparent",
-      "bg-card-bg-active",
-      "px-4",
-      "text-sm",
-      "leading-5",
-      "hover:border-border-subtle",
-      "hover:bg-bg-elevated",
-      "hover:ring-1",
-      "active:border-accent-soft",
-      "active:bg-card-bg",
-      "active:ring-2",
-      "disabled:opacity-50",
-      "disabled:hover:border-transparent",
-      "disabled:hover:bg-card-bg-active",
-      "disabled:hover:ring-0",
-      "disabled:active:border-transparent",
-      "disabled:active:bg-card-bg-active",
-      "disabled:active:ring-0",
-    );
-  });
+      expect(screen.getByTestId("appearance-button")).toHaveClass(...classes);
+    },
+  );
 
-  it("supports large geometry", () => {
+  it.each([
+    ["sm", "h-8", "px-3", "text-xs"],
+    ["md", "h-9", "px-4", "text-sm"],
+    ["lg", "h-10", "px-4", "text-sm", "leading-5"],
+  ] as const)("supports %s geometry", (size, ...classes) => {
     render(
-      <Button tone="accent" size="lg" data-testid="large-button">
+      <Button variant="neutral" appearance="filled" size={size} data-testid="sized-button">
         Continue
       </Button>,
     );
 
-    expect(screen.getByTestId("large-button")).toHaveClass("h-10", "px-4", "text-sm", "leading-5");
+    expect(screen.getByTestId("sized-button")).toHaveClass(...classes);
   });
 
   it("forwards native props and a button ref", () => {
