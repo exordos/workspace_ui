@@ -9,7 +9,7 @@ describe("ChatPageDeleteConfirmBar", () => {
     setLocale("en");
   });
 
-  it("shows the warning and keeps delete before cancel with a neutral cancel style", async () => {
+  it("shows the warning and keeps filled semantic delete and cancel styles in order", async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();
     const onConfirm = vi.fn();
@@ -28,13 +28,12 @@ describe("ChatPageDeleteConfirmBar", () => {
     );
     const buttons = within(dialog).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Delete", "Cancel"]);
-    expect(buttons[0]).toHaveClass("rounded-lg", "px-3", "py-1.5", "text-danger");
+    expect(buttons[0]).toHaveClass("h-9", "px-4", "text-sm", "bg-danger", "text-white");
     expect(buttons[1]).toHaveClass(
-      "rounded-lg",
-      "px-3",
-      "py-1.5",
-      "bg-transparent",
-      "border-border-subtle",
+      "h-9",
+      "px-4",
+      "text-sm",
+      "bg-card-bg-active",
       "text-text-primary",
     );
 

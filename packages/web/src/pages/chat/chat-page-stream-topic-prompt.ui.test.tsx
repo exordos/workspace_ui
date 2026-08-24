@@ -29,9 +29,21 @@ describe("ChatPageStreamTopicPrompt", () => {
     render(<ChatPageStreamTopicPrompt topics={[]} onSelectTopic={vi.fn()} />);
 
     const prompt = screen.getByTestId("stream-topic-prompt");
+    expect(prompt).toHaveClass("border-t", "border-border-subtle");
     expect(prompt).not.toHaveClass("bg-bg-elevated");
     expect(prompt).not.toHaveClass("bg-card-bg");
     expect(prompt).not.toHaveClass("bg-bg");
+  });
+
+  it("omits its top border when the preceding notice owns the separator", () => {
+    render(
+      <ChatPageStreamTopicPrompt topics={[]} onSelectTopic={vi.fn()} topBorderVisible={false} />,
+    );
+
+    expect(screen.getByTestId("stream-topic-prompt")).not.toHaveClass(
+      "border-t",
+      "border-border-subtle",
+    );
   });
 
   it("renders a scrollable topic rail and selects a topic", () => {

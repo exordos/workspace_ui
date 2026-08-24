@@ -9,15 +9,19 @@ import { t } from "~/i18n/i18n";
 interface ChatPageStreamTopicPromptProps {
   topics: readonly MessengerSidebarTopicItem[];
   onSelectTopic: (topicUuid: MessengerUuid) => void;
+  topBorderVisible?: boolean;
 }
 
 export const ChatPageStreamTopicPrompt = React.memo(function ChatPageStreamTopicPrompt({
   topics,
   onSelectTopic,
+  topBorderVisible = true,
 }: ChatPageStreamTopicPromptProps) {
   return (
     <div
-      className="flex min-h-14 w-full items-center gap-3 border-t border-border-subtle px-4 py-2.5 text-sm text-text-muted"
+      className={`flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-sm text-text-muted ${
+        topBorderVisible ? "border-t border-border-subtle" : ""
+      }`}
       data-testid="stream-topic-prompt"
     >
       <span className={topics.length > 0 ? "max-w-64 shrink-0 truncate" : "w-full text-center"}>

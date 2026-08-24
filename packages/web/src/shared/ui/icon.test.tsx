@@ -106,6 +106,21 @@ describe("Icon", () => {
     expect(topicFollow).not.toMatch(/viewBox="0 0 16 16"/);
   });
 
+  it("keeps reply and forward on the distinct Figma 28×28 directions", () => {
+    const reply = readFileSync(resolve(ICONS_DIR, "reply.svg"), "utf8");
+    const forward = readFileSync(resolve(ICONS_DIR, "forward.svg"), "utf8");
+    const replyPath = /<path\s+[^>]*d="([^"]+)"[^>]*fill="currentColor"/.exec(reply)?.[1];
+    const forwardPath = /<path\s+[^>]*d="([^"]+)"[^>]*fill="currentColor"/.exec(forward)?.[1];
+
+    expect(reply).toMatch(/viewBox="0 0 28 28"/);
+    expect(forward).toMatch(/viewBox="0 0 28 28"/);
+    expect(reply).toMatch(/fill="currentColor"/);
+    expect(forward).toMatch(/fill="currentColor"/);
+    expect(replyPath).toContain("3.52041 12.94");
+    expect(forwardPath).toContain("24.4796 12.94");
+    expect(replyPath).not.toBe(forwardPath);
+  });
+
   it("uses tight Figma viewBoxes for edit-avatar camera/gallery/delete glyphs", () => {
     // Figma 12719:27019 / 12719:27025 / 12719:27525 — glyphs without 32px artboard padding,
     // otherwise size={24} draws icons noticeably smaller/heavier than neighbors.
