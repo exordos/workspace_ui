@@ -77,6 +77,39 @@ export function addWorkspaceReplyTab(
   };
 }
 
+export function appendWorkspaceReplyTabs(
+  session: WorkspaceReplySession,
+  entries: readonly {
+    quote: WorkspaceReplyQuote;
+    identity: WorkspaceReplyTabIdentity;
+  }[],
+  initialAnswer = "",
+): WorkspaceReplySession | null {
+  if (entries.length === 0) return null;
+
+  const normalizedSession = normalizeWorkspaceReplySession(session);
+  const existingTabIds = new Set(normalizedSession.tabs.map((tab) => tab.id));
+  const nextTabs: WorkspaceReplyTab[] = [];
+
+  for (const [index, entry] of entries.entries()) {
+    const tab = createWorkspaceReplyTab(entry.quote, entry.identity);
+    if (tab == null || existingTabIds.has(tab.id)) return null;
+    existingTabIds.add(tab.id);
+    nextTabs.push({
+      ...tab,
+      answer: normalizedSession.tabs.length === 0 && index === 0 ? initialAnswer : tab.answer,
+    });
+  }
+
+  const activeTab = nextTabs.at(-1);
+  if (activeTab == null) return null;
+
+  return {
+    tabs: [...normalizedSession.tabs, ...nextTabs],
+    activeTabId: activeTab.id,
+  };
+}
+
 export function setWorkspaceReplyAnswer(
   session: WorkspaceReplySession,
   answer: string,

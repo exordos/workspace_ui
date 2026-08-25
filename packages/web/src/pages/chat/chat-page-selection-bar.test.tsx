@@ -17,8 +17,10 @@ const DELETE_MARKER_LAYOUT_CLASS_NAMES = [
 
 const createProps = (overrides: Partial<ComponentProps<typeof ChatPageSelectionBar>> = {}) => ({
   selectedCount: 1,
+  replyDisabled: false,
   forwardDisabled: false,
   deleteDisabled: false,
+  onReply: vi.fn(),
   onForward: vi.fn(),
   onDelete: vi.fn(),
   onCancel: vi.fn(),
@@ -97,16 +99,24 @@ describe("ChatPageSelectionBar", () => {
     expect(marker).toHaveClass(...DELETE_MARKER_LAYOUT_CLASS_NAMES);
   });
 
-  it("renders actions in Cancel then Forward order with the forward icon", () => {
+  it("renders actions in Cancel, Reply, then Forward order with their icons", () => {
     render(<ChatPageSelectionBar {...createProps({ selectedCount: 2 })} />);
 
     const buttons = within(screen.getByRole("toolbar")).getAllByRole("button");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
     const cancelButton = buttons[0];
-    const forwardButton = buttons[1];
-    if (!cancelButton || !forwardButton) throw new Error("Selection actions are missing");
+    const replyButton = buttons[1];
+    const forwardButton = buttons[2];
+    if (!cancelButton || !replyButton || !forwardButton)
+      throw new Error("Selection actions are missing");
     expect(cancelButton).toHaveAccessibleName("Cancel");
+    expect(replyButton).toHaveAccessibleName("Reply");
     expect(forwardButton).toHaveAccessibleName("Forward");
+    const replyIcon = replyButton.querySelector("svg");
+    expect(replyIcon).toBeInTheDocument();
+    expect(replyIcon).toHaveAttribute("width", "28");
+    expect(replyIcon).toHaveAttribute("height", "28");
+    expect(replyIcon).toHaveAttribute("viewBox", "0 0 28 28");
     const forwardIcon = forwardButton.querySelector("svg");
     expect(forwardIcon).toBeInTheDocument();
     expect(forwardIcon).toHaveAttribute("width", "28");
@@ -117,7 +127,7 @@ describe("ChatPageSelectionBar", () => {
       expect.stringContaining("24.4796 12.94"),
     );
     expect(cancelButton.parentElement).toHaveClass("gap-2.5");
-    for (const button of [cancelButton, forwardButton]) {
+    for (const button of [cancelButton, replyButton, forwardButton]) {
       expect(button).toHaveClass(
         "h-9",
         "shrink-0",
@@ -146,30 +156,36 @@ describe("ChatPageSelectionBar", () => {
     expect(forwardButton).toHaveAttribute("data-icon-hover", "custom");
   });
 
-  it("invokes the visible Cancel and Forward handlers", async () => {
+  it("invokes the visible Cancel, Reply, and Forward handlers", async () => {
     const user = userEvent.setup();
     const onForward = vi.fn();
+    const onReply = vi.fn();
     const onCancel = vi.fn();
-    render(<ChatPageSelectionBar {...createProps({ onForward, onCancel })} />);
+    render(<ChatPageSelectionBar {...createProps({ onForward, onReply, onCancel })} />);
 
     const toolbar = screen.getByRole("toolbar");
     await user.click(within(toolbar).getByRole("button", { name: "Cancel" }));
+    await user.click(within(toolbar).getByRole("button", { name: "Reply" }));
     await user.click(within(toolbar).getByRole("button", { name: "Forward" }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onReply).toHaveBeenCalledTimes(1);
     expect(onForward).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the forward disabled state and only invokes visible handlers", async () => {
     const user = userEvent.setup();
     const onForward = vi.fn();
+    const onReply = vi.fn();
     const onDelete = vi.fn();
     const onCancel = vi.fn();
     render(
       <ChatPageSelectionBar
         {...createProps({
           selectedCount: 2,
+          replyDisabled: true,
           forwardDisabled: true,
+          onReply,
           onForward,
           onDelete,
           onCancel,
@@ -178,7 +194,9 @@ describe("ChatPageSelectionBar", () => {
     );
 
     const toolbar = screen.getByRole("toolbar");
+    const reply = within(toolbar).getByRole("button", { name: "Reply" });
     const forward = within(toolbar).getByRole("button", { name: "Forward" });
+    expect(reply).toBeDisabled();
     const cancel = within(toolbar).getByRole("button", { name: "Cancel" });
     expect(forward).toBeDisabled();
     expect(forward).toHaveClass(
@@ -197,16 +215,17 @@ describe("ChatPageSelectionBar", () => {
 
     await user.click(cancel);
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onReply).not.toHaveBeenCalled();
     expect(onForward).not.toHaveBeenCalled();
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("keeps Delete and Reply completely out of the DOM while unavailable", () => {
+  it("keeps Delete out of the DOM while unavailable", () => {
     render(<ChatPageSelectionBar {...createProps({ selectedCount: 3 })} />);
 
     const toolbar = screen.getByRole("toolbar", { name: "Selected: 3" });
     expect(within(toolbar).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    expect(within(toolbar).queryByRole("button", { name: "Reply" })).not.toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "Reply" })).toBeInTheDocument();
     expect(within(toolbar).queryByText("Delete")).not.toBeInTheDocument();
   });
 

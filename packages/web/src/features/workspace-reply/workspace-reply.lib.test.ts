@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addWorkspaceReplyTab,
+  appendWorkspaceReplyTabs,
   buildWorkspaceReplyMarkdown,
   removeWorkspaceReplyTab,
   reorderWorkspaceReplyTab,
@@ -134,6 +135,86 @@ describe("workspace-reply.lib", () => {
       tabs: [tab(quoteA, "tab-a", "ответ А"), tab(quoteB, "tab-b", "")],
       activeTabId: "tab-b",
     });
+  });
+
+  it("appends selected quotes in insertion order and activates the last tab", () => {
+    const current = session(tab(quoteA, "tab-a", "answer A"), tab(quoteB, "tab-b", "answer B"));
+    const next = appendWorkspaceReplyTabs(current, [
+      {
+        quote: quoteC,
+        identity: { id: "tab-c", createdAt: "2026-07-14T10:02:00Z" },
+      },
+      {
+        quote: quoteA,
+        identity: { id: "tab-d", createdAt: "2026-07-14T10:03:00Z" },
+      },
+    ]);
+
+    expect(next).toEqual({
+      tabs: [
+        tab(quoteA, "tab-a", "answer A"),
+        tab(quoteB, "tab-b", "answer B"),
+        tab(quoteC, "tab-c", ""),
+        {
+          ...tab(quoteA, "tab-d", ""),
+          createdAt: "2026-07-14T10:03:00Z",
+        },
+      ],
+      activeTabId: "tab-d",
+    });
+  });
+
+  it("moves ordinary composer text into the first selected tab when the session is empty", () => {
+    const next = appendWorkspaceReplyTabs(
+      { tabs: [], activeTabId: null },
+      [
+        {
+          quote: quoteA,
+          identity: { id: "tab-a", createdAt: "2026-07-14T10:00:00Z" },
+        },
+        {
+          quote: quoteB,
+          identity: { id: "tab-b", createdAt: "2026-07-14T10:01:00Z" },
+        },
+      ],
+      "draft before reply",
+    );
+
+    expect(next?.tabs.map((tab) => tab.answer)).toEqual(["draft before reply", ""]);
+    expect(next?.activeTabId).toBe("tab-b");
+  });
+
+  it("rejects an invalid or duplicate local tab batch without changing the session", () => {
+    const current = session(tab(quoteA, "tab-a", "answer A"));
+
+    expect(
+      appendWorkspaceReplyTabs(current, [
+        {
+          quote: quoteB,
+          identity: { id: "tab-b", createdAt: "2026-07-14T10:01:00Z" },
+        },
+        {
+          quote: quoteC,
+          identity: { id: "tab-a", createdAt: "2026-07-14T10:02:00Z" },
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      appendWorkspaceReplyTabs(current, [
+        {
+          quote: quoteB,
+          identity: { id: "tab-b", createdAt: "2026-07-14T10:01:00Z" },
+        },
+        {
+          quote: quoteC,
+          identity: { id: "tab-b", createdAt: "2026-07-14T10:02:00Z" },
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      appendWorkspaceReplyTabs(current, [{ quote: quoteB, identity: { id: "", createdAt: "" } }]),
+    ).toBeNull();
+    expect(current).toEqual(session(tab(quoteA, "tab-a", "answer A")));
   });
 
   it("adds both tabs when their source message is the same", () => {

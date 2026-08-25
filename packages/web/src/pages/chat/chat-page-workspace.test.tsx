@@ -4691,6 +4691,59 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("appends selected messages while preserving restored Workspace reply editing", async () => {
+    const restoredMarkdown = [
+      `> [Alice](urn:user:${USER_UUID}) [wrote](urn:message:${MESSAGE_UUID}):`,
+      "> quoted A",
+      "",
+      "answer A",
+      "",
+      `> [Bob](urn:user:${USER_B_UUID}) [wrote](urn:message:${SECOND_MESSAGE_UUID}):`,
+      "> quoted B",
+      "",
+      "answer B",
+    ].join("\n");
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      {
+        ...createMessage(),
+        isOwn: true,
+        payload: { kind: "markdown", content: restoredMarkdown },
+      },
+      createSecondMessage(),
+      createThirdMessage(),
+    ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onEditMessage?.(MESSAGE_UUID);
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession?.preserveWorkspaceReplyContext).toBe(true);
+    });
+
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(THIRD_MESSAGE_UUID);
+    });
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    fireEvent.click(within(selectionToolbar).getByRole("button", { name: "Reply" }));
+
+    await waitFor(() => {
+      const session = captured.composerProps?.workspaceReplySession;
+      expect(captured.composerProps?.editSession?.preserveWorkspaceReplyContext).toBe(true);
+      expect(session?.tabs.map((tab) => tab.messageUuid)).toEqual([
+        MESSAGE_UUID,
+        SECOND_MESSAGE_UUID,
+        THIRD_MESSAGE_UUID,
+      ]);
+      expect(session?.tabs.map((tab) => tab.answer)).toEqual(["answer A", "answer B", ""]);
+      expect(session?.activeTabId).toBe(session?.tabs[2]?.id);
+      expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
+    });
+  });
+
   it("restores a new quote reference from the source message and author stores", async () => {
     const restoredMarkdown = [
       `[Stale author](urn:quote:${SECOND_MESSAGE_UUID}?text=%20%20selected%20fragment%20%20)`,
@@ -5435,7 +5488,7 @@ describe("ChatPage Workspace route", () => {
       within(selectionToolbar)
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["Cancel", "Forward"]);
+    ).toEqual(["Cancel", "Reply", "Forward"]);
     expect(captured.messageListProps?.selectionMode).toBe(true);
     await waitFor(() => expect(captured.composerProps?.joinedTop).toBe(true));
 
@@ -5468,6 +5521,80 @@ describe("ChatPage Workspace route", () => {
       expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
     });
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("appends selected Workspace messages as reply tabs in click order", async () => {
+    seedSecondMessage();
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.composerProps?.onComposerValueChange("draft before reply");
+      captured.messageListProps?.onToggleMessageSelection?.(SECOND_MESSAGE_UUID);
+      captured.messageListProps?.onToggleMessageSelection?.(MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 2" });
+    fireEvent.click(within(selectionToolbar).getByRole("button", { name: "Reply" }));
+
+    await waitFor(() => {
+      const session = captured.composerProps?.workspaceReplySession;
+      expect(session?.tabs.map((tab) => tab.messageUuid)).toEqual([
+        SECOND_MESSAGE_UUID,
+        MESSAGE_UUID,
+      ]);
+      expect(session?.tabs.map((tab) => tab.answer)).toEqual(["draft before reply", ""]);
+      expect(session?.activeTabId).toBe(session?.tabs[1]?.id);
+      expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
+      expect(captured.composerProps?.focusKey).toBe(session?.tabs[1]?.id);
+    });
+    const outgoingBody = captured.composerProps?.outgoingBodyOverride ?? "";
+    expect(outgoingBody.indexOf(`urn:quote:${SECOND_MESSAGE_UUID}`)).toBeLessThan(
+      outgoingBody.indexOf(`urn:quote:${MESSAGE_UUID}`),
+    );
+  });
+
+  it("keeps selection when a selected reply tab cannot be appended", async () => {
+    const now = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "",
+      replySession: {
+        activeTabId: `workspace-reply-tab:${now}:1`,
+        tabs: [
+          {
+            id: `workspace-reply-tab:${now}:1`,
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "workspace message",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "existing answer",
+          },
+        ],
+      },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.messageListProps?.onToggleMessageSelection?.(SECOND_MESSAGE_UUID);
+    });
+
+    const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
+    fireEvent.click(within(selectionToolbar).getByRole("button", { name: "Reply" }));
+
+    expect(screen.getByRole("toolbar", { name: "Selected: 1" })).toBeInTheDocument();
+    expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(1);
+    expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(1);
+    expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.answer).toBe("existing answer");
+    nowSpy.mockRestore();
   });
 
   it("keeps one shared separator between selection and an action alert", async () => {
@@ -5546,6 +5673,7 @@ describe("ChatPage Workspace route", () => {
 
     const selectionToolbar = await screen.findByRole("toolbar", { name: "Selected: 1" });
     const topicPrompt = screen.getByTestId("stream-topic-prompt");
+    expect(within(selectionToolbar).getByRole("button", { name: "Reply" })).toBeDisabled();
     expect(selectionToolbar).toHaveClass("border-b-0", "bg-composer-outer");
     expect(selectionToolbar).not.toHaveClass("border-b");
     expect(topicPrompt).toHaveClass("border-t", "border-border-subtle");

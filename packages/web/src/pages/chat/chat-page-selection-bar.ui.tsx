@@ -12,8 +12,10 @@ const DELETE_ACTION_AVAILABLE = false;
 
 export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
   selectedCount,
+  replyDisabled,
   forwardDisabled,
   deleteDisabled,
+  onReply,
   onForward,
   onDelete,
   onCancel,
@@ -59,6 +61,18 @@ export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
           onClick={onCancel}
         >
           {t("common.cancel")}
+        </Button>
+        <Button
+          type="button"
+          variant="neutral"
+          appearance="filled"
+          size="md"
+          className="shrink-0"
+          leadingIcon={<Icon name="reply" size={28} className="text-current" />}
+          disabled={replyDisabled}
+          onClick={onReply}
+        >
+          {t("message.reply")}
         </Button>
         <Button
           type="button"
