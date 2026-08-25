@@ -613,7 +613,7 @@ describe("WorkspaceMessageList", () => {
   it("exposes retry and remove actions for failed local outgoing messages", () => {
     const onRetryOutgoingMessage = vi.fn();
     const onRemoveOutgoingMessage = vi.fn();
-    render(
+    const { container } = render(
       <WorkspaceMessageList
         messages={[]}
         outgoingMessages={[
@@ -629,8 +629,25 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText("Retry send"));
-    fireEvent.click(screen.getByLabelText("Remove message"));
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+    const retryButton = screen.getByLabelText("Retry send");
+    const removeButton = screen.getByLabelText("Remove message");
+
+    expect(bubble).toHaveAttribute("data-outgoing-delivery-status", "failed");
+    expect(bubble).toHaveClass(
+      "bg-danger/20",
+      "ring-2",
+      "ring-inset",
+      "ring-danger/80",
+      "shadow-lg",
+      "shadow-danger/20",
+    );
+    expect(retryButton).toHaveClass("text-danger");
+    expect(removeButton).toHaveClass("text-danger");
+    expect(screen.queryByText("Not delivered")).not.toBeInTheDocument();
+
+    fireEvent.click(retryButton);
+    fireEvent.click(removeButton);
 
     expect(onRetryOutgoingMessage).toHaveBeenCalledWith("failed-local-message");
     expect(onRemoveOutgoingMessage).toHaveBeenCalledWith("failed-local-message");

@@ -14,7 +14,7 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
     message,
     onRetry,
     onRemove,
-  }: WorkspaceMessageOutgoingDeliveryIndicatorProps): React.ReactElement {
+  }: WorkspaceMessageOutgoingDeliveryIndicatorProps): React.ReactElement | null {
     if (message.status === "sending") {
       const label = t("message.sending");
       return (
@@ -30,16 +30,20 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
       );
     }
 
+    if (onRetry == null && onRemove == null) {
+      return null;
+    }
+
     return (
       <span
-        className="inline-flex items-center gap-0.5"
+        className="inline-flex items-center gap-0.5 text-danger"
         title={message.error ?? t("message.notDelivered")}
         data-outgoing-delivery-status="failed"
       >
         {onRetry != null ? (
           <button
             type="button"
-            className="rounded-sm text-text-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            className="hover:bg-danger/15 focus-visible:ring-danger/50 rounded-sm text-danger transition-colors hover:text-danger focus-visible:outline-none focus-visible:ring-2"
             title={t("message.retrySend")}
             aria-label={t("message.retrySend")}
             onClick={(event) => {
@@ -54,7 +58,7 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
         {onRemove != null ? (
           <button
             type="button"
-            className="rounded-sm text-text-muted hover:text-notice-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            className="hover:bg-danger/15 focus-visible:ring-danger/50 rounded-sm text-danger transition-colors hover:text-danger focus-visible:outline-none focus-visible:ring-2"
             title={t("message.removeFailedSend")}
             aria-label={t("message.removeFailedSend")}
             onClick={(event) => {
@@ -65,9 +69,6 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
           >
             <Icon name="delete" size={14} className="shrink-0" />
           </button>
-        ) : null}
-        {onRetry == null && onRemove == null ? (
-          <span className="text-[11px] text-notice-base">{t("message.notDelivered")}</span>
         ) : null}
       </span>
     );

@@ -112,7 +112,12 @@ function resolveBubbleBackgroundClassName(
   owner: WorkspaceMessageOwner,
   isJitsiCall: boolean,
   isSelected: boolean,
+  isFailedOutgoing: boolean,
 ): string {
+  if (isFailedOutgoing) {
+    return "bg-danger/20 ring-2 ring-inset ring-danger/80 shadow-lg shadow-danger/20";
+  }
+
   if (isSelected) {
     return owner === "own" ? "bg-msg-selected" : "bg-card-bg-active";
   }
@@ -129,11 +134,13 @@ function resolveBubbleClassName(
   isLastInGroup: boolean,
   isJitsiCall: boolean,
   isSelected: boolean,
+  isFailedOutgoing: boolean,
 ): string {
   return `${resolveBubbleShapeClassName(owner, isLastInGroup)} ${resolveBubbleBackgroundClassName(
     owner,
     isJitsiCall,
     isSelected,
+    isFailedOutgoing,
   )}`;
 }
 
@@ -394,7 +401,14 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       displayMessage.authorUuid,
       resolveAuthorLabel?.(displayMessage.authorUuid),
     );
-    const bubbleClassName = resolveBubbleClassName(owner, isLastInGroup, isJitsiCall, isSelected);
+    const isFailedOutgoing = outgoingMessage?.status === "failed";
+    const bubbleClassName = resolveBubbleClassName(
+      owner,
+      isLastInGroup,
+      isJitsiCall,
+      isSelected,
+      isFailedOutgoing,
+    );
     const bodyRef = useRef<HTMLDivElement>(null);
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
@@ -531,6 +545,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         className={`relative ${bubbleClassName}`}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
+        data-outgoing-delivery-status={outgoingMessage?.status}
         data-message-owner={owner}
         data-first-in-group={isFirstInGroup ? "true" : "false"}
         data-last-in-group={isLastInGroup ? "true" : "false"}
