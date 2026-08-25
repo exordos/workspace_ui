@@ -95,6 +95,7 @@ import { useWorkspaceVisibleMessageRead } from "~/features/workspace-message-rea
 import { createWorkspaceReplyEditRestoreController } from "~/features/workspace-reply/workspace-reply-edit-restore.lib";
 import {
   addWorkspaceReplyTab,
+  appendWorkspaceReplyTabs,
   buildWorkspaceReplyMarkdown,
   removeWorkspaceReplyTab,
   reorderWorkspaceReplyTab,
@@ -773,9 +774,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [],
   );
   const updateWorkspaceComposerDraft = useCallback(
-    (update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent): void => {
+    (
+      update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent | null,
+    ): boolean => {
       if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null)
-        return;
+        return false;
 
       const currentDraft = selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
@@ -787,10 +790,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           ? workspaceComposerDraftShadowRef.current.content
           : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
       const nextContent = update(currentContent);
+      if (nextContent == null) return false;
       setComposerDraftShadow(workspaceComposerDraftScopeKey, nextContent);
 
       if (isWorkspaceComposerDraftContentEmpty(nextContent)) {
-        if (currentDraft == null) return;
+        if (currentDraft == null) return true;
 
         // Keep the record until the entity queue has either deleted it or
         // recorded a conflict. Removing it here would lose the ETag needed
@@ -811,25 +815,27 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           useWorkspaceComposerDraftStore
             .getState()
             .completeDraftVisit(ownerKey, conversationId, currentDraft.draftUuid);
-          return;
+          return true;
         }
 
         useWorkspaceComposerDraftStore
           .getState()
           .clearDraftIfSnapshotMatches(ownerKey, conversationId, currentDraft.snapshotId);
-        return;
+        return true;
       }
 
       const nextDraft = useWorkspaceComposerDraftStore
         .getState()
         .setDraft(ownerKey, conversationId, nextContent, composerDraftTarget ?? undefined);
-      if (nextDraft == null || runtimeContext == null) return;
+      if (nextDraft == null) return false;
+      if (runtimeContext == null) return true;
 
       void syncWorkspaceComposerDraft({
         runtimeContext,
         getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
         draft: nextDraft,
       });
+      return true;
     },
     [
       composerDraftTarget,
@@ -3102,6 +3108,73 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const hasDeleteComposerNotice = pendingDeleteMessageUuid != null;
   const hasSelectionComposerNotice = selectedMessageUuids.size > 0;
   const showStreamTopicPrompt = selection.status === "conversation" && selection.kind === "stream";
+  const replyTargetReady =
+    runtimeContext != null &&
+    ownerKey != null &&
+    workspaceAttachmentTarget != null &&
+    !showStreamTopicPrompt;
+  const handleReplySelectedMessages = useCallback(() => {
+    const messageUuids = [...selectedMessageUuids];
+    if (messageUuids.length === 0 || !replyTargetReady) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      return;
+    }
+
+    const quotes: WorkspaceReplyQuote[] = [];
+    for (const messageUuid of messageUuids) {
+      const quote = resolveWorkspaceReplyQuote(messageUuid);
+      if (quote == null) return;
+      quotes.push(quote);
+    }
+
+    setActionError(null);
+    const entries = quotes.map((quote) => ({
+      quote,
+      identity: createWorkspaceReplyTabIdentity(),
+    }));
+
+    if (isRestoredWorkspaceReplyEdit) {
+      if (appendWorkspaceReplyTabs(workspaceReplySession, entries) == null) return;
+      setRestoredWorkspaceReplySession(
+        (current) =>
+          appendWorkspaceReplyTabs(current ?? EMPTY_WORKSPACE_REPLY_SESSION, entries) ?? current,
+      );
+      setWorkspaceReplyTabFocusKeySuppressed(false);
+      setSelectedMessageUuids(new Set());
+      return;
+    }
+
+    const applied = updateWorkspaceComposerDraft((content) => {
+      const hasExistingReplyTabs = content.replySession.tabs.length > 0;
+      const nextReplySession = appendWorkspaceReplyTabs(
+        content.replySession,
+        entries,
+        hasExistingReplyTabs ? "" : content.text,
+      );
+      if (nextReplySession == null) return null;
+      return {
+        ...content,
+        text: hasExistingReplyTabs ? content.text : "",
+        replySession: nextReplySession,
+      };
+    });
+    if (!applied) return;
+
+    setComposerEditMessageUuid(null);
+    setComposerEditSession(null);
+    setComposerEditAttachments([]);
+    setRestoredWorkspaceReplySession(null);
+    setWorkspaceReplyTabFocusKeySuppressed(false);
+    setSelectedMessageUuids(new Set());
+  }, [
+    createWorkspaceReplyTabIdentity,
+    isRestoredWorkspaceReplyEdit,
+    replyTargetReady,
+    resolveWorkspaceReplyQuote,
+    selectedMessageUuids,
+    updateWorkspaceComposerDraft,
+    workspaceReplySession,
+  ]);
   const composerJoinedTop =
     !showStreamTopicPrompt &&
     (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice);
@@ -3212,8 +3285,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         {body}
         <ChatPageSelectionBar
           selectedCount={selectedMessageUuids.size}
+          replyDisabled={selectedMessageUuids.size === 0 || !replyTargetReady}
           forwardDisabled={selectedMessageUuids.size === 0}
           deleteDisabled
+          onReply={handleReplySelectedMessages}
           onForward={handleForwardSelectedMessages}
           onDelete={noop}
           onCancel={handleCancelMessageSelection}

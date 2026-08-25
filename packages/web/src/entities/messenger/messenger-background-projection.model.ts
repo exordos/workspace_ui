@@ -610,7 +610,13 @@ function applyMessageProjection(
     return compactProjection(nextProjection, observedAt);
   }
 
-  const liveEffectPolicy = resolveMessengerMessageLiveEffectPolicy(event.message);
+  const liveEffectPolicy = resolveMessengerMessageLiveEffectPolicy(
+    {
+      provider: event.message.provider,
+      createdAt: event.message.created_at,
+    },
+    observedAt,
+  );
   if (!liveEffectPolicy.notificationEligible) {
     return compactProjection(nextProjection, observedAt);
   }
