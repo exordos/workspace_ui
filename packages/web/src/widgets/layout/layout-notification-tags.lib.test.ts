@@ -4,10 +4,7 @@ import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
 } from "./layout-notification-tags.lib";
-import {
-  formatNotificationTitle,
-  type NotificationTitleContext,
-} from "./layout-notification-title.lib";
+import { type NotificationTitleContext } from "./layout-notification-title.lib";
 import {
   buildNotificationAggregateTag,
   clearNotificationAggregateRegistry,
@@ -111,7 +108,7 @@ describe("closeReadMessageNotifications", () => {
     expect(notifications.closeByTag).toHaveBeenCalledWith("msg:owner-1::msg-101");
   });
 
-  it("updates aggregate notification after partial read", async () => {
+  it("closes the aggregate without showing an older message after the newest is read", () => {
     const notifications = createNotifications();
 
     upsertNotificationAggregate({
@@ -133,16 +130,54 @@ describe("closeReadMessageNotifications", () => {
 
     closeReadMessageNotifications(notifications, ["msg-2"], "owner-1");
 
-    expect(notifications.closeByTag).not.toHaveBeenCalled();
-    await vi.waitFor(() => {
-      expect(notifications.show).toHaveBeenCalledWith({
-        title: formatNotificationTitle(CHANNEL_TITLE_CONTEXT, 1),
-        body: "First",
-        tag: "bucket:owner-1::topic:stream-1:bugs:author:user-1",
-        silent: true,
-        clickRoute: "/project/project-1/message/msg-1",
-      });
+    expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:owner-1::topic:stream-1:bugs:author:user-1",
+    );
+    expect(notifications.show).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest aggregate notification unchanged after an older message is read", () => {
+    const notifications = createNotifications();
+
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-1" }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-2" }),
+      body: "Second",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+
+    closeReadMessageNotifications(notifications, ["msg-1"], "owner-1");
+
+    expect(notifications.closeByTag).not.toHaveBeenCalled();
+    expect(notifications.show).not.toHaveBeenCalled();
+  });
+
+  it("closes a fully read aggregate once without showing another notification", () => {
+    const notifications = createNotifications();
+
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-1" }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-2" }),
+      body: "Second",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+
+    closeReadMessageNotifications(notifications, ["msg-1", "msg-2"], "owner-1");
+
+    expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:owner-1::topic:stream-1:bugs:author:user-1",
+    );
+    expect(notifications.show).not.toHaveBeenCalled();
   });
 
   it("does not show old aggregate messages after the aggregate was dismissed", async () => {

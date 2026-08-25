@@ -157,7 +157,7 @@ describe("notification aggregate registry", () => {
     expect(ownerOneRead.untrackedMessageUuids).toEqual([]);
   });
 
-  it("updates aggregate snapshot after reading the newest message", () => {
+  it("consumes the whole aggregate after reading the newest message", () => {
     upsertNotificationAggregate({
       candidate: createCandidate({
         messageUuid: "msg-1",
@@ -177,18 +177,29 @@ describe("notification aggregate registry", () => {
 
     const result = consumeReadMessagesFromNotificationAggregates(["msg-2"], "owner-1");
 
-    expect(result.closedTags).toEqual([]);
+    expect(result.closedTags).toEqual(["bucket:owner-1::topic:stream-1:bugs:author:user-1"]);
     expect(result.untrackedMessageUuids).toEqual([]);
-    expect(result.updatedSnapshots).toEqual([
-      {
-        tag: "bucket:owner-1::topic:stream-1:bugs:author:user-1",
-        count: 1,
-        lastMessageUuid: "msg-1",
-        latestBody: "First",
-        latestClickRoute: "/project/project-1/message/msg-1",
-        titleContext: CHANNEL_TITLE_CONTEXT,
-      },
-    ]);
+    expect(consumeNotificationAggregateByTag(result.closedTags[0] ?? "")).toEqual([]);
+  });
+
+  it("removes an older read message without consuming the newest message", () => {
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-1" }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-2" }),
+      body: "Second",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+
+    const result = consumeReadMessagesFromNotificationAggregates(["msg-1"], "owner-1");
+
+    expect(result).toEqual({ closedTags: [], untrackedMessageUuids: [] });
+    expect(
+      consumeNotificationAggregateByTag("bucket:owner-1::topic:stream-1:bugs:author:user-1"),
+    ).toEqual(["msg-2"]);
   });
 
   it("consumes an aggregate by tag and returns all message UUIDs", () => {
@@ -209,7 +220,6 @@ describe("notification aggregate registry", () => {
     expect(consumeNotificationAggregateByTag(tag)).toEqual([]);
     expect(consumeReadMessagesFromNotificationAggregates(["msg-1", "msg-2"], "owner-1")).toEqual({
       closedTags: [],
-      updatedSnapshots: [],
       untrackedMessageUuids: ["msg-1", "msg-2"],
     });
   });
@@ -221,7 +231,6 @@ describe("notification aggregate registry", () => {
     );
 
     expect(result.closedTags).toEqual([]);
-    expect(result.updatedSnapshots).toEqual([]);
     expect(result.untrackedMessageUuids).toEqual(["msg-404"]);
   });
 
