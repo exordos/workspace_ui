@@ -6,6 +6,49 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-25
+
+### Added
+
+- Authorized administrators can configure topic-summary endpoints, project
+  access, model settings, and per-topic summary options in Workspace UI.
+- Message multi-select supports replying to several selected messages as
+  separate reply tabs, alongside forwarding and bulk message actions.
+- Shared topic lists and context menus provide consistent navigation,
+  notification controls, and summary settings across the messenger.
+
+### Changed
+
+- Blue Cold is now the default theme, and message rows, side panels, buttons,
+  image presentation, and composer resizing have been polished.
+- Stream and topic notification controls, topic moves, and provider-backed
+  realtime projections are handled consistently across active and background
+  Workspace accounts.
+
+### Fixed
+
+- Deleting the latest message repairs cached stream, topic, and conversation
+  pointers to the nearest surviving message.
+- Provider messages older than one hour no longer replay live notifications or
+  other realtime UI side effects.
+- Selection controls and message context interactions remain stable while
+  realtime updates are processed.
+
+### Requirements and compatibility
+
+- Exordos Core `0.2.3` or newer.
+- Workspace backend `0.1.42` or newer for topic-summary management and current
+  provider topic and notification event semantics.
+- The local messenger cache remains at schema version 7. No client or server
+  data migration is required.
+
+### Migration notes
+
+- Upgrade Workspace backend to `0.1.42` or newer before updating older
+  installations.
+- Update `workspace_ui` to `0.5.0`.
+- No manual migration is required.
+
 ## [0.4.16] — 2026-08-20
 
 ### Added
