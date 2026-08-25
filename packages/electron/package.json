@@ -36,6 +36,6 @@
     "electron": "42.4.0",
     "electron-builder": "26.15.2",
     "esbuild": "0.28.0",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   }
 }
