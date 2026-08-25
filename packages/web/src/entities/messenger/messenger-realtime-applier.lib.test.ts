@@ -1377,6 +1377,43 @@ describe("messenger realtime active applier", () => {
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
+  it("stores old live provider messages without running message-created live side effects", () => {
+    const context = createContext();
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    const oldCreatedAt = new Date(Date.now() - 60 * 60 * 1000 - 1).toISOString();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        message: createMessageDto({
+          created_at: oldCreatedAt,
+          updated_at: oldCreatedAt,
+          provider: {
+            kind: "zulip",
+            account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            external_id: "message-42",
+            capabilities: {},
+            delivery_class: "live",
+            notification_eligible: true,
+          },
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        createdAt: oldCreatedAt,
+        provider: expect.objectContaining({ delivery_class: "live" }),
+      }),
+    );
+    expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
   it("stores delayed live message bodies without extending an unloaded window", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;

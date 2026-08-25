@@ -527,6 +527,8 @@ describe("messenger background projection", () => {
   });
 
   it("creates a candidate for eligible live and legacy provider messages", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-22T10:30:00Z"));
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
 
@@ -578,6 +580,39 @@ describe("messenger background projection", () => {
         liveEffectPolicyReason: "live",
       }),
     ]);
+  });
+
+  it("stores an old live provider message without creating a notification candidate", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-22T11:10:00.001Z"));
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          provider: {
+            kind: "zulip",
+            account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            external_id: "message-42",
+            capabilities: {},
+            delivery_class: "live",
+            notification_eligible: true,
+          },
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ messageUuid: MESSAGE_A, read: false }),
+    );
+    expect(projection?.notificationCandidates).toEqual([]);
   });
 
   it("keeps notification names and modes null when message arrives before stream and topic snapshots", async () => {

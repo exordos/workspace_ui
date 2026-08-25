@@ -4,8 +4,11 @@ export type MessengerMessageLiveEffectPolicyReason =
   | "native"
   | "provider_gate_closed"
   | "backfill"
+  | "provider_message_too_old"
   | "live"
   | "legacy_provider";
+
+const PROVIDER_MESSAGE_MAX_LIVE_EFFECT_AGE_MS = 60 * 60 * 1000;
 
 export interface MessengerMessageLiveEffectPolicy {
   notificationEligible: boolean;
@@ -13,9 +16,13 @@ export interface MessengerMessageLiveEffectPolicy {
   reason: MessengerMessageLiveEffectPolicyReason;
 }
 
-export function resolveMessengerMessageLiveEffectPolicy(message: {
-  provider?: WorkspaceMessengerProviderDto | null;
-}): MessengerMessageLiveEffectPolicy {
+export function resolveMessengerMessageLiveEffectPolicy(
+  message: {
+    provider?: WorkspaceMessengerProviderDto | null;
+    createdAt: string;
+  },
+  now = Date.now(),
+): MessengerMessageLiveEffectPolicy {
   const provider = message.provider;
   if (provider == null) {
     return {
@@ -38,6 +45,15 @@ export function resolveMessengerMessageLiveEffectPolicy(message: {
       notificationEligible: false,
       liveSideEffectsEligible: false,
       reason: "backfill",
+    };
+  }
+
+  const createdAt = Date.parse(message.createdAt);
+  if (Number.isFinite(createdAt) && now - createdAt > PROVIDER_MESSAGE_MAX_LIVE_EFFECT_AGE_MS) {
+    return {
+      notificationEligible: false,
+      liveSideEffectsEligible: false,
+      reason: "provider_message_too_old",
     };
   }
 
