@@ -3,7 +3,6 @@ import type {
   WorkspaceMessengerEpochVersion,
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemChatType,
-  WorkspaceMessengerFolderSystemType,
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerStreamNotificationMode,
@@ -29,6 +28,7 @@ import type {
   WorkspaceRealtimeSkippedEvent,
   WorkspaceRealtimeTransportState,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { resolveMessengerFolderSystemType } from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
   resolveMessengerMessageLiveEffectPolicy,
@@ -38,6 +38,7 @@ import {
   compareMessengerMessageOrder,
   readMessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
+import type { MessengerFolder } from "./messenger.types";
 
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
@@ -137,7 +138,7 @@ export interface MessengerBackgroundFolderSnapshot {
   ownerKey: string;
   folderUuid: WorkspaceMessengerUuid;
   unreadCount: number;
-  systemType: WorkspaceMessengerFolderSystemType;
+  systemType: MessengerFolder["systemType"];
   folderItemIds: WorkspaceMessengerUuid[];
   epochVersion: WorkspaceMessengerEpochVersion;
   updatedAt: string;
@@ -1089,7 +1090,7 @@ function applyFolderProjection(
           ownerKey: context.ownerKey,
           folderUuid: event.folder.uuid,
           unreadCount: event.folder.unread_count,
-          systemType: event.folder.system_type,
+          systemType: resolveMessengerFolderSystemType(event.folder.uuid, event.folder.system_type),
           folderItemIds: nextFolderItemIds,
           epochVersion: event.epoch_version,
           updatedAt: event.folder.updated_at,

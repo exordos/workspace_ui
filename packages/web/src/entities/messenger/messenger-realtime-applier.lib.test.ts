@@ -19,6 +19,7 @@ import type {
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
 import { applyMessengerMessageWindow } from "./messenger-messages-loader.lib";
 import {
   clearMessengerReadBoundariesForOwner,
@@ -2573,6 +2574,7 @@ describe("messenger realtime active applier", () => {
         type: "folder",
         kind: "folder.created",
         folder: createFolderDto({
+          uuid: MESSENGER_ALL_CHATS_FOLDER_UUID,
           title: "All chats",
           unread_count: 12,
           system_type: "all",
@@ -2587,6 +2589,7 @@ describe("messenger realtime active applier", () => {
         type: "folder",
         kind: "folder.updated",
         folder: createFolderDto({
+          uuid: MESSENGER_ALL_CHATS_FOLDER_UUID,
           title: "All chats",
           unread_count: 7,
           system_type: "all",
@@ -2594,7 +2597,7 @@ describe("messenger realtime active applier", () => {
             {
               uuid: FOLDER_ITEM_A,
               project_id: PROJECT_A,
-              folder_uuid: FOLDER_A,
+              folder_uuid: MESSENGER_ALL_CHATS_FOLDER_UUID,
               user_uuid: USER_A,
               stream_uuid: STREAM_A,
               chat_type: "stream",
@@ -2615,7 +2618,7 @@ describe("messenger realtime active applier", () => {
 
     expect(selectMessengerSidebarFolders(useMessengerStore.getState())).toEqual([
       expect.objectContaining({
-        folderUuid: FOLDER_A,
+        folderUuid: MESSENGER_ALL_CHATS_FOLDER_UUID,
         title: "All chats",
         unreadCount: 7,
         systemType: "all",

@@ -1,5 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MESSENGER_ALL_CHATS_FOLDER_UUID,
+  MESSENGER_CHANNELS_FOLDER_UUID,
+  MESSENGER_PERSONAL_FOLDER_UUID,
+} from "~/entities/messenger/messenger-folder-system-type.lib";
+import * as messengerSidebarLib from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
@@ -17,7 +23,7 @@ const workspaceSidebarPropsMock = vi.fn();
 
 vi.mock("~/widgets/folder-rail/folder-rail.ui", () => ({
   FolderRail: (props: {
-    folders: { id: string; label: string; badge?: number }[];
+    folders: { id: string; label: string; badge?: number; systemType?: string }[];
     selectedFolderId: string;
     onSelectFolder: (folderId: string) => void;
     layout: string;
@@ -39,8 +45,10 @@ vi.mock("~/widgets/folder-rail/folder-rail.ui", () => ({
 vi.mock("./sidebar-workspace.ui", () => ({
   WorkspaceSidebar: (props: {
     streams: { title: string }[];
+    allStreams: { title: string }[];
     loading: boolean;
     error: string | null;
+    selectedFolderSystemType?: MessengerFolder["systemType"];
     activityPanelBottomSlot?: ReactNode;
   }) => {
     workspaceSidebarPropsMock(props);
@@ -60,8 +68,11 @@ const OWNER_KEY = "owner:sidebar-shell";
 const PROJECT_ID = "project-a";
 const ORG_ID = "acme";
 const STREAM_UUID = "stream-engineering";
+const PRODUCT_STREAM_UUID = "stream-product";
 const DATE = "2026-06-30T10:00:00Z";
-const ALL_FOLDER_UUID = "folder-all";
+const ALL_FOLDER_UUID = MESSENGER_ALL_CHATS_FOLDER_UUID;
+const PERSONAL_FOLDER_UUID = MESSENGER_PERSONAL_FOLDER_UUID;
+const CHANNELS_FOLDER_UUID = MESSENGER_CHANNELS_FOLDER_UUID;
 const TEAM_FOLDER_UUID = "folder-team";
 
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
@@ -142,6 +153,7 @@ function bootstrapMessengerSidebar(
 
 describe("SidebarShell", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
@@ -191,6 +203,194 @@ describe("SidebarShell", () => {
 
     expect(useSidebarConfigStore.getState().selectedFolderId).toBe(TEAM_FOLDER_UUID);
   });
+
+  it("keeps the query while switching folders and always passes the All projection", async () => {
+    const engineeringItem = createFolder().items[0]!;
+    const productItem = {
+      ...engineeringItem,
+      uuid: "folder-item-product",
+      streamUuid: PRODUCT_STREAM_UUID,
+      conversationId: `stream:${PRODUCT_STREAM_UUID}`,
+      unreadCount: 0,
+    };
+    bootstrapMessengerSidebar({
+      streams: [
+        createStream(),
+        createStream({ uuid: PRODUCT_STREAM_UUID, name: "Product", unreadCount: 0 }),
+      ],
+      folders: [
+        createFolder({ items: [engineeringItem, productItem] }),
+        createFolder({
+          uuid: TEAM_FOLDER_UUID,
+          title: "Team",
+          systemType: "created",
+          items: [{ ...engineeringItem, folderUuid: TEAM_FOLDER_UUID }],
+        }),
+      ],
+    });
+    useSidebarConfigStore.getState().setSelectedFolderId(TEAM_FOLDER_UUID);
+    useSidebarConfigStore.getState().setSearchQuery("product");
+
+    render(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+    );
+
+    expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams).toEqual([
+      expect.objectContaining({ streamUuid: STREAM_UUID }),
+    ]);
+    expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ streamUuid: STREAM_UUID }),
+        expect.objectContaining({ streamUuid: PRODUCT_STREAM_UUID }),
+      ]),
+    );
+
+    act(() => {
+      folderRailPropsMock.mock.lastCall?.[0]?.onSelectFolder(ALL_FOLDER_UUID);
+    });
+
+    await waitFor(() =>
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams).toHaveLength(2),
+    );
+    expect(useSidebarConfigStore.getState().searchQuery).toBe("product");
+  });
+
+  it("does not build the All projection outside search mode", () => {
+    const selectorSpy = vi.spyOn(messengerSidebarLib, "selectMessengerSidebarStreams");
+    bootstrapMessengerSidebar();
+    useSidebarConfigStore.getState().setSelectedFolderId(TEAM_FOLDER_UUID);
+
+    render(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+    );
+
+    expect(selectorSpy).toHaveBeenCalledTimes(1);
+    expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toEqual([]);
+  });
+
+  it("reuses the selected All projection during search", () => {
+    const selectorSpy = vi.spyOn(messengerSidebarLib, "selectMessengerSidebarStreams");
+    bootstrapMessengerSidebar();
+    useSidebarConfigStore.getState().setSelectedFolderId(ALL_FOLDER_UUID);
+    useSidebarConfigStore.getState().setSearchQuery("engineering");
+
+    render(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+    );
+
+    expect(selectorSpy).toHaveBeenCalledTimes(1);
+    expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toBe(
+      workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams,
+    );
+  });
+
+  it("builds the All projection when the query becomes non-empty", async () => {
+    const selectorSpy = vi.spyOn(messengerSidebarLib, "selectMessengerSidebarStreams");
+    const engineeringItem = createFolder().items[0]!;
+    const productItem = {
+      ...engineeringItem,
+      uuid: "folder-item-product",
+      streamUuid: PRODUCT_STREAM_UUID,
+      conversationId: `stream:${PRODUCT_STREAM_UUID}`,
+      unreadCount: 0,
+    };
+    bootstrapMessengerSidebar({
+      streams: [
+        createStream(),
+        createStream({ uuid: PRODUCT_STREAM_UUID, name: "Product", unreadCount: 0 }),
+      ],
+      folders: [
+        createFolder({ items: [engineeringItem, productItem] }),
+        createFolder({
+          uuid: TEAM_FOLDER_UUID,
+          title: "Team",
+          systemType: "created",
+          items: [{ ...engineeringItem, folderUuid: TEAM_FOLDER_UUID }],
+        }),
+      ],
+    });
+    useSidebarConfigStore.getState().setSelectedFolderId(TEAM_FOLDER_UUID);
+
+    render(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+    );
+
+    expect(selectorSpy).toHaveBeenCalledTimes(1);
+    expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toEqual([]);
+
+    act(() => useSidebarConfigStore.getState().setSearchQuery("product"));
+
+    await waitFor(() =>
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toHaveLength(2),
+    );
+    expect(selectorSpy).toHaveBeenCalledTimes(2);
+    expect(selectorSpy.mock.lastCall?.[1]).toEqual(
+      expect.objectContaining({ selectedFolderUuid: ALL_FOLDER_UUID }),
+    );
+  });
+
+  it.each([
+    ["Personal", PERSONAL_FOLDER_UUID, "personal", STREAM_UUID],
+    ["Channels", CHANNELS_FOLDER_UUID, "channels", PRODUCT_STREAM_UUID],
+  ] as const)(
+    "normalizes backend-like %s folder data before the sidebar search seam",
+    (_title, selectedFolderUuid, expectedSystemType, expectedLocalStreamUuid) => {
+      const engineeringItem = createFolder().items[0]!;
+      const productItem = {
+        ...engineeringItem,
+        uuid: "folder-item-product",
+        streamUuid: PRODUCT_STREAM_UUID,
+        conversationId: `stream:${PRODUCT_STREAM_UUID}`,
+        unreadCount: 0,
+      };
+      bootstrapMessengerSidebar({
+        streams: [
+          createStream({ audience: "private", isPrivate: true }),
+          createStream({ uuid: PRODUCT_STREAM_UUID, name: "Product", unreadCount: 0 }),
+        ],
+        folders: [
+          createFolder({ items: [engineeringItem, productItem] }),
+          createFolder({
+            uuid: PERSONAL_FOLDER_UUID,
+            title: "Personal",
+            systemType: "all",
+            items: [{ ...engineeringItem, folderUuid: PERSONAL_FOLDER_UUID }],
+          }),
+          createFolder({
+            uuid: CHANNELS_FOLDER_UUID,
+            title: "Channels",
+            systemType: "all",
+            items: [{ ...productItem, folderUuid: CHANNELS_FOLDER_UUID }],
+          }),
+        ],
+      });
+      useSidebarConfigStore.getState().setSelectedFolderId(selectedFolderUuid);
+      useSidebarConfigStore.getState().setSearchQuery("product");
+
+      render(
+        <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+      );
+
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.selectedFolderSystemType).toBe(
+        expectedSystemType,
+      );
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams).toEqual([
+        expect.objectContaining({ streamUuid: expectedLocalStreamUuid }),
+      ]);
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.allStreams).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ streamUuid: STREAM_UUID }),
+          expect.objectContaining({ streamUuid: PRODUCT_STREAM_UUID }),
+        ]),
+      );
+      expect(folderRailPropsMock.mock.lastCall?.[0]?.folders).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: PERSONAL_FOLDER_UUID, systemType: "personal" }),
+          expect.objectContaining({ id: CHANNELS_FOLDER_UUID, systemType: "channels" }),
+        ]),
+      );
+    },
+  );
 
   it("passes a fresh unread badge to the rail after a local folder item update", async () => {
     bootstrapMessengerSidebar();
@@ -262,7 +462,8 @@ describe("SidebarShell", () => {
 
     expect(screen.getByTestId("folder-rail")).toHaveTextContent(TEAM_FOLDER_UUID);
 
-    const nextAllFolderUuid = "folder-all-project-b";
+    const nextAllFolderUuid = MESSENGER_ALL_CHATS_FOLDER_UUID;
+    const misleadingAllFolderUuid = "folder-project-b-with-all-marker";
     const nextStreamUuid = "stream-product";
     act(() => {
       useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
@@ -277,6 +478,12 @@ describe("SidebarShell", () => {
         topics: [],
         conversations: [],
         folders: [
+          createFolder({
+            uuid: misleadingAllFolderUuid,
+            title: "Not the fixed All folder",
+            systemType: "all",
+            items: [],
+          }),
           createFolder({
             uuid: nextAllFolderUuid,
             title: "All project B",

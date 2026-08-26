@@ -15,6 +15,11 @@ import {
   adaptStreamToMessengerConversation,
   adaptTopicToMessengerConversation,
 } from "./messenger-adapters.lib";
+import {
+  MESSENGER_ALL_CHATS_FOLDER_UUID,
+  MESSENGER_CHANNELS_FOLDER_UUID,
+  MESSENGER_PERSONAL_FOLDER_UUID,
+} from "./messenger-folder-system-type.lib";
 
 // Adapter tests show how raw backend DTOs become stable UI domain objects.
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -419,6 +424,41 @@ describe("messenger adapters", () => {
         },
       ],
     });
+  });
+
+  it.each([
+    [MESSENGER_ALL_CHATS_FOLDER_UUID, "All chats", "all"],
+    [MESSENGER_PERSONAL_FOLDER_UUID, "Personal", "personal"],
+    [MESSENGER_CHANNELS_FOLDER_UUID, "Channels", "channels"],
+  ] as const)(
+    "derives the semantic %s system folder type from its fixed UUID",
+    (uuid, title, expectedSystemType) => {
+      const folderDto: WorkspaceMessengerFolderDto = {
+        uuid,
+        title,
+        unread_count: 0,
+        system_type: "all",
+        folder_items: [],
+        created_at: DATE,
+        updated_at: DATE,
+      };
+
+      expect(adaptMessengerFolder(folderDto).systemType).toBe(expectedSystemType);
+    },
+  );
+
+  it("does not treat an unknown folder UUID reporting all as the global folder", () => {
+    const folderDto: WorkspaceMessengerFolderDto = {
+      uuid: FOLDER_UUID,
+      title: "Custom folder",
+      unread_count: 0,
+      system_type: "all",
+      folder_items: [],
+      created_at: DATE,
+      updated_at: DATE,
+    };
+
+    expect(adaptMessengerFolder(folderDto).systemType).toBeNull();
   });
 
   it("normalizes missing folder item nullable fields to null", () => {

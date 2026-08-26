@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import { normalizeMessengerFolderSystemType } from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import type {
@@ -634,7 +635,7 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
   }
 
   for (const folder of payload.folders) {
-    foldersById[folder.uuid] = folder;
+    foldersById[folder.uuid] = normalizeMessengerFolderSystemType(folder);
     folderIds.push(folder.uuid);
   }
 
@@ -750,7 +751,11 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const foldersById: Record<MessengerUuid, MessengerFolder> = {};
       const folderIds: MessengerUuid[] = [];
       for (const folder of folders) {
-        foldersById[folder.uuid] = removeDeletedStreamItemsFromFolder(folder, removedStreamUuids);
+        const normalizedFolder = normalizeMessengerFolderSystemType(folder);
+        foldersById[folder.uuid] = removeDeletedStreamItemsFromFolder(
+          normalizedFolder,
+          removedStreamUuids,
+        );
         folderIds.push(folder.uuid);
       }
 
@@ -1050,7 +1055,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
-      const safeFolder = removeDeletedStreamItemsFromFolder(folder, removedStreamUuids);
+      const normalizedFolder = normalizeMessengerFolderSystemType(folder);
+      const safeFolder = removeDeletedStreamItemsFromFolder(normalizedFolder, removedStreamUuids);
 
       return {
         foldersById: {

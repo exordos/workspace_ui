@@ -1278,6 +1278,8 @@
     "emptySelectedFolderHint": "Add chats from a chat menu to populate this folder.",
     "emptySearch": "No matches",
     "emptySearchHint": "Try a different chat or topic name.",
+    "noMatchesInFolder": "No matches in this folder",
+    "allFoldersResults": "All folders",
     "partialLoadError": "Some sidebar data could not be refreshed",
     "markAsRead": "Mark as read",
     "markAllAsRead": "Mark all as read",

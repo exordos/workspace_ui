@@ -75,6 +75,7 @@ interface SidebarStreamsCacheEntry {
   usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
   foldersById: MessengerStoreState["foldersById"];
+  conversationsById: MessengerStoreState["conversationsById"];
   organizationId: string;
   projectId: string;
   selectedFolderUuid: string | null;
@@ -102,7 +103,7 @@ export interface MessengerSidebarActivityCounts {
 /** Sidebar compatibility name for the shared unread-mention index. */
 export type MessengerSidebarUnreadMentionIndex = MessengerTopicUnreadMentionIndex;
 
-let sidebarStreamsCache: SidebarStreamsCacheEntry | null = null;
+const sidebarStreamsCache = new Map<string | null, SidebarStreamsCacheEntry>();
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
 let sidebarActivityCountsCache: SidebarActivityCountsCacheEntry | null = null;
 
@@ -383,21 +384,23 @@ export function selectMessengerSidebarStreams(
   const currentUserUuid = options.currentUserUuid ?? null;
   const messagesById = options.messagesById ?? EMPTY_SIDEBAR_MESSAGES_BY_ID;
   const usersById = options.usersById ?? EMPTY_SIDEBAR_USERS_BY_ID;
+  const cachedEntry = sidebarStreamsCache.get(selectedFolderUuid);
   if (
-    sidebarStreamsCache?.streamIds === state.streamIds &&
-    sidebarStreamsCache.streamsById === state.streamsById &&
-    sidebarStreamsCache.topicIds === state.topicIds &&
-    sidebarStreamsCache.topicsById === state.topicsById &&
-    sidebarStreamsCache.messagesById === messagesById &&
-    sidebarStreamsCache.usersById === usersById &&
-    sidebarStreamsCache.currentUserUuid === currentUserUuid &&
-    sidebarStreamsCache.foldersById === state.foldersById &&
-    sidebarStreamsCache.organizationId === options.organizationId &&
-    sidebarStreamsCache.projectId === options.projectId &&
-    sidebarStreamsCache.selectedFolderUuid === selectedFolderUuid &&
-    sidebarStreamsCache.sortMode === sortMode
+    cachedEntry?.streamIds === state.streamIds &&
+    cachedEntry.streamsById === state.streamsById &&
+    cachedEntry.topicIds === state.topicIds &&
+    cachedEntry.topicsById === state.topicsById &&
+    cachedEntry.messagesById === messagesById &&
+    cachedEntry.usersById === usersById &&
+    cachedEntry.currentUserUuid === currentUserUuid &&
+    cachedEntry.foldersById === state.foldersById &&
+    cachedEntry.conversationsById === state.conversationsById &&
+    cachedEntry.organizationId === options.organizationId &&
+    cachedEntry.projectId === options.projectId &&
+    cachedEntry.selectedFolderUuid === selectedFolderUuid &&
+    cachedEntry.sortMode === sortMode
   ) {
-    return sidebarStreamsCache.result;
+    return cachedEntry.result;
   }
 
   const unreadMentionIndex = createMessengerSidebarUnreadMentionIndex({
@@ -495,7 +498,7 @@ export function selectMessengerSidebarStreams(
         .sort((a, b) => compareSidebarStreams(a, b, sortMode));
 
   const result = streams.length > 0 ? streams : EMPTY_SIDEBAR_STREAMS;
-  sidebarStreamsCache = {
+  sidebarStreamsCache.set(selectedFolderUuid, {
     streamIds: state.streamIds,
     streamsById: state.streamsById,
     topicIds: state.topicIds,
@@ -504,12 +507,18 @@ export function selectMessengerSidebarStreams(
     usersById,
     currentUserUuid,
     foldersById: state.foldersById,
+    conversationsById: state.conversationsById,
     organizationId: options.organizationId,
     projectId: options.projectId,
     selectedFolderUuid,
     sortMode,
     result,
-  };
+  });
+  // Search renders the selected folder and All together; keep that pair without retaining old folders.
+  if (sidebarStreamsCache.size > 2) {
+    const oldestFolderUuid = sidebarStreamsCache.keys().next().value;
+    if (oldestFolderUuid !== undefined) sidebarStreamsCache.delete(oldestFolderUuid);
+  }
   return result;
 }
 

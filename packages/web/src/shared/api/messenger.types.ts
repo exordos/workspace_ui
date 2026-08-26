@@ -18,7 +18,7 @@ export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
 export type WorkspaceMessengerTopicSummaryReasoningEffort = "minimal" | "low" | "medium" | "high";
-export type WorkspaceMessengerFolderSystemType = "all" | "created" | "personal" | "channels" | null;
+export type WorkspaceMessengerFolderSystemType = "all" | "created" | null;
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
@@ -804,13 +804,7 @@ function isTopicNotificationMode(value: unknown): value is WorkspaceMessengerTop
 }
 
 function isFolderSystemType(value: unknown): value is WorkspaceMessengerFolderSystemType {
-  return (
-    value === "all" ||
-    value === "created" ||
-    value === "personal" ||
-    value === "channels" ||
-    value === null
-  );
+  return value === "all" || value === "created" || value === null;
 }
 
 function isFolderItemChatType(value: unknown): value is WorkspaceMessengerFolderItemChatType {
