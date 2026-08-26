@@ -167,11 +167,9 @@ export function consumeReadMessagesFromNotificationAggregates(
   ownerKey: string,
 ): {
   closedTags: string[];
-  updatedSnapshots: NotificationAggregateSnapshot[];
   untrackedMessageUuids: string[];
 } {
   const uniqueValidMessageUuids = new Set<string>();
-  const affectedTags = new Set<string>();
   const untrackedMessageUuids: string[] = [];
 
   for (const messageUuid of messageUuids) {
@@ -185,10 +183,11 @@ export function consumeReadMessagesFromNotificationAggregates(
   if (normalizedOwnerKey == null) {
     return {
       closedTags: [],
-      updatedSnapshots: [],
       untrackedMessageUuids: [...uniqueValidMessageUuids],
     };
   }
+
+  const readMessageUuidsByTag = new Map<string, Set<string>>();
 
   for (const messageUuid of uniqueValidMessageUuids) {
     const messageScopeKey = buildWorkspaceNotificationMessageScopeKey(
@@ -208,33 +207,31 @@ export function consumeReadMessagesFromNotificationAggregates(
       continue;
     }
 
-    entry.messages.delete(messageUuid);
-    messageUuidToAggregateTag.delete(messageScopeKey);
-    affectedTags.add(tag);
+    const readMessageUuids = readMessageUuidsByTag.get(tag) ?? new Set<string>();
+    readMessageUuids.add(messageUuid);
+    readMessageUuidsByTag.set(tag, readMessageUuids);
   }
 
   const closedTags: string[] = [];
-  const updatedSnapshots: NotificationAggregateSnapshot[] = [];
 
-  for (const tag of affectedTags) {
+  for (const [tag, readMessageUuids] of readMessageUuidsByTag) {
     const entry = aggregatesByTag.get(tag);
-    if (entry == null || entry.messages.size === 0) {
-      aggregatesByTag.delete(tag);
+    const snapshot = entry == null ? null : buildSnapshot(tag, entry);
+    if (entry == null || snapshot == null || readMessageUuids.has(snapshot.lastMessageUuid)) {
+      consumeNotificationAggregateByTag(tag);
       closedTags.push(tag);
       continue;
     }
 
-    const snapshot = buildSnapshot(tag, entry);
-    if (snapshot == null) {
-      aggregatesByTag.delete(tag);
-      closedTags.push(tag);
-      continue;
+    for (const messageUuid of readMessageUuids) {
+      entry.messages.delete(messageUuid);
+      messageUuidToAggregateTag.delete(
+        buildWorkspaceNotificationMessageScopeKey(normalizedOwnerKey, messageUuid),
+      );
     }
-
-    updatedSnapshots.push(snapshot);
   }
 
-  return { closedTags, updatedSnapshots, untrackedMessageUuids };
+  return { closedTags, untrackedMessageUuids };
 }
 
 export function drainNotificationAggregateTagsForOwner(ownerKey: string): string[] {
