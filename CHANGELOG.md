@@ -6,6 +6,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-08-26
+
+### Changed
+
+- Failed outgoing messages now use clear danger styling and expose only
+  actionable retry and remove controls.
+
+### Fixed
+
+- Reading the newest message in an aggregated desktop notification closes the
+  aggregate instead of resurfacing an older notification, while reading an
+  older entry preserves the current newest notification.
+- Packaged web artifacts keep the release semantic version as the application
+  version instead of replacing it with a source revision identifier.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.5.0`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- The local messenger cache remains at schema version 7. No client or server
+  data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.5.1`.
+- No manual migration is required.
+
 ## [0.5.0] — 2026-08-25
 
 ### Added
