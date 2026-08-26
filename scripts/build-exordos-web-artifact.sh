@@ -17,8 +17,7 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$PROJECT_ROOT" show -s --forma
 
 (
     cd "$PROJECT_ROOT"
-    VITE_APP_VERSION="${VITE_APP_VERSION:-$SOURCE_SHA}" \
-        VITE_MESSENGER_ONLY=true \
+    VITE_MESSENGER_ONLY=true \
         npm run build --workspace=web
 )
 
