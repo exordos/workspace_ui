@@ -73,10 +73,11 @@ export function appendWorkspaceComposerEditAttachmentMarkdown(
   markdown: string,
   links: readonly string[],
 ): string {
-  if (links.length === 0) return markdown;
-  if (markdown.length === 0) return links.join("\n");
+  const uniqueLinks = [...new Set(links)].filter((link) => !markdown.includes(link));
+  if (uniqueLinks.length === 0) return markdown;
+  if (markdown.length === 0) return uniqueLinks.join("\n");
   const separator = markdown.endsWith("\n") ? "" : "\n";
-  return `${markdown}${separator}${links.join("\n")}`;
+  return `${markdown}${separator}${uniqueLinks.join("\n")}`;
 }
 
 export function appendWorkspaceComposerExistingAttachmentMarkdown(

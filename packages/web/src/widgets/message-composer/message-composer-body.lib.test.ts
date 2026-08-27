@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOutgoingMessageBody,
+  buildWorkspaceComposerImageAliases,
   formatAttachmentSize,
   formatScheduledTimestamp,
   getAttachmentExtensionLabel,
@@ -10,6 +11,10 @@ import {
   prepareAttachmentFiles,
   resolveTomorrowMorningTimestamp,
   serializeWorkspaceComposerMentions,
+  serializeWorkspaceComposerImageAliases,
+  stripWorkspaceComposerImageAliases,
+  getWorkspaceComposerImageAliasLocalIds,
+  removeWorkspaceComposerImageAlias,
 } from "./message-composer-body.lib";
 
 describe("message-composer-body.lib", () => {
@@ -152,6 +157,48 @@ describe("message-composer-body.lib", () => {
           },
         ]),
       ).toBe("Hi [Иван Иванов](urn:user:second-user-uuid)!");
+    });
+  });
+
+  describe("Workspace composer image aliases", () => {
+    const aliases = buildWorkspaceComposerImageAliases([
+      { localId: "one", fileName: "shot.png", canonicalMarkdown: "![shot.png](urn:image:one)" },
+      { localId: "two", fileName: "shot.png", canonicalMarkdown: "![shot.png](urn:image:two)" },
+      { localId: "three", fileName: "a]\\b.png", canonicalMarkdown: "![a](urn:image:three)" },
+    ]);
+
+    it("builds readable stable tokens and numbers duplicate names", () => {
+      expect(aliases.map((alias) => alias.visibleText)).toEqual([
+        "![shot.png]",
+        "![shot.png (2)]",
+        "![a\\]\\\\b.png]",
+      ]);
+    });
+
+    it("serializes aliases and identifies only present local ids", () => {
+      expect(
+        serializeWorkspaceComposerImageAliases("A ![shot.png (2)] B ![shot.png]", aliases),
+      ).toBe("A ![shot.png](urn:image:two) B ![shot.png](urn:image:one)");
+      expect(getWorkspaceComposerImageAliasLocalIds("![shot.png (2)]", aliases)).toEqual(
+        new Set(["two"]),
+      );
+    });
+
+    it("keeps unknown text and removes every occurrence of one token", () => {
+      expect(removeWorkspaceComposerImageAlias("x ![shot.png] y ![shot.png]", aliases[0]!)).toBe(
+        "x  y ",
+      );
+      expect(serializeWorkspaceComposerImageAliases("unknown", aliases)).toBe("unknown");
+    });
+
+    it("serializes image aliases in outgoing body before trimming", () => {
+      expect(buildOutgoingMessageBody("  hi ![shot.png]  ", null, [], aliases)).toBe(
+        "hi ![shot.png](urn:image:one)",
+      );
+    });
+
+    it("strips readable aliases when persisting a draft", () => {
+      expect(stripWorkspaceComposerImageAliases("A ![shot.png] B", aliases)).toBe("A  B");
     });
   });
 

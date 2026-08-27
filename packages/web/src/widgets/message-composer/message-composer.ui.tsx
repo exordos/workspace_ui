@@ -26,9 +26,14 @@ import {
 } from "./message-composer-ai-surfaces.ui";
 import {
   buildOutgoingMessageBody,
+  buildWorkspaceComposerImageAliases,
+  getWorkspaceComposerImageAliasLocalIds,
   insertWorkspaceMention,
   prepareAttachmentFiles,
+  removeWorkspaceComposerImageAlias,
   resolveTomorrowMorningTimestamp,
+  serializeWorkspaceComposerImageAliases,
+  stripWorkspaceComposerImageAliases,
 } from "./message-composer-body.lib";
 import {
   AI_UNAVAILABLE_POPOVER_HEIGHT,
@@ -86,6 +91,8 @@ import {
   COMPOSER_COMPACT_INLINE_FIELD_GAP,
   COMPOSER_COMPACT_RAIL_FIELD_GAP,
   COMPOSER_COMPACT_RAIL_STACK,
+  COMPOSER_COMPACT_TRAILING_ACTIONS_GAP,
+  COMPOSER_COMPACT_TRAILING_INSET,
   COMPOSER_LEADING_CONTROLS_INSET,
   COMPOSER_TOOLBAR_SEND_CLEARANCE,
   TOOLBAR_BTN,
@@ -241,7 +248,9 @@ const MessageComposerCompactSecondaryActionControls =
             verticalRail ? "composer-compact-rail-actions" : "composer-compact-trailing-controls"
           }
           className={`flex flex-shrink-0 ${
-            verticalRail ? "flex-col gap-1" : "mb-1 items-center gap-2 self-end"
+            verticalRail
+              ? "flex-col gap-1"
+              : `mb-1 items-center ${COMPOSER_COMPACT_TRAILING_ACTIONS_GAP} self-end`
           }`}
         >
           <button
@@ -505,6 +514,28 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     () => attachments?.map((attachment) => attachment.fileName) ?? [],
     [attachments],
   );
+  const imageAliases = useMemo(
+    () =>
+      buildWorkspaceComposerImageAliases(
+        (attachments ?? []).flatMap((attachment) => {
+          const isImage =
+            attachment.contentType.startsWith("image/") ||
+            (attachment.workspaceFile?.kind === "media" &&
+              attachment.workspaceFile.mediaKind === "image");
+          if (attachment.status !== "ready" || attachment.previewMarkdown == null || !isImage) {
+            return [];
+          }
+          return [
+            {
+              localId: attachment.localId,
+              fileName: attachment.fileName,
+              canonicalMarkdown: attachment.previewMarkdown,
+            },
+          ];
+        }),
+      ),
+    [attachments],
+  );
   const savedSnippetsSupported = isActionSupported(savedSnippetsCapability);
   const previewSupported = isActionSupported(previewCapability);
   const mentionsSupported = isActionSupported(mentionsCapability);
@@ -520,17 +551,37 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const clearSavedSnippetsError = useComposerSavedSnippetsStore((s) => s.clearSavedSnippetsError);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const persistValueChange = useCallback(
+    (nextValue: string) => {
+      onValueChange?.(stripWorkspaceComposerImageAliases(nextValue, imageAliases));
+    },
+    [imageAliases, onValueChange],
+  );
   const { value, setValue, isEditing } = useComposerDraft({
     initialValue,
     draftSessionKey,
     editSession,
-    onValueChange,
+    onValueChange: persistValueChange,
     setAiMenuOpen,
     setScheduleMenuOpen,
     setSavedSnippetsMenuOpen,
     setMediaPickerOpen,
     setMode,
   });
+  const inlineImageLocalIds = useMemo(
+    () => getWorkspaceComposerImageAliasLocalIds(value, imageAliases),
+    [imageAliases, value],
+  );
+  const handleRemoveAttachment = useCallback(
+    (localId: string) => {
+      const alias = imageAliases.find((candidate) => candidate.localId === localId);
+      if (alias != null) {
+        setValue((currentValue) => removeWorkspaceComposerImageAlias(currentValue, alias));
+      }
+      onRemoveAttachment?.(localId);
+    },
+    [imageAliases, onRemoveAttachment, setValue],
+  );
   const {
     mentionSuggestions,
     showMentions,
@@ -702,20 +753,25 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   useEffect(() => {
     latestFilesRef.current = files;
   }, [files]);
-  const outgoingBody = useMemo(
-    () =>
-      (!isEditing || preservesWorkspaceReplyContext) && outgoingBodyOverride != null
-        ? outgoingBodyOverride
-        : buildOutgoingMessageBody(value, effectiveReplyQuote, workspaceComposerMentions),
-    [
-      effectiveReplyQuote,
-      isEditing,
-      outgoingBodyOverride,
-      preservesWorkspaceReplyContext,
+  const outgoingBody = useMemo(() => {
+    if ((!isEditing || preservesWorkspaceReplyContext) && outgoingBodyOverride != null) {
+      return serializeWorkspaceComposerImageAliases(outgoingBodyOverride, imageAliases);
+    }
+    return buildOutgoingMessageBody(
       value,
+      effectiveReplyQuote,
       workspaceComposerMentions,
-    ],
-  );
+      imageAliases,
+    );
+  }, [
+    effectiveReplyQuote,
+    isEditing,
+    outgoingBodyOverride,
+    preservesWorkspaceReplyContext,
+    value,
+    workspaceComposerMentions,
+    imageAliases,
+  ]);
   const canSendWithEmptyActiveValue =
     allowEmptyActiveValueSend &&
     outgoingBodyOverride != null &&
@@ -727,11 +783,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         ? [attachment.previewMarkdown]
         : [],
     );
-    if (readyMarkdown.length === 0) return outgoingBody;
+    const missingReadyMarkdown = readyMarkdown.filter(
+      (markdown) => !outgoingBody.includes(markdown),
+    );
+    if (missingReadyMarkdown.length === 0) return outgoingBody;
     const trimmedBody = outgoingBody.trim();
     return trimmedBody.length === 0
-      ? readyMarkdown.join("\n")
-      : `${trimmedBody}\n${readyMarkdown.join("\n")}`;
+      ? missingReadyMarkdown.join("\n")
+      : `${trimmedBody}\n${missingReadyMarkdown.join("\n")}`;
   }, [attachments, controlledAttachmentsEnabled, outgoingBody]);
   const preview = useMessageComposerPreview({
     mode,
@@ -1041,7 +1100,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         onSubmitEdit == null
       )
         return;
-      const content = preservesWorkspaceReplyContext ? outgoingBody : value;
+      const content = preservesWorkspaceReplyContext
+        ? outgoingBody
+        : serializeWorkspaceComposerImageAliases(value, imageAliases);
       if (content.trim().length === 0 && (attachments?.length ?? 0) === 0) return;
       editSubmitInFlightRef.current = true;
       setSendInFlight(true);
@@ -1787,7 +1848,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   // Same leading inset as the expanded toolbar so expand/collapse stay on one axis.
   const inputRowLayout = isCompactWriteMode
     ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} ${
-        compactControlRailVisible ? "pr-2" : "pr-5"
+        compactControlRailVisible ? "pr-2" : COMPOSER_COMPACT_TRAILING_INSET
       }`
     : "";
   // Opaque reply chrome sits under overflow-visible; it must carry top radius itself.
@@ -1843,6 +1904,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         <MessageComposerEditNotice onCancelEdit={onCancelEdit} joinedTop={joinedTop} />
       ) : null}
       <MessageComposerPreface
+        imageAliases={imageAliases}
+        inlineImageLocalIds={inlineImageLocalIds}
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}
         separateUploadProgress={optimisticClearOnSend}
@@ -1853,7 +1916,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         onCancelUpload={onCancelUpload}
         removeFile={removeFile}
         attachments={mode === "write" ? attachments : []}
-        onRemoveAttachment={onRemoveAttachment}
+        onRemoveAttachment={handleRemoveAttachment}
         onRetryAttachment={onRetryAttachment}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         scheduledMessages={scheduledMessages}
@@ -2002,7 +2065,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   filePreviewUrls={filePreviewUrls}
                   removeFile={removeFile}
                   attachments={attachments}
-                  onRemoveAttachment={onRemoveAttachment}
+                  onRemoveAttachment={handleRemoveAttachment}
                   onRetryAttachment={onRetryAttachment}
                 />
               )}

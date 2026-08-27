@@ -1360,7 +1360,9 @@
     "invalidImage": "The image file type does not match its contents",
     "validationError": "The file could not be validated",
     "retryUpload": "Retry upload of {{fileName}}",
-    "list": "Attached files"
+    "list": "Attached files",
+    "dragIntoMessage": "Drag into message",
+    "inText": "In text"
   },
   "a11y": {
     "collapseTopics": "Collapse topics",

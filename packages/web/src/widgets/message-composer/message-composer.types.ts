@@ -193,6 +193,8 @@ export interface ComposerModeTabsProps {
 export type MediaPickerTab = "emoji" | "sticker";
 
 export interface MessageComposerPrefaceProps {
+  imageAliases?: readonly { localId: string; visibleText: string }[];
+  inlineImageLocalIds?: ReadonlySet<string>;
   uploadProgress: ComposerUploadProgress | null | undefined;
   uploadProgressPercent: number;
   separateUploadProgress?: boolean;

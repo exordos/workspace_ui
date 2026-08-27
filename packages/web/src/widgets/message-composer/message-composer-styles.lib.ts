@@ -2,10 +2,10 @@
 
 /**
  * Shared left inset for the compact expand toggle and the expanded toolbar
- * collapse toggle. Compact input uses pl-3 (12px); the bottom toolbar must
+ * collapse toggle. Compact input uses pl-2 (8px); the bottom toolbar must
  * use the same inset so both 32px icons sit on one vertical axis.
  */
-export const COMPOSER_LEADING_CONTROLS_INSET = "pl-3";
+export const COMPOSER_LEADING_CONTROLS_INSET = "pl-2";
 /**
  * Compact left rail when the field is tall enough to stack actions.
  * Keep the column on the bottom of the field: gap-1 separates 32px hover
@@ -15,9 +15,9 @@ export const COMPOSER_LEADING_CONTROLS_INSET = "pl-3";
  */
 export const COMPOSER_COMPACT_RAIL_STACK = "flex w-8 flex-shrink-0 flex-col gap-1 self-end mb-1";
 /**
- * Space between the 32px rail and the textarea. Matches
- * COMPOSER_LEADING_CONTROLS_INSET (12px) so the rail sits in a symmetric
- * gutter between the container edge and the text.
+ * Space between the 32px rail and the textarea. Keep a 12px gutter so the
+ * stacked rail does not crowd the text even after the compact leading inset
+ * was tightened to pl-2.
  */
 export const COMPOSER_COMPACT_RAIL_FIELD_GAP = "gap-3";
 /**
@@ -25,6 +25,17 @@ export const COMPOSER_COMPACT_RAIL_FIELD_GAP = "gap-3";
  * and emoji stay on the trailing edge.
  */
 export const COMPOSER_COMPACT_INLINE_FIELD_GAP = "gap-2";
+/**
+ * Compact attach/emoji cluster. Hit areas are already 32px, so gap-1 keeps
+ * the glyphs close without stacking hover pills.
+ */
+export const COMPOSER_COMPACT_TRAILING_ACTIONS_GAP = "gap-1";
+/**
+ * Right inset for the compact row when attach/emoji sit on the trailing edge.
+ * Keep this near the field edge. Compact leading uses pl-2; trailing stays
+ * one step wider so two 32px icons do not kiss the rounded corner.
+ */
+export const COMPOSER_COMPACT_TRAILING_INSET = "pr-3";
 /**
  * Expanded toolbar must clear the send button (h-10 / 40px) plus the input-row
  * gap-3 (12px). Keep this in sync if either size changes.
