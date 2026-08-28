@@ -2995,7 +2995,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         {selection.status === "conversation" &&
         (previewPresentation == null || anchorHandoffPending) ? (
           <ChatPageWorkspaceMessageListSection
-            key={`canonical-list:${selection.conversationId}`}
             messagesLoading={messagesStatus.loading}
             hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
             initialPositionReady={initialPositionReady}

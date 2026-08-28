@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
 import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import { isWindowActive } from "~/shared/lib/visibility";
 import {
@@ -33,6 +34,8 @@ interface PendingSameMessagesScrollAnchor {
 
 interface WorkspaceMessageListScrollOptions<TMessage> {
   messages: readonly TMessage[];
+  /** Scopes the state that used to be discarded by remounting the list. */
+  conversationId?: MessengerConversationId | null;
   getMessageKey: (message: TMessage) => string;
   isUnreadFromOther: (message: TMessage) => boolean;
   initialPositionReady?: boolean;
@@ -124,6 +127,7 @@ function collectVisibleUnreadKeys(root: HTMLElement, unreadKeys: ReadonlySet<str
 
 export function useWorkspaceMessageListScroll<TMessage>({
   messages,
+  conversationId = null,
   getMessageKey,
   isUnreadFromOther,
   initialPositionReady = true,
@@ -171,6 +175,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const pendingFocusedMessageTargetKeyRef = useRef<string | null>(null);
   const focusedMessageTargetKeyRef = useRef<string | null>(null);
   const anchorHandoffPendingRef = useRef(anchorHandoffPending);
+  const scopedConversationRef = useRef(conversationId);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isUnreadDividerDismissed, setIsUnreadDividerDismissed] = useState(false);
   const isInitialPositionApplied = useCallback(
@@ -428,6 +433,27 @@ export function useWorkspaceMessageListScroll<TMessage>({
     lastScrollTopRef.current = null;
     setIsAtBottom(true);
   }, [focusedMessageKey, scrollToBottomKey]);
+
+  // The list is no longer remounted per conversation, so the state that used to die
+  // with the old component is retired here instead. Everything keyed on
+  // scrollToBottomKey already resets in the effect above; this covers the rest.
+  useLayoutEffect(() => {
+    // Only a real change retires anything: on mount there is nothing to retire, and
+    // under StrictMode this effect replays over an anchor the list has just applied.
+    if (scopedConversationRef.current === conversationId) return;
+    scopedConversationRef.current = conversationId;
+    unreadDividerDismissedRef.current = false;
+    setIsUnreadDividerDismissed(false);
+    reportedFocusedAnchorKeyRef.current = null;
+    pendingFocusedMessageTargetKeyRef.current = null;
+    focusConfirmationGenerationRef.current += 1;
+    if (focusConfirmationFrameRef.current != null) {
+      cancelAnimationFrame(focusConfirmationFrameRef.current);
+      focusConfirmationFrameRef.current = null;
+    }
+    clearAnchorHighlightRef.current?.();
+    clearAnchorHighlightRef.current = null;
+  }, [conversationId]);
 
   useEffect(() => {
     if (anchorHandoffPending) return;
