@@ -65,6 +65,17 @@ const BASE_BODY_CLASS_NAME = [
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='video']]:items-stretch",
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='video']]:p-0",
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='video']]:overflow-hidden",
+  // An image whose dimensions are known reserves its loaded box from the first paint,
+  // so it must already look like the loaded image rather than a padded chip —
+  // otherwise the border and padding are their own jump when the bytes arrive.
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']]:border-transparent",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']]:bg-transparent",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']]:p-0",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']]:overflow-hidden",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']]:max-w-full",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']_.workspace-message-file-placeholder__image]:h-full",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']_.workspace-message-file-placeholder__image]:w-full",
+  "[&_.workspace-message-file-placeholder[data-workspace-media-reserved='true']_.workspace-message-file-placeholder__image]:object-contain",
   "[&_.workspace-message-file-preview-loaded[data-workspace-media-kind='image']]:!h-auto",
   "[&_.workspace-message-file-preview-loaded[data-workspace-media-kind='image']]:!w-auto",
   "[&_.workspace-message-file-preview-loaded[data-workspace-media-kind='image']]:!max-h-[180px]",

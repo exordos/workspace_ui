@@ -7,7 +7,10 @@ import {
   createDisplayableBlobUrl,
 } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
-import { deriveWorkspaceMediaPlaceholderLayout } from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
+import {
+  deriveWorkspaceImagePlaceholderLayout,
+  deriveWorkspaceMediaPlaceholderLayout,
+} from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
 const previewLog = createLogger("workspace-message-preview");
@@ -104,6 +107,18 @@ function reservePreviewLayout(
   placeholder: HTMLElement,
   reference: WorkspaceMessageFileReference,
 ): void {
+  if (reference.mediaKind === "image") {
+    // Keeps a remounted placeholder holding the box the markup already reserved.
+    const layout = deriveWorkspaceImagePlaceholderLayout(reference, {
+      inComposition: placeholder.classList.contains(
+        "workspace-message-file-placeholder--composition",
+      ),
+    });
+    if (layout == null) return;
+    placeholder.style.width = `${layout.width}px`;
+    placeholder.style.aspectRatio = `${layout.aspectRatio}`;
+    return;
+  }
   if (reference.mediaKind !== "video") {
     return;
   }
