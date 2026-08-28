@@ -271,3 +271,58 @@ describe("notification aggregate registry", () => {
     });
   });
 });
+
+// A candidate whose metadata was late arrives after a newer one from the same
+// conversation. The stack must still describe the newest message: it is what the
+// user is being told about, and the click has to land there.
+describe("upsertNotificationAggregate ordering", () => {
+  beforeEach(() => {
+    clearNotificationAggregateRegistry();
+  });
+
+  it("keeps the newest message as the latest, whatever order it arrives in", () => {
+    const older = createCandidate({
+      messageUuid: "msg-old",
+      createdAt: "2026-07-07T10:00:00.000Z",
+    });
+    const newer = createCandidate({
+      messageUuid: "msg-new",
+      createdAt: "2026-07-07T10:05:00.000Z",
+    });
+
+    upsertNotificationAggregate({
+      candidate: newer,
+      body: "newest message",
+      clickRoute: "/newest",
+      titleContext: DM_TITLE_CONTEXT,
+    });
+    const snapshot = upsertNotificationAggregate({
+      candidate: older,
+      body: "older message",
+      clickRoute: "/older",
+      titleContext: DM_TITLE_CONTEXT,
+    });
+
+    expect(snapshot?.count).toBe(2);
+    expect(snapshot?.lastMessageUuid).toBe("msg-new");
+    expect(snapshot?.latestBody).toBe("newest message");
+    expect(snapshot?.latestClickRoute).toBe("/newest");
+  });
+
+  it("breaks a tie on identical timestamps without losing either message", () => {
+    const sentAt = "2026-07-07T10:00:00.000Z";
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-b", createdAt: sentAt }),
+      body: "b",
+      titleContext: DM_TITLE_CONTEXT,
+    });
+    const snapshot = upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-a", createdAt: sentAt }),
+      body: "a",
+      titleContext: DM_TITLE_CONTEXT,
+    });
+
+    expect(snapshot?.count).toBe(2);
+    expect(snapshot?.lastMessageUuid).toBe("msg-b");
+  });
+});

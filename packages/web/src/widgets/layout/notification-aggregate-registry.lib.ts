@@ -1,4 +1,5 @@
 import type { MessengerBackgroundNotificationCandidate } from "~/entities/messenger/messenger-background-projection.model";
+import { compareMessengerMessageOrder } from "~/entities/messenger/messenger-read-boundary.lib";
 import {
   buildNotificationAggregateTag,
   buildWorkspaceNotificationBucketKey,
@@ -26,13 +27,15 @@ type NotificationAggregateCandidate = Pick<
   | "streamConversationId"
   | "topicConversationId"
   | "messageRoute"
+  | "createdAt"
 >;
 
 interface NotificationAggregateMessageState {
   body: string;
   clickRoute?: string;
   titleContext: NotificationTitleContext;
-  order: number;
+  /** Ordered by when the message was sent — the order it reaches this registry is not the same thing. */
+  createdAt: string;
 }
 
 interface NotificationAggregateEntry {
@@ -41,7 +44,6 @@ interface NotificationAggregateEntry {
 
 const aggregatesByTag = new Map<string, NotificationAggregateEntry>();
 const messageUuidToAggregateTag = new Map<string, string>();
-let aggregateOrder = 0;
 
 function normalizeNonEmptyString(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? "";
@@ -83,7 +85,13 @@ function buildSnapshot(
   let lastState: NotificationAggregateMessageState | null = null;
 
   for (const [messageUuid, state] of entry.messages) {
-    if (lastState == null || state.order > lastState.order) {
+    if (
+      lastState == null ||
+      compareMessengerMessageOrder(
+        { createdAt: state.createdAt, messageUuid },
+        { createdAt: lastState.createdAt, messageUuid: lastMessageUuid ?? messageUuid },
+      ) > 0
+    ) {
       lastMessageUuid = messageUuid;
       lastState = state;
     }
@@ -131,12 +139,11 @@ export function upsertNotificationAggregate(input: {
   const entry = aggregatesByTag.get(tag) ?? {
     messages: new Map<string, NotificationAggregateMessageState>(),
   };
-  aggregateOrder += 1;
   entry.messages.set(messageUuid, {
     body,
     clickRoute: clickRoute ?? candidate.messageRoute,
     titleContext,
-    order: aggregateOrder,
+    createdAt: candidate.createdAt,
   });
   aggregatesByTag.set(tag, entry);
   messageUuidToAggregateTag.set(messageScopeKey, tag);
@@ -260,5 +267,4 @@ export function drainNotificationAggregateTagsForOwner(ownerKey: string): string
 export function clearNotificationAggregateRegistry(): void {
   aggregatesByTag.clear();
   messageUuidToAggregateTag.clear();
-  aggregateOrder = 0;
 }

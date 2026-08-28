@@ -35,7 +35,7 @@ describe("notifications-policy", () => {
   describe("shouldWorkspaceDesktopNotify", () => {
     const baseViewport = {
       windowFocused: false,
-      isMessageOnScreen: false,
+      isConversationOnScreen: false,
     };
 
     const baseStreamMessage = {
@@ -273,7 +273,7 @@ describe("notifications-policy", () => {
       });
     });
 
-    it("returns false when focused window already shows the message", () => {
+    it("returns false when the focused window already shows the conversation", () => {
       expect(
         shouldWorkspaceDesktopNotify({
           message: {
@@ -284,7 +284,7 @@ describe("notifications-policy", () => {
           },
           viewport: {
             windowFocused: true,
-            isMessageOnScreen: true,
+            isConversationOnScreen: true,
           },
         }),
       ).toEqual({
@@ -293,7 +293,7 @@ describe("notifications-policy", () => {
       });
     });
 
-    it("notifies when the app is unfocused and the message is offscreen", () => {
+    it("notifies when the app is unfocused and the conversation is offscreen", () => {
       expect(
         shouldWorkspaceDesktopNotify({
           message: {
@@ -304,7 +304,7 @@ describe("notifications-policy", () => {
           },
           viewport: {
             windowFocused: false,
-            isMessageOnScreen: false,
+            isConversationOnScreen: false,
           },
         }),
       ).toEqual({

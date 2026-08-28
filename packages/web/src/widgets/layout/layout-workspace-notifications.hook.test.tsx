@@ -6,6 +6,7 @@ import type {
   MessengerBackgroundMessageIdSnapshot,
 } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
+import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -13,8 +14,12 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
 import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
+import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
+
+/** A route that is not the candidates' conversation, so the on-screen rule never fires. */
+const OTHER_CONVERSATION_PATHNAME = "/org/org/project/project/messenger";
 
 const showNotificationMock = vi.hoisted(() =>
   vi.fn<(options: NotificationOptions) => Promise<boolean>>(() => Promise.resolve(true)),
@@ -254,6 +259,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -319,6 +325,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -376,6 +383,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate,
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -455,6 +463,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -495,6 +504,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -537,6 +547,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -579,6 +590,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -625,6 +637,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -640,7 +653,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     expect(requestAttentionMock).not.toHaveBeenCalled();
   });
 
-  it("defers an unknown candidate until stream metadata can resolve the audience", async () => {
+  it("defers a fresh unknown candidate until stream metadata can resolve the audience", async () => {
     const session = createSession("deferred");
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const messageUuid = "deferred-message";
@@ -649,6 +662,9 @@ describe("useLayoutWorkspaceNotifications", () => {
       streamName: null,
       streamNotificationMode: null,
       topicNotificationMode: null,
+      // Inside the grace window: the wait is for a stream event milliseconds behind
+      // the message, not for one that may never come.
+      observedAt: Date.now(),
     });
 
     useWorkspaceAuthStore.setState({
@@ -671,6 +687,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -743,6 +760,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       useLayoutWorkspaceNotifications({
         enabled: true,
         navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
 
@@ -751,5 +769,166 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
     expect(requestAttentionMock).toHaveBeenCalledTimes(1);
     expect(showNotificationMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+function createStreamSnapshot(
+  ownerKey: string,
+): MessengerBackgroundProjection["streamSnapshotsById"][string] {
+  return {
+    ownerKey,
+    streamUuid: "stream-1",
+    streamName: "Direct chat",
+    unreadCount: 1,
+    notificationMode: "mentions_only",
+    isPrivate: true,
+    lastMessageUuid: null,
+    isArchived: false,
+    epochVersion: 1,
+    updatedAt: "2026-07-07T10:00:00.000Z",
+    observedAt: 2,
+  };
+}
+
+describe("useLayoutWorkspaceNotifications suppression", () => {
+  const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+  const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
+
+  function openTopicPathname(session: WorkspaceAuthSession): string {
+    return workspaceMessengerTopicRoute({
+      orgId: session.organizationId,
+      projectId: session.projectId,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearNotifiedMessageIds();
+    clearNotificationAggregateRegistry();
+  });
+
+  // A candidate whose stream never arrived is not news any more: the user has since
+  // been told about a newer message in the conversation, or has opened it. Showing it
+  // when the metadata finally lands is the bug this drops.
+  it("drops a candidate whose metadata did not arrive inside the grace window", async () => {
+    const session = createSession("expired");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const staleUuid = "expired-message";
+    const freshUuid = "fresh-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+
+    const candidates = [
+      createCandidate(ownerKey, staleUuid, { audience: "unknown", observedAt: 1 }),
+      createCandidate(ownerKey, freshUuid, { observedAt: Date.now() }),
+    ];
+    const snapshots = {
+      [staleUuid]: createMessageSnapshot(ownerKey, staleUuid),
+      [freshUuid]: createMessageSnapshot(ownerKey, freshUuid),
+    };
+
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: candidates,
+          messageIdSnapshotsById: snapshots,
+        }),
+      },
+    });
+
+    const { rerender } = renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+
+    // The metadata finally lands — the moment the user opens the chat and the stream
+    // event arrives. The stale candidate must not wake up now.
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: candidates,
+          messageIdSnapshotsById: snapshots,
+          streamSnapshotsById: { "stream-1": createStreamSnapshot(ownerKey) },
+        }),
+      },
+    });
+    rerender();
+
+    await waitFor(() => {
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalled();
+    });
+    expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    expect(showNotificationMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tag: expect.stringContaining(staleUuid) }),
+    );
+  });
+
+  // The hook's job here is to state the viewport truthfully; the decision itself is
+  // the policy's, and is covered in notifications-policy.test.ts.
+  it("tells the policy which conversation is on screen", async () => {
+    const session = createSession("onscreen");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const onScreenUuid = "onscreen-message";
+    const offScreenUuid = "offscreen-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, onScreenUuid, {
+              observedAt: 1,
+              topicConversationId: conversationIdForTopic(STREAM_UUID, TOPIC_UUID),
+            }),
+            createCandidate(ownerKey, offScreenUuid, { observedAt: 2 }),
+          ],
+          messageIdSnapshotsById: {
+            [onScreenUuid]: createMessageSnapshot(ownerKey, onScreenUuid),
+            [offScreenUuid]: createMessageSnapshot(ownerKey, offScreenUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: openTopicPathname(session),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
+    });
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        viewport: { windowFocused: true, isConversationOnScreen: true },
+      }),
+    );
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        viewport: { windowFocused: true, isConversationOnScreen: false },
+      }),
+    );
   });
 });

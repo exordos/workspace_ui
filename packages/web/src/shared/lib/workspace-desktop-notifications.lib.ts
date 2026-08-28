@@ -33,7 +33,8 @@ export interface WorkspaceDesktopNotificationMessageContext {
 
 export interface WorkspaceDesktopNotificationViewportContext {
   windowFocused: boolean;
-  isMessageOnScreen: boolean;
+  /** The conversation the message belongs to is the one open in front of the user. */
+  isConversationOnScreen: boolean;
 }
 
 export interface ShouldWorkspaceDesktopNotifyInput {
@@ -228,7 +229,7 @@ export function shouldWorkspaceDesktopNotify(
     input.message.isOwn ||
     input.message.read ||
     isWorkspaceDesktopNotificationMuted(input.message) ||
-    (input.viewport.windowFocused && input.viewport.isMessageOnScreen) ||
+    (input.viewport.windowFocused && input.viewport.isConversationOnScreen) ||
     !isWorkspaceDesktopNotificationEnabledForTrigger(trigger, input.message);
 
   return {
