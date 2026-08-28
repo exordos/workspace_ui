@@ -35,6 +35,7 @@
     "e2e:ui": "npx playwright test --ui",
     "e2e:headed": "npx playwright test --headed",
     "e2e:chromium": "npx playwright test --project=chromium",
+    "e2e:measure": "npx playwright test --project=measurement --workers=1",
     "e2e:report": "npx playwright show-report e2e/results",
     "seed:feed": "node scripts/seed-feed-message.mjs",
     "dev:electron": "npm run dev --workspace=web & npm run dev --workspace=exordos-workspace",

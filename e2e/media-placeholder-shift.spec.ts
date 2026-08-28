@@ -12,8 +12,8 @@
  * being the inline box on the baseline, which reserves room for descenders that
  * changes when the placeholder is swapped for the image.
  *
- * Frame-by-frame measurement is sensitive to load, so run this file on its own or
- * with `--workers=1`, the way CI does.
+ * Frame-by-frame measurement is sensitive to whatever else the machine is doing, so
+ * this file belongs to the `measurement` project: `npm run e2e:measure`.
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";

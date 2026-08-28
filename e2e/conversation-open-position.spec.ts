@@ -13,7 +13,7 @@
  * the one still there when everything has settled.
  *
  * Positions are read frame by frame and are sensitive to what else the machine is
- * doing, so run this file on its own or with `--workers=1`, the way CI does.
+ * doing, so this file belongs to the `measurement` project: `npm run e2e:measure`.
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";

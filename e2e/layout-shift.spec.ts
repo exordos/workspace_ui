@@ -16,6 +16,12 @@ import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navig
 import { E2E_PROJECT_ID, E2E_USER_UUID } from "./mocks/workspace-default-responses";
 import type { Page, Route } from "@playwright/test";
 
+// Layout shift is sensitive to whatever else the machine is doing, and each of these
+// compares two measurements taken minutes apart. Serial keeps them out of each
+// other's way; the `measurement` project keeps the rest of the suite out of theirs
+// (`npm run e2e:measure`).
+test.describe.configure({ mode: "serial" });
+
 const CREATED_AT = "2026-07-16T10:00:00.000Z";
 const MESSAGE_COUNT = 6;
 const SCROLL_MESSAGE_COUNT = 60;
