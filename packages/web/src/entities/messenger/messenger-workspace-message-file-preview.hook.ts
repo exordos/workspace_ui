@@ -8,6 +8,10 @@ import {
 } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import {
+  readMeasuredMediaSize,
+  rememberMeasuredMediaSize,
+} from "~/shared/lib/workspace-message-render/workspace-media-measured-size.lib";
+import {
   deriveWorkspaceImagePlaceholderLayout,
   deriveWorkspaceMediaPlaceholderLayout,
 } from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
@@ -108,15 +112,26 @@ function reservePreviewLayout(
   reference: WorkspaceMessageFileReference,
 ): void {
   if (reference.mediaKind === "image") {
-    // Keeps a remounted placeholder holding the box the markup already reserved.
-    const layout = deriveWorkspaceImagePlaceholderLayout(reference, {
+    // Keeps a remounted placeholder holding the box the markup already reserved, and
+    // gives one to an image whose message never stated a size but which this session
+    // has already loaded once.
+    const measured = readMeasuredMediaSize(reference.fileUuid);
+    const statesItsOwnSize = reference.width != null && reference.height != null;
+    const sized =
+      statesItsOwnSize || measured == null
+        ? reference
+        : { ...reference, width: measured.width, height: measured.height };
+    const layout = deriveWorkspaceImagePlaceholderLayout(sized, {
       inComposition: placeholder.classList.contains(
         "workspace-message-file-placeholder--composition",
       ),
     });
     if (layout == null) return;
+    // Height outright, not an aspect ratio: the placeholder is an inline-flex whose
+    // height its own content decides, and a ratio alone loses to it.
     placeholder.style.width = `${layout.width}px`;
-    placeholder.style.aspectRatio = `${layout.aspectRatio}`;
+    placeholder.style.height = `${layout.height}px`;
+    placeholder.dataset.workspaceMediaReserved = "true";
     return;
   }
   if (reference.mediaKind !== "video") {
@@ -252,6 +267,15 @@ function revealLoadedImagePreview(
     revealFallback(mount, "display-error");
   };
   image.addEventListener("error", handleImageError);
+  // The size is unknown only until the first load; from here the placeholder can
+  // reserve the right box every later time this file is rendered.
+  image.addEventListener(
+    "load",
+    () => {
+      rememberMeasuredMediaSize(mount.fileUuid, image.naturalWidth, image.naturalHeight);
+    },
+    { once: true },
+  );
 
   retainObjectUrl(mount, displayUrl, objectUrlRegistry);
   mount.previewImage = image;

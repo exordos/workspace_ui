@@ -59,15 +59,17 @@ async function installImageConversation(
   withDimensions: boolean,
   messageCount = MESSAGE_COUNT,
 ): Promise<void> {
+  // Its own route, so a download can never fall through to another handler: a failed
+  // preview reverts the placeholder, which is a shift of its own and would be
+  // measured as if it were the defect.
+  await page.route(/\/actions\/download(?:\?|$)/, async (route: Route) => {
+    // Delayed, so the image lands after the text has already been laid out.
+    await new Promise((resolve) => setTimeout(resolve, FILE_RESPONSE_DELAY_MS));
+    await route.fulfill({ status: 200, contentType: "image/svg+xml", body: svgBytes() });
+  });
+
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
-
-    if (/\/actions\/download\/?$/.test(url.pathname)) {
-      // Delayed, so the image lands after the text has already been laid out.
-      await new Promise((resolve) => setTimeout(resolve, FILE_RESPONSE_DELAY_MS));
-      await route.fulfill({ status: 200, contentType: "image/svg+xml", body: svgBytes() });
-      return;
-    }
 
     if (route.request().method() === "GET" && /\/messages\/?$/.test(url.pathname)) {
       await route.fulfill({
@@ -180,5 +182,54 @@ test.describe("Message list scroll shift @mock", () => {
     // comparison rather than a fixed number: what matters is that reserving works,
     // and the absolute value belongs to the machine that ran it.
     expect(reserved).toBeLessThan(unreserved / 3);
+  });
+});
+
+const STREAM_PATH = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`;
+const TOPIC_PATH = `${STREAM_PATH}/topic/${E2E_TOPIC_UUID}`;
+
+/** In-app navigation: a reload would empty the memory under test. */
+async function openConversation(page: Page, href: string): Promise<void> {
+  await page.locator(`a[href="${href}"]`).first().click();
+  await page.waitForURL(`**${href}`);
+}
+
+async function readReservedStyle(page: Page): Promise<string> {
+  return page
+    .locator("[data-workspace-file='true']")
+    .first()
+    .evaluate((node) => node.getAttribute("style") ?? "none")
+    .catch(() => "none");
+}
+
+/**
+ * An image whose message states no size can still be reserved for — after it has
+ * been loaded once, its natural size is known and remembered. This is the second
+ * visit to a conversation in the same session, with the file cache cleared by the
+ * conversation change, so the bytes are in flight again and the box either holds
+ * the text still or does not.
+ */
+test.describe("Measured media sizes @mock", () => {
+  test("reserves a box for an image the session has already loaded once", async ({
+    authenticatedMocked: page,
+  }) => {
+    await installLayoutShiftProbe(page);
+    await installImageConversation(page, false);
+
+    await page.goto(TOPIC_PATH);
+    await expect(page.locator("[data-workspace-file-preview='true']").first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.waitForTimeout(FILE_RESPONSE_DELAY_MS * 3);
+    const firstPass = await readShiftScore(page);
+
+    await openConversation(page, STREAM_PATH);
+    await openConversation(page, TOPIC_PATH);
+
+    // While the previews are in flight again: this is when a reserved box exists.
+    expect(await readReservedStyle(page)).toMatch(/^width: \d+px; height: \d+px;$/);
+
+    await page.waitForTimeout(FILE_RESPONSE_DELAY_MS * 3);
+    expect((await readShiftScore(page)) - firstPass).toBeLessThan(firstPass / 2);
   });
 });
