@@ -98,6 +98,7 @@ export function TopicSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
               className={INPUT_CLASS}
             >
               <option value="">{t("topicSummarySettings.topic.reasoningDefault")}</option>
+              <option value="off">{t("topicSummarySettings.topic.reasoningOff")}</option>
               <option value="minimal">{t("topicSummarySettings.topic.reasoningMinimal")}</option>
               <option value="low">{t("topicSummarySettings.topic.reasoningLow")}</option>
               <option value="medium">{t("topicSummarySettings.topic.reasoningMedium")}</option>

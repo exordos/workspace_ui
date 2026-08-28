@@ -17,7 +17,12 @@ export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "adminis
 export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
-export type WorkspaceMessengerTopicSummaryReasoningEffort = "minimal" | "low" | "medium" | "high";
+export type WorkspaceMessengerTopicSummaryReasoningEffort =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high";
 export type WorkspaceMessengerFolderSystemType = "all" | "created" | "personal" | "channels" | null;
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
@@ -1155,6 +1160,7 @@ export function isWorkspaceMessengerTopicDto(value: unknown): value is Workspace
       typeof value.summary_system_prompt === "string") &&
     (value.summary_reasoning_effort === undefined ||
       value.summary_reasoning_effort === null ||
+      value.summary_reasoning_effort === "off" ||
       value.summary_reasoning_effort === "minimal" ||
       value.summary_reasoning_effort === "low" ||
       value.summary_reasoning_effort === "medium" ||

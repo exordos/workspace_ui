@@ -117,7 +117,7 @@ export interface MessengerTopic {
   summaryHasNewMessages?: boolean | null;
   summaryEnabled?: boolean;
   summarySystemPrompt?: string | null;
-  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
+  summaryReasoningEffort?: "off" | "minimal" | "low" | "medium" | "high" | null;
   createdAt: string;
   updatedAt: string;
 }

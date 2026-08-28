@@ -496,6 +496,7 @@
       "useDefault": "Use default prompt",
       "reasoning": "Reasoning effort",
       "reasoningDefault": "Provider default",
+      "reasoningOff": "Off",
       "reasoningMinimal": "Minimal",
       "reasoningLow": "Low",
       "reasoningMedium": "Medium",
