@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
+import { writeManualStatus } from "./user-manual-status.lib";
 import {
   startWorkspacePresenceReporter,
   workspacePresenceIntervalMs,
@@ -124,5 +125,104 @@ describe("startWorkspacePresenceReporter", () => {
 
     vi.advanceTimersByTime(600_000);
     expect(invokePresence).not.toHaveBeenCalled();
+  });
+});
+
+describe("startWorkspacePresenceReporter status", () => {
+  let stopTracking: () => void;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    stopTracking = initVisibilityTracking();
+    focusWindow();
+    writeManualStatus(USER_UUID, null);
+  });
+
+  afterEach(() => {
+    stopTracking();
+    writeManualStatus(USER_UUID, null);
+    vi.useRealTimers();
+  });
+
+  it("reports active when the user chose nothing", () => {
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(expect.anything(), USER_UUID, {
+      status: "active",
+    });
+    stop();
+  });
+
+  it("does not push a deliberately away user back online", () => {
+    writeManualStatus(USER_UUID, "idle");
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(expect.anything(), USER_UUID, { status: "idle" });
+
+    invokePresence.mockClear();
+    vi.advanceTimersByTime(120_000);
+    for (const call of invokePresence.mock.calls) {
+      expect(call[2]).toMatchObject({ status: "idle" });
+    }
+    stop();
+  });
+
+  it("leaves do-not-disturb held by the account alone", () => {
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+      getAccountStatus: () => "do_not_disturb",
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(expect.anything(), USER_UUID, {
+      status: "do_not_disturb",
+    });
+    stop();
+  });
+
+  it("omits the status text and emoji until they are known", () => {
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+      // The roster has not loaded the account yet: sending nulls would clear the
+      // status text and emoji the user already has.
+      getStatusDecoration: () => null,
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(expect.anything(), USER_UUID, {
+      status: "active",
+    });
+    stop();
+  });
+
+  it("carries the status text and emoji so a heartbeat cannot clear them", () => {
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+      getStatusDecoration: () => ({ emoji: "🌴", text: "on holiday" }),
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(expect.anything(), USER_UUID, {
+      status: "active",
+      emoji: "🌴",
+      text: "on holiday",
+    });
+    stop();
   });
 });

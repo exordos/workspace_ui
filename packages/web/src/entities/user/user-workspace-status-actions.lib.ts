@@ -8,6 +8,8 @@ import {
   type WorkspaceClientOptions,
 } from "~/shared/api/workspace-client";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
+import { writeManualStatus } from "./user-manual-status.lib";
+import { manualStatusFromAwayToggle } from "./user-presence-status.lib";
 import { useUsersStore, type UsersStoreState } from "./user.model";
 import type { User } from "./user.types";
 
@@ -86,6 +88,9 @@ export async function updateWorkspaceOwnStatus({
       buildWorkspaceOwnStatusBody({ statusText, statusEmoji, away }),
     );
     const user = adaptWorkspaceMessengerUserDto(userDto);
+    // Remember that this was a choice, not a measurement: once it reaches the
+    // server the two are indistinguishable, and the heartbeat would overwrite it.
+    writeManualStatus(runtimeContext.userUuid, manualStatusFromAwayToggle(away));
     upsertWorkspaceStatusUser(runtimeContext, user, store);
     return { ok: true, user };
   } catch (error) {

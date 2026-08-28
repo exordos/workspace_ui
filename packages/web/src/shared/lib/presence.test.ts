@@ -11,8 +11,14 @@ import {
   getLastActivityTimestamp,
   getIdleTimeMs,
   initPresenceTracker,
-  setPresenceReporter,
+  onLocalPresenceChange,
 } from "./presence";
+import { initVisibilityTracking } from "./visibility";
+
+function setVisibility(state: DocumentVisibilityState): void {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
 
 // Core presence tracker: init, status detection, idle time, and reporter callback.
 describe("presence tracker", () => {
@@ -44,10 +50,11 @@ describe("presence tracker", () => {
     expect(getIdleTimeMs()).toBeGreaterThanOrEqual(0);
   });
 
-  // Reporter callback is called when presence status changes — must accept any function.
-  it("setPresenceReporter accepts a function", () => {
-    const fn = vi.fn();
-    expect(() => setPresenceReporter(fn)).not.toThrow();
+  // Subscription is how the heartbeat learns about a status change without polling.
+  it("onLocalPresenceChange returns an unsubscribe function", () => {
+    const unsubscribe = onLocalPresenceChange(vi.fn());
+    expect(typeof unsubscribe).toBe("function");
+    unsubscribe();
   });
 
   // Init must return cleanup to remove event listeners on unmount.
@@ -62,12 +69,10 @@ describe("presence tracker", () => {
     expect(getLocalPresenceStatus()).toBe("active");
   });
 
-  // The reporter must be called immediately on init so the server knows we're here.
-  it("reports presence on init", () => {
-    const reporter = vi.fn();
-    setPresenceReporter(reporter);
+  // The tracker only measures; nothing is sent from here.
+  it("starts in the active state", () => {
     cleanup = initPresenceTracker();
-    expect(reporter).toHaveBeenCalledWith("active");
+    expect(getLocalPresenceStatus()).toBe("active");
   });
 });
 
@@ -130,7 +135,6 @@ describe("presence tracker edge cases", () => {
   afterEach(() => {
     cleanup?.();
     cleanup = undefined;
-    setPresenceReporter(() => {});
     vi.useRealTimers();
   });
 
@@ -166,35 +170,73 @@ describe("presence tracker edge cases", () => {
     expect(getIdleTimeMs()).toBeLessThan(100);
   });
 
-  // Reporter function is called with current status on init.
-  it("calls reporter with status on init when reporter is set", () => {
-    const reporter = vi.fn();
-    setPresenceReporter(reporter);
+  // Subscribers are notified when the measured status actually changes.
+  it("notifies subscribers on a status change", () => {
     cleanup = initPresenceTracker();
-    expect(reporter).toHaveBeenCalledWith(expect.stringMatching(/^(active|idle)$/));
+    const subscriber = vi.fn();
+    const unsubscribe = onLocalPresenceChange(subscriber);
+
+    vi.advanceTimersByTime(6 * 60 * 1000);
+
+    expect(subscriber).toHaveBeenCalledWith("idle");
+    unsubscribe();
   });
 
-  // The reporter is called periodically (60s interval).
-  it("reports presence periodically", () => {
-    const reporter = vi.fn();
-    setPresenceReporter(reporter);
+  // The tracker holds no timer of its own once torn down; the periodic send lives
+  // in the heartbeat (see user-workspace-presence-reporter.lib.test.ts).
+  it("stops notifying subscribers after cleanup", () => {
     cleanup = initPresenceTracker();
-
-    reporter.mockClear();
-    vi.advanceTimersByTime(60_000);
-    expect(reporter).toHaveBeenCalled();
-  });
-
-  // After cleanup, periodic reporting stops.
-  it("stops reporting after cleanup", () => {
-    const reporter = vi.fn();
-    setPresenceReporter(reporter);
-    cleanup = initPresenceTracker();
+    const subscriber = vi.fn();
+    onLocalPresenceChange(subscriber);
     cleanup();
     cleanup = undefined;
 
-    reporter.mockClear();
-    vi.advanceTimersByTime(120_000);
-    expect(reporter).not.toHaveBeenCalled();
+    subscriber.mockClear();
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(subscriber).not.toHaveBeenCalled();
+  });
+});
+
+// A hidden tab must eventually stop claiming anything: the heartbeat sends nothing
+// while the tracker reads `offline`, which is what keeps a minimized window from
+// holding `idle` all night. See docs/PRESENCE_AND_STATUS.md.
+describe("presence tracker offline transition", () => {
+  let cleanupPresence: (() => void) | undefined;
+  let cleanupVisibility: (() => void) | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    cleanupVisibility = initVisibilityTracking();
+  });
+
+  afterEach(() => {
+    cleanupPresence?.();
+    cleanupPresence = undefined;
+    cleanupVisibility?.();
+    cleanupVisibility = undefined;
+    setVisibility("visible");
+    vi.useRealTimers();
+  });
+
+  it("goes offline five minutes after the tab is hidden", () => {
+    cleanupPresence = initPresenceTracker();
+
+    setVisibility("hidden");
+    expect(getLocalPresenceStatus()).toBe("idle");
+
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    expect(getLocalPresenceStatus()).toBe("offline");
+  });
+
+  it("cancels the offline countdown when the tab comes back", () => {
+    cleanupPresence = initPresenceTracker();
+
+    setVisibility("hidden");
+    vi.advanceTimersByTime(4 * 60 * 1000);
+    setVisibility("visible");
+    expect(getLocalPresenceStatus()).toBe("active");
+
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    expect(getLocalPresenceStatus()).toBe("idle");
   });
 });

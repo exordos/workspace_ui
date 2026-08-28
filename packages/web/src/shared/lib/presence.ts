@@ -1,16 +1,20 @@
 /**
- * Presence tracker — reports local user activity to the Zulip server.
+ * Presence tracker — measures whether the local user is at the keyboard.
  *
- * Detects user activity (mouse, keyboard, touch, scroll) and reports
- * presence status to the server via POST /users/me/presence.
+ * Detects user activity (mouse, keyboard, touch, scroll) and derives a status
+ * from it and from tab visibility.
  *
  * States:
  *   active  — user is interacting with the app right now
- *   idle    — no interaction for IDLE_TIMEOUT_MS (default 5 min)
- *   offline — tab hidden for > OFFLINE_DELAY_MS or browser closed
+ *   idle    — no interaction for IDLE_TIMEOUT_MS, or the tab just went hidden
+ *   offline — tab hidden for OFFLINE_DELAY_MS
  *
  * The module integrates with visibility tracking: hidden tab → idle → offline.
- * On tab resume, presence is immediately reported as "active".
+ *
+ * This module only measures. Sending presence to the server belongs to the
+ * heartbeat in `entities/user/user-workspace-presence-reporter.lib.ts`, which
+ * subscribes through `onLocalPresenceChange` and decides what may be claimed —
+ * a measured status must never overwrite one the user deliberately chose.
  *
  * Usage:
  *   import { initPresenceTracker, getLocalPresenceStatus } from "~/shared/lib/presence";
@@ -30,7 +34,7 @@ const log = createLogger("presence");
 // ---------------------------------------------------------------------------
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-const REPORT_INTERVAL_MS = 60 * 1000;
+const OFFLINE_DELAY_MS = 5 * 60 * 1000;
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
   "mousemove",
   "mousedown",
@@ -49,9 +53,8 @@ export type LocalPresenceStatus = "active" | "idle" | "offline";
 let currentStatus: LocalPresenceStatus = "active";
 let lastActivityAt = Date.now();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let reportInterval: ReturnType<typeof setInterval> | null = null;
+let offlineTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
-let reportFn: ((status: "active" | "idle") => void) | null = null;
 
 const listeners = new Set<() => void>();
 
@@ -65,10 +68,6 @@ function setStatus(next: LocalPresenceStatus): void {
   currentStatus = next;
   log.info("Presence changed", { from: prev, to: next });
   notify();
-
-  if (next !== "offline" && reportFn) {
-    reportFn(next);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,42 +93,28 @@ function resetIdleTimer(): void {
   }, IDLE_TIMEOUT_MS);
 }
 
+function clearOfflineTimer(): void {
+  if (offlineTimer) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+  }
+}
+
 function onVisibilityToggle(visible: boolean): void {
   if (visible) {
+    clearOfflineTimer();
     lastActivityAt = Date.now();
     setStatus("active");
     resetIdleTimer();
-  } else {
-    setStatus("idle");
-    if (idleTimer) {
-      clearTimeout(idleTimer);
-      idleTimer = null;
-    }
+    return;
   }
-}
 
-// ---------------------------------------------------------------------------
-// Server reporting
-// ---------------------------------------------------------------------------
-
-function startReporting(): void {
-  if (reportInterval) return;
-
-  const report = () => {
-    if (currentStatus !== "offline" && reportFn) {
-      reportFn(currentStatus);
-    }
-  };
-
-  report();
-  reportInterval = setInterval(report, REPORT_INTERVAL_MS);
-}
-
-function stopReporting(): void {
-  if (reportInterval) {
-    clearInterval(reportInterval);
-    reportInterval = null;
+  setStatus("idle");
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
   }
+  offlineTimer = setTimeout(() => setStatus("offline"), OFFLINE_DELAY_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,13 +147,13 @@ export function useLocalPresence(): LocalPresenceStatus {
 }
 
 /**
- * Set the function that reports presence to the server.
- * Called by the event loop / layout after Zulip API is available.
- *
- * @param fn Called with "active" or "idle" every REPORT_INTERVAL_MS and on status change.
+ * Subscribe to local presence transitions. Fires only on an actual change, so the
+ * heartbeat can report a status change without waiting for its next interval.
  */
-export function setPresenceReporter(fn: (status: "active" | "idle") => void): void {
-  reportFn = fn;
+export function onLocalPresenceChange(callback: (status: LocalPresenceStatus) => void): () => void {
+  const listener = () => callback(currentStatus);
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 /**
@@ -188,7 +173,6 @@ export function initPresenceTracker(): () => void {
 
   const unsubVisibility = onVisibilityChange(onVisibilityToggle);
   resetIdleTimer();
-  startReporting();
 
   log.info("Presence tracker initialized", { idleTimeoutMs: IDLE_TIMEOUT_MS });
 
@@ -202,6 +186,6 @@ export function initPresenceTracker(): () => void {
       clearTimeout(idleTimer);
       idleTimer = null;
     }
-    stopReporting();
+    clearOfflineTimer();
   };
 }

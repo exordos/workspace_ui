@@ -21,6 +21,7 @@ import {
 } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { workspaceStatusDecoration } from "~/entities/user/user-presence-status.lib";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
@@ -279,9 +280,15 @@ function defaultRuntimeFactory({
 }
 
 function defaultPresenceReporterFactory(runtimeContext: WorkspaceRuntimeContext): () => void {
+  const readOwnUser = () => useUsersStore.getState().usersById[runtimeContext.userUuid] ?? null;
+
   return startWorkspacePresenceReporter({
     clientOptions: buildWorkspaceRequestOptions(runtimeContext),
     userUuid: runtimeContext.userUuid,
+    // The heartbeat needs the account's own status so it leaves do-not-disturb
+    // alone, and its text and emoji so a ping cannot silently clear them.
+    getAccountStatus: () => readOwnUser()?.status ?? null,
+    getStatusDecoration: () => workspaceStatusDecoration(readOwnUser()),
     onError: (error) => {
       reportUnexpectedError("workspace-presence:report", error);
     },

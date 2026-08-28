@@ -1,7 +1,11 @@
+import type { WorkspaceMessengerUserStatus } from "~/shared/api/messenger.types";
 import { invokeUserPresence, type WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import { isOnBattery, onBatteryStateChange } from "~/shared/lib/power";
+import { getLocalPresenceStatus, onLocalPresenceChange } from "~/shared/lib/presence";
 import { createActivityAwareInterval } from "~/shared/lib/visibility";
 import type { WindowActivityState } from "~/shared/lib/visibility";
+import { readManualStatus } from "./user-manual-status.lib";
+import { resolveWorkspaceHeartbeatStatus } from "./user-presence-status.lib";
 
 /**
  * Presence heartbeat cadence, by window activity.
@@ -11,8 +15,8 @@ import type { WindowActivityState } from "~/shared/lib/visibility";
  * the user is to the window. On battery the whole ladder is stretched: the wake-up
  * itself is the cost, and presence is the least urgent thing the client does.
  *
- * The payload stays `status: "active"`: the heartbeat is only sent while the user
- * is genuinely present, so it never has to claim anything else.
+ * What the heartbeat is allowed to claim is decided by
+ * `resolveWorkspaceHeartbeatStatus`; see `docs/PRESENCE_AND_STATUS.md`.
  */
 export const WORKSPACE_PRESENCE_REPORT_INTERVAL_MS = 30_000;
 export const WORKSPACE_PRESENCE_UNFOCUSED_INTERVAL_MS = 120_000;
@@ -39,6 +43,13 @@ export interface WorkspacePresenceReporterOptions {
   reportIntervalMs?: number;
   onError?: (error: unknown) => void;
   invokePresence?: typeof invokeUserPresence;
+  /** Status the account currently holds on the server, so DND is not overwritten. */
+  getAccountStatus?: () => WorkspaceMessengerUserStatus | null;
+  /**
+   * Current status text and emoji, resent so a heartbeat cannot clear them.
+   * Returns null while they are not known — sending nulls would clear them.
+   */
+  getStatusDecoration?: () => { emoji: string | null; text: string | null } | null;
 }
 
 export function startWorkspacePresenceReporter({
@@ -47,6 +58,8 @@ export function startWorkspacePresenceReporter({
   reportIntervalMs = WORKSPACE_PRESENCE_REPORT_INTERVAL_MS,
   onError,
   invokePresence = invokeUserPresence,
+  getAccountStatus = () => null,
+  getStatusDecoration,
 }: WorkspacePresenceReporterOptions): () => void {
   const controller = new AbortController();
   let stopped = false;
@@ -54,13 +67,26 @@ export function startWorkspacePresenceReporter({
   function report(): void {
     if (stopped || controller.signal.aborted) return;
 
+    const status = resolveWorkspaceHeartbeatStatus({
+      localPresence: getLocalPresenceStatus(),
+      manualStatus: readManualStatus(userUuid),
+      accountStatus: getAccountStatus(),
+    });
+    if (status == null) return;
+
+    // The status text and emoji ride along on every heartbeat. Whether the server
+    // treats an omitted field as "unchanged" or as "cleared" is not something this
+    // client can see, so it states the values when it knows them and omits the
+    // fields entirely when it does not.
+    const decoration = getStatusDecoration?.() ?? null;
+
     void invokePresence(
       {
         ...clientOptions,
         signal: controller.signal,
       },
       userUuid,
-      { status: "active" },
+      decoration == null ? { status } : { status, emoji: decoration.emoji, text: decoration.text },
     ).catch((error: unknown) => {
       if (!controller.signal.aborted) {
         onError?.(error);
@@ -82,9 +108,16 @@ export function startWorkspacePresenceReporter({
     if (!stopped) heartbeat.reschedule();
   });
 
+  // Going idle, or coming back from it, should reach the server when it happens
+  // rather than at the next interval — which off-focus can be minutes away.
+  const unsubscribePresence = onLocalPresenceChange(() => {
+    if (!stopped) report();
+  });
+
   return () => {
     stopped = true;
     unsubscribeBattery();
+    unsubscribePresence();
     controller.abort();
     heartbeat.stop();
   };

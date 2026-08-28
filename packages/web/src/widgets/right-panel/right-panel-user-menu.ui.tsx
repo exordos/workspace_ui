@@ -2,6 +2,7 @@ import { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { readManualStatus } from "~/entities/user/user-manual-status.lib";
 import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
 import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -173,8 +174,12 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const openStatusDialog = useCallback(() => {
     if (currentWorkspaceSession == null) return;
     setStatusTextDraft(currentWorkspaceUser?.statusText?.trim() ?? "");
+    // Seed from what the user chose, not from what was measured: the idle status
+    // the activity tracker produces after five minutes is not an "away" the user
+    // asked for, and showing the toggle on for it would misreport their own state.
     setStatusAwayDraft(
-      currentWorkspaceUser?.status === "idle" || currentWorkspaceUser?.status === "do_not_disturb",
+      readManualStatus(currentWorkspaceSession.userUuid) != null ||
+        currentWorkspaceUser?.status === "do_not_disturb",
     );
     setStatusEmojiDraft(currentWorkspaceUser?.statusEmoji?.trim() ?? "");
     setStatusEmojiPickerOpen(false);
