@@ -206,6 +206,7 @@ export interface MessageComposerPrefaceProps {
   removeFile: (index: number) => void;
   attachments?: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onRemoveImageFromText?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   scheduledMessages: ScheduledComposerMessage[];

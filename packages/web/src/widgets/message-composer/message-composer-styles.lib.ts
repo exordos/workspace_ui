@@ -26,16 +26,15 @@ export const COMPOSER_COMPACT_RAIL_FIELD_GAP = "gap-3";
  */
 export const COMPOSER_COMPACT_INLINE_FIELD_GAP = "gap-2";
 /**
- * Compact attach/emoji cluster. Hit areas are already 32px, so gap-1 keeps
- * the glyphs close without stacking hover pills.
+ * Compact attach/emoji cluster. 32px hit areas already pad the glyphs, so
+ * sit the buttons flush like the formatting toolbar text-style group.
  */
-export const COMPOSER_COMPACT_TRAILING_ACTIONS_GAP = "gap-1";
+export const COMPOSER_COMPACT_TRAILING_ACTIONS_GAP = "gap-0";
 /**
  * Right inset for the compact row when attach/emoji sit on the trailing edge.
- * Keep this near the field edge. Compact leading uses pl-2; trailing stays
- * one step wider so two 32px icons do not kiss the rounded corner.
+ * Match the left pl-2 so both clusters sit near the field edge.
  */
-export const COMPOSER_COMPACT_TRAILING_INSET = "pr-3";
+export const COMPOSER_COMPACT_TRAILING_INSET = "pr-2";
 /**
  * Expanded toolbar must clear the send button (h-10 / 40px) plus the input-row
  * gap-3 (12px). Keep this in sync if either size changes.

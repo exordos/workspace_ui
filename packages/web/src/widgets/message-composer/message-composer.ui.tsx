@@ -582,6 +582,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     },
     [imageAliases, onRemoveAttachment, setValue],
   );
+  const handleRemoveImageFromText = useCallback(
+    (localId: string) => {
+      const alias = imageAliases.find((candidate) => candidate.localId === localId);
+      if (alias != null)
+        setValue((currentValue) => removeWorkspaceComposerImageAlias(currentValue, alias));
+    },
+    [imageAliases, setValue],
+  );
   const {
     mentionSuggestions,
     showMentions,
@@ -1847,9 +1855,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   ) : null;
   // Same leading inset as the expanded toolbar so expand/collapse stay on one axis.
   const inputRowLayout = isCompactWriteMode
-    ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} ${
-        compactControlRailVisible ? "pr-2" : COMPOSER_COMPACT_TRAILING_INSET
-      }`
+    ? `items-end gap-5 ${COMPOSER_LEADING_CONTROLS_INSET} ${COMPOSER_COMPACT_TRAILING_INSET}`
     : "";
   // Opaque reply chrome sits under overflow-visible; it must carry top radius itself.
   const replyChromeRoundsTop = !joinedTop && !isEditing;
@@ -1917,6 +1923,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         removeFile={removeFile}
         attachments={mode === "write" ? attachments : []}
         onRemoveAttachment={handleRemoveAttachment}
+        onRemoveImageFromText={handleRemoveImageFromText}
         onRetryAttachment={onRetryAttachment}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         scheduledMessages={scheduledMessages}

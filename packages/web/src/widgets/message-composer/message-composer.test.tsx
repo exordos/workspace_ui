@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -626,7 +627,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(
       screen.queryByRole("button", { name: /expand message editor/i }),
     ).not.toBeInTheDocument();
-    expect(compactRow).toHaveClass("pr-3");
+    expect(compactRow).toHaveClass("pr-2");
     expect(compactRow.lastElementChild).toBe(trailingControls);
     expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
@@ -639,7 +640,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(
       screen.queryByRole("button", { name: /expand message editor/i }),
     ).not.toBeInTheDocument();
-    expect(compactRow).toHaveClass("pr-3");
+    expect(compactRow).toHaveClass("pr-2");
     expect(compactRow.lastElementChild).toBe(trailingControls);
     expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
@@ -2232,15 +2233,15 @@ describe("MessageComposer mode tabs", () => {
       attachButton.compareDocumentPosition(emojiButton) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(compactRow.lastElementChild).toBe(trailingControls);
-    expect(compactRow).toHaveClass("items-end", "pl-2", "pr-3");
+    expect(compactRow).toHaveClass("items-end", "pl-2", "pr-2");
     expect(compactRow).not.toHaveClass("py-1");
     expect(compactControls).toHaveClass("self-end", "mb-1");
     expect(compactControls).not.toHaveClass("flex-col");
     expect(compactControls).not.toHaveClass("w-8");
     expect(compactControls.parentElement).toHaveClass("gap-2");
     expect(compactControls.parentElement).not.toHaveClass("gap-3");
-    expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-1");
-    expect(trailingControls).not.toHaveClass("gap-2");
+    expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-0");
+    expect(trailingControls).not.toHaveClass("gap-1", "gap-2");
     expect(
       toolbarToggle.querySelector('[data-composer-icon="bottom-panel-close"]'),
     ).toHaveAttribute("width", "21.333");
@@ -2710,7 +2711,7 @@ describe("MessageComposer controlled attachments", () => {
     expect(onValueChange).toHaveBeenCalledWith("Before  after");
     const inlineCard = screen.getByTitle("In text");
     expect(inlineCard).toHaveAttribute("draggable", "false");
-    expect(inlineCard.parentElement).toHaveClass("pt-2", "pb-0.5");
+    expect(inlineCard.parentElement).toHaveClass("pt-2", "pb-1.5");
     expect(inlineCard).toHaveClass("[&>article]:ring-accent/60");
     expect(within(inlineCard).getByText("TX")).toHaveClass(
       "bg-accent",
@@ -2727,6 +2728,76 @@ describe("MessageComposer controlled attachments", () => {
         undefined,
       );
     });
+  });
+
+  it("offers an accessible inline remove control and keeps the attachment draggable after removing its token", async () => {
+    const onRemoveAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
+    const inlineCard = screen.getByTitle("In text");
+    const badge = within(inlineCard).getByText("TX");
+    const removeFromText = within(badge).getByRole("button", {
+      name: "Remove image from text",
+    });
+    expect(removeFromText).toHaveAttribute("title", "Remove image from text");
+    expect(badge).toHaveClass(
+      "transition-[min-width]",
+      "duration-150",
+      "ease-out",
+      "-bottom-1",
+      "-right-1",
+      "min-w-0",
+      "group-hover/inline-image:min-w-12",
+      "group-focus-within/inline-image:min-w-12",
+    );
+    expect(badge).not.toHaveClass("-top-1", "-left-1");
+    expect(removeFromText).toHaveClass("inline-flex", "w-0", "max-w-0", "pointer-events-none");
+    const user = userEvent.setup();
+    let tabCount = 0;
+    while (document.activeElement !== removeFromText && tabCount < 40) {
+      await user.tab();
+      tabCount += 1;
+    }
+    expect(document.activeElement).toBe(removeFromText);
+    expect(removeFromText).toHaveClass(
+      "group-focus-within/inline-image:w-4",
+      "group-focus-within/inline-image:max-w-4",
+      "group-focus-within/inline-image:pointer-events-auto",
+    );
+
+    fireEvent.click(removeFromText);
+
+    expect(textbox).toHaveValue("Before  after");
+    expect(screen.queryByText("TX")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "screen.png" })).toBeInTheDocument();
+    expect(onRemoveAttachment).not.toHaveBeenCalled();
+    expect(inlineCard).toHaveAttribute("draggable", "true");
+  });
+
+  it("removes every occurrence when removing an inline image from text", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "![screen.png] one ![screen.png] two" } });
+    fireEvent.click(
+      within(screen.getByText("TX")).getByRole("button", { name: "Remove image from text" }),
+    );
+    expect(textbox).toHaveValue(" one  two");
+    expect(screen.getByRole("img", { name: "screen.png" })).toBeInTheDocument();
   });
 
   it("removes the readable image token together with its attachment", () => {

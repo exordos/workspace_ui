@@ -3,12 +3,14 @@ import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-wo
 import { t } from "~/i18n/i18n";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { AttachmentCard } from "~/shared/ui/attachment-card.ui";
+import { Icon } from "~/shared/ui/icon";
 import { formatAttachmentSize, getAttachmentExtensionLabel } from "./message-composer-body.lib";
 import type { MessageComposerAttachmentView } from "./message-composer.types";
 
 interface MessageComposerControlledAttachmentCardsProps {
   attachments: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onRemoveImageFromText?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   imageAliases?: readonly { localId: string; visibleText: string }[];
@@ -25,12 +27,14 @@ function ReadyImageDragWrapper({
   inText,
   visibleText,
   previewAvailable,
+  onRemoveImageFromText,
 }: Readonly<{
   attachmentLocalId: string;
   children: React.ReactNode;
   inText: boolean;
   visibleText: string;
   previewAvailable: boolean;
+  onRemoveImageFromText?: (localId: string) => void;
 }>) {
   const canDragIntoMessage = !inText && previewAvailable;
   const className = inText
@@ -45,7 +49,7 @@ function ReadyImageDragWrapper({
         event.dataTransfer.setData("text/plain", visibleText);
         event.dataTransfer.setData(WORKSPACE_INLINE_IMAGE_DRAG_TYPE, attachmentLocalId);
       }}
-      className={className}
+      className={`${className} group/inline-image`}
       title={canDragIntoMessage ? t("attachmentCard.dragIntoMessage") : t("attachmentCard.inText")}
       role="group"
       aria-label={
@@ -54,11 +58,21 @@ function ReadyImageDragWrapper({
     >
       {children}
       {inText ? (
-        <span
-          className="pointer-events-none absolute -left-1 -top-1 z-base flex h-5 min-w-6 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-none tracking-wide text-on-accent shadow-sm ring-2 ring-composer-outer"
-          aria-hidden
-        >
+        <span className="absolute -bottom-1 -right-1 z-base flex h-5 min-w-0 items-center justify-center overflow-hidden rounded-full bg-accent px-1 text-[9px] font-bold leading-none tracking-wide text-on-accent shadow-sm ring-2 ring-composer-outer transition-[min-width] duration-150 ease-out group-focus-within/inline-image:min-w-12 group-hover/inline-image:min-w-12">
           TX
+          <button
+            type="button"
+            className="pointer-events-none inline-flex h-4 w-0 min-w-0 max-w-0 shrink-0 items-center justify-center overflow-hidden opacity-0 transition-[opacity,margin,max-width] duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-on-accent group-focus-within/inline-image:pointer-events-auto group-focus-within/inline-image:ml-0.5 group-focus-within/inline-image:w-4 group-focus-within/inline-image:max-w-4 group-focus-within/inline-image:opacity-100 group-hover/inline-image:pointer-events-auto group-hover/inline-image:ml-0.5 group-hover/inline-image:w-4 group-hover/inline-image:max-w-4 group-hover/inline-image:opacity-100"
+            aria-label={t("attachmentCard.removeFromText")}
+            title={t("attachmentCard.removeFromText")}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemoveImageFromText?.(attachmentLocalId);
+            }}
+          >
+            <Icon name="close" size={11} />
+          </button>
         </span>
       ) : null}
     </div>
@@ -138,6 +152,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
   function MessageComposerControlledAttachmentCards({
     attachments,
     onRemoveAttachment,
+    onRemoveImageFromText,
     onRetryAttachment,
     onLoadWorkspaceFilePreview,
     imageAliases = EMPTY_IMAGE_ALIASES,
@@ -160,6 +175,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
             inText={inText}
             visibleText={alias.visibleText}
             previewAvailable={attachment.previewUrl != null}
+            onRemoveImageFromText={onRemoveImageFromText}
           >
             {node}
           </ReadyImageDragWrapper>
@@ -180,6 +196,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
                   inText={inText}
                   visibleText={alias.visibleText}
                   previewAvailable={previewAvailable}
+                  onRemoveImageFromText={onRemoveImageFromText}
                 >
                   {card}
                 </ReadyImageDragWrapper>

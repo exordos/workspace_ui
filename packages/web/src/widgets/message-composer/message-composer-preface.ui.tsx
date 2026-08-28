@@ -23,7 +23,7 @@ interface MessageComposerEditNoticeProps {
 }
 
 function getAttachmentListClassName(inlineImageCount: number): string {
-  if (inlineImageCount > 0) return "px-2 pb-0.5 pt-2";
+  if (inlineImageCount > 0) return "px-2 pb-1.5 pt-2";
   return "px-2 pt-2";
 }
 
@@ -78,6 +78,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     removeFile,
     attachments = [],
     onRemoveAttachment,
+    onRemoveImageFromText,
     onRetryAttachment,
     onLoadWorkspaceFilePreview,
     imageAliases,
@@ -185,6 +186,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
               <MessageComposerControlledAttachmentCards
                 attachments={attachments}
                 onRemoveAttachment={onRemoveAttachment}
+                onRemoveImageFromText={onRemoveImageFromText}
                 onRetryAttachment={onRetryAttachment}
                 imageAliases={imageAliases}
                 inlineImageLocalIds={inlineImageLocalIds}
