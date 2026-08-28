@@ -17,6 +17,8 @@ import { E2E_PROJECT_ID, E2E_USER_UUID } from "./mocks/workspace-default-respons
 import type { Page, Route } from "@playwright/test";
 
 const CREATED_AT = "2026-07-16T10:00:00.000Z";
+const MESSAGE_COUNT = 6;
+const SCROLL_MESSAGE_COUNT = 60;
 const IMAGE_WIDTH = 400;
 const IMAGE_HEIGHT = 300;
 /** Long enough that the load lands well after first paint, as it does over a network. */
@@ -27,10 +29,11 @@ function svgBytes(): string {
 }
 
 function imageMessage(index: number, withDimensions: boolean) {
-  const fileUuid = `${index}0000000-0000-4000-8000-00000000000${index}`;
+  const suffix = String(index).padStart(4, "0");
+  const fileUuid = `${suffix}0000-0000-4000-8000-0000${suffix}0000`;
   const dimensions = withDimensions ? `&w=${IMAGE_WIDTH}&h=${IMAGE_HEIGHT}` : "";
   return {
-    uuid: `${index}1111111-1111-4111-8111-11111111111${index}`,
+    uuid: `${suffix}1111-1111-4111-8111-1111${suffix}1111`,
     project_id: E2E_PROJECT_ID,
     stream_uuid: E2E_STREAM_UUID,
     topic_uuid: E2E_TOPIC_UUID,
@@ -51,7 +54,11 @@ function imageMessage(index: number, withDimensions: boolean) {
   };
 }
 
-async function installImageConversation(page: Page, withDimensions: boolean): Promise<void> {
+async function installImageConversation(
+  page: Page,
+  withDimensions: boolean,
+  messageCount = MESSAGE_COUNT,
+): Promise<void> {
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
 
@@ -67,7 +74,9 @@ async function installImageConversation(page: Page, withDimensions: boolean): Pr
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(
-          Array.from({ length: 6 }, (_unused, index) => imageMessage(index + 1, withDimensions)),
+          Array.from({ length: messageCount }, (_unused, index) =>
+            imageMessage(index + 1, withDimensions),
+          ),
         ),
       });
       return;
@@ -132,5 +141,44 @@ test.describe("Message layout shift @mock", () => {
     await openConversationAndSettle(page);
 
     expect(await readShiftScore(page)).toBeGreaterThan(0.003);
+  });
+});
+
+/**
+ * Scrolling into history while the images there are still arriving — the reported
+ * symptom, measured. Reserved boxes have to hold the text still through it.
+ */
+async function measureScrollShift(page: Page, withDimensions: boolean): Promise<number> {
+  await installLayoutShiftProbe(page);
+  await installImageConversation(page, withDimensions, SCROLL_MESSAGE_COUNT);
+
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  const scroller = page.locator("[data-workspace-scroll-controller='true']").first();
+  await scroller.waitFor({ state: "visible", timeout: 20_000 });
+
+  // Deliberately without waiting for the previews: a reader scrolls into history
+  // while the images there are still arriving, and that is when the text moves.
+  for (let step = 0; step < 10; step += 1) {
+    await scroller.evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollTop - node.clientHeight * 0.8);
+    });
+    await page.waitForTimeout(250);
+  }
+
+  return readShiftScore(page);
+}
+
+test.describe("Message list scroll shift @mock", () => {
+  test("reserved images hold the conversation still while scrolling through it", async ({
+    authenticatedMocked: page,
+  }) => {
+    const reserved = await measureScrollShift(page, true);
+    // A fresh page, so the probe starts from zero again.
+    const unreserved = await measureScrollShift(page, false);
+
+    // Measured at ~0.0012 reserved against ~0.0096 unreserved over 60 messages. The
+    // comparison rather than a fixed number: what matters is that reserving works,
+    // and the absolute value belongs to the machine that ran it.
+    expect(reserved).toBeLessThan(unreserved / 3);
   });
 });
