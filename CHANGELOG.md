@@ -6,6 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-08-28
+
+### Fixed
+
+- Topic lists stay visible when topic-summary reasoning is disabled: the UI now
+  accepts the public `off` value in API responses, application state, cached
+  topic records, and summary settings.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.5.1`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer is required to configure and receive the
+  public `off` topic-summary reasoning value.
+- The local messenger cache remains at schema version 7. Existing cached topic
+  records remain compatible, and no client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.5.2` after Workspace backend `0.1.45` or newer
+  when disabled topic-summary reasoning is used.
+- No manual migration is required.
+
 ## [0.5.1] — 2026-08-26
 
 ### Changed
