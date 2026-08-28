@@ -14,6 +14,7 @@ import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
 import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
+import { initPowerTracking } from "~/shared/lib/power";
 import { initPresenceTracker } from "~/shared/lib/presence";
 import { cleanupDevServiceWorkers, initPwaListeners, getRuntime } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
@@ -46,6 +47,7 @@ export function mountApplication(): void {
   initConnectionHealth();
   initTouchTracking();
   initVisibilityTracking();
+  initPowerTracking();
   initPresenceTracker();
   attachNotificationAudioUnlock();
   initWebViewBridge();

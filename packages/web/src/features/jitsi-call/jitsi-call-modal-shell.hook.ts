@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { t } from "~/i18n/i18n";
-import { JITSI_PARTICIPANTS_POLL_MS } from "~/shared/config/constants";
+import {
+  JITSI_PARTICIPANTS_POLL_MS,
+  JITSI_PARTICIPANTS_POLL_UNFOCUSED_MS,
+} from "~/shared/config/constants";
 import { callState } from "~/shared/lib/call-state";
 import { parseJitsiUrl } from "~/shared/lib/jitsi";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { createActivityAwareInterval, type ActivityAwareInterval } from "~/shared/lib/visibility";
 import {
   resolveJitsiCallHeaderSubtitle,
   resolveJitsiCallHeaderTitle,
@@ -57,7 +61,7 @@ export function useJitsiCallModalShell({
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const callLocationNameRef = useRef(locationName?.trim() ?? "");
-  const participantPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const participantPollRef = useRef<ActivityAwareInterval | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [pipWindowBounds, setPipWindowBounds] =
@@ -90,9 +94,9 @@ export function useJitsiCallModalShell({
   }, [callLocationName]);
 
   const clearParticipantPolling = useCallback(() => {
-    if (participantPollIntervalRef.current != null) {
-      clearInterval(participantPollIntervalRef.current);
-      participantPollIntervalRef.current = null;
+    if (participantPollRef.current != null) {
+      participantPollRef.current.stop();
+      participantPollRef.current = null;
     }
   }, []);
 
@@ -184,10 +188,13 @@ export function useJitsiCallModalShell({
       };
 
       updateParticipants();
-      participantPollIntervalRef.current = setInterval(
-        updateParticipants,
-        JITSI_PARTICIPANTS_POLL_MS,
-      );
+      // Joins and leaves already arrive as Jitsi callbacks below; this poll only
+      // reconciles them, so it can back off hard while nobody is watching.
+      participantPollRef.current = createActivityAwareInterval(updateParticipants, {
+        delayFor: (state) =>
+          state === "active" ? JITSI_PARTICIPANTS_POLL_MS : JITSI_PARTICIPANTS_POLL_UNFOCUSED_MS,
+        runOnFocus: true,
+      });
 
       const syncCallState = () => {
         const nextParticipantCount = api.getNumberOfParticipants?.();

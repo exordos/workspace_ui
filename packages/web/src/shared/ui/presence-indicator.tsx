@@ -3,7 +3,10 @@
  *
  * Sizes: sm (8px), md (10px), lg (12px) for dots; block icon scales with the same breakpoint.
  * Colors: green (active), yellow (idle), gray (offline).
- * Active state has a subtle pulse animation.
+ *
+ * The dot is static. It renders once per roster row, per message author and per
+ * mention candidate, so an infinite animation on it keeps the compositor busy for
+ * as long as the app is open — see `docs/POWER_BUDGET.md`.
  */
 import React from "react";
 import { t } from "~/i18n/i18n";
@@ -39,7 +42,6 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   className = "",
   withBorder = true,
   tone = "default",
-  pulse,
 }) => {
   if (deactivated) {
     const ringClass =
@@ -62,8 +64,6 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   const sizeClass = SIZE_MAP[size];
   const colorClass = (tone === "header" ? HEADER_COLOR_MAP : COLOR_MAP)[status];
   const borderClass = withBorder ? "ring-2 ring-bg" : "";
-  const shouldPulse = pulse ?? tone === "default";
-  const pulseClass = shouldPulse && status === "active" ? "animate-pulse" : "";
 
   let ariaLabel: string;
   if (status === "active") {
@@ -76,7 +76,7 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
 
   return (
     <span
-      className={`inline-block shrink-0 rounded-full ${sizeClass} ${colorClass} ${borderClass} ${pulseClass} ${className}`}
+      className={`inline-block shrink-0 rounded-full ${sizeClass} ${colorClass} ${borderClass} ${className}`}
       role="status"
       aria-label={ariaLabel}
       data-presence={status}

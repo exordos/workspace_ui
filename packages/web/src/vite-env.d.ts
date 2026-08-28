@@ -187,6 +187,8 @@ interface ElectronAPI {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+    /** Present from app 0.5.2 onward; absent in the browser build and older shells. */
+    onActivity?: (callback: (event: { focused: boolean }) => void) => () => void;
   };
   notifications: {
     show: (
@@ -230,6 +232,13 @@ interface ElectronAPI {
   logs: {
     append: (line: string) => Promise<boolean>;
     getFilePath: () => Promise<string | null>;
+  };
+  /** Present from app 0.5.2 onward; absent in the browser build and older shells. */
+  power?: {
+    onChange: (
+      callback: (event: { kind: "suspend" | "resume" | "on-battery" | "on-ac" }) => void,
+    ) => () => void;
+    getState: () => Promise<{ onBattery: boolean }>;
   };
   downloads: {
     start: (input: ElectronDownloadStartInput) => Promise<ElectronDownloadStartResult>;

@@ -188,6 +188,38 @@
   mask-image: url("../shared/assets/media/video-off.svg");
 }
 
+/*
+ * Nobody is looking at an unfocused window, but Chromium does not throttle one:
+ * `visibilityState` stays "visible", so every infinite animation keeps the
+ * compositor awake at full frame rate. Stand them down until focus returns.
+ * `data-window-activity` is written by shared/lib/visibility.ts.
+ */
+html[data-window-activity="visible"] *,
+html[data-window-activity="visible"] *::before,
+html[data-window-activity="visible"] *::after,
+html[data-window-activity="hidden"] *,
+html[data-window-activity="hidden"] *::before,
+html[data-window-activity="hidden"] *::after {
+  animation-play-state: paused !important;
+}
+
+/*
+ * Progress feedback keeps running. An unfocused window is still on screen — on a
+ * second monitor, typically — and a spinner frozen mid-turn reads as a hung
+ * upload rather than as a window standing down. These selectors outrank the
+ * universal rule above, so add one here for any new progress animation.
+ */
+html[data-window-activity] .animate-spin,
+html[data-window-activity] [role="progressbar"],
+html[data-window-activity]
+  .workspace-message-file-placeholder[data-workspace-preview-status="loading"]
+  .workspace-message-file-placeholder__video-icon,
+html[data-window-activity]
+  .media-viewer-resource-placeholder[data-media-viewer-resource-state="loading"]
+  .media-viewer-resource-placeholder__icon {
+  animation-play-state: running !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workspace-message-file-placeholder[data-workspace-preview-status="loading"]
     .workspace-message-file-placeholder__video-icon,

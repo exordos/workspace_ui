@@ -8,5 +8,4 @@ export interface PresenceIndicatorProps {
   className?: string;
   withBorder?: boolean;
   tone?: "default" | "header";
-  pulse?: boolean;
 }

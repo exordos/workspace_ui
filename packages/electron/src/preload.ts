@@ -82,6 +82,15 @@ const electronAPI = {
     minimize: (): void => ipcRenderer.send("window:minimize"),
     maximize: (): void => ipcRenderer.send("window:maximize"),
     close: (): void => ipcRenderer.send("window:close"),
+    /**
+     * Authoritative focus signal from the main process. The renderer's own focus
+     * events depend on the window manager cooperating; this one does not.
+     */
+    onActivity: (callback: (event: { focused: boolean }) => void): (() => void) => {
+      const handler = (_event: unknown, data: { focused: boolean }) => callback(data);
+      ipcRenderer.on("window:activity", handler);
+      return () => ipcRenderer.removeListener("window:activity", handler);
+    },
   },
 
   notifications: {
@@ -144,6 +153,25 @@ const electronAPI = {
       ipcRenderer.send("call:start", data),
     end: (): void => ipcRenderer.send("call:end"),
     update: (data: { participants?: number }): void => ipcRenderer.send("call:update", data),
+  },
+
+  power: {
+    /**
+     * OS power transitions the renderer cannot observe on its own. `resume` lets the
+     * app reconnect at once instead of waiting out its idle watchdog, and the battery
+     * state lets background work back off when the machine is unplugged.
+     */
+    onChange: (
+      callback: (event: { kind: "suspend" | "resume" | "on-battery" | "on-ac" }) => void,
+    ): (() => void) => {
+      const handler = (
+        _event: unknown,
+        data: { kind: "suspend" | "resume" | "on-battery" | "on-ac" },
+      ) => callback(data);
+      ipcRenderer.on("power:change", handler);
+      return () => ipcRenderer.removeListener("power:change", handler);
+    },
+    getState: (): Promise<{ onBattery: boolean }> => ipcRenderer.invoke("power:getState"),
   },
 
   logs: {

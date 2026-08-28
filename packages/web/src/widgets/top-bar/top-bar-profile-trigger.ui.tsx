@@ -133,7 +133,6 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
           status={presenceState}
           size="md"
           tone="header"
-          pulse={false}
           className="absolute right-0 top-0 ring-bg-elevated"
         />
       </div>

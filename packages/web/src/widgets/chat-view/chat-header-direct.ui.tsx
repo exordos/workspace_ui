@@ -44,7 +44,6 @@ export const ChatDirectHeader: React.FC<ChatDirectHeaderProps> = ({
             status={partner.presenceState}
             size="md"
             tone="header"
-            pulse={false}
             deactivated={partner.isAccountDeactivated === true}
             className="absolute bottom-0 right-0 ring-border-subtle"
           />
