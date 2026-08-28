@@ -57,7 +57,7 @@ export interface WorkspaceMessengerCachedTopic {
   summaryHasNewMessages?: boolean | null;
   summaryEnabled?: boolean;
   summarySystemPrompt?: string | null;
-  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
+  summaryReasoningEffort?: "off" | "minimal" | "low" | "medium" | "high" | null;
   updatedAt?: string | null;
 }
 

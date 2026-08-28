@@ -496,6 +496,7 @@
       "useDefault": "Использовать стандартный промпт",
       "reasoning": "Уровень рассуждения",
       "reasoningDefault": "По умолчанию провайдера",
+      "reasoningOff": "Отключено",
       "reasoningMinimal": "Минимальный",
       "reasoningLow": "Низкий",
       "reasoningMedium": "Средний",

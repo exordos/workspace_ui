@@ -227,9 +227,9 @@ describe("TopicSummarySettingsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use default prompt" }));
     expect(vm.setTopicSystemPrompt).toHaveBeenCalledWith(null);
     fireEvent.change(screen.getByLabelText("Reasoning effort"), {
-      target: { value: "high" },
+      target: { value: "off" },
     });
-    expect(vm.setTopicReasoningEffort).toHaveBeenCalledWith("high");
+    expect(vm.setTopicReasoningEffort).toHaveBeenCalledWith("off");
     fireEvent.click(screen.getByRole("button", { name: "Save topic settings" }));
     expect(vm.saveTopic).toHaveBeenCalledOnce();
   });
