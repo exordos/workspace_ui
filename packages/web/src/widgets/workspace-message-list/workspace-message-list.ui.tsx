@@ -670,6 +670,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     isLoadingNewer,
     hasOlderMessages,
     hasNewerMessages,
+    tailOutsideWindow: isKnownTailOutsideWindow,
     onLoadOlder,
     onLoadNewer,
     onUserScrollInput: handleUserScrollInput,

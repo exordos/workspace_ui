@@ -52,6 +52,8 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;
   hasNewerMessages?: boolean;
+  /** The conversation is known to continue past the loaded window. */
+  tailOutsideWindow?: boolean;
   onLoadOlder?: () => void;
   onLoadNewer?: () => void;
   onUserScrollInput?: () => void;
@@ -144,6 +146,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   isLoadingNewer = false,
   hasOlderMessages = false,
   hasNewerMessages = false,
+  tailOutsideWindow = false,
   onLoadOlder,
   onLoadNewer,
   onUserScrollInput,
@@ -597,7 +600,25 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
   const applyInitialPosition = useCallback(
     (root: HTMLElement, initialPositionKey: string): void => {
-      if (!initialPositionReady) return;
+      // Until the position is ready to be settled the list is still put where it
+      // belongs — at the tail, or at the unread the messages already state. Left
+      // alone it would paint at offset zero, showing the oldest message in the
+      // window and jumping the length of the conversation once readiness lands.
+      // Provisional placement is not recorded as applied, so the settled one still
+      // runs, and in the ordinary case it lands on the same place and moves nothing.
+      const provisional = !initialPositionReady;
+      if (
+        provisional &&
+        // Not while the reader is driving, aiming at a particular message, or the
+        // conversation continues outside the loaded window — then the place it will
+        // settle on is not in this window and guessing it would be the jump again.
+        (focusedMessageTarget != null ||
+          userScrollSeenRef.current ||
+          hasNewerMessages ||
+          tailOutsideWindow)
+      ) {
+        return;
+      }
 
       if (focusedMessageKey != null && focusedMessageTarget != null) {
         const target = findWorkspaceMessageNode(root, focusedMessageKey);
@@ -682,7 +703,9 @@ export function useWorkspaceMessageListScroll<TMessage>({
       }
 
       if (messageCount === 0) {
-        initialPositionAppliedKeyRef.current = initialPositionKey;
+        if (!provisional) {
+          initialPositionAppliedKeyRef.current = initialPositionKey;
+        }
         return;
       }
 
@@ -695,17 +718,23 @@ export function useWorkspaceMessageListScroll<TMessage>({
         });
         wasAtBottomRef.current = false;
         setIsAtBottom(false);
-        initialPositionAppliedKeyRef.current = initialPositionKey;
+        if (!provisional) {
+          initialPositionAppliedKeyRef.current = initialPositionKey;
+        }
         return;
       }
 
       pinTailToBottom(root);
-      initialPositionAppliedKeyRef.current = initialPositionKey;
+      if (!provisional) {
+        initialPositionAppliedKeyRef.current = initialPositionKey;
+      }
     },
     [
       firstUnreadKey,
       focusedMessageKey,
       focusedMessageTarget,
+      hasNewerMessages,
+      tailOutsideWindow,
       anchorHandoffPending,
       finishFocusedMessagePosition,
       initialPositionReady,
