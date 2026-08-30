@@ -107,6 +107,12 @@ function findMediaReference(
   );
 }
 
+/** Room the placeholder has on its line, or undefined when it cannot be measured. */
+function readAvailableWidth(placeholder: HTMLElement): number | undefined {
+  const width = placeholder.parentElement?.getBoundingClientRect().width;
+  return width != null && width > 0 ? width : undefined;
+}
+
 function reservePreviewLayout(
   placeholder: HTMLElement,
   reference: WorkspaceMessageFileReference,
@@ -125,6 +131,10 @@ function reservePreviewLayout(
       inComposition: placeholder.classList.contains(
         "workspace-message-file-placeholder--composition",
       ),
+      // The markup cannot know how wide the bubble is; here the element is in the
+      // document, so a wide image reserves the height it will actually get rather
+      // than the cap it will never reach.
+      maxWidth: readAvailableWidth(placeholder),
     });
     if (layout == null) return;
     // Height outright, not an aspect ratio: the placeholder is an inline-flex whose

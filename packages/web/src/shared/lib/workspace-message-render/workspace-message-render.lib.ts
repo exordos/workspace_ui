@@ -204,20 +204,16 @@ function renderWorkspaceFilePlaceholder(
   const isVideo = reference.kind === "media" && reference.mediaKind === "video";
   const videoLayout = isVideo ? deriveWorkspaceMediaPlaceholderLayout(reference) : null;
   // Reserving the loaded box up front is what keeps the text below an image from
-  // moving when the bytes arrive; without dimensions there is nothing to reserve.
+  // moving when the bytes arrive.
   const imageLayout = isImage
     ? deriveWorkspaceImagePlaceholderLayout(reference, { inComposition: inImageComposition })
     : null;
-  const compositionFallbackWidth =
-    inImageComposition && isImage && imageLayout == null ? 240 : null;
   const placeholderStyle =
     imageLayout != null
       ? ` style="width:${imageLayout.width}px;height:${imageLayout.height}px"`
-      : compositionFallbackWidth != null
-        ? ` style="width:${compositionFallbackWidth}px"`
-        : videoLayout != null
-          ? ` style="width:${videoLayout.width}px"`
-          : "";
+      : videoLayout != null
+        ? ` style="width:${videoLayout.width}px"`
+        : "";
   const videoVisualStyle =
     videoLayout != null ? ` style="aspect-ratio:${videoLayout.aspectRatio}"` : "";
   const optionalAttributes = [

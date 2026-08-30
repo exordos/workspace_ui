@@ -585,10 +585,10 @@ describe("workspace message render core", () => {
     expect(result.html).toContain(
       'class="workspace-message-file-placeholder workspace-message-file-placeholder--composition"',
     );
-    // The sized image reserves its whole box; the one without dimensions keeps the
-    // old width-only fallback, because a guessed height would shift too.
+    // Both reserve a box: the sized one from its own dimensions, the other from the
+    // height a composition image is displayed at.
     expect(result.html).toContain('style="width:200px;height:100px"');
-    expect(result.html).toContain('style="width:240px"');
+    expect(result.html).toContain('style="width:133px;height:100px"');
     expect(result.html).not.toContain("<br>");
     expect(sanitizeWorkspaceMessageHtml(result.html)).toContain('style="width:200px;height:100px"');
   });

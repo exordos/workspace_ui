@@ -22,12 +22,21 @@ function imageReference(
 
 describe("deriveWorkspaceImagePlaceholderLayout", () => {
   // The `w`/`h` params are written by the sending client and are not always there.
-  it("reserves nothing without usable dimensions", () => {
-    expect(deriveWorkspaceImagePlaceholderLayout(imageReference())).toBeNull();
-    expect(deriveWorkspaceImagePlaceholderLayout(imageReference({ width: 100 }))).toBeNull();
-    expect(
-      deriveWorkspaceImagePlaceholderLayout(imageReference({ width: 0, height: 100 })),
-    ).toBeNull();
+  it("reserves the displayed height without usable dimensions, which is all it needs", () => {
+    // Anything taller than the cap is displayed at exactly the cap, so the height is
+    // known even when the message states no size; only the width is a guess.
+    for (const reference of [
+      imageReference(),
+      imageReference({ width: 100 }),
+      imageReference({ width: 0, height: 100 }),
+    ]) {
+      expect(deriveWorkspaceImagePlaceholderLayout(reference)).toEqual({
+        width: 240,
+        height: 180,
+        aspectRatio: 4 / 3,
+        usesMetadata: false,
+      });
+    }
   });
 
   it("caps a tall image at the height the loaded image is styled to", () => {
@@ -44,6 +53,33 @@ describe("deriveWorkspaceImagePlaceholderLayout", () => {
     );
 
     expect(layout).toEqual({ width: 120, height: 60, aspectRatio: 2, usesMetadata: true });
+  });
+
+  // A wide image runs out of bubble before it runs out of cap, and then it is the
+  // width that decides its height. Reserving the cap regardless is the same jump the
+  // reservation exists to remove, only downwards.
+  it("derives the height from the room available when the image is wider than it", () => {
+    const layout = deriveWorkspaceImagePlaceholderLayout(
+      imageReference({ width: 2400, height: 400 }),
+      { maxWidth: 700 },
+    );
+
+    expect(layout).toEqual({ width: 700, height: 117, aspectRatio: 6, usesMetadata: true });
+  });
+
+  it("leaves an image that fits alone", () => {
+    const layout = deriveWorkspaceImagePlaceholderLayout(
+      imageReference({ width: 640, height: 480 }),
+      { maxWidth: 700 },
+    );
+
+    expect(layout).toEqual({ width: 240, height: 180, aspectRatio: 1.3333, usesMetadata: true });
+  });
+
+  it("caps the guessed width without moving the height it cannot derive", () => {
+    const layout = deriveWorkspaceImagePlaceholderLayout(imageReference(), { maxWidth: 160 });
+
+    expect(layout).toEqual({ width: 160, height: 180, aspectRatio: 4 / 3, usesMetadata: false });
   });
 
   it("uses the tighter cap inside a composition row", () => {

@@ -24,6 +24,14 @@ const BASE_BODY_CLASS_NAME = [
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
   "workspace-message-body",
   "[&_.workspace-message-file-placeholder]:inline-flex",
+  // Aligned to the middle rather than the baseline: an inline box on the baseline
+  // reserves room for descenders that changes when its content is swapped, and the
+  // line — with the text under it — moves by a pixel when the image lands.
+  "[&_.workspace-message-file-placeholder]:align-middle",
+  // Never the browser's scroll anchor: the placeholder is swapped for the image it
+  // was holding the box for, and anchoring on a node that is about to be replaced
+  // drifts the conversation by a few pixels. The text around it anchors fine.
+  "[&_.workspace-message-file-placeholder]:[overflow-anchor:none]",
   "[&_.workspace-message-file-placeholder]:max-w-full",
   "[&_.workspace-message-file-placeholder]:cursor-pointer",
   "[&_.workspace-message-file-placeholder]:items-center",
