@@ -20,8 +20,12 @@ import type { WorkspaceMessengerUserStatus } from "~/shared/api/messenger.types"
 import type { LocalPresenceStatus } from "~/shared/lib/presence";
 import type { User } from "./user.types";
 
-/** A status the user picked here, as opposed to one measured or inferred. */
-export type WorkspaceManualStatus = "idle" | "do_not_disturb";
+/**
+ * A status the user picked here, as opposed to one measured or inferred. Only away
+ * is choosable in this client; do-not-disturb always arrives from elsewhere, and the
+ * account status is what carries it.
+ */
+export type WorkspaceManualStatus = "idle";
 
 export interface ResolveHeartbeatStatusParams {
   /** What the local activity tracker measured. */

@@ -16,7 +16,7 @@ function storageKey(userUuid: string): string {
 }
 
 function isManualStatus(value: unknown): value is WorkspaceManualStatus {
-  return value === "idle" || value === "do_not_disturb";
+  return value === "idle";
 }
 
 export function readManualStatus(userUuid: string): WorkspaceManualStatus | null {
