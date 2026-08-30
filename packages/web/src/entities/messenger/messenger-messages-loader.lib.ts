@@ -591,19 +591,29 @@ async function restoreCachedConversationMessages({
     ? cachedWindow
     : { ...cachedWindow, messages: effectiveMessages };
 
-  const cachedStore = store.getState();
-  cachedStore.replaceConversationWindow({
-    conversationId,
-    expectedRevision,
-    capturedMutationRevision,
-    mode: "tail",
-    anchorMessageUuid: null,
-    messages: effectiveMessages,
-    markers: {
-      beforePageMarker: cachedWindow.nextPageMarker,
-      afterPageMarker: null,
-    },
-  });
+  // The cache exists to fill an empty conversation quickly. When one is already on
+  // screen — reopening it, reloading it, retrying — replacing it with whatever the
+  // cache happens to hold takes messages away from the reader for as long as the
+  // server page takes to arrive: the list collapses to a handful of messages and
+  // comes back a fifth of a second later.
+  const hasLoadedWindow =
+    (initialStoreState.conversationWindowsById[conversationId]?.messageUuids.length ?? 0) > 0;
+
+  if (!hasLoadedWindow) {
+    const cachedStore = store.getState();
+    cachedStore.replaceConversationWindow({
+      conversationId,
+      expectedRevision,
+      capturedMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: effectiveMessages,
+      markers: {
+        beforePageMarker: cachedWindow.nextPageMarker,
+        afterPageMarker: null,
+      },
+    });
+  }
   const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
     runtimeContext,
     getRuntimeContext,
