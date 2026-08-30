@@ -1,8 +1,8 @@
 # Power budget
 
 A desktop messenger spends most of its life on screen and unattended. This
-document records what the client costs while nothing is happening, what was done
-about it, and how to measure it again.
+document records what the client costs while nothing is happening, what it stands
+down when nobody is looking, and how to measure it again.
 
 ## The state the platform does not throttle
 
@@ -35,27 +35,39 @@ the main process (`window:activity` IPC, `main.ts`) via
 focus events depend on the window manager cooperating, which is not guaranteed on
 every desktop.
 
-## What was changed
+## What stands down, and what does not
 
-| Change                                | Where                                                   | Effect                                                                                    |
-| ------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Animations pause off-focus            | `app.styles.css`, keyed on `data-window-activity`       | Compositor stops on an unfocused window; spinners and progressbars are excluded           |
-| Presence dot pulse removed            | `shared/ui/presence-indicator.tsx`                      | It rendered per roster row, per message author and per mention candidate                  |
-| Presence heartbeat follows activity   | `entities/user/user-workspace-presence-reporter.lib.ts` | 30s focused → 120s unfocused → 300s hidden, doubled on battery; reports at once on return |
-| Presence tracker stopped sending      | `shared/lib/presence.ts`                                | The heartbeat is the single sender; one periodic timer dropped                            |
-| Jitsi participant poll backs off      | `features/jitsi-call/jitsi-call-modal-shell.hook.ts`    | 5s → 30s unfocused; joins/leaves already arrive as callbacks                              |
-| Scheduled sends wait for the deadline | `widgets/message-composer/message-composer.ui.tsx`      | Was a 1s poll for as long as anything was queued                                          |
-| OS power events forwarded             | `packages/electron/src/main.ts`, `shared/lib/power.ts`  | Reconnect on wake instead of waiting out the idle watchdog; back off on battery           |
+| Behaviour                            | Where                                                   | Off-focus                                                                         |
+| ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| CSS animations                       | `app.styles.css`, keyed on `data-window-activity`       | Paused, except the exclusions below                                               |
+| Presence heartbeat                   | `entities/user/user-workspace-presence-reporter.lib.ts` | 30s focused → 120s unfocused → 300s hidden, doubled on battery; at once on return |
+| Jitsi participant poll               | `features/jitsi-call/jitsi-call-modal-shell.hook.ts`    | 5s → 30s; joins and leaves already arrive as callbacks, the poll only reconciles  |
+| Scheduled sends                      | `widgets/message-composer/message-composer.ui.tsx`      | Wait for the deadline rather than polling every second                            |
+| OS suspend, resume and battery state | `packages/electron/src/main.ts`, `shared/lib/power.ts`  | Forwarded in: reconnect on wake, stretch the cadence on battery                   |
+
+The presence dot is static (`shared/ui/presence-indicator.tsx`): it renders once per
+roster row, per message author and per mention candidate, so an infinite animation
+on it kept the compositor busy for as long as the app was open.
+
+### What keeps animating
+
+Two kinds of animation are excluded from the pause, and both are listed in
+`app.styles.css` next to the rule:
+
+- **Progress feedback** — spinners, `[role="progressbar"]`, `.animate-pulse`
+  skeletons and streaming indicators, the media preview icons. An unfocused window
+  is still on screen, and a spinner frozen mid-turn reads as a hung upload.
+- **Anything that runs once** — `.animate-in` / `.animate-out`, Radix `[data-state]`
+  transitions, the message anchor highlight. Pausing these saves no frame that
+  would otherwise keep being spent, and it strands the element mid-transition: a
+  Radix dialog stays mounted until its exit animation fires `animationend`, so a
+  close that lands as the window loses focus would leave the overlay over the app.
 
 ### Deliberately left alone
 
 - **The call title pulse** (`shared/lib/call-state.ts`, 1s). The pulsing window
   title exists precisely for when you are _not_ looking at the window, so
   throttling it off-focus would remove the feature rather than its cost.
-- **Message list virtualisation.** The list renders every day group and message
-  (`workspace-message-list.ui.tsx`), so each realtime event rebuilds the whole
-  tree. This is the largest remaining idle cost, and the largest change: the
-  scroll and anchoring logic around it is substantial. Worth its own branch.
 
 ## Measuring it again
 
