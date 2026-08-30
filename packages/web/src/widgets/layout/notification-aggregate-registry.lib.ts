@@ -81,25 +81,25 @@ function buildSnapshot(
   tag: string,
   entry: NotificationAggregateEntry,
 ): NotificationAggregateSnapshot | null {
-  let lastMessageUuid: string | null = null;
-  let lastState: NotificationAggregateMessageState | null = null;
+  let latest: { messageUuid: string; state: NotificationAggregateMessageState } | null = null;
 
   for (const [messageUuid, state] of entry.messages) {
     if (
-      lastState == null ||
+      latest == null ||
       compareMessengerMessageOrder(
         { createdAt: state.createdAt, messageUuid },
-        { createdAt: lastState.createdAt, messageUuid: lastMessageUuid ?? messageUuid },
+        { createdAt: latest.state.createdAt, messageUuid: latest.messageUuid },
       ) > 0
     ) {
-      lastMessageUuid = messageUuid;
-      lastState = state;
+      latest = { messageUuid, state };
     }
   }
 
-  if (lastState == null || lastMessageUuid == null) {
+  if (latest == null) {
     return null;
   }
+
+  const { messageUuid: lastMessageUuid, state: lastState } = latest;
 
   return {
     tag,
