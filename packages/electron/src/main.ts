@@ -11,6 +11,7 @@ import {
   session,
   shell,
   ipcMain,
+  powerMonitor,
 } from "electron";
 import { autoUpdater } from "electron-updater";
 import {
@@ -408,8 +409,24 @@ function createWindow(): void {
     }
   });
 
+  /**
+   * The renderer's own focus events depend on the window manager cooperating,
+   * which is not guaranteed on every desktop. The main process always knows, so
+   * it is the authority for whether anyone is looking at the window.
+   */
+  const sendWindowActivity = (focused: boolean) => {
+    mainWindow?.webContents.send("window:activity", { focused });
+  };
+
   mainWindow.on("focus", () => {
     mainWindow?.flashFrame(false);
+    sendWindowActivity(true);
+  });
+  mainWindow.on("blur", () => sendWindowActivity(false));
+  mainWindow.on("show", () => sendWindowActivity(mainWindow?.isFocused() ?? false));
+  mainWindow.on("restore", () => sendWindowActivity(mainWindow?.isFocused() ?? false));
+  mainWindow.webContents.on("did-finish-load", () => {
+    sendWindowActivity(mainWindow?.isFocused() ?? false);
   });
 
   if (IS_DEV) {
@@ -765,10 +782,29 @@ app.on("activate", () => {
   showMainWindow();
 });
 
+/**
+ * Forward OS power transitions to the renderer.
+ *
+ * The renderer cannot see any of these. Without `resume` it waits out its own idle
+ * watchdog after the machine wakes, and without the battery state it keeps its
+ * mains-power cadence on a laptop running off the battery.
+ */
+function forwardPowerEvents(): void {
+  const send = (kind: "suspend" | "resume" | "on-battery" | "on-ac") => {
+    mainWindow?.webContents.send("power:change", { kind });
+  };
+
+  powerMonitor.on("suspend", () => send("suspend"));
+  powerMonitor.on("resume", () => send("resume"));
+  powerMonitor.on("on-battery", () => send("on-battery"));
+  powerMonitor.on("on-ac", () => send("on-ac"));
+}
+
 app.whenReady().then(() => {
   configureSecurityPolicy();
   buildNativeMenu();
   registerIpcHandlers();
+  forwardPowerEvents();
   registerWorkspaceDownloadCoordinator({
     ipcMain,
     session: session.defaultSession,
@@ -994,6 +1030,9 @@ function registerIpcHandlers(): void {
       nativeTheme.themeSource = mode;
     }
   });
+
+  // Power
+  ipcMain.handle("power:getState", () => ({ onBattery: powerMonitor.isOnBatteryPower() }));
 
   // Window controls
   ipcMain.handle("window:isMaximized", () => mainWindow?.isMaximized() ?? false);

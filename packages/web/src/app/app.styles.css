@@ -188,6 +188,53 @@
   mask-image: url("../shared/assets/media/video-off.svg");
 }
 
+/*
+ * Nobody is looking at an unfocused window, but Chromium does not throttle one:
+ * `visibilityState` stays "visible", so every infinite animation keeps the
+ * compositor awake at full frame rate. Stand them down until focus returns.
+ * `data-window-activity` is written by shared/lib/visibility.ts.
+ */
+html[data-window-activity="visible"] *,
+html[data-window-activity="visible"] *::before,
+html[data-window-activity="visible"] *::after,
+html[data-window-activity="hidden"] *,
+html[data-window-activity="hidden"] *::before,
+html[data-window-activity="hidden"] *::after {
+  animation-play-state: paused !important;
+}
+
+/*
+ * Two kinds of animation outrank the universal rule above.
+ *
+ * Progress feedback, because an unfocused window is still on screen — on a second
+ * monitor, typically — and a spinner frozen mid-turn reads as a hung upload rather
+ * than as a window standing down.
+ *
+ * Anything that runs once and then stops, because pausing it does not save a frame
+ * it would otherwise keep spending — it strands the element mid-transition. A
+ * Radix dialog is the sharp case: it stays mounted until its exit animation fires
+ * `animationend`, so a close that happens as the window loses focus would leave the
+ * overlay over the app until focus returned.
+ *
+ * Add to this list, not to the rule above, for any new animation that is either.
+ */
+html[data-window-activity] .animate-spin,
+html[data-window-activity] .animate-pulse,
+html[data-window-activity] [role="progressbar"],
+html[data-window-activity]
+  .workspace-message-file-placeholder[data-workspace-preview-status="loading"]
+  .workspace-message-file-placeholder__video-icon,
+html[data-window-activity]
+  .media-viewer-resource-placeholder[data-media-viewer-resource-state="loading"]
+  .media-viewer-resource-placeholder__icon,
+html[data-window-activity] .animate-in,
+html[data-window-activity] .animate-out,
+html[data-window-activity] [data-state="open"],
+html[data-window-activity] [data-state="closed"],
+html[data-window-activity] [data-workspace-message-anchor-highlight="true"]::before {
+  animation-play-state: running !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workspace-message-file-placeholder[data-workspace-preview-status="loading"]
     .workspace-message-file-placeholder__video-icon,

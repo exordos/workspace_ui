@@ -170,6 +170,18 @@ describe("workspace-realtime runtime manager", () => {
     expect(manager.getSnapshot().entries.map((entry) => entry.ownerKey)).toEqual([first.ownerKey]);
   });
 
+  it("reconnects every live runtime", async () => {
+    const first = createManagerContext("a");
+    const second = createManagerContext("b");
+    const { manager, runtimes } = createHarness();
+
+    await manager.update([first, second], first.ownerKey);
+    await manager.reconnectAll("power_resume");
+
+    expect(runtimes[0]?.reconnect).toHaveBeenCalledWith("power_resume");
+    expect(runtimes[1]?.reconnect).toHaveBeenCalledWith("power_resume");
+  });
+
   it("replaces owner runtime when runtimeKey changes", async () => {
     const first = createManagerContext("a", { runtimeKey: "token-a" });
     const refreshed = createManagerContext("a", {

@@ -42,6 +42,8 @@ import {
   SAVED_SNIPPETS_MENU_WIDTH,
   SCHEDULE_MENU_HEIGHT,
   SCHEDULE_MENU_WIDTH,
+  SCHEDULE_MAX_WAKE_DELAY_MS,
+  SCHEDULE_MIN_WAKE_DELAY_MS,
   SCHEDULE_RETRY_DELAY_MS,
   STICKER_PICKER_HEIGHT,
   STICKER_PICKER_WIDTH,
@@ -1664,16 +1666,41 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     savedSnippetTitle,
   ]);
 
+  const nextScheduledSendAt = React.useMemo(
+    () =>
+      scheduledMessages.reduce<number | null>(
+        (earliest, message) =>
+          earliest == null || message.sendAt < earliest ? message.sendAt : earliest,
+        null,
+      ),
+    [scheduledMessages],
+  );
+
   React.useEffect(() => {
     void processDueScheduledMessage();
-    if (scheduledMessages.length === 0) return;
-    const intervalId = window.setInterval(() => {
-      void processDueScheduledMessage();
-    }, 1000);
-    return () => {
-      window.clearInterval(intervalId);
+    if (nextScheduledSendAt == null) return;
+
+    // Wait for the deadline rather than polling: a message scheduled for tomorrow
+    // would otherwise tick the app 86 400 times to do nothing. The wait is capped
+    // and re-armed so a machine that slept through the deadline, or a send still
+    // in flight, still gets picked up.
+    let timeoutId: number | null = null;
+    const armNextWake = () => {
+      const delay = Math.min(
+        Math.max(nextScheduledSendAt - Date.now(), SCHEDULE_MIN_WAKE_DELAY_MS),
+        SCHEDULE_MAX_WAKE_DELAY_MS,
+      );
+      timeoutId = window.setTimeout(() => {
+        void processDueScheduledMessage();
+        armNextWake();
+      }, delay);
     };
-  }, [processDueScheduledMessage, scheduledMessages.length]);
+    armNextWake();
+
+    return () => {
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [processDueScheduledMessage, nextScheduledSendAt]);
 
   const handleModeChange = useCallback(
     (nextMode: ComposerMode) => {

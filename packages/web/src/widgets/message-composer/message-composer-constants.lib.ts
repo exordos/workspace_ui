@@ -19,3 +19,7 @@ export const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 128;
 /** Matches the Workspace shell block gap (`mb-1` / `gap-1`). */
 export const COMPOSER_RESIZE_SHELL_GAP_PX = 4;
 export const SCHEDULE_RETRY_DELAY_MS = 30_000;
+/** Floor on the scheduled-send wake-up, so an overdue message retries at a sane rate. */
+export const SCHEDULE_MIN_WAKE_DELAY_MS = 1_000;
+/** Ceiling on it, so a deadline missed while the machine slept is still caught. */
+export const SCHEDULE_MAX_WAKE_DELAY_MS = 60_000;

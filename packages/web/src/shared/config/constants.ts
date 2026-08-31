@@ -35,6 +35,8 @@ export { SEARCH_INPUT_DEBOUNCE_MS as MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS };
 
 /** Jitsi Meet API: poll interval for participant list display in the call UI. */
 export const JITSI_PARTICIPANTS_POLL_MS = 5000;
+/** Participant joins/leaves arrive as Jitsi callbacks; the poll is only a reconcile. */
+export const JITSI_PARTICIPANTS_POLL_UNFOCUSED_MS = 30_000;
 
 /** Background Workspace folder rail + selective folder/items refresh. */
 export const FOLDER_SYNC_POLL_INTERVAL_MS = 5 * 60_000;

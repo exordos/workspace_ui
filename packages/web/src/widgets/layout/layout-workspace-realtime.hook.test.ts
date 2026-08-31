@@ -48,6 +48,13 @@ const createWorkspaceRealtimeTransportCoreMock = vi.hoisted(() =>
   }),
 );
 const startWorkspacePresenceReporterMock = vi.hoisted(() => vi.fn(() => () => undefined));
+const powerResumeListeners = vi.hoisted(() => new Set<() => void>());
+const onPowerResumeMock = vi.hoisted(() =>
+  vi.fn((callback: () => void) => {
+    powerResumeListeners.add(callback);
+    return () => powerResumeListeners.delete(callback);
+  }),
+);
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -83,6 +90,10 @@ vi.mock("~/shared/lib/workspace-external-account-cache-db", async (importOrigina
 
 vi.mock("~/entities/user/user-workspace-presence-reporter.lib", () => ({
   startWorkspacePresenceReporter: startWorkspacePresenceReporterMock,
+}));
+
+vi.mock("~/shared/lib/power", () => ({
+  onPowerResume: onPowerResumeMock,
 }));
 
 vi.mock(
@@ -186,6 +197,8 @@ describe("useLayoutWorkspaceRealtime", () => {
     createWorkspaceRealtimeTransportCoreMock.mockClear();
     workspaceRealtimeRuntimeOptions.length = 0;
     startWorkspacePresenceReporterMock.mockClear();
+    onPowerResumeMock.mockClear();
+    powerResumeListeners.clear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useActivityStore.getState().clear();
@@ -245,6 +258,38 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       surface: "active",
     });
+  });
+
+  it("reconnects the live Workspace runtime when the machine resumes", async () => {
+    setWorkspaceSession(createSession());
+    const { runtimeFactory, runtimes } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    const { unmount } = renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: "/org/org-a/project/project-a/messenger",
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
+        applier: createWorkspaceRealtimeNoopApplier(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      powerResumeListeners.forEach((listener) => listener());
+    });
+
+    await waitFor(() => {
+      expect(runtimes[0]?.reconnect).toHaveBeenCalledWith("power_resume");
+    });
+
+    unmount();
+    expect(powerResumeListeners.size).toBe(0);
   });
 
   it("uses the common Workspace API base for default realtime and presence in production", async () => {

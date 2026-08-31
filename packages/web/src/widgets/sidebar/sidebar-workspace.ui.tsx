@@ -341,7 +341,6 @@ function WorkspaceSidebarStreamRow({
                 <PresenceIndicator
                   status={stream.presence ?? null}
                   size="sm"
-                  pulse={false}
                   className="absolute bottom-0 right-0 ring-border-subtle"
                 />
               )}
