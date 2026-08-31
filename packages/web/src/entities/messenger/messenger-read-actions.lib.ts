@@ -1,3 +1,4 @@
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceOptimisticMessageReadChange } from "~/entities/message/message.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -351,6 +352,10 @@ export async function runWorkspaceStreamRead(
         ),
       ...(canApplyResponse ? [() => cache.upsertCachedStream?.(action.ownerKey, stream)] : []),
     ]);
+    if (action.isStale()) {
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    }
+    useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
     return { status: "applied", ownerKey: action.ownerKey };
   } finally {
     activeReadActions.delete(actionKey);
@@ -419,6 +424,10 @@ export async function runWorkspaceTopicRead(
         ),
       ...(canApplyResponse ? [() => cache.upsertCachedTopic?.(action.ownerKey, topic)] : []),
     ]);
+    if (action.isStale()) {
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    }
+    useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
     return { status: "applied", ownerKey: action.ownerKey };
   } finally {
     activeReadActions.delete(actionKey);

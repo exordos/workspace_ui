@@ -22,6 +22,7 @@ const runWorkspaceTopicNotificationUpdateMock = vi.fn();
 const runWorkspaceFolderItemPinToggleMock = vi.fn();
 const runWorkspaceFolderAssignmentToggleMock = vi.fn();
 const runWorkspaceCreateTopicRequestMock = vi.fn();
+const runWorkspaceStreamRenameRequestMock = vi.fn();
 const runWorkspaceTopicRenameRequestMock = vi.fn();
 const runWorkspaceTopicDoneToggleMock = vi.fn();
 const runWorkspaceStreamReadMock = vi.fn();
@@ -39,6 +40,8 @@ vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
     runWorkspaceFolderAssignmentToggleMock(...args),
   runWorkspaceCreateTopicRequest: (...args: unknown[]) =>
     runWorkspaceCreateTopicRequestMock(...args),
+  runWorkspaceStreamRenameRequest: (...args: unknown[]) =>
+    runWorkspaceStreamRenameRequestMock(...args),
   runWorkspaceTopicRenameRequest: (...args: unknown[]) =>
     runWorkspaceTopicRenameRequestMock(...args),
   runWorkspaceTopicDoneToggle: (...args: unknown[]) => runWorkspaceTopicDoneToggleMock(...args),
@@ -163,6 +166,7 @@ function expectNoWorkspaceActionRequests(): void {
   expect(runWorkspaceFolderItemPinToggleMock).not.toHaveBeenCalled();
   expect(runWorkspaceFolderAssignmentToggleMock).not.toHaveBeenCalled();
   expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
+  expect(runWorkspaceStreamRenameRequestMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicRenameRequestMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicDoneToggleMock).not.toHaveBeenCalled();
   expect(runWorkspaceStreamReadMock).not.toHaveBeenCalled();
@@ -217,6 +221,7 @@ describe("WorkspaceSidebar context menu", () => {
     runWorkspaceFolderItemPinToggleMock.mockReset();
     runWorkspaceFolderAssignmentToggleMock.mockReset();
     runWorkspaceCreateTopicRequestMock.mockReset();
+    runWorkspaceStreamRenameRequestMock.mockReset();
     runWorkspaceTopicRenameRequestMock.mockReset();
     runWorkspaceTopicDoneToggleMock.mockReset();
     runWorkspaceStreamReadMock.mockReset();
@@ -445,6 +450,43 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.getByRole("textbox", { name: /topic name/i })).toBeInTheDocument();
     expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId("sidebar-new-topic-button")).not.toBeInTheDocument();
+  });
+
+  it("renames a channel from the stream context menu", async () => {
+    runWorkspaceStreamRenameRequestMock.mockResolvedValue({ status: "applied" });
+    renderWorkspaceSidebar([createStream()]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^rename$/i }));
+
+    const nameInput = await screen.findByRole("textbox", { name: /channel name/i });
+    expect(nameInput).toHaveValue("Engineering");
+    fireEvent.change(nameInput, { target: { value: "Group planning" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceStreamRenameRequestMock).toHaveBeenCalledWith({
+        streamUuid: STREAM_UUID,
+        name: "Group planning",
+      });
+    });
+  });
+
+  it("does not offer channel rename for a direct private chat", async () => {
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "directPrivate",
+        directUserUuid: "user-alice",
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
+
+    expect(await screen.findByRole("menuitem", { name: /contact info/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^rename$/i })).not.toBeInTheDocument();
   });
 
   it("opens a topic immediately after creating it from the stream", async () => {

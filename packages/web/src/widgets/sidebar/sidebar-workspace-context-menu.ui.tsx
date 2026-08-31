@@ -9,6 +9,7 @@ import {
   runWorkspaceFolderAssignmentToggle,
   runWorkspaceFolderItemPinToggle,
   runWorkspaceStreamNotificationUpdate,
+  runWorkspaceStreamRenameRequest,
 } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { selectMessengerFolders, useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
@@ -81,30 +82,32 @@ function useWorkspaceStreamNotificationMode(
   return useMessengerStore((s) => s.streamsById[streamUuid]?.notificationMode ?? "mentions_only");
 }
 
-interface WorkspaceTopicNameDialogProps {
+interface WorkspaceNameDialogProps {
   open: boolean;
   title: string;
-  streamName: string;
-  topicName: string;
+  description?: string;
+  inputLabel: string;
+  name: string;
   pending: boolean;
   submitLabel: string;
-  onTopicNameChange: (value: string) => void;
+  onNameChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
 }
 
-const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
+const WorkspaceNameDialog = React.memo(function WorkspaceNameDialog({
   open,
   title,
-  streamName,
-  topicName,
+  description,
+  inputLabel,
+  name,
   pending,
   submitLabel,
-  onTopicNameChange,
+  onNameChange,
   onOpenChange,
   onSubmit,
-}: WorkspaceTopicNameDialogProps): React.ReactElement {
-  const trimmedName = topicName.trim();
+}: WorkspaceNameDialogProps): React.ReactElement {
+  const trimmedName = name.trim();
 
   const handleSubmit = useCallback(() => {
     if (pending || trimmedName.length === 0) return;
@@ -116,7 +119,7 @@ const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
-      description={`#${streamName}`}
+      description={description}
       positionClassName="top-1/2 -translate-y-1/2"
       footer={
         <AppDialogFormFooter
@@ -130,21 +133,21 @@ const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
       }
     >
       <label className="flex flex-col gap-1.5">
-        <span className="text-sm text-text-muted">{t("channel.topicName")}</span>
+        <span className="text-sm text-text-muted">{inputLabel}</span>
         <input
           type="text"
-          value={topicName}
+          value={name}
           disabled={pending}
-          onChange={(event) => onTopicNameChange(event.target.value)}
+          onChange={(event) => onNameChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
               handleSubmit();
             }
           }}
-          aria-label={t("channel.topicName")}
+          aria-label={inputLabel}
           className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted disabled:opacity-60"
-          placeholder={t("channel.topicName")}
+          placeholder={inputLabel}
         />
       </label>
     </AppDialog>
@@ -181,6 +184,9 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   const [notificationPending, setNotificationPending] = useState(false);
   const [readPending, setReadPending] = useState(false);
   const [pinPending, setPinPending] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renamedStreamName, setRenamedStreamName] = useState(stream.title);
+  const [renamePending, setRenamePending] = useState(false);
   const [createTopicDialogOpen, setCreateTopicDialogOpen] = useState(false);
   const [newTopicName, setNewTopicName] = useState("");
   const [createTopicPending, setCreateTopicPending] = useState(false);
@@ -259,6 +265,12 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     setCreateTopicDialogOpen(true);
   }, [handleMenuOpenChange]);
 
+  const handleRename = useCallback((): void => {
+    handleMenuOpenChange(false);
+    setRenamedStreamName(stream.title);
+    setRenameDialogOpen(true);
+  }, [handleMenuOpenChange, stream.title]);
+
   const handleOpenMembers = useCallback((): void => {
     handleMenuOpenChange(false);
     if (stream.uiKind === "directPrivate") {
@@ -293,6 +305,19 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         setNewTopicName("");
       });
   }, [createTopicPending, newTopicName, onTopicCreated, stream.streamUuid]);
+
+  const handleSubmitRename = useCallback((): void => {
+    const name = renamedStreamName.trim();
+    if (name.length === 0 || name === stream.title || renamePending) return;
+
+    setRenamePending(true);
+    void runWorkspaceStreamRenameRequest({ streamUuid: stream.streamUuid, name })
+      .catch((error) => reportWorkspaceMenuActionError("stream-rename", error))
+      .finally(() => {
+        setRenamePending(false);
+        setRenameDialogOpen(false);
+      });
+  }, [renamePending, renamedStreamName, stream.streamUuid, stream.title]);
 
   const notificationPickerItem = useMemo<DropdownMenuItem>(
     () => ({
@@ -396,6 +421,16 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         onSelect: handleOpenMembers,
       },
       folderAssignmentsItem,
+      ...(stream.uiKind === "directPrivate"
+        ? []
+        : [
+            {
+              type: "action" as const,
+              key: "rename-stream",
+              label: t("common.rename"),
+              onSelect: handleRename,
+            },
+          ]),
       {
         type: "action",
         key: "new-topic",
@@ -411,6 +446,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     handleMarkRead,
     handleOpenMembers,
     handlePinToggle,
+    handleRename,
     notificationPickerItem,
     pinPending,
     readPending,
@@ -447,14 +483,26 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
           align: "start",
         }}
       />
-      <WorkspaceTopicNameDialog
+      <WorkspaceNameDialog
+        open={renameDialogOpen}
+        title={t("common.rename")}
+        inputLabel={t("channel.channelName")}
+        name={renamedStreamName}
+        pending={renamePending}
+        submitLabel={t("common.save")}
+        onNameChange={setRenamedStreamName}
+        onOpenChange={setRenameDialogOpen}
+        onSubmit={handleSubmitRename}
+      />
+      <WorkspaceNameDialog
         open={createTopicDialogOpen}
         title={t("channel.createTopic")}
-        streamName={stream.title}
-        topicName={newTopicName}
+        description={`#${stream.title}`}
+        inputLabel={t("channel.topicName")}
+        name={newTopicName}
         pending={createTopicPending}
         submitLabel={t("common.create")}
-        onTopicNameChange={setNewTopicName}
+        onNameChange={setNewTopicName}
         onOpenChange={setCreateTopicDialogOpen}
         onSubmit={handleSubmitCreateTopic}
       />

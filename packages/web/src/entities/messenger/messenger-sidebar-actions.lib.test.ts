@@ -8,6 +8,7 @@ import type {
   WorkspaceMessengerFolderItemDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerStreamNotificationRequestBody,
+  WorkspaceMessengerUpdateStreamRequestBody,
   WorkspaceMessengerTopicDto,
   WorkspaceMessengerTopicNotificationRequestBody,
   WorkspaceMessengerUpdateTopicRequestBody,
@@ -18,6 +19,7 @@ import {
   createMessengerTopic,
   deleteMessengerFolderItem,
   pinMessengerFolderItem,
+  renameMessengerStream,
   renameMessengerTopic,
   setMessengerTopicNotificationMode,
   toggleMessengerTopicDone,
@@ -539,6 +541,78 @@ describe("messenger sidebar actions", () => {
         name: "Launch",
         notificationMode: "follow",
       }),
+    );
+  });
+
+  it("renames a stream and applies the returned projection", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto());
+    const updateStream = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerUpdateStreamRequestBody,
+      ) => Promise.resolve(createStreamDto({ name: "Group planning" })),
+    );
+
+    await expect(
+      renameMessengerStream({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        streamUuid: STREAM_A,
+        name: "Group planning",
+        client: { updateStream },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: "applied",
+        ownerKey,
+        stream: expect.objectContaining({ name: "Group planning" }),
+      }),
+    );
+
+    expect(updateStream).toHaveBeenCalledWith(expect.any(Object), STREAM_A, {
+      name: "Group planning",
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Group planning");
+  });
+
+  it("preserves a concurrent notification projection while a stream rename finishes", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const renameRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const notificationRequest = createDeferred<WorkspaceMessengerStreamDto>();
+
+    const renameAction = renameMessengerStream({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      name: "Group planning",
+      client: { updateStream: () => renameRequest.promise },
+    });
+    const notificationAction = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications: () => notificationRequest.promise },
+    });
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+    renameRequest.resolve(
+      createStreamDto({ name: "Group planning", notification_mode: "all_messages" }),
+    );
+    await renameAction;
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ name: "Group planning", notificationMode: "muted" }),
+    );
+
+    notificationRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await notificationAction;
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ name: "Group planning", notificationMode: "muted" }),
     );
   });
 

@@ -13,7 +13,10 @@ import {
   pinFolderItem as defaultPinFolderItem,
   unpinFolderItem as defaultUnpinFolderItem,
 } from "~/shared/api/messenger-folders.api";
-import { updateStreamNotifications as defaultUpdateStreamNotifications } from "~/shared/api/messenger-streams.api";
+import {
+  updateStream as defaultUpdateStream,
+  updateStreamNotifications as defaultUpdateStreamNotifications,
+} from "~/shared/api/messenger-streams.api";
 import {
   createStreamTopic as defaultCreateStreamTopic,
   renameStreamTopic as defaultRenameStreamTopic,
@@ -27,6 +30,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerStreamNotificationRequestBody,
+  WorkspaceMessengerUpdateStreamRequestBody,
   WorkspaceMessengerTopicDto,
   WorkspaceMessengerTopicNotificationMode,
   WorkspaceMessengerTopicNotificationRequestBody,
@@ -51,6 +55,11 @@ import type {
 } from "./messenger.types";
 
 export interface MessengerSidebarActionClientDeps {
+  updateStream?: (
+    options: MessengerClientOptions,
+    streamUuid: string,
+    body: WorkspaceMessengerUpdateStreamRequestBody,
+  ) => Promise<WorkspaceMessengerStreamDto>;
   updateStreamNotifications?: (
     options: MessengerClientOptions,
     streamUuid: string,
@@ -133,6 +142,11 @@ export interface UpdateMessengerStreamNotificationModeOptions extends MessengerS
   notificationMode: WorkspaceMessengerStreamNotificationMode;
 }
 
+export interface RenameMessengerStreamOptions extends MessengerSidebarActionBaseOptions {
+  streamUuid: MessengerUuid;
+  name: string;
+}
+
 export interface CreateMessengerTopicOptions extends MessengerSidebarActionBaseOptions {
   streamUuid: MessengerUuid;
   name: string;
@@ -170,6 +184,11 @@ export interface PinMessengerFolderItemOptions extends MessengerSidebarActionBas
 export interface RunWorkspaceStreamNotificationUpdateOptions {
   streamUuid: MessengerUuid;
   notificationMode: WorkspaceMessengerStreamNotificationMode;
+}
+
+export interface RunWorkspaceStreamRenameRequestOptions {
+  streamUuid: MessengerUuid;
+  name?: string;
 }
 
 export interface RunWorkspaceCreateTopicRequestOptions {
@@ -374,7 +393,11 @@ function finishOptimisticStreamNotificationRequest(
   entry.pendingModesByRequestId.delete(request.requestId);
 
   if (outcome !== "failed" && outcome !== "stale") {
-    entry.confirmedStream = outcome.confirmedStream;
+    entry.confirmedStream = {
+      ...entry.confirmedStream,
+      notificationMode: outcome.confirmedStream.notificationMode,
+      updatedAt: outcome.confirmedStream.updatedAt,
+    };
   }
 
   if (entry.pendingModesByRequestId.size === 0) {
@@ -397,6 +420,39 @@ function finishOptimisticStreamNotificationRequest(
     entry.confirmedStream,
     latestPendingMode,
   );
+}
+
+function applyStreamRenameResponse(
+  store: MessengerSidebarActionStoreApi,
+  ownerKey: string,
+  responseStream: MessengerStream,
+): MessengerStream {
+  const state = store.getState();
+  const currentStream =
+    state.ownerKey === ownerKey ? state.streamsById[responseStream.uuid] : undefined;
+  const renamedStream =
+    currentStream == null
+      ? responseStream
+      : {
+          ...currentStream,
+          name: responseStream.name,
+          updatedAt: responseStream.updatedAt,
+        };
+
+  const notificationEntry = streamNotificationOptimisticEntries.get(
+    streamNotificationOptimisticKey(ownerKey, responseStream.uuid),
+  );
+  if (notificationEntry != null && notificationEntry.latestProjectedStream === currentStream) {
+    notificationEntry.confirmedStream = {
+      ...notificationEntry.confirmedStream,
+      name: responseStream.name,
+      updatedAt: responseStream.updatedAt,
+    };
+    notificationEntry.latestProjectedStream = renamedStream;
+  }
+
+  state.upsertStream(ownerKey, renamedStream);
+  return renamedStream;
 }
 
 export async function updateMessengerStreamNotificationMode({
@@ -445,6 +501,34 @@ export async function updateMessengerStreamNotificationMode({
       confirmedStream: stream,
     });
   }
+  return { status: "applied", ownerKey: action.ownerKey, stream };
+}
+
+export async function renameMessengerStream({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  signal,
+  store = useMessengerStore,
+  streamUuid,
+  name,
+}: RenameMessengerStreamOptions): Promise<MessengerStreamActionResult> {
+  const action = captureSidebarAction(runtimeContext, getRuntimeContext, signal);
+  if (action.ownerKey == null)
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const dto = await (client.updateStream ?? defaultUpdateStream)(
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+    streamUuid,
+    { name },
+  );
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const stream = applyStreamRenameResponse(store, action.ownerKey, adaptMessengerStream(dto));
   return { status: "applied", ownerKey: action.ownerKey, stream };
 }
 
@@ -689,6 +773,19 @@ export async function runWorkspaceStreamNotificationUpdate(
     ...runtimeOptions,
     streamUuid: options.streamUuid,
     notificationMode: options.notificationMode,
+  });
+}
+
+export async function runWorkspaceStreamRenameRequest(
+  options: RunWorkspaceStreamRenameRequestOptions,
+): Promise<MessengerStreamActionResult> {
+  const runtimeOptions = currentRuntimeActionOptions();
+  const name = normalizeActionName(options.name);
+  if (runtimeOptions == null || name == null) return skippedMissingContext();
+  return renameMessengerStream({
+    ...runtimeOptions,
+    streamUuid: options.streamUuid,
+    name,
   });
 }
 

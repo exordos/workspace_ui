@@ -1,3 +1,4 @@
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -413,6 +414,7 @@ export async function markMessengerMessageRead({
       cache.patchCachedMessage?.(action.ownerKey, { ...effectiveMessage, read: true }),
     );
   }
+  useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
 
@@ -496,5 +498,6 @@ export async function markMessengerMessagesReadUpTo({
     }
   }
 
+  useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
