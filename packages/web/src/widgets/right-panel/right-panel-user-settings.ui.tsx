@@ -20,11 +20,8 @@ import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { RightPanelOptionList } from "./right-panel-option-list.ui";
-import {
-  RightPanelUserMenuMenuButton,
-  RightPanelUserMenuOptionButton,
-} from "./right-panel-user-menu-buttons.ui";
+import { RightPanelOptionButton, RightPanelOptionList } from "./right-panel-option-list.ui";
+import { RightPanelUserMenuMenuButton } from "./right-panel-user-menu-buttons.ui";
 import {
   AUTH_IDLE_TIMEOUT_LABEL_KEYS,
   CHAT_LIST_DENSITIES,
@@ -106,7 +103,7 @@ function SettingsOptionRow({
 }>): React.ReactElement {
   return (
     <li>
-      <RightPanelUserMenuOptionButton label={label} active={active} onClick={onClick} />
+      <RightPanelOptionButton label={label} active={active} onClick={onClick} />
     </li>
   );
 }

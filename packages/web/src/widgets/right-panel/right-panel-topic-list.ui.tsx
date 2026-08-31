@@ -12,7 +12,10 @@ import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { MentionBadge } from "~/shared/ui/mention-badge";
 import { getTopicVisibilityLevelOption } from "~/shared/ui/notification-level-switch.lib";
-import { RightPanelOptionList } from "./right-panel-option-list.ui";
+import {
+  RIGHT_PANEL_OPTION_INTERACTION_CLASS,
+  RightPanelOptionList,
+} from "./right-panel-option-list.ui";
 
 export interface RightPanelTopicListProps {
   topics: readonly MessengerTopicListItem[];
@@ -57,7 +60,7 @@ const RightPanelTopicRow = React.memo(function RightPanelTopicRow({
         <button
           type="button"
           onClick={handleOpenTopic}
-          className="focus-visible:ring-accent/40 flex h-9 w-full min-w-0 items-center gap-2 px-3 text-left text-sm text-text-primary transition-colors hover:bg-card-bg-active focus-visible:bg-card-bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+          className={`focus-visible:ring-accent/40 flex h-9 w-full min-w-0 items-center gap-2 px-3 text-left text-sm text-text-primary ${RIGHT_PANEL_OPTION_INTERACTION_CLASS} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset`}
         >
           <span
             className={`min-w-0 flex-1 truncate ${topicDisplay.isSystem ? "italic" : ""}`}

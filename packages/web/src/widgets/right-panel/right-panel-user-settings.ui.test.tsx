@@ -78,13 +78,30 @@ describe("RightPanelUserSettings", () => {
       expect(panel).toHaveAttribute("id", panelId);
       expect(panel).toHaveAttribute("role", "region");
       expect(panel).toHaveAttribute("aria-labelledby", trigger.id);
-      expect(panel).toHaveClass("w-full", "p-2", "[&>li+li]:pt-4", "[&>li+li]:before:top-2");
+      expect(panel).toHaveClass(
+        "w-full",
+        "p-2",
+        "[&>li]:-mx-2",
+        "[&>li]:w-[calc(100%+1rem)]",
+        "[&>li]:px-2",
+        "[&>li]:py-2",
+        "[&>li:first-child]:-mt-2",
+        "[&>li:last-child]:-mb-2",
+        "[&>li:hover]:bg-card-bg-active",
+        "[&>li+li]:before:inset-x-2",
+        "[&>li+li]:before:top-0",
+      );
       expect(panel).not.toHaveClass("-mx-2", "w-[calc(100%+1rem)]");
     }
 
     expect(screen.getByTestId("right-panel-settings-sound-options")).toBeInTheDocument();
     expect(screen.getByTestId("right-panel-settings-language-options")).toBeInTheDocument();
     expect(screen.getByTestId("right-panel-settings-timeout-options")).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Default" })).toHaveClass(
+      "hover:bg-card-bg-active",
+      "focus-visible:bg-card-bg-active",
+    );
   });
 
   it("keeps settings sections independently expanded and applies sound and timeout actions", () => {
@@ -225,7 +242,19 @@ describe("RightPanelUserAppearance", () => {
       const panel = screen.getByTestId(panelId);
       expect(panel).toHaveAttribute("role", "region");
       expect(panel).toHaveAttribute("aria-labelledby", trigger.id);
-      expect(panel).toHaveClass("w-full", "rounded-[8px]");
+      expect(panel).toHaveClass(
+        "w-full",
+        "rounded-[8px]",
+        "[&>li]:-mx-2",
+        "[&>li]:w-[calc(100%+1rem)]",
+        "[&>li]:px-2",
+        "[&>li]:py-2",
+        "[&>li:first-child]:-mt-2",
+        "[&>li:last-child]:-mb-2",
+        "[&>li:hover]:bg-card-bg-active",
+        "[&>li+li]:before:inset-x-2",
+        "[&>li+li]:before:top-0",
+      );
       expect(panel).not.toHaveClass("-mx-2", "w-[calc(100%+1rem)]");
     }
 

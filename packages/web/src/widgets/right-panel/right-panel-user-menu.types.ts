@@ -25,9 +25,3 @@ export interface MenuButtonProps {
   "aria-controls"?: string;
   "aria-expanded"?: boolean;
 }
-
-export interface OptionButtonProps {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}

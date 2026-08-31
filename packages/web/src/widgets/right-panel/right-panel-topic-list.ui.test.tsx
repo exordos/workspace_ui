@@ -74,6 +74,7 @@ describe("RightPanelTopicList", () => {
     );
 
     const activeButton = screen.getByRole("button", { name: /A very long active topic name/ });
+    expect(activeButton).toHaveClass("hover:bg-card-bg-active", "focus-visible:bg-card-bg-active");
     const activeTitle = within(activeButton).getByTitle(
       "A very long active topic name that must stay on one line",
     );

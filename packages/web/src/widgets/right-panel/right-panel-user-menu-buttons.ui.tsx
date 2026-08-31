@@ -1,6 +1,6 @@
 import React from "react";
 import { Icon } from "~/shared/ui/icon";
-import type { MenuButtonProps, OptionButtonProps } from "./right-panel-user-menu.types";
+import type { MenuButtonProps } from "./right-panel-user-menu.types";
 
 /**
  * Flat account-menu row (Figma right menu): icon + label/subtitle + trailing value/chevron.
@@ -66,27 +66,6 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
         </span>
       </span>
       {right}
-    </button>
-  );
-};
-
-/** Inline accordion option row — same flat list language as the parent menu. */
-export const RightPanelUserMenuOptionButton: React.FC<OptionButtonProps> = ({
-  label,
-  active,
-  onClick,
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="flex w-full items-center justify-between gap-3 px-0 py-0 text-left text-sm leading-4 transition-colors hover:bg-sidebar-hover"
-    >
-      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>
-        {label}
-      </span>
-      {active ? <Icon name="check" size={16} className="text-accent" /> : null}
     </button>
   );
 };
