@@ -1407,7 +1407,8 @@
     "retryUpload": "Повторить загрузку {{fileName}}",
     "list": "Прикреплённые файлы",
     "dragIntoMessage": "Перетащить в сообщение",
-    "inText": "В тексте"
+    "inText": "В тексте",
+    "removeFromText": "Убрать изображение из текста"
   },
   "a11y": {
     "collapseTopics": "Свернуть темы",

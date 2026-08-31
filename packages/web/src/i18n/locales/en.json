@@ -1397,7 +1397,8 @@
     "retryUpload": "Retry upload of {{fileName}}",
     "list": "Attached files",
     "dragIntoMessage": "Drag into message",
-    "inText": "In text"
+    "inText": "In text",
+    "removeFromText": "Remove image from text"
   },
   "a11y": {
     "collapseTopics": "Collapse topics",
