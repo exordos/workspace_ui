@@ -35,6 +35,7 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
 import { getExternalAccounts } from "~/shared/api/messenger-external-accounts.api";
+import { onPowerResume } from "~/shared/lib/power";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   deleteWorkspaceExternalAccountOwnerCache,
@@ -319,6 +320,19 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   const managerContextsRef = useRef(managerContexts);
   const managerRef =
     useRef<WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null>(null);
+
+  useEffect(
+    () =>
+      onPowerResume(() => {
+        const manager = managerRef.current;
+        if (manager == null) return;
+
+        void manager.reconnectAll("power_resume").catch((error) => {
+          reportUnexpectedError("workspace-realtime:resume", error);
+        });
+      }),
+    [],
+  );
 
   useEffect(() => {
     return () => {

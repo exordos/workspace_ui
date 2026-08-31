@@ -66,6 +66,7 @@ export interface WorkspaceRealtimeRuntimeManager<
   TContext extends WorkspaceRealtimeManagerRuntimeContext,
 > {
   update(contexts: TContext[], activeOwnerKey: string | null): Promise<void>;
+  reconnectAll(reason?: string): Promise<void>;
   stopAll(reason?: string): Promise<void>;
   getSnapshot(): WorkspaceRealtimeManagerSnapshot;
 }
@@ -294,6 +295,11 @@ export function createWorkspaceRealtimeRuntimeManager<
   return {
     update(contexts, nextActiveOwnerKey) {
       return enqueue(() => applyUpdate(contexts, nextActiveOwnerKey));
+    },
+    reconnectAll(reason = "manager_reconnect") {
+      return enqueue(async () => {
+        await Promise.all([...entries.values()].map((entry) => entry.runtime.reconnect(reason)));
+      });
     },
     stopAll(reason = "manager_stop") {
       return enqueue(async () => {

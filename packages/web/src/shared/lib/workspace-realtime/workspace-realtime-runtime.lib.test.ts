@@ -974,6 +974,88 @@ describe("workspace-realtime transport runtime", () => {
     vi.useRealTimers();
   });
 
+  it("cancels a pending retry when reconnecting explicitly", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const getEventsPage = vi.fn(() => Promise.resolve(createPage([])));
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage,
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.networkClose();
+    await runtime.reconnect("power_resume");
+
+    expect(getEventsPage).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(2);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(getEventsPage).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(2);
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("coalesces concurrent explicit reconnects", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const pendingCatchUps: ((
+      page: WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>,
+    ) => void)[] = [];
+    let delayCatchUp = false;
+    const getEventsPage = vi.fn(() => {
+      if (!delayCatchUp) return Promise.resolve(createPage([]));
+      return new Promise<WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>>((resolve) => {
+        pendingCatchUps.push(resolve);
+      });
+    });
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    delayCatchUp = true;
+
+    const firstReconnect = runtime.reconnect("power_resume");
+    const secondReconnect = runtime.reconnect("power_resume");
+    expect(secondReconnect).toBe(firstReconnect);
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve();
+    }
+
+    expect(getEventsPage).toHaveBeenCalledTimes(2);
+    expect(pendingCatchUps).toHaveLength(1);
+
+    pendingCatchUps[0]?.(createPage([]));
+    await Promise.all([firstReconnect, secondReconnect]);
+
+    expect(sockets).toHaveLength(2);
+    await runtime.stop();
+  });
+
   it("reconnects when the websocket errors without a close event", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];

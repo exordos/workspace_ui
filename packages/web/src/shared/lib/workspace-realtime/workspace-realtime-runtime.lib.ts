@@ -317,6 +317,7 @@ export function createWorkspaceRealtimeTransportCore(
   let controller: AbortController | null = null;
   let socket: WorkspaceRealtimeWebSocketLike | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectPromise: Promise<void> | null = null;
   let reconnectAttempt = 0;
   let lastEpochVersion: WorkspaceMessengerEpochVersion | null = null;
   let lastCursor: WorkspaceRealtimeCursor | null = null;
@@ -924,6 +925,7 @@ export function createWorkspaceRealtimeTransportCore(
       }, 0);
     };
     activeSocket.onclose = (event) => {
+      if (socket !== activeSocket) return;
       socket = null;
       if (!stopped) {
         const closeCode = getWebSocketCloseCode(event);
@@ -1050,10 +1052,23 @@ export function createWorkspaceRealtimeTransportCore(
     openWebSocket(nextContext);
   }
 
-  async function reconnect(reason = "reconnect"): Promise<void> {
-    if (context == null || stopped) return;
-    await disconnect(reason);
-    await runCatchUpAndConnect(reason);
+  function reconnect(reason = "reconnect"): Promise<void> {
+    if (context == null || stopped) return Promise.resolve();
+    if (reconnectPromise != null) return reconnectPromise;
+    if (authRefreshPromise != null) return authRefreshPromise;
+    if (cursorRecoveryPromise != null) return cursorRecoveryPromise;
+
+    clearReconnectTimer();
+    const operation = (async (): Promise<void> => {
+      try {
+        await disconnect(reason);
+        await runCatchUpAndConnect(reason);
+      } finally {
+        reconnectPromise = null;
+      }
+    })();
+    reconnectPromise = operation;
+    return operation;
   }
 
   async function nudge(reason = "nudge"): Promise<void> {
