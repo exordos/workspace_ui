@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { useActivityStore, type ActivityUnreadMention } from "./activity.model";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import {
+  selectActivityLiveMentionMessages,
+  useActivityStore,
+  type ActivityUnreadMention,
+} from "./activity.model";
 
 const OWNER = "owner-1";
 const RUNTIME_GENERATION = 7;
@@ -9,6 +14,32 @@ const mention = (overrides: Partial<ActivityUnreadMention> = {}): ActivityUnread
   streamUuid: "stream-1",
   topicUuid: "topic-1",
   createdAt: "2026-08-07T10:00:00Z",
+  ...overrides,
+});
+
+const liveMentionMessage = (overrides: Partial<MessengerMessage> = {}): MessengerMessage => ({
+  uuid: "message-1",
+  conversationId: "topic:stream-1:topic-1",
+  projectId: "project-1",
+  streamUuid: "stream-1",
+  topicUuid: "topic-1",
+  authorUuid: "user-2",
+  userUuid: "user-1",
+  payload: { kind: "markdown", content: "Live mention" },
+  read: false,
+  pinned: false,
+  starred: false,
+  isOwn: false,
+  mentioned: true,
+  sourceName: "native",
+  source: { kind: "native" },
+  provider: null,
+  delivery: null,
+  reactions: {},
+  reactionUserUuidsByEmojiName: {},
+  ownReactionUuidsByEmojiName: {},
+  createdAt: "2026-08-07T10:00:00Z",
+  updatedAt: "2026-08-07T10:00:00Z",
   ...overrides,
 });
 
@@ -212,6 +243,64 @@ describe("unread mentions activity index", () => {
     expect(useActivityStore.getState()).toMatchObject({
       unreadMentionsCount: mentions.length,
       unreadMentionsStatus: "ready",
+    });
+  });
+});
+
+describe("live mention messages", () => {
+  it("keeps full messages in the current owner runtime and ignores stale writes", () => {
+    const store = useActivityStore.getState();
+    store.startUnreadMentionsBootstrap(OWNER, RUNTIME_GENERATION);
+
+    store.applyLiveMentionMessageMutation(OWNER, RUNTIME_GENERATION, {
+      kind: "upsert",
+      epochVersion: 50,
+      message: liveMentionMessage(),
+    });
+    store.applyLiveMentionMessageMutation("owner-2", RUNTIME_GENERATION, {
+      kind: "delete",
+      epochVersion: 51,
+      uuid: "message-1",
+    });
+    store.applyLiveMentionMessageMutation(OWNER, RUNTIME_GENERATION + 1, {
+      kind: "delete",
+      epochVersion: 51,
+      uuid: "message-1",
+    });
+    store.applyLiveMentionMessageMutation(OWNER, RUNTIME_GENERATION, {
+      kind: "delete",
+      epochVersion: 49,
+      uuid: "message-1",
+    });
+
+    expect(
+      selectActivityLiveMentionMessages(useActivityStore.getState(), OWNER, RUNTIME_GENERATION),
+    ).toEqual({ "message-1": liveMentionMessage() });
+    expect(
+      selectActivityLiveMentionMessages(useActivityStore.getState(), "owner-2", RUNTIME_GENERATION),
+    ).toEqual({});
+  });
+
+  it("preserves a live overlay for the same runtime and resets it for the next runtime", () => {
+    const store = useActivityStore.getState();
+    store.startUnreadMentionsBootstrap(OWNER, RUNTIME_GENERATION);
+    store.applyLiveMentionMessageMutation(OWNER, RUNTIME_GENERATION, {
+      kind: "upsert",
+      epochVersion: 60,
+      message: liveMentionMessage(),
+    });
+
+    store.startUnreadMentionsBootstrap(OWNER, RUNTIME_GENERATION);
+    expect(useActivityStore.getState().liveMentionMessagesByUuid).toEqual({
+      "message-1": liveMentionMessage(),
+    });
+
+    store.startUnreadMentionsBootstrap(OWNER, RUNTIME_GENERATION + 1);
+    expect(useActivityStore.getState()).toMatchObject({
+      liveMentionMessagesByUuid: {},
+      liveMentionMessagesOwnerKey: OWNER,
+      liveMentionMessagesRuntimeGeneration: RUNTIME_GENERATION + 1,
+      liveMentionMessagesLastEpochVersion: null,
     });
   });
 });

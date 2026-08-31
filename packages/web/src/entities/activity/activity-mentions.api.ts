@@ -27,6 +27,7 @@ export interface MyMentionsPageResult {
 
 export interface FetchMyMentionsPageOptions {
   runtimeContext: WorkspaceRuntimeContext;
+  unreadOnly?: boolean;
   cursor?: string;
   pageSize?: number;
   signal?: AbortSignal;
@@ -55,6 +56,7 @@ export interface FetchUnreadMentionsOptions {
 
 export async function fetchMyMentionsPage({
   runtimeContext,
+  unreadOnly = false,
   cursor,
   pageSize = DEFAULT_MENTIONS_PAGE_SIZE,
   signal,
@@ -69,6 +71,7 @@ export async function fetchMyMentionsPage({
       pageLimit: pageSize,
       ...(cursor == null ? {} : { pageMarker: cursor }),
       mentioned: true,
+      ...(unreadOnly ? { read: false } : {}),
       sortKey: "created_at",
       sortDir: "desc",
     });

@@ -21,6 +21,91 @@ export interface WorkspaceMentionInsertion {
   cursorPosition: number;
 }
 
+export interface WorkspaceComposerImageAlias {
+  localId: string;
+  fileName: string;
+  canonicalMarkdown: string;
+  visibleText: string;
+}
+
+export interface WorkspaceComposerImageAliasInput {
+  localId: string;
+  fileName: string;
+  canonicalMarkdown: string;
+}
+
+function escapeImageAliasLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
+}
+
+/** Builds stable, human-readable image tokens for the composer draft. */
+export function buildWorkspaceComposerImageAliases(
+  inputs: readonly WorkspaceComposerImageAliasInput[],
+): WorkspaceComposerImageAlias[] {
+  const counts = new Map<string, number>();
+  return inputs.map((input) => {
+    const fileName = input.fileName.trim() || "image";
+    const count = (counts.get(fileName) ?? 0) + 1;
+    counts.set(fileName, count);
+    const suffix = count > 1 ? ` (${count})` : "";
+    const visibleFileName = escapeImageAliasLabel(fileName + suffix);
+    return {
+      ...input,
+      fileName,
+      visibleText: `![${visibleFileName}]`,
+    };
+  });
+}
+
+function replaceImageAliases(
+  value: string,
+  aliases: readonly WorkspaceComposerImageAlias[],
+  replacement: (alias: WorkspaceComposerImageAlias) => string,
+): string {
+  const byToken = new Map(aliases.map((alias) => [alias.visibleText, alias] as const));
+  const tokens = [...byToken.keys()].sort((left, right) => right.length - left.length);
+  if (tokens.length === 0) return value;
+  const pattern = new RegExp(tokens.map(escapeRegExp).join("|"), "g");
+  return value.replace(pattern, (token) => {
+    const alias = byToken.get(token);
+    return alias == null ? token : replacement(alias);
+  });
+}
+
+/** Converts visible image aliases to their canonical Markdown form. */
+export function serializeWorkspaceComposerImageAliases(
+  value: string,
+  aliases: readonly WorkspaceComposerImageAlias[],
+): string {
+  return replaceImageAliases(value, aliases, (alias) => alias.canonicalMarkdown);
+}
+
+/** Returns local ids whose visible image token occurs in the value. */
+export function getWorkspaceComposerImageAliasLocalIds(
+  value: string,
+  aliases: readonly WorkspaceComposerImageAlias[],
+): Set<string> {
+  const result = new Set<string>();
+  for (const alias of aliases) if (value.includes(alias.visibleText)) result.add(alias.localId);
+  return result;
+}
+
+/** Removes this image token from a draft when its attachment is deleted. */
+export function removeWorkspaceComposerImageAlias(
+  value: string,
+  alias: WorkspaceComposerImageAlias,
+): string {
+  return value.split(alias.visibleText).join("");
+}
+
+/** Removes all readable image aliases before persisting a draft value. */
+export function stripWorkspaceComposerImageAliases(
+  value: string,
+  aliases: readonly WorkspaceComposerImageAlias[],
+): string {
+  return replaceImageAliases(value, aliases, () => "");
+}
+
 /** Replaces the active @query with the person's name shown in the composer. */
 export function insertWorkspaceMention(
   value: string,
@@ -77,8 +162,12 @@ export function buildOutgoingMessageBody(
   value: string,
   replyQuote?: ReplyQuote | null,
   mentions: readonly WorkspaceComposerMention[] = [],
+  imageAliases: readonly WorkspaceComposerImageAlias[] = [],
 ): string {
-  let body = serializeWorkspaceComposerMentions(value, mentions).trim();
+  let body = serializeWorkspaceComposerImageAliases(
+    serializeWorkspaceComposerMentions(value, mentions),
+    imageAliases,
+  ).trim();
   if (replyQuote) {
     if (replyQuote.quoteFormat === "workspace") {
       const quoteReference = buildWorkspaceQuoteReference({

@@ -76,7 +76,7 @@ describe("fetchMyMentionsPage", () => {
     );
   });
 
-  it("allows overriding the page size without exposing message filters", async () => {
+  it("supports the unread-only mentions view without exposing generic message filters", async () => {
     const getMessagesPage = vi.fn().mockResolvedValue({
       items: [],
       nextPageMarker: null,
@@ -87,6 +87,7 @@ describe("fetchMyMentionsPage", () => {
       fetchMyMentionsPage({
         runtimeContext,
         pageSize: 25,
+        unreadOnly: true,
         client: { getMessagesPage },
       }),
     ).resolves.toEqual({
@@ -98,6 +99,7 @@ describe("fetchMyMentionsPage", () => {
     expect(getMessagesPage).toHaveBeenCalledWith(expect.any(Object), {
       pageLimit: 25,
       mentioned: true,
+      read: false,
       sortKey: "created_at",
       sortDir: "desc",
     });

@@ -833,13 +833,7 @@ function isTopicNotificationMode(value: unknown): value is WorkspaceMessengerTop
 }
 
 function isFolderSystemType(value: unknown): value is WorkspaceMessengerFolderSystemType {
-  return (
-    value === "all" ||
-    value === "created" ||
-    value === "personal" ||
-    value === "channels" ||
-    value === null
-  );
+  return value === "all" || value === "created" || value === null;
 }
 
 function isFolderItemChatType(value: unknown): value is WorkspaceMessengerFolderItemChatType {

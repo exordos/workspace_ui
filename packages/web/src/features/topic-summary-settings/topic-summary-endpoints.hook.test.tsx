@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
   WorkspaceTopicSummaryEndpointCreateRequestBody,
@@ -18,6 +20,8 @@ const ENDPOINT_B = "7c74a1a2-61be-48d2-a69a-6f4d66244bc3";
 const PROJECT_A = "22222222-2222-4222-8222-222222222222";
 const PROJECT_B = "33333333-3333-4333-8333-333333333333";
 const DATE = "2026-08-21T10:00:00Z";
+
+afterEach(() => useWorkspaceIamCapabilitiesStore.getState().clear());
 
 function runtime(projectId = PROJECT_A, runtimeGeneration = 1): WorkspaceRuntimeContext {
   return {
@@ -125,6 +129,10 @@ describe("useTopicSummaryEndpoints", () => {
 
   it("maps an endpoint-list 403 to denied access", async () => {
     const currentRuntime = runtime();
+    const capabilitiesStore = useWorkspaceIamCapabilitiesStore.getState();
+    const ownerKey = workspaceRuntimeOwnerKey(currentRuntime);
+    capabilitiesStore.startLoad(ownerKey, currentRuntime.runtimeGeneration);
+    const invalidationVersion = useWorkspaceIamCapabilitiesStore.getState().invalidationVersion;
     const { result } = renderHook(() =>
       useTopicSummaryEndpoints({
         open: true,
@@ -140,6 +148,9 @@ describe("useTopicSummaryEndpoints", () => {
     await waitFor(() => expect(result.current.permission).toBe("denied"));
     expect(result.current.loadStatus).toBe("error");
     expect(result.current.loadError).toBe("forbidden");
+    expect(useWorkspaceIamCapabilitiesStore.getState().invalidationVersion).toBe(
+      invalidationVersion + 1,
+    );
   });
 
   it("creates an endpoint, clears the write-only key immediately, and upserts the response", async () => {
@@ -196,7 +207,7 @@ describe("useTopicSummaryEndpoints", () => {
     });
   });
 
-  it("updates an endpoint without retaining a replacement key", async () => {
+  it("updates an endpoint, clears the edit session, and does not retain a replacement key", async () => {
     const request = deferred<WorkspaceTopicSummaryEndpointDto>();
     let sentBody: WorkspaceTopicSummaryEndpointUpdateRequestBody | null = null;
     const client: TopicSummaryEndpointsClient = {
@@ -225,7 +236,9 @@ describe("useTopicSummaryEndpoints", () => {
     expect(result.current.edit.draft?.apiKey).toBe("");
     request.resolve(endpoint({ name: "Renamed" }));
     await waitFor(() => expect(result.current.edit.status).toBe("success"));
-    expect(result.current.edit.draft?.apiKey).toBe("");
+    expect(result.current.edit.endpointUuid).toBeNull();
+    expect(result.current.edit.base).toBeNull();
+    expect(result.current.edit.draft).toBeNull();
     expect(result.current.endpoints[0]?.name).toBe("Renamed");
   });
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
-import { t } from "~/i18n/i18n";
+import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
@@ -29,6 +29,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
 }: LayoutMainWorkspaceProps) {
+  const { t } = useTranslation();
   const showRightPanel =
     rightDrawerOpen &&
     (rightDrawerMode === "settings" ||
@@ -39,6 +40,13 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
   );
+  const [nestedDrawerHeader, setNestedDrawerHeader] = useState<{
+    titleKey: string;
+    onBack: () => void;
+  } | null>(null);
+  useEffect(() => {
+    setNestedDrawerHeader(null);
+  }, [rightDrawerMode, rightDrawerOpen]);
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -167,8 +175,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
         {showRightPanel && (
           <RightDrawer
             onClose={onCloseRightDrawer}
-            onBack={onBackRightDrawer}
-            title={rightDrawerTitle}
+            onBack={nestedDrawerHeader?.onBack ?? onBackRightDrawer}
+            title={nestedDrawerHeader == null ? rightDrawerTitle : t(nestedDrawerHeader.titleKey)}
             // Account/settings menu: edge-to-edge row hover (must flush on this slot, not nested).
             contentFlush={rightDrawerMode === "user-menu" || rightDrawerMode === "settings"}
           >
@@ -181,6 +189,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
               onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
+              onNestedPanelChange={setNestedDrawerHeader}
             />
           </RightDrawer>
         )}

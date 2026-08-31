@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -223,6 +224,40 @@ describe("MessageComposer async send behavior", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith(outgoingBody, "", undefined);
+    });
+  });
+
+  it("serializes an inline image token inside the parent-provided reply body", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const canonicalImage = "![reply.png](urn:image:reply-image)";
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        initialValue="![reply.png]"
+        outgoingBodyOverride={"Reply A\n\n![reply.png]\n\nReply B"}
+        attachments={[
+          {
+            localId: "reply-image",
+            fileName: "reply.png",
+            sizeBytes: 5,
+            contentType: "image/png",
+            previewUrl: "blob:reply-image",
+            status: "ready",
+            loadedBytes: 5,
+            totalBytes: 5,
+            error: null,
+            retryable: false,
+            previewMarkdown: canonicalImage,
+          },
+        ]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(`Reply A\n\n${canonicalImage}\n\nReply B`, "", undefined);
     });
   });
 
@@ -592,7 +627,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(
       screen.queryByRole("button", { name: /expand message editor/i }),
     ).not.toBeInTheDocument();
-    expect(compactRow).toHaveClass("pr-5");
+    expect(compactRow).toHaveClass("pr-2");
     expect(compactRow.lastElementChild).toBe(trailingControls);
     expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
@@ -605,7 +640,7 @@ describe("MessageComposer textarea autosize", () => {
     expect(
       screen.queryByRole("button", { name: /expand message editor/i }),
     ).not.toBeInTheDocument();
-    expect(compactRow).toHaveClass("pr-5");
+    expect(compactRow).toHaveClass("pr-2");
     expect(compactRow.lastElementChild).toBe(trailingControls);
     expect(trailingControls.lastElementChild).toBe(shortEmojiButton);
 
@@ -627,7 +662,7 @@ describe("MessageComposer textarea autosize", () => {
       "cursor-pointer",
     );
     expect(compactRow).toHaveClass("pr-2");
-    expect(compactRow).not.toHaveClass("pr-5", "pr-16");
+    expect(compactRow).not.toHaveClass("pr-3", "pr-5", "pr-16");
     expect(screen.queryByTestId("composer-compact-trailing-controls")).not.toBeInTheDocument();
     expect(compactControls).toHaveClass("flex-col", "self-end", "w-8", "gap-1", "mb-1");
     expect(compactControls).not.toHaveClass("gap-2");
@@ -1941,6 +1976,12 @@ describe("MessageComposer preview mode", () => {
       "src",
       "blob:local-screen",
     );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Inline ![screen.png] image" },
+    });
+    const inlineBadge = screen.getByText("TX");
+    expect(inlineBadge).toHaveClass("bg-accent", "text-on-accent", "rounded-full");
+    expect(screen.queryByText("8 B · In text")).not.toBeInTheDocument();
     openComposerPreview();
 
     const preview = screen.getByRole("region", { name: "Preview" });
@@ -2157,8 +2198,8 @@ describe("MessageComposer mode tabs", () => {
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
     expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto");
     expect(toolbarRow).not.toHaveClass("px-3", "pb-2");
-    expect(toolbarRow.firstElementChild).toHaveClass("gap-2", "pl-3");
-    expect(toolbarRow.firstElementChild).not.toHaveClass("pl-5");
+    expect(toolbarRow.firstElementChild).toHaveClass("gap-2", "pl-2");
+    expect(toolbarRow.firstElementChild).not.toHaveClass("pl-3", "pl-5");
     expect(screen.getByRole("toolbar", { name: /message composer/i })).toBeInTheDocument();
     const collapseToolbarButton = screen.getByRole("button", {
       name: /hide formatting tools/i,
@@ -2192,14 +2233,15 @@ describe("MessageComposer mode tabs", () => {
       attachButton.compareDocumentPosition(emojiButton) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(compactRow.lastElementChild).toBe(trailingControls);
-    expect(compactRow).toHaveClass("items-end", "pl-3");
+    expect(compactRow).toHaveClass("items-end", "pl-2", "pr-2");
     expect(compactRow).not.toHaveClass("py-1");
     expect(compactControls).toHaveClass("self-end", "mb-1");
     expect(compactControls).not.toHaveClass("flex-col");
     expect(compactControls).not.toHaveClass("w-8");
     expect(compactControls.parentElement).toHaveClass("gap-2");
     expect(compactControls.parentElement).not.toHaveClass("gap-3");
-    expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-2");
+    expect(trailingControls).toHaveClass("self-end", "mb-1", "gap-0");
+    expect(trailingControls).not.toHaveClass("gap-1", "gap-2");
     expect(
       toolbarToggle.querySelector('[data-composer-icon="bottom-panel-close"]'),
     ).toHaveAttribute("width", "21.333");
@@ -2297,14 +2339,14 @@ describe("MessageComposer mode tabs", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const compactRow = screen.getByTestId("composer-compact-input-row");
-    expect(compactRow).toHaveClass("pl-3");
-    expect(compactRow).not.toHaveClass("pl-5");
+    expect(compactRow).toHaveClass("pl-2");
+    expect(compactRow).not.toHaveClass("pl-3", "pl-5");
 
     fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
 
     const toolbarInner = screen.getByTestId("composer-toolbar-row").firstElementChild;
-    expect(toolbarInner).toHaveClass("pl-3");
-    expect(toolbarInner).not.toHaveClass("pl-5");
+    expect(toolbarInner).toHaveClass("pl-2");
+    expect(toolbarInner).not.toHaveClass("pl-3", "pl-5");
   });
 
   it("keeps compact bottom spacing in the expanded toolbar", () => {
@@ -2604,6 +2646,15 @@ describe("MessageComposer controlled attachments", () => {
     error: null,
     retryable: false,
   };
+  const readyInlineImage = {
+    ...readyAttachment,
+    localId: "ready-image",
+    fileName: "screen.png",
+    contentType: "image/png",
+    previewUrl: "blob:workspace-image",
+    previewMarkdown:
+      "![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=5)",
+  };
 
   it("renders a ready controlled image with its persistent local thumbnail", () => {
     const onRemoveAttachment = vi.fn();
@@ -2629,6 +2680,142 @@ describe("MessageComposer controlled attachments", () => {
       "blob:workspace-image",
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove screen.png" }));
+    expect(onRemoveAttachment).toHaveBeenCalledWith("ready-image");
+  });
+
+  it("drags a readable image token and serializes it at its text position on send", async () => {
+    const onSend = vi.fn();
+    const onValueChange = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        onValueChange={onValueChange}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+
+    const dragSource = screen.getByTitle("Drag into message");
+    expect(dragSource).toHaveAttribute("draggable", "true");
+    expect(dragSource.parentElement).toHaveClass("pt-2");
+    expect(dragSource.parentElement).not.toHaveClass("pb-0.5");
+    const setData = vi.fn();
+    fireEvent.dragStart(dragSource, {
+      dataTransfer: { effectAllowed: "none", setData },
+    });
+    expect(setData).toHaveBeenCalledWith("text/plain", "![screen.png]");
+    expect(setData).toHaveBeenCalledWith("application/x-workspace-inline-image", "ready-image");
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
+    expect(onValueChange).toHaveBeenCalledWith("Before  after");
+    const inlineCard = screen.getByTitle("In text");
+    expect(inlineCard).toHaveAttribute("draggable", "false");
+    expect(inlineCard.parentElement).toHaveClass("pt-2", "pb-1.5");
+    expect(inlineCard).toHaveClass("[&>article]:ring-accent/60");
+    expect(within(inlineCard).getByText("TX")).toHaveClass(
+      "bg-accent",
+      "text-on-accent",
+      "rounded-full",
+    );
+    expect(screen.queryByText("5 B · In text")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        `Before ${readyInlineImage.previewMarkdown} after`,
+        "",
+        undefined,
+      );
+    });
+  });
+
+  it("offers an accessible inline remove control and keeps the attachment draggable after removing its token", async () => {
+    const onRemoveAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
+    const inlineCard = screen.getByTitle("In text");
+    const badge = within(inlineCard).getByText("TX");
+    const removeFromText = within(badge).getByRole("button", {
+      name: "Remove image from text",
+    });
+    expect(removeFromText).toHaveAttribute("title", "Remove image from text");
+    expect(badge).toHaveClass(
+      "transition-[min-width]",
+      "duration-150",
+      "ease-out",
+      "-bottom-1",
+      "-right-1",
+      "min-w-0",
+      "group-hover/inline-image:min-w-12",
+      "group-focus-within/inline-image:min-w-12",
+    );
+    expect(badge).not.toHaveClass("-top-1", "-left-1");
+    expect(removeFromText).toHaveClass("inline-flex", "w-0", "max-w-0", "pointer-events-none");
+    const user = userEvent.setup();
+    let tabCount = 0;
+    while (document.activeElement !== removeFromText && tabCount < 40) {
+      await user.tab();
+      tabCount += 1;
+    }
+    expect(document.activeElement).toBe(removeFromText);
+    expect(removeFromText).toHaveClass(
+      "group-focus-within/inline-image:w-4",
+      "group-focus-within/inline-image:max-w-4",
+      "group-focus-within/inline-image:pointer-events-auto",
+    );
+
+    fireEvent.click(removeFromText);
+
+    expect(textbox).toHaveValue("Before  after");
+    expect(screen.queryByText("TX")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "screen.png" })).toBeInTheDocument();
+    expect(onRemoveAttachment).not.toHaveBeenCalled();
+    expect(inlineCard).toHaveAttribute("draggable", "true");
+  });
+
+  it("removes every occurrence when removing an inline image from text", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "![screen.png] one ![screen.png] two" } });
+    fireEvent.click(
+      within(screen.getByText("TX")).getByRole("button", { name: "Remove image from text" }),
+    );
+    expect(textbox).toHaveValue(" one  two");
+    expect(screen.getByRole("img", { name: "screen.png" })).toBeInTheDocument();
+  });
+
+  it("removes the readable image token together with its attachment", () => {
+    const onRemoveAttachment = vi.fn();
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove screen.png" }));
+
+    expect(textbox).toHaveValue("Before  after");
     expect(onRemoveAttachment).toHaveBeenCalledWith("ready-image");
   });
 
@@ -3109,6 +3296,42 @@ describe("MessageComposer edit session", () => {
     );
 
     expect(textbox).toHaveValue("draft before edit");
+  });
+
+  it("serializes a readable inline image token when saving an edit", async () => {
+    const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
+    const canonicalImage = "![screen.png](urn:image:edit-image)";
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        onSubmitEdit={onSubmitEdit}
+        editSession={{ messageId: 42, initialMarkdown: "Before image" }}
+        attachments={[
+          {
+            localId: "edit-image",
+            fileName: "screen.png",
+            sizeBytes: 5,
+            contentType: "image/png",
+            previewUrl: "blob:edit-image",
+            status: "ready",
+            loadedBytes: 5,
+            totalBytes: 5,
+            error: null,
+            retryable: false,
+            previewMarkdown: canonicalImage,
+          },
+        ]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSubmitEdit).toHaveBeenCalledWith(42, `Before ${canonicalImage} after`);
+    });
   });
 
   it("submits an edit only once while the save request is pending", async () => {

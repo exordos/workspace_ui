@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
@@ -14,6 +14,10 @@ import { canConfigureExternalChats } from "~/features/configure-external-chats/c
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { DeleteExternalAccountDialog } from "~/features/connect-external-account/delete-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
+import ZulipExternalAccountIcon from "~/shared/assets/icons/zulip-external-account.svg?react";
+import { Button } from "~/shared/ui/button";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
+import { Icon } from "~/shared/ui/icon";
 
 function renderChatsOnboardingStep(
   runtimeContext: WorkspaceRuntimeContext,
@@ -42,25 +46,21 @@ export const RightPanelConnectExternalAccountDialog: React.FC<{
   );
 };
 
-function statusLabel(account: ExternalAccount, t: ReturnType<typeof useTranslation>["t"]): string {
-  if (account.liveReady) return t("connectExternalAccount.status.connected");
+function compactStatusLabel(
+  account: ExternalAccount,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  if (account.liveReady) return t("connectExternalAccount.status.connectedShort");
   return t(`connectExternalAccount.status.${account.status}`);
 }
 
-function statusClass(account: ExternalAccount): string {
-  if (account.liveReady) return "bg-call-green/10 text-call-green";
-  if (account.status === "auth_required" || account.status === "degraded") {
-    return "bg-notice-base/10 text-notice-base";
-  }
-  return "bg-accent/10 text-accent";
-}
-
-/** Flat account card: identity + status + actions always visible (no nested accordion). */
-const ExternalAccountCard = React.memo<{
+/** Compact provider row from the connected external-accounts Figma block. */
+const ExternalAccountRow = React.memo<{
   account: ExternalAccount;
   runtimeContext: WorkspaceRuntimeContext;
 }>(({ account, runtimeContext }) => {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [reconnectOpen, setReconnectOpen] = useState(false);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -68,71 +68,84 @@ const ExternalAccountCard = React.memo<{
   const canConfigureChats = canConfigureExternalChats(account);
   const providerLabel = t(`connectExternalAccount.providers.${account.provider}`);
 
-  return (
-    <li
-      className="bg-bg-elevated/40 rounded-lg border border-border-subtle p-3"
-      data-testid="external-account-card"
-    >
-      <div className="flex items-start gap-2.5">
-        <span
-          className="bg-accent/15 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold text-accent"
-          aria-hidden
-        >
-          {providerLabel.slice(0, 1).toUpperCase()}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate text-sm font-medium leading-5 text-text-primary">
-              {account.settings.email}
-            </span>
-            <span
-              className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ${statusClass(account)}`}
-            >
-              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-              {statusLabel(account, t)}
-            </span>
-          </div>
-          <p
-            className="mt-0.5 truncate text-xs leading-4 text-text-muted"
-            title={account.settings.serverUrl}
-          >
-            {providerLabel} · {account.settings.serverUrl}
-          </p>
-          {account.safeError != null ? (
-            <p className="mt-1.5 break-words text-xs text-notice-base">{account.safeError}</p>
-          ) : null}
+  const openReconnect = useCallback(() => {
+    setMenuOpen(false);
+    setReconnectOpen(true);
+  }, []);
+  const openChats = useCallback(() => {
+    setMenuOpen(false);
+    setChatsOpen(true);
+  }, []);
+  const openDelete = useCallback(() => {
+    setMenuOpen(false);
+    setDeleteOpen(true);
+  }, []);
+  const menuItems = useMemo<DropdownMenuItem[]>(() => {
+    const items: DropdownMenuItem[] = [];
+    if (canConfigureChats) {
+      items.push({
+        type: "action",
+        key: "configure-chats",
+        icon: "settings",
+        label: t("configureExternalChats.action"),
+        onSelect: openChats,
+      });
+    }
+    if (canReconnect) {
+      items.push({
+        type: "action",
+        key: "reconnect",
+        icon: "build",
+        label: t("connectExternalAccount.reconnect"),
+        onSelect: openReconnect,
+      });
+    }
+    if (items.length > 0) items.push({ type: "separator", key: "danger-separator" });
+    items.push({
+      type: "action",
+      key: "delete",
+      icon: "delete",
+      danger: true,
+      label: t("connectExternalAccount.delete.action"),
+      onSelect: openDelete,
+    });
+    return items;
+  }, [canConfigureChats, canReconnect, openChats, openDelete, openReconnect, t]);
 
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            {canReconnect ? (
-              <button
-                type="button"
-                onClick={() => setReconnectOpen(true)}
-                className="inline-flex items-center rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-on-accent transition-colors hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {t("connectExternalAccount.reconnect")}
-              </button>
-            ) : null}
-            {canConfigureChats ? (
-              <button
-                type="button"
-                onClick={() => setChatsOpen(true)}
-                className="inline-flex items-center rounded-md border border-border-subtle bg-bg px-2.5 py-1 text-xs font-medium text-text-primary transition-colors hover:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {account.settings.selectionMode === "all"
-                  ? t("configureExternalChats.automaticAction")
-                  : t("configureExternalChats.compactAction")}
-              </button>
-            ) : null}
+  return (
+    <li className="min-w-0" data-testid="external-account-row">
+      <div className="flex h-10 min-w-0 items-center gap-3 rounded-lg">
+        <ZulipExternalAccountIcon className="h-10 w-10 shrink-0" aria-hidden />
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+          <span className="truncate text-sm leading-4 text-text-primary">
+            {account.settings.email}
+          </span>
+          <span className="truncate text-xs leading-5">
+            <span className="text-text-primary">{providerLabel}</span>
+            <span className="text-text-muted"> · {compactStatusLabel(account, t)}</span>
+          </span>
+        </div>
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          trigger={
             <button
               type="button"
-              onClick={() => setDeleteOpen(true)}
-              className="border-danger/30 hover:bg-danger/10 inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium text-danger transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              aria-label={t("externalAccounts.actions")}
+              data-testid="external-account-actions"
             >
-              {t("connectExternalAccount.delete.shortAction")}
+              <Icon name="more" size={24} className="text-current" />
             </button>
-          </div>
-        </div>
+          }
+          items={menuItems}
+          contentVariant="narrow"
+          contentProps={{ sideOffset: 4, align: "end" }}
+        />
       </div>
+      {account.safeError != null ? (
+        <p className="mt-1 break-words pl-[52px] text-xs text-notice-base">{account.safeError}</p>
+      ) : null}
 
       <ConnectExternalAccountDialog
         open={reconnectOpen}
@@ -159,7 +172,9 @@ const ExternalAccountCard = React.memo<{
   );
 });
 
-export const RightPanelExternalAccountsList: React.FC = () => {
+export const RightPanelExternalAccountsList: React.FC<{
+  onConnect: () => void;
+}> = ({ onConnect }) => {
   const { t } = useTranslation();
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -172,42 +187,54 @@ export const RightPanelExternalAccountsList: React.FC = () => {
   const accountLoadStatus = useExternalAccountStore((state) => state.loadStatus);
   const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
   const visibleAccounts = accountOwnerKey === runtimeOwnerKey ? accounts : [];
+  const accountsLoading =
+    runtimeOwnerKey != null &&
+    (accountOwnerKey !== runtimeOwnerKey || accountLoadStatus === "loading");
 
   useEffect(() => {
     if (runtimeContext == null) return;
     void refreshExternalAccounts({ runtimeContext }).catch(() => undefined);
   }, [runtimeContext]);
 
-  if (
-    runtimeOwnerKey != null &&
-    (accountOwnerKey !== runtimeOwnerKey || accountLoadStatus === "loading")
-  ) {
-    return (
-      <p
-        className="px-1 text-center text-xs text-text-muted"
-        data-testid="connected-external-accounts-list"
-      >
-        {t("connectExternalAccount.checking")}
-      </p>
-    );
-  }
-  if (runtimeContext == null || visibleAccounts.length === 0) {
-    return (
-      <div
-        className="rounded-lg border border-dashed border-border-subtle px-3 py-4 text-center"
-        data-testid="connected-external-accounts-list"
-      >
-        <p className="text-xs leading-4 text-text-muted">
-          {t("connectExternalAccount.noAccounts")}
-        </p>
-      </div>
-    );
-  }
   return (
-    <ul className="space-y-2" data-testid="connected-external-accounts-list">
-      {visibleAccounts.map((account) => (
-        <ExternalAccountCard key={account.uuid} account={account} runtimeContext={runtimeContext} />
-      ))}
-    </ul>
+    <section
+      className="w-full rounded-lg border border-white/10 p-2"
+      data-testid="connected-external-accounts-list"
+    >
+      <div className="flex flex-col gap-5">
+        <p className="text-xs leading-4 text-text-muted">{t("externalAccounts.connected")}</p>
+        {accountsLoading || runtimeContext == null || visibleAccounts.length === 0 ? (
+          <p className="text-xs leading-4 text-text-muted">
+            {accountsLoading
+              ? t("connectExternalAccount.checking")
+              : t("connectExternalAccount.noAccounts")}
+          </p>
+        ) : (
+          <ul className="space-y-2" data-testid="external-account-rows">
+            {visibleAccounts.map((account) => (
+              <ExternalAccountRow
+                key={account.uuid}
+                account={account}
+                runtimeContext={runtimeContext}
+              />
+            ))}
+          </ul>
+        )}
+        <p className="text-xs leading-4 text-text-muted">{t("externalAccounts.connectedHint")}</p>
+        <Button
+          type="button"
+          variant="neutral"
+          size="md"
+          fullWidth
+          className="h-9 bg-card-bg-active px-2 text-accent hover:bg-card-bg-active hover:ring-0"
+          onClick={onConnect}
+          aria-label={t("connectExternalAccount.connectService")}
+          data-testid="connect-external-account-trigger"
+          leadingIcon={<Icon name="add" size={20} className="text-current" />}
+        >
+          {t("connectExternalAccount.connectService")}
+        </Button>
+      </div>
+    </section>
   );
 };

@@ -1,12 +1,13 @@
 import React from "react";
 import { Icon } from "~/shared/ui/icon";
-import type { MenuButtonProps, OptionButtonProps } from "./right-panel-user-menu.types";
+import type { MenuButtonProps } from "./right-panel-user-menu.types";
 
 /**
  * Flat account-menu row (Figma right menu): icon + label/subtitle + trailing value/chevron.
  * No card wells around icons — the section list provides dividers.
  *
- * `px-4` insets content; hover fill spans the flushed content width (RightDrawer contentFlush).
+ * Root rows use `px-4`; nested rows bleed through the parent `px-2` while keeping
+ * their content aligned to the same inset.
  */
 export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
   label,
@@ -17,8 +18,12 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
   onClick,
   disabled = false,
   tone = "default",
+  variant = "root",
+  id,
   testId,
   ariaLabel,
+  "aria-controls": ariaControls,
+  "aria-expanded": ariaExpanded,
 }) => {
   const isDanger = tone === "danger";
   return (
@@ -26,11 +31,14 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      id={id}
       data-testid={testId}
       aria-label={ariaLabel}
-      className={`flex w-full items-center justify-between gap-2 px-4 py-1.5 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
-        isDanger ? "text-danger" : "text-text-primary"
-      }`}
+      aria-controls={ariaControls}
+      aria-expanded={ariaExpanded}
+      className={`flex items-center justify-between gap-2 py-1.5 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
+        variant === "nested" ? "-mx-2 w-[calc(100%+1rem)] px-2" : "w-full px-4"
+      } ${isDanger ? "text-danger" : "text-text-primary"}`}
     >
       <span className="flex min-w-0 items-center gap-2">
         <span
@@ -42,39 +50,22 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
         </span>
         <span className="min-w-0">
           <span
-            className={`block text-sm font-medium leading-5 ${
-              isDanger ? "text-danger" : "text-text-primary"
-            }`}
+            className={`block text-sm ${
+              variant === "nested" ? "font-normal leading-4" : "font-medium leading-5"
+            } ${isDanger ? "text-danger" : "text-text-primary"}`}
           >
             {label}
           </span>
           {subtitle ? (
-            <span className="mt-0.5 block text-sm leading-5 text-text-muted">{subtitle}</span>
+            <span
+              className={`${variant === "nested" ? "mt-1 text-xs" : "mt-0.5 text-sm"} block leading-5 text-text-muted`}
+            >
+              {subtitle}
+            </span>
           ) : null}
         </span>
       </span>
       {right}
-    </button>
-  );
-};
-
-/** Inline accordion option row — same flat list language as the parent menu. */
-export const RightPanelUserMenuOptionButton: React.FC<OptionButtonProps> = ({
-  label,
-  active,
-  onClick,
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-sidebar-hover"
-    >
-      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>
-        {label}
-      </span>
-      {active ? <Icon name="check" size={14} className="text-accent" /> : null}
     </button>
   );
 };

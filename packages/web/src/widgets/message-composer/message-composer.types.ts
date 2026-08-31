@@ -193,6 +193,8 @@ export interface ComposerModeTabsProps {
 export type MediaPickerTab = "emoji" | "sticker";
 
 export interface MessageComposerPrefaceProps {
+  imageAliases?: readonly { localId: string; visibleText: string }[];
+  inlineImageLocalIds?: ReadonlySet<string>;
   uploadProgress: ComposerUploadProgress | null | undefined;
   uploadProgressPercent: number;
   separateUploadProgress?: boolean;
@@ -204,6 +206,7 @@ export interface MessageComposerPrefaceProps {
   removeFile: (index: number) => void;
   attachments?: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onRemoveImageFromText?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   scheduledMessages: ScheduledComposerMessage[];

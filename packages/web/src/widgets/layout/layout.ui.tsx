@@ -37,6 +37,7 @@ import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadMentionsBootstrap } from "./layout-unread-mentions-bootstrap.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
+import { useLayoutWorkspaceIamCapabilities } from "./layout-workspace-iam-capabilities.hook";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
 import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
@@ -128,6 +129,7 @@ export const Layout: React.FC = () => {
     unreadMentionsOwnerKey === currentWorkspaceOwnerKey ? (unreadMentionsCount ?? 0) : 0;
 
   useLayoutUnreadMentionsBootstrap(currentWorkspaceRuntimeContext);
+  useLayoutWorkspaceIamCapabilities(currentWorkspaceRuntimeContext);
   useLayoutWorkspaceMessengerBootstrap({ enabled: true, retryNonce: bootstrapRetryNonce });
   useLayoutWorkspaceRealtime({
     enabled: workspaceMessengerActive,

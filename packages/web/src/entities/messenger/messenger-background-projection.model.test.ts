@@ -23,6 +23,10 @@ import {
   selectMessengerBackgroundProjectionSnapshot,
   useMessengerBackgroundProjectionStore,
 } from "./messenger-background-projection.model";
+import {
+  MESSENGER_CHANNELS_FOLDER_UUID,
+  MESSENGER_PERSONAL_FOLDER_UUID,
+} from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import { createMessengerRealtimeBackgroundApplier } from "./messenger-realtime-applier.lib";
@@ -768,6 +772,36 @@ describe("messenger background projection", () => {
       }),
     );
   });
+
+  it.each([
+    ["Personal", MESSENGER_PERSONAL_FOLDER_UUID, "personal"],
+    ["Channels", MESSENGER_CHANNELS_FOLDER_UUID, "channels"],
+  ] as const)(
+    "normalizes backend-like %s folder events in the background projection",
+    async (title, folderUuid, expectedSystemType) => {
+      const context = createContext();
+      const applier = createMessengerRealtimeBackgroundApplier();
+
+      await applier.applyEvent(
+        {
+          epoch_version: 22,
+          type: "folder",
+          kind: "folder.updated",
+          folder: createFolderDto({
+            uuid: folderUuid,
+            title,
+            system_type: "all",
+            folder_items: [],
+          }),
+        },
+        context,
+      );
+
+      const projection =
+        useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+      expect(projection?.folderSnapshotsById[folderUuid]?.systemType).toBe(expectedSystemType);
+    },
+  );
 
   it("projects stream unread snapshots into matching background folder items and totals", async () => {
     const context = createContext();

@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setLocale, useTranslation } from "~/i18n/i18n";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 import {
   LAYOUT_SIDEBAR_WIDTH_STORAGE_KEY,
@@ -28,13 +29,45 @@ vi.mock("~/widgets/sidebar/sidebar-shell.ui", () => ({
 }));
 
 vi.mock("~/widgets/right-panel/right-drawer.ui", () => ({
-  RightDrawer: ({ children }: { children: ReactNode }) => (
-    <aside data-testid="right-drawer">{children}</aside>
+  RightDrawer: ({
+    children,
+    onBack,
+    title,
+  }: {
+    children: ReactNode;
+    onBack?: () => void;
+    title?: string;
+  }) => (
+    <aside data-testid="right-drawer">
+      {onBack != null ? <button onClick={onBack}>Back</button> : null}
+      {title ? <h2>{title}</h2> : null}
+      {children}
+    </aside>
   ),
 }));
 
 vi.mock("~/widgets/right-panel/right-panel-shell.ui", () => ({
-  RightPanelShell: () => <div data-testid="right-panel-shell" />,
+  RightPanelShell: ({
+    onNestedPanelChange,
+  }: {
+    onNestedPanelChange?: (nested: { titleKey: string; onBack: () => void } | null) => void;
+  }) => {
+    const { t } = useTranslation();
+    return (
+      <div data-testid="right-panel-shell">
+        <button
+          type="button"
+          data-testid="open-nested-settings"
+          onClick={() =>
+            onNestedPanelChange?.({ titleKey: "settings.settings", onBack: () => undefined })
+          }
+        >
+          Open nested settings
+        </button>
+        <span data-testid="nested-settings-body-title">{t("settings.settings")}</span>
+      </div>
+    );
+  },
 }));
 
 function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMainWorkspaceProps {
@@ -58,12 +91,29 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
 
 describe("LayoutMainWorkspace", () => {
   beforeEach(() => {
+    setLocale("en");
     window.localStorage.clear();
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       writable: true,
       value: 1280,
     });
+  });
+
+  it("updates nested drawer header and body translations after a locale switch", () => {
+    render(
+      <LayoutMainWorkspace
+        {...buildProps({ rightDrawerOpen: true, rightDrawerMode: "settings" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("open-nested-settings"));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByTestId("nested-settings-body-title")).toHaveTextContent("Settings");
+
+    act(() => setLocale("ru"));
+    expect(screen.getByRole("heading", { name: "Настройки" })).toBeInTheDocument();
+    expect(screen.getByTestId("nested-settings-body-title")).toHaveTextContent("Настройки");
   });
 
   it("does not limit the workspace row width", () => {

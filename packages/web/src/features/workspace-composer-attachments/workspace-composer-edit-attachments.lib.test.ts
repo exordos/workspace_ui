@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendWorkspaceComposerEditAttachmentMarkdown,
   appendWorkspaceComposerExistingAttachmentMarkdown,
   extractWorkspaceComposerEditContent,
 } from "./workspace-composer-edit-attachments.lib";
@@ -8,6 +9,17 @@ const IMAGE_UUID = "11111111-1111-4111-8111-111111111111";
 const FILE_UUID = "22222222-2222-4222-8222-222222222222";
 
 describe("Workspace composer edit attachments", () => {
+  it("does not append links already present and removes duplicate input links", () => {
+    const image = `![screen.png](urn:image:${IMAGE_UUID})`;
+    expect(
+      appendWorkspaceComposerEditAttachmentMarkdown(`Before\n${image}`, [
+        image,
+        image,
+        `[report.pdf](urn:file:${FILE_UUID})`,
+      ]),
+    ).toBe(`Before\n${image}\n[report.pdf](urn:file:${FILE_UUID})`);
+  });
+
   it("moves Workspace file references out of editable text and preserves their Markdown", () => {
     const image = `![screen.png](urn:image:${IMAGE_UUID}?name=screen.png&content_type=image%2Fpng&size=8)`;
     const file = `[report.pdf](urn:file:${FILE_UUID}?name=report.pdf&size=12)`;

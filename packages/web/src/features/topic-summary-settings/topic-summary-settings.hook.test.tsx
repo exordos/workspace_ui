@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessengerTopic } from "~/entities/messenger/messenger.types";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceTopicSummarySettingsDto } from "~/shared/api/messenger-topic-summary-management.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
@@ -10,6 +12,8 @@ import {
 } from "./topic-summary-settings.hook";
 
 const PROJECT_UUID = "00000000-0000-4000-8000-000000000001";
+
+afterEach(() => useWorkspaceIamCapabilitiesStore.getState().clear());
 
 function runtime(projectId = PROJECT_UUID, runtimeGeneration = 1): WorkspaceRuntimeContext {
   return {
@@ -246,6 +250,10 @@ describe("useTopicSummarySettings gates model", () => {
 
   it("marks permission denied and rolls the draft back after PUT 403", async () => {
     const currentRuntime = runtime();
+    const capabilitiesStore = useWorkspaceIamCapabilitiesStore.getState();
+    const ownerKey = workspaceRuntimeOwnerKey(currentRuntime);
+    capabilitiesStore.startLoad(ownerKey, currentRuntime.runtimeGeneration);
+    const invalidationVersion = useWorkspaceIamCapabilitiesStore.getState().invalidationVersion;
     const getSettings = vi.fn().mockResolvedValue(settings());
     const updateSettings = vi.fn().mockRejectedValue(new MessengerApiError("denied", 403, null));
     const { result } = renderHook(() =>
@@ -269,6 +277,9 @@ describe("useTopicSummarySettings gates model", () => {
       projectEnabled: true,
     });
     expect(result.current.gates.dirty).toBe(false);
+    expect(useWorkspaceIamCapabilitiesStore.getState().invalidationVersion).toBe(
+      invalidationVersion + 1,
+    );
   });
 
   it("preserves a dirty gates draft for retry after a network failure", async () => {

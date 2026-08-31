@@ -927,7 +927,7 @@ describe("FolderRail visual parity", () => {
     fireEvent.contextMenu(customButton!);
 
     const deleteAction = screen.getByText("Delete");
-    expect(deleteAction).toHaveClass("text-notice-base");
+    expect(deleteAction).toHaveClass("!text-notice-base");
 
     const deleteItem = deleteAction.closest("[role='menuitem']");
     const deleteIconPath = deleteItem?.querySelector("path");

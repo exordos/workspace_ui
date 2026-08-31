@@ -80,6 +80,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
       <RightPanelUserMenu
         onOpenAboutDrawer={handleOpenAbout}
         onOpenPersonalInfo={handleOpenPersonalInfo}
+        onNestedPanelChange={props.onNestedPanelChange}
       />
     );
   }

@@ -9,6 +9,7 @@ import type { RefObject, UIEventHandler } from "react";
 
 interface ActivityMessageListProps {
   messages: readonly MessengerMessage[];
+  getIsUnread?: (message: MessengerMessage) => boolean;
   streamsById: Readonly<Record<string, MessengerStream>>;
   topicsById: Readonly<Record<string, MessengerTopic>>;
   listRef: RefObject<HTMLUListElement | null>;
@@ -20,6 +21,7 @@ interface ActivityMessageListProps {
 
 export function ActivityMessageList({
   messages,
+  getIsUnread,
   streamsById,
   topicsById,
   listRef,
@@ -39,6 +41,8 @@ export function ActivityMessageList({
           <li key={message.uuid}>
             <ActivityMessageCard
               message={message}
+              isUnread={getIsUnread?.(message) ?? false}
+              showUnreadMarker={getIsUnread != null}
               stream={streamsById[message.streamUuid]}
               topic={topicsById[message.topicUuid]}
               onOpen={onOpen}

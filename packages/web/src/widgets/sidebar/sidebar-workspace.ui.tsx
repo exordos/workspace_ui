@@ -7,6 +7,7 @@ import {
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import type {
+  MessengerFolder,
   MessengerSidebarStreamItem,
   MessengerTopicListItem,
 } from "~/entities/messenger/messenger.types";
@@ -29,6 +30,7 @@ import {
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
   SIDEBAR_STREAM_GROUP_CLASS,
@@ -53,38 +55,23 @@ import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
+import {
+  projectWorkspaceSidebarSearch,
+  type WorkspaceSidebarSearchProjection,
+} from "./sidebar-workspace-search.lib";
 
 const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic"] as const;
 
 export interface WorkspaceSidebarProps {
   streams: MessengerSidebarStreamItem[];
+  allStreams?: MessengerSidebarStreamItem[];
   loading: boolean;
   error: string | null;
   activityCounts: MessengerSidebarActivityCounts;
   workspaceStreamCount: number;
-  selectedFolderSystemType?: "all" | "created" | "personal" | "channels" | null;
+  selectedFolderSystemType?: MessengerFolder["systemType"];
   activityPanelBottomSlot?: React.ReactNode;
   onOpenCreateChat?: () => void;
-}
-
-// This component only renders the Workspace chat list.
-// Data, links, and counts are prepared by messenger-sidebar.lib.ts selectors.
-function workspaceStreamMatchesQuery(
-  stream: MessengerSidebarStreamItem,
-  normalizedQuery: string,
-): boolean {
-  if (normalizedQuery.length === 0) return true;
-  return (
-    stream.title.toLowerCase().includes(normalizedQuery) ||
-    stream.topics.some((topic) => topic.title.toLowerCase().includes(normalizedQuery))
-  );
-}
-
-function workspaceTopicMatchesQuery(
-  topic: MessengerTopicListItem,
-  normalizedQuery: string,
-): boolean {
-  return normalizedQuery.length === 0 || topic.title.toLowerCase().includes(normalizedQuery);
 }
 
 function formatWorkspaceMessageTime(createdAt: string | null): string | undefined {
@@ -94,10 +81,35 @@ function formatWorkspaceMessageTime(createdAt: string | null): string | undefine
   return formatMessageTimeRelative(Math.floor(timestamp / 1000));
 }
 
+function toggleWorkspaceStreamFromLink(input: {
+  searchMode: boolean;
+  expanded: boolean;
+  streamUuid: string;
+  onToggleStream: (streamUuid: string) => void;
+}): void {
+  if (input.searchMode || input.expanded) return;
+  input.onToggleStream(input.streamUuid);
+}
+
+function resolveWorkspaceStreamExpandChevron(input: {
+  searchMode: boolean;
+  hasTopics: boolean;
+  expanded: boolean;
+  streamUuid: string;
+  onToggleStream: (streamUuid: string) => void;
+}): React.ComponentProps<typeof SidebarChatRowMeta>["expandChevron"] {
+  if (input.searchMode || !input.hasTopics) return undefined;
+  return {
+    expanded: input.expanded,
+    onToggle: () => input.onToggleStream(input.streamUuid),
+    ariaLabel: input.expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+  };
+}
+
 function resolveWorkspaceSidebarEmptyState(input: {
   normalizedQuery: string;
   workspaceStreamCount: number;
-  selectedFolderSystemType?: "all" | "created" | "personal" | "channels" | null;
+  selectedFolderSystemType?: MessengerFolder["systemType"];
 }): { title: string; hint: string } {
   if (input.normalizedQuery.length > 0) {
     return {
@@ -206,20 +218,25 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   stream,
   activeTopicUuid,
   normalizedQuery,
+  searchMode,
   compact,
 }: {
   stream: MessengerSidebarStreamItem;
   activeTopicUuid: string | null;
   normalizedQuery: string;
+  searchMode: boolean;
   compact: boolean;
 }): React.ReactElement | null {
   const topics = useMemo(
-    () => stream.topics.filter((topic) => workspaceTopicMatchesQuery(topic, normalizedQuery)),
-    [normalizedQuery, stream.topics],
+    () =>
+      searchMode
+        ? stream.topics.filter((topic) => topic.title.toLowerCase().includes(normalizedQuery))
+        : stream.topics,
+    [normalizedQuery, searchMode, stream.topics],
   );
   const { expanded, hiddenCount, toggleAction, visibleCount, toggleTopics } =
     useSidebarTopicCollapse(topics);
-  const visibleTopics = topics.slice(0, visibleCount);
+  const visibleTopics = searchMode ? topics : topics.slice(0, visibleCount);
 
   return (
     <>
@@ -241,7 +258,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
           })}
         </div>
       ) : null}
-      {toggleAction != null && (
+      {!searchMode && toggleAction != null && (
         <SidebarTopicShowMoreButton
           action={toggleAction}
           expanded={expanded}
@@ -260,6 +277,9 @@ function WorkspaceSidebarStreamRow({
   activeStreamUuid,
   activeTopicUuid,
   normalizedQuery,
+  searchMode,
+  folderScope,
+  notificationTopics,
   compact,
   onToggleStream,
   onTopicCreated,
@@ -269,6 +289,9 @@ function WorkspaceSidebarStreamRow({
   activeStreamUuid: string | null;
   activeTopicUuid: string | null;
   normalizedQuery: string;
+  searchMode: boolean;
+  folderScope: "selected" | "all";
+  notificationTopics: MessengerTopicListItem[];
   compact: boolean;
   onToggleStream: (streamUuid: string) => void;
   onTopicCreated: (streamUuid: string, topicUuid: string) => void;
@@ -298,15 +321,30 @@ function WorkspaceSidebarStreamRow({
       : null;
   const isMuted = isWorkspaceStreamFullyMuted(
     stream.notificationMode,
-    stream.topics.map((topic) => topic.notificationMode),
+    notificationTopics.map((topic) => topic.notificationMode),
   );
   const displayedUnread = resolveWorkspaceDisplayedUnread(stream);
+  const handleStreamLinkClick = () =>
+    toggleWorkspaceStreamFromLink({
+      searchMode,
+      expanded,
+      streamUuid: stream.streamUuid,
+      onToggleStream,
+    });
+  const expandChevron = resolveWorkspaceStreamExpandChevron({
+    searchMode,
+    hasTopics: stream.topics.length > 0,
+    expanded,
+    streamUuid: stream.streamUuid,
+    onToggleStream,
+  });
 
   // Always wrap in the card shell so collapsed rows keep the same `card-bg` base.
   return (
     <div className={SIDEBAR_STREAM_GROUP_CLASS}>
       <WorkspaceStreamContextMenu
         stream={stream}
+        folderScope={folderScope}
         onTopicCreated={onTopicCreated}
         below={
           expanded
@@ -315,6 +353,7 @@ function WorkspaceSidebarStreamRow({
                   stream={stream}
                   activeTopicUuid={activeTopicUuid}
                   normalizedQuery={normalizedQuery}
+                  searchMode={searchMode}
                   compact={compact}
                 />
               )
@@ -325,9 +364,7 @@ function WorkspaceSidebarStreamRow({
           <Link
             to={stream.route}
             className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
-            onClick={() => {
-              if (!expanded) onToggleStream(stream.streamUuid);
-            }}
+            onClick={handleStreamLinkClick}
           >
             <span className="relative shrink-0">
               <WorkspaceAvatar
@@ -350,9 +387,7 @@ function WorkspaceSidebarStreamRow({
             <Link
               to={stream.route}
               className="focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1"
-              onClick={() => {
-                if (!expanded) onToggleStream(stream.streamUuid);
-              }}
+              onClick={handleStreamLinkClick}
             >
               <SidebarChatTitleWithStatus
                 title={title}
@@ -381,15 +416,7 @@ function WorkspaceSidebarStreamRow({
                 <WorkspaceStreamNotificationModeIndicator mode={stream.notificationMode} />
               )
             }
-            expandChevron={
-              stream.topics.length > 0
-                ? {
-                    expanded,
-                    onToggle: () => onToggleStream(stream.streamUuid),
-                    ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
-                  }
-                : undefined
-            }
+            expandChevron={expandChevron}
           />
         </div>
       </WorkspaceStreamContextMenu>
@@ -397,8 +424,69 @@ function WorkspaceSidebarStreamRow({
   );
 }
 
+type WorkspaceSidebarRenderStreams = (
+  items: MessengerSidebarStreamItem[],
+  forceSearchExpansion: boolean,
+  folderScope: "selected" | "all",
+) => React.ReactNode;
+
+function renderWorkspaceSidebarStreamLists(input: {
+  searchMode: boolean;
+  loading: boolean;
+  streams: MessengerSidebarStreamItem[];
+  displayedStreamCount: number;
+  selectedFolderIsAll: boolean;
+  searchProjection: WorkspaceSidebarSearchProjection;
+  renderStreams: WorkspaceSidebarRenderStreams;
+}): React.ReactNode {
+  if (!input.searchMode) {
+    if (input.streams.length === 0) return null;
+    return (
+      <div className="space-y-0.5 px-2">
+        {input.renderStreams(input.streams, false, "selected")}
+      </div>
+    );
+  }
+  if (input.displayedStreamCount === 0) return null;
+
+  return (
+    <div className="space-y-0.5 px-2">
+      {input.searchProjection.localStreams.length > 0
+        ? input.renderStreams(input.searchProjection.localStreams, true, "selected")
+        : null}
+      {!input.loading &&
+      !input.selectedFolderIsAll &&
+      input.searchProjection.localStreams.length === 0 &&
+      input.searchProjection.globalStreams.length > 0 ? (
+        <p className="px-2 py-2 text-xs text-text-muted" role="status">
+          {t("sidebar.noMatchesInFolder")}
+        </p>
+      ) : null}
+      {!input.selectedFolderIsAll &&
+      input.searchProjection.localStreams.length > 0 &&
+      input.searchProjection.globalStreams.length > 0 ? (
+        <div
+          className="flex items-center gap-2 px-2 pb-1 pt-3"
+          role="separator"
+          aria-label={t("sidebar.allFoldersResults")}
+        >
+          <div className="bg-border-subtle/70 h-px flex-1" />
+          <SectionLabel tone="muted" as="span">
+            {t("sidebar.allFoldersResults")}
+          </SectionLabel>
+          <div className="bg-border-subtle/70 h-px flex-1" />
+        </div>
+      ) : null}
+      {input.searchProjection.globalStreams.length > 0
+        ? input.renderStreams(input.searchProjection.globalStreams, true, "all")
+        : null}
+    </div>
+  );
+}
+
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   streams,
+  allStreams = streams,
   loading,
   error,
   activityCounts,
@@ -427,10 +515,28 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     routeMatch?.kind === "stream" || routeMatch?.kind === "topic" ? routeMatch.streamUuid : null;
   const activeTopicUuid = routeMatch?.kind === "topic" ? routeMatch.topicUuid : null;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
-  const filteredStreams = useMemo(
-    // Search is local: it filters the loaded list and does not call the API.
-    () => streams.filter((stream) => workspaceStreamMatchesQuery(stream, normalizedQuery)),
-    [normalizedQuery, streams],
+  const searchMode = normalizedQuery.length > 0;
+  const selectedFolderIsAll = selectedFolderSystemType === "all";
+  const searchProjection = useMemo(
+    () =>
+      projectWorkspaceSidebarSearch({
+        localStreams: streams,
+        allStreams,
+        normalizedQuery,
+        selectedFolderSystemType,
+      }),
+    [allStreams, normalizedQuery, selectedFolderSystemType, streams],
+  );
+  const displayedStreamCount = searchMode
+    ? searchProjection.localStreams.length + searchProjection.globalStreams.length
+    : streams.length;
+  const localStreamsByUuid = useMemo(
+    () => new Map(streams.map((stream) => [stream.streamUuid, stream])),
+    [streams],
+  );
+  const allStreamsByUuid = useMemo(
+    () => new Map(allStreams.map((stream) => [stream.streamUuid, stream])),
+    [allStreams],
   );
   const emptyState = useMemo(
     () =>
@@ -443,11 +549,10 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   );
   const hasSpecificEmptyContext = normalizedQuery.length > 0 || workspaceStreamCount > 0;
   const showNonBlockingError =
-    error != null && (filteredStreams.length > 0 || hasSpecificEmptyContext);
-  const showBlockingError =
-    error != null && filteredStreams.length === 0 && !hasSpecificEmptyContext;
+    error != null && (displayedStreamCount > 0 || hasSpecificEmptyContext);
+  const showBlockingError = error != null && displayedStreamCount === 0 && !hasSpecificEmptyContext;
   const showEmptyState =
-    !loading && filteredStreams.length === 0 && (error == null || hasSpecificEmptyContext);
+    !loading && displayedStreamCount === 0 && (error == null || hasSpecificEmptyContext);
   const handleToggleActivity = useCallback(
     () => setActivityOpen(!activityOpen),
     [activityOpen, setActivityOpen],
@@ -484,6 +589,49 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     },
     [navigate, routeMatch, setCreateChatOpen],
   );
+  const renderStreams = useCallback(
+    (
+      items: MessengerSidebarStreamItem[],
+      forceSearchExpansion: boolean,
+      folderScope: "selected" | "all",
+    ) =>
+      items.map((stream) => {
+        const sourceStream =
+          (folderScope === "all" ? allStreamsByUuid : localStreamsByUuid).get(stream.streamUuid) ??
+          stream;
+        return (
+          <WorkspaceSidebarStreamRow
+            key={stream.id}
+            stream={stream}
+            expanded={
+              forceSearchExpansion
+                ? stream.topics.length > 0
+                : expandedStreamUuids.includes(stream.streamUuid)
+            }
+            activeStreamUuid={activeStreamUuid}
+            activeTopicUuid={activeTopicUuid}
+            normalizedQuery={normalizedQuery}
+            searchMode={forceSearchExpansion}
+            folderScope={folderScope}
+            notificationTopics={sourceStream.topics}
+            compact={compact}
+            onToggleStream={toggleExpandedStreamUuid}
+            onTopicCreated={handleWorkspaceTopicCreated}
+          />
+        );
+      }),
+    [
+      activeStreamUuid,
+      activeTopicUuid,
+      allStreamsByUuid,
+      compact,
+      expandedStreamUuids,
+      handleWorkspaceTopicCreated,
+      localStreamsByUuid,
+      normalizedQuery,
+      toggleExpandedStreamUuid,
+    ],
+  );
 
   return (
     <aside
@@ -499,11 +647,13 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             onSearchQueryChange={setSearchQuery}
             onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
           />
-          <WorkspaceSidebarActivity
-            open={activityOpen}
-            onToggle={handleToggleActivity}
-            counts={activityCounts}
-          />
+          {!searchMode && (
+            <WorkspaceSidebarActivity
+              open={activityOpen}
+              onToggle={handleToggleActivity}
+              counts={activityCounts}
+            />
+          )}
           {activityPanelBottomSlot != null && (
             <>
               {activityPanelBottomSlot}
@@ -512,7 +662,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               </div>
             </>
           )}
-          {loading && filteredStreams.length === 0 ? (
+          {loading && displayedStreamCount === 0 ? (
             <div className="px-3 py-4">
               <div
                 className="bg-bg-elevated/40 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center"
@@ -556,23 +706,15 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               </div>
             </div>
           ) : null}
-          {filteredStreams.length > 0 ? (
-            <div className="space-y-0.5 px-2">
-              {filteredStreams.map((stream) => (
-                <WorkspaceSidebarStreamRow
-                  key={stream.id}
-                  stream={stream}
-                  expanded={expandedStreamUuids.includes(stream.streamUuid)}
-                  activeStreamUuid={activeStreamUuid}
-                  activeTopicUuid={activeTopicUuid}
-                  normalizedQuery={normalizedQuery}
-                  compact={compact}
-                  onToggleStream={toggleExpandedStreamUuid}
-                  onTopicCreated={handleWorkspaceTopicCreated}
-                />
-              ))}
-            </div>
-          ) : null}
+          {renderWorkspaceSidebarStreamLists({
+            searchMode,
+            loading,
+            streams,
+            displayedStreamCount,
+            selectedFolderIsAll,
+            searchProjection,
+            renderStreams,
+          })}
         </ScrollArea>
         <CreateChatDialog
           open={createChatOpen}

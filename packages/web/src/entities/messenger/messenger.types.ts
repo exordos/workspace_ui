@@ -6,6 +6,7 @@ import type {
   WorkspaceMessengerSourceName,
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
+  WorkspaceMessengerTopicSummaryReasoningEffort,
 } from "~/shared/api/messenger.types";
 import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 
@@ -117,7 +118,7 @@ export interface MessengerTopic {
   summaryHasNewMessages?: boolean | null;
   summaryEnabled?: boolean;
   summarySystemPrompt?: string | null;
-  summaryReasoningEffort?: "off" | "minimal" | "low" | "medium" | "high" | null;
+  summaryReasoningEffort?: WorkspaceMessengerTopicSummaryReasoningEffort | null;
   createdAt: string;
   updatedAt: string;
 }

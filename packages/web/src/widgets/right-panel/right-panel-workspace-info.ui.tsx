@@ -28,6 +28,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectWorkspaceIamPermissionsForOwner,
+  useWorkspaceIamCapabilitiesStore,
+} from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
@@ -337,6 +341,7 @@ interface WorkspaceTopicSummarySettingsControlProps {
   readonly summary: NonNullable<WorkspaceRightPanelChannelInfoView["topicSummary"]>;
   readonly runtimeContext: WorkspaceRuntimeContext | null;
   readonly topic: MessengerTopic | null;
+  readonly channelName?: string | null;
   readonly permissions: MessengerTopicSummaryPermissionResolution;
 }
 
@@ -345,6 +350,7 @@ const WorkspaceTopicSummarySettingsControl = React.memo(
     summary,
     runtimeContext,
     topic,
+    channelName,
     permissions,
   }: WorkspaceTopicSummarySettingsControlProps) {
     const [open, setOpen] = useState(false);
@@ -365,6 +371,7 @@ const WorkspaceTopicSummarySettingsControl = React.memo(
             onOpenChange={setOpen}
             runtimeContext={runtimeContext}
             topic={topic}
+            channelName={channelName}
             topicPermission={permissions.topic}
             gatesPermission={permissions.gates}
             endpointsPermission={permissions.endpoints}
@@ -415,18 +422,21 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],
   );
+  const summaryOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const summaryCapabilities = useWorkspaceIamCapabilitiesStore((state) =>
+    selectWorkspaceIamPermissionsForOwner(state, summaryOwnerKey),
+  );
   const summaryPermissions = useMemo(
     () =>
       resolveMessengerTopicSummaryPermissions({
         currentUserUuid: runtimeContext?.userUuid,
         stream: summaryStream,
+        capabilities: summaryCapabilities,
       }),
-    [runtimeContext?.userUuid, summaryStream],
+    [runtimeContext?.userUuid, summaryCapabilities, summaryStream],
   );
   const summaryRuntimeKey =
-    runtimeContext == null
-      ? null
-      : `${workspaceRuntimeOwnerKey(runtimeContext)}:${runtimeContext.runtimeGeneration}`;
+    runtimeContext == null ? null : `${summaryOwnerKey}:${runtimeContext.runtimeGeneration}`;
   const notificationMode = storeNotificationMode ?? info.notificationMode;
   const channelAvatarStyle = useMemo(
     () =>
@@ -735,6 +745,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             summary={info.topicSummary}
             runtimeContext={runtimeContext}
             topic={summaryTopic}
+            channelName={summaryStream?.name}
             permissions={summaryPermissions}
           />
         ) : null}

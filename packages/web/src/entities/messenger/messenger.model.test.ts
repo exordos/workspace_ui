@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  MESSENGER_CHANNELS_FOLDER_UUID,
+  MESSENGER_PERSONAL_FOLDER_UUID,
+} from "./messenger-folder-system-type.lib";
+import {
   applyDeletedMessagePointerRepair,
   restoreMessengerStream,
   useMessengerStore,
@@ -188,6 +192,24 @@ describe("messenger store", () => {
     expect(useMessengerStore.getState()).toMatchObject({
       realtimeReadyOwnerKey: null,
       realtimeReadyRuntimeGeneration: null,
+    });
+  });
+
+  it("normalizes cached system folder snapshots with backend-like all types", () => {
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      streams: [],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [
+        createFolder({ uuid: MESSENGER_PERSONAL_FOLDER_UUID, systemType: "all" }),
+        createFolder({ uuid: MESSENGER_CHANNELS_FOLDER_UUID, systemType: "all" }),
+      ],
+    });
+
+    expect(useMessengerStore.getState().foldersById).toMatchObject({
+      [MESSENGER_PERSONAL_FOLDER_UUID]: { systemType: "personal" },
+      [MESSENGER_CHANNELS_FOLDER_UUID]: { systemType: "channels" },
     });
   });
 

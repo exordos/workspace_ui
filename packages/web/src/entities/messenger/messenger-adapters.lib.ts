@@ -7,6 +7,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
+import { resolveMessengerFolderSystemType } from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import type {
   MessengerConversation,
@@ -224,7 +225,7 @@ export function adaptMessengerFolder(dto: WorkspaceMessengerFolderDto): Messenge
     title: dto.title,
     backgroundColorValue: dto.background_color_value ?? null,
     unreadCount: dto.unread_count,
-    systemType: dto.system_type,
+    systemType: resolveMessengerFolderSystemType(dto.uuid, dto.system_type),
     items: dto.folder_items.map(adaptMessengerFolderItem),
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,

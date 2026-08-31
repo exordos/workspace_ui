@@ -22,6 +22,11 @@ interface MessageComposerEditNoticeProps {
   joinedTop?: boolean;
 }
 
+function getAttachmentListClassName(inlineImageCount: number): string {
+  if (inlineImageCount > 0) return "px-2 pb-1.5 pt-2";
+  return "px-2 pt-2";
+}
+
 export const MessageComposerEditNotice: React.FC<MessageComposerEditNoticeProps> = React.memo(
   ({ onCancelEdit, joinedTop = false }) => (
     <div
@@ -73,8 +78,11 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     removeFile,
     attachments = [],
     onRemoveAttachment,
+    onRemoveImageFromText,
     onRetryAttachment,
     onLoadWorkspaceFilePreview,
+    imageAliases,
+    inlineImageLocalIds,
     scheduledMessages,
     onCancelScheduled,
     replyQuote,
@@ -122,7 +130,10 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
         )}
 
         {(showDetachedUpload || showDraftFiles || showControlledAttachments) && (
-          <AttachmentCardList ariaLabel={t("attachmentCard.list")} className="px-2 pt-2">
+          <AttachmentCardList
+            ariaLabel={t("attachmentCard.list")}
+            className={getAttachmentListClassName(inlineImageLocalIds?.size ?? 0)}
+          >
             {showDetachedUpload ? (
               <AttachmentCard
                 status="uploading"
@@ -175,7 +186,10 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
               <MessageComposerControlledAttachmentCards
                 attachments={attachments}
                 onRemoveAttachment={onRemoveAttachment}
+                onRemoveImageFromText={onRemoveImageFromText}
                 onRetryAttachment={onRetryAttachment}
+                imageAliases={imageAliases}
+                inlineImageLocalIds={inlineImageLocalIds}
                 onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
               />
             ) : null}

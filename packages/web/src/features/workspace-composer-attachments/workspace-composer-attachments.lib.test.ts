@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  appendWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMetadata,
 } from "./workspace-composer-attachments.lib";
@@ -44,6 +45,17 @@ afterEach(() => {
 });
 
 describe("workspace composer attachment metadata", () => {
+  it("does not append links already present and removes duplicate input links", () => {
+    const image = "![screen.png](urn:image:image-uuid)";
+    expect(
+      appendWorkspaceComposerAttachmentMarkdown(`Before\n${image}`, [
+        image,
+        image,
+        "[file](urn:file:file-uuid)",
+      ]),
+    ).toBe(`Before\n${image}\n[file](urn:file:file-uuid)`);
+  });
+
   it("preserves portrait image dimensions in the image URN", async () => {
     const getImage = installImage(720, 1280);
     installObjectUrl();

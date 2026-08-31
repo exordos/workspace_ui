@@ -59,7 +59,10 @@ function resolveSelectedWorkspaceFolder(
   );
 }
 
-function useWorkspaceMenuFolders(streamUuid: string): {
+function useWorkspaceMenuFolders(
+  streamUuid: string,
+  folderScope: "selected" | "all",
+): {
   userCreatedFolders: MessengerFolder[];
   selectedFolderItem: MessengerFolderItem | null;
 } {
@@ -67,12 +70,15 @@ function useWorkspaceMenuFolders(streamUuid: string): {
   const selectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
 
   return useMemo(() => {
-    const selectedFolder = resolveSelectedWorkspaceFolder(folders, selectedFolderId);
+    const selectedFolder =
+      folderScope === "all"
+        ? (folders.find((folder) => folder.systemType === "all") ?? null)
+        : resolveSelectedWorkspaceFolder(folders, selectedFolderId);
     return {
       userCreatedFolders: folders.filter(isUserCreatedWorkspaceFolder),
       selectedFolderItem: findStreamFolderItem(selectedFolder, streamUuid),
     };
-  }, [folders, selectedFolderId, streamUuid]);
+  }, [folderScope, folders, selectedFolderId, streamUuid]);
 }
 
 function useWorkspaceStreamNotificationMode(
@@ -153,6 +159,7 @@ const WorkspaceTopicNameDialog = React.memo(function WorkspaceTopicNameDialog({
 
 interface WorkspaceStreamContextMenuProps {
   stream: MessengerSidebarStreamItem;
+  folderScope?: "selected" | "all";
   children: React.ReactNode;
   onTopicCreated?: (streamUuid: string, topicUuid: string) => void;
   /**
@@ -164,6 +171,7 @@ interface WorkspaceStreamContextMenuProps {
 
 export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamContextMenu({
   stream,
+  folderScope = "selected",
   children,
   below,
   onTopicCreated,
@@ -176,7 +184,10 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     handleMenuOpenChange,
   } = useDropdownContextMenuAnchor();
   const notificationMode = useWorkspaceStreamNotificationMode(stream.streamUuid);
-  const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(stream.streamUuid);
+  const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(
+    stream.streamUuid,
+    folderScope,
+  );
   const rightDrawer = useRightDrawer();
   const [notificationPending, setNotificationPending] = useState(false);
   const [readPending, setReadPending] = useState(false);

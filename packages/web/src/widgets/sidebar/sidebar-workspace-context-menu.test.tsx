@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { act, type ReactElement } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "~/entities/messenger/messenger-folder-system-type.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerFolder,
@@ -211,6 +212,7 @@ describe("WorkspaceSidebar context menu", () => {
     useMessengerStore.getState().clear();
     useSidebarConfigStore.getState().setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
     useSidebarConfigStore.getState().setCreateChatOpen(false);
+    useSidebarConfigStore.getState().setSearchQuery("");
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     runWorkspaceTopicNotificationUpdateMock.mockReset();
@@ -588,6 +590,59 @@ describe("WorkspaceSidebar context menu", () => {
         folderItemUuid: FOLDER_ITEM_UUID,
         streamUuid: STREAM_UUID,
         pinned: true,
+      });
+    });
+  });
+
+  it("uses the All folder pin scope for a global search result", async () => {
+    const allFolderUuid = MESSENGER_ALL_CHATS_FOLDER_UUID;
+    const allFolderItemUuid = "folder-item-all";
+    runWorkspaceFolderItemPinToggleMock.mockResolvedValue({ status: "applied" });
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore
+      .getState()
+      .applyFolderSnapshot(OWNER_KEY, createFolder({ items: [], unreadCount: 0 }));
+    useMessengerStore.getState().applyFolderSnapshot(
+      OWNER_KEY,
+      createFolder({
+        uuid: allFolderUuid,
+        title: "All chats",
+        systemType: "all",
+        items: [
+          {
+            ...createFolder().items[0]!,
+            uuid: allFolderItemUuid,
+            folderUuid: allFolderUuid,
+            pinnedAt: DATE,
+          },
+        ],
+      }),
+    );
+    useSidebarConfigStore.getState().setSelectedFolderId(FOLDER_UUID);
+    useSidebarConfigStore.getState().setSearchQuery("engineering");
+
+    renderWithProviders(
+      <WorkspaceSidebar
+        streams={[]}
+        allStreams={[createStream({ pinnedAt: DATE })]}
+        loading={false}
+        error={null}
+        activityCounts={{ inboxCount: null, mentionsCount: null }}
+        workspaceStreamCount={1}
+        selectedFolderSystemType="created"
+      />,
+      { route: `/org/acme/project/project-a/stream/${STREAM_UUID}` },
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^unpin$/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceFolderItemPinToggleMock).toHaveBeenCalledWith({
+        folderUuid: allFolderUuid,
+        folderItemUuid: allFolderItemUuid,
+        streamUuid: STREAM_UUID,
+        pinned: false,
       });
     });
   });

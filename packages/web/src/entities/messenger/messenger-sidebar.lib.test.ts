@@ -5,6 +5,7 @@ import {
   workspaceMessengerRootRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
 import {
   selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
@@ -29,7 +30,7 @@ const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const TOPIC_C = "a5bde5af-8228-4b88-8e6d-e8dfe59e9b56";
 const TOPIC_D = "e92533bc-a4f0-46c6-94fd-0f1e03a0d019";
 const TOPIC_E = "70d881da-01f7-4204-9871-2f122d77ec53";
-const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
+const FOLDER_A = MESSENGER_ALL_CHATS_FOLDER_UUID;
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const FOLDER_ITEM_C = "e89320c1-e1e8-4382-bef9-df411693b068";
@@ -1454,6 +1455,75 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("invalidates selected and All folder projections when only conversations change", () => {
+    const customFolderUuid = "folder-conversations";
+    const conversationBefore = conversation({
+      title: "Before",
+      audience: "channel",
+      isPrivate: false,
+      directUserUuid: null,
+    });
+    const conversationAfter = { ...conversationBefore, title: "After" };
+    const conversationItem = {
+      ...folder().items[1]!,
+      conversationId: conversationBefore.id,
+    };
+    const allFolder = folder({
+      items: [folder().items[0]!, conversationItem],
+    });
+    const customFolder = folder({
+      uuid: customFolderUuid,
+      title: "Conversation folder",
+      systemType: "created",
+      items: [{ ...conversationItem, folderUuid: customFolderUuid }],
+    });
+    const base = state({
+      streamsById: { [STREAM_A]: stream() },
+      streamIds: [STREAM_A],
+      conversationsById: { [conversationBefore.id]: conversationBefore },
+      conversationIds: [conversationBefore.id],
+      foldersById: {
+        [FOLDER_A]: allFolder,
+        [customFolderUuid]: customFolder,
+      },
+      folderIds: [FOLDER_A, customFolderUuid],
+    });
+    const next = {
+      ...base,
+      conversationsById: { [conversationAfter.id]: conversationAfter },
+    };
+    const usersById = createUsersById();
+    const commonOptions = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById,
+    };
+
+    const customBefore = selectMessengerSidebarStreams(base, {
+      ...commonOptions,
+      selectedFolderUuid: customFolderUuid,
+    });
+    const allBefore = selectMessengerSidebarStreams(base, {
+      ...commonOptions,
+      selectedFolderUuid: FOLDER_A,
+    });
+    const customAfter = selectMessengerSidebarStreams(next, {
+      ...commonOptions,
+      selectedFolderUuid: customFolderUuid,
+    });
+    const allAfter = selectMessengerSidebarStreams(next, {
+      ...commonOptions,
+      selectedFolderUuid: FOLDER_A,
+    });
+
+    expect(customBefore[0]?.title).toBe("Before");
+    expect(allBefore.some((row) => row.title === "Before")).toBe(true);
+    expect(customAfter[0]?.title).toBe("After");
+    expect(allAfter.some((row) => row.title === "After")).toBe(true);
+    expect(customAfter).not.toBe(customBefore);
+    expect(allAfter).not.toBe(allBefore);
+  });
+
   it("skips folder items when both stream and conversation snapshots are missing", () => {
     const base = state({
       streamsById: {
@@ -1576,6 +1646,49 @@ describe("messenger sidebar selectors", () => {
       expect.objectContaining({ folderUuid: FOLDER_A, unreadCount: 6 }),
     ]);
     expect(secondFolders).not.toBe(firstFolders);
+  });
+
+  it("keeps folder projection references stable across alternating folder selections", () => {
+    const customFolderUuid = "folder-custom";
+    const customFolder = folder({
+      uuid: customFolderUuid,
+      title: "Team",
+      systemType: "created",
+      items: [
+        {
+          ...folder().items[0]!,
+          folderUuid: customFolderUuid,
+        },
+      ],
+    });
+    const selectorState = state({
+      foldersById: {
+        [FOLDER_A]: folder(),
+        [customFolderUuid]: customFolder,
+      },
+      folderIds: [FOLDER_A, customFolderUuid],
+    });
+    const usersById = createUsersById();
+    const commonOptions = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById,
+    };
+
+    const firstCustom = selectMessengerSidebarStreams(selectorState, {
+      ...commonOptions,
+      selectedFolderUuid: customFolderUuid,
+    });
+    selectMessengerSidebarStreams(selectorState, {
+      ...commonOptions,
+      selectedFolderUuid: FOLDER_A,
+    });
+    const secondCustom = selectMessengerSidebarStreams(selectorState, {
+      ...commonOptions,
+      selectedFolderUuid: customFolderUuid,
+    });
+
+    expect(secondCustom).toBe(firstCustom);
   });
 
   it("builds workspace root routes with org and project ids", () => {

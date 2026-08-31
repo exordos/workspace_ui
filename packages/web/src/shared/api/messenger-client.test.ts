@@ -9,6 +9,7 @@ import {
   getMessagesPage,
   getServerSettings,
   getStreams,
+  getStreamTopics,
 } from "./messenger-client";
 import {
   getEpoch,
@@ -96,6 +97,23 @@ const streamDto = {
   updated_at: DATE,
 };
 
+const topicDto = {
+  uuid: TOPIC_UUID,
+  project_id: PROJECT_UUID,
+  name: "Releases",
+  stream_uuid: STREAM_UUID,
+  user_uuid: USER_UUID,
+  unread_count: 0,
+  active_unread_count: 0,
+  passive_unread_count: 0,
+  is_default: false,
+  is_done: false,
+  notification_mode: "default",
+  summary_reasoning_effort: "off",
+  created_at: DATE,
+  updated_at: DATE,
+};
+
 const messageDto = {
   uuid: MESSAGE_UUID,
   project_id: PROJECT_UUID,
@@ -158,6 +176,14 @@ describe("messenger-client", () => {
       Accept: "application/json",
       Authorization: "Bearer access-token",
     });
+  });
+
+  it("keeps topics with explicitly disabled summary reasoning", async () => {
+    const fetchMock = createFetchMock([topicDto]);
+
+    await expect(
+      getStreamTopics({ accessToken: "access-token", fetchImpl: fetchMock }),
+    ).resolves.toEqual([topicDto]);
   });
 
   it("uses strict event cursor query for catch-up", async () => {

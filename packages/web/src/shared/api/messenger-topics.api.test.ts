@@ -107,18 +107,14 @@ describe("messenger topics API", () => {
   });
 
   it("lists topics with stream and pagination query", async () => {
-    const topicWithReasoningDisabled = {
-      ...topicDto,
-      summary_reasoning_effort: "off",
-    } as const;
-    const fetchMock = createFetchMock([topicWithReasoningDisabled]);
+    const fetchMock = createFetchMock([{ ...topicDto, summary_reasoning_effort: "off" }]);
 
     await expect(
       getStreamTopics(
         { accessToken: "access-token", fetchImpl: fetchMock },
         { streamUuid: STREAM_UUID, pageLimit: 50, pageMarker: "cursor-1" },
       ),
-    ).resolves.toEqual([topicWithReasoningDisabled]);
+    ).resolves.toEqual([{ ...topicDto, summary_reasoning_effort: "off" }]);
 
     const [url, init] = firstFetchCall(fetchMock);
     expect(url).toBe(

@@ -62,6 +62,9 @@ describe("topic summary draft helpers", () => {
     expect(diffTopicSummaryDraft(base, draft)).toEqual({
       summary_system_prompt: "Focus on decisions.",
     });
+    expect(diffTopicSummaryDraft(base, { ...base, summaryReasoningEffort: "off" })).toEqual({
+      summary_reasoning_effort: "off",
+    });
     expect(validateTopicSummaryDraft({ ...draft, summarySystemPrompt: "   " })).toBe(
       "custom_prompt_empty",
     );

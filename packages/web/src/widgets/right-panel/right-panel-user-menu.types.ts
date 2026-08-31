@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 export interface RightPanelUserMenuProps {
   onOpenAboutDrawer?: () => void;
   onOpenPersonalInfo?: () => void;
+  onNestedPanelChange?: (nested: { titleKey: string; onBack: () => void } | null) => void;
 }
 
 export interface MenuButtonProps {
@@ -17,12 +18,10 @@ export interface MenuButtonProps {
   disabled?: boolean;
   /** Danger styling for destructive actions (logout). */
   tone?: "default" | "danger";
+  variant?: "root" | "nested";
+  id?: string;
   testId?: string;
   ariaLabel?: string;
-}
-
-export interface OptionButtonProps {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  "aria-controls"?: string;
+  "aria-expanded"?: boolean;
 }
