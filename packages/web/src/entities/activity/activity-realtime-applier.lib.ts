@@ -2,7 +2,7 @@ import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.l
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventApplier,
-  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
@@ -16,7 +16,7 @@ export interface ActivityRealtimeApplierOptions {
 }
 
 function isCurrentActiveOwner(
-  context: WorkspaceRealtimeEventContext,
+  context: WorkspaceRealtimeRuntimeContext,
   options: ActivityRealtimeApplierOptions,
 ): boolean {
   return (
@@ -132,6 +132,9 @@ function liveMentionMessageMutationForEvent(
 export function createActivityRealtimeApplier(
   options: ActivityRealtimeApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
+  let hasConnected = false;
+  let refreshAfterReconnect = false;
+
   return {
     applyEvent(event, context) {
       if (!isCurrentActiveOwner(context, options)) return;
@@ -156,6 +159,20 @@ export function createActivityRealtimeApplier(
       }
     },
     skipEvent() {},
-    onTransportStateChange() {},
+    onTransportStateChange(state, context) {
+      if (!isCurrentActiveOwner(context, options)) return;
+
+      if (state.mode === "reconnecting" || (state.mode === "catching_up" && hasConnected)) {
+        refreshAfterReconnect ||= hasConnected;
+        return;
+      }
+      if (state.mode !== "connected") return;
+
+      if (hasConnected && refreshAfterReconnect) {
+        refreshAfterReconnect = false;
+        useActivityStore.getState().invalidateUnreadMentions(context.ownerKey);
+      }
+      hasConnected = true;
+    },
   };
 }

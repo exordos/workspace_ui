@@ -23,7 +23,7 @@ export type WorkspaceMessengerTopicSummaryReasoningEffort =
   | "low"
   | "medium"
   | "high";
-export type WorkspaceMessengerFolderSystemType = "all" | "created" | null;
+export type WorkspaceMessengerFolderSystemType = "all" | "created" | "personal" | "channels" | null;
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
@@ -465,6 +465,19 @@ export interface WorkspaceMessengerExternalChatEventPayloadDto {
   snapshot: WorkspaceExternalChatDto;
 }
 
+// Operation details can be extended by the provider without changing the
+// messenger timeline contract. The client only needs the stable operation ID
+// while it advances the realtime cursor.
+export type WorkspaceExternalOperationSnapshotDto = {
+  uuid: WorkspaceMessengerUuid;
+} & Record<string, unknown>;
+
+export interface WorkspaceMessengerExternalOperationEventPayloadDto {
+  kind: "external_operation.created" | "external_operation.updated" | "external_operation.deleted";
+  uuid: WorkspaceMessengerUuid;
+  snapshot: WorkspaceExternalOperationSnapshotDto;
+}
+
 // REST-события - это долговечные строки серверного outbox для догонки и reconnect.
 export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "stream.created" | "stream.updated" | "stream.read" } & WorkspaceMessengerStreamDto)
@@ -486,7 +499,8 @@ export type WorkspaceMessengerEventPayloadDto =
   | WorkspaceMessengerFileDeletedPayloadDto
   | WorkspaceMessengerUserUpdatedPayloadDto
   | WorkspaceMessengerExternalAccountEventPayloadDto
-  | WorkspaceMessengerExternalChatEventPayloadDto;
+  | WorkspaceMessengerExternalChatEventPayloadDto
+  | WorkspaceMessengerExternalOperationEventPayloadDto;
 
 export type WorkspaceMessengerEventObjectType =
   | "message"
@@ -499,7 +513,8 @@ export type WorkspaceMessengerEventObjectType =
   | "folder_item"
   | "file"
   | "external_account"
-  | "external_chat";
+  | "external_chat"
+  | "external_operation";
 
 export type WorkspaceMessengerEventAction = "created" | "updated" | "deleted" | "read";
 
@@ -686,6 +701,15 @@ export type WorkspaceRealtimeEvent =
       type: "external_chat";
       kind: "external_chat.created" | "external_chat.updated" | "external_chat.deleted";
       external_chat: WorkspaceExternalChatDto;
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "external_operation";
+      kind:
+        | "external_operation.created"
+        | "external_operation.updated"
+        | "external_operation.deleted";
+      external_operation: WorkspaceExternalOperationSnapshotDto;
     };
 
 export interface WorkspaceMessengerMessageDeletedPayloadDtoWithoutKind {
@@ -836,7 +860,8 @@ function isWorkspaceMessengerEventObjectType(
     value === "folder_item" ||
     value === "file" ||
     value === "external_account" ||
-    value === "external_chat"
+    value === "external_chat" ||
+    value === "external_operation"
   );
 }
 
@@ -914,6 +939,12 @@ function expectedWorkspaceMessengerEventMetadata(payloadKind: string): {
       return { objectType: "external_chat", action: "updated" };
     case "external_chat.deleted":
       return { objectType: "external_chat", action: "deleted" };
+    case "external_operation.created":
+      return { objectType: "external_operation", action: "created" };
+    case "external_operation.updated":
+      return { objectType: "external_operation", action: "updated" };
+    case "external_operation.deleted":
+      return { objectType: "external_operation", action: "deleted" };
     default:
       return null;
   }
@@ -1406,6 +1437,15 @@ export function isWorkspaceMessengerEventPayloadDto(
         isWorkspaceExternalChatDto(value.snapshot) &&
         value.snapshot.uuid === value.uuid
       );
+    case "external_operation.created":
+    case "external_operation.updated":
+    case "external_operation.deleted":
+      return (
+        isUuid(value.uuid) &&
+        isRecord(value.snapshot) &&
+        isUuid(value.snapshot.uuid) &&
+        value.snapshot.uuid === value.uuid
+      );
     default:
       return false;
   }
@@ -1623,6 +1663,14 @@ export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceReal
           value.kind === "external_chat.updated" ||
           value.kind === "external_chat.deleted") &&
         isWorkspaceExternalChatDto(value.external_chat)
+      );
+    case "external_operation":
+      return (
+        (value.kind === "external_operation.created" ||
+          value.kind === "external_operation.updated" ||
+          value.kind === "external_operation.deleted") &&
+        isRecord(value.external_operation) &&
+        isUuid(value.external_operation.uuid)
       );
     default:
       return false;

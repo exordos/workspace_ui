@@ -5,7 +5,10 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
-import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import type {
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeTransportState,
+} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { createActivityRealtimeApplier } from "./activity-realtime-applier.lib";
 import { useActivityStore, type ActivityUnreadMention } from "./activity.model";
 
@@ -103,6 +106,19 @@ function bootstrap(mentions: readonly ActivityUnreadMention[] = []): void {
   const store = useActivityStore.getState();
   const token = store.startUnreadMentionsBootstrap(OWNER_KEY, context.owner.runtimeGeneration);
   store.finishUnreadMentionsBootstrap(OWNER_KEY, context.owner.runtimeGeneration, token, mentions);
+}
+
+function transportState(
+  mode: WorkspaceRealtimeTransportState["mode"],
+): WorkspaceRealtimeTransportState {
+  return {
+    owner: context.owner,
+    ownerKey: context.ownerKey,
+    surface: context.surface,
+    mode,
+    lastEpochVersion: null,
+    reconnectAttempt: mode === "reconnecting" ? 1 : 0,
+  };
 }
 
 afterEach(() => {
@@ -295,6 +311,49 @@ describe("activity realtime applier", () => {
     expect(useActivityStore.getState()).toMatchObject({
       unreadMentionsCount: 1,
       unreadMentionsLastEpochVersion: 30,
+    });
+  });
+
+  it("refreshes unread mentions after reconnect but not on the initial connection", () => {
+    bootstrap([
+      { uuid: MESSAGE_UUID, streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID, createdAt: DATE },
+    ]);
+    const applier = createActivityRealtimeApplier();
+
+    applier.onTransportStateChange(transportState("connected"), context);
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 0,
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+    });
+
+    applier.onTransportStateChange(transportState("reconnecting"), context);
+    applier.onTransportStateChange(transportState("catching_up"), context);
+    applier.onTransportStateChange(transportState("connected"), context);
+
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 1,
+      unreadMentionsCount: null,
+      unreadMentionsStatus: "idle",
+    });
+  });
+
+  it("refreshes unread mentions after an epoch-lag catch-up", () => {
+    bootstrap([
+      { uuid: MESSAGE_UUID, streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID, createdAt: DATE },
+    ]);
+    const applier = createActivityRealtimeApplier();
+
+    applier.onTransportStateChange(transportState("connected"), context);
+    applier.onTransportStateChange(transportState("disconnecting"), context);
+    applier.onTransportStateChange(transportState("catching_up"), context);
+    applier.onTransportStateChange(transportState("connecting"), context);
+    applier.onTransportStateChange(transportState("connected"), context);
+
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 1,
+      unreadMentionsCount: null,
+      unreadMentionsStatus: "idle",
     });
   });
 });
