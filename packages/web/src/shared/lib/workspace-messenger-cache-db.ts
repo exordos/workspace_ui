@@ -3,6 +3,7 @@ import {
   runWorkspaceMessengerCacheDbUpgrade,
   WORKSPACE_MESSENGER_CACHE_STORES,
 } from "./workspace-messenger-cache-db-upgrade.lib";
+import type { WorkspaceMessengerTopicSummaryReasoningEffort } from "../api/messenger.types";
 
 const DB_NAME = "workspace-messenger-cache-v1";
 // Version 7 stores a monotonic read boundary for each owner topic.
@@ -57,7 +58,7 @@ export interface WorkspaceMessengerCachedTopic {
   summaryHasNewMessages?: boolean | null;
   summaryEnabled?: boolean;
   summarySystemPrompt?: string | null;
-  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
+  summaryReasoningEffort?: WorkspaceMessengerTopicSummaryReasoningEffort | null;
   updatedAt?: string | null;
 }
 

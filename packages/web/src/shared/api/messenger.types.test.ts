@@ -294,13 +294,13 @@ describe("Workspace messenger DTO guards", () => {
         summary_has_new_messages: true,
         summary_enabled: true,
         summary_system_prompt: null,
-        summary_reasoning_effort: "medium",
+        summary_reasoning_effort: "off",
       }),
     ).toBe(true);
-    expect(isWorkspaceMessengerTopicDto({ ...topicDto, summary_enabled: "yes" })).toBe(false);
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, summary_reasoning_effort: "maximum" })).toBe(
       false,
     );
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, summary_enabled: "yes" })).toBe(false);
   });
 
   it("requires valid active and passive unread counters", () => {

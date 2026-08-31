@@ -540,19 +540,11 @@ export function useTopicSummaryEndpoints({
           body,
         );
         if (request.invalidated()) return;
-        const incoming = topicSummaryEndpointDraftFromDto(endpoint);
         updateState((current) => ({
           ...current,
           permission: "allowed",
           endpoints: upsertEndpoint(current.endpoints, endpoint),
-          edit: {
-            endpointUuid,
-            base: incoming,
-            draft: incoming,
-            validationErrors: {},
-            status: "success",
-            error: null,
-          },
+          edit: { ...initialState("allowed").edit, status: "success" },
         }));
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;

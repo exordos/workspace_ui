@@ -21,13 +21,33 @@ import type { MessengerClientOptions } from "./messenger-transport.internal";
 import type { WorkspaceMessengerUuid } from "./messenger.types";
 
 const ENDPOINTS_PATH = "/topic_summary_endpoints/";
+const NULLABLE_ENDPOINT_RESPONSE_FIELDS = [
+  "claim_expires_at",
+  "last_success_at",
+  "last_failure_at",
+  "last_error_code",
+] as const satisfies readonly (keyof WorkspaceTopicSummaryEndpointDto)[];
+
+function normalizeEndpointResponse(data: unknown): unknown {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return data;
+
+  const normalized: Record<string, unknown> = { ...data };
+  for (const field of NULLABLE_ENDPOINT_RESPONSE_FIELDS) {
+    if (!(field in normalized)) normalized[field] = null;
+  }
+  return normalized;
+}
 
 function parseSettings(data: unknown): WorkspaceTopicSummarySettingsDto {
   return parseDto(data, isWorkspaceTopicSummarySettingsDto, "topic summary settings response");
 }
 
 function parseEndpoint(data: unknown): WorkspaceTopicSummaryEndpointDto {
-  return parseDto(data, isWorkspaceTopicSummaryEndpointDto, "topic summary endpoint response");
+  return parseDto(
+    normalizeEndpointResponse(data),
+    isWorkspaceTopicSummaryEndpointDto,
+    "topic summary endpoint response",
+  );
 }
 
 export async function getTopicSummarySettings(
@@ -52,7 +72,7 @@ export async function getTopicSummaryEndpoints(
 ): Promise<WorkspaceTopicSummaryEndpointDto[]> {
   const data = await messengerGetJson(ENDPOINTS_PATH, options);
   return parseStrictDtoList(
-    data,
+    Array.isArray(data) ? data.map(normalizeEndpointResponse) : data,
     isWorkspaceTopicSummaryEndpointDto,
     "topic summary endpoints response",
   );

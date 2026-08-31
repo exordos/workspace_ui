@@ -148,6 +148,9 @@ describe("useTopicSummaryEndpoints", () => {
     await waitFor(() => expect(result.current.permission).toBe("denied"));
     expect(result.current.loadStatus).toBe("error");
     expect(result.current.loadError).toBe("forbidden");
+    expect(useWorkspaceIamCapabilitiesStore.getState().invalidationVersion).toBe(
+      invalidationVersion + 1,
+    );
   });
 
   it("creates an endpoint, clears the write-only key immediately, and upserts the response", async () => {
@@ -204,7 +207,7 @@ describe("useTopicSummaryEndpoints", () => {
     });
   });
 
-  it("updates an endpoint without retaining a replacement key", async () => {
+  it("updates an endpoint, clears the edit session, and does not retain a replacement key", async () => {
     const request = deferred<WorkspaceTopicSummaryEndpointDto>();
     let sentBody: WorkspaceTopicSummaryEndpointUpdateRequestBody | null = null;
     const client: TopicSummaryEndpointsClient = {
@@ -233,7 +236,9 @@ describe("useTopicSummaryEndpoints", () => {
     expect(result.current.edit.draft?.apiKey).toBe("");
     request.resolve(endpoint({ name: "Renamed" }));
     await waitFor(() => expect(result.current.edit.status).toBe("success"));
-    expect(result.current.edit.draft?.apiKey).toBe("");
+    expect(result.current.edit.endpointUuid).toBeNull();
+    expect(result.current.edit.base).toBeNull();
+    expect(result.current.edit.draft).toBeNull();
     expect(result.current.endpoints[0]?.name).toBe("Renamed");
   });
 

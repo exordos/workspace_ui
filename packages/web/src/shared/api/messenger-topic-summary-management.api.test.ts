@@ -105,7 +105,12 @@ describe("topic summary management API", () => {
   });
 
   it("lists endpoints with strict item parsing", async () => {
-    const fetchMock = createFetchMock([endpointDto]);
+    const endpointWithoutNullableHealth = { ...endpointDto } as Record<string, unknown>;
+    Reflect.deleteProperty(endpointWithoutNullableHealth, "claim_expires_at");
+    Reflect.deleteProperty(endpointWithoutNullableHealth, "last_success_at");
+    Reflect.deleteProperty(endpointWithoutNullableHealth, "last_failure_at");
+    Reflect.deleteProperty(endpointWithoutNullableHealth, "last_error_code");
+    const fetchMock = createFetchMock([endpointWithoutNullableHealth]);
 
     await expect(getTopicSummaryEndpoints(options(fetchMock))).resolves.toEqual([endpointDto]);
     expect(firstFetchCall(fetchMock)[0]).toBe(
@@ -174,7 +179,9 @@ describe("topic summary management API", () => {
       presence_penalty: -2,
       frequency_penalty: 2,
     };
-    const fetchMock = createFetchMock(updatedEndpoint);
+    const responseWithoutLastError = { ...updatedEndpoint } as Record<string, unknown>;
+    Reflect.deleteProperty(responseWithoutLastError, "last_error_code");
+    const fetchMock = createFetchMock(responseWithoutLastError);
     const body = {
       api_key: "replace",
       temperature: 0,
@@ -191,6 +198,14 @@ describe("topic summary management API", () => {
     expect(url).toBe(`/api/workspace/v1/messenger/topic_summary_endpoints/${ENDPOINT_UUID}`);
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify(body));
+  });
+
+  it("keeps malformed nullable health values invalid after response normalization", async () => {
+    const fetchMock = createFetchMock([{ ...endpointDto, last_error_code: 5 }]);
+
+    await expect(getTopicSummaryEndpoints(options(fetchMock))).rejects.toThrow(
+      "Expected valid topic summary endpoints response item at index 0",
+    );
   });
 
   it.each([

@@ -173,6 +173,7 @@ function renderDialog(
     gatesPermission: "allowed",
     endpointsPermission: "allowed",
   },
+  channelName?: string | null,
 ) {
   return render(
     <TopicSummarySettingsDialog
@@ -180,6 +181,7 @@ function renderDialog(
       onOpenChange={vi.fn()}
       runtimeContext={runtime()}
       topic={topic()}
+      channelName={channelName}
       {...permissions}
     />,
   );
@@ -193,6 +195,24 @@ describe("TopicSummarySettingsDialog", () => {
     mocks.useEndpoints.mockReturnValue(endpointsVm());
   });
 
+  it("includes the channel name in the topic description", () => {
+    renderDialog(undefined, "Engineering");
+
+    expect(screen.getByText("# Roadmap · Engineering")).toBeInTheDocument();
+  });
+
+  it("falls back to the topic-only description when the channel name is absent", () => {
+    renderDialog(undefined, null);
+
+    expect(screen.getByText("# Roadmap")).toBeInTheDocument();
+  });
+
+  it("falls back to the topic-only description for a whitespace-only channel name", () => {
+    renderDialog(undefined, "   ");
+
+    expect(screen.getByText("# Roadmap")).toBeInTheDocument();
+  });
+
   it("keeps administrative sections hidden while IAM permissions are unknown", () => {
     renderDialog({
       topicPermission: "allowed",
@@ -200,9 +220,12 @@ describe("TopicSummarySettingsDialog", () => {
       endpointsPermission: "unknown",
     });
 
-    expect(screen.getByText("This topic")).toBeInTheDocument();
-    expect(screen.queryByText("Common settings")).not.toBeInTheDocument();
-    expect(screen.queryByText("LLM endpoints")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "This topic" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.queryByRole("tab", { name: "Common settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "LLM endpoints" })).not.toBeInTheDocument();
     expect(mocks.useSettings).toHaveBeenCalledWith(
       expect.objectContaining({ loadGatesOnOpen: false, open: true }),
     );
@@ -226,11 +249,12 @@ describe("TopicSummarySettingsDialog", () => {
     expect(vm.setTopicSystemPrompt).toHaveBeenCalledWith("Only decisions");
     fireEvent.click(screen.getByRole("button", { name: "Use default prompt" }));
     expect(vm.setTopicSystemPrompt).toHaveBeenCalledWith(null);
-    fireEvent.change(screen.getByLabelText("Reasoning effort"), {
-      target: { value: "high" },
+    fireEvent.change(screen.getByLabelText(/^Reasoning effort/), {
+      target: { value: "off" },
     });
-    expect(vm.setTopicReasoningEffort).toHaveBeenCalledWith("high");
-    fireEvent.click(screen.getByRole("button", { name: "Save topic settings" }));
+    expect(vm.setTopicReasoningEffort).toHaveBeenCalledWith("off");
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(vm.saveTopic).toHaveBeenCalledOnce();
   });
 
@@ -243,9 +267,10 @@ describe("TopicSummarySettingsDialog", () => {
       endpointsPermission: "denied",
     });
 
-    fireEvent.click(screen.getByLabelText("Enabled for this project"));
+    fireEvent.click(screen.getByLabelText(/^Enabled for this project/));
     expect(vm.setProjectEnabled).toHaveBeenCalledWith(true);
-    fireEvent.click(screen.getByRole("button", { name: "Save common settings" }));
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(vm.saveGates).toHaveBeenCalledOnce();
   });
 
@@ -258,7 +283,7 @@ describe("TopicSummarySettingsDialog", () => {
       endpointsPermission: "allowed",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
     expect(vm.startCreate).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(vm.startEdit).toHaveBeenCalledWith(endpoint().uuid);
@@ -327,13 +352,33 @@ describe("TopicSummarySettingsDialog", () => {
 
     renderDialog();
 
-    expect(
-      screen.getAllByText("You do not have permission to change these settings."),
-    ).toHaveLength(3);
-    expect(screen.getByLabelText("Update the summary automatically")).toBeDisabled();
-    expect(screen.getByLabelText("Enabled for this project")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add endpoint" })).toBeDisabled();
+    expect(screen.getByText("You do not have permission to change these settings.")).toBeVisible();
+    expect(screen.getByLabelText(/^Automatic summary generation/)).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Common settings" }));
+    expect(screen.getByText("You do not have permission to change these settings.")).toBeVisible();
+    expect(screen.getByLabelText(/^Enabled for this project/)).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "LLM endpoints" }));
+    expect(screen.getByText("You do not have permission to change these settings.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "+ Add" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("moves between available tabs with the keyboard", () => {
+    renderDialog();
+
+    const topicTab = screen.getByRole("tab", { name: "This topic" });
+    fireEvent.keyDown(topicTab, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Common settings" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Common settings" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "LLM endpoints" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("does not mount a modal when every section is denied", () => {

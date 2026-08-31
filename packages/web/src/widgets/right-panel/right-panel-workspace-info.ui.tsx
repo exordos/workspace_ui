@@ -341,6 +341,7 @@ interface WorkspaceTopicSummarySettingsControlProps {
   readonly summary: NonNullable<WorkspaceRightPanelChannelInfoView["topicSummary"]>;
   readonly runtimeContext: WorkspaceRuntimeContext | null;
   readonly topic: MessengerTopic | null;
+  readonly channelName?: string | null;
   readonly permissions: MessengerTopicSummaryPermissionResolution;
 }
 
@@ -349,6 +350,7 @@ const WorkspaceTopicSummarySettingsControl = React.memo(
     summary,
     runtimeContext,
     topic,
+    channelName,
     permissions,
   }: WorkspaceTopicSummarySettingsControlProps) {
     const [open, setOpen] = useState(false);
@@ -369,6 +371,7 @@ const WorkspaceTopicSummarySettingsControl = React.memo(
             onOpenChange={setOpen}
             runtimeContext={runtimeContext}
             topic={topic}
+            channelName={channelName}
             topicPermission={permissions.topic}
             gatesPermission={permissions.gates}
             endpointsPermission={permissions.endpoints}
@@ -742,6 +745,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             summary={info.topicSummary}
             runtimeContext={runtimeContext}
             topic={summaryTopic}
+            channelName={summaryStream?.name}
             permissions={summaryPermissions}
           />
         ) : null}

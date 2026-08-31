@@ -372,9 +372,12 @@ describe("RightPanelWorkspaceInfo", () => {
 
     expect(screen.getByText("Release scope is approved.")).toBeInTheDocument();
     expect(await screen.findByRole("dialog", { name: "AI summary settings" })).toBeInTheDocument();
-    expect(screen.getByText("This topic")).toBeInTheDocument();
-    expect(screen.getByText("Common settings")).toBeInTheDocument();
-    expect(screen.getByText("LLM endpoints")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "This topic" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Common settings" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "LLM endpoints" })).toBeInTheDocument();
   });
 
   it("hides summary settings from a member while IAM capabilities are unavailable", () => {
@@ -413,6 +416,61 @@ describe("RightPanelWorkspaceInfo", () => {
     ).not.toBeInTheDocument();
     expect(getTopicSummarySettingsMock).not.toHaveBeenCalled();
     expect(getTopicSummaryEndpointsMock).not.toHaveBeenCalled();
+  });
+
+  it("shows administrative summary settings after IAM capabilities load", async () => {
+    seedWorkspaceAuth();
+    const currentTopic = createTopic();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          ownerUuid: ALICE_USER_UUID,
+          userUuid: CURRENT_USER_UUID,
+          role: "member",
+        }),
+      );
+      useMessengerStore.getState().upsertTopic(OWNER_KEY, currentTopic);
+    });
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          topicSummary: {
+            topicUuid: currentTopic.uuid,
+            topicName: currentTopic.name,
+            text: currentTopic.summary ?? null,
+            hasNewMessages: false,
+            enabled: true,
+          },
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Open AI summary settings" }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      seedWorkspaceIamPermissions([
+        "workspace.topic_summary_settings.manage",
+        "workspace.topic_summary_endpoint.manage",
+      ]);
+    });
+
+    const settingsButton = await screen.findByRole("button", {
+      name: "Open AI summary settings",
+    });
+    fireEvent.click(settingsButton);
+
+    expect(screen.queryByRole("tab", { name: "This topic" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Common settings" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "LLM endpoints" })).toBeInTheDocument();
   });
 
   it("does not reopen summary settings after switching away from and back to a topic", async () => {
