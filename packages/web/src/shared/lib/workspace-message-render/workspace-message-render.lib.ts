@@ -2,7 +2,10 @@ import { Marked, type RendererExtension, type RendererThis, type Token, type Tok
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
-import { deriveWorkspaceMediaPlaceholderLayout } from "./workspace-media-placeholder-layout.lib";
+import {
+  deriveWorkspaceImagePlaceholderLayout,
+  deriveWorkspaceMediaPlaceholderLayout,
+} from "./workspace-media-placeholder-layout.lib";
 import {
   WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE,
   WORKSPACE_EMOJI_TOKEN_TYPE,
@@ -200,18 +203,14 @@ function renderWorkspaceFilePlaceholder(
   const isImage = reference.kind === "media" && reference.mediaKind === "image";
   const isVideo = reference.kind === "media" && reference.mediaKind === "video";
   const videoLayout = isVideo ? deriveWorkspaceMediaPlaceholderLayout(reference) : null;
-  const compositionWidth =
-    inImageComposition && isImage
-      ? reference.width != null &&
-        reference.height != null &&
-        reference.width > 0 &&
-        reference.height > 0
-        ? Math.round((reference.width / reference.height) * 100)
-        : 240
-      : null;
+  // Reserving the loaded box up front is what keeps the text below an image from
+  // moving when the bytes arrive.
+  const imageLayout = isImage
+    ? deriveWorkspaceImagePlaceholderLayout(reference, { inComposition: inImageComposition })
+    : null;
   const placeholderStyle =
-    compositionWidth != null
-      ? ` style="width:${compositionWidth}px"`
+    imageLayout != null
+      ? ` style="width:${imageLayout.width}px;height:${imageLayout.height}px"`
       : videoLayout != null
         ? ` style="width:${videoLayout.width}px"`
         : "";
@@ -257,7 +256,8 @@ function renderWorkspaceFilePlaceholder(
   const compositionClass = inImageComposition
     ? " workspace-message-file-placeholder--composition"
     : "";
-  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder${compositionClass}" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${placeholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
+  const reservedAttribute = imageLayout == null ? "" : ` data-workspace-media-reserved="true"`;
+  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder${compositionClass}" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${reservedAttribute}${placeholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
 }
 
 function renderFileReference(

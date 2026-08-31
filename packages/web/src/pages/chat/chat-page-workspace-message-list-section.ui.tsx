@@ -205,7 +205,6 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           data-message-anchor-list-hidden={anchorHandoffPending ? "true" : "false"}
         >
           <WorkspaceMessageList
-            key={conversationId}
             messages={messages}
             outgoingMessages={outgoingMessages}
             resolveServerMessageRenderKey={resolveServerMessageRenderKey}

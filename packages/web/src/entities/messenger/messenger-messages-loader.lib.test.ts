@@ -1578,6 +1578,70 @@ describe("messenger conversation messages loader", () => {
     );
   });
 
+  it("keeps the conversation that is already on screen while it reloads", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const first = createMessageDto({ uuid: MESSAGE_A });
+    const second = createMessageDto({ uuid: MESSAGE_B, created_at: "2026-07-28T11:00:00Z" });
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+        writeConversationMessagePage: () => undefined,
+      },
+      client: { getMessagesPage: () => Promise.resolve(createMessagesPage([first, second])) },
+    });
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
+
+    // The cache holds less than what the reader is looking at, and the server page
+    // is still in flight: the list must not collapse to the cached remnant.
+    const pendingPage = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const reload = loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [adaptMessengerMessage(second)],
+            nextPageMarker: null,
+            hasMore: false,
+          }),
+        writeConversationMessagePage: () => undefined,
+      },
+      client: { getMessagesPage: () => pendingPage.promise },
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
+
+    pendingPage.resolve(createMessagesPage([first, second]));
+    await reload;
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
+  });
+
   it("schedules cached visible owner sync before a failed server page", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);

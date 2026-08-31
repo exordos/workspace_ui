@@ -485,6 +485,18 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   const stableFirstUnreadUuid =
     unreadCount === 0 && firstUnreadUuid == null ? undefined : sessionFirstUnreadUuid;
 
+  const unreadDividerConversationRef = useRef(conversationId);
+  useLayoutEffect(() => {
+    // Without a remount per conversation this session has to be retired by hand,
+    // or the new conversation inherits the previous one's unread anchor.
+    if (unreadDividerConversationRef.current === conversationId) return;
+    unreadDividerConversationRef.current = conversationId;
+    setUnreadDividerSession({
+      ready: initialPositionReady,
+      anchor: initialPositionReady ? firstUnreadUuid : undefined,
+    });
+  }, [conversationId, firstUnreadUuid, initialPositionReady]);
+
   useEffect(() => {
     if (anchorHandoffPending || !initialPositionReady) {
       return;
@@ -641,6 +653,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     isUnreadDividerDismissed,
   } = useWorkspaceMessageListScroll({
     messages: renderedMessages,
+    conversationId,
     getMessageKey,
     isUnreadFromOther,
     initialPositionReady,
@@ -657,6 +670,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     isLoadingNewer,
     hasOlderMessages,
     hasNewerMessages,
+    tailOutsideWindow: isKnownTailOutsideWindow,
     onLoadOlder,
     onLoadNewer,
     onUserScrollInput: handleUserScrollInput,

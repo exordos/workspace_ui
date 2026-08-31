@@ -585,10 +585,12 @@ describe("workspace message render core", () => {
     expect(result.html).toContain(
       'class="workspace-message-file-placeholder workspace-message-file-placeholder--composition"',
     );
-    expect(result.html).toContain('style="width:200px"');
-    expect(result.html).toContain('style="width:240px"');
+    // Both reserve a box: the sized one from its own dimensions, the other from the
+    // height a composition image is displayed at.
+    expect(result.html).toContain('style="width:200px;height:100px"');
+    expect(result.html).toContain('style="width:133px;height:100px"');
     expect(result.html).not.toContain("<br>");
-    expect(sanitizeWorkspaceMessageHtml(result.html)).toContain('style="width:200px"');
+    expect(sanitizeWorkspaceMessageHtml(result.html)).toContain('style="width:200px;height:100px"');
   });
 
   it("keeps a single Workspace image on the existing placeholder path", () => {
@@ -619,7 +621,7 @@ describe("workspace message render core", () => {
     );
 
     expect(result.html.match(/workspace-message-file-placeholder--composition/g)).toHaveLength(2);
-    expect(result.html.match(/style="width:67px"/g)).toHaveLength(2);
+    expect(result.html.match(/style="width:67px;height:100px"/g)).toHaveLength(2);
     expect(result.html).not.toContain("<br>");
   });
 

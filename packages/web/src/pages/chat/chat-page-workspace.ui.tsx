@@ -146,7 +146,13 @@ import type {
 import { WorkspaceMessageAnchorTransition } from "~/widgets/workspace-message-list/workspace-message-anchor-transition.ui";
 import type { WorkspaceMessageConversationReference } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import {
+  hasConversationBeenViewed,
+  markConversationViewed,
+  setConversationViewMemoryOwner,
+} from "./chat-page-conversation-view-memory.lib";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import { resolveInitialPositionReady } from "./chat-page-initial-position.lib";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
@@ -1270,13 +1276,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }).length,
     [currentUserUuid, routeMessages],
   );
-  const initialPositionReady =
+  const realtimeReady =
     runtimeContext != null &&
-    ownerKey != null &&
-    conversationWindow != null &&
-    (activeMessageFocusTarget != null ||
-      (realtimeReadyOwnerKey === ownerKey &&
-        realtimeReadyRuntimeGeneration === runtimeContext.runtimeGeneration));
+    realtimeReadyOwnerKey === ownerKey &&
+    realtimeReadyRuntimeGeneration === runtimeContext.runtimeGeneration;
+  const initialPositionReady = resolveInitialPositionReady({
+    hasRuntimeContext: runtimeContext != null && ownerKey != null,
+    hasConversationWindow: conversationWindow != null,
+    hasFocusTarget: activeMessageFocusTarget != null,
+    realtimeReady,
+    viewedBefore: hasConversationBeenViewed(conversationId),
+  });
+
+  useEffect(() => {
+    // Owner switches invalidate every remembered position: the conversation ids
+    // belong to the account that is going away. The memory itself lives outside
+    // this component, which is rebuilt on every navigation, and only an actual
+    // owner change clears it.
+    setConversationViewMemoryOwner(ownerKey);
+  }, [ownerKey]);
+
+  useEffect(() => {
+    if (!initialPositionReady) return;
+    markConversationViewed(conversationId);
+  }, [conversationId, initialPositionReady]);
   const messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null =
     messagesStatus.error == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
 
@@ -2972,7 +2995,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         {selection.status === "conversation" &&
         (previewPresentation == null || anchorHandoffPending) ? (
           <ChatPageWorkspaceMessageListSection
-            key={`canonical-list:${selection.conversationId}`}
             messagesLoading={messagesStatus.loading}
             hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
             initialPositionReady={initialPositionReady}

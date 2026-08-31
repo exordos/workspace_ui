@@ -39,6 +39,10 @@ import type {
   ChatChannelHeaderProps,
   ChatDirectHeaderProps,
 } from "~/widgets/chat-view/chat-header.types";
+import {
+  markConversationViewed,
+  resetConversationViewMemory,
+} from "./chat-page-conversation-view-memory.lib";
 import { ChatPage, FavoritesPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
 import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
@@ -745,6 +749,8 @@ describe("ChatPage Workspace route", () => {
   beforeEach(async () => {
     delete (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
     resetWorkspaceComposerDraftStoreForTests();
+    // Survives a page rebuild by design, so it also survives the previous case.
+    resetConversationViewMemory();
     const session = createSession();
     useWorkspaceAuthStore.setState({
       sessions: [session],
@@ -2553,6 +2559,25 @@ describe("ChatPage Workspace route", () => {
           session.runtimeGeneration,
           true,
         );
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.initialPositionReady).toBe(true));
+  });
+
+  it("skips the realtime wait for a conversation already positioned this session", async () => {
+    // The chat page is rebuilt on every navigation (app-route-definitions.tsx), so
+    // this only holds because the record outlives the component. It is the whole
+    // point of keeping it in a module.
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    markConversationViewed(conversationId);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      updateTestConversationWindow(conversationId);
     });
 
     await waitFor(() => expect(captured.messageListProps?.initialPositionReady).toBe(true));

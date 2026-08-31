@@ -7,7 +7,14 @@ import {
   createDisplayableBlobUrl,
 } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
-import { deriveWorkspaceMediaPlaceholderLayout } from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
+import {
+  readMeasuredMediaSize,
+  rememberMeasuredMediaSize,
+} from "~/shared/lib/workspace-message-render/workspace-media-measured-size.lib";
+import {
+  deriveWorkspaceImagePlaceholderLayout,
+  deriveWorkspaceMediaPlaceholderLayout,
+} from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
 const previewLog = createLogger("workspace-message-preview");
@@ -100,10 +107,43 @@ function findMediaReference(
   );
 }
 
+/** Room the placeholder has on its line, or undefined when it cannot be measured. */
+function readAvailableWidth(placeholder: HTMLElement): number | undefined {
+  const width = placeholder.parentElement?.getBoundingClientRect().width;
+  return width != null && width > 0 ? width : undefined;
+}
+
 function reservePreviewLayout(
   placeholder: HTMLElement,
   reference: WorkspaceMessageFileReference,
 ): void {
+  if (reference.mediaKind === "image") {
+    // Keeps a remounted placeholder holding the box the markup already reserved, and
+    // gives one to an image whose message never stated a size but which this session
+    // has already loaded once.
+    const measured = readMeasuredMediaSize(reference.fileUuid);
+    const statesItsOwnSize = reference.width != null && reference.height != null;
+    const sized =
+      statesItsOwnSize || measured == null
+        ? reference
+        : { ...reference, width: measured.width, height: measured.height };
+    const layout = deriveWorkspaceImagePlaceholderLayout(sized, {
+      inComposition: placeholder.classList.contains(
+        "workspace-message-file-placeholder--composition",
+      ),
+      // The markup cannot know how wide the bubble is; here the element is in the
+      // document, so a wide image reserves the height it will actually get rather
+      // than the cap it will never reach.
+      maxWidth: readAvailableWidth(placeholder),
+    });
+    if (layout == null) return;
+    // Height outright, not an aspect ratio: the placeholder is an inline-flex whose
+    // height its own content decides, and a ratio alone loses to it.
+    placeholder.style.width = `${layout.width}px`;
+    placeholder.style.height = `${layout.height}px`;
+    placeholder.dataset.workspaceMediaReserved = "true";
+    return;
+  }
   if (reference.mediaKind !== "video") {
     return;
   }
@@ -237,6 +277,15 @@ function revealLoadedImagePreview(
     revealFallback(mount, "display-error");
   };
   image.addEventListener("error", handleImageError);
+  // The size is unknown only until the first load; from here the placeholder can
+  // reserve the right box every later time this file is rendered.
+  image.addEventListener(
+    "load",
+    () => {
+      rememberMeasuredMediaSize(mount.fileUuid, image.naturalWidth, image.naturalHeight);
+    },
+    { once: true },
+  );
 
   retainObjectUrl(mount, displayUrl, objectUrlRegistry);
   mount.previewImage = image;

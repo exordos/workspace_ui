@@ -409,3 +409,64 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     });
   });
 });
+
+// The section and the list no longer carry `key={conversationId}`: a conversation
+// change has to be absorbed by resetting their own state rather than by throwing the
+// rendered list away. This pins that in isolation. It is not a gate on what a topic
+// switch costs in the app — the chat page above still carries
+// `key={location.pathname}` (app-route-definitions.tsx) and is rebuilt regardless,
+// which is why the view memory in chat-page-conversation-view-memory.lib.ts lives in
+// its module and not in component state.
+describe("ChatPageWorkspaceMessageListSection across conversations", () => {
+  function renderForConversation(conversationId: string) {
+    return (
+      <ChatPageWorkspaceMessageListSection
+        messagesLoading={false}
+        hasInitialPayload
+        initialPositionReady
+        messages={[createWorkspaceMessage({ uuid: `${conversationId}-message` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        scrollToBottomKey={conversationId}
+        onLoadOlder={vi.fn()}
+        isLoadingOlder={false}
+        isLoadingNewer={false}
+        onLoadNewer={vi.fn()}
+        hasOlderMessages={false}
+        hasNewerMessages={false}
+        lastMessageUuid="tail-message"
+        onLoadLatestWindow={vi.fn()}
+        onCancelLatestWindowLoad={vi.fn()}
+        onTailNavigationRequested={vi.fn()}
+        firstUnreadUuid={undefined}
+        unreadCount={0}
+        focusedMessageTarget={null}
+        messagesLoadError={null}
+        onRetryMessagesLoad={vi.fn()}
+        boundaryLoadFailed={false}
+        onRetryBoundaryLoad={vi.fn()}
+        scrollToBottomAfterSendNonce={0}
+      />
+    );
+  }
+
+  it("keeps the same list node when the conversation changes", () => {
+    const { container, rerender } = render(renderForConversation("topic:stream-1:topic-1"));
+    const listLayerBefore = container.querySelector('[data-testid="workspace-message-list"]');
+    expect(listLayerBefore).not.toBeNull();
+
+    rerender(renderForConversation("topic:stream-1:topic-2"));
+
+    const listLayerAfter = container.querySelector('[data-testid="workspace-message-list"]');
+    expect(listLayerAfter).toBe(listLayerBefore);
+  });
+
+  it("shows the new conversation's messages after the switch", () => {
+    const { rerender } = render(renderForConversation("topic:stream-1:topic-1"));
+    rerender(renderForConversation("topic:stream-1:topic-2"));
+
+    expect(
+      screen.getByText("Workspace text", { selector: "article, article *" }),
+    ).toBeInTheDocument();
+  });
+});

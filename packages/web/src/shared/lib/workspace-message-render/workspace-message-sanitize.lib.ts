@@ -88,17 +88,25 @@ const WORKSPACE_MEDIA_WIDTH_STYLE_PATTERN = new RegExp(`^width:${POSITIVE_CSS_NU
 const WORKSPACE_MEDIA_ASPECT_RATIO_STYLE_PATTERN = new RegExp(
   `^aspect-ratio:${POSITIVE_CSS_NUMBER_PATTERN}$`,
 );
+/** An image placeholder reserves both, so the text below it does not move on load. */
+const WORKSPACE_MEDIA_RESERVED_BOX_STYLE_PATTERN = new RegExp(
+  `^width:${POSITIVE_CSS_NUMBER_PATTERN}px;height:${POSITIVE_CSS_NUMBER_PATTERN}px$`,
+);
 const LEGACY_EMBED_BACKGROUND_STYLE_PATTERN =
   /^background-image:url\((?:"(\/external_content\/[^\s"'();\\]+)"|'(\/external_content\/[^\s"'();\\]+)'|(\/external_content\/[^\s"'();\\]+))\)$/;
 let messageSanitizeHooksInstalled = false;
 
-function isPositiveStyleNumber(match: RegExpExecArray | null): boolean {
-  const value = Number(match?.[1]);
+function isPositiveStyleNumber(match: RegExpExecArray | null, group = 1): boolean {
+  const value = Number(match?.[group]);
   return Number.isFinite(value) && value > 0;
 }
 
 function isAllowedWorkspaceMediaStyle(node: Element, value: string): boolean {
   if (node.classList.contains("workspace-message-file-placeholder")) {
+    const reservedBox = WORKSPACE_MEDIA_RESERVED_BOX_STYLE_PATTERN.exec(value);
+    if (reservedBox != null) {
+      return isPositiveStyleNumber(reservedBox, 1) && isPositiveStyleNumber(reservedBox, 2);
+    }
     return isPositiveStyleNumber(WORKSPACE_MEDIA_WIDTH_STYLE_PATTERN.exec(value));
   }
   if (node.classList.contains("workspace-message-file-placeholder__video-visual")) {

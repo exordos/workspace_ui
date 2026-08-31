@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
 import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import { isWindowActive } from "~/shared/lib/visibility";
 import {
@@ -33,6 +34,8 @@ interface PendingSameMessagesScrollAnchor {
 
 interface WorkspaceMessageListScrollOptions<TMessage> {
   messages: readonly TMessage[];
+  /** Scopes the state that used to be discarded by remounting the list. */
+  conversationId?: MessengerConversationId | null;
   getMessageKey: (message: TMessage) => string;
   isUnreadFromOther: (message: TMessage) => boolean;
   initialPositionReady?: boolean;
@@ -49,6 +52,8 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;
   hasNewerMessages?: boolean;
+  /** The conversation is known to continue past the loaded window. */
+  tailOutsideWindow?: boolean;
   onLoadOlder?: () => void;
   onLoadNewer?: () => void;
   onUserScrollInput?: () => void;
@@ -124,6 +129,7 @@ function collectVisibleUnreadKeys(root: HTMLElement, unreadKeys: ReadonlySet<str
 
 export function useWorkspaceMessageListScroll<TMessage>({
   messages,
+  conversationId = null,
   getMessageKey,
   isUnreadFromOther,
   initialPositionReady = true,
@@ -140,6 +146,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   isLoadingNewer = false,
   hasOlderMessages = false,
   hasNewerMessages = false,
+  tailOutsideWindow = false,
   onLoadOlder,
   onLoadNewer,
   onUserScrollInput,
@@ -171,6 +178,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const pendingFocusedMessageTargetKeyRef = useRef<string | null>(null);
   const focusedMessageTargetKeyRef = useRef<string | null>(null);
   const anchorHandoffPendingRef = useRef(anchorHandoffPending);
+  const scopedConversationRef = useRef(conversationId);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isUnreadDividerDismissed, setIsUnreadDividerDismissed] = useState(false);
   const isInitialPositionApplied = useCallback(
@@ -429,6 +437,27 @@ export function useWorkspaceMessageListScroll<TMessage>({
     setIsAtBottom(true);
   }, [focusedMessageKey, scrollToBottomKey]);
 
+  // The list is no longer remounted per conversation, so the state that used to die
+  // with the old component is retired here instead. Everything keyed on
+  // scrollToBottomKey already resets in the effect above; this covers the rest.
+  useLayoutEffect(() => {
+    // Only a real change retires anything: on mount there is nothing to retire, and
+    // under StrictMode this effect replays over an anchor the list has just applied.
+    if (scopedConversationRef.current === conversationId) return;
+    scopedConversationRef.current = conversationId;
+    unreadDividerDismissedRef.current = false;
+    setIsUnreadDividerDismissed(false);
+    reportedFocusedAnchorKeyRef.current = null;
+    pendingFocusedMessageTargetKeyRef.current = null;
+    focusConfirmationGenerationRef.current += 1;
+    if (focusConfirmationFrameRef.current != null) {
+      cancelAnimationFrame(focusConfirmationFrameRef.current);
+      focusConfirmationFrameRef.current = null;
+    }
+    clearAnchorHighlightRef.current?.();
+    clearAnchorHighlightRef.current = null;
+  }, [conversationId]);
+
   useEffect(() => {
     if (anchorHandoffPending) return;
     const previousFirstMessageKey = previousFirstMessageKeyForTopPaginationRef.current;
@@ -571,7 +600,25 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
   const applyInitialPosition = useCallback(
     (root: HTMLElement, initialPositionKey: string): void => {
-      if (!initialPositionReady) return;
+      // Until the position is ready to be settled the list is still put where it
+      // belongs — at the tail, or at the unread the messages already state. Left
+      // alone it would paint at offset zero, showing the oldest message in the
+      // window and jumping the length of the conversation once readiness lands.
+      // Provisional placement is not recorded as applied, so the settled one still
+      // runs, and in the ordinary case it lands on the same place and moves nothing.
+      const provisional = !initialPositionReady;
+      if (
+        provisional &&
+        // Not while the reader is driving, aiming at a particular message, or the
+        // conversation continues outside the loaded window — then the place it will
+        // settle on is not in this window and guessing it would be the jump again.
+        (focusedMessageTarget != null ||
+          userScrollSeenRef.current ||
+          hasNewerMessages ||
+          tailOutsideWindow)
+      ) {
+        return;
+      }
 
       if (focusedMessageKey != null && focusedMessageTarget != null) {
         const target = findWorkspaceMessageNode(root, focusedMessageKey);
@@ -656,7 +703,9 @@ export function useWorkspaceMessageListScroll<TMessage>({
       }
 
       if (messageCount === 0) {
-        initialPositionAppliedKeyRef.current = initialPositionKey;
+        if (!provisional) {
+          initialPositionAppliedKeyRef.current = initialPositionKey;
+        }
         return;
       }
 
@@ -669,17 +718,23 @@ export function useWorkspaceMessageListScroll<TMessage>({
         });
         wasAtBottomRef.current = false;
         setIsAtBottom(false);
-        initialPositionAppliedKeyRef.current = initialPositionKey;
+        if (!provisional) {
+          initialPositionAppliedKeyRef.current = initialPositionKey;
+        }
         return;
       }
 
       pinTailToBottom(root);
-      initialPositionAppliedKeyRef.current = initialPositionKey;
+      if (!provisional) {
+        initialPositionAppliedKeyRef.current = initialPositionKey;
+      }
     },
     [
       firstUnreadKey,
       focusedMessageKey,
       focusedMessageTarget,
+      hasNewerMessages,
+      tailOutsideWindow,
       anchorHandoffPending,
       finishFocusedMessagePosition,
       initialPositionReady,
