@@ -14,11 +14,22 @@ import {
   WORKSPACE_PRESENCE_BATTERY_MULTIPLIER,
   WORKSPACE_PRESENCE_HIDDEN_INTERVAL_MS,
   WORKSPACE_PRESENCE_REPORT_INTERVAL_MS,
+  WORKSPACE_PRESENCE_UNFOCUSED_BATTERY_INTERVAL_MS,
   WORKSPACE_PRESENCE_UNFOCUSED_INTERVAL_MS,
 } from "./user-workspace-presence-reporter.lib";
 
+const powerState = vi.hoisted(() => ({ onBattery: false }));
+
+vi.mock("~/shared/lib/power", () => ({
+  isOnBattery: () => powerState.onBattery,
+}));
+
 const CLIENT_OPTIONS = { accessToken: "token" } as never;
 const USER_UUID = "22222222-2222-4222-8222-222222222222";
+
+beforeEach(() => {
+  powerState.onBattery = false;
+});
 
 function blurWindow(): void {
   window.dispatchEvent(new Event("blur"));
@@ -29,19 +40,26 @@ function focusWindow(): void {
 }
 
 describe("workspacePresenceIntervalMs", () => {
-  it("slows down as the user moves away from the window", () => {
+  it("uses the cadence configured for each activity state", () => {
     expect(workspacePresenceIntervalMs("active")).toBe(WORKSPACE_PRESENCE_REPORT_INTERVAL_MS);
     expect(workspacePresenceIntervalMs("visible")).toBe(WORKSPACE_PRESENCE_UNFOCUSED_INTERVAL_MS);
     expect(workspacePresenceIntervalMs("hidden")).toBe(WORKSPACE_PRESENCE_HIDDEN_INTERVAL_MS);
   });
 
-  it("never reports faster than the caller-supplied base interval", () => {
-    expect(workspacePresenceIntervalMs("visible", 600_000)).toBe(600_000);
+  it("caps only the visible unfocused cadence below the backend offline timeout", () => {
+    expect(workspacePresenceIntervalMs("active", 600_000)).toBe(600_000);
+    expect(workspacePresenceIntervalMs("visible", 600_000)).toBe(
+      WORKSPACE_PRESENCE_UNFOCUSED_INTERVAL_MS,
+    );
+    expect(workspacePresenceIntervalMs("hidden", 600_000)).toBe(600_000);
   });
 
-  it("stretches the whole ladder on battery", () => {
+  it("stretches the cadence on battery while capping only visible unfocused", () => {
     expect(workspacePresenceIntervalMs("active", undefined, true)).toBe(
       WORKSPACE_PRESENCE_REPORT_INTERVAL_MS * WORKSPACE_PRESENCE_BATTERY_MULTIPLIER,
+    );
+    expect(workspacePresenceIntervalMs("visible", undefined, true)).toBe(
+      WORKSPACE_PRESENCE_UNFOCUSED_BATTERY_INTERVAL_MS,
     );
     expect(workspacePresenceIntervalMs("hidden", undefined, true)).toBe(
       WORKSPACE_PRESENCE_HIDDEN_INTERVAL_MS * WORKSPACE_PRESENCE_BATTERY_MULTIPLIER,
@@ -108,6 +126,51 @@ describe("startWorkspacePresenceReporter", () => {
     invokePresence.mockClear();
 
     focusWindow();
+    expect(invokePresence).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
+  it("keeps the current deadline when the power source changes", () => {
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+    });
+
+    blurWindow();
+    invokePresence.mockClear();
+    vi.advanceTimersByTime(119_000);
+
+    powerState.onBattery = true;
+    vi.advanceTimersByTime(1_000);
+    expect(invokePresence).toHaveBeenCalledTimes(1);
+
+    invokePresence.mockClear();
+    vi.advanceTimersByTime(159_999);
+    expect(invokePresence).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(invokePresence).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
+  it("keeps the visible heartbeat within 160s after losing focus", () => {
+    powerState.onBattery = true;
+    const invokePresence = vi.fn().mockResolvedValue({});
+    const stop = startWorkspacePresenceReporter({
+      clientOptions: CLIENT_OPTIONS,
+      userUuid: USER_UUID,
+      invokePresence,
+    });
+
+    invokePresence.mockClear();
+    vi.advanceTimersByTime(59_999);
+    blurWindow();
+    vi.advanceTimersByTime(100_000);
+    expect(invokePresence).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(invokePresence).toHaveBeenCalledTimes(1);
 
     stop();

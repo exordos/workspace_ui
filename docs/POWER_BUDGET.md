@@ -37,13 +37,13 @@ every desktop.
 
 ## What stands down, and what does not
 
-| Behaviour                            | Where                                                   | Off-focus                                                                         |
-| ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| CSS animations                       | `app.styles.css`, keyed on `data-window-activity`       | Paused, except the exclusions below                                               |
-| Presence heartbeat                   | `entities/user/user-workspace-presence-reporter.lib.ts` | 30s focused → 120s unfocused → 300s hidden, doubled on battery; at once on return |
-| Jitsi participant poll               | `features/jitsi-call/jitsi-call-modal-shell.hook.ts`    | 5s → 30s; joins and leaves already arrive as callbacks, the poll only reconciles  |
-| Scheduled sends                      | `widgets/message-composer/message-composer.ui.tsx`      | Wait for the deadline rather than polling every second                            |
-| OS suspend, resume and battery state | `packages/electron/src/main.ts`, `shared/lib/power.ts`  | Forwarded in: reconnect on wake, stretch the cadence on battery                   |
+| Behaviour                            | Where                                                   | Off-focus                                                                        |
+| ------------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| CSS animations                       | `app.styles.css`, keyed on `data-window-activity`       | Paused, except the exclusions below                                              |
+| Presence heartbeat                   | `entities/user/user-workspace-presence-reporter.lib.ts` | 30s focused → 120s visible/unfocused → 300s hidden; on battery 60s → 160s → 600s |
+| Jitsi participant poll               | `features/jitsi-call/jitsi-call-modal-shell.hook.ts`    | 5s → 30s; joins and leaves already arrive as callbacks, the poll only reconciles |
+| Scheduled sends                      | `widgets/message-composer/message-composer.ui.tsx`      | Wait for the deadline rather than polling every second                           |
+| OS suspend, resume and battery state | `packages/electron/src/main.ts`, `shared/lib/power.ts`  | Forwarded in: reconnect on wake, stretch the cadence on battery                  |
 
 The presence dot is static (`shared/ui/presence-indicator.tsx`): it renders once per
 roster row, per message author and per mention candidate, so an infinite animation
