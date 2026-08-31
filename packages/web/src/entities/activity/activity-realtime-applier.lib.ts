@@ -1,7 +1,7 @@
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventApplier,
-  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { useActivityStore, type ActivityUnreadMentionMutation } from "./activity.model";
@@ -11,7 +11,7 @@ export interface ActivityRealtimeApplierOptions {
 }
 
 function isCurrentActiveOwner(
-  context: WorkspaceRealtimeEventContext,
+  context: WorkspaceRealtimeRuntimeContext,
   options: ActivityRealtimeApplierOptions,
 ): boolean {
   return (
@@ -100,6 +100,9 @@ function activityMutationForEvent(
 export function createActivityRealtimeApplier(
   options: ActivityRealtimeApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
+  let hasConnected = false;
+  let refreshAfterReconnect = false;
+
   return {
     applyEvent(event, context) {
       if (!isCurrentActiveOwner(context, options)) return;
@@ -111,6 +114,20 @@ export function createActivityRealtimeApplier(
         .applyUnreadMentionMutation(context.ownerKey, context.owner.runtimeGeneration, mutation);
     },
     skipEvent() {},
-    onTransportStateChange() {},
+    onTransportStateChange(state, context) {
+      if (!isCurrentActiveOwner(context, options)) return;
+
+      if (state.mode === "reconnecting" || (state.mode === "catching_up" && hasConnected)) {
+        refreshAfterReconnect ||= hasConnected;
+        return;
+      }
+      if (state.mode !== "connected") return;
+
+      if (hasConnected && refreshAfterReconnect) {
+        refreshAfterReconnect = false;
+        useActivityStore.getState().invalidateUnreadMentions(context.ownerKey);
+      }
+      hasConnected = true;
+    },
   };
 }

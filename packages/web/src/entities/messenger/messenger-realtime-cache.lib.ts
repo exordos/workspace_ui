@@ -168,6 +168,7 @@ async function applyDomainMutation(
     case "user":
     case "external_account":
     case "external_chat":
+    case "external_operation":
       return "deferred";
   }
 }

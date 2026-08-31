@@ -196,7 +196,10 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): event is Messe
 
 function isNonMessengerRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
   return (
-    event.type === "user" || event.type === "external_account" || event.type === "external_chat"
+    event.type === "user" ||
+    event.type === "external_account" ||
+    event.type === "external_chat" ||
+    event.type === "external_operation"
   );
 }
 

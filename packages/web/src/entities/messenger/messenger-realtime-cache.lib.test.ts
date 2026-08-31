@@ -487,6 +487,25 @@ describe("messenger realtime cache mapper", () => {
     expect(writer.writeRealtimeCursor).not.toHaveBeenCalled();
   });
 
+  it("defers external operation events without cache writes", async () => {
+    const writer = createWriter();
+
+    const status = await applyMessengerRealtimeEventToCache({
+      event: {
+        epoch_version: 42,
+        type: "external_operation",
+        kind: "external_operation.updated",
+        external_operation: { uuid: MESSAGE_UUID, status: "succeeded" },
+      },
+      ownerKey: OWNER_KEY,
+      writer,
+      isWriteCurrent: () => true,
+    });
+
+    expect(status).toBe("deferred");
+    expect(writer.writeRealtimeCursor).not.toHaveBeenCalled();
+  });
+
   it("writes the cursor only after both created-message pages finish", async () => {
     const firstPage = deferred<void>();
     const secondPage = deferred<void>();
