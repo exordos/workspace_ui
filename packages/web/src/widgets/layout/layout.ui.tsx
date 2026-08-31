@@ -167,6 +167,7 @@ export const Layout: React.FC = () => {
   useLayoutWorkspaceNotifications({
     enabled: workspaceRouteReady,
     navigate,
+    pathname: location.pathname,
   });
 
   const workspaceNotificationScopeKey =

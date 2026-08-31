@@ -4,6 +4,7 @@ import {
   type MessengerBackgroundProjection,
   type MessengerBackgroundNotificationCandidate,
 } from "~/entities/messenger/messenger-background-projection.model";
+import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -17,7 +18,9 @@ import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { osIntegration } from "~/shared/lib/os-integration";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { getActivityState } from "~/shared/lib/visibility";
 import { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import {
   formatNotificationTitle,
@@ -30,6 +33,18 @@ import {
 import type { NavigateFunction } from "react-router-dom";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
+/**
+ * How long a candidate may wait for the stream/topic snapshot that names it.
+ *
+ * The wait exists for one race: a message event and the stream event that
+ * describes its conversation arrive in the same catch-up batch, normally
+ * milliseconds apart. The bound is generous against a slow catch-up rather than
+ * tuned, and the "metadata did not arrive in time" log carries `waitedMs` for
+ * anyone who needs to revisit it. Past the bound the notification has stopped
+ * being news — the user has already seen a later one for the same conversation,
+ * or has opened it — so the candidate is dropped rather than shown late.
+ */
+const NOTIFICATION_METADATA_GRACE_MS = 30_000;
 const notificationLog = createLogger("layout:notification");
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -37,14 +52,28 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readViewportState(): { windowFocused: boolean; isMessageOnScreen: boolean } {
-  if (typeof document === "undefined") {
-    return { windowFocused: true, isMessageOnScreen: false };
-  }
+/** The conversation open in front of the user, or null when the route is not one. */
+function readOpenConversationId(pathname: string): string | null {
+  const selection = selectMessengerConversationFromWorkspaceRoute(
+    parseWorkspaceMessengerRoute(pathname),
+  );
+  return selection.status === "conversation" ? selection.conversationId : null;
+}
+
+function readViewportState(
+  candidate: MessengerBackgroundNotificationCandidate,
+  openConversationId: string | null,
+): { windowFocused: boolean; isConversationOnScreen: boolean } {
+  const isConversationOnScreen =
+    openConversationId != null &&
+    (openConversationId === candidate.topicConversationId ||
+      openConversationId === candidate.streamConversationId);
 
   return {
-    windowFocused: document.hasFocus(),
-    isMessageOnScreen: false,
+    // getActivityState() rather than document.hasFocus(): the latter depends on the
+    // window manager cooperating, and in Electron the main process is the authority.
+    windowFocused: getActivityState() === "active",
+    isConversationOnScreen,
   };
 }
 
@@ -171,21 +200,28 @@ function logDeferredCandidate(options: {
   candidate: MessengerBackgroundNotificationCandidate;
   messageUuid: string;
   missingMetadata: string[];
+  expired: boolean;
 }): void {
   const { deferredCandidates, scopeKey, candidate, messageUuid, missingMetadata } = options;
-  if (deferredCandidates.has(scopeKey)) {
+  if (!options.expired && deferredCandidates.has(scopeKey)) {
     return;
   }
 
   deferredCandidates.add(scopeKey);
-  notificationLog.warn("candidate deferred until metadata arrives", {
-    ownerKey: candidate.ownerKey,
-    messageUuid,
-    missingMetadata,
-    audience: candidate.audience,
-    hasStreamMode: candidate.streamNotificationMode != null,
-    hasTopicMode: candidate.topicNotificationMode != null,
-  });
+  notificationLog.warn(
+    options.expired
+      ? "candidate dropped: metadata did not arrive in time"
+      : "candidate deferred until metadata arrives",
+    {
+      ownerKey: candidate.ownerKey,
+      messageUuid,
+      missingMetadata,
+      audience: candidate.audience,
+      hasStreamMode: candidate.streamNotificationMode != null,
+      hasTopicMode: candidate.topicNotificationMode != null,
+      waitedMs: Date.now() - candidate.observedAt,
+    },
+  );
 }
 
 function logPolicySkip(options: {
@@ -209,7 +245,7 @@ function logPolicySkip(options: {
     streamNotificationMode: candidate.streamNotificationMode,
     topicNotificationMode: candidate.topicNotificationMode,
     windowFocused: viewport.windowFocused,
-    isMessageOnScreen: viewport.isMessageOnScreen,
+    isConversationOnScreen: viewport.isConversationOnScreen,
   });
 }
 
@@ -302,8 +338,9 @@ async function runNotificationEffects(options: {
 export function useLayoutWorkspaceNotifications(options: {
   enabled: boolean;
   navigate: NavigateFunction;
+  pathname: string;
 }): void {
-  const { enabled, navigate } = options;
+  const { enabled, navigate, pathname } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const projectionsByOwnerKey = useMessengerBackgroundProjectionStore(
     (state) => state.projectionsByOwnerKey,
@@ -370,6 +407,7 @@ export function useLayoutWorkspaceNotifications(options: {
     }
 
     let cancelled = false;
+    const openConversationId = readOpenConversationId(pathname);
     const nextCandidates = collectNextNotificationCandidates(
       routeProjections,
       processedCandidatesRef.current,
@@ -393,12 +431,20 @@ export function useLayoutWorkspaceNotifications(options: {
         const scopeKey = buildCandidateScopeKey(candidate.ownerKey, messageUuid);
         const resolvedCandidate = resolveCurrentCandidate(projection, candidate);
         if (resolvedCandidate.missingMetadata.length > 0) {
+          // Once the grace window is over the candidate is dropped, not held: showing
+          // it later would announce a message the user has already been told about by
+          // a newer one in the same conversation, or has already opened.
+          const expired = Date.now() - candidate.observedAt > NOTIFICATION_METADATA_GRACE_MS;
+          if (expired) {
+            markCandidateProcessed(processedCandidatesRef.current, candidate.ownerKey, messageUuid);
+          }
           logDeferredCandidate({
             deferredCandidates: deferredCandidatesRef.current,
             scopeKey,
             candidate,
             messageUuid,
             missingMetadata: resolvedCandidate.missingMetadata,
+            expired,
           });
           continue;
         }
@@ -425,7 +471,7 @@ export function useLayoutWorkspaceNotifications(options: {
           continue;
         }
 
-        const viewport = readViewportState();
+        const viewport = readViewportState(currentCandidate, openConversationId);
         const decision = shouldWorkspaceDesktopNotify({
           message: {
             kind: currentCandidate.audience === "private" ? "dm" : "stream",
@@ -469,5 +515,5 @@ export function useLayoutWorkspaceNotifications(options: {
     return () => {
       cancelled = true;
     };
-  }, [enabled, navigate, routeProjections]);
+  }, [enabled, navigate, pathname, routeProjections]);
 }
