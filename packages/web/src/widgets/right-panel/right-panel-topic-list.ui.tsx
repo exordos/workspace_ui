@@ -12,6 +12,7 @@ import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { MentionBadge } from "~/shared/ui/mention-badge";
 import { getTopicVisibilityLevelOption } from "~/shared/ui/notification-level-switch.lib";
+import { RightPanelOptionList } from "./right-panel-option-list.ui";
 
 export interface RightPanelTopicListProps {
   topics: readonly MessengerTopicListItem[];
@@ -112,11 +113,7 @@ export const RightPanelTopicList = React.memo(function RightPanelTopicList({
       );
     } else {
       content = (
-        <ul
-          id={contentId}
-          className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated"
-          data-testid="right-panel-topic-list"
-        >
+        <RightPanelOptionList id={contentId} testId="right-panel-topic-list">
           {topics.map((topic) => (
             <RightPanelTopicRow
               key={topic.id}
@@ -126,7 +123,7 @@ export const RightPanelTopicList = React.memo(function RightPanelTopicList({
               onOpenTopic={onOpenTopic}
             />
           ))}
-        </ul>
+        </RightPanelOptionList>
       );
     }
   }
