@@ -1732,6 +1732,31 @@ describe("messenger realtime active applier", () => {
     ).toBeUndefined();
   });
 
+  it("does not mark external operation realtime events as unsupported in messenger appliers", () => {
+    const activeContext = createContext();
+    const backgroundContext = createContext(createOwner(), { surface: "background" });
+    const activeApplier = createMessengerRealtimeActiveApplier();
+    const backgroundApplier = createMessengerRealtimeBackgroundApplier();
+    const event: WorkspaceRealtimeEvent = {
+      epoch_version: 24,
+      type: "external_operation",
+      kind: "external_operation.updated",
+      external_operation: { uuid: MESSAGE_A, status: "succeeded" },
+    };
+    useMessengerStore.getState().startBootstrap(activeContext.ownerKey);
+
+    activeApplier.applyEvent(event, activeContext);
+    backgroundApplier.applyEvent(event, backgroundContext);
+
+    expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
+        backgroundContext.ownerKey
+      ]?.skippedEvents,
+    ).toBeUndefined();
+  });
+
   it("does not write active skipped events when owner is stale", () => {
     const context = createContext();
     const cache = {

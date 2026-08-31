@@ -266,6 +266,15 @@ export function normalizeWorkspaceRestEvent(
         kind: model.payload.kind,
         external_chat: model.payload.snapshot,
       };
+    case "external_operation.created":
+    case "external_operation.updated":
+    case "external_operation.deleted":
+      return {
+        epoch_version: model.epoch_version,
+        type: "external_operation",
+        kind: model.payload.kind,
+        external_operation: model.payload.snapshot,
+      };
     // Reaction row events are intentionally not applied to message.reactions here.
     // The backend emits message.updated snapshots with the aggregate reaction counters,
     // and the active applier uses that aggregate change to revalidate own reaction rows.
