@@ -34,8 +34,8 @@ export const TopicSummarySettingsDialog = React.memo(function TopicSummarySettin
 }: TopicSummarySettingsDialogProps) {
   const { t } = useTranslation();
   const showTopic = topicPermission === "allowed" && topic != null;
-  const showGates = gatesPermission !== "denied";
-  const showEndpoints = endpointsPermission !== "denied";
+  const showGates = gatesPermission === "allowed";
+  const showEndpoints = endpointsPermission === "allowed";
   const settingsVm = useTopicSummarySettings({
     open: open && (showTopic || showGates),
     runtimeContext,

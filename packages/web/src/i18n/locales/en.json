@@ -913,7 +913,6 @@
     "authIdleTimeoutNever": "Never",
     "sectionDescription": "Description",
     "settings": "Settings",
-    "appearance": "Appearance",
     "clearCache": "Clear cache",
     "clearCacheConfirm": "Clear message cache and all local settings? Your sign-in and saved organizations will be kept. The app will reload.",
     "serviceCatalog": "Service catalog",

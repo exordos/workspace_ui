@@ -123,8 +123,6 @@ describe("RightPanelShell", () => {
   it("renders settings mode without legacy chat info fallback", () => {
     renderWithProviders(<RightPanelShell mode="settings" title="Settings" />);
 
-    fireEvent.click(screen.getByTestId("user-menu-settings-row"));
-    expect(screen.getByTestId("right-panel-settings")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /notification sound/i })).toBeInTheDocument();
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: /notification sound/i }));
@@ -135,25 +133,6 @@ describe("RightPanelShell", () => {
     });
 
     expect(useSettingsStore.getState().notificationSound).toBe("digital");
-  });
-
-  it("uses the shared root menu row alignment for settings and appearance", () => {
-    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
-
-    const rootRows = [
-      ["user-menu-settings-row", t("settings.settings")],
-      ["user-menu-appearance-row", t("settings.appearance")],
-    ] as const;
-    for (const [testId, label] of rootRows) {
-      const row = screen.getByTestId(testId);
-      expect(row).toHaveClass("w-full", "px-4", "py-1.5");
-      expect(row).not.toHaveClass("-mx-2", "w-[calc(100%+1rem)]", "px-2");
-      expect(row.querySelector(".h-8.w-8")).toBeTruthy();
-      expect(within(row).getByText(label, { selector: "span" })).toHaveClass(
-        "font-medium",
-        "leading-5",
-      );
-    }
   });
 
   it("renders the about panel without user-facing technical details", () => {
@@ -167,7 +146,6 @@ describe("RightPanelShell", () => {
   it("switches the stream and topic ordering mode from the user menu", () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
-    fireEvent.click(screen.getByTestId("user-menu-appearance-row"));
     fireEvent.click(screen.getByRole("button", { name: /stream and topic order/i }));
     fireEvent.click(screen.getByRole("button", { name: /^unread first$/i }));
 

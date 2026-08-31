@@ -6,6 +6,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
@@ -185,6 +186,14 @@ function seedWorkspaceAuth(): void {
   useWorkspaceAuthStore.getState().setSession(createSession());
 }
 
+function seedWorkspaceIamPermissions(permissions: readonly string[]): void {
+  const runtimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  if (runtimeContext == null) throw new Error("Expected Workspace runtime context");
+  const store = useWorkspaceIamCapabilitiesStore.getState();
+  const requestGeneration = store.startLoad(OWNER_KEY, runtimeContext.runtimeGeneration);
+  store.finishLoad(OWNER_KEY, runtimeContext.runtimeGeneration, requestGeneration, permissions);
+}
+
 function seedWorkspaceUsers(): void {
   useUsersStore.getState().replaceUsers([
     createUser({
@@ -227,6 +236,7 @@ describe("RightPanelWorkspaceInfo", () => {
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
+    useWorkspaceIamCapabilitiesStore.getState().clear();
   });
 
   it("shows the selected topic summary and its freshness state", () => {
@@ -315,6 +325,10 @@ describe("RightPanelWorkspaceInfo", () => {
 
   it("opens the combined topic and common summary settings without collapsing the summary", async () => {
     seedWorkspaceAuth();
+    seedWorkspaceIamPermissions([
+      "workspace.topic_summary_settings.manage",
+      "workspace.topic_summary_endpoint.manage",
+    ]);
     const currentTopic = createTopic();
     act(() => {
       useMessengerStore.getState().startBootstrap(OWNER_KEY);

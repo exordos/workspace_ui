@@ -14,8 +14,6 @@ export interface RightPanelProps {
   onOpenAboutDrawer?: () => void;
   /** Opens personal-info as a dedicated drawer mode (shell title + back). */
   onOpenPersonalInfoDrawer?: () => void;
-  /** Lets account subviews replace the shared drawer header without adding a drawer mode. */
-  onNestedPanelChange?: (nested: { titleKey: string; onBack: () => void } | null) => void;
   /** Workspace-native info data; when present, the info panel avoids legacy Zulip stores. */
   workspaceInfo?: WorkspaceRightPanelInfoView | null;
 }

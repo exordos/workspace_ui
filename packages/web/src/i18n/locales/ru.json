@@ -923,7 +923,6 @@
     "authIdleTimeoutNever": "Никогда",
     "sectionDescription": "Описание",
     "settings": "Настройки",
-    "appearance": "Внешний вид",
     "clearCache": "Очистить кэш",
     "clearCacheConfirm": "Очистить кэш сообщений и все локальные настройки? Вход и сохранённые организации останутся. Приложение перезагрузится.",
     "serviceCatalog": "Каталог сервисов",

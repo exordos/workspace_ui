@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -266,6 +267,9 @@ export function useTopicSummaryEndpoints({
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;
         if (isForbiddenError(error)) {
+          useWorkspaceIamCapabilitiesStore
+            .getState()
+            .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
           denyAccess("load");
           return;
         }
@@ -420,6 +424,9 @@ export function useTopicSummaryEndpoints({
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;
         if (isForbiddenError(error)) {
+          useWorkspaceIamCapabilitiesStore
+            .getState()
+            .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
           denyAccess("create");
           return;
         }
@@ -550,6 +557,9 @@ export function useTopicSummaryEndpoints({
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;
         if (isForbiddenError(error)) {
+          useWorkspaceIamCapabilitiesStore
+            .getState()
+            .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
           denyAccess("update");
           return;
         }
@@ -592,6 +602,9 @@ export function useTopicSummaryEndpoints({
         } catch (error) {
           if (isAbortError(error) || request.invalidated()) return;
           if (isForbiddenError(error)) {
+            useWorkspaceIamCapabilitiesStore
+              .getState()
+              .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
             denyAccess("delete");
             return;
           }

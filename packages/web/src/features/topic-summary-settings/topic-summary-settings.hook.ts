@@ -3,6 +3,7 @@ import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-req
 import { updateMessengerTopicSummaryConfiguration as defaultUpdateTopic } from "~/entities/messenger/messenger-topic-summary-actions.lib";
 import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -382,6 +383,11 @@ export function useTopicSummarySettings({
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;
         const mapped = mapTopicSummaryOperationError(error);
+        if (mapped === "forbidden") {
+          useWorkspaceIamCapabilitiesStore
+            .getState()
+            .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
+        }
         updateState((current) => ({
           ...current,
           gates: {
@@ -679,6 +685,11 @@ export function useTopicSummarySettings({
       } catch (error) {
         if (isAbortError(error) || request.invalidated()) return;
         const mapped = mapTopicSummaryOperationError(error);
+        if (mapped === "forbidden") {
+          useWorkspaceIamCapabilitiesStore
+            .getState()
+            .invalidate(workspaceRuntimeOwnerKey(request.requestRuntime));
+        }
         updateState((previous) => {
           const rollbackSettings = latestSettings ?? previous.gates.server;
           return {

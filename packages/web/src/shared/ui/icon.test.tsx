@@ -208,12 +208,6 @@ describe("Icon", () => {
     const files = readdirSync(ICONS_DIR)
       .filter((file) => file.endsWith(".svg"))
       .sort();
-    const fixedColorAssets: Record<string, string> = {
-      "bedtime.svg": "#F7FDFF",
-      "desktop_windows.svg": "#707070",
-      "list_arrow.svg": "#707070",
-      "wb_sunny.svg": "#FFD633",
-    };
 
     expect(files.length).toBeGreaterThan(0);
 
@@ -228,25 +222,8 @@ describe("Icon", () => {
       expect(paths.length, `${file} should contain at least one path`).toBeGreaterThan(0);
 
       for (const pathTag of paths) {
-        const fixedColor = fixedColorAssets[file];
-        expect(pathTag).toMatch(
-          fixedColor == null ? /\bfill="currentColor"/ : new RegExp(`\\bfill="${fixedColor}"`),
-        );
+        expect(pathTag).toMatch(/\bfill="currentColor"/);
       }
     }
-  });
-
-  it("registers the Figma list_arrow glyph with its exact leaf contract", () => {
-    const asset = readFileSync(resolve(ICONS_DIR, "list_arrow.svg"), "utf8");
-    expect(ICON_NAMES).toContain("list_arrow");
-    expect(asset).toMatch(/<svg width="24" height="17" viewBox="0 0 24 17"/);
-    expect(asset).toMatch(/<path\b[^>]*fill="#707070"/);
-
-    const { container } = render(<Icon name="list_arrow" size={22} />);
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("width", "22");
-    expect(svg).toHaveAttribute("height", "22");
-    expect(svg).toHaveAttribute("viewBox", "0 0 24 17");
-    expect(svg?.querySelector("path")).toHaveAttribute("fill", "#707070");
   });
 });

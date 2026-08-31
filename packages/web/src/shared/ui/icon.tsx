@@ -4,7 +4,6 @@ import AddIcon from "../assets/icons/add.svg?react";
 import AlternateEmailIcon from "../assets/icons/alternate_email.svg?react";
 import AtIcon from "../assets/icons/at.svg?react";
 import AttachIcon from "../assets/icons/attach.svg?react";
-import BedtimeIcon from "../assets/icons/bedtime.svg?react";
 import BellIcon from "../assets/icons/bell.svg?react";
 import BellOffIcon from "../assets/icons/bell_off.svg?react";
 import BlockIcon from "../assets/icons/block.svg?react";
@@ -26,7 +25,6 @@ import CopyIcon from "../assets/icons/copy.svg?react";
 import DashboardCustomizeIcon from "../assets/icons/dashboard_customize.svg?react";
 import DeleteIcon from "../assets/icons/delete.svg?react";
 import DeleteHistoryIcon from "../assets/icons/delete_history.svg?react";
-import DesktopWindowsIcon from "../assets/icons/desktop_windows.svg?react";
 import DownloadIcon from "../assets/icons/download.svg?react";
 import DraftsIcon from "../assets/icons/drafts.svg?react";
 import DraftsCompactIcon from "../assets/icons/drafts_compact.svg?react";
@@ -53,7 +51,6 @@ import LabProfileIcon from "../assets/icons/lab_profile.svg?react";
 import LanguageIcon from "../assets/icons/language.svg?react";
 import LinksIcon from "../assets/icons/links.svg?react";
 import LinksCompactIcon from "../assets/icons/links_compact.svg?react";
-import ListArrowIcon from "../assets/icons/list_arrow.svg?react";
 import ListBulletedIcon from "../assets/icons/list_bulleted.svg?react";
 import ListsIcon from "../assets/icons/lists.svg?react";
 import LogoutIcon from "../assets/icons/logout.svg?react";
@@ -97,7 +94,6 @@ import TopicUnmuteIcon from "../assets/icons/topic_unmute.svg?react";
 import VideosIcon from "../assets/icons/videos.svg?react";
 import VisibilityIcon from "../assets/icons/visibility.svg?react";
 import VolumeUpIcon from "../assets/icons/volume_up.svg?react";
-import WbSunnyIcon from "../assets/icons/wb_sunny.svg?react";
 import type { IconSvgComponent } from "./icon.types";
 
 export type { IconSvgComponent } from "./icon.types";
@@ -156,7 +152,6 @@ const ICONS: Record<string, IconSvgComponent> = {
   border_color: BorderColorIcon,
   // Wrench — select build (Figma build)
   build: BuildIcon,
-  bedtime: BedtimeIcon,
   channels: ChannelsIcon,
   more: MoreIcon,
   heart: HeartIcon,
@@ -167,7 +162,6 @@ const ICONS: Record<string, IconSvgComponent> = {
   "chevron-right": ChevronRightIcon,
   // 3 tiles + plus — current server (Figma dashboard_customize)
   dashboard_customize: DashboardCustomizeIcon,
-  desktop_windows: DesktopWindowsIcon,
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
   calendar: CalendarIcon,
@@ -193,7 +187,6 @@ const ICONS: Record<string, IconSvgComponent> = {
   handshake: HandshakeIcon,
   schedule: ScheduleIcon,
   volumeUp: VolumeUpIcon,
-  wb_sunny: WbSunnyIcon,
   newWindow: NewWindowIcon,
   marker: MarkerIcon,
   // Thin outline bookmark — Figma 5905:27795 (compact activity starred).
@@ -216,7 +209,6 @@ const ICONS: Record<string, IconSvgComponent> = {
   // Same chain glyph as `links`, tighter viewBox for 32px menu rows (does not replace `links`)
   links_compact: LinksCompactIcon,
   list_bulleted: ListBulletedIcon,
-  list_arrow: ListArrowIcon,
   // Dense list rows — chat list density (Figma lists)
   lists: ListsIcon,
   chat_bubble_outline: ChatBubbleOutlineIcon,

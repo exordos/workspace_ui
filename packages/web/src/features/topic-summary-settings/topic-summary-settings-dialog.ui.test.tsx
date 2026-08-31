@@ -193,21 +193,21 @@ describe("TopicSummarySettingsDialog", () => {
     mocks.useEndpoints.mockReturnValue(endpointsVm());
   });
 
-  it("discovers common permissions from unknown without exposing the topic section", () => {
+  it("keeps administrative sections hidden while IAM permissions are unknown", () => {
     renderDialog({
-      topicPermission: "denied",
+      topicPermission: "allowed",
       gatesPermission: "unknown",
       endpointsPermission: "unknown",
     });
 
-    expect(screen.queryByText("This topic")).not.toBeInTheDocument();
-    expect(screen.getByText("Common settings")).toBeInTheDocument();
-    expect(screen.getByText("LLM endpoints")).toBeInTheDocument();
+    expect(screen.getByText("This topic")).toBeInTheDocument();
+    expect(screen.queryByText("Common settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM endpoints")).not.toBeInTheDocument();
     expect(mocks.useSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ loadGatesOnOpen: true, open: true }),
+      expect.objectContaining({ loadGatesOnOpen: false, open: true }),
     );
     expect(mocks.useEndpoints).toHaveBeenCalledWith(
-      expect.objectContaining({ open: true, permission: "unknown" }),
+      expect.objectContaining({ open: false, permission: "unknown" }),
     );
   });
 
