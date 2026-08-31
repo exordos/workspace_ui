@@ -9,20 +9,11 @@ import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
 import { ManageExternalProviderEntry } from "~/features/manage-external-provider/manage-external-provider-entry.ui";
-import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
-import { useSettingsStore } from "~/features/settings/settings.model";
-import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
-import {
-  getAvailablePalettes,
-  selectMode,
-  selectPalette,
-} from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
-import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
 import { Button } from "~/shared/ui/button";
@@ -33,24 +24,10 @@ import {
   RightPanelConnectExternalAccountDialog,
   RightPanelExternalAccountsList,
 } from "./right-panel-external-account.integration";
-import {
-  RightPanelUserMenuMenuButton,
-  RightPanelUserMenuOptionButton,
-} from "./right-panel-user-menu-buttons.ui";
-import {
-  APP_VERSION,
-  AUTH_IDLE_TIMEOUT_LABEL_KEYS,
-  CHAT_LIST_DENSITIES,
-  CHAT_LIST_DENSITY_LABEL_KEYS,
-  FOLDER_LAYOUTS,
-  FOLDER_LAYOUT_LABEL_KEYS,
-  getInstanceLabel,
-  MODE_LABEL_KEYS,
-  NOTIFICATION_SOUND_LABEL_KEYS,
-  NOTIFICATION_SOUNDS,
-  THEME_MODES,
-} from "./right-panel-user-menu-constants.lib";
+import { RightPanelUserMenuMenuButton } from "./right-panel-user-menu-buttons.ui";
+import { APP_VERSION, getInstanceLabel } from "./right-panel-user-menu-constants.lib";
 import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-dialog.ui";
+import { RightPanelUserAppearance, RightPanelUserSettings } from "./right-panel-user-settings.ui";
 import type { UserStatusEmojiDisplay } from "./right-panel-user-menu-status-dialog.ui";
 import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
@@ -64,10 +41,6 @@ const log = createLogger("right-panel-user-menu");
 const SECTION_LIST_CLASS =
   "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-border-subtle";
 
-/** Inline accordion panel when a settings row expands — same inset hairlines as the parent list. */
-const ACCORDION_PANEL_CLASS =
-  "mb-1 bg-bg-elevated/40 [&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-border-subtle";
-
 const MenuChevron: React.FC<{ open?: boolean }> = ({ open = false }) => (
   <Icon
     name={open ? "chevron-up" : "chevron-right"}
@@ -79,10 +52,11 @@ const MenuChevron: React.FC<{ open?: boolean }> = ({ open = false }) => (
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   onOpenAboutDrawer,
   onOpenPersonalInfo,
+  onNestedPanelChange,
 }) => {
   const navigate = useNavigate();
   const rightDrawer = useRightDrawer();
-  const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
+  const { t } = useTranslation();
   const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
@@ -95,36 +69,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       ? s.usersById[currentWorkspaceSession.userUuid]
       : undefined,
   );
-  // const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
-  // const prioritizeUnmutedUnreadChannels = useSettingsStore(
-  //   (s) => s.prioritizeUnmutedUnreadChannels,
-  // );
-  // const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
-  // const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
-  //   (s) => s.setPrioritizeUnmutedUnreadChannels,
-  // );
-  const notificationSound = useSettingsStore((s) => s.notificationSound);
-  const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
-  const setLanguage = useSettingsStore((s) => s.setLanguage);
-  const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
-  const setMessengerSidebarSortMode = useSettingsStore((s) => s.setMessengerSidebarSortMode);
-  const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
-  const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
-  const chatListDensity = useSettingsStore((s) => s.chatListDensity);
-  const setChatListDensity = useSettingsStore((s) => s.setChatListDensity);
-  const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
-  const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
   const currentThemeMode = useThemeStore((s) => s.mode);
-  const currentPaletteId = useThemeStore((s) => s.paletteId);
-  const availablePalettes = useMemo(() => getAvailablePalettes(), []);
-  const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
-  const [languageSettingsOpen, setLanguageSettingsOpen] = useState(false);
-  const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
-  const [messengerSidebarSortModeOpen, setMessengerSidebarSortModeOpen] = useState(false);
-  // const [chatSortingOpen, setChatSortingOpen] = useState(false);
-  const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
-  const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
-  const [authIdleTimeoutOpen, setAuthIdleTimeoutOpen] = useState(false);
+  const [menuSubview, setMenuSubview] = useState<"root" | "settings" | "appearance">("root");
   const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTextDraft, setStatusTextDraft] = useState("");
@@ -133,9 +79,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
   const [externalAccountDialogOpen, setExternalAccountDialogOpen] = useState(false);
-  const currentLocaleName =
-    locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
-    currentLocale;
   const currentServerLabel = useMemo(
     () =>
       currentWorkspaceSession != null
@@ -243,74 +186,18 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     onOpenAboutDrawer?.();
   }, [onOpenAboutDrawer]);
 
-  const handleSelectLanguage = useCallback(
-    (nextLocale: (typeof locales)[number]["id"]) => {
-      setLanguage(nextLocale);
-    },
-    [setLanguage],
-  );
-
-  const handleSelectNotificationSound = useCallback(
-    (next: NotificationSound) => {
-      setNotificationSound(next);
-      if (next !== "none") {
-        playNotificationSound(next);
-      }
-    },
-    [setNotificationSound],
-  );
-
-  const handleSetNotificationSound = useCallback(
-    (next: NotificationSound) => {
-      handleSelectNotificationSound(next);
-      setSoundSettingsOpen(false);
-    },
-    [handleSelectNotificationSound],
-  );
-
-  const handleSetLanguage = useCallback(
-    (nextLocale: (typeof locales)[number]["id"]) => {
-      handleSelectLanguage(nextLocale);
-      setLanguageSettingsOpen(false);
-    },
-    [handleSelectLanguage],
-  );
-
-  const handleSetAuthIdleTimeout = useCallback(
-    (next: AuthIdleTimeout) => {
-      setAuthIdleTimeout(next);
-      setAuthIdleTimeoutOpen(false);
-    },
-    [setAuthIdleTimeout],
-  );
-
-  const soundLabel = useMemo(
-    () => t(NOTIFICATION_SOUND_LABEL_KEYS[notificationSound]),
-    [notificationSound, t],
-  );
-  const authIdleTimeoutLabel = useMemo(
-    () => t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[authIdleTimeout]),
-    [authIdleTimeout, t],
-  );
-
-  const currentLocaleOption = useMemo(
-    () => locales.find((supportedLocale) => supportedLocale.id === currentLocale),
-    [currentLocale, locales],
-  );
-  const localeLabel = currentLocaleOption?.nativeLabel ?? currentLocaleName;
-
-  const toggleSoundSettings = useCallback(() => {
-    setSoundSettingsOpen((open) => !open);
-  }, []);
-  const toggleLanguageSettings = useCallback(() => {
-    setLanguageSettingsOpen((open) => !open);
-  }, []);
-  const toggleMessengerSidebarSortMode = useCallback(() => {
-    setMessengerSidebarSortModeOpen((open) => !open);
-  }, []);
-  const toggleAuthIdleTimeoutSettings = useCallback(() => {
-    setAuthIdleTimeoutOpen((open) => !open);
-  }, []);
+  const returnToRoot = useCallback(() => {
+    setMenuSubview("root");
+    onNestedPanelChange?.(null);
+  }, [onNestedPanelChange]);
+  const openSettings = useCallback(() => {
+    setMenuSubview("settings");
+    onNestedPanelChange?.({ titleKey: "settings.settings", onBack: returnToRoot });
+  }, [onNestedPanelChange, returnToRoot]);
+  const openAppearance = useCallback(() => {
+    setMenuSubview("appearance");
+    onNestedPanelChange?.({ titleKey: "settings.appearance", onBack: returnToRoot });
+  }, [onNestedPanelChange, returnToRoot]);
 
   const handleClearCache = useCallback(async () => {
     const confirmed = window.confirm(t("settings.clearCacheConfirm"));
@@ -352,6 +239,18 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     setStatusEmojiDraft(emoji.slice(0, 64));
     setStatusEmojiPickerOpen(false);
   }, []);
+
+  if (menuSubview === "settings") {
+    return (
+      <RightPanelUserSettings onBack={returnToRoot} onClose={closeDrawer} showHeader={false} />
+    );
+  }
+
+  if (menuSubview === "appearance") {
+    return (
+      <RightPanelUserAppearance onBack={returnToRoot} onClose={closeDrawer} showHeader={false} />
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
@@ -454,181 +353,21 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             </SectionLabel>
             <div className={SECTION_LIST_CLASS}>
               <RightPanelUserMenuMenuButton
-                label={t("settings.notificationSound")}
-                icon="volumeUp"
-                onClick={toggleSoundSettings}
-                right={
-                  <span className="flex items-center gap-2 text-sm text-text-secondary">
-                    {soundLabel}
-                    <MenuChevron open={soundSettingsOpen} />
-                  </span>
-                }
+                label={t("settings.settings")}
+                icon="settings"
+                subtitle={`${t("settings.notificationSound")}, ${t("settings.language")}, ${t("settings.authIdleTimeout")}`}
+                onClick={openSettings}
+                right={<MenuChevron />}
+                testId="user-menu-settings-row"
               />
-              {soundSettingsOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  {NOTIFICATION_SOUNDS.map((sound) => (
-                    <RightPanelUserMenuOptionButton
-                      key={sound}
-                      label={t(NOTIFICATION_SOUND_LABEL_KEYS[sound])}
-                      active={notificationSound === sound}
-                      onClick={() => handleSetNotificationSound(sound)}
-                    />
-                  ))}
-                </div>
-              )}
               <RightPanelUserMenuMenuButton
-                label={t("settings.language")}
-                icon="language"
-                onClick={toggleLanguageSettings}
-                right={
-                  <span className="flex items-center gap-2 text-sm text-text-secondary">
-                    {localeLabel}
-                    <MenuChevron open={languageSettingsOpen} />
-                  </span>
-                }
-              />
-              {languageSettingsOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  {locales.map((localeOption) => (
-                    <RightPanelUserMenuOptionButton
-                      key={localeOption.id}
-                      label={localeOption.nativeLabel}
-                      active={currentLocale === localeOption.id}
-                      onClick={() => handleSetLanguage(localeOption.id)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <RightPanelUserMenuMenuButton
-                label={t("settings.authIdleTimeout")}
-                icon="delete_history"
-                subtitle={t("settings.authIdleTimeoutHint")}
-                onClick={toggleAuthIdleTimeoutSettings}
-                right={
-                  <span className="flex items-center gap-2 text-sm text-text-secondary">
-                    {authIdleTimeoutLabel}
-                    <MenuChevron open={authIdleTimeoutOpen} />
-                  </span>
-                }
-              />
-              {authIdleTimeoutOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  {AUTH_IDLE_TIMEOUT_PRESETS.map((timeout) => (
-                    <RightPanelUserMenuOptionButton
-                      key={timeout}
-                      label={t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[timeout])}
-                      active={authIdleTimeout === timeout}
-                      onClick={() => handleSetAuthIdleTimeout(timeout)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <RightPanelUserMenuMenuButton
-                label={t("settings.themeSettings")}
+                label={t("settings.appearance")}
                 icon="draw"
-                onClick={() => setThemeSettingsOpen((open) => !open)}
-                right={<MenuChevron open={themeSettingsOpen} />}
+                subtitle={`${t("settings.themeSettings")}, ${t("settings.folderLayout")}, ${t("settings.chatListDensity")}`}
+                onClick={openAppearance}
+                right={<MenuChevron />}
+                testId="user-menu-appearance-row"
               />
-              {themeSettingsOpen && (
-                <div className="bg-bg-elevated/40 mb-1 space-y-2 py-2">
-                  <div className={ACCORDION_PANEL_CLASS}>
-                    {THEME_MODES.map((mode) => (
-                      <RightPanelUserMenuOptionButton
-                        key={mode}
-                        label={t(MODE_LABEL_KEYS[mode])}
-                        active={currentThemeMode === mode}
-                        onClick={() => selectMode(mode)}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5 px-4">
-                    {availablePalettes.map((palette) => (
-                      <button
-                        key={palette.id}
-                        type="button"
-                        onClick={() => selectPalette(palette.id)}
-                        className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-xs transition-colors ${
-                          currentPaletteId === palette.id
-                            ? "bg-card-bg-active ring-1 ring-accent"
-                            : "bg-bg hover:bg-card-bg-active"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: palette.preview.accent }}
-                          />
-                          <span className="truncate text-text-primary">{palette.name}</span>
-                        </span>
-                        {currentPaletteId === palette.id ? (
-                          <Icon name="check" size={12} className="text-accent" />
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <RightPanelUserMenuMenuButton
-                label={t("settings.messengerSidebarSortMode")}
-                icon="sort"
-                onClick={toggleMessengerSidebarSortMode}
-                right={<MenuChevron open={messengerSidebarSortModeOpen} />}
-              />
-              {messengerSidebarSortModeOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.messengerSidebarSortModeLastMessage")}
-                    active={messengerSidebarSortMode === "last_message"}
-                    onClick={() => setMessengerSidebarSortMode("last_message")}
-                  />
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.messengerSidebarSortModeUnreadFirst")}
-                    active={messengerSidebarSortMode === "unread_first"}
-                    onClick={() => setMessengerSidebarSortMode("unread_first")}
-                  />
-                </div>
-              )}
-
-              <RightPanelUserMenuMenuButton
-                label={t("settings.folderLayout")}
-                icon="folder_copy"
-                onClick={() => setFolderLayoutOpen((open) => !open)}
-                right={<MenuChevron open={folderLayoutOpen} />}
-              />
-              {folderLayoutOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  {FOLDER_LAYOUTS.map((layout) => (
-                    <RightPanelUserMenuOptionButton
-                      key={layout}
-                      label={t(FOLDER_LAYOUT_LABEL_KEYS[layout])}
-                      active={folderRailLayout === layout}
-                      onClick={() => setFolderRailLayout(layout)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <RightPanelUserMenuMenuButton
-                label={t("settings.chatListDensity")}
-                icon="lists"
-                onClick={() => setChatListDensityOpen((open) => !open)}
-                right={<MenuChevron open={chatListDensityOpen} />}
-              />
-              {chatListDensityOpen && (
-                <div className={ACCORDION_PANEL_CLASS}>
-                  {CHAT_LIST_DENSITIES.map((density) => (
-                    <RightPanelUserMenuOptionButton
-                      key={density}
-                      label={t(CHAT_LIST_DENSITY_LABEL_KEYS[density])}
-                      active={chatListDensity === density}
-                      onClick={() => setChatListDensity(density)}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
           </section>
 
