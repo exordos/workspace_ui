@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import type * as ComposerDraftActions from "~/entities/composer-draft/composer-draft-actions.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
@@ -251,6 +252,7 @@ function activityMessageOrder(container: HTMLElement, labels: readonly string[])
 
 describe("ActivityPage", () => {
   beforeEach(() => {
+    useActivityStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
@@ -266,6 +268,7 @@ describe("ActivityPage", () => {
   });
 
   afterEach(() => {
+    useActivityStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
@@ -392,10 +395,271 @@ describe("ActivityPage", () => {
           userUuid: WORKSPACE_SESSION.userUuid,
         }),
         pageSize: 50,
+        unreadOnly: false,
         signal: expect.any(AbortSignal),
       }),
     );
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute("aria-pressed", "false");
     expect(fetchWorkspaceStarredMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads unread mentions as a separate server-filtered collection", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    fetchMyMentionsPage
+      .mockResolvedValueOnce({
+        messages: [
+          adaptMessengerMessage(
+            createWorkspaceMessage({
+              uuid: "message-all",
+              mentioned: true,
+              read: true,
+              payload: { kind: "markdown", content: "Mention from all" },
+            }),
+          ),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          adaptMessengerMessage(
+            createWorkspaceMessage({
+              uuid: "message-unread-only",
+              mentioned: true,
+              read: false,
+              payload: { kind: "markdown", content: "Unread mention only" },
+            }),
+          ),
+        ],
+        nextCursor: "older-unread-cursor",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          adaptMessengerMessage(
+            createWorkspaceMessage({
+              uuid: "message-older-unread",
+              mentioned: true,
+              read: false,
+              created_at: "2026-06-22T09:10:00Z",
+              payload: { kind: "markdown", content: "Older unread mention" },
+            }),
+          ),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+    const { container } = renderActivityPage("/activity/mentions");
+
+    expect(await screen.findByText("Mention from all")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Unread" }));
+
+    expect(await screen.findByText("Unread mention only")).toBeInTheDocument();
+    expect(screen.queryByText("Mention from all")).not.toBeInTheDocument();
+    expect(fetchMyMentionsPage).toHaveBeenCalledTimes(2);
+    expect(fetchMyMentionsPage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        pageSize: 50,
+        unreadOnly: true,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute("aria-pressed", "true");
+
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+    fireEvent.scroll(list as HTMLUListElement, { target: { scrollTop: 0 } });
+
+    expect(await screen.findByText("Older unread mention")).toBeInTheDocument();
+    expect(fetchMyMentionsPage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        cursor: "older-unread-cursor",
+        pageSize: 50,
+        unreadOnly: true,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("adds a live mention to the open page without refetching the collection", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    const ownerKey = workspaceRuntimeOwnerKey(WORKSPACE_SESSION);
+    const activityStore = useActivityStore.getState();
+    const bootstrapToken = activityStore.startUnreadMentionsBootstrap(
+      ownerKey,
+      WORKSPACE_SESSION.runtimeGeneration,
+    );
+    activityStore.finishUnreadMentionsBootstrap(
+      ownerKey,
+      WORKSPACE_SESSION.runtimeGeneration,
+      bootstrapToken,
+      [],
+    );
+    mockMentionsPage([
+      createWorkspaceMessage({
+        uuid: "message-existing-mention",
+        mentioned: true,
+        created_at: "2026-06-22T10:00:00Z",
+        payload: { kind: "markdown", content: "Existing mention" },
+      }),
+    ]);
+
+    const { container } = renderActivityPage("/activity/mentions");
+    expect(await screen.findByText("Existing mention")).toBeInTheDocument();
+
+    const liveMessage = adaptMessengerMessage(
+      createWorkspaceMessage({
+        uuid: "message-live-mention",
+        mentioned: true,
+        read: false,
+        created_at: "2026-06-22T10:20:00Z",
+        updated_at: "2026-06-22T10:20:00Z",
+        payload: { kind: "markdown", content: "Live mention" },
+      }),
+    );
+    act(() => {
+      useActivityStore
+        .getState()
+        .applyUnreadMentionMutation(ownerKey, WORKSPACE_SESSION.runtimeGeneration, {
+          kind: "upsert",
+          epochVersion: 20,
+          mention: {
+            uuid: liveMessage.uuid,
+            streamUuid: liveMessage.streamUuid,
+            topicUuid: liveMessage.topicUuid,
+            createdAt: liveMessage.createdAt,
+          },
+        });
+      useActivityStore
+        .getState()
+        .applyLiveMentionMessageMutation(ownerKey, WORKSPACE_SESSION.runtimeGeneration, {
+          kind: "upsert",
+          epochVersion: 20,
+          message: liveMessage,
+        });
+    });
+
+    expect(await screen.findByText("Live mention")).toBeInTheDocument();
+    expect(activityMessageOrder(container, ["Existing mention", "Live mention"])).toEqual([
+      "Live mention",
+      "Existing mention",
+    ]);
+    expect(fetchMyMentionsPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses message read state while the unread mentions index is unavailable", async () => {
+    setWorkspaceSession();
+    mockMentionsPage([
+      createWorkspaceMessage({
+        uuid: "message-unread",
+        read: false,
+        mentioned: true,
+        payload: { kind: "markdown", content: "Unread fallback mention" },
+      }),
+      createWorkspaceMessage({
+        uuid: "message-read",
+        read: true,
+        mentioned: true,
+        payload: { kind: "markdown", content: "Read fallback mention" },
+      }),
+    ]);
+
+    renderActivityPage("/activity/mentions");
+
+    const unreadPreview = await screen.findByText("Unread fallback mention");
+    const unreadRow = unreadPreview.closest("li");
+    const readRow = screen.getByText("Read fallback mention").closest("li");
+    expect(unreadRow).not.toBeNull();
+    expect(readRow).not.toBeNull();
+    expect(
+      within(unreadRow as HTMLElement).getByRole("img", { name: "Unread mention" }),
+    ).toHaveClass("bg-sidebar-unread");
+    expect(unreadRow?.firstElementChild).toHaveClass("bg-card-bg");
+    expect(
+      within(readRow as HTMLElement).queryByRole("img", { name: "Unread mention" }),
+    ).toBeNull();
+    expect(readRow?.firstElementChild).not.toHaveClass("bg-card-bg");
+  });
+
+  it("follows the current owner unread mentions index and its realtime mutations", async () => {
+    setWorkspaceSession();
+    const ownerKey = workspaceRuntimeOwnerKey(WORKSPACE_SESSION);
+    useActivityStore.setState({
+      unreadMentionsOwnerKey: ownerKey,
+      unreadMentionsByUuid: {
+        "message-indexed": {
+          uuid: "message-indexed",
+          streamUuid: MESSAGE_STREAM_UUID,
+          topicUuid: MESSAGE_TOPIC_UUID,
+          createdAt: "2026-06-22T10:10:00Z",
+        },
+      },
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: WORKSPACE_SESSION.runtimeGeneration,
+    });
+    mockMentionsPage([
+      createWorkspaceMessage({
+        uuid: "message-indexed",
+        read: true,
+        mentioned: true,
+        payload: { kind: "markdown", content: "Indexed unread mention" },
+      }),
+    ]);
+
+    renderActivityPage("/activity/mentions");
+
+    expect(await screen.findByRole("img", { name: "Unread mention" })).toBeInTheDocument();
+
+    act(() => {
+      useActivityStore.getState().applyUnreadMentionMutation(ownerKey, 1, {
+        kind: "delete",
+        epochVersion: 1,
+        uuid: "message-indexed",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("img", { name: "Unread mention" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("ignores an unread mentions index from an older runtime generation", async () => {
+    setWorkspaceSession();
+    useActivityStore.setState({
+      unreadMentionsOwnerKey: workspaceRuntimeOwnerKey(WORKSPACE_SESSION),
+      unreadMentionsByUuid: {
+        "message-stale-index": {
+          uuid: "message-stale-index",
+          streamUuid: MESSAGE_STREAM_UUID,
+          topicUuid: MESSAGE_TOPIC_UUID,
+          createdAt: "2026-06-22T10:10:00Z",
+        },
+      },
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: WORKSPACE_SESSION.runtimeGeneration - 1,
+    });
+    mockMentionsPage([
+      createWorkspaceMessage({
+        uuid: "message-stale-index",
+        read: true,
+        mentioned: true,
+        payload: { kind: "markdown", content: "Read mention with stale index" },
+      }),
+    ]);
+
+    renderActivityPage("/activity/mentions");
+
+    expect(await screen.findByText("Read mention with stale index")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Unread mention" })).not.toBeInTheDocument();
   });
 
   it("shows the mentions empty state", async () => {
@@ -405,6 +669,18 @@ describe("ActivityPage", () => {
     renderActivityPage("/activity/mentions");
 
     expect(await screen.findByText("No mentions yet")).toBeInTheDocument();
+  });
+
+  it("shows a specific empty state for unread mentions", async () => {
+    setWorkspaceSession();
+    mockMentionsPage([]);
+
+    renderActivityPage("/activity/mentions");
+    expect(await screen.findByText("No mentions yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unread" }));
+
+    expect(await screen.findByText("No unread mentions")).toBeInTheDocument();
   });
 
   it("shows a retry action when mentions fail to load", async () => {

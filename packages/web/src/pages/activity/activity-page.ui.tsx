@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchMyMentionsPage } from "~/entities/activity/activity-mentions.api";
 import { fetchWorkspaceStarredMessages } from "~/entities/activity/activity-workspace-starred.api";
+import {
+  selectActivityLiveMentionMessages,
+  useActivityStore,
+} from "~/entities/activity/activity.model";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -35,6 +39,8 @@ type ActivityPageFilter = "starred" | "mentions" | "reactions" | "drafts";
 type ActivityMessageFilter = Extract<ActivityPageFilter, "starred" | "mentions">;
 
 const ALL_FILTERS = ["starred", "mentions", "reactions", "drafts"] as const;
+const MENTIONS_FILTERS = ["all", "unread"] as const;
+type ActivityMentionsFilter = (typeof MENTIONS_FILTERS)[number];
 const ACTIVITY_PAGE_SIZE = 50;
 const ACTIVITY_TOP_PAGINATION_THRESHOLD_PX = 64;
 const ACTIVITY_TOP_PAGINATION_REARM_THRESHOLD_PX = 96;
@@ -104,11 +110,13 @@ function ActivityUnsupportedState() {
 
 async function fetchActivityMessagesPage({
   filter,
+  mentionsFilter,
   runtimeContext,
   cursor,
   signal,
 }: {
   filter: ActivityMessageFilter;
+  mentionsFilter: ActivityMentionsFilter;
   runtimeContext: WorkspaceRuntimeContext;
   cursor?: string;
   signal: AbortSignal;
@@ -116,6 +124,7 @@ async function fetchActivityMessagesPage({
   if (filter === "mentions") {
     return fetchMyMentionsPage({
       runtimeContext,
+      unreadOnly: mentionsFilter === "unread",
       pageSize: ACTIVITY_PAGE_SIZE,
       ...(cursor == null ? {} : { cursor }),
       signal,
@@ -153,9 +162,19 @@ export const ActivityPage: React.FC = () => {
     () => (runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext)),
     [runtimeContext],
   );
+  const liveMentionMessagesByUuid = useActivityStore((state) =>
+    selectActivityLiveMentionMessages(state, ownerKey, runtimeContext?.runtimeGeneration ?? null),
+  );
   const workspaceStreamsById = useMessengerStore((s) => s.streamsById);
   const workspaceTopicsById = useMessengerStore((s) => s.topicsById);
+  const unreadMentionsByUuid = useActivityStore((state) => state.unreadMentionsByUuid);
+  const unreadMentionsOwnerKey = useActivityStore((state) => state.unreadMentionsOwnerKey);
+  const unreadMentionsRuntimeGeneration = useActivityStore(
+    (state) => state.unreadMentionsRuntimeGeneration,
+  );
+  const unreadMentionsStatus = useActivityStore((state) => state.unreadMentionsStatus);
   const openWorkspaceForward = useWorkspaceForwardMessageStore((s) => s.open);
+  const [mentionsFilter, setMentionsFilter] = useState<ActivityMentionsFilter>("all");
   const [activityMessagesState, setActivityMessagesState] = useState<ActivityMessagesState>({
     collectionKey: null,
     messages: EMPTY_ACTIVITY_MESSAGES,
@@ -181,9 +200,13 @@ export const ActivityPage: React.FC = () => {
       : null;
   const activityMessageFilter: ActivityMessageFilter | null =
     validFilter === "starred" || validFilter === "mentions" ? validFilter : null;
+  const activityCollection =
+    activityMessageFilter === "mentions"
+      ? `${activityMessageFilter}:${mentionsFilter}`
+      : activityMessageFilter;
   const collectionKey =
-    ownerKey != null && activityMessageFilter != null
-      ? `${ownerKey}:activity:${activityMessageFilter}`
+    ownerKey != null && activityCollection != null
+      ? `${ownerKey}:activity:${activityCollection}`
       : null;
   const stateBelongsToCollection =
     collectionKey != null && activityMessagesState.collectionKey === collectionKey;
@@ -200,6 +223,28 @@ export const ActivityPage: React.FC = () => {
   const nextCursor = stateBelongsToCollection ? activityMessagesState.nextCursor : null;
   const hasLoadError = stateBelongsToCollection && activityMessagesState.error;
   const hasPaginationError = stateBelongsToCollection && activityMessagesState.paginationError;
+  const unreadMentionsIndexReady =
+    ownerKey != null &&
+    runtimeContext != null &&
+    unreadMentionsOwnerKey === ownerKey &&
+    unreadMentionsRuntimeGeneration === runtimeContext.runtimeGeneration &&
+    unreadMentionsStatus === "ready";
+  const visibleActivityMessages = useMemo(() => {
+    if (validFilter !== "mentions") return activityMessages;
+    const liveMessages = Object.values(liveMentionMessagesByUuid).filter(
+      (message) =>
+        mentionsFilter === "all" ||
+        (unreadMentionsIndexReady ? unreadMentionsByUuid[message.uuid] != null : !message.read),
+    );
+    return sortUniqueActivityMessages([...liveMessages, ...activityMessages], "newest-first");
+  }, [
+    activityMessages,
+    liveMentionMessagesByUuid,
+    mentionsFilter,
+    unreadMentionsByUuid,
+    unreadMentionsIndexReady,
+    validFilter,
+  ]);
   const activityMessageOrder: ActivityMessageOrder =
     activityMessageFilter != null ? "newest-first" : "oldest-first";
   const isNewestFirst = activityMessageOrder === "newest-first";
@@ -255,6 +300,7 @@ export const ActivityPage: React.FC = () => {
     const requestRuntimeContext = runtimeContext;
     void fetchActivityMessagesPage({
       filter: activityMessageFilter,
+      mentionsFilter,
       runtimeContext: requestRuntimeContext,
       signal: controller.signal,
     })
@@ -309,21 +355,28 @@ export const ActivityPage: React.FC = () => {
       loadMoreAbortRef.current?.abort();
       loadMoreAbortRef.current = null;
     };
-  }, [activityMessageFilter, activityMessageOrder, collectionKey, reloadVersion, runtimeContext]);
+  }, [
+    activityMessageFilter,
+    activityMessageOrder,
+    collectionKey,
+    mentionsFilter,
+    reloadVersion,
+    runtimeContext,
+  ]);
 
   useLayoutEffect(() => {
     if (collectionKey == null) {
       initialScrollPositionKeyRef.current = null;
       return;
     }
-    if (isInitialLoading || activityMessages.length === 0) return;
+    if (isInitialLoading || visibleActivityMessages.length === 0) return;
     if (initialScrollPositionKeyRef.current === collectionKey) return;
     const el = listScrollRef.current;
     if (!el) return;
     el.scrollTop = isNewestFirst ? 0 : el.scrollHeight;
     initialScrollPositionKeyRef.current = collectionKey;
     paginationArmedRef.current = true;
-  }, [activityMessages.length, collectionKey, isInitialLoading, isNewestFirst]);
+  }, [collectionKey, isInitialLoading, isNewestFirst, visibleActivityMessages.length]);
 
   useLayoutEffect(() => {
     const pending = pendingScrollRestoreRef.current;
@@ -394,6 +447,7 @@ export const ActivityPage: React.FC = () => {
 
     void fetchActivityMessagesPage({
       filter: activityMessageFilter,
+      mentionsFilter,
       runtimeContext: requestRuntimeContext,
       cursor: requestCursor,
       signal: controller.signal,
@@ -458,6 +512,7 @@ export const ActivityPage: React.FC = () => {
     nextCursor,
     runtimeContext,
     isNewestFirst,
+    mentionsFilter,
   ]);
 
   const handleListScroll = useCallback(
@@ -524,7 +579,7 @@ export const ActivityPage: React.FC = () => {
     if (isInitialLoading) {
       return <div className="p-4 text-sm text-text-muted">{t("app.loading")}</div>;
     }
-    if (hasLoadError && activityMessages.length === 0) {
+    if (hasLoadError && visibleActivityMessages.length === 0) {
       return (
         <div className="m-3 rounded-lg border border-border-subtle p-3 text-sm text-notice-base">
           <p>{t("activity.messagesLoadError")}</p>
@@ -538,12 +593,13 @@ export const ActivityPage: React.FC = () => {
         </div>
       );
     }
-    if (activityMessages.length === 0) {
-      return (
-        <div className="p-4 text-sm text-text-muted">
-          {validFilter === "mentions" ? t("activity.mentionsEmpty") : t("chat.noMessages")}
-        </div>
-      );
+    if (visibleActivityMessages.length === 0) {
+      let emptyMessageKey = "chat.noMessages";
+      if (validFilter === "mentions") {
+        emptyMessageKey =
+          mentionsFilter === "unread" ? "activity.unreadMentionsEmpty" : "activity.mentionsEmpty";
+      }
+      return <div className="p-4 text-sm text-text-muted">{t(emptyMessageKey)}</div>;
     }
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -566,7 +622,15 @@ export const ActivityPage: React.FC = () => {
           </button>
         ) : null}
         <ActivityMessageList
-          messages={activityMessages}
+          messages={visibleActivityMessages}
+          getIsUnread={
+            validFilter === "mentions"
+              ? (message) =>
+                  unreadMentionsIndexReady
+                    ? unreadMentionsByUuid[message.uuid] != null
+                    : !message.read
+              : undefined
+          }
           streamsById={workspaceStreamsById}
           topicsById={workspaceTopicsById}
           listRef={listScrollRef}
@@ -588,6 +652,34 @@ export const ActivityPage: React.FC = () => {
         onOpenSearch={openSearch ?? undefined}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {validFilter === "mentions" ? (
+          <div
+            className="flex shrink-0 border-b border-border-subtle px-3 py-2"
+            role="group"
+            aria-label={t("activity.mentionsFilter")}
+          >
+            <div className="inline-flex gap-0.5 rounded-lg bg-bg p-0.5">
+              {MENTIONS_FILTERS.map((value) => {
+                const selected = mentionsFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setMentionsFilter(value)}
+                    className={`h-7 rounded-md px-3 text-xs font-medium transition-colors ${
+                      selected
+                        ? "bg-card-bg text-text-primary"
+                        : "text-text-muted hover:bg-card-bg-active hover:text-text-primary"
+                    }`}
+                  >
+                    {t(value === "all" ? "activity.allMentions" : "activity.unreadMentions")}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         {renderActivityContent()}
       </section>
     </div>

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 
 export interface ActivityUnreadMention {
   uuid: string;
@@ -24,6 +25,17 @@ export type ActivityUnreadMentionMutation =
   | { kind: "clear-topic"; epochVersion: number; streamUuid: string; topicUuid: string }
   | { kind: "clear-stream"; epochVersion: number; streamUuid: string };
 
+export type ActivityLiveMentionMessageMutation =
+  | { kind: "upsert"; epochVersion: number; message: MessengerMessage }
+  | { kind: "delete"; epochVersion: number; uuid: string };
+
+interface LiveMentionMessagesState {
+  liveMentionMessagesByUuid: Record<string, MessengerMessage>;
+  liveMentionMessagesOwnerKey: string | null;
+  liveMentionMessagesRuntimeGeneration: number | null;
+  liveMentionMessagesLastEpochVersion: number | null;
+}
+
 interface UnreadMentionsIndexState {
   unreadMentionsByUuid: Record<string, ActivityUnreadMention>;
   unreadMentionsCount: number | null;
@@ -34,7 +46,7 @@ interface UnreadMentionsIndexState {
   unreadMentionsLastEpochVersion: number | null;
 }
 
-export interface ActivityState extends UnreadMentionsIndexState {
+export interface ActivityState extends UnreadMentionsIndexState, LiveMentionMessagesState {
   staleVersion: number;
   unreadMentionsOwnerKey: string | null;
   markStale: () => void;
@@ -53,6 +65,11 @@ export interface ActivityState extends UnreadMentionsIndexState {
     runtimeGeneration: number,
     mutation: ActivityUnreadMentionMutation,
   ) => void;
+  applyLiveMentionMessageMutation: (
+    ownerKey: string,
+    runtimeGeneration: number,
+    mutation: ActivityLiveMentionMessageMutation,
+  ) => void;
   clear: () => void;
 }
 
@@ -67,6 +84,28 @@ const emptyUnreadMentionsIndex: UnreadMentionsIndexState = {
   unreadMentionsBufferedMutations: [],
   unreadMentionsLastEpochVersion: null,
 };
+
+const emptyLiveMentionMessages: LiveMentionMessagesState = {
+  liveMentionMessagesByUuid: {},
+  liveMentionMessagesOwnerKey: null,
+  liveMentionMessagesRuntimeGeneration: null,
+  liveMentionMessagesLastEpochVersion: null,
+};
+
+const EMPTY_LIVE_MENTION_MESSAGES_BY_UUID: Readonly<Record<string, MessengerMessage>> = {};
+
+export function selectActivityLiveMentionMessages(
+  state: ActivityState,
+  ownerKey: string | null,
+  runtimeGeneration: number | null,
+): Readonly<Record<string, MessengerMessage>> {
+  return ownerKey != null &&
+    runtimeGeneration != null &&
+    state.liveMentionMessagesOwnerKey === ownerKey &&
+    state.liveMentionMessagesRuntimeGeneration === runtimeGeneration
+    ? state.liveMentionMessagesByUuid
+    : EMPTY_LIVE_MENTION_MESSAGES_BY_UUID;
+}
 
 interface UnreadMentionsMutationResult {
   unreadMentionsByUuid: Record<string, ActivityUnreadMention>;
@@ -213,28 +252,58 @@ function isCurrentUnreadMentionsRuntime(
   );
 }
 
+function isCurrentLiveMentionMessagesRuntime(
+  state: ActivityState,
+  ownerKey: string,
+  runtimeGeneration: number,
+): boolean {
+  return (
+    state.liveMentionMessagesOwnerKey === ownerKey &&
+    state.liveMentionMessagesRuntimeGeneration === runtimeGeneration
+  );
+}
+
 export const useActivityStore = create<ActivityState>((set, get) => ({
   staleVersion: 0,
   unreadMentionsOwnerKey: null,
   ...emptyUnreadMentionsIndex,
+  ...emptyLiveMentionMessages,
   markStale: () => set((state) => ({ staleVersion: state.staleVersion + 1 })),
   setUnreadMentionsOwner: (ownerKey) =>
     set((state) =>
       state.unreadMentionsOwnerKey === ownerKey
         ? state
-        : { unreadMentionsOwnerKey: ownerKey, ...emptyUnreadMentionsIndex },
+        : {
+            ...emptyUnreadMentionsIndex,
+            ...emptyLiveMentionMessages,
+            unreadMentionsOwnerKey: ownerKey,
+            liveMentionMessagesOwnerKey: ownerKey,
+          },
     ),
   startUnreadMentionsBootstrap: (ownerKey, runtimeGeneration) => {
     const token = ++nextUnreadMentionsBootstrapToken;
-    set({
-      unreadMentionsOwnerKey: ownerKey,
-      unreadMentionsByUuid: {},
-      unreadMentionsCount: null,
-      unreadMentionsStatus: "loading",
-      unreadMentionsRuntimeGeneration: runtimeGeneration,
-      unreadMentionsBootstrapToken: token,
-      unreadMentionsBufferedMutations: [],
-      unreadMentionsLastEpochVersion: null,
+    set((state) => {
+      const preserveLiveMessages = isCurrentLiveMentionMessagesRuntime(
+        state,
+        ownerKey,
+        runtimeGeneration,
+      );
+      return {
+        unreadMentionsOwnerKey: ownerKey,
+        unreadMentionsByUuid: {},
+        unreadMentionsCount: null,
+        unreadMentionsStatus: "loading",
+        unreadMentionsRuntimeGeneration: runtimeGeneration,
+        unreadMentionsBootstrapToken: token,
+        unreadMentionsBufferedMutations: [],
+        unreadMentionsLastEpochVersion: null,
+        liveMentionMessagesByUuid: preserveLiveMessages ? state.liveMentionMessagesByUuid : {},
+        liveMentionMessagesOwnerKey: ownerKey,
+        liveMentionMessagesRuntimeGeneration: runtimeGeneration,
+        liveMentionMessagesLastEpochVersion: preserveLiveMessages
+          ? state.liveMentionMessagesLastEpochVersion
+          : null,
+      };
     });
     return token;
   },
@@ -331,5 +400,41 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
         }),
       };
     }),
-  clear: () => set({ staleVersion: 0, unreadMentionsOwnerKey: null, ...emptyUnreadMentionsIndex }),
+  applyLiveMentionMessageMutation: (ownerKey, runtimeGeneration, mutation) =>
+    set((state) => {
+      if (!isCurrentLiveMentionMessagesRuntime(state, ownerKey, runtimeGeneration)) return state;
+      if (
+        state.liveMentionMessagesLastEpochVersion != null &&
+        mutation.epochVersion <= state.liveMentionMessagesLastEpochVersion
+      ) {
+        return state;
+      }
+
+      if (mutation.kind === "upsert") {
+        return {
+          liveMentionMessagesByUuid: {
+            ...state.liveMentionMessagesByUuid,
+            [mutation.message.uuid]: mutation.message,
+          },
+          liveMentionMessagesLastEpochVersion: mutation.epochVersion,
+        };
+      }
+
+      if (state.liveMentionMessagesByUuid[mutation.uuid] == null) {
+        return { liveMentionMessagesLastEpochVersion: mutation.epochVersion };
+      }
+      const liveMentionMessagesByUuid = { ...state.liveMentionMessagesByUuid };
+      delete liveMentionMessagesByUuid[mutation.uuid];
+      return {
+        liveMentionMessagesByUuid,
+        liveMentionMessagesLastEpochVersion: mutation.epochVersion,
+      };
+    }),
+  clear: () =>
+    set({
+      staleVersion: 0,
+      unreadMentionsOwnerKey: null,
+      ...emptyUnreadMentionsIndex,
+      ...emptyLiveMentionMessages,
+    }),
 }));

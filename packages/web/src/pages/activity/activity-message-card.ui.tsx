@@ -35,6 +35,8 @@ function ActivityMessageSenderName({
 
 export interface ActivityMessageCardProps {
   message: MessengerMessage;
+  isUnread: boolean;
+  showUnreadMarker: boolean;
   stream?: MessengerStream;
   topic?: MessengerTopic;
   onOpen: (message: MessengerMessage) => void;
@@ -43,6 +45,8 @@ export interface ActivityMessageCardProps {
 
 export function ActivityMessageCard({
   message,
+  isUnread,
+  showUnreadMarker,
   stream,
   topic,
   onOpen,
@@ -59,7 +63,20 @@ export function ActivityMessageCard({
   ).text;
 
   return (
-    <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
+    <div
+      className={`group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg ${isUnread ? "bg-card-bg" : ""}`}
+    >
+      {showUnreadMarker ? (
+        <span className="mt-1.5 flex size-2 shrink-0 items-center justify-center">
+          {isUnread ? (
+            <span
+              role="img"
+              aria-label={t("activity.unreadMention")}
+              className="size-2 rounded-full bg-sidebar-unread"
+            />
+          ) : null}
+        </span>
+      ) : null}
       <button type="button" onClick={() => onOpen(message)} className="min-w-0 flex-1 text-left">
         <div className="flex items-start justify-between gap-2">
           <span className="shrink-0 text-[11px] text-text-muted">
@@ -75,10 +92,14 @@ export function ActivityMessageCard({
             <span className="truncate text-[11px] text-text-muted">{privateContext}</span>
           ) : null}
         </div>
-        <p className="mt-0.5 text-xs text-sidebar-sender">
+        <p className={`mt-0.5 text-xs text-sidebar-sender ${isUnread ? "font-medium" : ""}`}>
           <ActivityMessageSenderName authorUuid={message.authorUuid} />
         </p>
-        <p className="mt-1 line-clamp-2 text-sm text-text-primary">{preview}</p>
+        <p
+          className={`mt-1 line-clamp-2 text-sm text-text-primary ${isUnread ? "font-medium" : ""}`}
+        >
+          {preview}
+        </p>
       </button>
       <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button

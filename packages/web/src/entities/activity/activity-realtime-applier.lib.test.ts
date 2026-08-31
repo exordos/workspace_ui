@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { normalizeWorkspaceWebSocketFrame } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
@@ -109,6 +110,89 @@ afterEach(() => {
 });
 
 describe("activity realtime applier", () => {
+  it("records a full live mention from message.created and removes it on delete", () => {
+    bootstrap();
+    const applier = createActivityRealtimeApplier();
+    const websocketEvent = normalizeWorkspaceWebSocketFrame({
+      schema_version: 1,
+      uuid: "99999999-9999-4999-8999-999999999999",
+      epoch_version: 5,
+      project_id: PROJECT_UUID,
+      user_uuid: USER_UUID,
+      object_type: "message",
+      action: "created",
+      payload: {
+        kind: "message.created",
+        ...messageDto({ payload: { kind: "markdown", content: "A live mention" } }),
+      },
+      created_at: DATE,
+      updated_at: DATE,
+    });
+    if (websocketEvent == null) throw new Error("Expected a normalized message.created event");
+
+    applier.applyEvent(websocketEvent, context);
+
+    expect(useActivityStore.getState()).toMatchObject({
+      liveMentionMessagesByUuid: {
+        [MESSAGE_UUID]: {
+          uuid: MESSAGE_UUID,
+          projectId: PROJECT_UUID,
+          streamUuid: STREAM_UUID,
+          topicUuid: TOPIC_UUID,
+          payload: { kind: "markdown", content: "A live mention" },
+          read: false,
+          mentioned: true,
+        },
+      },
+      liveMentionMessagesLastEpochVersion: 5,
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 6,
+        type: "message",
+        kind: "message.deleted",
+        message: {
+          uuid: MESSAGE_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+        },
+      },
+      context,
+    );
+
+    expect(useActivityStore.getState()).toMatchObject({
+      liveMentionMessagesByUuid: {},
+      liveMentionMessagesLastEpochVersion: 6,
+    });
+  });
+
+  it("does not add non-mentions or events from an inactive surface to the live overlay", () => {
+    bootstrap();
+    const applier = createActivityRealtimeApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 7,
+        type: "message",
+        kind: "message.created",
+        message: messageDto({ uuid: "88888888-8888-4888-8888-888888888888", mentioned: false }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 8,
+        type: "message",
+        kind: "message.created",
+        message: messageDto(),
+      },
+      { ...context, surface: "background" },
+    );
+
+    expect(useActivityStore.getState().liveMentionMessagesByUuid).toEqual({});
+  });
+
   it("reconciles message snapshots and treats message.read as a topic boundary", () => {
     bootstrap([
       {
