@@ -16,8 +16,13 @@ const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 vi.mock("./right-panel-external-account.integration", () => ({
   RightPanelConnectExternalAccountDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog">Connect external account</div> : null,
-  RightPanelExternalAccountsList: () => (
-    <div data-testid="connected-external-accounts-list">Zulip · https://zulip.example.com</div>
+  RightPanelExternalAccountsList: ({ onConnect }: { onConnect: () => void }) => (
+    <>
+      <div data-testid="connected-external-accounts-list">Zulip · connected</div>
+      <button type="button" data-testid="connect-external-account-trigger" onClick={onConnect}>
+        Connect service
+      </button>
+    </>
   ),
 }));
 
@@ -206,15 +211,12 @@ describe("RightPanelShell", () => {
     expect(screen.queryByTestId("connected-external-accounts-list")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^external accounts$/i }));
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
-      "Zulip · https://zulip.example.com",
+      "Zulip · connected",
     );
     expect(screen.getByTestId("manage-external-provider-entry")).toHaveTextContent(
       "workspace.example.com",
     );
     const connectTrigger = screen.getByTestId("connect-external-account-trigger");
-    expect(connectTrigger).toHaveClass("text-on-accent");
-    // Must opt out: global icon-only CSS treats svg+text as icon-only and forces gray label
-    expect(connectTrigger).toHaveAttribute("data-icon-hover", "custom");
     fireEvent.click(connectTrigger);
     expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");
   });

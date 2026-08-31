@@ -213,6 +213,7 @@ describe("Icon", () => {
       "desktop_windows.svg": "#707070",
       "list_arrow.svg": "#707070",
       "wb_sunny.svg": "#FFD633",
+      "zulip-external-account.svg": "#4B98E6",
     };
 
     expect(files.length).toBeGreaterThan(0);

@@ -16,7 +16,6 @@ import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
-import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
@@ -303,29 +302,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                     right={<MenuChevron open={externalAccountsOpen} />}
                   />
                   {externalAccountsOpen && (
-                    <div className="space-y-3 px-4 py-3" data-testid="user-menu-external-accounts">
-                      {/* Connected accounts (or empty/loading) sit above the CTA */}
-                      <RightPanelExternalAccountsList />
-
-                      {/* Primary action: accent CTA, not a menu row — no chevron */}
-                      <div className="space-y-1.5">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          className="w-full gap-1.5"
-                          onClick={() => setExternalAccountDialogOpen(true)}
-                          aria-label={t("connectExternalAccount.connect")}
-                          data-testid="connect-external-account-trigger"
-                        >
-                          <Icon name="add" size={16} className="shrink-0 text-current" />
-                          <span>{t("connectExternalAccount.connect")}</span>
-                        </Button>
-                        <p className="px-1 text-center text-[11px] leading-4 text-text-muted">
-                          {t("connectExternalAccount.connectHint")}
-                        </p>
-                      </div>
-
+                    <div
+                      className="space-y-3 py-3 pl-4 pr-2"
+                      data-testid="user-menu-external-accounts"
+                    >
+                      <RightPanelExternalAccountsList
+                        onConnect={() => setExternalAccountDialogOpen(true)}
+                      />
                       <ManageExternalProviderEntry runtimeContext={currentWorkspaceSession} />
                     </div>
                   )}

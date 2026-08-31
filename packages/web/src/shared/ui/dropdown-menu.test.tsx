@@ -74,7 +74,7 @@ describe("DropdownMenu", () => {
     fireEvent.click(deleteItem);
 
     expect(onDelete).toHaveBeenCalledTimes(1);
-    expect(deleteItem).toHaveClass("text-notice-base");
+    expect(deleteItem).toHaveClass("!text-notice-base");
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "Disabled toggle" })).toHaveAttribute(
       "data-disabled",

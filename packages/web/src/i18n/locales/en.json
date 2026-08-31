@@ -172,6 +172,7 @@
     "showToken": "Show token",
     "hideToken": "Hide token",
     "connect": "Connect",
+    "connectService": "Connect service",
     "reconnect": "Reconnect",
     "manage": "View connection",
     "reenterCredentials": "Enter credentials again",
@@ -238,6 +239,7 @@
       "disconnected": "Synchronization is stopped",
       "suspended": "The integration was suspended by an administrator",
       "connected": "Account connected",
+      "connectedShort": "Connected",
       "checking": "Checking…",
       "checkingShort": "Checking",
       "unsupportedProvider": "This provider is not supported yet"
@@ -245,6 +247,9 @@
   },
   "externalAccounts": {
     "title": "External accounts",
+    "connected": "Connected",
+    "connectedHint": "Linked services let you sign in to the same profile from different messengers without setting it up again",
+    "actions": "External account actions",
     "manageIntegrations": "Integration settings",
     "manageIntegrationsHint": "Organization-wide external service settings"
   },

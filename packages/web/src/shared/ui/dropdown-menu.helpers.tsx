@@ -28,7 +28,7 @@ const DEFAULT_ITEM_CLASS_NAME =
 
 /** Danger styling layered on top of the base item contract. */
 const DEFAULT_DANGER_ITEM_CLASS_NAME =
-  "text-notice-base data-[highlighted]:bg-notice-base/10 hover:bg-notice-base/10 data-[highlighted]:text-notice-base hover:text-notice-base";
+  "!text-notice-base data-[highlighted]:bg-notice-base/10 hover:bg-notice-base/10 data-[highlighted]:!text-notice-base hover:!text-notice-base";
 
 /** Base separator styling. */
 const DEFAULT_SEPARATOR_CLASS_NAME = "mx-2 my-1 h-px bg-border-subtle";

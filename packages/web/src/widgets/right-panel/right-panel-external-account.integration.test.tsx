@@ -177,25 +177,26 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     seedRuntime();
     seedAccounts([account]);
 
-    renderWithProviders(<RightPanelExternalAccountsList />);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
-    // Flat card: actions are always visible without expanding
-    fireEvent.click(screen.getByRole("button", { name: "Add chats" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure chats" }));
 
     expect(await screen.findByText("Support")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveTextContent("Zulip chat sync");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
-  it("keeps account deletion available from the flat card", () => {
+  it("keeps account deletion available from the account actions menu", () => {
     seedRuntime();
     seedAccounts([account]);
 
-    renderWithProviders(<RightPanelExternalAccountsList />);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
-    const deleteButton = screen.getByRole("button", { name: "Delete" });
-    expect(deleteButton).toHaveClass("text-danger");
-    fireEvent.click(deleteButton);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
+    const deleteItem = screen.getByRole("menuitem", { name: "Delete connection" });
+    expect(deleteItem).toHaveClass("!text-notice-base");
+    fireEvent.click(deleteItem);
 
     expect(screen.getByRole("dialog")).toHaveTextContent("Delete connection");
   });
@@ -204,7 +205,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     seedRuntime();
     seedAccounts([]);
 
-    renderWithProviders(<RightPanelExternalAccountsList />);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
@@ -216,14 +217,13 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     seedRuntime();
     seedAccounts([account]);
 
-    renderWithProviders(<RightPanelExternalAccountsList />);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
     expect(document.querySelector("details")).toBeNull();
-    expect(screen.getByTestId("external-account-card")).toHaveTextContent("user@example.com");
-    expect(screen.getByTestId("external-account-card")).toHaveTextContent(
-      "Zulip · https://zulip.example.com",
-    );
-    expect(screen.getByRole("button", { name: "Add chats" })).toBeInTheDocument();
+    expect(screen.getByTestId("external-account-row")).toHaveTextContent("user@example.com");
+    expect(screen.getByTestId("external-account-row")).toHaveTextContent("Zulip");
+    expect(screen.getByTestId("external-account-row")).toHaveTextContent("Loading history…");
+    expect(screen.getByRole("button", { name: "Connect service" })).toBeInTheDocument();
   });
 
   it("uses synchronization wording for an automatic account", () => {
@@ -235,9 +235,10 @@ describe("RightPanelConnectExternalAccountDialog", () => {
       },
     ]);
 
-    renderWithProviders(<RightPanelExternalAccountsList />);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Configure" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add chats" })).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
+    expect(screen.getByRole("menuitem", { name: "Configure chats" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Configure" })).not.toBeInTheDocument();
   });
 });
