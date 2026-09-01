@@ -414,6 +414,8 @@ export async function markMessengerMessageRead({
       cache.patchCachedMessage?.(action.ownerKey, { ...effectiveMessage, read: true }),
     );
   }
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
@@ -498,6 +500,8 @@ export async function markMessengerMessagesReadUpTo({
     }
   }
 
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   useActivityStore.getState().invalidateUnreadMentions(action.ownerKey);
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }

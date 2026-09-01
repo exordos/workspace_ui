@@ -490,6 +490,76 @@ describe("messenger message actions", () => {
     expect(cache.markCachedMessagesRead).not.toHaveBeenCalled();
   });
 
+  it("keeps a newer unread-mentions index when a message read cache write finishes late", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeAAfterSwitch = createRuntimeContext({ runtimeGeneration: 3 });
+    const ownerKey = prepareStoreOwner(runtimeA);
+    seedUnreadMention(ownerKey, runtimeA.runtimeGeneration);
+    const cacheWrite = createDeferred<void>();
+    const advanceReadBoundary = vi.fn(() => cacheWrite.promise);
+    let currentRuntime = runtimeA;
+
+    const action = markMessengerMessageRead({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => currentRuntime,
+      messageUuid: MESSAGE_A,
+      client: { markMessagesReadUpTo: () => Promise.resolve(createMessageDto({ read: true })) },
+      cache: { advanceReadBoundary },
+    });
+    await vi.waitFor(() => expect(advanceReadBoundary).toHaveBeenCalledOnce());
+
+    currentRuntime = runtimeAAfterSwitch;
+    seedUnreadMention(ownerKey, runtimeAAfterSwitch.runtimeGeneration);
+    cacheWrite.resolve();
+
+    await expect(action).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 0,
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: runtimeAAfterSwitch.runtimeGeneration,
+    });
+  });
+
+  it("keeps a newer unread-mentions index when a bulk read cache write finishes late", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeAAfterSwitch = createRuntimeContext({ runtimeGeneration: 3 });
+    const ownerKey = prepareStoreOwner(runtimeA);
+    seedUnreadMention(ownerKey, runtimeA.runtimeGeneration);
+    const cacheWrite = createDeferred<void>();
+    const advanceReadBoundary = vi.fn(() => cacheWrite.promise);
+    let currentRuntime = runtimeA;
+
+    const action = markMessengerMessagesReadUpTo({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => currentRuntime,
+      messageUuid: MESSAGE_A,
+      client: { markMessagesReadUpTo: () => Promise.resolve(createMessageDto({ read: true })) },
+      cache: { advanceReadBoundary },
+    });
+    await vi.waitFor(() => expect(advanceReadBoundary).toHaveBeenCalledOnce());
+
+    currentRuntime = runtimeAAfterSwitch;
+    seedUnreadMention(ownerKey, runtimeAAfterSwitch.runtimeGeneration);
+    cacheWrite.resolve();
+
+    await expect(action).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 0,
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: runtimeAAfterSwitch.runtimeGeneration,
+    });
+  });
+
   it("deletes and marks messages as read through Workspace actions", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
