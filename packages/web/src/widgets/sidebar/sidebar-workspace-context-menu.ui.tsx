@@ -438,6 +438,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
             {
               type: "action" as const,
               key: "rename-stream",
+              icon: "pen",
               label: t("common.rename"),
               onSelect: handleRename,
             },
