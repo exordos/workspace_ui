@@ -6,6 +6,60 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-01
+
+### Added
+
+- Sidebar search now finds conversations across folders, and the Activity view
+  can filter unread items while receiving live mention updates.
+- The message composer supports inline image references with removal controls.
+- Administrators see topic-summary settings and endpoint controls according to
+  their Workspace IAM capabilities.
+- Channels can be renamed from the sidebar, and multi-user provider direct
+  messages support local channel names.
+
+### Changed
+
+- Appearance settings, connected-account management, topic-summary settings,
+  and right-panel interactions have refreshed layouts and controls.
+- The desktop client reduces background CPU and power usage by pausing
+  nonessential animations and adapting presence, call, and scheduled-send work
+  to window activity, battery state, suspend, and resume.
+- Messenger action icons have been updated for clearer reply, forward, copy,
+  edit, and completion controls.
+
+### Fixed
+
+- Unread mention counts refresh after realtime reconnects and successful read
+  actions without allowing stale account work to overwrite current state.
+- Manual away status is preserved by presence heartbeats, and realtime resumes
+  safely after system wake.
+- Desktop notifications no longer announce stale messages, order aggregates by
+  processing time instead of message time, or notify for the conversation
+  already visible in the focused window.
+- Conversation switching keeps the message list mounted, restores known
+  positions sooner, avoids replacing visible data with an older cache window,
+  and reserves image layout before previews load to prevent scroll jumps.
+- Provider-backed chats remain stable while stream names, notification modes,
+  read state, and external operation events update concurrently.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.5.2`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Topic-summary controls are capability-gated and stay unavailable when the IAM
+  capability response cannot authorize them.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.6.0` after the compatible Workspace backend is in
+  place for the enabled provider, stream, and topic-summary features.
+- No manual migration is required.
+
 ## [0.5.2] — 2026-08-28
 
 ### Fixed
