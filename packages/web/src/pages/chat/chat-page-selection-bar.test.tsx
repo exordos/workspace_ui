@@ -116,12 +116,12 @@ describe("ChatPageSelectionBar", () => {
     expect(replyIcon).toBeInTheDocument();
     expect(replyIcon).toHaveAttribute("width", "28");
     expect(replyIcon).toHaveAttribute("height", "28");
-    expect(replyIcon).toHaveAttribute("viewBox", "0 0 28 28");
+    expect(replyIcon).toHaveAttribute("viewBox", "3 5 22 18");
     const forwardIcon = forwardButton.querySelector("svg");
     expect(forwardIcon).toBeInTheDocument();
     expect(forwardIcon).toHaveAttribute("width", "28");
     expect(forwardIcon).toHaveAttribute("height", "28");
-    expect(forwardIcon).toHaveAttribute("viewBox", "0 0 28 28");
+    expect(forwardIcon).toHaveAttribute("viewBox", "3 5 22 18");
     expect(forwardIcon?.querySelector("path")).toHaveAttribute(
       "d",
       expect.stringContaining("24.4796 12.94"),

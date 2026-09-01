@@ -5922,8 +5922,8 @@ describe("WorkspaceMessageList", () => {
     expect(forwardItem).toBeInTheDocument();
     expect(replyItem.querySelector("svg")).not.toHaveClass("rotate-180");
     expect(forwardItem.querySelector("svg")).not.toHaveClass("rotate-180");
-    expect(replyItem.querySelector("svg")).toHaveAttribute("viewBox", "0 0 28 28");
-    expect(forwardItem.querySelector("svg")).toHaveAttribute("viewBox", "0 0 28 28");
+    expect(replyItem.querySelector("svg")).toHaveAttribute("viewBox", "3 5 22 18");
+    expect(forwardItem.querySelector("svg")).toHaveAttribute("viewBox", "3 5 22 18");
     expect(screen.getByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
