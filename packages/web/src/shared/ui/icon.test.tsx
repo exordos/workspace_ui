@@ -106,19 +106,29 @@ describe("Icon", () => {
     expect(topicFollow).not.toMatch(/viewBox="0 0 16 16"/);
   });
 
-  it("keeps reply and forward on the distinct Figma 28×28 directions", () => {
+  it("keeps reply and forward on tight direction bounds", () => {
     const reply = readFileSync(resolve(ICONS_DIR, "reply.svg"), "utf8");
     const forward = readFileSync(resolve(ICONS_DIR, "forward.svg"), "utf8");
     const replyPath = /<path\s+[^>]*d="([^"]+)"[^>]*fill="currentColor"/.exec(reply)?.[1];
     const forwardPath = /<path\s+[^>]*d="([^"]+)"[^>]*fill="currentColor"/.exec(forward)?.[1];
 
-    expect(reply).toMatch(/viewBox="0 0 28 28"/);
-    expect(forward).toMatch(/viewBox="0 0 28 28"/);
+    expect(reply).toMatch(/viewBox="3 5 22 18"/);
+    expect(forward).toMatch(/viewBox="3 5 22 18"/);
     expect(reply).toMatch(/fill="currentColor"/);
     expect(forward).toMatch(/fill="currentColor"/);
     expect(replyPath).toContain("3.52041 12.94");
     expect(forwardPath).toContain("24.4796 12.94");
     expect(replyPath).not.toBe(forwardPath);
+  });
+
+  it("keeps context-menu action icons on tight bounds", () => {
+    const copy = readFileSync(resolve(ICONS_DIR, "copy.svg"), "utf8");
+    const check = readFileSync(resolve(ICONS_DIR, "check.svg"), "utf8");
+    const pen = readFileSync(resolve(ICONS_DIR, "pen.svg"), "utf8");
+
+    expect(copy).toMatch(/viewBox="3 1 18 21"/);
+    expect(check).toMatch(/viewBox="3 5 18 14"/);
+    expect(pen).toMatch(/viewBox="4 4 21 21"/);
   });
 
   it("uses tight Figma viewBoxes for edit-avatar camera/gallery/delete glyphs", () => {

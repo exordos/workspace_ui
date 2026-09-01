@@ -32,6 +32,8 @@ const DEFAULT_DANGER_ITEM_CLASS_NAME =
 
 /** Base separator styling. */
 const DEFAULT_SEPARATOR_CLASS_NAME = "mx-2 my-1 h-px bg-border-subtle";
+const DEFAULT_MENU_ICON_SIZE = 14;
+const CONTEXT_MENU_ICON_SIZE = 20;
 
 /** Minimal item data needed to resolve item class names. */
 interface MenuClassInput {
@@ -43,12 +45,17 @@ interface MenuClassInput {
 type MenuIconLike = IconName | React.ReactNode;
 
 /** Resolves string icons via `Icon`; passes through ready-made React nodes. */
-function resolveIconNode(icon: MenuIconLike | undefined): React.ReactElement | null {
+function resolveIconNode(
+  icon: MenuIconLike | undefined,
+  source: DropdownMenuCustomRenderContext["source"],
+): React.ReactElement | null {
   if (icon == null) {
     return null;
   }
   if (typeof icon === "string") {
-    return <Icon name={icon} size={14} className="text-current opacity-70" />;
+    const size = source === "context" ? CONTEXT_MENU_ICON_SIZE : DEFAULT_MENU_ICON_SIZE;
+    const className = source === "context" ? "text-icon-base" : "text-current opacity-70";
+    return <Icon name={icon} size={size} className={className} />;
   }
   return <>{icon}</>;
 }
@@ -141,11 +148,11 @@ export function renderDropdownMenuItems(
               }
             }}
           >
-            {resolveIconNode(item.icon)}
+            {resolveIconNode(item.icon, ctx.source)}
             {item.label}
             {(item.showChevron ?? true) && (
               <span className="ml-auto opacity-60">
-                {resolveIconNode(item.chevron ?? "chevron-right")}
+                {resolveIconNode(item.chevron ?? "chevron-right", ctx.source)}
               </span>
             )}
           </RadixDropdownMenu.SubTrigger>
@@ -188,7 +195,7 @@ export function renderDropdownMenuItems(
             item.onSelect?.();
           }}
         >
-          {resolveIconNode(item.icon)}
+          {resolveIconNode(item.icon, ctx.source)}
           {item.label}
         </RadixDropdownMenu.CheckboxItem>
       );
@@ -210,7 +217,7 @@ export function renderDropdownMenuItems(
           item.onSelect?.();
         }}
       >
-        {resolveIconNode(item.icon)}
+        {resolveIconNode(item.icon, ctx.source)}
         {item.label}
       </RadixDropdownMenu.Item>
     );
