@@ -6,6 +6,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-01
+
+### Fixed
+
+- Provider-originated messages authored by the current user now honor the
+  server unread state in unread counts, the unread divider, initial positioning,
+  and visible read-boundary reporting.
+- Visibility observation restarts after initial chat positioning, preventing an
+  unread state from returning after a provider refresh when messages arrive
+  before realtime initialization completes.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.6.0`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.6.1`.
+- No manual migration is required.
+
 ## [0.6.0] — 2026-09-01
 
 ### Added
