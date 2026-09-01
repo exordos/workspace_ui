@@ -33,6 +33,14 @@ describe("DropdownMenu", () => {
     );
 
     expect(screen.getByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Reply" }).querySelector("svg")).toHaveAttribute(
+      "width",
+      "14",
+    );
+    expect(screen.getByRole("menuitem", { name: "Reply" }).querySelector("svg")).toHaveClass(
+      "text-current",
+      "opacity-70",
+    );
     expect(screen.getByRole("menuitem", { name: "Add to folder" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "Pin" })).toBeInTheDocument();
     expect(screen.getByTestId("menu-custom")).toBeInTheDocument();
@@ -125,11 +133,18 @@ describe("DropdownMenu", () => {
         onSourceChange={onSourceChange}
         onOpenChange={onOpenChange}
         contextAnchor={{ left: 120, top: 180 }}
-        items={[{ type: "action", key: "reply", label: "Reply" }]}
+        items={[{ type: "action", key: "reply", label: "Reply", icon: "reply" }]}
       />,
     );
 
     expect(screen.getByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Reply" }).querySelector("svg")).toHaveAttribute(
+      "width",
+      "20",
+    );
+    expect(screen.getByRole("menuitem", { name: "Reply" }).querySelector("svg")).toHaveClass(
+      "text-icon-base",
+    );
     expect(
       document.querySelector('[data-context-menu-trigger-source="context"]'),
     ).toBeInTheDocument();

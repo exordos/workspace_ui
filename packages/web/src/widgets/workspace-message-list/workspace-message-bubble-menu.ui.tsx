@@ -358,7 +358,6 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         key: "delete",
         icon: "delete",
         label: t("message.delete"),
-        danger: true,
         onSelect: () => {
           onRequestDeleteMessage(message.uuid);
           closeMenu();
