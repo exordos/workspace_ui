@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -142,6 +143,20 @@ function seed(runtime: WorkspaceRuntimeContext): string {
   return ownerKey;
 }
 
+function seedUnreadMention(ownerKey: string, runtimeGeneration = 1): void {
+  const store = useActivityStore.getState();
+  store.setUnreadMentionsOwner(ownerKey);
+  const token = store.startUnreadMentionsBootstrap(ownerKey, runtimeGeneration);
+  store.finishUnreadMentionsBootstrap(ownerKey, runtimeGeneration, token, [
+    {
+      uuid: MESSAGE_UUID,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      createdAt: DATE,
+    },
+  ]);
+}
+
 function seedFolder(ownerKey: string, unreadCount = 3): void {
   useMessengerStore.getState().applyFolderSnapshot(ownerKey, {
     uuid: FOLDER_UUID,
@@ -186,6 +201,7 @@ function deferred<T>(): {
 
 describe("workspace read actions", () => {
   beforeEach(() => {
+    useActivityStore.getState().clear();
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
   });
@@ -193,6 +209,7 @@ describe("workspace read actions", () => {
   it("optimistically reads one topic and persists the confirmed result", async () => {
     const runtime = runtimeContext();
     const ownerKey = seed(runtime);
+    seedUnreadMention(ownerKey, runtime.runtimeGeneration);
     const request = deferred<WorkspaceMessengerTopicDto>();
     const markCachedMessagesRead = vi.fn(() => Promise.resolve());
     const upsertCachedTopic = vi.fn(() => Promise.resolve());
@@ -223,6 +240,11 @@ describe("workspace read actions", () => {
       ownerKey,
       expect.objectContaining({ uuid: TOPIC_UUID, unreadCount: 0 }),
     );
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 1,
+      unreadMentionsCount: null,
+      unreadMentionsStatus: "idle",
+    });
   });
 
   it("reads every known topic in a stream", async () => {
@@ -530,6 +552,82 @@ describe("workspace read actions", () => {
     expect(markCachedMessagesRead).not.toHaveBeenCalled();
     expect(useMessengerStore.getState().streamsById[STREAM_UUID]?.unreadCount).toBe(3);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.read).toBe(false);
+  });
+
+  it("keeps a newer unread-mentions index when a stream cache write finishes late", async () => {
+    const runtimeA = runtimeContext();
+    const runtimeAAfterSwitch = runtimeContext({ runtimeGeneration: 3 });
+    const ownerKey = seed(runtimeA);
+    seedUnreadMention(ownerKey, runtimeA.runtimeGeneration);
+    const cacheWrite = deferred<void>();
+    const markCachedMessagesRead = vi.fn(() => cacheWrite.promise);
+    let currentRuntime = runtimeA;
+
+    const action = runWorkspaceStreamRead(
+      { streamUuid: STREAM_UUID },
+      {
+        runtimeContext: runtimeA,
+        getRuntimeContext: () => currentRuntime,
+        client: { markStreamRead: () => Promise.resolve(streamDto({ unread_count: 0 })) },
+        cache: { markCachedMessagesRead },
+      },
+    );
+    await vi.waitFor(() => expect(markCachedMessagesRead).toHaveBeenCalledOnce());
+
+    currentRuntime = runtimeAAfterSwitch;
+    seedUnreadMention(ownerKey, runtimeAAfterSwitch.runtimeGeneration);
+    cacheWrite.resolve();
+
+    await expect(action).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 0,
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: runtimeAAfterSwitch.runtimeGeneration,
+    });
+  });
+
+  it("keeps a newer unread-mentions index when a topic cache write finishes late", async () => {
+    const runtimeA = runtimeContext();
+    const runtimeAAfterSwitch = runtimeContext({ runtimeGeneration: 3 });
+    const ownerKey = seed(runtimeA);
+    seedUnreadMention(ownerKey, runtimeA.runtimeGeneration);
+    const cacheWrite = deferred<void>();
+    const markCachedMessagesRead = vi.fn(() => cacheWrite.promise);
+    let currentRuntime = runtimeA;
+
+    const action = runWorkspaceTopicRead(
+      { streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID },
+      {
+        runtimeContext: runtimeA,
+        getRuntimeContext: () => currentRuntime,
+        client: {
+          markStreamTopicRead: () => Promise.resolve(topicDto({ unread_count: 0 })),
+        },
+        cache: { markCachedMessagesRead },
+      },
+    );
+    await vi.waitFor(() => expect(markCachedMessagesRead).toHaveBeenCalledOnce());
+
+    currentRuntime = runtimeAAfterSwitch;
+    seedUnreadMention(ownerKey, runtimeAAfterSwitch.runtimeGeneration);
+    cacheWrite.resolve();
+
+    await expect(action).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useActivityStore.getState()).toMatchObject({
+      staleVersion: 0,
+      unreadMentionsCount: 1,
+      unreadMentionsStatus: "ready",
+      unreadMentionsRuntimeGeneration: runtimeAAfterSwitch.runtimeGeneration,
+    });
   });
 
   it("does not let an old generation lock block a new A runtime", async () => {
