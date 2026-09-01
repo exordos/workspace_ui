@@ -638,10 +638,9 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     cancelPendingLatestWindow();
   }, [anchorHandoffPending, cancelPendingLatestWindow]);
   const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
-  const isUnreadFromOther = useCallback(
-    (message: WorkspaceMessageListItem) =>
-      message.kind === "server" && !message.read && message.authorUuid !== currentUserUuid,
-    [currentUserUuid],
+  const isUnreadCandidate = useCallback(
+    (message: WorkspaceMessageListItem) => message.kind === "server" && !message.read,
+    [],
   );
   const {
     scrollContainerRef,
@@ -655,7 +654,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     messages: renderedMessages,
     conversationId,
     getMessageKey,
-    isUnreadFromOther,
+    isUnreadCandidate,
     initialPositionReady,
     scrollToBottomKey: scrollRequestKey,
     scrollToBottomAfterSendNonce,

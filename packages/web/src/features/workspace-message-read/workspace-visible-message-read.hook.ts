@@ -139,8 +139,8 @@ export function useWorkspaceVisibleMessageRead({
       if (
         currentMessage == null ||
         currentMessage.read ||
-        currentMessage.isOwn ||
-        (queue.lastApplied != null &&
+        (!currentMessage.isOwn &&
+          queue.lastApplied != null &&
           compareWorkspaceMessages(currentMessage, queue.lastApplied) <= 0)
       ) {
         continue;
@@ -211,7 +211,7 @@ export function useWorkspaceVisibleMessageRead({
 
       for (const messageUuid of messageUuids) {
         const message = selectWorkspaceMessageById(messageStore, messageUuid);
-        if (message == null || message.read || message.isOwn) continue;
+        if (message == null || message.read) continue;
         const key = topicQueueKey(message);
         const queue = queuesRef.current.get(key) ?? {
           pending: null,
@@ -220,9 +220,17 @@ export function useWorkspaceVisibleMessageRead({
           retryNotBefore: 0,
         };
         if (
-          (queue.inFlight != null &&
-            compareWorkspaceMessages(message, queue.inFlight.message) <= 0) ||
-          (queue.lastApplied != null && compareWorkspaceMessages(message, queue.lastApplied) <= 0)
+          !message.isOwn &&
+          queue.inFlight != null &&
+          compareWorkspaceMessages(message, queue.inFlight.message) <= 0
+        ) {
+          queuesRef.current.set(key, queue);
+          continue;
+        }
+        if (
+          !message.isOwn &&
+          queue.lastApplied != null &&
+          compareWorkspaceMessages(message, queue.lastApplied) <= 0
         ) {
           queuesRef.current.set(key, queue);
           continue;

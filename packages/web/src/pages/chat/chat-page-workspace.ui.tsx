@@ -1263,18 +1263,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       : t("workspaceMessenger.routeUnsupportedForSend");
   const currentUserUuid = runtimeContext?.userUuid ?? "";
   const firstUnreadMessage = useMemo(
-    () =>
-      routeMessages.find((message) => {
-        return !message.read && !message.isOwn && message.authorUuid !== currentUserUuid;
-      }),
-    [currentUserUuid, routeMessages],
+    () => routeMessages.find((message) => !message.read),
+    [routeMessages],
   );
   const unreadCount = useMemo(
-    () =>
-      routeMessages.filter((message) => {
-        return !message.read && !message.isOwn && message.authorUuid !== currentUserUuid;
-      }).length,
-    [currentUserUuid, routeMessages],
+    () => routeMessages.filter((message) => !message.read).length,
+    [routeMessages],
   );
   const realtimeReady =
     runtimeContext != null &&
