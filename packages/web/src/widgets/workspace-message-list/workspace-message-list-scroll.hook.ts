@@ -37,7 +37,7 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   /** Scopes the state that used to be discarded by remounting the list. */
   conversationId?: MessengerConversationId | null;
   getMessageKey: (message: TMessage) => string;
-  isUnreadFromOther: (message: TMessage) => boolean;
+  isUnreadCandidate: (message: TMessage) => boolean;
   initialPositionReady?: boolean;
   scrollToBottomKey?: string;
   scrollToBottomAfterSendNonce?: number;
@@ -131,7 +131,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   messages,
   conversationId = null,
   getMessageKey,
-  isUnreadFromOther,
+  isUnreadCandidate,
   initialPositionReady = true,
   scrollToBottomKey,
   scrollToBottomAfterSendNonce = 0,
@@ -209,13 +209,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
     const result = new Set<string>();
 
     for (const message of messages) {
-      if (isUnreadFromOther(message)) {
+      if (isUnreadCandidate(message)) {
         result.add(getMessageKey(message));
       }
     }
 
     return result;
-  }, [getMessageKey, isUnreadFromOther, messages]);
+  }, [getMessageKey, isUnreadCandidate, messages]);
 
   const syncAtBottomFromElement = useCallback((root: HTMLElement): boolean => {
     const atBottom = isWorkspaceScrollAtBottom(root, SCROLL_AT_BOTTOM_THRESHOLD);
@@ -972,6 +972,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   }, [
     anchorHandoffPending,
     dispatchUnreadAtBottom,
+    initialPositionReady,
     isInitialPositionApplied,
     processIntersectionEntries,
     unreadCandidateKeys,

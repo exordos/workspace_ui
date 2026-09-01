@@ -973,6 +973,24 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
   });
 
+  it("keeps an unread message authored by the current user in the unread range", async () => {
+    const ownUnread = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownUnread]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(captured.messageListProps?.firstUnreadUuid).toBe(ownUnread.uuid);
+    expect(captured.messageListProps?.unreadCount).toBe(1);
+  });
+
   it("reloads the same conversation route after its authoritative window is reset", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,

@@ -2908,6 +2908,158 @@ describe("WorkspaceMessageList", () => {
     hasFocus.mockRestore();
   });
 
+  it("reports an unread message authored by the current user when it is visible", () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    const onUnreadMessagesVisible = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-unread-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='own-unread-message']",
+    );
+
+    if (feed == null || readBoundary == null) {
+      throw new Error("Own unread visibility test nodes were not found");
+    }
+
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(readBoundary, "getBoundingClientRect").mockReturnValue({
+      top: 99,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 1,
+      x: 0,
+      y: 99,
+      toJSON: () => ({}),
+    });
+
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith(["own-unread-message"]);
+    hasFocus.mockRestore();
+  });
+
+  it("starts observing unread messages when the initial position becomes ready", () => {
+    const observers: ReadyIntersectionObserver[] = [];
+
+    class ReadyIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null;
+      readonly rootMargin = "0px";
+      readonly scrollMargin = "";
+      readonly thresholds: readonly number[] = [0];
+      readonly callback: IntersectionObserverCallback;
+      readonly observedElements = new Set<Element>();
+
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.callback = callback;
+        this.root = options?.root ?? null;
+        observers.push(this);
+      }
+
+      observe = (element: Element) => {
+        this.observedElements.add(element);
+      };
+      unobserve = (element: Element) => {
+        this.observedElements.delete(element);
+      };
+      disconnect = () => {
+        this.observedElements.clear();
+      };
+      takeRecords = (): IntersectionObserverEntry[] => [];
+    }
+
+    vi.stubGlobal("IntersectionObserver", ReadyIntersectionObserver);
+    const onUnreadMessagesVisible = vi.fn();
+    const ownUnread = createWorkspaceMessage({
+      uuid: "ready-own-unread-message",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+    });
+    const renderList = (initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={[ownUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        scrollToBottomKey="ready-transition"
+        firstUnreadUuid={ownUnread.uuid}
+        unreadCount={1}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />
+    );
+    const { container, rerender } = render(renderList(false));
+    const messageNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='ready-own-unread-message']",
+    );
+    if (messageNode == null) throw new Error("Unread message node was not rendered");
+    messageNode.scrollIntoView = vi.fn();
+
+    expect(observers).toHaveLength(0);
+
+    rerender(renderList(true));
+
+    const observer = observers[0];
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='ready-own-unread-message']",
+    );
+    if (observer == null || readBoundary == null) {
+      throw new Error("Unread observer was not created after initial positioning");
+    }
+    expect(observer.observedElements.has(readBoundary)).toBe(true);
+
+    act(() => {
+      observer.callback(
+        [
+          {
+            boundingClientRect: readBoundary.getBoundingClientRect(),
+            intersectionRect: readBoundary.getBoundingClientRect(),
+            isIntersecting: true,
+            intersectionRatio: 1,
+            rootBounds: null,
+            target: readBoundary,
+            time: 1,
+          },
+        ],
+        observer,
+      );
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([ownUnread.uuid]);
+  });
+
   it("renders neighboring author groups separately", () => {
     const { container } = render(
       <WorkspaceMessageList

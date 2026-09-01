@@ -89,6 +89,57 @@ afterEach(() => {
 });
 
 describe("useWorkspaceVisibleMessageRead", () => {
+  it("sends a visible boundary for an unread message authored by the current user", () => {
+    const ownUnread = {
+      ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
+      authorUuid: runtimeContext.userUuid,
+      isOwn: true,
+    };
+    seedWorkspaceMessageBody(ownUnread);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+
+    act(() => {
+      result.current([ownUnread.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+    expect(captured.markReadUpTo).toHaveBeenCalledWith(
+      expect.objectContaining({ messageUuid: ownUnread.uuid }),
+    );
+  });
+
+  it("sends an older own unread boundary after a later boundary was already applied", async () => {
+    const ownUnread = {
+      ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
+      authorUuid: runtimeContext.userUuid,
+      isOwn: true,
+    };
+    const later = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
+    seedWorkspaceMessageBody(ownUnread);
+    seedWorkspaceMessageBody(later);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+
+    act(() => {
+      result.current([later.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    await act(settlePromiseCallbacks);
+    expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current([ownUnread.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
+    expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(ownUnread.uuid);
+  });
+
   it("sends the latest visible boundary separately for every topic", () => {
     const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
     const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");

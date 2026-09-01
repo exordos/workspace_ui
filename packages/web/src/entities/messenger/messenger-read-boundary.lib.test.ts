@@ -83,4 +83,22 @@ describe("messenger read boundary", () => {
       false,
     );
   });
+
+  it("preserves a fresh provider-unread state for a message authored by the current user", () => {
+    clearMessengerReadBoundariesForOwner(OWNER_A);
+    advanceMessengerReadBoundary({
+      ownerKey: OWNER_A,
+      streamUuid: STREAM,
+      topicUuid: TOPIC_A,
+      createdAt: "2026-08-01T10:00:00.000Z",
+      messageUuid: "b",
+    });
+
+    const ownUnread = {
+      ...message("a", "2026-08-01T09:00:00.000Z"),
+      authorUuid: "user-a",
+      isOwn: true,
+    };
+    expect(applyMessengerReadBoundary(ownUnread, OWNER_A).read).toBe(false);
+  });
 });
