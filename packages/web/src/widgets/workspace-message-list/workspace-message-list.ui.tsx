@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { MessengerConversationId, MessengerUuid } from "~/entities/messenger/messenger.types";
+import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerUuid,
+} from "~/entities/messenger/messenger.types";
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
@@ -59,7 +64,13 @@ const MESSAGE_SELECTION_INTERACTIVE_TARGET_SELECTOR = [
   "[data-workspace-message-selection-control='true']",
 ].join(",");
 const EMPTY_SELECTED_MESSAGE_UUIDS = new Set<MessengerUuid>();
+const EMPTY_READ_REQUEST_BOUNDARY_MESSAGE_UUIDS = new Set<MessengerUuid>();
+const EMPTY_READ_REQUEST_BOUNDARIES = new Map<string, WorkspaceReadRequestBoundary>();
 const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
+
+interface WorkspaceReadRequestBoundary {
+  message: MessengerMessage;
+}
 
 interface PendingLatestWindow {
   targetUuid: MessengerUuid;
@@ -71,6 +82,19 @@ function resolveMessageOwner(
   currentUserUuid: MessengerUuid,
 ): "own" | "peer" {
   return message.authorUuid === currentUserUuid || message.isOwn ? "own" : "peer";
+}
+
+function readRequestTopicKey(message: MessengerMessage): string {
+  return `${message.streamUuid}\u0000${message.topicUuid}`;
+}
+
+function isMessageCoveredByReadRequest(
+  message: WorkspaceMessageListItem,
+  boundariesByTopic: ReadonlyMap<string, WorkspaceReadRequestBoundary>,
+): boolean {
+  if (message.kind !== "server" || message.read) return false;
+  const boundary = boundariesByTopic.get(readRequestTopicKey(message.message));
+  return boundary != null && compareWorkspaceMessages(message.message, boundary.message) <= 0;
 }
 
 function resolveWorkspaceAuthorLabel(
@@ -186,6 +210,7 @@ interface WorkspaceMessageListRowProps {
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
   isSelected: boolean;
+  readRequestPending: boolean;
   selectionMode: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   usersById: UsersById;
@@ -203,6 +228,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   isFirstInGroup,
   isLastInGroup,
   isSelected,
+  readRequestPending,
   selectionMode,
   resolveAuthorLabel,
   usersById,
@@ -286,6 +312,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
           isFirstInGroup={isFirstInGroup}
           isLastInGroup={isLastInGroup}
           isSelected={isSelected}
+          readRequestPending={readRequestPending}
           resolveAuthorLabel={resolveAuthorLabel}
           usersById={usersById}
           topicLabel={topicLabel}
@@ -326,6 +353,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   actions?: WorkspaceMessageListProps["actions"];
   passiveLoadersEnabled: boolean;
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
+  readRequestBoundariesByTopic: ReadonlyMap<string, WorkspaceReadRequestBoundary>;
   selectionMode: boolean;
   usersById: UsersById;
 }
@@ -341,6 +369,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   actions,
   passiveLoadersEnabled,
   selectedMessageUuids,
+  readRequestBoundariesByTopic,
   selectionMode,
   usersById,
 }: WorkspaceMessageAuthorGroupViewProps): React.ReactElement {
@@ -374,6 +403,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       isFirstInGroup={messageIndex === 0}
       isLastInGroup={messageIndex === group.messages.length - 1}
       isSelected={message.kind === "server" && selectedMessageUuids.has(message.message.uuid)}
+      readRequestPending={isMessageCoveredByReadRequest(message, readRequestBoundariesByTopic)}
       selectionMode={selectionMode}
       resolveAuthorLabel={resolveAuthorLabel}
       usersById={usersById}
@@ -453,6 +483,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   onFocusedMessageMissing,
   selectionMode = false,
   selectedMessageUuids = EMPTY_SELECTED_MESSAGE_UUIDS,
+  readRequestBoundaryMessageUuids = EMPTY_READ_REQUEST_BOUNDARY_MESSAGE_UUIDS,
   isLoadingOlder = false,
   isLoadingNewer = false,
   hasOlderMessages = false,
@@ -558,6 +589,22 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
     return [...serverItems, ...outgoingListItems];
   }, [createServerListItem, messages, outgoingMessages]);
+  const readRequestBoundariesByTopic = useMemo(() => {
+    if (readRequestBoundaryMessageUuids.size === 0) return EMPTY_READ_REQUEST_BOUNDARIES;
+    const boundaries = new Map<string, WorkspaceReadRequestBoundary>();
+    for (const message of messages) {
+      if (!readRequestBoundaryMessageUuids.has(message.uuid)) continue;
+      const key = readRequestTopicKey(message);
+      const currentBoundary = boundaries.get(key);
+      if (
+        currentBoundary == null ||
+        compareWorkspaceMessages(message, currentBoundary.message) > 0
+      ) {
+        boundaries.set(key, { message });
+      }
+    }
+    return boundaries;
+  }, [messages, readRequestBoundaryMessageUuids]);
   const dayGroups = useMemo(() => {
     return groupWorkspaceMessagesByDayAndAuthor(listItems);
   }, [listItems]);
@@ -875,6 +922,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                       actions={messageActions}
                       passiveLoadersEnabled={!anchorHandoffPending}
                       selectedMessageUuids={selectedMessageUuids}
+                      readRequestBoundariesByTopic={readRequestBoundariesByTopic}
                       selectionMode={selectionMode}
                       usersById={usersById}
                     />

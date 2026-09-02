@@ -105,6 +105,7 @@ export interface WorkspaceMessageListProps {
   onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
+  readRequestBoundaryMessageUuids?: ReadonlySet<MessengerUuid>;
   isLoadingOlder?: boolean;
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;

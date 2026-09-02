@@ -210,6 +210,66 @@ describe("WorkspaceMessageList", () => {
     expect(renderedMessage).not.toHaveAttribute(["data", "message", "id"].join("-"));
   });
 
+  it("highlights every unread message covered by the active topic boundary", () => {
+    const olderMessage = createWorkspaceMessage({
+      uuid: "read-request-older",
+      markdown: "Older unread message",
+      createdAt: "2026-07-03T08:59:00.000Z",
+    });
+    const boundaryMessage = createWorkspaceMessage({
+      uuid: "read-request-boundary",
+      markdown: "Boundary unread message",
+    });
+    const laterMessage = createWorkspaceMessage({
+      uuid: "read-request-later",
+      markdown: "Later unread message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const otherTopicMessage = createWorkspaceMessage({
+      uuid: "read-request-other-topic",
+      topicUuid: "topic-uuid-2",
+      markdown: "Other topic unread message",
+      createdAt: "2026-07-03T08:58:00.000Z",
+    });
+    const messages = [olderMessage, boundaryMessage, laterMessage, otherTopicMessage];
+    const renderList = (currentMessages: MessengerMessage[]) => (
+      <WorkspaceMessageList
+        messages={currentMessages}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        readRequestBoundaryMessageUuids={new Set([boundaryMessage.uuid])}
+      />
+    );
+    const { container, rerender } = render(renderList(messages));
+    const getBubble = (messageUuid: string): HTMLElement => {
+      const bubble = container.querySelector<HTMLElement>(
+        `[data-message-uuid='${messageUuid}'] [data-workspace-message-bubble='true']`,
+      );
+      if (bubble == null) throw new Error("Workspace message bubble not found");
+      return bubble;
+    };
+
+    expect(getBubble(olderMessage.uuid)).toHaveAttribute("data-read-request-pending", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveAttribute("data-read-request-pending", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveAttribute("aria-busy", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveClass("workspace-message-read-request-pulse");
+    expect(getBubble(laterMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(getBubble(otherTopicMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(container.querySelector("[data-read-request-indicator='true']")).toBeNull();
+
+    rerender(
+      renderList(
+        messages.map((message) =>
+          message.uuid === olderMessage.uuid || message.uuid === boundaryMessage.uuid
+            ? { ...message, read: true }
+            : message,
+        ),
+      ),
+    );
+    expect(getBubble(olderMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(container.querySelector("[data-read-request-indicator='true']")).toBeNull();
+  });
+
   it("renders topic dividers and topic labels from presentation settings", () => {
     const onOpenWorkspaceReference = vi.fn();
     const { container } = render(

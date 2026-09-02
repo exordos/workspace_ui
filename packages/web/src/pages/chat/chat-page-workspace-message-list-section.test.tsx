@@ -116,6 +116,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       uuid: "workspace-message-uuid",
       markdown: "Direct Workspace body",
     });
+    const readRequestBoundaryMessageUuids = new Set([message.uuid]);
 
     render(
       <ChatPageWorkspaceMessageListSection
@@ -140,6 +141,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         unreadCount={1}
         onUnreadMessagesVisible={vi.fn()}
         onUnreadMessagesAtBottom={vi.fn()}
+        readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
@@ -156,6 +158,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(captured.workspaceMessageListProps?.firstUnreadUuid).toBe("workspace-message-uuid");
     expect(captured.workspaceMessageListProps?.initialPositionReady).toBe(true);
     expect(captured.workspaceMessageListProps?.currentUserUuid).toBe("current-user-uuid");
+    expect(captured.workspaceMessageListProps?.readRequestBoundaryMessageUuids).toBe(
+      readRequestBoundaryMessageUuids,
+    );
   });
 
   it("forwards scroll, pagination, and unread callbacks to the Workspace list", () => {

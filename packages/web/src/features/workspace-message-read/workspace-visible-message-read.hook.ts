@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import {
   selectWorkspaceMessageById,
@@ -8,6 +8,7 @@ import { markMessengerMessagesReadUpTo } from "~/entities/messenger/messenger-me
 import type {
   MessengerConversationId,
   MessengerMessage,
+  MessengerUuid,
 } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -30,9 +31,21 @@ interface TopicReadQueue {
   retryNotBefore: number;
 }
 
+interface ReadRequestProjection {
+  scopeKey: string | null;
+  byTopic: ReadonlyMap<string, MessengerUuid>;
+}
+
+const EMPTY_READ_REQUEST_BOUNDARIES = new Set<MessengerUuid>();
+
 export interface UseWorkspaceVisibleMessageReadOptions {
   runtimeContext: WorkspaceRuntimeContext | null;
   conversationId: MessengerConversationId | null;
+}
+
+export interface UseWorkspaceVisibleMessageReadResult {
+  scheduleReadBatch: (messageUuids: MessengerUuid[]) => void;
+  readRequestBoundaryMessageUuids: ReadonlySet<MessengerUuid>;
 }
 
 function topicQueueKey(message: MessengerMessage): string {
@@ -62,7 +75,7 @@ function retryDelayMs(retryCount: number): number {
 export function useWorkspaceVisibleMessageRead({
   runtimeContext,
   conversationId,
-}: UseWorkspaceVisibleMessageReadOptions): (messageUuids: string[]) => void {
+}: UseWorkspaceVisibleMessageReadOptions): UseWorkspaceVisibleMessageReadResult {
   const runtimeContextRef = useRef(runtimeContext);
   const queuesRef = useRef<Map<string, TopicReadQueue>>(new Map());
   const controllersRef = useRef<Set<AbortController>>(new Set());
@@ -75,6 +88,33 @@ export function useWorkspaceVisibleMessageRead({
       ? null
       : `${ownerKey}\u0000${runtimeContext.runtimeGeneration}\u0000${conversationId}`;
   const scopeKeyRef = useRef(scopeKey);
+  const [readRequestProjection, setReadRequestProjection] = useState<ReadRequestProjection>(() => ({
+    scopeKey,
+    byTopic: new Map(),
+  }));
+
+  const setTopicReadRequestBoundary = useCallback(
+    (requestScopeKey: string, topicKey: string, messageUuid: MessengerUuid | null): void => {
+      setReadRequestProjection((current) => {
+        if (current.scopeKey !== requestScopeKey) return current;
+        const previousMessageUuid = current.byTopic.get(topicKey);
+        if (messageUuid == null) {
+          if (previousMessageUuid == null) return current;
+        } else if (previousMessageUuid === messageUuid) {
+          return current;
+        }
+
+        const byTopic = new Map(current.byTopic);
+        if (messageUuid == null) {
+          byTopic.delete(topicKey);
+        } else {
+          byTopic.set(topicKey, messageUuid);
+        }
+        return { scopeKey: current.scopeKey, byTopic };
+      });
+    },
+    [],
+  );
 
   const armTimer = useCallback((delayMs = READ_BATCH_DELAY_MS): void => {
     const dueAt = Date.now() + delayMs;
@@ -116,13 +156,18 @@ export function useWorkspaceVisibleMessageRead({
       conversationId == null ||
       requestScopeKey == null
     ) {
-      for (const queue of queuesRef.current.values()) queue.pending = null;
+      for (const [key, queue] of queuesRef.current) {
+        queuesRef.current.set(key, { ...queue, pending: null });
+        if (requestScopeKey != null && queue.inFlight == null) {
+          setTopicReadRequestBoundary(requestScopeKey, key, null);
+        }
+      }
       return;
     }
 
     const now = Date.now();
     let nextPendingDelay: number | null = null;
-    for (const queue of queuesRef.current.values()) {
+    for (const [key, queue] of queuesRef.current) {
       const pending = queue.pending;
       if (pending == null || queue.inFlight != null) continue;
       if (queue.retryNotBefore > now) {
@@ -130,7 +175,8 @@ export function useWorkspaceVisibleMessageRead({
         nextPendingDelay = nextPendingDelay == null ? delay : Math.min(nextPendingDelay, delay);
         continue;
       }
-      queue.pending = null;
+      const queueWithoutPending = { ...queue, pending: null };
+      queuesRef.current.set(key, queueWithoutPending);
 
       const currentMessage = selectWorkspaceMessageById(
         useWorkspaceMessageStore.getState(),
@@ -143,12 +189,17 @@ export function useWorkspaceVisibleMessageRead({
           queue.lastApplied != null &&
           compareWorkspaceMessages(currentMessage, queue.lastApplied) <= 0)
       ) {
+        setTopicReadRequestBoundary(requestScopeKey, key, null);
         continue;
       }
 
       const inFlight = { ...pending, message: currentMessage };
-      queue.inFlight = inFlight;
-      queue.retryNotBefore = 0;
+      queuesRef.current.set(key, {
+        ...queueWithoutPending,
+        inFlight,
+        retryNotBefore: 0,
+      });
+      setTopicReadRequestBoundary(requestScopeKey, key, currentMessage.uuid);
       const controller = new AbortController();
       controllersRef.current.add(controller);
       void markMessengerMessagesReadUpTo({
@@ -159,52 +210,81 @@ export function useWorkspaceVisibleMessageRead({
         conversationIds: [conversationId],
       })
         .then((result) => {
-          if (scopeKeyRef.current !== requestScopeKey || result.status !== "applied") return;
-          queue.lastApplied = laterMessage(queue.lastApplied, currentMessage);
+          if (scopeKeyRef.current !== requestScopeKey) return;
+          if (result.status === "applied") {
+            const latestQueue = queuesRef.current.get(key);
+            if (latestQueue != null) {
+              queuesRef.current.set(key, {
+                ...latestQueue,
+                lastApplied: laterMessage(latestQueue.lastApplied, currentMessage),
+              });
+            }
+          }
+          setTopicReadRequestBoundary(requestScopeKey, key, null);
         })
         .catch(() => {
           if (scopeKeyRef.current !== requestScopeKey || controller.signal.aborted) return;
 
+          const latestQueue = queuesRef.current.get(key);
+          if (latestQueue?.inFlight?.message.uuid !== currentMessage.uuid) return;
+
           const laterPending =
-            queue.pending != null &&
-            compareWorkspaceMessages(queue.pending.message, currentMessage) > 0;
+            latestQueue.pending != null &&
+            compareWorkspaceMessages(latestQueue.pending.message, currentMessage) > 0;
+          let nextPending = latestQueue.pending;
           if (!laterPending && inFlight.retryCount < MAX_READ_RETRY_COUNT) {
-            queue.pending = laterBoundary(queue.pending, {
+            nextPending = laterBoundary(nextPending, {
               message: currentMessage,
               retryCount: inFlight.retryCount + 1,
             });
           }
-          if (queue.pending != null) {
+          if (nextPending != null) {
             const nextRetryCount = inFlight.retryCount + 1;
-            queue.retryNotBefore = Date.now() + retryDelayMs(nextRetryCount);
+            queuesRef.current.set(key, {
+              ...latestQueue,
+              pending: nextPending,
+              retryNotBefore: Date.now() + retryDelayMs(nextRetryCount),
+            });
+            setTopicReadRequestBoundary(requestScopeKey, key, nextPending.message.uuid);
+          } else {
+            setTopicReadRequestBoundary(requestScopeKey, key, null);
           }
         })
         .finally(() => {
           controllersRef.current.delete(controller);
           if (scopeKeyRef.current !== requestScopeKey) return;
-          if (queue.inFlight?.message.uuid === currentMessage.uuid) queue.inFlight = null;
-          if (queue.pending != null) {
-            armTimer(Math.max(0, queue.retryNotBefore - Date.now()));
+          const latestQueue = queuesRef.current.get(key);
+          if (latestQueue?.inFlight?.message.uuid !== currentMessage.uuid) return;
+          const queueAfterFlight = { ...latestQueue, inFlight: null };
+          queuesRef.current.set(key, queueAfterFlight);
+          if (queueAfterFlight.pending != null) {
+            armTimer(Math.max(0, queueAfterFlight.retryNotBefore - Date.now()));
           }
         });
     }
 
     if (nextPendingDelay != null) armTimer(nextPendingDelay);
-  }, [armTimer, conversationId]);
+  }, [armTimer, conversationId, setTopicReadRequestBoundary]);
 
   useLayoutEffect(() => {
-    if (scopeKeyRef.current !== scopeKey) clearQueues();
+    if (scopeKeyRef.current !== scopeKey) {
+      clearQueues();
+      setReadRequestProjection({ scopeKey, byTopic: new Map() });
+    }
     runtimeContextRef.current = runtimeContext;
     scopeKeyRef.current = scopeKey;
     flushRef.current = flush;
   }, [clearQueues, flush, runtimeContext, scopeKey]);
 
   useEffect(() => {
-    return () => clearQueues();
+    return () => {
+      scopeKeyRef.current = null;
+      clearQueues();
+    };
   }, [clearQueues]);
 
-  return useCallback(
-    (messageUuids: string[]): void => {
+  const scheduleReadBatch = useCallback(
+    (messageUuids: MessengerUuid[]): void => {
       if (messageUuids.length === 0 || scopeKey == null || !isWindowActive()) return;
       const messageStore = useWorkspaceMessageStore.getState();
       let scheduled = false;
@@ -235,13 +315,27 @@ export function useWorkspaceVisibleMessageRead({
           queuesRef.current.set(key, queue);
           continue;
         }
-        queue.pending = laterBoundary(queue.pending, { message, retryCount: 0 });
-        queuesRef.current.set(key, queue);
+        queuesRef.current.set(key, {
+          ...queue,
+          pending: laterBoundary(queue.pending, { message, retryCount: 0 }),
+        });
         scheduled = true;
       }
 
       if (scheduled) armTimer();
     },
     [armTimer, scopeKey],
+  );
+
+  const readRequestBoundaryMessageUuids = useMemo(() => {
+    if (readRequestProjection.scopeKey !== scopeKey || readRequestProjection.byTopic.size === 0) {
+      return EMPTY_READ_REQUEST_BOUNDARIES;
+    }
+    return new Set(readRequestProjection.byTopic.values());
+  }, [readRequestProjection, scopeKey]);
+
+  return useMemo(
+    () => ({ scheduleReadBatch, readRequestBoundaryMessageUuids }),
+    [readRequestBoundaryMessageUuids, scheduleReadBatch],
   );
 }

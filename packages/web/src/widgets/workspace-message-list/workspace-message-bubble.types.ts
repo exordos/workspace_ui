@@ -13,6 +13,7 @@ export interface WorkspaceMessageBubbleProps {
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
   isSelected?: boolean;
+  readRequestPending?: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   usersById: UsersById;
   topicLabel?: string | null;
