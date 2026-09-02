@@ -6,6 +6,35 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-09-02
+
+### Fixed
+
+- The realtime watchdog now probes only events visible to the current user,
+  avoiding unnecessary reconnects when unrelated project events advance the
+  global epoch while the user's stream is healthy.
+- Races between watchdog probes and newly delivered WebSocket frames no longer
+  reset a healthy realtime session when a stale cursor-expiry response arrives.
+- Electron desktop sharing works again in Jitsi calls through the supported
+  Jitsi Electron SDK bridge, with display-capture permission restricted to an
+  active secure Jitsi child frame.
+- Messenger overlays keep their intended stacking order, and folder, group,
+  and pin icons use tighter visual bounds for more consistent sizing.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.6.1`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.6.2`.
+- No manual migration is required.
+
 ## [0.6.1] — 2026-09-01
 
 ### Fixed
