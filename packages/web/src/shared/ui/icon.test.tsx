@@ -124,11 +124,17 @@ describe("Icon", () => {
   it("keeps context-menu action icons on tight bounds", () => {
     const copy = readFileSync(resolve(ICONS_DIR, "copy.svg"), "utf8");
     const check = readFileSync(resolve(ICONS_DIR, "check.svg"), "utf8");
+    const folder = readFileSync(resolve(ICONS_DIR, "folder.svg"), "utf8");
+    const group = readFileSync(resolve(ICONS_DIR, "group.svg"), "utf8");
     const pen = readFileSync(resolve(ICONS_DIR, "pen.svg"), "utf8");
+    const pin = readFileSync(resolve(ICONS_DIR, "pin.svg"), "utf8");
 
     expect(copy).toMatch(/viewBox="3 1 18 21"/);
     expect(check).toMatch(/viewBox="3 5 18 14"/);
+    expect(folder).toMatch(/viewBox="3\.5 3\.5 33 33"/);
+    expect(group).toMatch(/viewBox="2\.5 2\.5 35 35"/);
     expect(pen).toMatch(/viewBox="4 4 21 21"/);
+    expect(pin).toMatch(/viewBox="2 2\.5 15 15"/);
   });
 
   it("uses tight Figma viewBoxes for edit-avatar camera/gallery/delete glyphs", () => {

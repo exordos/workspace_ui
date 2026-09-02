@@ -27,6 +27,9 @@ async function main() {
   await Promise.all([
     build({
       ...commonOptions,
+      // Keep the SDK main entry external so its __dirname continues to point
+      // at the package directory containing the tracker assets.
+      external: [...commonOptions.external, "@jitsi/electron-sdk/main"],
       entryPoints: [resolve(root, "src", "main.ts")],
       outfile: resolve(root, "dist", "main.js"),
       format: "cjs",
