@@ -13,6 +13,7 @@ import {
   ipcMain,
   powerMonitor,
 } from "electron";
+import { setupScreenSharingMain } from "@jitsi/electron-sdk/main";
 import { autoUpdater } from "electron-updater";
 import {
   APP_DISPLAY_NAME,
@@ -351,6 +352,11 @@ function createWindow(): void {
       icon: getIconPath("icon.png"),
     }),
   });
+
+  // The SDK owns the desktop source picker and the getDisplayMedia response.
+  // Install it before loading the renderer so Jitsi can use the bridge from its
+  // first iframe API session.
+  setupScreenSharingMain(mainWindow, APP_DISPLAY_NAME, APP_ID);
 
   if (process.platform !== "darwin") {
     // The menu bar only repeats the tray menu and the window controls, so keep it
@@ -955,13 +961,59 @@ function configureSecurityPolicy(): void {
     });
   });
 
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(allowedPermissions.has(permission));
-  });
+  session.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      if (permission === "display-capture") {
+        callback(isAllowedJitsiDisplayCaptureRequest(webContents, details));
+        return;
+      }
+
+      callback(allowedPermissions.has(permission));
+    },
+  );
 
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) =>
     allowedPermissions.has(permission),
   );
+}
+
+/**
+ * Display capture is requested by the Jitsi child frame, never by our shell.
+ * Keep this scoped to the current window and an active secure child frame so
+ * arbitrary web content cannot inherit desktop capture access.
+ */
+function isAllowedJitsiDisplayCaptureRequest(
+  webContents: Electron.WebContents | null,
+  details: {
+    isMainFrame: boolean;
+    requestingUrl: string;
+  },
+): boolean {
+  if (mainWindow == null || webContents !== mainWindow.webContents || details.isMainFrame) {
+    return false;
+  }
+
+  try {
+    const requestingUrl = new URL(details.requestingUrl);
+    if (requestingUrl.protocol !== "https:") return false;
+
+    return webContents.mainFrame.framesInSubtree.some(
+      (frame) =>
+        frame !== webContents.mainFrame &&
+        !frame.detached &&
+        getUrlOrigin(frame.url) === requestingUrl.origin,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getUrlOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

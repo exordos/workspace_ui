@@ -1029,11 +1029,32 @@
     "publisher": ""
   },
   {
+    "name": "@jitsi/electron-sdk",
+    "version": "10.0.4",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/jitsi/jitsi-meet-electron-sdk",
+    "publisher": ""
+  },
+  {
+    "name": "@jitsi/logger",
+    "version": "2.1.1",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/jitsi/jitsi-meet-logger",
+    "publisher": "Hristo Terezov"
+  },
+  {
     "name": "@jitsi/react-sdk",
     "version": "1.4.4",
     "license": "Apache-2.0",
     "repository": "https://github.com/jitsi/jitsi-meet-web-sdk",
     "publisher": ""
+  },
+  {
+    "name": "@jitsi/robotjs",
+    "version": "0.6.24",
+    "license": "MIT",
+    "repository": "https://github.com/jitsi/robotjs",
+    "publisher": "Jason Stallings"
   },
   {
     "name": "@jridgewell/gen-mapping",
@@ -7530,6 +7551,13 @@
     "license": "MIT",
     "repository": "https://github.com/TrySound/postcss-value-parser",
     "publisher": "Bogdan Chadkin"
+  },
+  {
+    "name": "postis",
+    "version": "2.2.0",
+    "license": "MIT",
+    "repository": "https://github.com/adtile/postis",
+    "publisher": "Adtile Technologies Inc."
   },
   {
     "name": "postject",

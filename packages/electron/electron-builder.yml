@@ -15,6 +15,10 @@ extraMetadata:
   main: dist/main.js
 
 asar: true
+# @jitsi/electron-sdk ships matching robotjs prebuilds for supported platforms.
+# Screen sharing does not use that addon, and rebuilding it needlessly requires
+# platform-native toolchains that are absent from some packaging environments.
+npmRebuild: false
 # PNG icons must be readable from a real path on Linux: nativeImage / GTK do not load from inside app.asar.
 asarUnpack:
   - resources/**

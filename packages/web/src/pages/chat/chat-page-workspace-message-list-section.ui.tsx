@@ -159,7 +159,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     }
 
     return (
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
         {showRefreshLoadError ? (
           <div
             className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base"

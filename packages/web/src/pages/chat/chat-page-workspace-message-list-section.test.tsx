@@ -366,7 +366,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(onRetryBoundaryLoad).toHaveBeenCalledOnce();
   });
 
-  it("keeps the background loading bubble at the top-left edge", () => {
+  it("keeps the background loading bubble at the top-left edge inside the list layer", () => {
     render(
       <ChatPageWorkspaceMessageListSection
         messagesLoading={false}
@@ -407,6 +407,11 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       visible: true,
       position: "top-left",
     });
+    expect(screen.getByTestId("workspace-message-list").parentElement?.parentElement).toHaveClass(
+      "relative",
+      "isolate",
+      "overflow-hidden",
+    );
   });
 });
 

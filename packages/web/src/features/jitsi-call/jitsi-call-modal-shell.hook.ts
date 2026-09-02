@@ -15,6 +15,7 @@ import {
 } from "./jitsi-call-header.lib";
 import { configureJitsiIframe } from "./jitsi-call-permissions.lib";
 import { getDefaultPipWindowBounds, type PipWindowBounds } from "./jitsi-call-pip.lib";
+import { setupJitsiScreenSharing } from "./jitsi-call-screen-sharing.lib";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import { useJitsiParticipantCount } from "./jitsi-participant-count.hook";
 import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
@@ -169,6 +170,7 @@ export function useJitsiCallModalShell({
 
   const handleApiReady = useCallback(
     (api: JitsiExternalApiWithParticipants) => {
+      setupJitsiScreenSharing(api);
       clearParticipantPolling();
       onParticipantCountApiReady(api);
 

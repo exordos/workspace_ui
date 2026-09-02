@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { install as installJitsiElectronSdk } from "@jitsi/electron-sdk/preload";
 import {
   WORKSPACE_DOWNLOAD_IPC,
   type WorkspaceDownloadActionResult,
@@ -7,6 +8,10 @@ import {
   type WorkspaceDownloadStartInput,
   type WorkspaceDownloadStartResult,
 } from "./workspace-downloads.contract";
+
+// The SDK bridge is required by the renderer-side screen-sharing integration.
+// It is safe with contextIsolation and does not expose ipcRenderer itself.
+installJitsiElectronSdk();
 
 export interface ElectronMainMemorySnapshot {
   collectedAt: string;
