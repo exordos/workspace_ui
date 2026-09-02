@@ -157,6 +157,25 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("[guide]:");
   });
 
+  it("renders a standalone plus as text instead of an empty list item", () => {
+    const document = parseWorkspaceMessageBody("+");
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toBe("<p>+</p>");
+    expect(result.metadata).toMatchObject({
+      contentKind: "plain",
+      hasRichBlocks: false,
+      textPreview: "+",
+    });
+  });
+
+  it("keeps a plus with list content on the standard Markdown list path", () => {
+    const document = parseWorkspaceMessageBody("+ item");
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toBe("<ul><li><p>item</p></li></ul>");
+  });
+
   it("applies Workspace overrides inside standard table, list, heading, and deletion nodes", () => {
     const userUuid = "11111111-1111-4111-8111-111111111111";
     const messageUuid = "22222222-2222-4222-8222-222222222222";
