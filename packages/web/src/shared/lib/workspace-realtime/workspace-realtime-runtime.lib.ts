@@ -12,7 +12,7 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { isWorkspaceEventsCursorExpiredErrorDto } from "~/shared/api/messenger.types";
-import { getEpoch as defaultGetEpoch } from "~/shared/api/workspace-client";
+import { getEventsPage as defaultGetEventsPage } from "~/shared/api/workspace-client";
 import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import type {
@@ -178,9 +178,9 @@ const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE = 4401;
 const WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE = 4410;
 const INVALID_FRAME_SYNTHETIC_EPOCH: WorkspaceMessengerEpochVersion = 0;
-// Check the server cursor only after the socket has been quiet for this long.
+// Check for visible events only after the socket has been quiet for this long.
 const EPOCH_WATCHDOG_IDLE_TIMEOUT_MS = 60_000;
-// Give queued WebSocket frames time to advance the durable cursor.
+// Give queued WebSocket frames time to deliver an event found by the watchdog.
 const EPOCH_WATCHDOG_GRACE_PERIOD_MS = 3_000;
 
 function defaultReconnectDelayMs(attempt: number): number {
@@ -637,74 +637,62 @@ export function createWorkspaceRealtimeTransportCore(
     const remainingDelay = Math.max(0, EPOCH_WATCHDOG_IDLE_TIMEOUT_MS - (Date.now() - idleSince));
     epochWatchdogTimer = setTimeout(() => {
       epochWatchdogTimer = null;
-      void checkEpochAfterSocketIdle(activeSocket);
+      void checkVisibleEventsAfterSocketIdle(activeSocket);
     }, remainingDelay);
   }
 
-  function recoverFromEpochGenerationChange(
-    epochGeneration: string,
-    epochVersion: WorkspaceMessengerEpochVersion,
-  ): Promise<void> {
-    return recoverFromCursorExpiry({
-      type: "EventsCursorExpiredError",
-      code: 410,
-      error: "epoch_pruned",
-      message: "Workspace realtime generation changed during epoch verification",
-      reason: "epoch_generation_changed",
-      epoch_generation: epochGeneration,
-      current_epoch_version: epochVersion,
-      minimum_epoch_version: epochVersion,
-    });
-  }
-
-  async function confirmEpochLag(
+  async function confirmVisibleEventLag(
     activeSocket: WorkspaceRealtimeWebSocketLike,
-    epochGeneration: string,
-    epochVersion: WorkspaceMessengerEpochVersion,
+    probedCursor: WorkspaceRealtimeCursor,
+    pendingEpochVersion: WorkspaceMessengerEpochVersion,
   ): Promise<void> {
     if (!isEpochWatchdogActive(activeSocket) || context == null) return;
 
     // Durable storage is shared by browser tabs. Only this runtime's in-memory cursor
-    // can prove that this socket received the server epoch.
+    // can prove that this socket received the visible event found by the probe.
     const currentCursor = lastCursor;
     if (currentCursor == null) return;
-    if (currentCursor.epochGeneration !== epochGeneration) {
-      await recoverFromEpochGenerationChange(epochGeneration, epochVersion);
+    if (currentCursor.epochGeneration !== probedCursor.epochGeneration) {
+      scheduleEpochWatchdog(activeSocket);
       return;
     }
-    if (currentCursor.epochVersion >= epochVersion) {
+    if (currentCursor.epochVersion >= pendingEpochVersion) {
       scheduleEpochWatchdog(activeSocket);
       return;
     }
 
-    await nudge("epoch_lag_detected");
+    await nudge("visible_event_lag_detected");
   }
 
-  function scheduleEpochLagConfirmation(
+  function scheduleVisibleEventLagConfirmation(
     activeSocket: WorkspaceRealtimeWebSocketLike,
-    epochGeneration: string,
-    epochVersion: WorkspaceMessengerEpochVersion,
+    probedCursor: WorkspaceRealtimeCursor,
+    pendingEpochVersion: WorkspaceMessengerEpochVersion,
   ): void {
     if (!isEpochWatchdogActive(activeSocket) || epochLagTimer != null) return;
     epochLagTimer = setTimeout(() => {
       epochLagTimer = null;
-      void confirmEpochLag(activeSocket, epochGeneration, epochVersion);
+      void confirmVisibleEventLag(activeSocket, probedCursor, pendingEpochVersion);
     }, EPOCH_WATCHDOG_GRACE_PERIOD_MS);
   }
 
-  function checkEpochAfterSocketIdle(activeSocket: WorkspaceRealtimeWebSocketLike): void {
+  function checkVisibleEventsAfterSocketIdle(activeSocket: WorkspaceRealtimeWebSocketLike): void {
     if (!isEpochWatchdogActive(activeSocket) || epochCheckPromise != null || context == null)
       return;
 
     const epochCheckContext = context;
     const epochCheckSignal = activeSignal();
+    const probedCursor = lastCursor;
+    if (probedCursor == null) return;
     let shouldScheduleNextEpochCheck = false;
     const check = (async (): Promise<void> => {
       try {
-        const getEpoch = options.getEpoch ?? defaultGetEpoch;
-        const serverEpoch = await getEpoch(
-          withAbortSignal(options.clientOptions, epochCheckSignal),
-        );
+        const getEventsPage = options.getEventsPage ?? defaultGetEventsPage;
+        const page = await getEventsPage(withAbortSignal(options.clientOptions, epochCheckSignal), {
+          afterEpochVersion: probedCursor.epochVersion,
+          epochGeneration: probedCursor.epochGeneration,
+          pageLimit: 1,
+        });
         if (
           !isEpochWatchdogActive(activeSocket) ||
           context == null ||
@@ -714,31 +702,42 @@ export function createWorkspaceRealtimeTransportCore(
           return;
         }
 
-        // Another tab may advance durable storage while this socket is stale.
         const currentCursor = lastCursor;
         if (currentCursor == null) return;
-        if (currentCursor.epochGeneration !== serverEpoch.epoch_generation) {
-          await recoverFromEpochGenerationChange(
-            serverEpoch.epoch_generation,
-            serverEpoch.epoch_version,
-          );
-          return;
-        }
-        if (serverEpoch.epoch_version > currentCursor.epochVersion) {
-          scheduleEpochLagConfirmation(
+        const pendingEvent = page.items.find(
+          (event) => event.epoch_version > currentCursor.epochVersion,
+        );
+        if (pendingEvent != null) {
+          scheduleVisibleEventLagConfirmation(
             activeSocket,
-            serverEpoch.epoch_generation,
-            serverEpoch.epoch_version,
+            probedCursor,
+            pendingEvent.epoch_version,
           );
         } else {
           shouldScheduleNextEpochCheck = true;
         }
-      } catch {
+      } catch (error) {
+        const expiredCursor = cursorExpiredError(error);
+        if (expiredCursor != null) {
+          const probeIsStale =
+            !isEpochWatchdogActive(activeSocket) ||
+            context !== epochCheckContext ||
+            activeSignal() !== epochCheckSignal ||
+            lastCursor?.epochVersion !== probedCursor.epochVersion ||
+            lastCursor.epochGeneration !== probedCursor.epochGeneration;
+          if (probeIsStale) {
+            shouldScheduleNextEpochCheck = isEpochWatchdogActive(activeSocket);
+            return;
+          }
+          await recoverFromCursorExpiry(expiredCursor);
+          return;
+        }
         if (isEpochWatchdogActive(activeSocket)) {
           reportDiagnostic(
             "epoch_check_failed",
-            new Error("Workspace realtime epoch check failed"),
+            new Error("Workspace realtime visible-events check failed"),
           );
+          shouldScheduleNextEpochCheck = true;
         }
       }
     })();
