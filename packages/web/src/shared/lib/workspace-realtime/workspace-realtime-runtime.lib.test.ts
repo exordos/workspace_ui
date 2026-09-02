@@ -560,6 +560,46 @@ describe("workspace-realtime transport runtime", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the websocket open when it catches up during the visible-event grace period", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: (_options, query) =>
+        Promise.resolve(createPage(query.pageLimit === 1 ? [createRestEventDto(11)] : [])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flushAsyncHandlers();
+
+    expect(sockets).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2_999);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(false);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
   it("keeps the websocket open when a stale visible-events probe returns 410", async () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
@@ -647,6 +687,8 @@ describe("workspace-realtime transport runtime", () => {
     eventsAvailable = true;
     await vi.advanceTimersByTimeAsync(60_000);
     await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await flushAsyncHandlers();
 
     expect(sockets).toHaveLength(2);
     expect(sockets[0]?.closed).toBe(true);
@@ -694,6 +736,8 @@ describe("workspace-realtime transport runtime", () => {
     eventsAvailable = true;
     cursorStorage.write(cursorOwner, cursor(12));
     await vi.advanceTimersByTimeAsync(60_000);
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(3_000);
     await flushAsyncHandlers();
 
     expect(sockets).toHaveLength(2);

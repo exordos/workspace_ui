@@ -180,6 +180,8 @@ const WORKSPACE_WEBSOCKET_CURSOR_EXPIRED_CLOSE_CODE = 4410;
 const INVALID_FRAME_SYNTHETIC_EPOCH: WorkspaceMessengerEpochVersion = 0;
 // Check for visible events only after the socket has been quiet for this long.
 const EPOCH_WATCHDOG_IDLE_TIMEOUT_MS = 60_000;
+// Give queued WebSocket frames time to deliver an event found by the watchdog.
+const EPOCH_WATCHDOG_GRACE_PERIOD_MS = 3_000;
 
 function defaultReconnectDelayMs(attempt: number): number {
   return Math.min(
@@ -330,6 +332,7 @@ export function createWorkspaceRealtimeTransportCore(
   let transportMode: WorkspaceRealtimeRuntimeMode = "idle";
   let lastWebSocketFrameAt: number | null = null;
   let epochWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let epochLagTimer: ReturnType<typeof setTimeout> | null = null;
   let epochCheckPromise: Promise<void> | null = null;
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
@@ -349,6 +352,10 @@ export function createWorkspaceRealtimeTransportCore(
     if (epochWatchdogTimer != null) {
       clearTimeout(epochWatchdogTimer);
       epochWatchdogTimer = null;
+    }
+    if (epochLagTimer != null) {
+      clearTimeout(epochLagTimer);
+      epochLagTimer = null;
     }
     lastWebSocketFrameAt = null;
   }
@@ -621,6 +628,7 @@ export function createWorkspaceRealtimeTransportCore(
     if (
       !isEpochWatchdogActive(activeSocket) ||
       epochWatchdogTimer != null ||
+      epochLagTimer != null ||
       epochCheckPromise != null
     ) {
       return;
@@ -631,6 +639,41 @@ export function createWorkspaceRealtimeTransportCore(
       epochWatchdogTimer = null;
       void checkVisibleEventsAfterSocketIdle(activeSocket);
     }, remainingDelay);
+  }
+
+  async function confirmVisibleEventLag(
+    activeSocket: WorkspaceRealtimeWebSocketLike,
+    probedCursor: WorkspaceRealtimeCursor,
+    pendingEpochVersion: WorkspaceMessengerEpochVersion,
+  ): Promise<void> {
+    if (!isEpochWatchdogActive(activeSocket) || context == null) return;
+
+    // Durable storage is shared by browser tabs. Only this runtime's in-memory cursor
+    // can prove that this socket received the visible event found by the probe.
+    const currentCursor = lastCursor;
+    if (currentCursor == null) return;
+    if (currentCursor.epochGeneration !== probedCursor.epochGeneration) {
+      scheduleEpochWatchdog(activeSocket);
+      return;
+    }
+    if (currentCursor.epochVersion >= pendingEpochVersion) {
+      scheduleEpochWatchdog(activeSocket);
+      return;
+    }
+
+    await nudge("visible_event_lag_detected");
+  }
+
+  function scheduleVisibleEventLagConfirmation(
+    activeSocket: WorkspaceRealtimeWebSocketLike,
+    probedCursor: WorkspaceRealtimeCursor,
+    pendingEpochVersion: WorkspaceMessengerEpochVersion,
+  ): void {
+    if (!isEpochWatchdogActive(activeSocket) || epochLagTimer != null) return;
+    epochLagTimer = setTimeout(() => {
+      epochLagTimer = null;
+      void confirmVisibleEventLag(activeSocket, probedCursor, pendingEpochVersion);
+    }, EPOCH_WATCHDOG_GRACE_PERIOD_MS);
   }
 
   function checkVisibleEventsAfterSocketIdle(activeSocket: WorkspaceRealtimeWebSocketLike): void {
@@ -661,11 +704,15 @@ export function createWorkspaceRealtimeTransportCore(
 
         const currentCursor = lastCursor;
         if (currentCursor == null) return;
-        const visibleEventPending = page.items.some(
+        const pendingEvent = page.items.find(
           (event) => event.epoch_version > currentCursor.epochVersion,
         );
-        if (visibleEventPending) {
-          await nudge("visible_event_lag_detected");
+        if (pendingEvent != null) {
+          scheduleVisibleEventLagConfirmation(
+            activeSocket,
+            probedCursor,
+            pendingEvent.epoch_version,
+          );
         } else {
           shouldScheduleNextEpochCheck = true;
         }
