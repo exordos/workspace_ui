@@ -1344,8 +1344,11 @@
     "recentAriaLabel": "Недавние стикеры",
     "noSearchResults": "Стикеры не найдены",
     "noRecentStickers": "Нет недавних стикеров",
+    "loading": "Загрузка стикеров...",
     "loadError": "Не удалось загрузить пакеты стикеров",
-    "retryLoad": "Повторить"
+    "retryLoad": "Повторить",
+    "unavailable": "Стикер недоступен",
+    "poweredByGiphy": "Powered by GIPHY"
   },
   "composer": {
     "bold": "Жирный",

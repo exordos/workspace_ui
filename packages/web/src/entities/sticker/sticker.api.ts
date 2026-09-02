@@ -1,46 +1,53 @@
-/**
- * Sticker wire-format helpers for message content.
- *
- * Stickers are sent as messages with a special markdown format:
- *   [sticker:pack_id:sticker_id](sticker_url)
- *
- * Server pack management API is not wired yet — sticker data lives in the local store.
- */
+import { isWorkspaceUuid } from "~/shared/lib/workspace-reference-urn.lib";
+import type { Sticker, StickerReference } from "./sticker.types";
 
-import type { Sticker } from "./sticker.types";
+const GIPHY_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+const WORKSPACE_STICKER_URN_PATTERN = /^urn:sticker:([^:]+)$/i;
+const GIPHY_STICKER_URN_PATTERN = /^urn:sticker:giphy:([A-Za-z0-9_-]+)$/;
+const STICKER_MARKDOWN_PATTERN = /^!\[sticker\]\((urn:sticker:[^)]+)\)$/i;
 
-/**
- * Build the markdown content for a sticker message.
- * Format: `[sticker:packId:stickerId](url)`
- *
- * This is a linked image that degrades to a regular image in clients
- * without sticker support.
- */
-export function buildStickerMarkdown(sticker: Sticker): string {
-  return `[sticker:${sticker.packId}:${sticker.id}](${sticker.url})`;
+export function buildStickerUrn(stickerId: string): string {
+  const normalizedStickerId = stickerId.trim();
+  if (!isWorkspaceUuid(normalizedStickerId)) {
+    throw new TypeError("Sticker ID must be a Workspace UUID");
+  }
+  return `urn:sticker:${normalizedStickerId.toLowerCase()}`;
 }
 
-/**
- * Parse sticker metadata from message content.
- * Returns null if the message is not a sticker.
- */
-export function parseStickerFromContent(
-  content: string,
-): { packId: string; stickerId: string; url: string } | null {
-  const match = /\[sticker:([^:]+):([^\]]+)\]\(([^)]+)\)/.exec(content);
-  if (!match) return null;
-  return {
-    packId: match[1]!,
-    stickerId: match[2]!,
-    url: match[3]!,
-  };
+export function buildStickerReferenceUrn(reference: StickerReference): string {
+  if (reference.kind === "workspace") return buildStickerUrn(reference.stickerId);
+
+  const externalId = reference.externalId.trim();
+  if (reference.provider !== "giphy" || !GIPHY_ID_PATTERN.test(externalId)) {
+    throw new TypeError("Sticker provider reference is invalid");
+  }
+  return `urn:sticker:giphy:${externalId}`;
 }
 
-/**
- * Check if a message content is a sticker-only message
- * (no other text besides the sticker markdown).
- */
+export function parseStickerUrn(value: unknown): StickerReference | null {
+  if (typeof value !== "string") return null;
+  const normalizedValue = value.trim();
+  const workspaceMatch = WORKSPACE_STICKER_URN_PATTERN.exec(normalizedValue);
+  const stickerId = workspaceMatch?.[1];
+  if (isWorkspaceUuid(stickerId)) {
+    return { kind: "workspace", stickerId: stickerId.toLowerCase() };
+  }
+
+  const providerMatch = GIPHY_STICKER_URN_PATTERN.exec(normalizedValue);
+  const externalId = providerMatch?.[1];
+  return externalId == null ? null : { kind: "provider", provider: "giphy", externalId };
+}
+
+export function buildStickerMarkdown(sticker: Pick<Sticker, "reference">): string {
+  return `![sticker](${buildStickerReferenceUrn(sticker.reference)})`;
+}
+
+export function parseStickerFromContent(content: string): StickerReference | null {
+  const match = STICKER_MARKDOWN_PATTERN.exec(content.trim());
+  const urn = match?.[1];
+  return urn == null ? null : parseStickerUrn(urn);
+}
+
 export function isStickerMessage(content: string): boolean {
-  const trimmed = content.trim();
-  return /^\[sticker:[^:]+:[^\]]+\]\([^)]+\)$/.test(trimmed);
+  return parseStickerFromContent(content) != null;
 }

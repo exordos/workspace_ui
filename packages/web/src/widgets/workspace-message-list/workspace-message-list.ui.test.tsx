@@ -13,6 +13,16 @@ import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 
+const stickerCatalogRepositoryMock = vi.hoisted(() => ({
+  list: vi.fn(),
+  search: vi.fn(),
+  resolve: vi.fn(),
+}));
+
+vi.mock("~/entities/sticker/sticker-catalog.api", () => ({
+  stickerCatalogRepository: stickerCatalogRepositoryMock,
+}));
+
 vi.mock("emoji-picker-react", () => ({
   default: (props: {
     onEmojiClick?: (data: {
@@ -179,6 +189,8 @@ describe("WorkspaceMessageList", () => {
   beforeEach(() => {
     setLocale("en");
     useUsersStore.getState().clear();
+    stickerCatalogRepositoryMock.resolve.mockReset();
+    stickerCatalogRepositoryMock.resolve.mockResolvedValue(null);
     vi.useRealTimers();
   });
 
@@ -3817,6 +3829,211 @@ describe("WorkspaceMessageList", () => {
 
     expect(body).toHaveAttribute("data-message-content-kind", "plain");
     expect(body?.querySelector("p")).toHaveTextContent("Workspace text message");
+  });
+
+  it("renders sticker-only URN markdown through the dedicated sticker renderer", async () => {
+    const stickerId = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "sticker-message",
+            markdown: `![sticker](urn:sticker:${stickerId})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='sticker-message']");
+    const bubble = article?.querySelector("[data-workspace-message-bubble='true']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const mediaFrame = body?.querySelector("[data-sticker-media-frame='true']");
+    const metaOverlay = mediaFrame?.querySelector("[data-sticker-message-meta-overlay='true']");
+    const messageTime = article?.querySelector("[data-message-time='true']");
+
+    expect(body).toHaveAttribute("data-message-content-kind", "sticker");
+    expect(bubble).toHaveAttribute("data-sticker-only-bubble", "true");
+    expect(bubble).toHaveAttribute("tabindex", "0");
+    for (const genericBubbleClassName of [
+      "bg-msg-bg",
+      "bg-msg-own-bg",
+      "px-3",
+      "py-2",
+      "shadow-sm",
+    ]) {
+      expect(bubble).not.toHaveClass(genericBubbleClassName);
+    }
+    expect(body?.querySelector("[data-sticker-message='true']")).toBeInTheDocument();
+    expect(body?.querySelector("a[href^='urn:sticker:']")).not.toBeInTheDocument();
+    expect(mediaFrame).toHaveClass("relative", "inline-flex");
+    expect(metaOverlay).toHaveClass("absolute", "bottom-1.5", "right-1.5");
+    expect(metaOverlay).toContainElement(messageTime as HTMLElement);
+    expect(messageTime).toHaveAttribute("data-message-meta-placement", "row");
+    expect(article?.querySelectorAll("[data-message-time='true']")).toHaveLength(1);
+    expect(article?.querySelector("[data-workspace-message-reaction-footer='true']")).toBeNull();
+    await waitFor(() => {
+      expect(stickerCatalogRepositoryMock.resolve).toHaveBeenCalledWith(
+        { kind: "workspace", stickerId },
+        expect.any(AbortSignal),
+      );
+    });
+    expect(await screen.findByText("Sticker unavailable")).toBeInTheDocument();
+
+    fireEvent.keyDown(bubble as HTMLElement, { key: "F10", shiftKey: true });
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+  });
+
+  it("keeps sticker reactions below media without repeating the overlay timestamp", () => {
+    const stickerId = "11111111-1111-4111-8111-111111111111";
+    const onToggleMessageReaction = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "sticker-reaction-message",
+            markdown: `![sticker](urn:sticker:${stickerId})`,
+            reactions: { "👍": 1 },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='sticker-reaction-message']");
+    const footer = article?.querySelector("[data-sticker-reaction-footer='true']");
+    const reactionChip = footer?.querySelector("[data-workspace-message-reaction-chip='true']");
+
+    expect(footer).toBeInTheDocument();
+    expect(reactionChip).toBeInTheDocument();
+    expect(footer?.querySelector("[data-message-time='true']")).toBeNull();
+    expect(article?.querySelectorAll("[data-message-time='true']")).toHaveLength(1);
+
+    fireEvent.click(reactionChip as HTMLElement);
+
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("sticker-reaction-message", "👍");
+  });
+
+  it("keeps sticker selection visible without restoring the generic bubble background", () => {
+    const stickerId = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "selected-sticker-message",
+            markdown: `![sticker](urn:sticker:${stickerId})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["selected-sticker-message"])}
+      />,
+    );
+
+    const bubble = container.querySelector(
+      "[data-message-uuid='selected-sticker-message'] [data-workspace-message-bubble='true']",
+    );
+
+    expect(bubble).toHaveClass("ring-2", "ring-accent/70");
+    for (const genericSelectionClassName of ["bg-msg-selected", "bg-card-bg-active"]) {
+      expect(bubble).not.toHaveClass(genericSelectionClassName);
+    }
+  });
+
+  it("keeps failed outgoing sticker actions inside the media overlay", () => {
+    const externalId = "xT4uQulxzV39haRFjG";
+    const onRetryOutgoingMessage = vi.fn();
+    const onRemoveOutgoingMessage = vi.fn();
+    stickerCatalogRepositoryMock.resolve.mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId: "outgoing-sticker-message",
+            markdown: `![sticker](urn:sticker:giphy:${externalId})`,
+            status: "failed",
+            error: "network failed",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onRetryOutgoingMessage, onRemoveOutgoingMessage }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='outgoing-sticker-message']");
+    const bubble = article?.querySelector("[data-workspace-message-bubble='true']");
+    const overlay = article?.querySelector("[data-sticker-message-meta-overlay='true']");
+    const deliveryIndicator = overlay?.querySelector("[data-outgoing-delivery-status='failed']");
+    const retryButton = overlay?.querySelector("button[aria-label='Retry send']");
+    const removeButton = overlay?.querySelector("button[aria-label='Remove message']");
+
+    expect(article).toHaveAttribute("data-message-owner", "own");
+    expect(bubble).toHaveClass("ring-2", "ring-danger/80");
+    for (const genericFailureClassName of ["bg-danger/20", "px-3", "py-2"]) {
+      expect(bubble).not.toHaveClass(genericFailureClassName);
+    }
+    expect(overlay).toContainElement(deliveryIndicator as HTMLElement);
+    expect(retryButton).toBeInTheDocument();
+    expect(removeButton).toBeInTheDocument();
+    expect(article?.querySelectorAll("[data-message-time='true']")).toHaveLength(1);
+    expect(article?.querySelector("[data-workspace-message-reaction-footer='true']")).toBeNull();
+
+    fireEvent.click(retryButton as HTMLElement);
+    fireEvent.click(removeButton as HTMLElement);
+
+    expect(onRetryOutgoingMessage).toHaveBeenCalledWith("outgoing-sticker-message");
+    expect(onRemoveOutgoingMessage).toHaveBeenCalledWith("outgoing-sticker-message");
+  });
+
+  it("resolves a frontend-only GIPHY sticker reference", async () => {
+    const externalId = "xT4uQulxzV39haRFjG";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "giphy-sticker-message",
+            markdown: `![sticker](urn:sticker:giphy:${externalId})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(stickerCatalogRepositoryMock.resolve).toHaveBeenCalledWith(
+        { kind: "provider", provider: "giphy", externalId },
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("does not treat mixed markdown containing a sticker URN as a sticker message", () => {
+    const stickerId = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "mixed-sticker-message",
+            markdown: `Before ![sticker](urn:sticker:${stickerId}) after`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(body).not.toHaveAttribute("data-message-content-kind", "sticker");
+    expect(body?.querySelector("[data-sticker-message='true']")).not.toBeInTheDocument();
+    expect(stickerCatalogRepositoryMock.resolve).not.toHaveBeenCalled();
   });
 
   it("renders inline-rich Workspace markdown and keeps time inline", () => {

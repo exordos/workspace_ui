@@ -1,270 +1,227 @@
-/**
- * Tests for the sticker entity — markdown helpers, parser, and Zustand store.
- *
- * Stickers are sent as special markdown `[sticker:packId:stickerId](url)`.
- * This file verifies the markdown builder/parser round-trip, the
- * isStickerMessage classifier, and the store's pack CRUD, search, recent
- * tracking, favorites, and loading state.
- */
 import { afterEach, describe, expect, it } from "vitest";
-import { buildStickerMarkdown, parseStickerFromContent, isStickerMessage } from "./sticker.api";
+import {
+  buildStickerMarkdown,
+  buildStickerReferenceUrn,
+  buildStickerUrn,
+  isStickerMessage,
+  parseStickerFromContent,
+  parseStickerUrn,
+} from "./sticker.api";
 import { useStickerStore } from "./sticker.model";
-import type { Sticker, StickerPack } from "./sticker.types";
+import type { Sticker } from "./sticker.types";
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
+const STICKER_1_ID = "11111111-1111-4111-8111-111111111111";
+const STICKER_2_ID = "22222222-2222-4222-8222-222222222222";
+const STICKER_1_URN = `urn:sticker:${STICKER_1_ID}`;
+const STICKER_1_MARKDOWN = `![sticker](${STICKER_1_URN})`;
+const GIPHY_ID = "xT4uQulxzV39haRFjG";
+const GIPHY_URN = `urn:sticker:giphy:${GIPHY_ID}`;
+const GIPHY_MARKDOWN = `![sticker](${GIPHY_URN})`;
 
 const STICKER_1: Sticker = {
-  id: "s1",
-  packId: "p1",
-  emoji: "😀",
+  id: STICKER_1_ID,
+  reference: { kind: "workspace", stickerId: STICKER_1_ID },
+  source: { provider: "giphy", externalId: "giphy-1" },
+  title: "Grinning celebration",
+  emoji: ["😀"],
+  tags: ["happy", "celebration"],
   alt: "grinning face",
   format: "webp",
   url: "https://cdn.example.com/stickers/p1/s1.webp",
   thumbnailUrl: "https://cdn.example.com/stickers/p1/s1_thumb.webp",
-  width: 512,
-  height: 512,
+  media: {
+    animated: true,
+    width: 512,
+    height: 512,
+    aspectRatio: 1,
+    preferredFormat: "webp",
+  },
+  attribution: { provider: "GIPHY" },
+  rating: "g",
+  active: true,
+  blocked: false,
   fileSize: 24000,
 };
 
 const STICKER_2: Sticker = {
-  id: "s2",
-  packId: "p1",
-  emoji: "👍",
+  id: STICKER_2_ID,
+  reference: { kind: "workspace", stickerId: STICKER_2_ID },
+  source: { provider: "giphy", externalId: "giphy-2" },
+  title: "Thumbs up",
+  emoji: ["👍"],
+  tags: ["approve"],
+  alt: "thumbs up",
   format: "png",
   url: "https://cdn.example.com/stickers/p1/s2.png",
-  width: 512,
-  height: 512,
+  media: {
+    animated: false,
+    width: 512,
+    height: 512,
+    aspectRatio: 1,
+    preferredFormat: "png",
+  },
+  attribution: { provider: "GIPHY" },
+  rating: "g",
+  active: true,
+  blocked: false,
 };
 
-const PACK_1: StickerPack = {
-  id: "p1",
-  title: "Classic Smileys",
-  author: "Workspace",
-  animated: false,
-  coverStickerId: "s1",
-  stickers: [STICKER_1, STICKER_2],
-  isDefault: true,
-};
+describe("sticker URN", () => {
+  it("builds a provider-neutral URN from a Workspace UUID", () => {
+    expect(buildStickerUrn(STICKER_1_ID)).toBe(STICKER_1_URN);
+    expect(buildStickerUrn(STICKER_1_ID.toUpperCase())).toBe(STICKER_1_URN);
+  });
 
-// ---------------------------------------------------------------------------
-// Markdown helpers — encode/decode stickers into Zulip-compatible markdown.
-// ---------------------------------------------------------------------------
+  it("parses Workspace and temporary frontend-only GIPHY references", () => {
+    expect(parseStickerUrn(STICKER_1_URN)).toEqual({
+      kind: "workspace",
+      stickerId: STICKER_1_ID,
+    });
+    expect(parseStickerUrn(STICKER_1_URN.toUpperCase())).toEqual({
+      kind: "workspace",
+      stickerId: STICKER_1_ID,
+    });
+    expect(parseStickerUrn(GIPHY_URN)).toEqual({
+      kind: "provider",
+      provider: "giphy",
+      externalId: GIPHY_ID,
+    });
+    expect(parseStickerUrn(`${STICKER_1_URN}?fallback=giphy`)).toBeNull();
+  });
 
-// buildStickerMarkdown produces the wire format sent to the Zulip API.
-describe("buildStickerMarkdown", () => {
-  // Must produce the exact format the parser expects on the receiving end.
-  it("builds correct markdown", () => {
-    const md = buildStickerMarkdown(STICKER_1);
-    expect(md).toBe("[sticker:p1:s1](https://cdn.example.com/stickers/p1/s1.webp)");
+  it("builds a temporary GIPHY URN for unrestricted frontend mode", () => {
+    expect(
+      buildStickerReferenceUrn({ kind: "provider", provider: "giphy", externalId: GIPHY_ID }),
+    ).toBe(GIPHY_URN);
+  });
+
+  it("rejects a non-UUID sticker ID", () => {
+    expect(() => buildStickerUrn("giphy-id")).toThrow("Workspace UUID");
   });
 });
 
-// parseStickerFromContent extracts sticker metadata from message content.
+describe("buildStickerMarkdown", () => {
+  it("keeps provider IDs and media URLs out of the wire format", () => {
+    expect(buildStickerMarkdown(STICKER_1)).toBe(STICKER_1_MARKDOWN);
+  });
+
+  it("includes the provider ID only for an unrestricted provider reference", () => {
+    expect(
+      buildStickerMarkdown({
+        reference: { kind: "provider", provider: "giphy", externalId: GIPHY_ID },
+      }),
+    ).toBe(GIPHY_MARKDOWN);
+  });
+});
+
 describe("parseStickerFromContent", () => {
-  // Valid sticker markdown must be parsed into packId, stickerId, and URL.
   it("parses valid sticker markdown", () => {
-    const result = parseStickerFromContent("[sticker:p1:s1](https://cdn.example.com/s1.webp)");
-    expect(result).toEqual({
-      packId: "p1",
-      stickerId: "s1",
-      url: "https://cdn.example.com/s1.webp",
+    expect(parseStickerFromContent(STICKER_1_MARKDOWN)).toEqual({
+      kind: "workspace",
+      stickerId: STICKER_1_ID,
     });
   });
 
-  // Regular text must not be mistakenly parsed as a sticker.
+  it("parses unrestricted GIPHY sticker markdown", () => {
+    expect(parseStickerFromContent(GIPHY_MARKDOWN)).toEqual({
+      kind: "provider",
+      provider: "giphy",
+      externalId: GIPHY_ID,
+    });
+  });
+
   it("returns null for regular text", () => {
     expect(parseStickerFromContent("Hello world")).toBeNull();
   });
 
-  // Standard image markdown ![alt](url) must not match the sticker pattern.
   it("returns null for regular image markdown", () => {
     expect(parseStickerFromContent("![alt](url.png)")).toBeNull();
   });
 
-  // Sticker embedded within other text must still be extractable.
-  it("parses sticker in mixed content", () => {
-    const result = parseStickerFromContent("Check this out [sticker:p2:s5](url.webp) nice");
-    expect(result?.stickerId).toBe("s5");
+  it("does not classify mixed content as a sticker message", () => {
+    expect(parseStickerFromContent(`Check this out ${STICKER_1_MARKDOWN}`)).toBeNull();
   });
 });
 
-// isStickerMessage determines if a message should render as a sticker (no text bubble).
 describe("isStickerMessage", () => {
-  // A message containing ONLY a sticker should render as a full-size sticker image.
   it("returns true for sticker-only content", () => {
-    expect(isStickerMessage("[sticker:p1:s1](https://cdn.example.com/s1.webp)")).toBe(true);
+    expect(isStickerMessage(STICKER_1_MARKDOWN)).toBe(true);
   });
 
-  // Leading/trailing whitespace around the sticker must still count as sticker-only.
   it("returns true with whitespace", () => {
-    expect(isStickerMessage("  [sticker:p1:s1](url.webp)  ")).toBe(true);
+    expect(isStickerMessage(`  ${STICKER_1_MARKDOWN}  `)).toBe(true);
   });
 
-  // Text + sticker must render as a normal text bubble, not a sticker image.
   it("returns false for mixed content", () => {
-    expect(isStickerMessage("Hello [sticker:p1:s1](url.webp)")).toBe(false);
+    expect(isStickerMessage(`Hello ${STICKER_1_MARKDOWN}`)).toBe(false);
   });
 
-  // Plain text messages must not be flagged as stickers.
   it("returns false for regular text", () => {
     expect(isStickerMessage("Just a message")).toBe(false);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Store — manages sticker packs, recent usage, favorites, and search.
-// ---------------------------------------------------------------------------
-
-// Verifies pack CRUD, sticker search, recent/favorites tracking, and loading state.
+// Verifies session-only recent sticker tracking.
 describe("useStickerStore", () => {
   afterEach(() => {
-    useStickerStore.setState({ packs: [], recent: [], favorites: [], loading: false });
+    useStickerStore.setState({
+      packs: [],
+      recent: [],
+      loading: false,
+      error: null,
+      searchResults: [],
+      sessionStickers: [],
+      searchLoading: false,
+      searchError: null,
+    });
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
   });
 
-  // Initial state must be empty — packs are loaded asynchronously.
   it("starts with empty packs", () => {
     expect(useStickerStore.getState().packs).toHaveLength(0);
   });
 
-  // setPacks is the bulk load — replaces everything after API fetch.
-  it("setPacks replaces all packs", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    expect(useStickerStore.getState().packs).toHaveLength(1);
-    expect(useStickerStore.getState().packs[0]!.title).toBe("Classic Smileys");
-  });
-
-  // addPack allows installing individual packs incrementally.
-  it("addPack adds a new pack", () => {
-    useStickerStore.getState().addPack(PACK_1);
-    expect(useStickerStore.getState().packs).toHaveLength(1);
-  });
-
-  // Duplicate packs (same ID) must be silently ignored to avoid duplicates in UI.
-  it("addPack ignores duplicate", () => {
-    useStickerStore.getState().addPack(PACK_1);
-    useStickerStore.getState().addPack(PACK_1);
-    expect(useStickerStore.getState().packs).toHaveLength(1);
-  });
-
-  // Pack removal (uninstall) must clean up by pack ID.
-  it("removePack removes by id", () => {
-    useStickerStore.getState().addPack(PACK_1);
-    useStickerStore.getState().removePack("p1");
-    expect(useStickerStore.getState().packs).toHaveLength(0);
-  });
-
-  // getSticker searches all packs — used to resolve sticker from message content.
-  it("getSticker finds sticker across packs", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    const found = useStickerStore.getState().getSticker("s2");
-    expect(found?.emoji).toBe("👍");
-  });
-
-  // Unknown sticker ID returns undefined — callers show a placeholder.
-  it("getSticker returns undefined for unknown id", () => {
-    expect(useStickerStore.getState().getSticker("unknown")).toBeUndefined();
-  });
-
-  it("getPack finds pack by id", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    expect(useStickerStore.getState().getPack("p1")?.title).toBe("Classic Smileys");
-  });
-
-  // Emoji search powers the sticker picker's search bar.
-  it("searchByEmoji finds matching stickers", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    const results = useStickerStore.getState().searchByEmoji("👍");
-    expect(results).toHaveLength(1);
-    expect(results[0]!.id).toBe("s2");
-  });
-
-  // Alt text search allows finding stickers by description (e.g. "grinning").
-  it("searchByEmoji by alt text", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    const results = useStickerStore.getState().searchByEmoji("grinning");
-    expect(results).toHaveLength(1);
-  });
-
-  // Recent tracking provides quick access to recently sent stickers.
   it("addRecent tracks usage", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    useStickerStore.getState().addRecent("s1", "p1");
+    useStickerStore.getState().addRecent(STICKER_1);
     expect(useStickerStore.getState().recent).toHaveLength(1);
-    expect(useStickerStore.getState().recent[0]!.stickerId).toBe("s1");
+    expect(useStickerStore.getState().recent[0]!.stickerId).toBe(STICKER_1_ID);
+    expect(useStickerStore.getState().sessionStickers).toEqual([STICKER_1]);
   });
 
-  // Sending the same sticker twice must not create duplicate entries.
+  it("keeps a selected search-only provider sticker available for recent rendering", () => {
+    const providerSticker: Sticker = {
+      ...STICKER_1,
+      id: "giphy:provider-result",
+      reference: {
+        kind: "provider",
+        provider: "giphy",
+        externalId: "provider-result",
+      },
+    };
+    useStickerStore.getState().addRecent(providerSticker);
+    useStickerStore.getState().clearSearch();
+
+    expect(useStickerStore.getState().sessionStickers).toEqual([providerSticker]);
+  });
+
   it("addRecent deduplicates", () => {
-    useStickerStore.getState().addRecent("s1", "p1");
-    useStickerStore.getState().addRecent("s1", "p1");
+    useStickerStore.getState().addRecent(STICKER_1);
+    useStickerStore.getState().addRecent(STICKER_1);
     expect(useStickerStore.getState().recent).toHaveLength(1);
+    expect(useStickerStore.getState().sessionStickers).toHaveLength(1);
   });
 
-  // Most recently used sticker must appear first in the recents list.
   it("addRecent puts newest first", () => {
-    useStickerStore.getState().addRecent("s1", "p1");
-    useStickerStore.getState().addRecent("s2", "p1");
-    expect(useStickerStore.getState().recent[0]!.stickerId).toBe("s2");
+    useStickerStore.getState().addRecent(STICKER_1);
+    useStickerStore.getState().addRecent(STICKER_2);
+    expect(useStickerStore.getState().recent[0]!.stickerId).toBe(STICKER_2_ID);
+    expect(useStickerStore.getState().sessionStickers[0]).toEqual(STICKER_2);
   });
 
-  // Toggle favorite must work as a flip — add on first call, remove on second.
-  it("toggleFavorite adds and removes", () => {
-    useStickerStore.getState().toggleFavorite("s1");
-    expect(useStickerStore.getState().isFavorite("s1")).toBe(true);
+  it("does not persist recent stickers to localStorage", () => {
+    useStickerStore.getState().addRecent(STICKER_1);
 
-    useStickerStore.getState().toggleFavorite("s1");
-    expect(useStickerStore.getState().isFavorite("s1")).toBe(false);
-  });
-
-  // getRecentStickers must resolve IDs to full Sticker objects for rendering.
-  it("getRecentStickers resolves sticker objects", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    useStickerStore.getState().addRecent("s1", "p1");
-    const recent = useStickerStore.getState().getRecentStickers();
-    expect(recent).toHaveLength(1);
-    expect(recent[0]!.emoji).toBe("😀");
-  });
-
-  // getFavoriteStickers must resolve favorite IDs to full Sticker objects.
-  it("getFavoriteStickers resolves sticker objects", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    useStickerStore.getState().toggleFavorite("s1");
-    const favs = useStickerStore.getState().getFavoriteStickers();
-    expect(favs).toHaveLength(1);
-    expect(favs[0]!.id).toBe("s1");
-  });
-
-  it("getRecentStickers returns cached array when recent ref is unchanged", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    useStickerStore.getState().addRecent("s1", "p1");
-    const first = useStickerStore.getState().getRecentStickers();
-    const second = useStickerStore.getState().getRecentStickers();
-    expect(second).toBe(first);
-  });
-
-  it("getFavoriteStickers returns cached array when favorites ref is unchanged", () => {
-    useStickerStore.getState().setPacks([PACK_1]);
-    useStickerStore.getState().toggleFavorite("s1");
-    const first = useStickerStore.getState().getFavoriteStickers();
-    const second = useStickerStore.getState().getFavoriteStickers();
-    expect(second).toBe(first);
-  });
-
-  // Removing a pack must also clean up its recent entries to avoid dangling references.
-  it("removePack also removes recent entries for that pack", () => {
-    useStickerStore.getState().addRecent("s1", "p1");
-    useStickerStore.getState().removePack("p1");
-    expect(useStickerStore.getState().recent).toHaveLength(0);
-  });
-
-  // Loading state is used by the UI to show a spinner during pack fetch.
-  it("loading state toggles", () => {
-    expect(useStickerStore.getState().loading).toBe(false);
-    useStickerStore.getState().setLoading(true);
-    expect(useStickerStore.getState().loading).toBe(true);
+    expect(localStorage.getItem("sticker_recent")).toBeNull();
   });
 });

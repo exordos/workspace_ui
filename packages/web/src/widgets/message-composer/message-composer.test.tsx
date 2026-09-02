@@ -82,7 +82,11 @@ vi.mock("~/features/ai-reply/ai-reply.ui", () => ({
 }));
 
 vi.mock("~/features/sticker-picker/sticker-picker.ui", () => ({
-  StickerPicker: () => <div data-testid="sticker-picker-mock">Sticker picker</div>,
+  StickerPicker: ({ onSelect }: { onSelect: (sticker: unknown) => void }) => (
+    <button type="button" data-testid="sticker-picker-mock" onClick={() => onSelect({})}>
+      Pick sticker
+    </button>
+  ),
 }));
 
 vi.mock("~/entities/sticker/sticker.api", () => ({
@@ -3880,6 +3884,52 @@ describe("MessageComposer AI context wiring", () => {
 
     expect(stickersTab).toHaveAttribute("aria-selected", "true");
     expect(within(picker).getByTestId("sticker-picker-mock")).toBeInTheDocument();
+  });
+
+  it("sends a selected sticker immediately without changing the composer draft", () => {
+    const onSend = vi.fn();
+    const onSendSticker = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} onSendSticker={onSendSticker} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "unfinished draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+
+    const picker = screen.getByTestId("composer-media-picker");
+    const stickersTab = within(picker)
+      .getAllByRole("tab")
+      .find((tab) => /stickers/i.test(tab.getAttribute("aria-label") ?? ""));
+    if (stickersTab == null) throw new Error("Expected stickers tab");
+
+    fireEvent.click(stickersTab);
+    fireEvent.click(within(picker).getByRole("button", { name: "Pick sticker" }));
+
+    expect(onSendSticker).toHaveBeenCalledWith(":sticker:");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("unfinished draft");
+    expect(screen.queryByTestId("composer-media-picker")).not.toBeInTheDocument();
+  });
+
+  it("does not route a sticker through the generic send callback", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "unfinished draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+
+    const picker = screen.getByTestId("composer-media-picker");
+    const stickersTab = within(picker)
+      .getAllByRole("tab")
+      .find((tab) => /stickers/i.test(tab.getAttribute("aria-label") ?? ""));
+    if (stickersTab == null) throw new Error("Expected stickers tab");
+
+    fireEvent.click(stickersTab);
+    fireEvent.click(within(picker).getByRole("button", { name: "Pick sticker" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("unfinished draft");
+    expect(screen.queryByTestId("composer-media-picker")).not.toBeInTheDocument();
   });
 
   it("renders AI tools trigger inside formatting toolbar", () => {

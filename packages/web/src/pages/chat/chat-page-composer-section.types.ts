@@ -33,6 +33,7 @@ export interface ChatPageComposerSectionProps {
     subjectOverride?: string,
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
+  onSendSticker: (content: string) => void | Promise<void>;
   optimisticClearOnSend?: boolean;
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;

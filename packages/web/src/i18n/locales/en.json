@@ -1335,8 +1335,11 @@
     "recentAriaLabel": "Recent stickers",
     "noSearchResults": "No stickers found",
     "noRecentStickers": "No recent stickers",
+    "loading": "Loading stickers...",
     "loadError": "Could not load sticker packs",
-    "retryLoad": "Try again"
+    "retryLoad": "Try again",
+    "unavailable": "Sticker unavailable",
+    "poweredByGiphy": "Powered by GIPHY"
   },
   "composer": {
     "bold": "Bold",

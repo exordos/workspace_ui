@@ -103,6 +103,8 @@ export interface MessageComposerProps {
     subject?: string,
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
+  /** Sends a sticker as its own message without consuming the current composer draft. */
+  onSendSticker?: (content: string) => void | Promise<void>;
   /** Clears the composer after a send has been accepted locally, before the request settles. */
   optimisticClearOnSend?: boolean;
   /** Enables externally owned attachments for Workspace upload-before-send. */

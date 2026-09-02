@@ -4289,6 +4289,44 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
   });
 
+  it("sends a sticker as a separate message and preserves the current draft", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const stickerMarkdown = "![sticker](urn:sticker:giphy:sticker-id)";
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "unfinished draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const onSendSticker = captured.composerProps?.onSendSticker;
+    if (onSendSticker == null) throw new Error("Workspace sticker send handler is missing");
+
+    await act(async () => {
+      await expect(onSendSticker(stickerMarkdown)).resolves.toBeUndefined();
+    });
+
+    expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        markdown: stickerMarkdown,
+      }),
+    );
+    expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content.text,
+    ).toBe("unfinished draft");
+    expect(captured.composerProps?.draftInitialValue).toBe("unfinished draft");
+  });
+
   it("queues deletion for a second draft created without leaving the conversation", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,

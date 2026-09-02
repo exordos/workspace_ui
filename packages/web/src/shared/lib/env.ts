@@ -118,6 +118,9 @@ export const env = {
    */
   JITSI_MEET_DOMAIN: optional("VITE_JITSI_MEET_DOMAIN"),
 
+  /** Public browser key for direct GIPHY requests. Use a separate key per platform and environment. */
+  GIPHY_API_KEY: optional("VITE_GIPHY_API_KEY"),
+
   /** `https://` + {@link JITSI_MEET_DOMAIN}, or empty when the env domain is unset. */
   JITSI_MEET_BASE_URL: (() => {
     const domain = optional("VITE_JITSI_MEET_DOMAIN");

@@ -22,6 +22,8 @@ interface ImportMetaEnv {
   readonly VITE_PWA_DEV?: string;
   /** Jitsi Meet domain without protocol (e.g. meet.example.com). Optional. */
   readonly VITE_JITSI_MEET_DOMAIN?: string;
+  /** Public browser key for direct GIPHY requests. Separate per platform and environment. */
+  readonly VITE_GIPHY_API_KEY?: string;
   /** `large` | `compact` — incoming call modal layout. */
   readonly VITE_CALL_INCOMING_MODAL_VARIANT?: string;
   /** Override for Workspace API base URL. Optional. */

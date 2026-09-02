@@ -20,6 +20,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onExpandStreamTopics,
   uploadProgress,
   onSend,
+  onSendSticker,
   optimisticClearOnSend,
   attachments,
   attachmentsBlockSend,
@@ -71,6 +72,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     return (
       <MessageComposer
         onSend={onSend}
+        onSendSticker={onSendSticker}
         optimisticClearOnSend={optimisticClearOnSend}
         attachments={attachments}
         attachmentsBlockSend={attachmentsBlockSend}
@@ -137,6 +139,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   return (
     <MessageComposer
       onSend={onSend}
+      onSendSticker={onSendSticker}
       optimisticClearOnSend={optimisticClearOnSend}
       attachments={attachments}
       attachmentsBlockSend={attachmentsBlockSend}

@@ -1407,9 +1407,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [ownerKey, registerDeliveredOutgoingMessage, runWorkspaceAction, runtimeContext],
   );
 
-  const handleSend = useCallback(
+  const enqueueOutgoingContent = useCallback(
     (content: string) => {
-      // The shared composer shell sends only through Workspace POST /messages/.
       setSendError(null);
       if (countUnicodeCodePoints(content) > WORKSPACE_MESSAGE_MAX_LENGTH) {
         const error = t("composer.messageTooLong");
@@ -1434,13 +1433,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
-      if (content.trim().length === 0) return;
-      const draftAtSend = selectWorkspaceComposerDraft(
-        useWorkspaceComposerDraftStore.getState(),
-        sendOwnerKey,
-        conversationId,
-      );
-
+      if (content.trim().length === 0) return null;
       const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
         ownerKey: sendOwnerKey,
         conversationId: target.includeStreamConversation
@@ -1459,15 +1452,35 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       // Scroll right after the local row appears. A later server snapshot can
       // move it by backend created_at, but the user already sees the send happened.
       setScrollToBottomAfterSendNonce((value) => value + 1);
-      return deliverOutgoingMessage(outgoing.localId).then((sent) => {
+      return {
+        localId: outgoing.localId,
+        sendOwnerKey,
+        sourceConversationId: conversationId,
+        runtimeContext,
+      };
+    },
+    [conversationId, resolveSendTarget, runtimeContext],
+  );
+
+  const handleSend = useCallback(
+    (content: string) => {
+      // The shared composer shell sends only through Workspace POST /messages/.
+      const queued = enqueueOutgoingContent(content);
+      if (queued == null) return;
+      const draftAtSend = selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        queued.sendOwnerKey,
+        queued.sourceConversationId,
+      );
+      return deliverOutgoingMessage(queued.localId).then((sent) => {
         if (!sent) {
           throw new Error(t("message.sendFailed"));
         }
         if (draftAtSend != null) {
           const currentDraft = selectWorkspaceComposerDraft(
             useWorkspaceComposerDraftStore.getState(),
-            sendOwnerKey,
-            conversationId,
+            queued.sendOwnerKey,
+            queued.sourceConversationId,
           );
           if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
             return { shouldClearComposer: false } satisfies MessageComposerSendResult;
@@ -1476,8 +1489,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           // Both callbacks still close over the sent composer state. Only consume that
           // cleanup when the sent draft is still the current reply session.
           workspaceComposerSendCleanupRef.current = {
-            ownerKey: sendOwnerKey,
-            conversationId,
+            ownerKey: queued.sendOwnerKey,
+            conversationId: queued.sourceConversationId,
             snapshotId: draftAtSend.snapshotId,
             ignoresValueClear: true,
             ignoresReplyClear: true,
@@ -1489,14 +1502,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             }
           }, 0);
           setComposerDraftShadow(
-            createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
+            createWorkspaceComposerDraftKey(queued.sendOwnerKey, queued.sourceConversationId),
             EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
           );
           // The message is already sent. Deleting its draft must not delay
           // clearing the composer and must wait for an in-flight POST/PUT.
           // The queue retains conflict data if the DELETE receives 412.
           const deletionQueued = deleteWorkspaceComposerDraftFromServer({
-            runtimeContext,
+            runtimeContext: queued.runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             draft: currentDraft,
           });
@@ -1509,7 +1522,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           }
           useWorkspaceComposerDraftStore
             .getState()
-            .completeDraftVisit(sendOwnerKey, conversationId, currentDraft.draftUuid);
+            .completeDraftVisit(
+              queued.sendOwnerKey,
+              queued.sourceConversationId,
+              currentDraft.draftUuid,
+            );
         } else if (content.trim().length > 0) {
           workspaceComposerDraftLog.warn("Message was sent without an active draft", {
             reason: "draft-delete-not-queued",
@@ -1517,13 +1534,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         }
       });
     },
-    [
-      conversationId,
-      deliverOutgoingMessage,
-      resolveSendTarget,
-      runtimeContext,
-      setComposerDraftShadow,
-    ],
+    [deliverOutgoingMessage, enqueueOutgoingContent, setComposerDraftShadow],
+  );
+
+  const handleSendSticker = useCallback(
+    (content: string) => {
+      const queued = enqueueOutgoingContent(content);
+      if (queued == null) return;
+      return deliverOutgoingMessage(queued.localId).then((sent) => {
+        if (!sent) {
+          throw new Error(t("message.sendFailed"));
+        }
+      });
+    },
+    [deliverOutgoingMessage, enqueueOutgoingContent],
   );
 
   const handleOpenWorkspaceJitsiCall = useCallback(
@@ -3225,6 +3249,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           streamSlug={undefined}
           onExpandStreamTopics={noop}
           uploadProgress={null}
+          onSendSticker={handleSendSticker}
           optimisticClearOnSend
           onCreateCallLink={undefined}
           onCancelUpload={noop}
@@ -3275,6 +3300,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       handleRemoveComposerAttachment,
       handleRemoveWorkspaceReplyTab,
       handleReorderWorkspaceReplyTab,
+      handleSendSticker,
       handleSelectWorkspaceReplyTab,
       handleSubmitEdit,
       handleWorkspaceComposerValueChange,
@@ -3362,6 +3388,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onExpandStreamTopics={noop}
             uploadProgress={null}
             onSend={handleSend}
+            onSendSticker={handleSendSticker}
             optimisticClearOnSend
             onCreateCallLink={undefined}
             onCancelUpload={noop}

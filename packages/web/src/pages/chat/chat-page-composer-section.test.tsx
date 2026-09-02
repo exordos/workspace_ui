@@ -26,6 +26,7 @@ const createProps = (
   onExpandStreamTopics: vi.fn(),
   uploadProgress: null,
   onSend: vi.fn(),
+  onSendSticker: vi.fn(),
   onCreateCallLink: undefined,
   onCancelUpload: vi.fn(),
   activeTopic: null,
@@ -48,10 +49,12 @@ describe("ChatPageComposerSection joined appearance", () => {
   });
 
   it("passes the joined top appearance to the regular composer", () => {
-    render(<ChatPageComposerSection {...createProps({ joinedTop: true })} />);
+    const onSendSticker = vi.fn();
+    render(<ChatPageComposerSection {...createProps({ joinedTop: true, onSendSticker })} />);
 
     expect(screen.getByTestId("message-composer")).toBeInTheDocument();
     expect(captured.composerProps?.joinedTop).toBe(true);
+    expect(captured.composerProps?.onSendSticker).toBe(onSendSticker);
   });
 
   it("passes the joined top appearance to the read-only composer", () => {

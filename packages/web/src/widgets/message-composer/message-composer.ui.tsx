@@ -447,6 +447,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
+  onSendSticker,
   optimisticClearOnSend = false,
   attachments,
   attachmentsBlockSend = false,
@@ -2041,8 +2042,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             }}
             onEmojiClick={handleEmojiClick}
             onStickerSelect={(markdown) => {
-              setValue((prev) => prev + markdown);
               setMediaPickerOpen(false);
+              if (onSendSticker == null) return;
+              try {
+                const result = onSendSticker(markdown);
+                void Promise.resolve(result).catch(() => undefined);
+              } catch {
+                // The owning send flow surfaces the error without changing the draft.
+              }
             }}
           />
         )}
