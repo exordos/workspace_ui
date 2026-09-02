@@ -633,9 +633,7 @@ export function createWorkspaceRealtimeTransportCore(
     }, remainingDelay);
   }
 
-  function checkVisibleEventsAfterSocketIdle(
-    activeSocket: WorkspaceRealtimeWebSocketLike,
-  ): void {
+  function checkVisibleEventsAfterSocketIdle(activeSocket: WorkspaceRealtimeWebSocketLike): void {
     if (!isEpochWatchdogActive(activeSocket) || epochCheckPromise != null || context == null)
       return;
 
@@ -674,6 +672,16 @@ export function createWorkspaceRealtimeTransportCore(
       } catch (error) {
         const expiredCursor = cursorExpiredError(error);
         if (expiredCursor != null) {
+          const probeIsStale =
+            !isEpochWatchdogActive(activeSocket) ||
+            context !== epochCheckContext ||
+            activeSignal() !== epochCheckSignal ||
+            lastCursor?.epochVersion !== probedCursor.epochVersion ||
+            lastCursor.epochGeneration !== probedCursor.epochGeneration;
+          if (probeIsStale) {
+            shouldScheduleNextEpochCheck = isEpochWatchdogActive(activeSocket);
+            return;
+          }
           await recoverFromCursorExpiry(expiredCursor);
           return;
         }

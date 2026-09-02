@@ -520,7 +520,9 @@ describe("workspace-realtime transport runtime", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    let resolveProbe = (_page: WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>): void => {
+    let resolveProbe = (
+      _page: WorkspaceCollectionPage<WorkspaceMessengerRealtimeEventDto>,
+    ): void => {
       throw new Error("Visible-events probe was not started");
     };
     const runtime = createWorkspaceRealtimeTransportCore({
@@ -554,6 +556,65 @@ describe("workspace-realtime transport runtime", () => {
     expect(sockets).toHaveLength(1);
     expect(sockets[0]?.closed).toBe(false);
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
+    await runtime.stop();
+    vi.useRealTimers();
+  });
+
+  it("keeps the websocket open when a stale visible-events probe returns 410", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    let rejectProbe = (_error: unknown): void => {
+      throw new Error("Visible-events probe was not started");
+    };
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: (_options, query) =>
+        query.pageLimit === 1
+          ? new Promise((_resolve, reject) => {
+              rejectProbe = reject;
+            })
+          : Promise.resolve(createPage([])),
+      resetAuthoritativeSnapshots,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 10 }),
+    );
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(60_000);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await flushAsyncHandlers();
+    rejectProbe(
+      new MessengerApiError("cursor expired", 410, {
+        type: "EventsCursorExpiredError",
+        code: 410,
+        error: "epoch_pruned",
+        message: "The probed events cursor is outside the retained event journal",
+        reason: "epoch_pruned",
+        epoch_generation: EPOCH_GENERATION,
+        current_epoch_version: 20,
+        minimum_epoch_version: 11,
+      }),
+    );
+    await flushAsyncHandlers();
+
+    expect(resetAuthoritativeSnapshots).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(false);
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
+    expect(vi.getTimerCount()).toBe(1);
     await runtime.stop();
     vi.useRealTimers();
   });
