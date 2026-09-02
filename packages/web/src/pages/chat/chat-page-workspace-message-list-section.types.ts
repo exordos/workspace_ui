@@ -46,6 +46,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
+  readRequestBoundaryMessageUuids?: ReadonlySet<MessengerUuid>;
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

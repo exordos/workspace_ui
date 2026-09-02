@@ -69,6 +69,20 @@ async function settlePromiseCallbacks(): Promise<void> {
   await Promise.resolve();
 }
 
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -101,7 +115,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([ownUnread.uuid]);
+      result.current.scheduleReadBatch([ownUnread.uuid]);
       vi.advanceTimersByTime(250);
     });
 
@@ -125,14 +139,14 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([later.uuid]);
+      result.current.scheduleReadBatch([later.uuid]);
       vi.advanceTimersByTime(250);
     });
     await act(settlePromiseCallbacks);
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
 
     act(() => {
-      result.current([ownUnread.uuid]);
+      result.current.scheduleReadBatch([ownUnread.uuid]);
       vi.advanceTimersByTime(250);
     });
 
@@ -152,7 +166,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([first.uuid, second.uuid, third.uuid]);
+      result.current.scheduleReadBatch([first.uuid, second.uuid, third.uuid]);
       vi.advanceTimersByTime(250);
     });
 
@@ -181,13 +195,13 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([first.uuid]);
+      result.current.scheduleReadBatch([first.uuid]);
       vi.advanceTimersByTime(250);
     });
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
 
     act(() => {
-      result.current([second.uuid]);
+      result.current.scheduleReadBatch([second.uuid]);
       vi.advanceTimersByTime(250);
     });
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
@@ -214,11 +228,12 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([first.uuid]);
+      result.current.scheduleReadBatch([first.uuid]);
       vi.advanceTimersByTime(250);
     });
     await act(settlePromiseCallbacks);
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
+    expect(result.current.readRequestBoundaryMessageUuids.has(first.uuid)).toBe(true);
 
     act(() => {
       vi.advanceTimersByTime(499);
@@ -229,6 +244,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
     });
     await act(settlePromiseCallbacks);
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
+    expect(result.current.readRequestBoundaryMessageUuids.has(first.uuid)).toBe(true);
 
     act(() => {
       vi.advanceTimersByTime(999);
@@ -239,6 +255,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
     });
     await act(settlePromiseCallbacks);
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(3);
+    expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
 
     act(() => {
       vi.runOnlyPendingTimers();
@@ -264,11 +281,11 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
 
     act(() => {
-      result.current([first.uuid]);
+      result.current.scheduleReadBatch([first.uuid]);
       vi.advanceTimersByTime(250);
     });
     act(() => {
-      result.current([second.uuid]);
+      result.current.scheduleReadBatch([second.uuid]);
       vi.advanceTimersByTime(250);
     });
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
@@ -334,15 +351,17 @@ describe("useWorkspaceVisibleMessageRead", () => {
       );
 
       act(() => {
-        result.current([first.uuid, second.uuid]);
+        result.current.scheduleReadBatch([first.uuid, second.uuid]);
         vi.advanceTimersByTime(250);
       });
       await act(settlePromiseCallbacks);
       expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
       expect(secondSignal?.aborted).toBe(false);
+      expect(result.current.readRequestBoundaryMessageUuids.size).toBe(2);
 
       rerender({ context: nextContext, activeConversationId: nextConversationId });
       expect(secondSignal?.aborted).toBe(true);
+      expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
       act(() => {
         vi.advanceTimersByTime(5_000);
       });
@@ -351,4 +370,82 @@ describe("useWorkspaceVisibleMessageRead", () => {
       expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
     },
   );
+
+  it("publishes pending only after the request starts and clears it after success", async () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    const response = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    captured.markReadUpTo.mockReturnValue(response.promise);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(249);
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.has(first.uuid)).toBe(true);
+
+    await act(async () => {
+      response.resolve({ status: "applied", ownerKey: "owner-1", message: null });
+      await settlePromiseCallbacks();
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
+  });
+
+  it("moves the marker to a later boundary while retrying the topic", async () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
+    seedWorkspaceMessageBody(first);
+    seedWorkspaceMessageBody(second);
+    const firstResponse = createDeferred<never>();
+    const secondResponse = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    captured.markReadUpTo
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.has(first.uuid)).toBe(true);
+
+    act(() => {
+      result.current.scheduleReadBatch([second.uuid]);
+    });
+    await act(async () => {
+      firstResponse.reject(new Error("temporary failure"));
+      await settlePromiseCallbacks();
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.has(first.uuid)).toBe(false);
+    expect(result.current.readRequestBoundaryMessageUuids.has(second.uuid)).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(second.uuid);
+    expect(result.current.readRequestBoundaryMessageUuids.has(second.uuid)).toBe(true);
+
+    await act(async () => {
+      secondResponse.resolve({ status: "applied", ownerKey: "owner-1", message: null });
+      await settlePromiseCallbacks();
+    });
+    expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
+  });
 });

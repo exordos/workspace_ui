@@ -2242,7 +2242,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
   }, []);
 
-  const scheduleReadBatch = useWorkspaceVisibleMessageRead({
+  const { scheduleReadBatch, readRequestBoundaryMessageUuids } = useWorkspaceVisibleMessageRead({
     runtimeContext,
     conversationId,
   });
@@ -3039,6 +3039,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onFocusedMessageMissing={onDomFocusMissing}
             selectionMode={selectionMode}
             selectedMessageUuids={selectedMessageUuids}
+            readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
             onUnreadMessagesVisible={anchorHandoffPending ? undefined : scheduleReadBatch}
             onUnreadMessagesAtBottom={anchorHandoffPending ? undefined : scheduleReadBatch}
             onReplyMessage={handleReplyMessage}

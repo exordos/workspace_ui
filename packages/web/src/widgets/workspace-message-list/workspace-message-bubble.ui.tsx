@@ -144,6 +144,10 @@ function resolveBubbleClassName(
   )}`;
 }
 
+function readRequestBubbleClassName(pending: boolean): string {
+  return pending ? "workspace-message-read-request-pulse" : "";
+}
+
 function hasWorkspaceReactions(message: MessengerMessage): boolean {
   return Object.values(message.reactions).some((count) => count > 0);
 }
@@ -352,6 +356,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     isFirstInGroup,
     isLastInGroup,
     isSelected = false,
+    readRequestPending = false,
     resolveAuthorLabel,
     usersById,
     topicLabel,
@@ -369,6 +374,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const serverMessage = message.kind === "server" ? message.message : null;
     const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
+    const effectiveReadRequestPending =
+      !isPreview && serverMessage != null && !serverMessage.read && readRequestPending;
     const displayMessage = serverMessage ?? outgoingMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
@@ -542,13 +549,17 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     return (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
       <div
-        className={`relative ${bubbleClassName}`}
+        className={`relative ${bubbleClassName} transition-colors ${readRequestBubbleClassName(
+          effectiveReadRequestPending,
+        )}`}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-outgoing-delivery-status={outgoingMessage?.status}
+        data-read-request-pending={effectiveReadRequestPending ? "true" : undefined}
         data-message-owner={owner}
         data-first-in-group={isFirstInGroup ? "true" : "false"}
         data-last-in-group={isLastInGroup ? "true" : "false"}
+        aria-busy={effectiveReadRequestPending ? true : undefined}
         onContextMenu={isPreview ? undefined : handleContextMenu}
         onKeyDown={isPreview ? undefined : handleKeyDown}
         tabIndex={isPreview || containsInteractiveBody ? undefined : 0}

@@ -125,6 +125,36 @@
   }
 }
 
+@keyframes workspace-message-read-request-pulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: var(--workspace-read-request-highlight-opacity);
+  }
+}
+
+/* Animate only a background overlay so message content stays fully opaque. */
+.workspace-message-read-request-pulse {
+  --workspace-read-request-highlight-opacity: 0.2;
+
+  isolation: isolate;
+}
+
+.workspace-message-read-request-pulse::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background-color: var(--color-accent);
+  border-radius: inherit;
+  opacity: 0;
+  animation: workspace-message-read-request-pulse 1.6s ease-in-out infinite;
+}
+
 [data-workspace-message-anchor-highlight="true"] {
   position: relative;
   isolation: isolate;
@@ -231,6 +261,7 @@ html[data-window-activity] .animate-in,
 html[data-window-activity] .animate-out,
 html[data-window-activity] [data-state="open"],
 html[data-window-activity] [data-state="closed"],
+html[data-window-activity] .workspace-message-read-request-pulse::before,
 html[data-window-activity] [data-workspace-message-anchor-highlight="true"]::before {
   animation-play-state: running !important;
 }
@@ -245,6 +276,11 @@ html[data-window-activity] [data-workspace-message-anchor-highlight="true"]::bef
 
   [data-workspace-message-anchor-highlight="true"]::before {
     background-color: color-mix(in srgb, var(--color-accent-soft) 72%, transparent);
+    animation: none;
+  }
+
+  .workspace-message-read-request-pulse::before {
+    opacity: var(--workspace-read-request-highlight-opacity);
     animation: none;
   }
 }

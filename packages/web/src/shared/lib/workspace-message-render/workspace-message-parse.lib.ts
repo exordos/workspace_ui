@@ -58,6 +58,11 @@ function normalizeLineBreaks(value: string): string {
   return value.replaceAll(NORMALIZE_LINE_BREAK_PATTERN, "\n");
 }
 
+function prepareSourceForMarkdownLexing(source: string): string {
+  // A lone plus is usually the message itself, not an empty list item.
+  return source.trim() === "+" ? "\\+" : source;
+}
+
 function normalizePreviewText(value: string): string {
   return value.replace(WHITESPACE_PATTERN, " ").trim();
 }
@@ -953,7 +958,7 @@ export function parseWorkspaceMessageBody(
     markdownLexer.lexer(source, { async: false, breaks: true, gfm: true });
   const state = createParseState();
   const context: WorkspaceMessageParseContext = { options: parseOptions, state, lexBlocks };
-  const tokens = lexBlocks(sourceMarkdown);
+  const tokens = lexBlocks(prepareSourceForMarkdownLexing(sourceMarkdown));
   const blocks = parseBlockTokens(tokens, context);
   const markdownTokens = prepareWorkspaceMarkdownTokens(tokens, {
     parseOptions,

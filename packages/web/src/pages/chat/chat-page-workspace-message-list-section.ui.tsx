@@ -38,6 +38,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     onFocusedMessageMissing,
     selectionMode,
     selectedMessageUuids,
+    readRequestBoundaryMessageUuids,
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
     onReplyMessage,
@@ -222,6 +223,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
             onFocusedMessageMissing={onFocusedMessageMissing}
             selectionMode={selectionMode}
             selectedMessageUuids={selectedMessageUuids}
+            readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
             isLoadingOlder={isLoadingOlder}
             isLoadingNewer={isLoadingNewer}
             hasOlderMessages={hasOlderMessages}
