@@ -716,7 +716,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     const context = startedContexts[0]!;
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
-    factoryOptions[0]!.applier.applyEvent(
+    await factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 8,
         type: "message",
@@ -814,7 +814,7 @@ describe("useLayoutWorkspaceRealtime", () => {
       .getState()
       .setWorkspaceMeetUrl(context.ownerKey, "https://meet.workspace.example.com");
 
-    factoryOptions[0]!.applier.applyEvent(
+    await factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 7,
         type: "stream",
@@ -844,7 +844,7 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       { ...context, source: "websocket", notificationsEnabled: true },
     );
-    factoryOptions[0]!.applier.applyEvent(
+    await factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 8,
         type: "topic",
@@ -867,7 +867,7 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       { ...context, source: "websocket", notificationsEnabled: true },
     );
-    factoryOptions[0]!.applier.applyEvent(
+    await factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 9,
         type: "message",
@@ -906,7 +906,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
     expect(useWorkspaceMessageStore.getState().messagesById[BACKFILL_MESSAGE_UUID]).toBeDefined();
 
-    factoryOptions[0]!.applier.applyEvent(
+    await factoryOptions[0]!.applier.applyEvent(
       {
         epoch_version: 10,
         type: "message",

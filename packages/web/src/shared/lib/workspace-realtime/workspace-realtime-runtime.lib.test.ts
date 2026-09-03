@@ -277,6 +277,83 @@ describe("workspace-realtime transport runtime", () => {
     expect(sockets[0]?.sent).toEqual([]);
   });
 
+  it("does not advance the websocket cursor when application reports stale", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const applier: WorkspaceRealtimeEventApplier = {
+      applyEvent: vi.fn(() => Promise.resolve<"stale">("stale")),
+      skipEvent: vi.fn(),
+      onTransportStateChange: vi.fn(),
+    };
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await flushAsyncHandlers();
+    sockets[0]?.message(
+      JSON.stringify({ type: "ready", epoch_generation: EPOCH_GENERATION, epoch_version: 11 }),
+    );
+    await flushAsyncHandlers();
+
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+    await runtime.stop();
+  });
+
+  it("does not let a stale completion from a replaced socket block the new socket", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    let resolveOldApplication: ((result: "stale") => void) | undefined;
+    const oldApplication = new Promise<"stale">((resolve) => {
+      resolveOldApplication = resolve;
+    });
+    const applier: WorkspaceRealtimeEventApplier = {
+      applyEvent: vi
+        .fn()
+        .mockImplementationOnce(() => oldApplication)
+        .mockReturnValue("applied"),
+      skipEvent: vi.fn(),
+      onTransportStateChange: vi.fn(),
+    };
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    await vi.waitFor(() => expect(applier.applyEvent).toHaveBeenCalledOnce());
+
+    await runtime.start({
+      ...context,
+      owner: { ...context.owner, runtimeGeneration: 2 },
+    });
+    sockets[1]?.message(JSON.stringify(createRestEventDto(11)));
+    resolveOldApplication?.("stale");
+
+    await vi.waitFor(() => expect(applier.applyEvent).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11)));
+    await runtime.stop();
+  });
+
   it("keeps notification effects disabled until websocket ready", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());

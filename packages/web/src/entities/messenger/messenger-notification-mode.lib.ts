@@ -2,9 +2,139 @@ import type {
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
+import type { MessengerStream } from "./messenger.types";
 
 export type WorkspaceStreamNotificationLevel = "default" | "muted" | "subscribed";
 export type WorkspaceTopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
+
+interface WorkspaceStreamNotificationTransition {
+  confirmedMode: WorkspaceMessengerStreamNotificationMode;
+}
+
+const streamNotificationTransitions = new WeakMap<
+  MessengerStream,
+  WorkspaceStreamNotificationTransition
+>();
+
+interface WorkspaceStreamUnreadReclassification {
+  previousMode: WorkspaceMessengerStreamNotificationMode;
+  confirmedMode: WorkspaceMessengerStreamNotificationMode;
+  remainingUnreadCount: number;
+}
+
+const pendingStreamUnreadReclassifications = new Map<
+  string,
+  WorkspaceStreamUnreadReclassification
+>();
+
+function streamUnreadReclassificationKey(ownerKey: string, streamUuid: string): string {
+  return `${ownerKey}\0${streamUuid}`;
+}
+
+export function registerWorkspaceStreamUnreadReclassification(
+  ownerKey: string,
+  streamUuid: string,
+  previousMode: WorkspaceMessengerStreamNotificationMode,
+  confirmedMode: WorkspaceMessengerStreamNotificationMode,
+  remainingUnreadCount: number,
+): void {
+  const key = streamUnreadReclassificationKey(ownerKey, streamUuid);
+  if (remainingUnreadCount <= 0 || previousMode === confirmedMode) {
+    pendingStreamUnreadReclassifications.delete(key);
+    return;
+  }
+  pendingStreamUnreadReclassifications.set(key, {
+    previousMode,
+    confirmedMode,
+    remainingUnreadCount,
+  });
+}
+
+export function consumeWorkspaceStreamUnreadReclassification(
+  ownerKey: string,
+  streamUuid: string,
+  topicMode: WorkspaceMessengerTopicNotificationMode,
+  unreadCount: number,
+): {
+  activeUnreadCount: number;
+  passiveUnreadCount: number;
+  activeDelta: number;
+  passiveDelta: number;
+} | null {
+  const key = streamUnreadReclassificationKey(ownerKey, streamUuid);
+  const pending = pendingStreamUnreadReclassifications.get(key);
+  if (pending == null) return null;
+
+  const accountedUnreadCount = Math.min(Math.max(0, unreadCount), pending.remainingUnreadCount);
+  const wasPassive = isWorkspaceTopicEffectivelyMuted(topicMode, pending.previousMode);
+  const isPassive = isWorkspaceTopicEffectivelyMuted(topicMode, pending.confirmedMode);
+  pending.remainingUnreadCount -= accountedUnreadCount;
+  if (pending.remainingUnreadCount === 0) pendingStreamUnreadReclassifications.delete(key);
+
+  return {
+    activeUnreadCount: isPassive ? 0 : unreadCount,
+    passiveUnreadCount: isPassive ? unreadCount : 0,
+    activeDelta: (isPassive ? 0 : accountedUnreadCount) - (wasPassive ? 0 : accountedUnreadCount),
+    passiveDelta: (isPassive ? accountedUnreadCount : 0) - (wasPassive ? accountedUnreadCount : 0),
+  };
+}
+
+export function clearWorkspaceStreamUnreadReclassification(
+  ownerKey: string,
+  streamUuid: string,
+): void {
+  pendingStreamUnreadReclassifications.delete(
+    streamUnreadReclassificationKey(ownerKey, streamUuid),
+  );
+}
+
+export function clearWorkspaceStreamUnreadReclassificationsForOwner(ownerKey: string): void {
+  const prefix = `${ownerKey}\0`;
+  for (const key of pendingStreamUnreadReclassifications.keys()) {
+    if (key.startsWith(prefix)) pendingStreamUnreadReclassifications.delete(key);
+  }
+}
+
+export function inheritWorkspaceStreamNotificationTransition(
+  source: MessengerStream,
+  target: MessengerStream,
+): void {
+  const transition = streamNotificationTransitions.get(source);
+  if (transition != null) streamNotificationTransitions.set(target, transition);
+}
+
+export function projectWorkspaceStreamNotificationTransition(
+  source: MessengerStream,
+  target: MessengerStream,
+): void {
+  const transition = streamNotificationTransitions.get(source) ?? {
+    confirmedMode: source.notificationMode,
+  };
+  streamNotificationTransitions.set(target, transition);
+}
+
+export function isSameWorkspaceStreamNotificationTransition(
+  left: MessengerStream,
+  right: MessengerStream,
+): boolean {
+  if (left === right) return true;
+  const transition = streamNotificationTransitions.get(left);
+  return transition != null && transition === streamNotificationTransitions.get(right);
+}
+
+export function resolveWorkspaceStreamCounterNotificationMode(
+  stream: MessengerStream,
+): WorkspaceMessengerStreamNotificationMode {
+  return streamNotificationTransitions.get(stream)?.confirmedMode ?? stream.notificationMode;
+}
+
+export function updateWorkspaceStreamNotificationTransition(
+  stream: MessengerStream,
+  confirmedMode: WorkspaceMessengerStreamNotificationMode,
+): void {
+  const transition = streamNotificationTransitions.get(stream);
+  if (transition != null) transition.confirmedMode = confirmedMode;
+}
 
 export function isWorkspaceTopicEffectivelyMuted(
   topicMode: WorkspaceMessengerTopicNotificationMode,

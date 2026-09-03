@@ -429,6 +429,7 @@ function createWindow(): void {
     sendWindowActivity(true);
   });
   mainWindow.on("blur", () => sendWindowActivity(false));
+  mainWindow.on("minimize", () => sendWindowActivity(false));
   mainWindow.on("show", () => sendWindowActivity(mainWindow?.isFocused() ?? false));
   mainWindow.on("restore", () => sendWindowActivity(mainWindow?.isFocused() ?? false));
   mainWindow.webContents.on("did-finish-load", () => {

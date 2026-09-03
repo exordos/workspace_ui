@@ -13,7 +13,12 @@ import type {
   WorkspaceMessengerTopicNotificationRequestBody,
   WorkspaceMessengerUpdateTopicRequestBody,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerFolder, adaptMessengerStream } from "./messenger-adapters.lib";
+import {
+  adaptMessengerFolder,
+  adaptMessengerStream,
+  adaptMessengerTopic,
+} from "./messenger-adapters.lib";
+import { inheritWorkspaceStreamNotificationTransition } from "./messenger-notification-mode.lib";
 import {
   createMessengerFolderItem,
   createMessengerTopic,
@@ -26,7 +31,12 @@ import {
   unpinMessengerFolderItem,
   updateMessengerStreamNotificationMode,
 } from "./messenger-sidebar-actions.lib";
-import { useMessengerStore } from "./messenger.model";
+import {
+  createMessengerCatalogMutationFence,
+  createMessengerPendingUnreadProjectionRevision,
+  messengerPendingUnreadProjectionCoverage,
+  useMessengerStore,
+} from "./messenger.model";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -40,6 +50,7 @@ const USER_A = "11111111-1111-4111-8111-111111111111";
 const USER_B = "44444444-4444-4444-8444-444444444444";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const DATE = "2026-06-22T10:10:00Z";
@@ -259,6 +270,268 @@ describe("messenger sidebar actions", () => {
     });
   });
 
+  it("preserves realtime unread counters while an optimistic mode request finishes", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 3,
+        active_unread_count: 3,
+        passive_unread_count: 0,
+      }),
+    );
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications: vi.fn(() => updateRequest.promise) },
+    });
+
+    const optimisticStream = useMessengerStore.getState().streamsById[STREAM_A];
+    expect(optimisticStream).toBeDefined();
+    if (optimisticStream == null) return;
+    const realtimeStream = {
+      ...optimisticStream,
+      unreadCount: 2,
+      activeUnreadCount: 2,
+      updatedAt: "2026-06-22T10:20:00Z",
+    };
+    inheritWorkspaceStreamNotificationTransition(optimisticStream, realtimeStream);
+    useMessengerStore.getState().upsertStream(ownerKey, realtimeStream, { kind: "derived" });
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await actionPromise;
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "muted",
+        unreadCount: 2,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 0,
+        updatedAt: "2026-06-22T10:20:00Z",
+      }),
+    );
+  });
+
+  it("reclassifies retained default-topic unread counters after a mode update succeeds", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
+      }),
+    );
+    useMessengerStore.getState().upsertTopic(
+      ownerKey,
+      adaptMessengerTopic(
+        createTopicDto({
+          unread_count: 1,
+          active_unread_count: 1,
+          passive_unread_count: 0,
+          notification_mode: "default",
+        }),
+      ),
+    );
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications: vi.fn(() => updateRequest.promise) },
+    });
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await actionPromise;
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "muted",
+        unreadCount: 1,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 1,
+      }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 1, activeUnreadCount: 0, passiveUnreadCount: 1 }),
+    );
+  });
+
+  it("finishes unread reclassification when missing topic metadata arrives", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
+      }),
+    );
+
+    await updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: {
+        updateStreamNotifications: vi.fn(() =>
+          Promise.resolve(createStreamDto({ notification_mode: "muted" })),
+        ),
+      },
+    });
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ activeUnreadCount: 1, passiveUnreadCount: 0 }),
+    );
+
+    useMessengerStore.getState().upsertTopic(
+      ownerKey,
+      adaptMessengerTopic(
+        createTopicDto({
+          unread_count: 1,
+          active_unread_count: 1,
+          passive_unread_count: 0,
+          notification_mode: "default",
+        }),
+      ),
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ activeUnreadCount: 0, passiveUnreadCount: 1 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ activeUnreadCount: 0, passiveUnreadCount: 1 }),
+    );
+  });
+
+  it("reclassifies missing topic metadata supplied by an older bootstrap", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
+      }),
+    );
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+
+    await updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: {
+        updateStreamNotifications: vi.fn(() =>
+          Promise.resolve(createStreamDto({ notification_mode: "muted" })),
+        ),
+      },
+    });
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [
+          adaptMessengerStream(
+            createStreamDto({
+              notification_mode: "all_messages",
+              unread_count: 1,
+              active_unread_count: 1,
+              passive_unread_count: 0,
+            }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [
+          adaptMessengerTopic(
+            createTopicDto({
+              notification_mode: "default",
+              unread_count: 1,
+              active_unread_count: 1,
+              passive_unread_count: 0,
+            }),
+          ),
+        ],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence },
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "muted",
+        activeUnreadCount: 0,
+        passiveUnreadCount: 1,
+      }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ activeUnreadCount: 0, passiveUnreadCount: 1 }),
+    );
+  });
+
+  it("does not treat notification bucket reclassification as pending unread coverage", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
+      }),
+    );
+    useMessengerStore.getState().upsertTopic(
+      ownerKey,
+      adaptMessengerTopic(
+        createTopicDto({
+          unread_count: 1,
+          active_unread_count: 1,
+          passive_unread_count: 0,
+          notification_mode: "default",
+        }),
+      ),
+    );
+    const pendingRevision = createMessengerPendingUnreadProjectionRevision(ownerKey);
+
+    await updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: {
+        updateStreamNotifications: vi.fn(() =>
+          Promise.resolve(createStreamDto({ notification_mode: "muted" })),
+        ),
+      },
+    });
+
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        ownerKey,
+        MESSAGE_A,
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: false, topic: false });
+  });
+
   it("rolls back optimistic stream notification mode when the request fails", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
@@ -286,6 +559,210 @@ describe("messenger sidebar actions", () => {
     await expect(actionPromise).rejects.toThrow("Update failed");
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
       "all_messages",
+    );
+  });
+
+  it("does not retain an optimistic notification projection over a bootstrap snapshot", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications: vi.fn(() => updateRequest.promise) },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [
+          adaptMessengerStream(
+            createStreamDto({
+              notification_mode: "all_messages",
+              unread_count: 9,
+              active_unread_count: 7,
+              passive_unread_count: 2,
+            }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence },
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "all_messages",
+        unreadCount: 9,
+        activeUnreadCount: 7,
+        passiveUnreadCount: 2,
+      }),
+    );
+
+    updateRequest.reject(new Error("Update failed"));
+    await expect(actionPromise).rejects.toThrow("Update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ notificationMode: "all_messages", unreadCount: 9 }),
+    );
+  });
+
+  it("applies a successful notification update over a same-owner bootstrap replacement", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications: vi.fn(() => updateRequest.promise) },
+    });
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [
+          adaptMessengerStream(
+            createStreamDto({
+              name: "Bootstrap name",
+              notification_mode: "all_messages",
+              unread_count: 9,
+              active_unread_count: 7,
+              passive_unread_count: 2,
+            }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [
+          adaptMessengerTopic(
+            createTopicDto({
+              unread_count: 7,
+              active_unread_count: 7,
+              passive_unread_count: 0,
+              notification_mode: "default",
+            }),
+          ),
+        ],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence },
+    );
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await expect(actionPromise).resolves.toEqual({
+      status: "applied",
+      ownerKey,
+      stream: expect.objectContaining({ notificationMode: "muted" }),
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        name: "Bootstrap name",
+        notificationMode: "muted",
+        unreadCount: 9,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 9,
+      }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 7, activeUnreadCount: 0, passiveUnreadCount: 7 }),
+    );
+  });
+
+  it("preserves a successful notification reclassification over an older bootstrap response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        notification_mode: "all_messages",
+        unread_count: 1,
+        active_unread_count: 1,
+        passive_unread_count: 0,
+      }),
+    );
+    useMessengerStore.getState().upsertTopic(
+      ownerKey,
+      adaptMessengerTopic(
+        createTopicDto({
+          notification_mode: "default",
+          unread_count: 1,
+          active_unread_count: 1,
+          passive_unread_count: 0,
+        }),
+      ),
+    );
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+
+    await updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: {
+        updateStreamNotifications: vi.fn(() =>
+          Promise.resolve(createStreamDto({ notification_mode: "muted" })),
+        ),
+      },
+    });
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [
+          adaptMessengerStream(
+            createStreamDto({
+              notification_mode: "all_messages",
+              unread_count: 1,
+              active_unread_count: 1,
+              passive_unread_count: 0,
+            }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [
+          adaptMessengerTopic(
+            createTopicDto({
+              notification_mode: "default",
+              unread_count: 1,
+              active_unread_count: 1,
+              passive_unread_count: 0,
+            }),
+          ),
+        ],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence },
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "muted",
+        unreadCount: 1,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 1,
+      }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "default",
+        unreadCount: 1,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 1,
+      }),
     );
   });
 

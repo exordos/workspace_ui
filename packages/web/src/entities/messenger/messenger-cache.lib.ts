@@ -1,7 +1,10 @@
 import {
   applyMessengerMessagePointerCache,
   advanceMessengerReadBoundaryCache,
+  advanceMessengerReadBoundaryCacheWithUnreadProjection,
+  cancelMessengerUnreadIncrementProjectionCache,
   clearMessengerMessagePointerCache,
+  completeMessengerUnreadProjectionCache,
   createMessengerCatalogCacheReconcileFence,
   deleteCachedMessage,
   deleteCachedStreamMessageBuckets,
@@ -15,11 +18,15 @@ import {
   deleteMessengerStreamCatalogCache,
   deleteMessengerTopicCatalogCache,
   markCachedMessagesRead,
+  markCachedMessagesReadWithUnreadProjection,
   patchCachedMessage,
+  persistMessengerUnreadProjectionCatalogCache,
+  queueMessengerUnreadProjectionCache,
   readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
   readMessengerReadBoundaries,
+  readMessengerUnreadProjectionCache,
   readOwnMessageReaction,
   readOwnMessageReactions,
   repairMessengerMessagePointerCache,
@@ -351,6 +358,7 @@ export async function writeMessengerFolderSnapshotCache(
 export async function replaceMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: MessengerFolder[],
+  options: Pick<MessengerCatalogPayloadCacheWriteOptions, "reconcileFence"> = {},
 ): Promise<void> {
   const safeFolders = folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder));
   await writeMessengerCatalogCache(
@@ -359,7 +367,7 @@ export async function replaceMessengerFolderSnapshotsCache(
       folders: safeFolders,
       folderItems: safeFolders.flatMap((folder) => folder.items),
     },
-    { mode: "reconcile" },
+    { mode: "reconcile", reconcileFence: options.reconcileFence },
   );
   await purgeRemovedStreamCaches(
     ownerKey,
@@ -370,35 +378,45 @@ export async function replaceMessengerFolderSnapshotsCache(
 export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
-  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
+  if (!isWriteCurrent() || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
-  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
+  if (!isWriteCurrent() || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
   const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
   const projectedFolders = projectStreamUnreadIntoCachedFolders(cachedFolders, stream);
-  const changedFolders = projectedFolders.filter(
-    (folder, index) => folder !== cachedFolders[index],
+  const projectedStreamFolders = projectedFolders.filter((folder) =>
+    folder.items.some((item) => item.streamUuid === stream.uuid),
   );
+  if (!isWriteCurrent()) return;
   await Promise.all([
-    upsertMessengerStreamsCache(ownerKey, [stream]),
-    upsertMessengerConversationsCache(ownerKey, [
-      cachedConversation(conversationFromStream(stream), stream.updatedAt),
-      ...topics.map((topic) =>
-        cachedConversation(
-          conversationFromTopic(topic as unknown as MessengerTopic, stream),
-          topic.updatedAt ?? stream.updatedAt,
+    upsertMessengerStreamsCache(ownerKey, [stream], isWriteCurrent),
+    upsertMessengerConversationsCache(
+      ownerKey,
+      [
+        cachedConversation(conversationFromStream(stream), stream.updatedAt),
+        ...topics.map((topic) =>
+          cachedConversation(
+            conversationFromTopic(topic as unknown as MessengerTopic, stream),
+            topic.updatedAt ?? stream.updatedAt,
+          ),
         ),
-      ),
-    ]),
-    changedFolders.length === 0
+      ],
+      isWriteCurrent,
+    ),
+    projectedStreamFolders.length === 0
       ? Promise.resolve()
       : upsertMessengerFolderSnapshotsCache(
           ownerKey,
-          changedFolders,
-          changedFolders.flatMap((folder) => folder.items),
+          projectedStreamFolders,
+          projectedStreamFolders.flatMap((folder) =>
+            folder.items.filter((item) => item.streamUuid === stream.uuid),
+          ),
+          isWriteCurrent,
         ),
   ]);
+  if (!isWriteCurrent()) return;
   await purgeRemovedStreamCaches(ownerKey, [stream.uuid]);
 }
 
@@ -450,10 +468,11 @@ export async function deleteMessengerStreamBindingCache(
 export async function upsertMessengerTopicCache(
   ownerKey: string,
   topic: MessengerTopic,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
-  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
+  if (!isWriteCurrent() || isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
-  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
+  if (!isWriteCurrent() || isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const stream = snapshot.streams.find((item) => item.uuid === topic.streamUuid);
   const conversations =
     stream == null
@@ -464,10 +483,12 @@ export async function upsertMessengerTopicCache(
             topic.updatedAt,
           ),
         ];
+  if (!isWriteCurrent()) return;
   await Promise.all([
-    upsertMessengerTopicsCache(ownerKey, [topic]),
-    upsertMessengerConversationsCache(ownerKey, conversations),
+    upsertMessengerTopicsCache(ownerKey, [topic], isWriteCurrent),
+    upsertMessengerConversationsCache(ownerKey, conversations, isWriteCurrent),
   ]);
+  if (!isWriteCurrent()) return;
   await purgeRemovedStreamCaches(ownerKey, [topic.streamUuid]);
 }
 
@@ -563,6 +584,28 @@ export async function writeMessengerLiveMessageCache(
     .filter((message) => keepCachedMessage(ownerKey, message))
     .map(withoutRuntimeReactionState);
   await writeConversationMessagePage(ownerKey, conversationId, { messages });
+  await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
+  const message = messages.at(-1);
+  if (message != null) {
+    await applyMessengerMessagePointerCache(ownerKey, message);
+  }
+}
+
+export async function writeMessengerLiveMessageCacheWithUnreadProjection(
+  ownerKey: string,
+  conversationId: MessengerConversationId,
+  page: { messages: readonly MessengerMessage[] },
+  mutationRevision: number,
+): Promise<void> {
+  const parsed = parseMessengerConversationId(conversationId);
+  if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
+  const messages = page.messages
+    .filter((message) => keepCachedMessage(ownerKey, message))
+    .map(withoutRuntimeReactionState);
+  await writeConversationMessagePage(ownerKey, conversationId, {
+    messages,
+    unreadProjection: { operation: "increment", mutationRevision },
+  });
   await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
   const message = messages.at(-1);
   if (message != null) {
@@ -679,6 +722,25 @@ export async function markMessengerCachedMessagesRead(
   await markCachedMessagesRead(ownerKey, messageUuids, conversationIds);
 }
 
+export async function markMessengerCachedMessagesReadWithUnreadProjection(
+  ownerKey: string,
+  messageUuids: readonly MessengerUuid[],
+  mutationRevision?: number,
+  projectionMessages: readonly MessengerMessage[] = [],
+): Promise<readonly MessengerUuid[] | undefined> {
+  if (mutationRevision == null) {
+    await markCachedMessagesRead(ownerKey, messageUuids);
+    return;
+  }
+  return markCachedMessagesReadWithUnreadProjection(
+    ownerKey,
+    messageUuids,
+    mutationRevision,
+    [],
+    projectionMessages.map(withoutRuntimeReactionState),
+  );
+}
+
 export async function readMessengerCachedReadBoundaries(
   ownerKey: string,
 ): Promise<MessengerReadBoundary[]> {
@@ -695,8 +757,171 @@ export async function readMessengerCachedReadBoundaries(
 
 export async function advanceMessengerCachedReadBoundary(
   boundary: MessengerReadBoundary,
+): Promise<MessengerMessage[]> {
+  return normalizeCachedMessages(await advanceMessengerReadBoundaryCache(boundary));
+}
+
+export async function advanceMessengerCachedReadBoundaryWithUnreadProjection(
+  boundary: MessengerReadBoundary,
+  mutationRevision?: number,
+): Promise<MessengerMessage[]> {
+  if (mutationRevision == null) return advanceMessengerCachedReadBoundary(boundary);
+  return normalizeCachedMessages(
+    await advanceMessengerReadBoundaryCacheWithUnreadProjection(boundary, mutationRevision),
+  );
+}
+
+export async function queueMessengerPendingUnreadProjection(
+  ownerKey: string,
+  message: MessengerMessage,
+  operation: "increment" | "decrement",
+  mutationRevision: number,
 ): Promise<void> {
-  await advanceMessengerReadBoundaryCache(boundary);
+  await queueMessengerUnreadProjectionCache(
+    ownerKey,
+    withoutRuntimeReactionState(message),
+    operation,
+    mutationRevision,
+  );
+}
+
+export async function readMessengerPendingUnreadProjections(ownerKey: string): Promise<
+  {
+    message: MessengerMessage;
+    operation: "increment" | "decrement";
+    delta: -1 | 0 | 1;
+    mutationRevision: number;
+  }[]
+> {
+  const rows = await readMessengerUnreadProjectionCache(ownerKey);
+  return rows.flatMap((row) => {
+    const [message] = normalizeCachedMessages([row.message]);
+    if (message == null) return [];
+    let delta: -1 | 0 | 1 = 0;
+    if (!row.applied) delta = row.operation === "increment" ? 1 : -1;
+    return [
+      {
+        message,
+        operation: row.operation,
+        delta,
+        mutationRevision: row.mutationRevision,
+      },
+    ];
+  });
+}
+
+export async function completeMessengerPendingUnreadProjections(
+  ownerKey: string,
+  projections: readonly { messageUuid: MessengerUuid; mutationRevision: number }[],
+): Promise<void> {
+  await completeMessengerUnreadProjectionCache(ownerKey, projections);
+}
+
+export async function cancelMessengerPendingUnreadIncrement(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+): Promise<void> {
+  await cancelMessengerUnreadIncrementProjectionCache(ownerKey, messageUuid);
+}
+
+export async function verifyMessengerPendingUnreadProjection(
+  ownerKey: string,
+  stream: MessengerStream,
+  topic: MessengerTopic,
+  folders: readonly MessengerFolder[],
+): Promise<boolean> {
+  const catalog = await readMessengerCatalogCache(ownerKey);
+  const cachedStream = catalog.streams.find((candidate) => candidate.uuid === stream.uuid);
+  const cachedTopic = catalog.topics.find((candidate) => candidate.uuid === topic.uuid);
+  const cachedFoldersById = new Map(catalog.folders.map((folder) => [folder.uuid, folder]));
+  const cachedFolderItemsById = new Map(
+    catalog.folderItems.map((folderItem) => [folderItem.uuid, folderItem]),
+  );
+  const expectedFoldersById = new Map(folders.map((folder) => [folder.uuid, folder]));
+  const relevantFolderUuids = new Set([
+    ...expectedFoldersById.keys(),
+    ...catalog.folders.flatMap((folder) =>
+      folder.items?.some((item) => item.streamUuid === stream.uuid) ? [folder.uuid] : [],
+    ),
+  ]);
+  const matchesUnreadProjection = (
+    candidate: {
+      unreadCount?: number;
+      activeUnreadCount?: number;
+      passiveUnreadCount?: number;
+    } | null,
+    expected: { unreadCount: number; activeUnreadCount?: number; passiveUnreadCount?: number },
+  ): boolean =>
+    candidate?.unreadCount === expected.unreadCount &&
+    candidate.activeUnreadCount === expected.activeUnreadCount &&
+    candidate.passiveUnreadCount === expected.passiveUnreadCount;
+  const folderProjectionMatches = [...relevantFolderUuids].every((folderUuid) => {
+    const cachedFolder = cachedFoldersById.get(folderUuid) as MessengerFolder | undefined;
+    const expectedFolder = expectedFoldersById.get(folderUuid);
+    if (cachedFolder == null) return false;
+    if (expectedFolder != null && cachedFolder.unreadCount !== expectedFolder.unreadCount) {
+      return false;
+    }
+    const cachedFolderItems = cachedFolder.items ?? [];
+    const expectedItems =
+      expectedFolder?.items.filter((item) => item.streamUuid === stream.uuid) ??
+      cachedFolderItems.filter((item) => item.streamUuid === stream.uuid);
+    return expectedItems.every((item) => {
+      const expected = expectedFolder == null ? stream : item;
+      const cachedEmbeddedItem = cachedFolderItems.find(
+        (candidate) => candidate.uuid === item.uuid,
+      );
+      const cachedItem = cachedFolderItemsById.get(item.uuid) as
+        | MessengerFolder["items"][number]
+        | undefined;
+      return (
+        matchesUnreadProjection(cachedEmbeddedItem ?? null, expected) &&
+        matchesUnreadProjection(cachedItem ?? null, expected)
+      );
+    });
+  });
+  return (
+    cachedStream?.unreadCount === stream.unreadCount &&
+    cachedStream?.activeUnreadCount === stream.activeUnreadCount &&
+    cachedStream?.passiveUnreadCount === stream.passiveUnreadCount &&
+    cachedTopic?.unreadCount === topic.unreadCount &&
+    cachedTopic?.activeUnreadCount === topic.activeUnreadCount &&
+    cachedTopic?.passiveUnreadCount === topic.passiveUnreadCount &&
+    folderProjectionMatches
+  );
+}
+
+export async function persistMessengerPendingUnreadProjection(
+  ownerKey: string,
+  message: MessengerMessage,
+  operation: "increment" | "decrement",
+  mutationRevision: number,
+  stream: MessengerStream,
+  topic: MessengerTopic,
+  folders: readonly MessengerFolder[],
+  isWriteCurrent: () => boolean,
+): Promise<boolean> {
+  if (!isWriteCurrent() || isStreamCacheRemoved(ownerKey, stream.uuid)) return false;
+  const safeFolders = folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder));
+  return persistMessengerUnreadProjectionCatalogCache(
+    ownerKey,
+    {
+      messageUuid: message.uuid,
+      operation,
+      mutationRevision,
+      stream,
+      topic,
+      conversations: [
+        cachedConversation(conversationFromStream(stream), stream.updatedAt),
+        cachedConversation(conversationFromTopic(topic, stream), topic.updatedAt),
+      ],
+      folders: safeFolders,
+      folderItems: safeFolders.flatMap((folder) =>
+        folder.items.filter((item) => item.streamUuid === stream.uuid),
+      ),
+    },
+    isWriteCurrent,
+  );
 }
 
 export async function deleteMessengerCachedMessage(
@@ -794,7 +1019,9 @@ export async function writeMessengerRealtimeCursorCache(
 }
 
 export const messengerMessageActionCache = {
-  advanceReadBoundary: advanceMessengerCachedReadBoundary,
+  advanceReadBoundary: async (boundary: MessengerReadBoundary): Promise<void> => {
+    await advanceMessengerCachedReadBoundary(boundary);
+  },
   patchCachedMessage: patchMessengerCachedMessage,
   repairMessagePointers: repairMessengerCachedMessagePointers,
   markCachedMessagesRead: markMessengerCachedMessagesRead,
@@ -803,17 +1030,28 @@ export const messengerMessageActionCache = {
 };
 
 export const messengerRealtimeActiveCache = {
-  advanceReadBoundary: advanceMessengerCachedReadBoundary,
-  markCachedMessagesRead: markMessengerCachedMessagesRead,
+  advanceReadBoundary: advanceMessengerCachedReadBoundaryWithUnreadProjection,
+  queuePendingUnreadProjection: queueMessengerPendingUnreadProjection,
+  readPendingUnreadProjections: readMessengerPendingUnreadProjections,
+  completePendingUnreadProjections: completeMessengerPendingUnreadProjections,
+  cancelPendingUnreadIncrement: cancelMessengerPendingUnreadIncrement,
+  verifyPendingUnreadProjection: verifyMessengerPendingUnreadProjection,
+  markCachedMessagesRead: markMessengerCachedMessagesReadWithUnreadProjection,
+  readCachedMessages: readMessengerMessageBodyCache,
   patchCachedMessage: patchMessengerCachedMessage,
   repairMessagePointers: repairMessengerCachedMessagePointers,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
+  writeConversationMessagePageWithUnreadProjection:
+    writeMessengerLiveMessageCacheWithUnreadProjection,
+  persistPendingUnreadProjection: persistMessengerPendingUnreadProjection,
   upsertCachedStream: upsertMessengerStreamCache,
+  upsertCachedStreamGuarded: upsertMessengerStreamCache,
   deleteCachedStream: deleteMessengerStreamCache,
   upsertCachedStreamBindings: upsertMessengerStreamBindingsCache,
   deleteCachedStreamBinding: deleteMessengerStreamBindingCache,
   upsertCachedTopic: upsertMessengerTopicCache,
+  upsertCachedTopicGuarded: upsertMessengerTopicCache,
   deleteCachedTopic: deleteMessengerTopicCache,
   upsertCachedFolder: writeMessengerFolderSnapshotCache,
   deleteCachedFolder: deleteMessengerFolderCache,
@@ -823,4 +1061,5 @@ export const messengerRealtimeActiveCache = {
 
 export const messengerRealtimeBackgroundCache = {
   ...messengerRealtimeActiveCache,
+  markCachedMessagesRead: markMessengerCachedMessagesRead,
 };

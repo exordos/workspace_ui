@@ -6,8 +6,8 @@ import {
 import type { WorkspaceMessengerTopicSummaryReasoningEffort } from "../api/messenger.types";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-// Version 7 stores a monotonic read boundary for each owner topic.
-const DB_VERSION = 7;
+// Version 8 durably stages unread deltas until their catalog projection commits.
+const DB_VERSION = 8;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -35,6 +35,9 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
 export interface WorkspaceMessengerCachedStream {
   uuid: string;
   color?: number | null;
+  unreadCount?: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   lastMessageUuid?: string | null;
   updatedAt?: string | null;
 }
@@ -52,6 +55,9 @@ export interface WorkspaceMessengerStreamCacheRow {
 export interface WorkspaceMessengerCachedTopic {
   uuid: string;
   streamUuid: string;
+  unreadCount?: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   lastMessageUuid?: string | null;
   summary?: string | null;
   summaryLastMessageUuid?: string | null;
@@ -79,6 +85,8 @@ export interface WorkspaceMessengerCachedConversation {
   topicUuid?: string;
   title?: string;
   unreadCount?: number;
+  activeUnreadCount?: number;
+  passiveUnreadCount?: number;
   lastMessageUuid?: string | null;
   updatedAt?: string | null;
 }
@@ -177,6 +185,7 @@ export interface WorkspaceMessengerCachedMessage {
   topicUuid: string;
   payload: WorkspaceMessengerCachedMessagePayload;
   read?: boolean;
+  isOwn?: boolean;
   createdAt: string;
   updatedAt?: string | null;
 }
@@ -267,6 +276,30 @@ export interface WorkspaceMessengerReadBoundaryCacheRow {
   createdAt: string;
   messageUuid: string;
   epochVersion?: number;
+}
+
+export interface WorkspaceMessengerUnreadProjectionCacheRow {
+  id: string;
+  ownerKey: string;
+  messageUuid: string;
+  streamUuid: string;
+  topicUuid: string;
+  message: WorkspaceMessengerCachedMessage;
+  operation: "increment" | "decrement";
+  applied: boolean;
+  mutationRevision: number;
+  updatedAt: number;
+}
+
+export interface WorkspaceMessengerUnreadProjectionCatalogSnapshot {
+  messageUuid: string;
+  operation: "increment" | "decrement";
+  mutationRevision: number;
+  stream: WorkspaceMessengerCachedStream;
+  topic: WorkspaceMessengerCachedTopic;
+  conversations: readonly WorkspaceMessengerCachedConversation[];
+  folders: readonly WorkspaceMessengerCachedFolder[];
+  folderItems: readonly WorkspaceMessengerCachedFolderItem[];
 }
 
 export interface WorkspaceMessengerSearchResultRow {
@@ -372,6 +405,10 @@ export interface WorkspaceMessengerConversationMessagePage {
   windowSize?: number;
   lastSyncedAt?: number | null;
   retentionLimit?: number;
+  unreadProjection?: {
+    operation: "increment" | "decrement";
+    mutationRevision: number;
+  };
 }
 
 export interface WorkspaceMessengerConversationMessageWindow {
@@ -595,6 +632,7 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.searchResults,
       stores.composerDrafts,
       stores.readBoundaries,
+      stores.unreadProjections,
     ];
     const idsByStore = await Promise.all(
       storeNames.map(async (storeName) => {
@@ -980,6 +1018,40 @@ interface CatalogUpsertOptions {
   reconcileFence?: number;
 }
 
+function wasCatalogRowWrittenAfterFence(
+  previous: { cacheUpdatedAt?: number } | undefined,
+  options: CatalogUpsertOptions,
+): boolean {
+  return (
+    previous != null &&
+    options.reconcileFence != null &&
+    (previous.cacheUpdatedAt ?? 0) > options.reconcileFence
+  );
+}
+
+function mergePostFenceUnreadProjection<
+  T extends {
+    unreadCount?: number;
+    activeUnreadCount?: number;
+    passiveUnreadCount?: number;
+    lastMessageUuid?: string | null;
+  },
+>(incoming: T, previous: T): T {
+  return {
+    ...incoming,
+    ...(previous.unreadCount === undefined ? {} : { unreadCount: previous.unreadCount }),
+    ...(previous.activeUnreadCount === undefined
+      ? {}
+      : { activeUnreadCount: previous.activeUnreadCount }),
+    ...(previous.passiveUnreadCount === undefined
+      ? {}
+      : { passiveUnreadCount: previous.passiveUnreadCount }),
+    ...(previous.lastMessageUuid === undefined
+      ? {}
+      : { lastMessageUuid: previous.lastMessageUuid }),
+  };
+}
+
 function shouldUpsertCatalogRow(
   previous: { updatedAt: string; cacheUpdatedAt?: number } | undefined,
   incomingUpdatedAt: string | null | undefined,
@@ -989,7 +1061,12 @@ function shouldUpsertCatalogRow(
   if (options.reconcileFence != null) {
     // A full response owns rows that predate its request. Realtime writes made
     // after that request keep precedence only while they are newer than it.
-    if ((previous.cacheUpdatedAt ?? 0) <= options.reconcileFence) return true;
+    if (!wasCatalogRowWrittenAfterFence(previous, options)) return true;
+    if (incomingUpdatedAt == null) return false;
+    // Per-user counters can change without changing the entity's updated_at.
+    // An equal timestamp from a request started before a post-fence realtime
+    // write is therefore stale and must not roll the unread projection back.
+    return incomingUpdatedAt > previous.updatedAt;
   }
   if (incomingUpdatedAt == null) return false;
   return incomingUpdatedAt >= previous.updatedAt;
@@ -1035,13 +1112,32 @@ function updateCatalogRowsAtomically<TRow extends { id: string }>(
   storeName: string,
   rows: readonly TRow[],
   update: (store: IDBObjectStore, previous: TRow | undefined, incoming: TRow) => void,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
+  if (!isWriteCurrent()) return Promise.resolve();
   const transaction = db.transaction(storeName, "readwrite");
   const store = transaction.objectStore(storeName);
+  let completedReads = 0;
+  const abortStaleWrite = (): boolean => {
+    if (isWriteCurrent()) return false;
+    transaction.abort();
+    return true;
+  };
   for (const row of rows) {
     const request = store.get(row.id);
     request.onsuccess = () => {
+      if (abortStaleWrite()) return;
       update(store, request.result as TRow | undefined, row);
+      completedReads += 1;
+      if (completedReads !== rows.length) return;
+
+      // This sentinel runs after every put queued by the read callbacks. Since
+      // no JavaScript can switch the runtime between this callback and the
+      // IndexedDB auto-commit, it is the transaction's final generation fence.
+      const commitFence = store.get(row.id);
+      commitFence.onsuccess = () => {
+        abortStaleWrite();
+      };
     };
   }
   return transactionDone(transaction);
@@ -1107,6 +1203,7 @@ async function upsertStreams(
   ownerKey: string,
   streams: readonly WorkspaceMessengerCachedStream[],
   options: CatalogUpsertOptions = {},
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (streams.length === 0) return;
 
@@ -1119,12 +1216,20 @@ async function upsertStreams(
     rows,
     (store, previous, row) => {
       if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
+        const preserveProjection = wasCatalogRowWrittenAfterFence(previous, options);
+        const stream =
+          previous != null && preserveProjection
+            ? mergePostFenceUnreadProjection(row.stream, previous.stream)
+            : row.stream;
+        const lastMessageCreatedAt =
+          previous != null &&
+          (preserveProjection || previous.stream.lastMessageUuid === stream.lastMessageUuid)
+            ? previous.lastMessageCreatedAt
+            : undefined;
         store.put({
           ...row,
-          lastMessageCreatedAt:
-            previous != null && previous.stream.lastMessageUuid === row.stream.lastMessageUuid
-              ? previous.lastMessageCreatedAt
-              : undefined,
+          stream,
+          lastMessageCreatedAt,
         });
       } else if (previous != null && previous.stream.color == null && row.stream.color != null) {
         store.put({
@@ -1134,6 +1239,7 @@ async function upsertStreams(
         });
       }
     },
+    isWriteCurrent,
   );
 }
 
@@ -1142,6 +1248,7 @@ async function upsertTopics(
   ownerKey: string,
   topics: readonly WorkspaceMessengerCachedTopic[],
   options: CatalogUpsertOptions = {},
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (topics.length === 0) return;
 
@@ -1154,14 +1261,23 @@ async function upsertTopics(
     rows,
     (store, previous, row) => {
       if (!shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) return;
+      const preserveProjection = wasCatalogRowWrittenAfterFence(previous, options);
+      const topic =
+        previous != null && preserveProjection
+          ? mergePostFenceUnreadProjection(row.topic, previous.topic)
+          : row.topic;
+      const lastMessageCreatedAt =
+        previous != null &&
+        (preserveProjection || previous.topic.lastMessageUuid === topic.lastMessageUuid)
+          ? previous.lastMessageCreatedAt
+          : undefined;
       store.put({
         ...row,
-        lastMessageCreatedAt:
-          previous != null && previous.topic.lastMessageUuid === row.topic.lastMessageUuid
-            ? previous.lastMessageCreatedAt
-            : undefined,
+        topic,
+        lastMessageCreatedAt,
       });
     },
+    isWriteCurrent,
   );
 }
 
@@ -1170,6 +1286,7 @@ async function upsertConversations(
   ownerKey: string,
   conversations: readonly WorkspaceMessengerCachedConversation[],
   options: CatalogUpsertOptions = {},
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (conversations.length === 0) return;
 
@@ -1184,14 +1301,25 @@ async function upsertConversations(
     rows,
     (store, previous, row) => {
       if (!shouldUpsertCatalogRow(previous, row.conversation.updatedAt, options)) return;
+      const preserveProjection = wasCatalogRowWrittenAfterFence(previous, options);
+      const conversation =
+        previous != null && preserveProjection
+          ? mergePostFenceUnreadProjection(row.conversation, previous.conversation)
+          : row.conversation;
+      const lastMessageUuid = conversation.lastMessageUuid ?? null;
+      const lastMessageCreatedAt =
+        previous != null && (preserveProjection || previous.lastMessageUuid === lastMessageUuid)
+          ? previous.lastMessageCreatedAt
+          : undefined;
       store.put({
         ...row,
-        lastMessageCreatedAt:
-          previous?.lastMessageUuid === row.lastMessageUuid
-            ? previous.lastMessageCreatedAt
-            : undefined,
+        conversation,
+        unreadCount: conversation.unreadCount ?? 0,
+        lastMessageUuid,
+        lastMessageCreatedAt,
       });
     },
+    isWriteCurrent,
   );
 }
 
@@ -1200,6 +1328,7 @@ async function upsertFolders(
   ownerKey: string,
   folders: readonly WorkspaceMessengerCachedFolder[],
   options: CatalogUpsertOptions = {},
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (folders.length === 0) return;
 
@@ -1213,6 +1342,7 @@ async function upsertFolders(
     (store, previous, row) => {
       if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) store.put(row);
     },
+    isWriteCurrent,
   );
 }
 
@@ -1221,6 +1351,7 @@ async function upsertFolderItems(
   ownerKey: string,
   folderItems: readonly WorkspaceMessengerCachedFolderItem[],
   options: CatalogUpsertOptions = {},
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (folderItems.length === 0) return;
 
@@ -1236,6 +1367,7 @@ async function upsertFolderItems(
     (store, previous, row) => {
       if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) store.put(row);
     },
+    isWriteCurrent,
   );
 }
 
@@ -1450,12 +1582,13 @@ export async function writeMessengerCatalogCache(
 export async function upsertMessengerStreamsCache(
   ownerKey: string,
   streams: readonly WorkspaceMessengerCachedStream[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertStreams(db, ownerKey, streams);
+    await upsertStreams(db, ownerKey, streams, {}, isWriteCurrent);
   } catch (error) {
     logCacheWriteFailure("upsert-streams", error);
   }
@@ -1464,12 +1597,13 @@ export async function upsertMessengerStreamsCache(
 export async function upsertMessengerTopicsCache(
   ownerKey: string,
   topics: readonly WorkspaceMessengerCachedTopic[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertTopics(db, ownerKey, topics);
+    await upsertTopics(db, ownerKey, topics, {}, isWriteCurrent);
   } catch (error) {
     logCacheWriteFailure("upsert-topics", error);
   }
@@ -1478,12 +1612,13 @@ export async function upsertMessengerTopicsCache(
 export async function upsertMessengerConversationsCache(
   ownerKey: string,
   conversations: readonly WorkspaceMessengerCachedConversation[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertConversations(db, ownerKey, conversations);
+    await upsertConversations(db, ownerKey, conversations, {}, isWriteCurrent);
   } catch (error) {
     logCacheWriteFailure("upsert-conversations", error);
   }
@@ -1493,14 +1628,15 @@ export async function upsertMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: readonly WorkspaceMessengerCachedFolder[],
   folderItems: readonly WorkspaceMessengerCachedFolderItem[] = [],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
     await Promise.all([
-      upsertFolders(db, ownerKey, folders),
-      upsertFolderItems(db, ownerKey, folderItems),
+      upsertFolders(db, ownerKey, folders, {}, isWriteCurrent),
+      upsertFolderItems(db, ownerKey, folderItems, {}, isWriteCurrent),
     ]);
   } catch {
     return;
@@ -1558,18 +1694,25 @@ export async function deleteMessengerStreamCatalogCache(
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const [topicRows, conversationRows, streamBindingRows, folderItemRows, folderRows] =
-      await Promise.all([
-        readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
-        readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
-        readRowsByOwner<WorkspaceMessengerStreamBindingCacheRow>(
-          db,
-          ownerKey,
-          stores.streamBindings,
-        ),
-        readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
-        readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
-      ]);
+    const [
+      topicRows,
+      conversationRows,
+      streamBindingRows,
+      folderItemRows,
+      folderRows,
+      unreadProjectionRows,
+    ] = await Promise.all([
+      readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
+      readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
+      readRowsByOwner<WorkspaceMessengerStreamBindingCacheRow>(db, ownerKey, stores.streamBindings),
+      readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
+      readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
+      readRowsByOwner<WorkspaceMessengerUnreadProjectionCacheRow>(
+        db,
+        ownerKey,
+        stores.unreadProjections,
+      ),
+    ]);
     const folderItemIdsToDelete = folderItemRows
       .filter((row) => row.streamUuid === streamUuid)
       .map((row) => row.id);
@@ -1582,6 +1725,7 @@ export async function deleteMessengerStreamCatalogCache(
         stores.streamBindings,
         stores.folderItems,
         stores.folders,
+        stores.unreadProjections,
       ],
       "readwrite",
     );
@@ -1615,6 +1759,10 @@ export async function deleteMessengerStreamCatalogCache(
         cacheUpdatedAt,
         folder: folderWithRemovedItems(row.folder, (item) => item.streamUuid === streamUuid),
       });
+    }
+    const unreadProjectionStore = transaction.objectStore(stores.unreadProjections);
+    for (const row of unreadProjectionRows) {
+      if (row.streamUuid === streamUuid) unreadProjectionStore.delete(row.id);
     }
     await transactionDone(transaction);
   } catch {
@@ -1650,9 +1798,23 @@ export async function deleteMessengerTopicCatalogCache(
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const conversationId = topicConversationId(streamUuid, topicUuid);
-    const transaction = db.transaction([stores.topics, stores.conversations], "readwrite");
+    const unreadProjectionRows = await readRowsByOwner<WorkspaceMessengerUnreadProjectionCacheRow>(
+      db,
+      ownerKey,
+      stores.unreadProjections,
+    );
+    const transaction = db.transaction(
+      [stores.topics, stores.conversations, stores.unreadProjections],
+      "readwrite",
+    );
     transaction.objectStore(stores.topics).delete(cacheRowId(ownerKey, topicUuid));
     transaction.objectStore(stores.conversations).delete(cacheRowId(ownerKey, conversationId));
+    const unreadProjectionStore = transaction.objectStore(stores.unreadProjections);
+    for (const row of unreadProjectionRows) {
+      if (row.streamUuid === streamUuid && row.topicUuid === topicUuid) {
+        unreadProjectionStore.delete(row.id);
+      }
+    }
     await transactionDone(transaction);
   } catch {
     return;
@@ -2399,15 +2561,38 @@ export async function writeConversationMessagePage(
 
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
-      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      [
+        stores.messages,
+        stores.messageBuckets,
+        stores.messageWindows,
+        ...(page.unreadProjection == null ? [] : [stores.unreadProjections]),
+      ],
       "readwrite",
     );
     const messageStore = transaction.objectStore(stores.messages);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
+    const unreadProjectionStore =
+      page.unreadProjection == null ? null : transaction.objectStore(stores.unreadProjections);
 
     for (const message of page.messages) {
       const previousRow = previousRows.get(message.uuid);
       messageStore.put(toMessageRow(ownerKey, message, previousRow));
+
+      if (unreadProjectionStore != null && page.unreadProjection != null) {
+        const id = cacheRowId(ownerKey, message.uuid);
+        const previousProjection = await requestToPromise<
+          WorkspaceMessengerUnreadProjectionCacheRow | undefined
+        >(unreadProjectionStore.get(id));
+        const nextProjection = mergeUnreadProjectionRow(
+          previousProjection,
+          ownerKey,
+          message,
+          page.unreadProjection.operation,
+          page.unreadProjection.mutationRevision,
+        );
+        if (nextProjection == null) unreadProjectionStore.delete(id);
+        else unreadProjectionStore.put(nextProjection);
+      }
 
       for (const bucketConversationId of bucketConversationIdsForMessage(
         message,
@@ -2436,7 +2621,8 @@ export async function writeConversationMessagePage(
       conversationId,
       page.retentionLimit ?? DEFAULT_MESSAGE_BUCKET_RETENTION,
     );
-  } catch {
+  } catch (error) {
+    if (page.unreadProjection != null) throw error;
     return;
   }
 }
@@ -2477,6 +2663,32 @@ export async function markCachedMessagesRead(
   messageUuids: readonly string[],
   conversationIds: readonly string[] = [],
 ): Promise<void> {
+  await markCachedMessagesReadInternal(ownerKey, messageUuids, conversationIds, null);
+}
+
+export async function markCachedMessagesReadWithUnreadProjection(
+  ownerKey: string,
+  messageUuids: readonly string[],
+  mutationRevision: number,
+  conversationIds: readonly string[] = [],
+  projectionMessages: readonly WorkspaceMessengerCachedMessage[] = [],
+): Promise<readonly string[] | undefined> {
+  return markCachedMessagesReadInternal(
+    ownerKey,
+    messageUuids,
+    conversationIds,
+    mutationRevision,
+    projectionMessages,
+  );
+}
+
+async function markCachedMessagesReadInternal(
+  ownerKey: string,
+  messageUuids: readonly string[],
+  conversationIds: readonly string[],
+  projectionRevision: number | null,
+  projectionMessages: readonly WorkspaceMessengerCachedMessage[] = [],
+): Promise<readonly string[] | undefined> {
   if (!isIndexedDBAvailable() || (messageUuids.length === 0 && conversationIds.length === 0)) {
     return;
   }
@@ -2484,7 +2696,14 @@ export async function markCachedMessagesRead(
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
+    const transaction = db.transaction(
+      [
+        stores.messages,
+        stores.messageBuckets,
+        ...(projectionRevision == null ? [] : [stores.unreadProjections]),
+      ],
+      "readwrite",
+    );
     const messageStore = transaction.objectStore(stores.messages);
     const bucketIndex = transaction.objectStore(stores.messageBuckets).index("byConversationOrder");
     const uniqueConversationIds = [...new Set(conversationIds)];
@@ -2510,9 +2729,41 @@ export async function markCachedMessagesRead(
         ),
       ),
     );
-
+    const rowsByMessageUuid = new Map(
+      rows.flatMap((row) => (row?.ownerKey === ownerKey ? [[row.message.uuid, row] as const] : [])),
+    );
+    const pendingMessagesByUuid = new Map<string, WorkspaceMessengerCachedMessage>();
     for (const row of rows) {
-      if (row?.ownerKey !== ownerKey || row.message.read === true) continue;
+      if (row?.ownerKey === ownerKey && row.message.read !== true && row.message.isOwn !== true) {
+        pendingMessagesByUuid.set(row.message.uuid, row.message);
+      }
+    }
+    for (const message of projectionMessages) {
+      if (
+        uniqueMessageUuids.has(message.uuid) &&
+        message.read !== true &&
+        message.isOwn !== true &&
+        rowsByMessageUuid.get(message.uuid) == null
+      ) {
+        pendingMessagesByUuid.set(message.uuid, message);
+      }
+    }
+    const pendingMessages = [...pendingMessagesByUuid.values()];
+    const pendingStore =
+      projectionRevision == null ? null : transaction.objectStore(stores.unreadProjections);
+    const pendingRows =
+      pendingStore == null
+        ? []
+        : await Promise.all(
+            pendingMessages.map((message) =>
+              requestToPromise<WorkspaceMessengerUnreadProjectionCacheRow | undefined>(
+                pendingStore.get(cacheRowId(ownerKey, message.uuid)),
+              ),
+            ),
+          );
+
+    rows.forEach((row) => {
+      if (row?.ownerKey !== ownerKey || row.message.read === true) return;
       messageStore.put({
         ...row,
         message: {
@@ -2521,11 +2772,31 @@ export async function markCachedMessagesRead(
         },
         version: row.version + 1,
       } satisfies WorkspaceMessengerMessageCacheRow);
-    }
+    });
+    const stagedProjectionMessageUuids: string[] = [];
+    pendingMessages.forEach((message, index) => {
+      if (pendingStore != null && projectionRevision != null) {
+        const pending = mergeUnreadProjectionRow(
+          pendingRows[index],
+          ownerKey,
+          message,
+          "decrement",
+          projectionRevision,
+        );
+        if (pending == null) {
+          pendingStore.delete(cacheRowId(ownerKey, message.uuid));
+        } else {
+          pendingStore.put(pending);
+          stagedProjectionMessageUuids.push(message.uuid);
+        }
+      }
+    });
 
     await transactionDone(transaction);
+    return projectionRevision == null ? undefined : stagedProjectionMessageUuids;
   } catch (error) {
     logCacheWriteFailure("mark-messages-read", error);
+    if (projectionRevision != null) throw error;
   }
 }
 
@@ -2571,16 +2842,277 @@ function mergeReadBoundaryRows(
 
 export async function advanceMessengerReadBoundaryCache(
   boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+): Promise<WorkspaceMessengerCachedMessage[]> {
+  return advanceMessengerReadBoundaryCacheInternal(boundary, null);
+}
+
+function mergeUnreadProjectionRow(
+  previous: WorkspaceMessengerUnreadProjectionCacheRow | undefined,
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+  operation: "increment" | "decrement",
+  mutationRevision: number,
+): WorkspaceMessengerUnreadProjectionCacheRow | null {
+  if (previous != null && previous.operation !== operation) {
+    // Opposite operations cancel only while the first delta is known not to be
+    // durable. Once its catalog snapshot committed, retain the inverse delta so
+    // a runtime switch between the message/read transaction and catalog write
+    // can still restore the net baseline.
+    if (!previous.applied) return null;
+    return {
+      id: cacheRowId(ownerKey, message.uuid),
+      ownerKey,
+      messageUuid: message.uuid,
+      streamUuid: message.streamUuid,
+      topicUuid: message.topicUuid,
+      message,
+      operation,
+      applied: false,
+      mutationRevision,
+      updatedAt: Date.now(),
+    };
+  }
+
+  return {
+    id: cacheRowId(ownerKey, message.uuid),
+    ownerKey,
+    messageUuid: message.uuid,
+    streamUuid: message.streamUuid,
+    topicUuid: message.topicUuid,
+    message,
+    operation,
+    applied: previous?.applied ?? false,
+    mutationRevision: Math.min(previous?.mutationRevision ?? mutationRevision, mutationRevision),
+    updatedAt: Date.now(),
+  };
+}
+
+export async function queueMessengerUnreadProjectionCache(
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+  operation: "increment" | "decrement",
+  mutationRevision: number,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    const storeName = WORKSPACE_MESSENGER_CACHE_STORES.unreadProjections;
+    const transaction = db.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    const id = cacheRowId(ownerKey, message.uuid);
+    const previous = await requestToPromise<WorkspaceMessengerUnreadProjectionCacheRow | undefined>(
+      store.get(id),
+    );
+    const next = mergeUnreadProjectionRow(previous, ownerKey, message, operation, mutationRevision);
+    if (next == null) {
+      store.delete(id);
+    } else {
+      store.put(next);
+    }
+    await transactionDone(transaction);
+  } catch (error) {
+    logCacheWriteFailure("queue-unread-projection", error);
+    throw error;
+  }
+}
+
+export async function readMessengerUnreadProjectionCache(
+  ownerKey: string,
+): Promise<WorkspaceMessengerUnreadProjectionCacheRow[]> {
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    return await readRowsByOwner<WorkspaceMessengerUnreadProjectionCacheRow>(
+      db,
+      ownerKey,
+      WORKSPACE_MESSENGER_CACHE_STORES.unreadProjections,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function persistMessengerUnreadProjectionCatalogCache(
+  ownerKey: string,
+  snapshot: WorkspaceMessengerUnreadProjectionCatalogSnapshot,
+  isWriteCurrent: () => boolean = () => true,
+): Promise<boolean> {
+  if (!isIndexedDBAvailable()) return false;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
-      [stores.readBoundaries, stores.messages, stores.messageBuckets],
+      [
+        stores.streams,
+        stores.topics,
+        stores.conversations,
+        stores.folders,
+        stores.folderItems,
+        stores.unreadProjections,
+      ],
       "readwrite",
     );
+    const projectionStore = transaction.objectStore(stores.unreadProjections);
+    const projectionId = cacheRowId(ownerKey, snapshot.messageUuid);
+    const projection = await requestToPromise<
+      WorkspaceMessengerUnreadProjectionCacheRow | undefined
+    >(projectionStore.get(projectionId));
+    if (
+      projection?.operation !== snapshot.operation ||
+      projection.mutationRevision !== snapshot.mutationRevision ||
+      !isWriteCurrent()
+    ) {
+      await transactionDone(transaction);
+      return false;
+    }
+
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    const streamStore = transaction.objectStore(stores.streams);
+    const topicStore = transaction.objectStore(stores.topics);
+    const conversationStore = transaction.objectStore(stores.conversations);
+    const folderStore = transaction.objectStore(stores.folders);
+    const folderItemStore = transaction.objectStore(stores.folderItems);
+    const [previousStream, previousTopic, previousConversations] = await Promise.all([
+      requestToPromise<WorkspaceMessengerStreamCacheRow | undefined>(
+        streamStore.get(cacheRowId(ownerKey, snapshot.stream.uuid)),
+      ),
+      requestToPromise<WorkspaceMessengerTopicCacheRow | undefined>(
+        topicStore.get(cacheRowId(ownerKey, snapshot.topic.uuid)),
+      ),
+      Promise.all(
+        snapshot.conversations.map((conversation) =>
+          requestToPromise<WorkspaceMessengerConversationCacheRow | undefined>(
+            conversationStore.get(cacheRowId(ownerKey, conversation.id)),
+          ),
+        ),
+      ),
+    ]);
+    if (!isWriteCurrent()) {
+      await transactionDone(transaction);
+      return false;
+    }
+
+    streamStore.put({
+      ...toStreamRow(ownerKey, snapshot.stream, cacheUpdatedAt),
+      lastMessageCreatedAt: previousStream?.lastMessageCreatedAt,
+    });
+    topicStore.put({
+      ...toTopicRow(ownerKey, snapshot.topic, cacheUpdatedAt),
+      lastMessageCreatedAt: previousTopic?.lastMessageCreatedAt,
+    });
+    snapshot.conversations.forEach((conversation, index) => {
+      conversationStore.put({
+        ...toConversationRow(ownerKey, conversation, cacheUpdatedAt),
+        lastMessageCreatedAt: previousConversations[index]?.lastMessageCreatedAt,
+      });
+    });
+    for (const folder of snapshot.folders) {
+      folderStore.put(toFolderRow(ownerKey, folder, cacheUpdatedAt));
+    }
+    for (const folderItem of snapshot.folderItems) {
+      folderItemStore.put(toFolderItemRow(ownerKey, folderItem, cacheUpdatedAt));
+    }
+    projectionStore.put({
+      ...projection,
+      applied: true,
+      updatedAt: Date.now(),
+    } satisfies WorkspaceMessengerUnreadProjectionCacheRow);
+    await transactionDone(transaction);
+    return true;
+  } catch (error) {
+    logCacheWriteFailure("persist-unread-projection-catalog", error);
+    throw error;
+  }
+}
+
+export async function completeMessengerUnreadProjectionCache(
+  ownerKey: string,
+  projections: readonly { messageUuid: string; mutationRevision: number }[],
+): Promise<void> {
+  if (!isIndexedDBAvailable() || projections.length === 0) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const storeName = WORKSPACE_MESSENGER_CACHE_STORES.unreadProjections;
+    const transaction = db.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    for (const projection of projections) {
+      const id = cacheRowId(ownerKey, projection.messageUuid);
+      const row = await requestToPromise<WorkspaceMessengerUnreadProjectionCacheRow | undefined>(
+        store.get(id),
+      );
+      if (row?.mutationRevision === projection.mutationRevision && row.applied) {
+        store.delete(id);
+      }
+    }
+    await transactionDone(transaction);
+  } catch (error) {
+    logCacheWriteFailure("complete-unread-projection", error);
+    throw error;
+  }
+}
+
+export async function cancelMessengerUnreadIncrementProjectionCache(
+  ownerKey: string,
+  messageUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const storeName = WORKSPACE_MESSENGER_CACHE_STORES.unreadProjections;
+    const transaction = db.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    const id = cacheRowId(ownerKey, messageUuid);
+    const row = await requestToPromise<WorkspaceMessengerUnreadProjectionCacheRow | undefined>(
+      store.get(id),
+    );
+    if (row?.operation === "increment") {
+      if (!row.applied) {
+        store.delete(id);
+      } else {
+        store.put({
+          ...row,
+          operation: "decrement",
+          applied: false,
+          mutationRevision: Math.max(row.mutationRevision + 1, Date.now()),
+          updatedAt: Date.now(),
+        } satisfies WorkspaceMessengerUnreadProjectionCacheRow);
+      }
+    }
+    await transactionDone(transaction);
+  } catch (error) {
+    logCacheWriteFailure("cancel-unread-increment-projection", error);
+    throw error;
+  }
+}
+
+export async function advanceMessengerReadBoundaryCacheWithUnreadProjection(
+  boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+  mutationRevision: number,
+): Promise<WorkspaceMessengerCachedMessage[]> {
+  return advanceMessengerReadBoundaryCacheInternal(boundary, mutationRevision);
+}
+
+async function advanceMessengerReadBoundaryCacheInternal(
+  boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+  projectionRevision: number | null,
+): Promise<WorkspaceMessengerCachedMessage[]> {
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transactionStoreNames = [
+      stores.readBoundaries,
+      stores.messages,
+      stores.messageBuckets,
+      ...(projectionRevision == null ? [] : [stores.unreadProjections]),
+    ];
+    const transaction = db.transaction(transactionStoreNames, "readwrite");
     const boundaryStore = transaction.objectStore(stores.readBoundaries);
     const id = readBoundaryRowId(boundary.ownerKey, boundary.streamUuid, boundary.topicUuid);
     const previous = await requestToPromise<WorkspaceMessengerReadBoundaryCacheRow | undefined>(
@@ -2613,18 +3145,58 @@ export async function advanceMessengerReadBoundaryCache(
         ),
       ),
     );
+    const transitionedMessages: WorkspaceMessengerCachedMessage[] = [];
+    const pendingStore =
+      projectionRevision == null ? null : transaction.objectStore(stores.unreadProjections);
+    const previousPendingRows = new Map<string, WorkspaceMessengerUnreadProjectionCacheRow>();
+    if (pendingStore != null) {
+      const pendingCandidates = rows.filter(
+        (row): row is WorkspaceMessengerMessageCacheRow =>
+          row?.ownerKey === effective.ownerKey &&
+          row.message.read !== true &&
+          row.message.isOwn !== true,
+      );
+      const pendingRows = await Promise.all(
+        pendingCandidates.map((row) =>
+          requestToPromise<WorkspaceMessengerUnreadProjectionCacheRow | undefined>(
+            pendingStore.get(cacheRowId(effective.ownerKey, row.message.uuid)),
+          ),
+        ),
+      );
+      pendingRows.forEach((row) => {
+        if (row != null) previousPendingRows.set(row.messageUuid, row);
+      });
+    }
     for (const row of rows) {
       if (row?.ownerKey !== effective.ownerKey || row.message.read === true) continue;
+      transitionedMessages.push(row.message);
       messageStore.put({
         ...row,
         message: { ...row.message, read: true },
         version: row.version + 1,
       } satisfies WorkspaceMessengerMessageCacheRow);
+      if (pendingStore != null && !row.message.isOwn && projectionRevision != null) {
+        const pending = mergeUnreadProjectionRow(
+          previousPendingRows.get(row.message.uuid),
+          effective.ownerKey,
+          row.message,
+          "decrement",
+          projectionRevision,
+        );
+        if (pending == null) {
+          pendingStore.delete(cacheRowId(effective.ownerKey, row.message.uuid));
+        } else {
+          pendingStore.put(pending);
+        }
+      }
     }
 
     await transactionDone(transaction);
+    return transitionedMessages;
   } catch (error) {
     logCacheWriteFailure("advance-read-boundary", error);
+    if (projectionRevision != null) throw error;
+    return [];
   }
 }
 

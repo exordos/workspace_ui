@@ -24,7 +24,9 @@ export interface MessengerRealtimeCacheConversationPage {
 }
 
 export interface MessengerRealtimeCacheWriter {
-  advanceReadBoundary: (boundary: MessengerReadBoundary) => Promise<void> | void;
+  advanceReadBoundary: (
+    boundary: MessengerReadBoundary,
+  ) => Promise<void | readonly MessengerMessage[]> | void;
   markCachedMessagesRead: (
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],

@@ -8,7 +8,9 @@ import {
   openWorkspaceMessengerCacheDb,
   readMessengerCatalogCache,
   resetWorkspaceMessengerCacheDbSingletonForTests,
+  upsertMessengerFolderSnapshotsCache,
   upsertMessengerStreamBindingsCache,
+  upsertMessengerTopicsCache,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
   deleteMessengerStreamCache,
@@ -18,9 +20,13 @@ import {
   readMessengerConversationWindowCache,
   readMessengerMessageBodyCache,
   repairMessengerCachedMessagePointers,
-  writeMessengerMessageBodyCache,
   restoreMessengerStreamCache,
+  upsertMessengerStreamCache,
+  upsertMessengerTopicCache,
+  verifyMessengerPendingUnreadProjection,
   writeMessengerCatalogPayloadCache,
+  writeMessengerFolderSnapshotCache,
+  writeMessengerMessageBodyCache,
 } from "./messenger-cache.lib";
 import type {
   MessengerBootstrapPayload,
@@ -197,6 +203,46 @@ afterEach(async () => {
 });
 
 describe("messenger cache", () => {
+  it("drops guarded catalog upserts when their runtime changes during the snapshot read", async () => {
+    let streamGuardChecks = 0;
+    let topicGuardChecks = 0;
+
+    await upsertMessengerStreamCache(OWNER_KEY, createStream(), () => {
+      streamGuardChecks += 1;
+      return streamGuardChecks === 1;
+    });
+    await upsertMessengerTopicCache(OWNER_KEY, createTopic(), () => {
+      topicGuardChecks += 1;
+      return topicGuardChecks === 1;
+    });
+
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.streams).toEqual([]);
+    expect(snapshot.topics).toEqual([]);
+    expect(streamGuardChecks).toBeGreaterThan(1);
+    expect(topicGuardChecks).toBeGreaterThan(1);
+  });
+
+  it("aborts guarded catalog transactions when their runtime changes before commit", async () => {
+    let streamGuardChecks = 0;
+    let topicGuardChecks = 0;
+
+    await upsertMessengerStreamCache(OWNER_KEY, createStream(), () => {
+      streamGuardChecks += 1;
+      return streamGuardChecks <= 4;
+    });
+    await upsertMessengerTopicCache(OWNER_KEY, createTopic(), () => {
+      topicGuardChecks += 1;
+      return topicGuardChecks <= 4;
+    });
+
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.streams).toEqual([]);
+    expect(snapshot.topics).toEqual([]);
+    expect(streamGuardChecks).toBeGreaterThan(4);
+    expect(topicGuardChecks).toBeGreaterThan(4);
+  });
+
   it("restores stream color from the catalog cache", async () => {
     await writeMessengerCatalogPayloadCache(OWNER_KEY, {
       ...createEmptyPayload(),
@@ -287,6 +333,33 @@ describe("messenger cache", () => {
 
     const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
     expect(cached?.payload.topics[0]?.name).toBe("UI");
+  });
+
+  it("keeps post-fence topic unread counters when reconciliation has the same entity timestamp", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic({ unreadCount: 0, activeUnreadCount: 0, passiveUnreadCount: 0 })],
+    });
+    const reconcileFence = createMessengerCatalogCacheReconcileFence();
+
+    await upsertMessengerTopicsCache(OWNER_KEY, [
+      createTopic({ unreadCount: 1, activeUnreadCount: 1, passiveUnreadCount: 0 }),
+    ]);
+    await writeMessengerCatalogPayloadCache(
+      OWNER_KEY,
+      {
+        ...createEmptyPayload(),
+        streams: [createStream()],
+        topics: [createTopic({ unreadCount: 0, activeUnreadCount: 0, passiveUnreadCount: 0 })],
+      },
+      { mode: "reconcile", reconcileFence },
+    );
+
+    const cached = await readMessengerCatalogPayloadCache(OWNER_KEY);
+    expect(cached?.payload.topics[0]).toEqual(
+      expect.objectContaining({ unreadCount: 1, activeUnreadCount: 1, passiveUnreadCount: 0 }),
+    );
   });
 
   it("applies a newer authoritative topic after a post-fence cache write", async () => {
@@ -486,6 +559,53 @@ describe("messenger cache", () => {
       activeUnreadCount: 3,
       passiveUnreadCount: 2,
     });
+  });
+
+  it("keeps a pending unread projection until every folder counter is durable", async () => {
+    const stream = createStream({ unreadCount: 5, activeUnreadCount: 3, passiveUnreadCount: 2 });
+    const topic = createTopic({ unreadCount: 2, activeUnreadCount: 1, passiveUnreadCount: 1 });
+    const folder = createFolder({
+      unreadCount: 3,
+      items: [
+        {
+          ...createFolder().items[0]!,
+          unreadCount: 5,
+          activeUnreadCount: 3,
+          passiveUnreadCount: 2,
+        },
+      ],
+    });
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [stream],
+      topics: [topic],
+      folders: [createFolder()],
+    });
+
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, [folder]),
+    ).resolves.toBe(false);
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, []),
+    ).resolves.toBe(false);
+
+    await writeMessengerFolderSnapshotCache(OWNER_KEY, folder);
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, [folder]),
+    ).resolves.toBe(true);
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, []),
+    ).resolves.toBe(true);
+
+    await upsertMessengerFolderSnapshotsCache(OWNER_KEY, [], createFolder().items);
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, [folder]),
+    ).resolves.toBe(false);
+
+    await upsertMessengerStreamCache(OWNER_KEY, stream);
+    await expect(
+      verifyMessengerPendingUnreadProjection(OWNER_KEY, stream, topic, [folder]),
+    ).resolves.toBe(true);
   });
 
   it("persists the background message lifecycle without crossing owner boundaries", async () => {

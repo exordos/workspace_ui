@@ -2,6 +2,12 @@ import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import { normalizeMessengerFolderSystemType } from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import {
+  clearWorkspaceStreamUnreadReclassification,
+  clearWorkspaceStreamUnreadReclassificationsForOwner,
+  consumeWorkspaceStreamUnreadReclassification,
+  inheritWorkspaceStreamNotificationTransition,
+} from "./messenger-notification-mode.lib";
 import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import type {
   MessengerBootstrapPayload,
@@ -34,6 +40,48 @@ const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
 const removedStreamUuidsByOwnerKey = new Map<string, Set<MessengerUuid>>();
 let lastBootstrapRequestVersion = 0;
+let lastCatalogMutationRevision = 0;
+
+function nextCatalogMutationRevision(): number {
+  lastCatalogMutationRevision = Math.max(lastCatalogMutationRevision + 1, Date.now());
+  return lastCatalogMutationRevision;
+}
+
+interface MessengerCatalogEntityMutation {
+  revision: number;
+  authoritativeRevision: number;
+  unreadRevision: number;
+  freshnessRevision: number;
+  reclassificationRevision: number;
+}
+
+interface MessengerCatalogMutations {
+  revision: number;
+  streamsById: Map<MessengerUuid, MessengerCatalogEntityMutation>;
+  topicsById: Map<MessengerUuid, MessengerCatalogEntityMutation>;
+}
+
+const catalogMutationsByOwnerKey = new Map<string, MessengerCatalogMutations>();
+interface MessengerCatalogSnapshotCoverage {
+  streamsById: Map<MessengerUuid, number>;
+  topicsById: Map<MessengerUuid, number>;
+}
+const catalogSnapshotCoverageByOwnerKey = new Map<string, MessengerCatalogSnapshotCoverage>();
+interface MessengerUnreadProjectionCoverage {
+  streamRevision: number;
+  topicRevision: number;
+}
+const unreadProjectionCoverageByOwnerKey = new Map<
+  string,
+  Map<MessengerUuid, MessengerUnreadProjectionCoverage>
+>();
+
+function clearMessengerCatalogRuntimeCoverage(ownerKey: string): void {
+  catalogMutationsByOwnerKey.delete(ownerKey);
+  catalogSnapshotCoverageByOwnerKey.delete(ownerKey);
+  unreadProjectionCoverageByOwnerKey.delete(ownerKey);
+}
+
 type MessengerFreshnessState = Pick<
   MessengerDomainData,
   "streamsById" | "topicsById" | "conversationsById"
@@ -49,6 +97,15 @@ export interface MessengerDeletedMessagePointerTargets {
 export interface MessengerDeletedMessagePointerReplacements {
   stream: MessengerMessage | null;
   topic: MessengerMessage | null;
+}
+
+export interface MessengerCatalogMutationOptions {
+  kind?: "authoritative" | "derived" | "freshness" | "reclassification" | "transient";
+}
+
+export interface MessengerBootstrapInstallOptions {
+  catalogMutationFence?: number;
+  coversCatalogMutationFence?: boolean;
 }
 
 // Store keeps Workspace data separate from old Zulip stores.
@@ -82,9 +139,21 @@ export interface MessengerStoreState extends MessengerDomainData {
 
   startBootstrap: (ownerKey: string) => number;
   finishBootstrapSilently: (ownerKey: string) => void;
-  replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
-  replaceFolderSnapshots: (ownerKey: string, folders: MessengerFolder[]) => void;
-  upsertStream: (ownerKey: string, stream: MessengerStream) => void;
+  replaceBootstrapState: (
+    ownerKey: string,
+    payload: MessengerBootstrapPayload,
+    options?: MessengerBootstrapInstallOptions,
+  ) => void;
+  replaceFolderSnapshots: (
+    ownerKey: string,
+    folders: MessengerFolder[],
+    options?: MessengerBootstrapInstallOptions,
+  ) => void;
+  upsertStream: (
+    ownerKey: string,
+    stream: MessengerStream,
+    options?: MessengerCatalogMutationOptions,
+  ) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
   upsertStreamBindings: (ownerKey: string, bindings: MessengerStreamBinding[]) => void;
   replaceStreamBindingsForStream: (
@@ -97,7 +166,11 @@ export interface MessengerStoreState extends MessengerDomainData {
     ownerKey: string,
     binding: Pick<MessengerStreamBinding, "uuid" | "streamUuid">,
   ) => void;
-  upsertTopic: (ownerKey: string, topic: MessengerTopic) => void;
+  upsertTopic: (
+    ownerKey: string,
+    topic: MessengerTopic,
+    options?: MessengerCatalogMutationOptions,
+  ) => void;
   removeTopic: (ownerKey: string, topic: MessengerDeletedTopic) => void;
   applyMessagePointer: (ownerKey: string, message: MessengerMessage) => void;
   clearMessagePointer: (ownerKey: string, message: MessengerDeletedMessage) => void;
@@ -149,6 +222,149 @@ function removedStreamsForOwner(ownerKey: string): Set<MessengerUuid> {
   const created = new Set<MessengerUuid>();
   removedStreamUuidsByOwnerKey.set(ownerKey, created);
   return created;
+}
+
+function catalogMutationsForOwner(ownerKey: string): MessengerCatalogMutations {
+  const existing = catalogMutationsByOwnerKey.get(ownerKey);
+  if (existing != null) return existing;
+  const created: MessengerCatalogMutations = {
+    revision: lastCatalogMutationRevision,
+    streamsById: new Map(),
+    topicsById: new Map(),
+  };
+  catalogMutationsByOwnerKey.set(ownerKey, created);
+  return created;
+}
+
+function recordCatalogMutation(
+  ownerKey: string,
+  entity: "stream" | "topic",
+  uuid: MessengerUuid,
+  kind: "authoritative" | "derived" | "freshness" | "reclassification",
+): void {
+  const revision = nextCatalogMutationRevision();
+  const mutations = catalogMutationsForOwner(ownerKey);
+  mutations.revision = revision;
+  const target = entity === "stream" ? mutations.streamsById : mutations.topicsById;
+  const previous = target.get(uuid);
+  target.set(uuid, {
+    revision,
+    authoritativeRevision:
+      kind === "authoritative" ? revision : (previous?.authoritativeRevision ?? 0),
+    unreadRevision: kind === "derived" ? revision : (previous?.unreadRevision ?? 0),
+    freshnessRevision: kind === "freshness" ? revision : (previous?.freshnessRevision ?? 0),
+    reclassificationRevision:
+      kind === "reclassification" ? revision : (previous?.reclassificationRevision ?? 0),
+  });
+}
+
+export function createMessengerCatalogMutationFence(ownerKey: string): number {
+  const revision = nextCatalogMutationRevision();
+  catalogMutationsForOwner(ownerKey).revision = revision;
+  return revision;
+}
+
+export function createMessengerPendingUnreadProjectionRevision(ownerKey: string): number {
+  const revision = nextCatalogMutationRevision();
+  const mutations = catalogMutationsForOwner(ownerKey);
+  mutations.revision = revision;
+  return revision;
+}
+
+export function recordMessengerUnreadProjectionCoverage(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  revision: number,
+  components: { stream: boolean; topic: boolean },
+): void {
+  const ownerCoverage =
+    unreadProjectionCoverageByOwnerKey.get(ownerKey) ??
+    new Map<MessengerUuid, MessengerUnreadProjectionCoverage>();
+  unreadProjectionCoverageByOwnerKey.set(ownerKey, ownerCoverage);
+  const previous = ownerCoverage.get(messageUuid);
+  ownerCoverage.set(messageUuid, {
+    streamRevision: components.stream
+      ? Math.max(previous?.streamRevision ?? 0, revision)
+      : (previous?.streamRevision ?? 0),
+    topicRevision: components.topic
+      ? Math.max(previous?.topicRevision ?? 0, revision)
+      : (previous?.topicRevision ?? 0),
+  });
+}
+
+export function clearMessengerUnreadProjectionCoverage(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  revision: number,
+): void {
+  const ownerCoverage = unreadProjectionCoverageByOwnerKey.get(ownerKey);
+  const previous = ownerCoverage?.get(messageUuid);
+  if (ownerCoverage == null || previous == null) return;
+  const next = {
+    streamRevision: previous.streamRevision <= revision ? 0 : previous.streamRevision,
+    topicRevision: previous.topicRevision <= revision ? 0 : previous.topicRevision,
+  };
+  if (next.streamRevision === 0 && next.topicRevision === 0) {
+    ownerCoverage.delete(messageUuid);
+    if (ownerCoverage.size === 0) unreadProjectionCoverageByOwnerKey.delete(ownerKey);
+    return;
+  }
+  ownerCoverage.set(messageUuid, next);
+}
+
+function catalogSnapshotCoverageForOwner(ownerKey: string): MessengerCatalogSnapshotCoverage {
+  const existing = catalogSnapshotCoverageByOwnerKey.get(ownerKey);
+  if (existing != null) return existing;
+  const created: MessengerCatalogSnapshotCoverage = {
+    streamsById: new Map(),
+    topicsById: new Map(),
+  };
+  catalogSnapshotCoverageByOwnerKey.set(ownerKey, created);
+  return created;
+}
+
+function recordCatalogSnapshotCoverage(
+  ownerKey: string,
+  payload: MessengerBootstrapPayload,
+  fence: number,
+): void {
+  const coverage = catalogSnapshotCoverageForOwner(ownerKey);
+  for (const stream of payload.streams) {
+    coverage.streamsById.set(
+      stream.uuid,
+      Math.max(coverage.streamsById.get(stream.uuid) ?? 0, fence),
+    );
+  }
+  for (const topic of payload.topics) {
+    coverage.topicsById.set(topic.uuid, Math.max(coverage.topicsById.get(topic.uuid) ?? 0, fence));
+  }
+}
+
+export function messengerPendingUnreadProjectionCoverage(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  streamUuid: MessengerUuid,
+  topicUuid: MessengerUuid,
+  revision: number,
+): { stream: boolean; topic: boolean } {
+  const mutations = catalogMutationsByOwnerKey.get(ownerKey);
+  const coverage = catalogSnapshotCoverageByOwnerKey.get(ownerKey);
+  const projectionCoverage = unreadProjectionCoverageByOwnerKey.get(ownerKey)?.get(messageUuid);
+  const streamMutation = mutations?.streamsById.get(streamUuid);
+  const topicMutation = mutations?.topicsById.get(topicUuid);
+  // unreadRevision remains an entity-level bootstrap merge fence. It cannot
+  // prove that this particular message's durable delta was already projected:
+  // a later realtime event for a different message may have produced it.
+  return {
+    stream:
+      (streamMutation?.authoritativeRevision ?? 0) >= revision ||
+      (projectionCoverage?.streamRevision ?? 0) >= revision ||
+      (coverage?.streamsById.get(streamUuid) ?? 0) >= revision,
+    topic:
+      (topicMutation?.authoritativeRevision ?? 0) >= revision ||
+      (projectionCoverage?.topicRevision ?? 0) >= revision ||
+      (coverage?.topicsById.get(topicUuid) ?? 0) >= revision,
+  };
 }
 
 export function markMessengerStreamRemoved(ownerKey: string, streamUuid: MessengerUuid): void {
@@ -310,16 +526,18 @@ function applyMessageFreshness(
     stream != null &&
     isMessageFreshForContainer(message, stream.lastMessageUuid, stream.updatedAt)
   ) {
+    const nextStream = {
+      ...stream,
+      lastMessageUuid: message.uuid,
+      updatedAt:
+        compareIsoDateStrings(message.createdAt, stream.updatedAt) > 0
+          ? message.createdAt
+          : stream.updatedAt,
+    };
+    inheritWorkspaceStreamNotificationTransition(stream, nextStream);
     nextStreamsById = {
       ...nextStreamsById,
-      [stream.uuid]: {
-        ...stream,
-        lastMessageUuid: message.uuid,
-        updatedAt:
-          compareIsoDateStrings(message.createdAt, stream.updatedAt) > 0
-            ? message.createdAt
-            : stream.updatedAt,
-      },
+      [stream.uuid]: nextStream,
     };
   }
 
@@ -387,12 +605,14 @@ function clearDeletedMessageFreshness(
 
   const stream = state.streamsById[message.streamUuid];
   if (stream?.lastMessageUuid === message.uuid) {
+    const nextStream = {
+      ...stream,
+      lastMessageUuid: null,
+    };
+    inheritWorkspaceStreamNotificationTransition(stream, nextStream);
     nextStreamsById = {
       ...nextStreamsById,
-      [stream.uuid]: {
-        ...stream,
-        lastMessageUuid: null,
-      },
+      [stream.uuid]: nextStream,
     };
   }
 
@@ -657,6 +877,225 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
   };
 }
 
+function mergePostFenceCatalogMutations(
+  ownerKey: string,
+  current: MessengerStoreState,
+  incoming: MessengerDomainData,
+  fence: number,
+): MessengerDomainData {
+  const mutations = catalogMutationsByOwnerKey.get(ownerKey);
+  if (mutations == null || mutations.revision <= fence) {
+    return {
+      ...incoming,
+      lastEpochVersion: current.lastEpochVersion,
+      skippedRealtimeEvents: current.skippedRealtimeEvents,
+    };
+  }
+
+  const streamsById = { ...incoming.streamsById };
+  let streamIds = [...incoming.streamIds];
+  const topicsById = { ...incoming.topicsById };
+  let topicIds = [...incoming.topicIds];
+  const changedStreamUuids = new Set<MessengerUuid>();
+  const changedTopicUuids = new Set<MessengerUuid>();
+
+  for (const [streamUuid, mutation] of mutations.streamsById) {
+    if (mutation.revision <= fence) continue;
+    changedStreamUuids.add(streamUuid);
+    const currentStream = current.streamsById[streamUuid];
+    const incomingStream = streamsById[streamUuid];
+    if (currentStream == null) {
+      delete streamsById[streamUuid];
+      streamIds = removeId(streamIds, streamUuid);
+      continue;
+    }
+
+    streamsById[streamUuid] =
+      incomingStream == null || mutation.authoritativeRevision > fence
+        ? currentStream
+        : {
+            ...incomingStream,
+            ...(mutation.unreadRevision > fence
+              ? {
+                  unreadCount: currentStream.unreadCount,
+                  activeUnreadCount: currentStream.activeUnreadCount,
+                  passiveUnreadCount: currentStream.passiveUnreadCount,
+                }
+              : {}),
+            ...(mutation.freshnessRevision > fence
+              ? {
+                  lastMessageUuid: currentStream.lastMessageUuid,
+                  updatedAt:
+                    compareIsoDateStrings(currentStream.updatedAt, incomingStream.updatedAt) > 0
+                      ? currentStream.updatedAt
+                      : incomingStream.updatedAt,
+                }
+              : {}),
+            ...(mutation.reclassificationRevision > fence
+              ? {
+                  notificationMode: currentStream.notificationMode,
+                  activeUnreadCount: currentStream.activeUnreadCount,
+                  passiveUnreadCount: currentStream.passiveUnreadCount,
+                }
+              : {}),
+          };
+    streamIds = appendUniqueId(streamIds, streamUuid);
+  }
+
+  for (const [topicUuid, mutation] of mutations.topicsById) {
+    if (mutation.revision <= fence) continue;
+    changedTopicUuids.add(topicUuid);
+    const currentTopic = current.topicsById[topicUuid];
+    const incomingTopic = topicsById[topicUuid];
+    if (currentTopic == null) {
+      delete topicsById[topicUuid];
+      topicIds = removeId(topicIds, topicUuid);
+      continue;
+    }
+
+    topicsById[topicUuid] =
+      incomingTopic == null || mutation.authoritativeRevision > fence
+        ? currentTopic
+        : {
+            ...incomingTopic,
+            ...(mutation.unreadRevision > fence
+              ? {
+                  unreadCount: currentTopic.unreadCount,
+                  activeUnreadCount: currentTopic.activeUnreadCount,
+                  passiveUnreadCount: currentTopic.passiveUnreadCount,
+                }
+              : {}),
+            ...(mutation.freshnessRevision > fence
+              ? {
+                  lastMessageUuid: currentTopic.lastMessageUuid,
+                  updatedAt:
+                    compareIsoDateStrings(currentTopic.updatedAt, incomingTopic.updatedAt) > 0
+                      ? currentTopic.updatedAt
+                      : incomingTopic.updatedAt,
+                }
+              : {}),
+            ...(mutation.reclassificationRevision > fence
+              ? {
+                  notificationMode: currentTopic.notificationMode,
+                  activeUnreadCount: currentTopic.activeUnreadCount,
+                  passiveUnreadCount: currentTopic.passiveUnreadCount,
+                }
+              : {}),
+          };
+    topicIds = appendUniqueId(topicIds, topicUuid);
+  }
+
+  // A mode update can finish while the stream counters are present but topic
+  // metadata is still loading. Reclassify each previously missing topic as an
+  // older fenced bootstrap supplies it, instead of leaving the aggregate
+  // stream badge in its pre-update bucket.
+  for (const topicUuid of topicIds) {
+    if (current.topicsById[topicUuid] != null) continue;
+    const topic = topicsById[topicUuid];
+    if (topic == null) continue;
+    const stream = streamsById[topic.streamUuid];
+    if (stream == null) continue;
+    const deferredReclassification = consumeWorkspaceStreamUnreadReclassification(
+      ownerKey,
+      topic.streamUuid,
+      topic.notificationMode,
+      topic.unreadCount,
+    );
+    if (deferredReclassification == null) continue;
+
+    const nextStream = {
+      ...stream,
+      activeUnreadCount: Math.max(
+        0,
+        (stream.activeUnreadCount ?? stream.unreadCount - (stream.passiveUnreadCount ?? 0)) +
+          deferredReclassification.activeDelta,
+      ),
+      passiveUnreadCount: Math.max(
+        0,
+        (stream.passiveUnreadCount ?? 0) + deferredReclassification.passiveDelta,
+      ),
+    };
+    inheritWorkspaceStreamNotificationTransition(stream, nextStream);
+    streamsById[stream.uuid] = nextStream;
+    topicsById[topicUuid] = {
+      ...topic,
+      activeUnreadCount: deferredReclassification.activeUnreadCount,
+      passiveUnreadCount: deferredReclassification.passiveUnreadCount,
+    };
+    changedStreamUuids.add(stream.uuid);
+    changedTopicUuids.add(topicUuid);
+    recordCatalogMutation(ownerKey, "stream", stream.uuid, "reclassification");
+    recordCatalogMutation(ownerKey, "topic", topicUuid, "reclassification");
+  }
+
+  let conversationsById = { ...incoming.conversationsById };
+  let conversationIds = [...incoming.conversationIds];
+  for (const streamUuid of changedStreamUuids) {
+    const streamConversationId = conversationIdForStream(streamUuid);
+    const stream = streamsById[streamUuid];
+    if (stream == null) {
+      delete conversationsById[streamConversationId];
+      conversationIds = removeId(conversationIds, streamConversationId);
+      continue;
+    }
+    const conversationState = upsertConversation(
+      { conversationsById, conversationIds },
+      conversationFromStream(stream),
+    );
+    conversationsById = conversationState.conversationsById;
+    conversationIds = conversationState.conversationIds;
+    for (const topicUuid of topicIds) {
+      const topic = topicsById[topicUuid];
+      if (topic?.streamUuid !== streamUuid) continue;
+      const topicConversationState = upsertConversation(
+        { conversationsById, conversationIds },
+        conversationFromTopic(topic, stream),
+      );
+      conversationsById = topicConversationState.conversationsById;
+      conversationIds = topicConversationState.conversationIds;
+    }
+  }
+  for (const topicUuid of changedTopicUuids) {
+    const topic = topicsById[topicUuid];
+    const fallbackStreamUuid = incoming.topicsById[topicUuid]?.streamUuid;
+    if (topic == null) {
+      if (fallbackStreamUuid != null) {
+        const conversationId = conversationIdForTopic(fallbackStreamUuid, topicUuid);
+        delete conversationsById[conversationId];
+        conversationIds = removeId(conversationIds, conversationId);
+      }
+      continue;
+    }
+    const stream = streamsById[topic.streamUuid];
+    if (stream == null) continue;
+    const conversationState = upsertConversation(
+      { conversationsById, conversationIds },
+      conversationFromTopic(topic, stream),
+    );
+    conversationsById = conversationState.conversationsById;
+    conversationIds = conversationState.conversationIds;
+  }
+
+  let foldersById = incoming.foldersById;
+  for (const streamUuid of changedStreamUuids) {
+    const stream = streamsById[streamUuid];
+    if (stream != null) foldersById = projectStreamUnreadIntoFolders(foldersById, stream);
+  }
+
+  return {
+    ...incoming,
+    streamsById,
+    streamIds,
+    topicsById,
+    topicIds,
+    conversationsById,
+    conversationIds,
+    foldersById,
+    lastEpochVersion: current.lastEpochVersion,
+    skippedRealtimeEvents: current.skippedRealtimeEvents,
+  };
+}
+
 export const useMessengerStore = create<MessengerStoreState>((set) => ({
   ...createInitialState(),
 
@@ -670,6 +1109,11 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           error: null,
           bootstrapRequestVersion,
         };
+      }
+
+      if (state.ownerKey != null) {
+        clearMessengerCatalogRuntimeCoverage(state.ownerKey);
+        clearWorkspaceStreamUnreadReclassificationsForOwner(state.ownerKey);
       }
 
       return {
@@ -700,7 +1144,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  replaceBootstrapState(ownerKey, payload) {
+  replaceBootstrapState(ownerKey, payload, options) {
     logStoreAction("messenger", "replaceBootstrapState", {
       ownerKey,
       streams: payload.streams.length,
@@ -711,8 +1155,20 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      if (options?.coversCatalogMutationFence === true && options.catalogMutationFence != null) {
+        recordCatalogSnapshotCoverage(ownerKey, payload, options.catalogMutationFence);
+      }
       const safePayload = withoutRemovedStreamProjections(ownerKey, payload);
-      const nextDomainData = buildMessengerDomainData(safePayload);
+      const incomingDomainData = buildMessengerDomainData(safePayload);
+      const nextDomainData =
+        options?.catalogMutationFence == null
+          ? incomingDomainData
+          : mergePostFenceCatalogMutations(
+              ownerKey,
+              state,
+              incomingDomainData,
+              options.catalogMutationFence,
+            );
       const streamBindingsState =
         safePayload.streamBindings.length > 0
           ? {
@@ -739,7 +1195,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  replaceFolderSnapshots(ownerKey, folders) {
+  replaceFolderSnapshots(ownerKey, folders, options) {
     logStoreAction("messenger", "replaceFolderSnapshots", {
       ownerKey,
       folders: folders.length,
@@ -759,18 +1215,43 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         folderIds.push(folder.uuid);
       }
 
+      let nextFoldersById = foldersById;
+      const mutationFence = options?.catalogMutationFence;
+      const mutations = catalogMutationsByOwnerKey.get(ownerKey);
+      if (mutationFence != null && mutations != null && mutations.revision > mutationFence) {
+        for (const [streamUuid, mutation] of mutations.streamsById) {
+          if (
+            mutation.unreadRevision <= mutationFence &&
+            mutation.authoritativeRevision <= mutationFence &&
+            mutation.reclassificationRevision <= mutationFence
+          ) {
+            continue;
+          }
+          const stream = state.streamsById[streamUuid];
+          if (stream != null) {
+            nextFoldersById = projectStreamUnreadIntoFolders(nextFoldersById, stream);
+          }
+        }
+      }
+
       return {
-        foldersById,
+        foldersById: nextFoldersById,
         folderIds,
       };
     });
   },
 
-  upsertStream(ownerKey, stream) {
+  upsertStream(ownerKey, stream, options) {
     logStoreAction("messenger", "upsertStream", { ownerKey, streamUuid: stream.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       if (removedStreamsForOwner(ownerKey).has(stream.uuid)) return state;
+      if (options?.kind !== "transient") {
+        recordCatalogMutation(ownerKey, "stream", stream.uuid, options?.kind ?? "authoritative");
+      }
+      if (options?.kind == null || options.kind === "authoritative") {
+        clearWorkspaceStreamUnreadReclassification(ownerKey, stream.uuid);
+      }
 
       let conversationState = upsertConversation(state, conversationFromStream(stream));
       for (const topicId of state.topicIds) {
@@ -799,6 +1280,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       markMessengerStreamRemoved(ownerKey, stream.uuid);
+      clearWorkspaceStreamUnreadReclassification(ownerKey, stream.uuid);
+      recordCatalogMutation(ownerKey, "stream", stream.uuid, "authoritative");
 
       const nextStreamsById = { ...state.streamsById };
       delete nextStreamsById[stream.uuid];
@@ -972,13 +1455,58 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  upsertTopic(ownerKey, topic) {
+  upsertTopic(ownerKey, topic, options) {
     logStoreAction("messenger", "upsertTopic", { ownerKey, topicUuid: topic.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       if (removedStreamsForOwner(ownerKey).has(topic.streamUuid)) return state;
+      if (options?.kind !== "transient") {
+        recordCatalogMutation(ownerKey, "topic", topic.uuid, options?.kind ?? "authoritative");
+      }
 
       const previous = state.topicsById[topic.uuid];
+      const currentStream = state.streamsById[topic.streamUuid];
+      const deferredReclassification =
+        currentStream == null || previous != null
+          ? null
+          : consumeWorkspaceStreamUnreadReclassification(
+              ownerKey,
+              topic.streamUuid,
+              topic.notificationMode,
+              topic.unreadCount,
+            );
+      const nextTopic =
+        deferredReclassification == null
+          ? topic
+          : {
+              ...topic,
+              activeUnreadCount: deferredReclassification.activeUnreadCount,
+              passiveUnreadCount: deferredReclassification.passiveUnreadCount,
+            };
+      let nextStreamsById = state.streamsById;
+      let nextFoldersById = state.foldersById;
+      let stream = currentStream;
+      if (currentStream != null && deferredReclassification != null) {
+        stream = {
+          ...currentStream,
+          activeUnreadCount: Math.max(
+            0,
+            (currentStream.activeUnreadCount ??
+              currentStream.unreadCount - (currentStream.passiveUnreadCount ?? 0)) +
+              deferredReclassification.activeDelta,
+          ),
+          passiveUnreadCount: Math.max(
+            0,
+            (currentStream.passiveUnreadCount ?? 0) + deferredReclassification.passiveDelta,
+          ),
+        };
+        inheritWorkspaceStreamNotificationTransition(currentStream, stream);
+        nextStreamsById = { ...state.streamsById, [stream.uuid]: stream };
+        nextFoldersById = projectStreamUnreadIntoFolders(state.foldersById, stream);
+        recordCatalogMutation(ownerKey, "stream", stream.uuid, "reclassification");
+        recordCatalogMutation(ownerKey, "topic", topic.uuid, "reclassification");
+      }
+
       let nextConversationsById = state.conversationsById;
       let nextConversationIds = state.conversationIds;
 
@@ -989,27 +1517,35 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         nextConversationIds = removeId(nextConversationIds, previousConversationId);
       }
 
-      const stream = state.streamsById[topic.streamUuid];
       if (stream != null) {
-        const conversationState = upsertConversation(
+        const streamConversationState = upsertConversation(
           {
             conversationsById: nextConversationsById,
             conversationIds: nextConversationIds,
           },
-          conversationFromTopic(topic, stream),
+          conversationFromStream(stream),
+        );
+        const conversationState = upsertConversation(
+          {
+            conversationsById: streamConversationState.conversationsById,
+            conversationIds: streamConversationState.conversationIds,
+          },
+          conversationFromTopic(nextTopic, stream),
         );
         nextConversationsById = conversationState.conversationsById;
         nextConversationIds = conversationState.conversationIds;
       }
 
       return {
+        streamsById: nextStreamsById,
         topicsById: {
           ...state.topicsById,
-          [topic.uuid]: topic,
+          [topic.uuid]: nextTopic,
         },
         topicIds: appendUniqueId(state.topicIds, topic.uuid),
         conversationsById: nextConversationsById,
         conversationIds: nextConversationIds,
+        foldersById: nextFoldersById,
       };
     });
   },
@@ -1018,6 +1554,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "removeTopic", { ownerKey, topicUuid: topic.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      recordCatalogMutation(ownerKey, "topic", topic.uuid, "authoritative");
 
       const nextTopicsById = { ...state.topicsById };
       delete nextTopicsById[topic.uuid];
@@ -1038,7 +1575,14 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       if (removedStreamsForOwner(ownerKey).has(message.streamUuid)) return state;
-      return applyMessageFreshness(state, message);
+      const nextState = applyMessageFreshness(state, message);
+      if (nextState.streamsById !== state.streamsById) {
+        recordCatalogMutation(ownerKey, "stream", message.streamUuid, "freshness");
+      }
+      if (nextState.topicsById !== state.topicsById) {
+        recordCatalogMutation(ownerKey, "topic", message.topicUuid, "freshness");
+      }
+      return nextState;
     });
   },
 
@@ -1046,7 +1590,14 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "clearMessagePointer", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
-      return clearDeletedMessageFreshness(state, message);
+      const nextState = clearDeletedMessageFreshness(state, message);
+      if (nextState.streamsById !== state.streamsById) {
+        recordCatalogMutation(ownerKey, "stream", message.streamUuid, "freshness");
+      }
+      if (nextState.topicsById !== state.topicsById) {
+        recordCatalogMutation(ownerKey, "topic", message.topicUuid, "freshness");
+      }
+      return nextState;
     });
   },
 
@@ -1231,6 +1782,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (state.ownerKey != null) {
         removedStreamUuidsByOwnerKey.delete(state.ownerKey);
         clearMessengerReadBoundariesForOwner(state.ownerKey);
+        clearMessengerCatalogRuntimeCoverage(state.ownerKey);
+        clearWorkspaceStreamUnreadReclassificationsForOwner(state.ownerKey);
       }
       return {
         ...createInitialState(),

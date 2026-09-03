@@ -1,4 +1,5 @@
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
+import { isWorkspaceRealtimeEventApplicationStale } from "./workspace-realtime-application.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
@@ -13,7 +14,10 @@ export function composeWorkspaceRealtimeAppliers(
 ): WorkspaceRealtimeEventApplier {
   return {
     async applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext) {
-      await Promise.all(appliers.map((applier) => applier.applyEvent(event, context)));
+      const results = await Promise.all(
+        appliers.map((applier) => Promise.resolve(applier.applyEvent(event, context))),
+      );
+      return results.some(isWorkspaceRealtimeEventApplicationStale) ? "stale" : "applied";
     },
     async skipEvent(
       event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,

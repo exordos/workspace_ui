@@ -14,7 +14,7 @@ import {
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
 import { runWorkspaceStreamRead, runWorkspaceTopicRead } from "./messenger-read-actions.lib";
-import { useMessengerStore } from "./messenger.model";
+import { createMessengerCatalogMutationFence, useMessengerStore } from "./messenger.model";
 
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
@@ -342,6 +342,51 @@ describe("workspace read actions", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_UUID]?.unreadCount).toBe(2);
     expect(useMessengerStore.getState().streamsById[STREAM_UUID]?.unreadCount).toBe(3);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.read).toBe(false);
+  });
+
+  it("does not fence a later bootstrap snapshot with a failed optimistic read", async () => {
+    const runtime = runtimeContext();
+    const ownerKey = seed(runtime);
+    const fence = createMessengerCatalogMutationFence(ownerKey);
+    const request = deferred<WorkspaceMessengerTopicDto>();
+    const action = runWorkspaceTopicRead(
+      { streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID },
+      {
+        runtimeContext: runtime,
+        getRuntimeContext: () => runtime,
+        client: { markStreamTopicRead: () => request.promise },
+        cache: {},
+      },
+    );
+
+    request.reject(new Error("network unavailable"));
+    await expect(action).rejects.toThrow("network unavailable");
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [
+          adaptMessengerStream(
+            streamDto({ unread_count: 9, active_unread_count: 8, passive_unread_count: 1 }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [
+          adaptMessengerTopic(
+            topicDto({ unread_count: 7, active_unread_count: 6, passive_unread_count: 1 }),
+          ),
+        ],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence: fence },
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_UUID]).toEqual(
+      expect.objectContaining({ unreadCount: 9, activeUnreadCount: 8, passiveUnreadCount: 1 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_UUID]).toEqual(
+      expect.objectContaining({ unreadCount: 7, activeUnreadCount: 6, passiveUnreadCount: 1 }),
+    );
   });
 
   it("does not overwrite a newer folder snapshot during rollback", async () => {

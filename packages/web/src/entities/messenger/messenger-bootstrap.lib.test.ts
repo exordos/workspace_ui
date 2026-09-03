@@ -765,9 +765,92 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
     expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBeUndefined();
     expect(useMessengerStore.getState().foldersById[FOLDER_B]?.title).toBe("Fresh folders");
-    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" }),
-    ]);
+    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(
+      ownerKey,
+      [expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" })],
+      { reconcileFence: expect.any(Number) },
+    );
+  });
+
+  it("preserves post-request realtime counters when stale bootstrap snapshots finish", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const folderRequest = createDeferred<WorkspaceMessengerFolderDto[]>();
+    const replaceMessengerFolderSnapshotsCache = vi.fn();
+    const initialPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [createTopicDto()],
+      folders: [createFolderDto()],
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, initialPayload);
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+        getFolders: () => folderRequest.promise,
+      }),
+      cache: {
+        readMessengerCatalogPayloadCache: () => Promise.resolve(null),
+        writeMessengerCatalogPayloadCache: vi.fn(),
+        replaceMessengerFolderSnapshotsCache,
+        createMessengerCatalogCacheReconcileFence: () => 123,
+      },
+    });
+    await flushPromises();
+
+    const currentStream = useMessengerStore.getState().streamsById[STREAM_A]!;
+    const currentTopic = useMessengerStore.getState().topicsById[TOPIC_A]!;
+    useMessengerStore.getState().upsertStream(
+      ownerKey,
+      {
+        ...currentStream,
+        unreadCount: 4,
+        activeUnreadCount: 4,
+      },
+      { kind: "derived" },
+    );
+    useMessengerStore.getState().upsertTopic(
+      ownerKey,
+      {
+        ...currentTopic,
+        unreadCount: 3,
+        activeUnreadCount: 3,
+      },
+      { kind: "derived" },
+    );
+    useMessengerStore.getState().setRealtimeCursor(ownerKey, 50);
+
+    streamRequest.resolve([createStreamDto()]);
+    await flushPromises();
+    folderRequest.resolve([createFolderDto()]);
+    await bootstrap;
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 4, activeUnreadCount: 4 }),
+    );
+    expect(state.topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 3 }),
+    );
+    expect(state.foldersById[FOLDER_A]?.items[0]).toEqual(
+      expect.objectContaining({ unreadCount: 4, activeUnreadCount: 4 }),
+    );
+    expect(state.foldersById[FOLDER_A]?.unreadCount).toBe(4);
+    expect(state.lastEpochVersion).toBe(50);
+    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          unreadCount: 4,
+          items: [expect.objectContaining({ unreadCount: 4, activeUnreadCount: 4 })],
+        }),
+      ],
+      { reconcileFence: 123 },
+    );
   });
 
   it("keeps private stream conversations as stream and topic ids", async () => {

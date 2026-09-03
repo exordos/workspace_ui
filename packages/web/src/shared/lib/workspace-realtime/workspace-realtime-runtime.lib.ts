@@ -14,6 +14,7 @@ import type {
 import { isWorkspaceEventsCursorExpiredErrorDto } from "~/shared/api/messenger.types";
 import { getEventsPage as defaultGetEventsPage } from "~/shared/api/workspace-client";
 import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
+import { isWorkspaceRealtimeEventApplicationStale } from "./workspace-realtime-application.lib";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import type {
   WorkspaceRealtimeCatchUpApplier,
@@ -126,6 +127,11 @@ export interface WorkspaceRealtimeWebSocketLike {
   onclose: ((event: Event) => void) | null;
   send(data: string): void;
   close(code?: number, reason?: string): void;
+}
+
+interface WorkspaceRealtimeWebSocketApplicationState {
+  socket: WorkspaceRealtimeWebSocketLike;
+  blocked: boolean;
 }
 
 export type WorkspaceRealtimeWebSocketFactory = (
@@ -528,8 +534,12 @@ export function createWorkspaceRealtimeTransportCore(
     return nextEpochVersion > previousEpochVersion;
   }
 
-  async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<boolean> {
-    if (context == null) return false;
+  async function handleNormalizedEvent(
+    event: WorkspaceRealtimeEvent,
+    applicationState: WorkspaceRealtimeWebSocketApplicationState,
+  ): Promise<boolean> {
+    if (context == null || socket !== applicationState.socket) return false;
+    if (applicationState.blocked) return false;
     if (!isCurrentRuntime()) {
       // Do not apply stale socket events or move the cursor; the new runtime will catch up.
       reportDiagnostic("stale_owner", event);
@@ -539,22 +549,33 @@ export function createWorkspaceRealtimeTransportCore(
     const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
     if (currentCursor != null && event.epoch_version <= currentCursor.epochVersion) {
       await skipEvent(event, "duplicate_epoch", "websocket");
+      if (socket !== applicationState.socket || !isCurrentRuntime()) return false;
       advanceCursor(event.epoch_version);
       return false;
     }
 
-    await options.applier.applyEvent(event, {
+    const applicationResult = await options.applier.applyEvent(event, {
       ...context,
       source: "websocket",
       notificationsEnabled,
     });
+    if (socket !== applicationState.socket) return false;
+    if (isWorkspaceRealtimeEventApplicationStale(applicationResult) || !isCurrentRuntime()) {
+      applicationState.blocked = true;
+      reportDiagnostic("stale_owner", event);
+      if (isCurrentRuntime()) scheduleReconnect("stale_application");
+      return false;
+    }
     return advanceCursor(event.epoch_version);
   }
 
   async function handleUnsupportedFrame(
     frame: WorkspaceMessengerWebSocketFrameDto,
+    applicationState: WorkspaceRealtimeWebSocketApplicationState,
   ): Promise<boolean> {
-    if (context == null) return false;
+    if (context == null || socket !== applicationState.socket || applicationState.blocked) {
+      return false;
+    }
     if ("epoch_version" in frame && typeof frame.epoch_version === "number") {
       const skippedEvent = { epoch_version: frame.epoch_version };
       const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
@@ -564,6 +585,7 @@ export function createWorkspaceRealtimeTransportCore(
           : "unsupported_event";
       // Service or unsupported frames with an epoch still participate in event ordering.
       await skipEvent(skippedEvent, reason, "websocket");
+      if (socket !== applicationState.socket || !isCurrentRuntime()) return false;
       return advanceCursor(frame.epoch_version);
     }
 
@@ -764,8 +786,16 @@ export function createWorkspaceRealtimeTransportCore(
 
   async function handleReadyFrame(
     frame: Extract<WorkspaceMessengerWebSocketFrameDto, { type: "ready" }>,
+    applicationState: WorkspaceRealtimeWebSocketApplicationState,
   ): Promise<void> {
-    if (context == null || !isCurrentRuntime()) return;
+    if (
+      context == null ||
+      socket !== applicationState.socket ||
+      applicationState.blocked ||
+      !isCurrentRuntime()
+    ) {
+      return;
+    }
     if (lastCursor != null && lastCursor.epochGeneration !== frame.epoch_generation) {
       await recoverFromCursorExpiry({
         type: "EventsCursorExpiredError",
@@ -794,11 +824,14 @@ export function createWorkspaceRealtimeTransportCore(
     }
   }
 
-  async function handleRawFrame(raw: unknown): Promise<void> {
+  async function handleRawFrame(
+    raw: unknown,
+    applicationState: WorkspaceRealtimeWebSocketApplicationState,
+  ): Promise<void> {
     try {
       const frame = parseWorkspaceWebSocketFrame(raw);
       if ("type" in frame && frame.type === "ready") {
-        await handleReadyFrame(frame);
+        await handleReadyFrame(frame, applicationState);
         return;
       }
       if ("type" in frame && frame.type === "error") {
@@ -810,10 +843,10 @@ export function createWorkspaceRealtimeTransportCore(
       }
       const event = normalizeWorkspaceWebSocketFrame(frame);
       if (event == null) {
-        await handleUnsupportedFrame(frame);
+        await handleUnsupportedFrame(frame, applicationState);
         return;
       }
-      await handleNormalizedEvent(event);
+      await handleNormalizedEvent(event, applicationState);
     } catch (error) {
       await handleInvalidFrame(error);
     }
@@ -896,6 +929,10 @@ export function createWorkspaceRealtimeTransportCore(
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);
     const activeSocket = socket;
+    const applicationState: WorkspaceRealtimeWebSocketApplicationState = {
+      socket: activeSocket,
+      blocked: false,
+    };
 
     activeSocket.onopen = () => {
       notificationsEnabled = false;
@@ -906,7 +943,7 @@ export function createWorkspaceRealtimeTransportCore(
         .then(async () => {
           // Preserve server epoch order and ignore frames left behind by an old socket.
           if (stopped || socket !== activeSocket) return;
-          await handleRawFrame(event.data);
+          await handleRawFrame(event.data, applicationState);
         })
         .catch((error: unknown) => {
           reportDiagnostic("websocket_error", error);

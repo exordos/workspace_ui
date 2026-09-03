@@ -195,9 +195,9 @@ function beginOptimisticCatalogRead(
 
   const previousFoldersById = store.foldersById;
   for (const projectedTopic of projectedTopics) {
-    store.upsertTopic(ownerKey, projectedTopic);
+    store.upsertTopic(ownerKey, projectedTopic, { kind: "transient" });
   }
-  store.upsertStream(ownerKey, projectedStream);
+  store.upsertStream(ownerKey, projectedStream, { kind: "transient" });
   const projectedFoldersById = useMessengerStore.getState().foldersById;
   const folderChanges = store.folderIds.flatMap((folderUuid) => {
     const previousFolder = previousFoldersById[folderUuid];
@@ -245,7 +245,7 @@ function rollbackOptimisticCatalogRead(change: OptimisticCatalogReadChange): voi
 
   if (store.streamsById[change.previousStream.uuid] === change.projectedStream) {
     const foldersBeforeUpsert = store.foldersById;
-    store.upsertStream(change.ownerKey, change.previousStream);
+    store.upsertStream(change.ownerKey, change.previousStream, { kind: "transient" });
     restoreFoldersAfterStreamUpsert(
       change.ownerKey,
       change.folderChanges,
@@ -261,7 +261,7 @@ function rollbackOptimisticCatalogRead(change: OptimisticCatalogReadChange): voi
       projectedTopic != null &&
       store.topicsById[previousTopic.uuid] === projectedTopic
     ) {
-      store.upsertTopic(change.ownerKey, previousTopic);
+      store.upsertTopic(change.ownerKey, previousTopic, { kind: "transient" });
     }
   }
 }
