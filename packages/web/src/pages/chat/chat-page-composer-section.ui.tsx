@@ -51,6 +51,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   aiMessagesContext,
   aiChatContext,
   readOnlyReason,
+  mentionContext,
   joinedTop = false,
 }: ChatPageComposerSectionProps) {
   // The old read-only mode remains for legacy scenarios.
@@ -97,6 +98,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         aiMessagesContext={[]}
         aiChatContext={undefined}
+        mentionContext={mentionContext}
       />
     );
   }
@@ -182,6 +184,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
       aiMessagesContext={aiMessagesContext}
       aiChatContext={aiChatContext}
+      mentionContext={mentionContext}
     />
   );
 });

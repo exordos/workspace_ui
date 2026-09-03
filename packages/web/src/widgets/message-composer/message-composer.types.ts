@@ -97,6 +97,16 @@ export interface MessageComposerCapabilities {
   scheduledSend?: MessageComposerActionCapability;
 }
 
+/**
+ * Where the composer is writing, so that @mention suggestions can be ordered by
+ * who is present here rather than by the order the users store happens to hold.
+ */
+export interface ComposerMentionContextInput {
+  streamUuid?: string | null;
+  conversationId?: string | null;
+  selfUserUuid?: string | null;
+}
+
 export interface MessageComposerProps {
   onSend?: (
     content: string,
@@ -138,6 +148,8 @@ export interface MessageComposerProps {
   allowEmptyActiveValueSend?: boolean;
   /** Focus the textarea when this key changes, unless the composer is unavailable or editing. */
   focusKey?: string | null;
+  /** Conversation signals for @mention ranking; without it ranking uses names only. */
+  mentionContext?: ComposerMentionContextInput;
   /** Pre-fill the composer (e.g. from a saved draft) */
   initialValue?: string;
   /**

@@ -4,14 +4,21 @@ import {
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
+import {
+  MENTION_SUGGESTION_LIMIT,
+  rankMentionSuggestions,
+} from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import { useComposerMentionContext } from "./message-composer-mention-context.hook";
+import type { ComposerMentionContextInput } from "./message-composer.types";
 
 const EMPTY_MENTION_SUGGESTIONS: MentionSuggestion[] = [];
 
-export function useComposerMentions(options: { enabled?: boolean } = {}) {
-  const { enabled = true } = options;
+export function useComposerMentions(
+  options: { enabled?: boolean; context?: ComposerMentionContextInput } = {},
+) {
+  const { enabled = true, context } = options;
   const userIds = useUsersStore((s) => s.userIds);
   const usersById = useUsersStore((s) => s.usersById);
   const mentionQuery = useMentionSuggestStore((s) => s.query);
@@ -23,6 +30,7 @@ export function useComposerMentions(options: { enabled?: boolean } = {}) {
   const hideMentionDropdown = useMentionSuggestStore((s) => s.hide);
   const clearMentionState = useMentionSuggestStore((s) => s.clear);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const rankingContext = useComposerMentionContext(context, enabled && showMentions);
   const [mentionStartPos, setMentionStartPos] = useState(0);
 
   const mentionUsers: MentionSuggestion[] = useMemo(() => {
@@ -48,8 +56,21 @@ export function useComposerMentions(options: { enabled?: boolean } = {}) {
       return;
     }
     if (!showMentions) return;
-    setMentionResults(filterUsers(mentionQuery, mentionUsers));
-  }, [clearMentionState, enabled, showMentions, mentionQuery, mentionUsers, setMentionResults]);
+    setMentionResults(
+      rankMentionSuggestions(mentionQuery, mentionUsers, {
+        ...(rankingContext != null ? { context: rankingContext } : {}),
+        maxResults: MENTION_SUGGESTION_LIMIT,
+      }),
+    );
+  }, [
+    clearMentionState,
+    enabled,
+    showMentions,
+    mentionQuery,
+    mentionUsers,
+    rankingContext,
+    setMentionResults,
+  ]);
 
   useEffect(() => {
     if (!enabled || !showMentions) {

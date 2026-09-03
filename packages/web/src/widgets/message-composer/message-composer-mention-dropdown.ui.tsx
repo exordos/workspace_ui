@@ -111,6 +111,11 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center justify-between gap-2">
                   <span className="truncate font-medium">{user.displayName}</span>
+                  {user.outsideChannel === true ? (
+                    <span className="shrink-0 rounded bg-bg px-1.5 py-0.5 text-[10px] text-text-muted">
+                      {t("composer.mentionOutsideChannel")}
+                    </span>
+                  ) : null}
                 </span>
                 {secondaryText ? (
                   <span className="block truncate text-[11px] text-text-secondary">

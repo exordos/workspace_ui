@@ -1,13 +1,13 @@
 /**
  * Tests for the Mention Suggestions feature — @mention autocomplete.
  *
- * Covers the filterUsers pure function and the Zustand store
+ * Covers the rankMentionSuggestions pure function and the Zustand store
  * (query, visibility, results management, clear).
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { filterUsers } from "./mention-suggest.lib";
+import { MENTION_SUGGESTION_LIMIT, rankMentionSuggestions } from "./mention-suggest.lib";
 import { useMentionSuggestStore } from "./mention-suggest.model";
-import type { MentionSuggestion } from "./mention-suggest.types";
+import type { MentionRankingContext, MentionSuggestion } from "./mention-suggest.types";
 
 const USERS: MentionSuggestion[] = [
   {
@@ -91,75 +91,82 @@ const USERS: MentionSuggestion[] = [
   },
 ];
 
-describe("filterUsers", () => {
-  it("returns all users for empty query", () => {
-    const results = filterUsers("", USERS);
+describe("rankMentionSuggestions", () => {
+  it("returns every user for an empty query, ordered by name", () => {
+    const results = rankMentionSuggestions("", USERS);
     expect(results).toHaveLength(USERS.length);
-    expect(results.map((user) => user.userUuid)).toEqual(USERS.map((user) => user.userUuid));
+    expect(results.map((user) => user.username).slice(0, 3)).toEqual(["alice", "bobby", "charlie"]);
   });
 
   it("returns all users for whitespace-only query", () => {
-    const results = filterUsers("   ", USERS);
+    const results = rankMentionSuggestions("   ", USERS);
     expect(results).toHaveLength(USERS.length);
   });
 
   it("limits empty-query results only when maxResults is explicit", () => {
-    const results = filterUsers("", USERS, 2);
+    const results = rankMentionSuggestions("", USERS, { maxResults: 2 });
     expect(results).toHaveLength(2);
     expect(results.map((user) => user.username)).toEqual(["alice", "bobby"]);
   });
 
+  it("keeps the dropdown short by default in the composer", () => {
+    expect(MENTION_SUGGESTION_LIMIT).toBe(8);
+    expect(
+      rankMentionSuggestions("", USERS, { maxResults: MENTION_SUGGESTION_LIMIT }),
+    ).toHaveLength(MENTION_SUGGESTION_LIMIT);
+  });
+
   it("matches by Workspace UUID", () => {
-    const results = filterUsers("000000000003", USERS);
+    const results = rankMentionSuggestions("000000000003", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.username).toBe("charlie");
   });
 
   it("matches by username case-insensitively", () => {
-    const results = filterUsers("BOBBY", USERS);
+    const results = rankMentionSuggestions("BOBBY", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.displayName).toBe("Bob Smith");
   });
 
   it("matches by display name case-insensitively", () => {
-    const results = filterUsers("alice", USERS);
+    const results = rankMentionSuggestions("alice", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.userUuid).toBe("4f2f1a30-c0a0-4d8b-a001-000000000001");
   });
 
   it("matches by partial display name", () => {
-    const results = filterUsers("john", USERS);
+    const results = rankMentionSuggestions("john", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.displayName).toBe("Alice Johnson");
   });
 
   it("matches by email case-insensitively", () => {
-    const results = filterUsers("CHARLIE.B@", USERS);
+    const results = rankMentionSuggestions("CHARLIE.B@", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.username).toBe("charlie");
   });
 
   it("returns multiple matches", () => {
-    const results = filterUsers("example.com", USERS);
+    const results = rankMentionSuggestions("example.com", USERS);
     expect(results).toHaveLength(USERS.length);
   });
 
   it("handles Cyrillic characters", () => {
-    const results = filterUsers("Алексей", USERS);
+    const results = rankMentionSuggestions("Алексей", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.username).toBe("alexey");
   });
 
   it("returns empty array for no matches", () => {
-    expect(filterUsers("zzzzz", USERS)).toHaveLength(0);
+    expect(rankMentionSuggestions("zzzzz", USERS)).toHaveLength(0);
   });
 
   it("returns empty array for empty users list", () => {
-    expect(filterUsers("alice", [])).toHaveLength(0);
+    expect(rankMentionSuggestions("alice", [])).toHaveLength(0);
   });
 
   it("limits matches only when maxResults is explicit", () => {
-    const results = filterUsers("example", USERS, 2);
+    const results = rankMentionSuggestions("example", USERS, { maxResults: 2 });
     expect(results).toHaveLength(2);
   });
 });
@@ -222,24 +229,24 @@ describe("useMentionSuggestStore", () => {
   });
 });
 
-describe("filterUsers (edge cases)", () => {
+describe("rankMentionSuggestions (edge cases)", () => {
   it("handles special regex metacharacters in query safely", () => {
-    expect(() => filterUsers(".*+?^${}()|[]\\", USERS)).not.toThrow();
-    expect(filterUsers(".*+?^${}()|[]\\", USERS)).toHaveLength(0);
+    expect(() => rankMentionSuggestions(".*+?^${}()|[]\\", USERS)).not.toThrow();
+    expect(rankMentionSuggestions(".*+?^${}()|[]\\", USERS)).toHaveLength(0);
   });
 
   it("handles very long query (>100 chars)", () => {
     const longQuery = "a".repeat(200);
-    expect(filterUsers(longQuery, USERS)).toHaveLength(0);
+    expect(rankMentionSuggestions(longQuery, USERS)).toHaveLength(0);
   });
 
   it("single character query matches", () => {
-    const results = filterUsers("b", USERS);
+    const results = rankMentionSuggestions("b", USERS);
     expect(results.length).toBeGreaterThan(0);
     expect(results.some((user) => user.username.includes("b"))).toBe(true);
   });
 
-  it("prioritizes UUID, username, display-name, then email matches", () => {
+  it("prioritizes name matches over email, and puts UUID matches last", () => {
     const users: MentionSuggestion[] = [
       {
         userUuid: "zzzz-needle",
@@ -270,12 +277,12 @@ describe("filterUsers (edge cases)", () => {
         status: "offline",
       },
     ];
-    const results = filterUsers("needle", users);
+    const results = rankMentionSuggestions("needle", users);
     expect(results.map((user) => user.userUuid)).toEqual([
-      "zzzz-needle",
       "aaaa-other",
       "bbbb-other",
       "cccc-other",
+      "zzzz-needle",
     ]);
   });
 
@@ -289,22 +296,144 @@ describe("filterUsers (edge cases)", () => {
         status: "offline",
       },
     ];
-    const results = filterUsers("needle", users);
+    const results = rankMentionSuggestions("needle", users);
     expect(results).toHaveLength(1);
   });
 
   it("returns empty array when maxResults is 0", () => {
-    expect(filterUsers("alice", USERS, 0)).toHaveLength(0);
+    expect(rankMentionSuggestions("alice", USERS, { maxResults: 0 })).toHaveLength(0);
   });
 
   it("trims leading and trailing whitespace from query", () => {
-    const results = filterUsers("  alice  ", USERS);
+    const results = rankMentionSuggestions("  alice  ", USERS);
     expect(results).toHaveLength(1);
     expect(results[0]!.username).toBe("alice");
   });
 
   it("handles mixed case query matching", () => {
-    const results = filterUsers("aLiCe", USERS);
+    const results = rankMentionSuggestions("aLiCe", USERS);
     expect(results).toHaveLength(1);
+  });
+});
+
+const RANKING_USERS: MentionSuggestion[] = [
+  {
+    userUuid: "u-anna",
+    displayName: "Anna Orlova",
+    username: "anna",
+    email: "anna@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "u-ivan",
+    displayName: "Ivan Petrov",
+    username: "ivan",
+    email: "ivan@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "u-pyotr",
+    displayName: "Пётр Ильин",
+    username: "pyotr",
+    email: "pyotr@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "u-joanna",
+    displayName: "Joanna Banks",
+    username: "joanna",
+    email: "joanna@example.com",
+    status: "offline",
+  },
+];
+
+describe("rankMentionSuggestions (match quality)", () => {
+  it("puts an exact username ahead of a longer prefix match", () => {
+    const results = rankMentionSuggestions("anna", RANKING_USERS);
+    expect(results[0]!.userUuid).toBe("u-anna");
+  });
+
+  it("puts a prefix match ahead of a substring match", () => {
+    const results = rankMentionSuggestions("an", RANKING_USERS);
+    expect(results[0]!.userUuid).toBe("u-anna");
+    expect(results.map((user) => user.userUuid)).toContain("u-ivan");
+  });
+
+  it("matches the start of a later word in the display name", () => {
+    const results = rankMentionSuggestions("pet", RANKING_USERS);
+    expect(results.map((user) => user.userUuid)).toEqual(["u-ivan"]);
+  });
+
+  it("matches every token of a multi-word query against its own word", () => {
+    const results = rankMentionSuggestions("iv pe", RANKING_USERS);
+    expect(results.map((user) => user.userUuid)).toEqual(["u-ivan"]);
+  });
+
+  it("treats ё and е as the same letter", () => {
+    const results = rankMentionSuggestions("петр", RANKING_USERS);
+    expect(results.map((user) => user.userUuid)).toEqual(["u-pyotr"]);
+  });
+
+  it("ignores UUID fragments for short queries", () => {
+    const results = rankMentionSuggestions("u-i", RANKING_USERS);
+    expect(results).toHaveLength(0);
+  });
+});
+
+describe("rankMentionSuggestions (conversation context)", () => {
+  const query = "";
+
+  it("offers whoever just wrote in this conversation first", () => {
+    const context: MentionRankingContext = { recentAuthorUuids: ["u-joanna", "u-ivan"] };
+    const results = rankMentionSuggestions(query, RANKING_USERS, { context });
+    expect(results.map((user) => user.userUuid).slice(0, 2)).toEqual(["u-joanna", "u-ivan"]);
+  });
+
+  it("prefers channel members over the rest of the workspace", () => {
+    const context: MentionRankingContext = {
+      channelMemberUuids: new Set(["u-pyotr"]),
+    };
+    const results = rankMentionSuggestions(query, RANKING_USERS, { context });
+    expect(results[0]!.userUuid).toBe("u-pyotr");
+  });
+
+  it("marks people outside the channel once membership is known", () => {
+    const context: MentionRankingContext = { channelMemberUuids: new Set(["u-pyotr"]) };
+    const results = rankMentionSuggestions(query, RANKING_USERS, { context });
+    expect(results.find((user) => user.userUuid === "u-pyotr")!.outsideChannel).toBe(false);
+    expect(results.find((user) => user.userUuid === "u-ivan")!.outsideChannel).toBe(true);
+  });
+
+  it("marks nobody while channel membership is still unknown", () => {
+    const results = rankMentionSuggestions(query, RANKING_USERS, {
+      context: { channelMemberUuids: null },
+    });
+    expect(results.every((user) => user.outsideChannel === undefined)).toBe(true);
+  });
+
+  it("prefers recent direct message partners", () => {
+    const context: MentionRankingContext = { dmPartnerUuids: ["u-joanna"] };
+    const results = rankMentionSuggestions(query, RANKING_USERS, { context });
+    expect(results[0]!.userUuid).toBe("u-joanna");
+  });
+
+  it("prefers people the author mentions often", () => {
+    const context: MentionRankingContext = { frecencyByUserUuid: { "u-pyotr": 8 } };
+    const results = rankMentionSuggestions(query, RANKING_USERS, { context });
+    expect(results[0]!.userUuid).toBe("u-pyotr");
+  });
+
+  it("ranks the author last without hiding them", () => {
+    const results = rankMentionSuggestions(query, RANKING_USERS, {
+      context: { selfUserUuid: "u-anna" },
+    });
+    expect(results).toHaveLength(RANKING_USERS.length);
+    expect(results.at(-1)!.userUuid).toBe("u-anna");
+  });
+
+  it("keeps match quality above context", () => {
+    const context: MentionRankingContext = { recentAuthorUuids: ["u-joanna"] };
+    const results = rankMentionSuggestions("anna", RANKING_USERS, { context });
+    expect(results.map((user) => user.userUuid)).toEqual(["u-anna", "u-joanna"]);
   });
 });

@@ -1390,7 +1390,8 @@
     "copy": "Копировать",
     "paste": "Вставить",
     "selectAll": "Выбрать всё",
-    "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов)."
+    "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов).",
+    "mentionOutsideChannel": "не в канале"
   },
   "attachmentCard": {
     "remove": "Удалить {{fileName}}",

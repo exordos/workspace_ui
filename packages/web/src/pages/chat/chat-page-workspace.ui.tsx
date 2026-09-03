@@ -138,6 +138,7 @@ import { ChatFavoritesHeader } from "~/widgets/chat-view/chat-header-favorites.u
 import type { ChatHeaderCommonProps } from "~/widgets/chat-view/chat-header.types";
 import type {
   ComposerEditSession,
+  ComposerMentionContextInput,
   MessageComposerCapabilities,
   MessageComposerReplyClearReason,
   MessageComposerSendResult,
@@ -1262,6 +1263,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       ? undefined
       : t("workspaceMessenger.routeUnsupportedForSend");
   const currentUserUuid = runtimeContext?.userUuid ?? "";
+  const composerMentionContext = useMemo<ComposerMentionContextInput>(
+    () => ({
+      streamUuid: selection.status === "conversation" ? selection.streamUuid : null,
+      conversationId,
+      selfUserUuid: currentUserUuid.length > 0 ? currentUserUuid : null,
+    }),
+    [conversationId, currentUserUuid, selection],
+  );
   const firstUnreadMessage = useMemo(
     () => routeMessages.find((message) => !message.read),
     [routeMessages],
@@ -3255,6 +3264,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           aiMessagesContext={[]}
           aiChatContext={undefined}
           readOnlyReason={composerReadOnlyReason}
+          mentionContext={composerMentionContext}
           joinedTop={composerJoinedTop}
         />
       );
@@ -3380,6 +3390,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             aiMessagesContext={[]}
             aiChatContext={undefined}
             readOnlyReason={composerReadOnlyReason}
+            mentionContext={composerMentionContext}
             joinedTop={composerJoinedTop}
           />
         )}

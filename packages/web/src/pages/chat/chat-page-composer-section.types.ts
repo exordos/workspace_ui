@@ -5,6 +5,7 @@ import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/w
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type {
   ComposerEditSession,
+  ComposerMentionContextInput,
   MessageComposerCapabilities,
   MessageComposerAttachmentView,
   MessageComposerReplyClearReason,
@@ -65,6 +66,8 @@ export interface ChatPageComposerSectionProps {
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;
   readOnlyReason?: string;
+  /** Conversation signals that order @mention suggestions. */
+  mentionContext?: ComposerMentionContextInput;
   /** Visually connects notices rendered immediately above the composer. */
   joinedTop?: boolean;
 }
