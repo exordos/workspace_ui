@@ -6,6 +6,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-09-03
+
+### Changed
+
+- Unread message bubbles now pulse while their visible read-boundary request is
+  in progress, giving immediate feedback until the server applies or retries
+  the request. The highlight follows the latest pending boundary in each topic
+  and respects reduced-motion preferences.
+
+### Fixed
+
+- A message containing only `+` now renders as literal text instead of an empty
+  Markdown list item.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.6.2`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.6.3`.
+- No manual migration is required.
+
 ## [0.6.2] — 2026-09-02
 
 ### Fixed
