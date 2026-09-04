@@ -2,9 +2,9 @@
  * The sidebar badge of a thread (topic) after the reader scrolls through it.
  *
  * Scroll-driven reads go through `POST /messages/{uuid}/actions/read_up_to/invoke`.
- * When the boundary is the topic's last message the client settles the topic and
- * stream counters itself; the backend's `topic.updated` projection remains
- * authoritative when it arrives.
+ * The client projects the read (message flags, topic and stream badges) before the
+ * server answers; the backend's `topic.updated` projection remains authoritative
+ * when it arrives.
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID } from "./helpers/navigate-messenger";
@@ -108,7 +108,33 @@ async function installRealtime(page: Page, sockets: WebSocketRoute[]): Promise<v
   );
 }
 
-async function installThread(page: Page, readUpToCalls: string[]): Promise<void> {
+interface ReadUpToGate {
+  /** Resolves once the boundary at the last message has been requested. */
+  requested: Promise<void>;
+  /** Lets the server answer that request. */
+  release: () => void;
+}
+
+function createReadUpToGate(): ReadUpToGate & {
+  markRequested: () => void;
+  released: Promise<void>;
+} {
+  let markRequested: () => void = () => undefined;
+  let release: () => void = () => undefined;
+  const requested = new Promise<void>((resolve) => {
+    markRequested = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { requested, release, markRequested, released };
+}
+
+async function installThread(
+  page: Page,
+  readUpToCalls: string[],
+  gate: ReturnType<typeof createReadUpToGate>,
+): Promise<void> {
   const unreadFrom = REAL_CONVERSATION_SAMPLE.length - UNREAD_TAIL;
   const allMessages = () =>
     REAL_CONVERSATION_SAMPLE.map((message, index) => messageDto(message, index >= unreadFrom));
@@ -147,6 +173,10 @@ async function installThread(page: Page, readUpToCalls: string[]): Promise<void>
     if (method === "POST" && readUpTo != null) {
       const boundaryUuid = readUpTo[1] ?? "";
       readUpToCalls.push(boundaryUuid);
+      if (boundaryUuid === LAST_MESSAGE_UUID) {
+        gate.markRequested();
+        await gate.released;
+      }
       const boundary = allMessages().find((message) => message.uuid === boundaryUuid);
       await route.fulfill({
         status: 200,
@@ -198,8 +228,9 @@ test.describe("Thread unread badge after scroll read @mock", () => {
   }) => {
     const sockets: WebSocketRoute[] = [];
     const readUpToCalls: string[] = [];
+    const gate = createReadUpToGate();
     await installRealtime(page, sockets);
-    await installThread(page, readUpToCalls);
+    await installThread(page, readUpToCalls, gate);
 
     await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
     await page.locator("[data-message-uuid]").first().waitFor({ timeout: 20_000 });
@@ -211,7 +242,8 @@ test.describe("Thread unread badge after scroll read @mock", () => {
     const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
     await expect(threadRow).toBeVisible({ timeout: 15_000 });
     const badge = threadRow.getByTestId("sidebar-chat-row-unread-badge");
-    await expect(badge).toHaveText(String(UNREAD_TAIL));
+    // The first screenful is read on open, so the badge is already below the tail.
+    await expect(badge).toBeVisible();
 
     // Let the socket become ready, then scroll through the whole tail.
     await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
@@ -223,14 +255,15 @@ test.describe("Thread unread badge after scroll read @mock", () => {
       });
       await page.waitForTimeout(400);
     }
-    await page.waitForTimeout(1_500);
 
-    expect(readUpToCalls.length, "read_up_to was never sent").toBeGreaterThan(0);
+    // The boundary at the last message is requested; the server has not answered yet.
+    await gate.requested;
     expect(readUpToCalls.at(-1)).toBe(LAST_MESSAGE_UUID);
-
-    // The boundary is the topic's last message: the badge drops without waiting
-    // for the backend counter projection.
     await expect(badge).toBeHidden({ timeout: 10_000 });
+
+    gate.release();
+    await page.waitForTimeout(500);
+    await expect(badge).toBeHidden();
 
     // The authoritative projection still applies when it arrives.
     const socket = sockets.at(-1);

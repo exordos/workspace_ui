@@ -27,6 +27,8 @@ import {
   markMessengerMessageRead,
   markMessengerMessagesReadUpTo,
   sendMessengerMessage,
+  type MessengerMessageActionClientDeps,
+  type MessengerMessageActionResult,
 } from "./messenger-message-actions.lib";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -764,7 +766,15 @@ describe("messenger message actions", () => {
     });
   }
 
-  async function readUpToAnchorB(runtimeContext: WorkspaceRuntimeContext): Promise<void> {
+  async function readUpToAnchorB(
+    runtimeContext: WorkspaceRuntimeContext,
+    client: MessengerMessageActionClientDeps = {
+      markMessagesReadUpTo: vi.fn(() =>
+        Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+      ),
+    },
+    getRuntimeContext: () => WorkspaceRuntimeContext = () => runtimeContext,
+  ): Promise<MessengerMessageActionResult> {
     const earlier = adaptMessengerMessage(
       createMessageDto({
         uuid: MESSAGE_A,
@@ -782,16 +792,12 @@ describe("messenger message actions", () => {
       }),
     );
     replaceTailWindow(earlier.conversationId, [earlier, anchor]);
-    await markMessengerMessagesReadUpTo({
+    return markMessengerMessagesReadUpTo({
       runtimeContext,
-      getRuntimeContext: () => runtimeContext,
+      getRuntimeContext,
       messageUuid: MESSAGE_B,
       conversationIds: [earlier.conversationId],
-      client: {
-        markMessagesReadUpTo: vi.fn(() =>
-          Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
-        ),
-      },
+      client,
       cache: {},
     });
   }
@@ -834,9 +840,67 @@ describe("messenger message actions", () => {
 
     await readUpToAnchorB(runtimeContext);
 
+    // Two loaded messages flipped: the badge shrinks by two, the server settles the rest.
     const state = useMessengerStore.getState();
-    expect(state.topicsById[TOPIC_A]?.unreadCount).toBe(3);
-    expect(state.streamsById[STREAM_A]?.unreadCount).toBe(5);
+    expect(state.topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(state.streamsById[STREAM_A]?.unreadCount).toBe(3);
+  });
+
+  it("applies read state and counters before the server confirms read_up_to", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+    const response = createDeferred<WorkspaceMessengerMessageDto>();
+
+    const result = readUpToAnchorB(runtimeContext, {
+      markMessagesReadUpTo: () => response.promise,
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+
+    response.resolve(createMessageDto({ uuid: MESSAGE_B, read: true }));
+    await expect(result).resolves.toEqual(expect.objectContaining({ status: "applied", ownerKey }));
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
+  });
+
+  it("rolls back the projected read when read_up_to fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+
+    await expect(
+      readUpToAnchorB(runtimeContext, {
+        markMessagesReadUpTo: () => Promise.reject(new Error("offline")),
+      }),
+    ).rejects.toThrow("offline");
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(false);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(5);
+  });
+
+  it("rolls back the projected read after a stale read_up_to response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+    const response = createDeferred<WorkspaceMessengerMessageDto>();
+    let currentRuntime = runtimeContext;
+
+    const result = readUpToAnchorB(
+      runtimeContext,
+      { markMessagesReadUpTo: () => response.promise },
+      () => currentRuntime,
+    );
+    currentRuntime = createRuntimeContext({ organizationId: ORGANIZATION_B });
+    response.resolve(createMessageDto({ uuid: MESSAGE_B, read: true }));
+
+    await expect(result).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-owner" });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
   });
 
   it("includes the read_up_to anchor in a bulk-only cache update", async () => {

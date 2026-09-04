@@ -143,6 +143,7 @@ function captureReadAction(deps: WorkspaceReadActionDeps): {
 function beginOptimisticCatalogRead(
   ownerKey: string,
   scope: RunWorkspaceStreamReadOptions | RunWorkspaceTopicReadOptions,
+  readCount?: number,
 ): OptimisticCatalogReadChange | null {
   const store = useMessengerStore.getState();
   if (store.ownerKey !== ownerKey) return null;
@@ -160,23 +161,42 @@ function beginOptimisticCatalogRead(
         );
   if (topicUuid != null && previousTopics.length === 0) return null;
 
-  const unreadDelta =
+  const fullUnreadDelta =
     topicUuid == null ? previousStream.unreadCount : (previousTopics[0]?.unreadCount ?? 0);
-  const activeUnreadDelta =
+  const fullActiveUnreadDelta =
     topicUuid == null
       ? (previousStream.activeUnreadCount ?? previousStream.unreadCount)
       : (previousTopics[0]?.activeUnreadCount ?? previousTopics[0]?.unreadCount ?? 0);
-  const passiveUnreadDelta =
+  const fullPassiveUnreadDelta =
     topicUuid == null
       ? (previousStream.passiveUnreadCount ?? 0)
       : (previousTopics[0]?.passiveUnreadCount ?? 0);
-  const projectedTopics = previousTopics.map((topic) =>
-    topic.unreadCount === 0 &&
-    (topic.activeUnreadCount ?? 0) === 0 &&
-    (topic.passiveUnreadCount ?? 0) === 0
-      ? topic
-      : { ...topic, unreadCount: 0, activeUnreadCount: 0, passiveUnreadCount: 0 },
-  );
+  // A bounded read (a boundary short of the topic's end) only knows how many loaded
+  // messages it flipped; attention-worthy unread goes first, the server snapshot
+  // settles the exact split later.
+  const unreadDelta =
+    topicUuid != null && readCount != null ? Math.min(readCount, fullUnreadDelta) : fullUnreadDelta;
+  const activeUnreadDelta = Math.min(unreadDelta, fullActiveUnreadDelta);
+  const passiveUnreadDelta = Math.min(unreadDelta - activeUnreadDelta, fullPassiveUnreadDelta);
+  const projectedTopics = previousTopics.map((topic) => {
+    if (topicUuid == null) {
+      return topic.unreadCount === 0 &&
+        (topic.activeUnreadCount ?? 0) === 0 &&
+        (topic.passiveUnreadCount ?? 0) === 0
+        ? topic
+        : { ...topic, unreadCount: 0, activeUnreadCount: 0, passiveUnreadCount: 0 };
+    }
+    if (unreadDelta === 0 && activeUnreadDelta === 0 && passiveUnreadDelta === 0) return topic;
+    return {
+      ...topic,
+      unreadCount: Math.max(0, topic.unreadCount - unreadDelta),
+      activeUnreadCount: Math.max(
+        0,
+        (topic.activeUnreadCount ?? topic.unreadCount) - activeUnreadDelta,
+      ),
+      passiveUnreadCount: Math.max(0, (topic.passiveUnreadCount ?? 0) - passiveUnreadDelta),
+    };
+  });
   const projectedStream =
     unreadDelta === 0 && activeUnreadDelta === 0 && passiveUnreadDelta === 0
       ? previousStream
@@ -217,16 +237,24 @@ function beginOptimisticCatalogRead(
   };
 }
 
+export type WorkspaceTopicReadCountersChange = OptimisticCatalogReadChange;
+
 /**
- * Settle catalog counters for a topic the server has just confirmed as fully read
- * (a `read_up_to` boundary at the topic's last message). The authoritative
- * `topic.updated` / `stream.updated` snapshots still arrive later and overwrite this.
+ * Project a topic read into the catalog before the server confirms it. `readCount`
+ * bounds the decrement for a boundary short of the topic's end; omit it when the
+ * whole topic is read. The authoritative `topic.updated` / `stream.updated`
+ * snapshots overwrite the projection when they arrive.
  */
-export function settleWorkspaceTopicReadCounters(
+export function beginWorkspaceTopicReadCounters(
   ownerKey: string,
   scope: RunWorkspaceTopicReadOptions,
-): boolean {
-  return beginOptimisticCatalogRead(ownerKey, scope) != null;
+  readCount?: number,
+): WorkspaceTopicReadCountersChange | null {
+  return beginOptimisticCatalogRead(ownerKey, scope, readCount);
+}
+
+export function rollbackWorkspaceTopicReadCounters(change: WorkspaceTopicReadCountersChange): void {
+  rollbackOptimisticCatalogRead(change);
 }
 
 function restoreFoldersAfterStreamUpsert(
