@@ -49,7 +49,7 @@ import {
   buildWorkspaceRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
-import { useMessengerStore } from "./messenger.model";
+import { createMessengerCatalogMutationFence, useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerFolder } from "./messenger.types";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
@@ -83,6 +83,7 @@ export interface MessengerBootstrapCacheDeps {
   replaceMessengerFolderSnapshotsCache?: (
     ownerKey: string,
     folders: ReturnType<typeof adaptMessengerFolder>[],
+    options?: Pick<MessengerCatalogPayloadCacheWriteOptions, "reconcileFence">,
   ) => Promise<void> | void;
   createMessengerCatalogCacheReconcileFence?: () => number;
 }
@@ -168,6 +169,8 @@ interface BootstrapFoldersOptions {
   ownerKey: string;
   store: MessengerStoreApi;
   isCurrentBootstrap: () => boolean;
+  catalogMutationFence: number;
+  catalogReconcileFence: number;
 }
 
 async function loadBootstrapFolders({
@@ -180,6 +183,8 @@ async function loadBootstrapFolders({
   ownerKey,
   store,
   isCurrentBootstrap,
+  catalogMutationFence,
+  catalogReconcileFence,
 }: BootstrapFoldersOptions): Promise<MessengerBootstrapResult | null> {
   try {
     const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
@@ -191,11 +196,15 @@ async function loadBootstrapFolders({
     }
 
     const adaptedFolders = folders.map(adaptMessengerFolder);
-    store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
+    store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders, {
+      catalogMutationFence,
+    });
+    const mergedFolders = currentFolders(store.getState());
     writeBootstrapCacheBestEffort(() =>
       (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
         ownerKey,
-        adaptedFolders,
+        mergedFolders,
+        { reconcileFence: catalogReconcileFence },
       ),
     );
     return null;
@@ -244,6 +253,7 @@ export async function bootstrapMessengerStore({
   }
 
   const bootstrapRequestVersion = store.getState().startBootstrap(ownerKey);
+  const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
   const isCurrentBootstrap = (): boolean => {
     const state = store.getState();
     return state.ownerKey === ownerKey && state.bootstrapRequestVersion === bootstrapRequestVersion;
@@ -303,7 +313,9 @@ export async function bootstrapMessengerStore({
       return;
     }
 
-    stateAfterMessageHydrate.replaceBootstrapState(ownerKey, cached.payload);
+    stateAfterMessageHydrate.replaceBootstrapState(ownerKey, cached.payload, {
+      catalogMutationFence,
+    });
     if (cached.epochVersion != null) {
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
     }
@@ -385,10 +397,14 @@ export async function bootstrapMessengerStore({
     if (skipAfterMessageHydrate != null) return skipAfterMessageHydrate;
 
     const preservedFolders = currentFolders(store.getState());
-    store.getState().replaceBootstrapState(ownerKey, {
-      ...payloadWithoutFolders,
-      folders: preservedFolders,
-    });
+    store.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        ...payloadWithoutFolders,
+        folders: preservedFolders,
+      },
+      { catalogMutationFence, coversCatalogMutationFence: true },
+    );
     writeBootstrapCacheBestEffort(() =>
       (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
         ownerKey,
@@ -413,6 +429,8 @@ export async function bootstrapMessengerStore({
       ownerKey,
       store,
       isCurrentBootstrap,
+      catalogMutationFence,
+      catalogReconcileFence,
     });
     if (folderResult != null) return folderResult;
 

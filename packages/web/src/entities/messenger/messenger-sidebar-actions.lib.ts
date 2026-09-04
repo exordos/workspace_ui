@@ -42,6 +42,14 @@ import {
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
 import {
+  inheritWorkspaceStreamNotificationTransition,
+  isSameWorkspaceStreamNotificationTransition,
+  isWorkspaceTopicEffectivelyMuted,
+  projectWorkspaceStreamNotificationTransition,
+  registerWorkspaceStreamUnreadReclassification,
+  updateWorkspaceStreamNotificationTransition,
+} from "./messenger-notification-mode.lib";
+import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
@@ -103,6 +111,8 @@ export interface MessengerSidebarActionStoreApi {
     MessengerStoreState,
     | "ownerKey"
     | "streamsById"
+    | "topicsById"
+    | "topicIds"
     | "upsertStream"
     | "upsertTopic"
     | "upsertFolderItem"
@@ -314,7 +324,8 @@ function upsertStreamNotificationProjection(
     ...stream,
     notificationMode,
   };
-  state.upsertStream(ownerKey, projectedStream);
+  projectWorkspaceStreamNotificationTransition(stream, projectedStream);
+  state.upsertStream(ownerKey, projectedStream, { kind: "transient" });
   return projectedStream;
 }
 
@@ -324,10 +335,12 @@ function isLatestStreamNotificationProjectionCurrent(
   entry: StreamNotificationOptimisticEntry,
 ): boolean {
   const state = store.getState();
+  const currentStream = state.streamsById[request.streamUuid];
   return (
     state.ownerKey === request.ownerKey &&
     entry.latestProjectedStream != null &&
-    state.streamsById[request.streamUuid] === entry.latestProjectedStream
+    currentStream != null &&
+    isSameWorkspaceStreamNotificationTransition(currentStream, entry.latestProjectedStream)
   );
 }
 
@@ -346,7 +359,10 @@ function beginOptimisticStreamNotificationMode(
   const key = streamNotificationOptimisticKey(ownerKey, streamUuid);
   const existingEntry = streamNotificationOptimisticEntries.get(key);
   const currentEntry =
-    existingEntry?.latestProjectedStream === currentStream ? existingEntry : undefined;
+    existingEntry?.latestProjectedStream != null &&
+    isSameWorkspaceStreamNotificationTransition(existingEntry.latestProjectedStream, currentStream)
+      ? existingEntry
+      : undefined;
   if (currentEntry == null) {
     streamNotificationOptimisticEntries.delete(key);
   }
@@ -380,6 +396,73 @@ function beginOptimisticStreamNotificationMode(
   };
 }
 
+function reclassifyConfirmedStreamUnreadBuckets(
+  store: MessengerSidebarActionStoreApi,
+  request: StreamNotificationOptimisticRequest,
+  entry: StreamNotificationOptimisticEntry,
+  confirmedMode: WorkspaceMessengerStreamNotificationMode,
+): void {
+  if (!isLatestStreamNotificationProjectionCurrent(store, request, entry)) return;
+  const state = store.getState();
+  const currentStream = state.streamsById[request.streamUuid];
+  if (currentStream == null) return;
+
+  let activeUnreadCount =
+    currentStream.activeUnreadCount ??
+    currentStream.unreadCount - (currentStream.passiveUnreadCount ?? 0);
+  let passiveUnreadCount = currentStream.passiveUnreadCount ?? 0;
+  let loadedUnreadCount = 0;
+  let changed = false;
+
+  for (const topicUuid of state.topicIds) {
+    const topic = state.topicsById[topicUuid];
+    if (topic?.streamUuid !== request.streamUuid) continue;
+    loadedUnreadCount += topic.unreadCount;
+    const wasPassive = isWorkspaceTopicEffectivelyMuted(
+      topic.notificationMode,
+      entry.confirmedStream.notificationMode,
+    );
+    const isPassive = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, confirmedMode);
+    if (wasPassive === isPassive) continue;
+
+    const previousActive =
+      topic.activeUnreadCount ?? topic.unreadCount - (topic.passiveUnreadCount ?? 0);
+    const previousPassive = topic.passiveUnreadCount ?? 0;
+    const nextActive = isPassive ? 0 : topic.unreadCount;
+    const nextPassive = isPassive ? topic.unreadCount : 0;
+    activeUnreadCount += nextActive - previousActive;
+    passiveUnreadCount += nextPassive - previousPassive;
+    state.upsertTopic(
+      request.ownerKey,
+      {
+        ...topic,
+        activeUnreadCount: nextActive,
+        passiveUnreadCount: nextPassive,
+      },
+      { kind: "reclassification" },
+    );
+    changed = true;
+  }
+
+  registerWorkspaceStreamUnreadReclassification(
+    request.ownerKey,
+    request.streamUuid,
+    entry.confirmedStream.notificationMode,
+    confirmedMode,
+    Math.max(0, currentStream.unreadCount - loadedUnreadCount),
+  );
+
+  if (!changed) return;
+  const nextStream = {
+    ...currentStream,
+    activeUnreadCount: Math.max(0, activeUnreadCount),
+    passiveUnreadCount: Math.max(0, passiveUnreadCount),
+  };
+  inheritWorkspaceStreamNotificationTransition(currentStream, nextStream);
+  state.upsertStream(request.ownerKey, nextStream, { kind: "reclassification" });
+  entry.latestProjectedStream = nextStream;
+}
+
 function finishOptimisticStreamNotificationRequest(
   store: MessengerSidebarActionStoreApi,
   request: StreamNotificationOptimisticRequest | null,
@@ -393,17 +476,68 @@ function finishOptimisticStreamNotificationRequest(
   entry.pendingModesByRequestId.delete(request.requestId);
 
   if (outcome !== "failed" && outcome !== "stale") {
+    const currentState = store.getState();
+    const currentSnapshot = currentState.streamsById[request.streamUuid];
+    if (
+      currentState.ownerKey === request.ownerKey &&
+      currentSnapshot != null &&
+      !isLatestStreamNotificationProjectionCurrent(store, request, entry) &&
+      (currentSnapshot.notificationMode === entry.confirmedStream.notificationMode ||
+        currentSnapshot.notificationMode === outcome.confirmedStream.notificationMode)
+    ) {
+      // A same-owner bootstrap can replace the stream object while this request
+      // is in flight. Reattach the still-valid request to that fresh object so
+      // the confirmed mode wins without discarding its newer catalog fields.
+      entry.confirmedStream = {
+        ...entry.confirmedStream,
+        notificationMode: currentSnapshot.notificationMode,
+      };
+      entry.latestProjectedStream = upsertStreamNotificationProjection(
+        store,
+        request.ownerKey,
+        currentSnapshot,
+        latestPendingStreamNotificationMode(entry) ?? outcome.confirmedStream.notificationMode,
+      );
+    }
+    reclassifyConfirmedStreamUnreadBuckets(
+      store,
+      request,
+      entry,
+      outcome.confirmedStream.notificationMode,
+    );
     entry.confirmedStream = {
       ...entry.confirmedStream,
       notificationMode: outcome.confirmedStream.notificationMode,
       updatedAt: outcome.confirmedStream.updatedAt,
     };
+    const currentStream = store.getState().streamsById[request.streamUuid];
+    if (currentStream != null) {
+      updateWorkspaceStreamNotificationTransition(
+        currentStream,
+        outcome.confirmedStream.notificationMode,
+      );
+    }
   }
 
   if (entry.pendingModesByRequestId.size === 0) {
     streamNotificationOptimisticEntries.delete(request.key);
     if (isLatestStreamNotificationProjectionCurrent(store, request, entry)) {
-      store.getState().upsertStream(request.ownerKey, entry.confirmedStream);
+      const currentStream = store.getState().streamsById[request.streamUuid];
+      if (currentStream == null) return;
+      store.getState().upsertStream(
+        request.ownerKey,
+        {
+          ...currentStream,
+          notificationMode: entry.confirmedStream.notificationMode,
+          updatedAt:
+            currentStream.updatedAt.localeCompare(entry.confirmedStream.updatedAt) >= 0
+              ? currentStream.updatedAt
+              : entry.confirmedStream.updatedAt,
+        },
+        {
+          kind: outcome === "failed" || outcome === "stale" ? "transient" : "reclassification",
+        },
+      );
     }
     return;
   }
@@ -414,10 +548,13 @@ function finishOptimisticStreamNotificationRequest(
   if (latestPendingMode == null) return;
   if (!isLatestStreamNotificationProjectionCurrent(store, request, entry)) return;
 
+  const currentStream = store.getState().streamsById[request.streamUuid];
+  if (currentStream == null) return;
+
   entry.latestProjectedStream = upsertStreamNotificationProjection(
     store,
     request.ownerKey,
-    entry.confirmedStream,
+    currentStream,
     latestPendingMode,
   );
 }
@@ -442,12 +579,20 @@ function applyStreamRenameResponse(
   const notificationEntry = streamNotificationOptimisticEntries.get(
     streamNotificationOptimisticKey(ownerKey, responseStream.uuid),
   );
-  if (notificationEntry != null && notificationEntry.latestProjectedStream === currentStream) {
+  if (
+    notificationEntry?.latestProjectedStream != null &&
+    currentStream != null &&
+    isSameWorkspaceStreamNotificationTransition(
+      notificationEntry.latestProjectedStream,
+      currentStream,
+    )
+  ) {
     notificationEntry.confirmedStream = {
       ...notificationEntry.confirmedStream,
       name: responseStream.name,
       updatedAt: responseStream.updatedAt,
     };
+    inheritWorkspaceStreamNotificationTransition(currentStream, renamedStream);
     notificationEntry.latestProjectedStream = renamedStream;
   }
 

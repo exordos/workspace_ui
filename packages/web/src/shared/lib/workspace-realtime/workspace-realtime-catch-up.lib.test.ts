@@ -307,6 +307,31 @@ describe("workspace-realtime catch-up", () => {
     expect(result).toMatchObject({ isStale: true, lastCursor: cursor(5) });
   });
 
+  it("does not advance the cursor when an asynchronous application reports stale", async () => {
+    const rawStorage = new MemoryStorage();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
+    cursorStorage.write(cursorOwner, cursor(5));
+    const applier: WorkspaceRealtimeCatchUpApplier = {
+      applyEvent: vi.fn(() => Promise.resolve<"stale">("stale")),
+      skipEvent: vi.fn(),
+    };
+
+    const result = await catchUpWorkspaceRealtime(
+      createOptions({
+        cursorStorage,
+        applier,
+        getEventsPage: () => Promise.resolve(createPage([createEventDto(6)])),
+      }),
+    );
+
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(5));
+    expect(result).toMatchObject({
+      lastCursor: cursor(5),
+      appliedCount: 0,
+      isStale: true,
+    });
+  });
+
   it("advances cursor monotonically in sorted epoch order", async () => {
     const rawStorage = new MemoryStorage();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);

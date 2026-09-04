@@ -56,3 +56,34 @@ it("waits for every composed applier before resolving event application", async 
 
   expect(settled).toBe(true);
 });
+
+it("propagates a stale application from any composed applier", async () => {
+  const staleApplier: WorkspaceRealtimeEventApplier = {
+    applyEvent: vi.fn((): "stale" => "stale"),
+    skipEvent: vi.fn(),
+    onTransportStateChange: vi.fn(),
+  };
+  const appliedApplier: WorkspaceRealtimeEventApplier = {
+    applyEvent: vi.fn((): "applied" => "applied"),
+    skipEvent: vi.fn(),
+    onTransportStateChange: vi.fn(),
+  };
+  const composed = composeWorkspaceRealtimeAppliers([appliedApplier, staleApplier]);
+
+  await expect(
+    composed.applyEvent(
+      {
+        epoch_version: 1,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [],
+      },
+      {
+        owner: OWNER,
+        ownerKey: "account-a:instance-a:organization-a:project-a",
+        surface: "active",
+        source: "websocket",
+      },
+    ),
+  ).resolves.toBe("stale");
+});

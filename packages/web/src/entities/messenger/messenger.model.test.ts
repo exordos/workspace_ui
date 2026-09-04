@@ -5,6 +5,10 @@ import {
 } from "./messenger-folder-system-type.lib";
 import {
   applyDeletedMessagePointerRepair,
+  createMessengerCatalogMutationFence,
+  createMessengerPendingUnreadProjectionRevision,
+  messengerPendingUnreadProjectionCoverage,
+  recordMessengerUnreadProjectionCoverage,
   restoreMessengerStream,
   useMessengerStore,
 } from "./messenger.model";
@@ -35,6 +39,7 @@ const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const FOLDER_ITEM_C = "aee58fa0-8ab8-47ba-ae52-b504cfb383d9";
 const FOLDER_ITEM_D = "33a78fcf-24df-45f7-9fc5-349b10014baf";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_LATER = "2026-06-22T10:20:00Z";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const TOPIC_B = "5ec0b996-b778-45f8-8ef4-ef863be0c047";
 const DELETED_MESSAGE = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
@@ -174,6 +179,226 @@ describe("messenger store", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
+  });
+
+  it("records which pending unread revisions are covered by a later bootstrap request", () => {
+    const pendingRevision = createMessengerPendingUnreadProjectionRevision(OWNER_KEY);
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        OWNER_KEY,
+        TOPIC_REPLACEMENT_MESSAGE,
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: false, topic: false });
+
+    const fence = createMessengerCatalogMutationFence(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      {
+        streams: [createStream()],
+        streamBindings: [],
+        topics: [createTopic()],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence: fence, coversCatalogMutationFence: true },
+    );
+
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        OWNER_KEY,
+        TOPIC_REPLACEMENT_MESSAGE,
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: true, topic: true });
+  });
+
+  it("discards runtime mutation coverage when switching owners", () => {
+    const store = useMessengerStore.getState();
+    store.replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream()],
+      streamBindings: [],
+      topics: [createTopic()],
+      conversations: [],
+      folders: [],
+    });
+    const pendingRevision = createMessengerPendingUnreadProjectionRevision(OWNER_KEY);
+    recordMessengerUnreadProjectionCoverage(OWNER_KEY, TOPIC_REPLACEMENT_MESSAGE, pendingRevision, {
+      stream: true,
+      topic: true,
+    });
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        OWNER_KEY,
+        TOPIC_REPLACEMENT_MESSAGE,
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: true, topic: true });
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        OWNER_KEY,
+        "unrelated-message",
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: false, topic: false });
+
+    store.startBootstrap(OTHER_OWNER_KEY);
+    store.startBootstrap(OWNER_KEY);
+
+    expect(
+      messengerPendingUnreadProjectionCoverage(
+        OWNER_KEY,
+        TOPIC_REPLACEMENT_MESSAGE,
+        STREAM_A,
+        TOPIC_A,
+        pendingRevision,
+      ),
+    ).toEqual({ stream: false, topic: false });
+  });
+
+  it("keeps authoritative unread counts when only message freshness changed after the fence", () => {
+    const store = useMessengerStore.getState();
+    store.replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream({ unreadCount: 3 })],
+      streamBindings: [],
+      topics: [],
+      conversations: [createConversation({ unreadCount: 3 })],
+      folders: [],
+    });
+    const fence = createMessengerCatalogMutationFence(OWNER_KEY);
+    store.applyMessagePointer(
+      OWNER_KEY,
+      createMessage({ createdAt: DATE_LATER, updatedAt: DATE_LATER }),
+    );
+
+    store.replaceBootstrapState(
+      OWNER_KEY,
+      {
+        streams: [createStream({ unreadCount: 9 })],
+        streamBindings: [],
+        topics: [createTopic({ unreadCount: 7 })],
+        conversations: [
+          createConversation({ unreadCount: 9 }),
+          createConversation({
+            id: `topic:${STREAM_A}:${TOPIC_A}`,
+            topicUuid: TOPIC_A,
+            unreadCount: 7,
+          }),
+        ],
+        folders: [],
+      },
+      { catalogMutationFence: fence },
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 9,
+        lastMessageUuid: TOPIC_REPLACEMENT_MESSAGE,
+      }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 7, lastMessageUuid: null }),
+    );
+  });
+
+  it("keeps fresh folder counts when only message freshness changed after the fence", () => {
+    const store = useMessengerStore.getState();
+    store.replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream({ unreadCount: 3 })],
+      streamBindings: [],
+      topics: [],
+      conversations: [createConversation({ unreadCount: 3 })],
+      folders: [createFolder({ unreadCount: 3 })],
+    });
+    const fence = createMessengerCatalogMutationFence(OWNER_KEY);
+    store.applyMessagePointer(
+      OWNER_KEY,
+      createMessage({ createdAt: DATE_LATER, updatedAt: DATE_LATER }),
+    );
+
+    store.replaceFolderSnapshots(
+      OWNER_KEY,
+      [
+        createFolder({
+          unreadCount: 9,
+          items: [createFolderItem({ unreadCount: 9 })],
+        }),
+      ],
+      { catalogMutationFence: fence },
+    );
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 9,
+        items: [expect.objectContaining({ unreadCount: 9 })],
+      }),
+    );
+  });
+
+  it("preserves reclassified folder counters over an older folder snapshot", () => {
+    const store = useMessengerStore.getState();
+    store.replaceBootstrapState(OWNER_KEY, {
+      streams: [
+        createStream({
+          unreadCount: 3,
+          activeUnreadCount: 3,
+          passiveUnreadCount: 0,
+          notificationMode: "all_messages",
+        }),
+      ],
+      streamBindings: [],
+      topics: [],
+      conversations: [createConversation({ unreadCount: 3 })],
+      folders: [
+        createFolder({
+          unreadCount: 3,
+          items: [
+            createFolderItem({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+          ],
+        }),
+      ],
+    });
+    const fence = createMessengerCatalogMutationFence(OWNER_KEY);
+    store.upsertStream(
+      OWNER_KEY,
+      createStream({
+        unreadCount: 3,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 3,
+        notificationMode: "muted",
+      }),
+      { kind: "reclassification" },
+    );
+
+    store.replaceFolderSnapshots(
+      OWNER_KEY,
+      [
+        createFolder({
+          unreadCount: 3,
+          items: [
+            createFolderItem({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+          ],
+        }),
+      ],
+      { catalogMutationFence: fence },
+    );
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 0,
+        items: [
+          expect.objectContaining({ unreadCount: 3, activeUnreadCount: 0, passiveUnreadCount: 3 }),
+        ],
+      }),
+    );
   });
 
   it("preserves realtime readiness published before bootstrap for the same owner", () => {

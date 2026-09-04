@@ -17,10 +17,15 @@ import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
-import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import {
+  adaptMessengerMessage,
+  adaptMessengerStream,
+  adaptMessengerTopic,
+} from "./messenger-adapters.lib";
 import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
 import { applyMessengerMessageWindow } from "./messenger-messages-loader.lib";
+import { projectWorkspaceStreamNotificationTransition } from "./messenger-notification-mode.lib";
 import {
   clearMessengerReadBoundariesForOwner,
   readMessengerReadBoundary,
@@ -34,11 +39,13 @@ import {
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
 import {
+  createMessengerCatalogMutationFence,
   selectMessengerFolders,
   selectMessengerSidebarConversations,
   useMessengerStore,
 } from "./messenger.model";
 import type { RemoveMessengerStreamProjectionOptions } from "./messenger-stream-projection-cleanup.lib";
+import type { MessengerMessage } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const INSTANCE_A = "instance-a";
@@ -277,11 +284,20 @@ describe("messenger realtime active applier", () => {
     const cache = {
       advanceReadBoundary: vi.fn(),
       patchCachedMessage: vi.fn(),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
     const onMessageCreated = vi.fn();
     const applier = createMessengerRealtimeActiveApplier({ cache, onMessageCreated });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(context.ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
 
     for (const [uuid, createdAt] of [
       [MESSAGE_A, DATE],
@@ -335,12 +351,15 @@ describe("messenger realtime active applier", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
     expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)).toMatchObject({
       messageUuid: MESSAGE_B,
       epochVersion: 12,
     });
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 12 }),
+      expect.any(Number),
     );
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
@@ -387,12 +406,393 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().lastEpochVersion).toBe(12);
   });
 
-  it("applies messages.read as an exact batch without advancing a boundary", () => {
+  it("projects cached messages covered by a durable read boundary", async () => {
+    const context = createContext();
+    const cachedUnreadMessage = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_B,
+        author_uuid: USER_B,
+        is_own: false,
+        read: false,
+        created_at: DATE_LATER,
+        updated_at: DATE_LATER,
+      }),
+    );
+    const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.resolve([cachedUnreadMessage])),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(context.ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(cache.upsertCachedStream).toHaveBeenCalledWith(
+      context.ownerKey,
+      expect.objectContaining({ unreadCount: 2 }),
+    );
+    expect(cache.upsertCachedTopic).toHaveBeenCalledWith(
+      context.ownerKey,
+      expect.objectContaining({ unreadCount: 1 }),
+    );
+  });
+
+  it("does not project a stale cached row for a message already read in memory", async () => {
+    const context = createContext();
+    const cachedUnreadMessage = adaptMessengerMessage(
+      createMessageDto({
+        author_uuid: USER_B,
+        is_own: false,
+        read: false,
+      }),
+    );
+    const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.resolve([cachedUnreadMessage])),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(context.ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({ author_uuid: USER_B, is_own: false, read: true }),
+      },
+      context,
+    );
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({ author_uuid: USER_B, is_own: false, read: true }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(cache.upsertCachedStream).not.toHaveBeenCalled();
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+  });
+
+  it("does not project stale cached rows for an optimistically read active prefix", async () => {
+    const context = createContext();
+    const cachedUnreadMessages = [
+      adaptMessengerMessage(
+        createMessageDto({
+          uuid: MESSAGE_A,
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+          created_at: DATE,
+          updated_at: DATE,
+        }),
+      ),
+      adaptMessengerMessage(
+        createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      ),
+    ];
+    const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.resolve(cachedUnreadMessages)),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(context.ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    for (const cachedMessage of cachedUnreadMessages) {
+      applier.applyEvent(
+        {
+          epoch_version: cachedMessage.uuid === MESSAGE_A ? 10 : 11,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid: cachedMessage.uuid,
+            author_uuid: USER_B,
+            is_own: false,
+            read: true,
+            created_at: cachedMessage.createdAt,
+            updated_at: cachedMessage.updatedAt,
+          }),
+        },
+        context,
+      );
+    }
+
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(cache.upsertCachedStream).not.toHaveBeenCalled();
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+  });
+
+  it("does not advance the realtime cursor when read-boundary staging fails", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.reject(new Error("IndexedDB aborted"))),
+      queuePendingUnreadProjection: vi.fn(() => Promise.resolve()),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(
+        adaptMessengerMessage(
+          createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+        ),
+      );
+
+    await expect(
+      applier.applyEvent(
+        {
+          epoch_version: 12,
+          type: "message",
+          kind: "message.read",
+          message: createMessageDto({ author_uuid: USER_B, is_own: false, read: true }),
+        },
+        context,
+      ),
+    ).rejects.toThrow("IndexedDB aborted");
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+  });
+
+  it("still projects a cached-only unread row beside an already-read active boundary entry", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const activeReadMessage = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_A,
+        author_uuid: USER_B,
+        is_own: false,
+        read: true,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    );
+    const cachedUnreadMessage = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_B,
+        author_uuid: USER_B,
+        is_own: false,
+        read: false,
+        created_at: DATE_LATER,
+        updated_at: DATE_LATER,
+      }),
+    );
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "decrement";
+        delta: -1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      advanceReadBoundary: vi.fn(() => Promise.resolve([cachedUnreadMessage])),
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          _operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          pending.set(message.uuid, {
+            message,
+            operation: "decrement",
+            delta: -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [
+        adaptMessengerStream(
+          createStreamDto({ unread_count: 1, active_unread_count: 1, passive_unread_count: 0 }),
+        ),
+      ],
+      streamBindings: [],
+      topics: [
+        adaptMessengerTopic(
+          createTopicDto({ unread_count: 1, active_unread_count: 1, passive_unread_count: 0 }),
+        ),
+      ],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(activeReadMessage);
+
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.read",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          author_uuid: USER_B,
+          is_own: false,
+          read: true,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(0);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
+    expect(pending).toHaveLength(0);
+  });
+
+  it("does not publish the applied epoch before the unread projection is durable", async () => {
+    const context = createContext();
+    let releaseStreamWrite: (() => void) | undefined;
+    const streamWrite = new Promise<void>((resolve) => {
+      releaseStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi.fn(() => streamWrite),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(context.ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 13,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      ),
+    );
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+
+    releaseStreamWrite?.();
+    await application;
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 13);
+  });
+
+  it("applies messages.read as an exact batch without advancing a boundary", async () => {
     const context = createContext();
     const cache = { markCachedMessagesRead: vi.fn(), writeRealtimeCursor: vi.fn() };
     const applier = createMessengerRealtimeActiveApplier({ cache });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 12,
         type: "message",
@@ -407,7 +807,7 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 13,
         type: "messages",
@@ -419,7 +819,285 @@ describe("messenger realtime active applier", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
     expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)).toBeNull();
-    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(context.ownerKey, [MESSAGE_A]);
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(
+      context.ownerKey,
+      [MESSAGE_A],
+      expect.any(Number),
+      [expect.objectContaining({ uuid: MESSAGE_A, read: false })],
+    );
+  });
+
+  it("does not advance the realtime cursor when exact read-batch staging fails", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      markCachedMessagesRead: vi.fn(() => Promise.reject(new Error("IndexedDB aborted"))),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(
+      adaptMessengerMessage(
+        createMessageDto({
+          uuid: MESSAGE_A,
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+        }),
+      ),
+    );
+
+    await expect(
+      applier.applyEvent(
+        {
+          epoch_version: 13,
+          type: "messages",
+          kind: "messages.read",
+          messageUuids: [MESSAGE_A],
+        },
+        context,
+      ),
+    ).rejects.toThrow("IndexedDB aborted");
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+  });
+
+  it("does not decrement counters after cache staging cancels an unapplied create/read pair", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      markCachedMessagesRead: vi.fn(() => Promise.resolve([])),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(
+        adaptMessengerMessage(
+          createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+        ),
+      );
+
+    await applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [MESSAGE_A],
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+  });
+
+  it("does not replay a stale cached decrement for an optimistically read batch entry", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const activeReadMessage = adaptMessengerMessage(
+      createMessageDto({ author_uuid: USER_B, is_own: false, read: true }),
+    );
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "decrement";
+        delta: -1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      markCachedMessagesRead: vi.fn(
+        (_ownerKey: string, _messageUuids: readonly string[], mutationRevision = 0) => {
+          pending.set(activeReadMessage.uuid, {
+            message: { ...activeReadMessage, read: false },
+            operation: "decrement",
+            delta: -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [
+        adaptMessengerStream(
+          createStreamDto({ unread_count: 2, active_unread_count: 2, passive_unread_count: 0 }),
+        ),
+      ],
+      streamBindings: [],
+      topics: [
+        adaptMessengerTopic(
+          createTopicDto({ unread_count: 1, active_unread_count: 1, passive_unread_count: 0 }),
+        ),
+      ],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(activeReadMessage);
+
+    await applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [MESSAGE_A],
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(pending).toHaveLength(0);
+  });
+
+  it("decrements counters for messages.read entries found only in durable cache", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cachedMessage = adaptMessengerMessage(
+      createMessageDto({
+        author_uuid: USER_B,
+        user_uuid: USER_A,
+        is_own: false,
+        read: false,
+      }),
+    );
+    const cache = {
+      readCachedMessages: vi.fn(() => Promise.resolve([cachedMessage])),
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [MESSAGE_A],
+      },
+      context,
+    );
+
+    expect(cache.readCachedMessages).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(
+      ownerKey,
+      [MESSAGE_A],
+      expect.any(Number),
+      [expect.objectContaining({ uuid: MESSAGE_A, read: false })],
+    );
+  });
+
+  it("does not partially apply messages.read while an unloaded entry is being resolved", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let isCurrent = true;
+    let resolveCachedMessages: ((messages: MessengerMessage[]) => void) | undefined;
+    const cachedMessages = new Promise<MessengerMessage[]>((resolve) => {
+      resolveCachedMessages = resolve;
+    });
+    const cache = {
+      readCachedMessages: vi.fn(() => cachedMessages),
+      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto({ unread_count: 4, active_unread_count: 4 }))],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto({ unread_count: 3, active_unread_count: 3 }))],
+      conversations: [],
+      folders: [],
+    });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(
+      adaptMessengerMessage(
+        createMessageDto({
+          uuid: MESSAGE_A,
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+        }),
+      ),
+    );
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 13,
+          type: "messages",
+          kind: "messages.read",
+          messageUuids: [MESSAGE_A, MESSAGE_B],
+        },
+        context,
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(cache.readCachedMessages).toHaveBeenCalledWith(ownerKey, [MESSAGE_B]),
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+
+    isCurrent = false;
+    resolveCachedMessages?.([]);
+    await application;
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(cache.markCachedMessagesRead).not.toHaveBeenCalled();
   });
 
   it("persists a background message.read boundary without touching the active message store", async () => {
@@ -678,6 +1356,48 @@ describe("messenger realtime active applier", () => {
     ).toBeUndefined();
   });
 
+  it("does not publish an active cursor when the runtime becomes stale during a cache lookup", async () => {
+    const context = createContext();
+    let isCurrent = true;
+    let resolveCachedMessages: ((messages: never[]) => void) | undefined;
+    const cachedMessages = new Promise<never[]>((resolve) => {
+      resolveCachedMessages = resolve;
+    });
+    const cache = {
+      readCachedMessages: vi.fn(() => cachedMessages),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+      onMessageCreated,
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 20,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+        },
+        context,
+      ),
+    );
+    await vi.waitFor(() => expect(cache.readCachedMessages).toHaveBeenCalledOnce());
+
+    isCurrent = false;
+    resolveCachedMessages?.([]);
+    await application;
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
   it("publishes initial sync readiness only after active catch-up finishes", () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier();
@@ -815,6 +1535,1507 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
+  });
+
+  it("projects a cached-only unread message before deleting it", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cachedMessage = adaptMessengerMessage(
+      createMessageDto({
+        author_uuid: USER_B,
+        user_uuid: USER_A,
+        is_own: false,
+        read: false,
+      }),
+    );
+    const cache = {
+      readCachedMessages: vi.fn(() => Promise.resolve([cachedMessage])),
+      deleteCachedMessage: vi.fn(() => Promise.resolve()),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        kind: "message.deleted",
+        message: {
+          uuid: MESSAGE_A,
+          stream_uuid: STREAM_A,
+          topic_uuid: TOPIC_A,
+        },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
+      `stream:${STREAM_A}`,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    ]);
+  });
+
+  it("cancels a staged unread increment when a deleted message body is unavailable", async () => {
+    const context = createContext();
+    const cancelPendingUnreadIncrement = vi.fn(() => Promise.resolve());
+    const cache = {
+      readCachedMessages: vi.fn(() => Promise.resolve([])),
+      deleteCachedMessage: vi.fn(() => Promise.resolve()),
+      cancelPendingUnreadIncrement,
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    await applier.applyEvent(
+      {
+        epoch_version: 14,
+        type: "message",
+        kind: "message.deleted",
+        message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+      },
+      context,
+    );
+
+    expect(cancelPendingUnreadIncrement).toHaveBeenCalledWith(context.ownerKey, MESSAGE_A);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 14);
+  });
+
+  it("projects message create and read events into stream and topic unread counters", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 14,
+        type: "message",
+        kind: "message.created",
+        message,
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 4, activeUnreadCount: 4, passiveUnreadCount: 0 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 15,
+        type: "message",
+        kind: "message.read",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 2, activeUnreadCount: 2, passiveUnreadCount: 0 }),
+    );
+    expect(cache.upsertCachedStream).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: STREAM_A, unreadCount: 3 }),
+    );
+    expect(cache.upsertCachedTopic).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: TOPIC_A, unreadCount: 2 }),
+    );
+  });
+
+  it("keeps unread deltas in the confirmed bucket during an optimistic mode transition", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    const confirmedStream = useMessengerStore.getState().streamsById[STREAM_A];
+    expect(confirmedStream).toBeDefined();
+    if (confirmedStream == null) return;
+    const optimisticStream = { ...confirmedStream, notificationMode: "muted" as const };
+    projectWorkspaceStreamNotificationTransition(confirmedStream, optimisticStream);
+    useMessengerStore.getState().upsertStream(ownerKey, optimisticStream, { kind: "transient" });
+
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+    applier.applyEvent(
+      { epoch_version: 14, type: "message", kind: "message.created", message },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 4, activeUnreadCount: 4, passiveUnreadCount: 0 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 15,
+        type: "message",
+        kind: "message.read",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 3, passiveUnreadCount: 0 }),
+    );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({ unreadCount: 2, activeUnreadCount: 2, passiveUnreadCount: 0 }),
+    );
+  });
+
+  it("does not double-count duplicate message.created events", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const event = {
+      epoch_version: 16,
+      type: "message" as const,
+      kind: "message.created" as const,
+      message: createMessageDto({
+        author_uuid: USER_B,
+        user_uuid: USER_A,
+        is_own: false,
+        read: false,
+      }),
+    };
+
+    applier.applyEvent(event, context);
+    applier.applyEvent({ ...event, epoch_version: 17 }, context);
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+  });
+
+  it("does not double-count a message.created event already present in durable cache", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cachedMessage = adaptMessengerMessage(
+      createMessageDto({
+        author_uuid: USER_B,
+        user_uuid: USER_A,
+        is_own: false,
+        read: false,
+      }),
+    );
+    const onMessageCreated = vi.fn();
+    const cache = {
+      readCachedMessages: vi.fn(() => Promise.resolve([cachedMessage])),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageCreated });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 17,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          user_uuid: USER_A,
+          is_own: false,
+          read: false,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeDefined();
+    expect(cache.upsertCachedStream).not.toHaveBeenCalled();
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+    expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
+  it("waits for complete notification metadata before classifying unread counters", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [
+        adaptMessengerStream(
+          createStreamDto({
+            notification_mode: "muted",
+            unread_count: 3,
+            active_unread_count: 1,
+            passive_unread_count: 2,
+          }),
+        ),
+      ],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 18,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          user_uuid: USER_A,
+          is_own: false,
+          read: false,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({ unreadCount: 3, activeUnreadCount: 1, passiveUnreadCount: 2 }),
+    );
+    expect(cache.upsertCachedStream).not.toHaveBeenCalled();
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+  });
+
+  it("replays a durable unread increment after missing topic metadata arrives", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          pending.set(message.uuid, {
+            message,
+            operation,
+            delta: operation === "increment" ? 1 : -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 18,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+      },
+      context,
+    );
+
+    expect(pending.get(MESSAGE_A)?.delta).toBe(1);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [adaptMessengerStream(createStreamDto())],
+        streamBindings: [],
+        topics: [adaptMessengerTopic(createTopicDto({ unread_count: 2, active_unread_count: 2 }))],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence, coversCatalogMutationFence: true },
+    );
+    await vi.waitFor(() => expect(pending.size).toBe(0));
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(pending).toHaveLength(0);
+    expect(cache.completePendingUnreadProjections).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({ messageUuid: MESSAGE_A }),
+    ]);
+  });
+
+  it("replays every pending unread row against pre-flush coverage", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          pending.set(message.uuid, {
+            message,
+            operation,
+            delta: operation === "increment" ? 1 : -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    const catalogMutationFence = createMessengerCatalogMutationFence(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+
+    for (const [epochVersion, messageUuid] of [
+      [18, MESSAGE_A],
+      [19, MESSAGE_B],
+    ] as const) {
+      await applier.applyEvent(
+        {
+          epoch_version: epochVersion,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid: messageUuid,
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      );
+    }
+    expect(pending).toHaveLength(2);
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      {
+        streams: [adaptMessengerStream(createStreamDto())],
+        streamBindings: [],
+        topics: [adaptMessengerTopic(createTopicDto({ unread_count: 2, active_unread_count: 2 }))],
+        conversations: [],
+        folders: [],
+      },
+      { catalogMutationFence, coversCatalogMutationFence: true },
+    );
+    await vi.waitFor(() => expect(pending.size).toBe(0));
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(5);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(4);
+  });
+
+  it("replays an atomic unread recovery row when only the message body survived", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let isCurrent = true;
+    let cachedMessage: MessengerMessage | null = null;
+    let atomicWrites = 0;
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 0 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      readCachedMessages: vi.fn(() =>
+        Promise.resolve(cachedMessage == null ? [] : [cachedMessage]),
+      ),
+      writeConversationMessagePage: vi.fn(() => Promise.resolve()),
+      writeConversationMessagePageWithUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          _conversationId: string,
+          page: { messages: readonly MessengerMessage[] },
+          mutationRevision: number,
+        ) => {
+          const [message] = page.messages;
+          if (message != null) {
+            cachedMessage = message;
+            pending.set(message.uuid, {
+              message,
+              operation: "increment",
+              delta: 1,
+              mutationRevision,
+            });
+          }
+          atomicWrites += 1;
+          if (atomicWrites === 2) isCurrent = false;
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      persistPendingUnreadProjection: vi.fn(() => Promise.resolve(true)),
+      verifyPendingUnreadProjection: vi.fn(() => Promise.resolve(true)),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const event = {
+      epoch_version: 23,
+      type: "message" as const,
+      kind: "message.created" as const,
+      message: createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+    };
+
+    await applier.applyEvent(event, context);
+    expect(cachedMessage).toEqual(expect.objectContaining({ uuid: MESSAGE_A }));
+    expect(pending).toHaveLength(1);
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+
+    useWorkspaceMessageStore.getState().clear();
+    isCurrent = true;
+    await applier.applyEvent(event, context);
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(pending).toHaveLength(0);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 23);
+  });
+
+  it("does not replay a pending topic increment over a newer authoritative topic event", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          pending.set(message.uuid, {
+            message,
+            operation,
+            delta: operation === "increment" ? 1 : -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      verifyPendingUnreadProjection: vi.fn(() => Promise.resolve(false)),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+    await applier.applyEvent(
+      {
+        epoch_version: 18,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+      },
+      context,
+    );
+
+    await applier.applyEvent(
+      {
+        epoch_version: 19,
+        type: "topic",
+        kind: "topic.updated",
+        topic: createTopicDto({ unread_count: 2, active_unread_count: 2 }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(pending.size).toBe(1);
+
+    cache.verifyPendingUnreadProjection.mockResolvedValue(true);
+    await applier.applyEvent(
+      {
+        epoch_version: 20,
+        type: "topic",
+        kind: "topic.updated",
+        topic: createTopicDto({ unread_count: 2, active_unread_count: 2 }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(4);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(pending.size).toBe(0);
+  });
+
+  it("replays a cached-only read decrement after the originating runtime becomes stale", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let isCurrent = true;
+    let releaseBoundary: ((messages: readonly MessengerMessage[]) => void) | undefined;
+    const firstBoundary = new Promise<readonly MessengerMessage[]>((resolve) => {
+      releaseBoundary = resolve;
+    });
+    const cachedUnreadMessage = adaptMessengerMessage(
+      createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+    );
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const cache = {
+      advanceReadBoundary: vi
+        .fn()
+        .mockImplementationOnce(() => firstBoundary)
+        .mockResolvedValue([]),
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          pending.set(message.uuid, {
+            message,
+            operation,
+            delta: operation === "increment" ? 1 : -1,
+            mutationRevision,
+          });
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const readEvent = {
+      epoch_version: 20,
+      type: "message" as const,
+      kind: "message.read" as const,
+      message: createMessageDto({ author_uuid: USER_B, is_own: false, read: true }),
+    };
+
+    const firstApplication = Promise.resolve(applier.applyEvent(readEvent, context));
+    await vi.waitFor(() => expect(cache.advanceReadBoundary).toHaveBeenCalledOnce());
+    isCurrent = false;
+    releaseBoundary?.([cachedUnreadMessage]);
+    await firstApplication;
+
+    expect(pending.get(MESSAGE_A)?.delta).toBe(-1);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+
+    isCurrent = true;
+    await applier.applyEvent(readEvent, context);
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(pending).toHaveLength(0);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 20);
+  });
+
+  it("replays an exact cached read batch after its originating runtime becomes stale", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let isCurrent = true;
+    let releaseFirstCacheWrite: (() => void) | undefined;
+    const firstCacheWrite = new Promise<void>((resolve) => {
+      releaseFirstCacheWrite = resolve;
+    });
+    const cachedUnreadMessage = adaptMessengerMessage(
+      createMessageDto({ author_uuid: USER_B, is_own: false, read: false }),
+    );
+    const pending = new Map<
+      string,
+      {
+        message: MessengerMessage;
+        operation: "increment" | "decrement";
+        delta: -1 | 1;
+        mutationRevision: number;
+      }
+    >();
+    const stageDecrement = (message: MessengerMessage, mutationRevision: number) => {
+      pending.set(message.uuid, {
+        message,
+        operation: "decrement",
+        delta: -1,
+        mutationRevision,
+      });
+    };
+    const cache = {
+      readCachedMessages: vi
+        .fn()
+        .mockResolvedValueOnce([cachedUnreadMessage])
+        .mockResolvedValue([]),
+      markCachedMessagesRead: vi
+        .fn()
+        .mockImplementationOnce(
+          (_ownerKey: string, _messageUuids: readonly string[], mutationRevision: number) => {
+            stageDecrement(cachedUnreadMessage, mutationRevision);
+            return firstCacheWrite;
+          },
+        )
+        .mockResolvedValue(undefined),
+      queuePendingUnreadProjection: vi.fn(
+        (
+          _ownerKey: string,
+          message: MessengerMessage,
+          _operation: "increment" | "decrement",
+          mutationRevision: number,
+        ) => {
+          stageDecrement(message, mutationRevision);
+          return Promise.resolve();
+        },
+      ),
+      readPendingUnreadProjections: vi.fn(() => Promise.resolve([...pending.values()])),
+      completePendingUnreadProjections: vi.fn(
+        (
+          _ownerKey: string,
+          projections: readonly { messageUuid: string; mutationRevision: number }[],
+        ) => {
+          for (const projection of projections) pending.delete(projection.messageUuid);
+          return Promise.resolve();
+        },
+      ),
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const readEvent = {
+      epoch_version: 21,
+      type: "messages" as const,
+      kind: "messages.read" as const,
+      messageUuids: [MESSAGE_A],
+    };
+
+    const firstApplication = Promise.resolve(applier.applyEvent(readEvent, context));
+    await vi.waitFor(() => expect(cache.markCachedMessagesRead).toHaveBeenCalledOnce());
+    isCurrent = false;
+    releaseFirstCacheWrite?.();
+    await firstApplication;
+
+    expect(pending.get(MESSAGE_A)?.delta).toBe(-1);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+
+    isCurrent = true;
+    await applier.applyEvent(readEvent, context);
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(pending).toHaveLength(0);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 21);
+  });
+
+  it("tracks read-state flips delivered through message.updated before message.read", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+    applier.applyEvent(
+      { epoch_version: 18, type: "message", kind: "message.created", message },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 19,
+        type: "message",
+        kind: "message.updated",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 20,
+        type: "message",
+        kind: "message.created",
+        message,
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 21,
+        type: "message",
+        kind: "message.read",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
+    expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]?.read).toBe(true);
+  });
+
+  it("projects a cached-only message.updated read flip", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cachedMessage = adaptMessengerMessage(
+      createMessageDto({
+        author_uuid: USER_B,
+        user_uuid: USER_A,
+        is_own: false,
+        read: false,
+      }),
+    );
+    const cache = {
+      readCachedMessages: vi.fn(() => Promise.resolve([cachedMessage])),
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+      upsertCachedStream: vi.fn(),
+      upsertCachedTopic: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 21,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          user_uuid: USER_A,
+          is_own: false,
+          read: true,
+        }),
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(1);
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+    );
+  });
+
+  it("serializes durable unread projections for the same stream", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseFirstStreamWrite: (() => void) | undefined;
+    const firstStreamWrite = new Promise<void>((resolve) => {
+      releaseFirstStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi
+        .fn()
+        .mockImplementationOnce(() => firstStreamWrite)
+        .mockResolvedValue(undefined),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+
+    applier.applyEvent(
+      { epoch_version: 22, type: "message", kind: "message.created", message },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 23,
+        type: "message",
+        kind: "message.updated",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(1);
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+    expect(cache.upsertCachedStream).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ unreadCount: 4 }),
+    );
+
+    releaseFirstStreamWrite?.();
+    await vi.waitFor(() => {
+      expect(cache.upsertCachedStream).toHaveBeenCalledTimes(2);
+      expect(cache.upsertCachedTopic).toHaveBeenCalledTimes(2);
+    });
+    expect(cache.upsertCachedStream).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ unreadCount: 3 }),
+    );
+    expect(cache.upsertCachedTopic).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ unreadCount: 2 }),
+    );
+  });
+
+  it("serializes cached message deletion after its unread projection", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseFirstStreamWrite: (() => void) | undefined;
+    const firstStreamWrite = new Promise<void>((resolve) => {
+      releaseFirstStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi
+        .fn()
+        .mockImplementationOnce(() => firstStreamWrite)
+        .mockResolvedValue(undefined),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      deleteCachedMessage: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      is_own: false,
+      read: false,
+    });
+
+    const createApplication = Promise.resolve(
+      applier.applyEvent(
+        { epoch_version: 22, type: "message", kind: "message.created", message },
+        context,
+      ),
+    );
+    const deleteApplication = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 23,
+          type: "message",
+          kind: "message.deleted",
+          message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+        },
+        context,
+      ),
+    );
+
+    expect(cache.deleteCachedMessage).not.toHaveBeenCalled();
+
+    releaseFirstStreamWrite?.();
+    await Promise.all([createApplication, deleteApplication]);
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(2);
+    expect(cache.upsertCachedStream).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      expect.objectContaining({ lastMessageUuid: MESSAGE_A }),
+    );
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
+      `stream:${STREAM_A}`,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    ]);
+    expect(cache.upsertCachedStream.mock.invocationCallOrder[1]).toBeLessThan(
+      cache.deleteCachedMessage.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("serializes durable unread projections across streams that can share folders", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseFirstStreamWrite: (() => void) | undefined;
+    const firstStreamWrite = new Promise<void>((resolve) => {
+      releaseFirstStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi
+        .fn()
+        .mockImplementationOnce(() => firstStreamWrite)
+        .mockResolvedValue(undefined),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [
+        adaptMessengerStream(createStreamDto()),
+        adaptMessengerStream(createStreamDto({ uuid: STREAM_B })),
+      ],
+      streamBindings: [],
+      topics: [
+        adaptMessengerTopic(createTopicDto()),
+        adaptMessengerTopic(createTopicDto({ uuid: TOPIC_B, stream_uuid: STREAM_B })),
+      ],
+      conversations: [],
+      folders: [],
+    });
+
+    const firstApplication = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 24,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid: MESSAGE_A,
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      ),
+    );
+    const secondApplication = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 25,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            uuid: MESSAGE_B,
+            stream_uuid: STREAM_B,
+            topic_uuid: TOPIC_B,
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      ),
+    );
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(1);
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+
+    releaseFirstStreamWrite?.();
+    await Promise.all([firstApplication, secondApplication]);
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(2);
+    expect(cache.upsertCachedStream).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      expect.objectContaining({ uuid: STREAM_B }),
+    );
+    expect(cache.upsertCachedTopic).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes authoritative folder snapshots behind unread projections", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseStreamWrite: (() => void) | undefined;
+    const streamWrite = new Promise<void>((resolve) => {
+      releaseStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi.fn(() => streamWrite),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+      upsertCachedFolder: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    const unreadApplication = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 26,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto({
+            author_uuid: USER_B,
+            is_own: false,
+            read: false,
+          }),
+        },
+        context,
+      ),
+    );
+    const folderApplication = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 27,
+          type: "folder",
+          kind: "folder.updated",
+          folder: createFolderDto({ title: "Backend inbox", updated_at: DATE_LATER }),
+        },
+        context,
+      ),
+    );
+
+    expect(cache.upsertCachedFolder).not.toHaveBeenCalled();
+
+    releaseStreamWrite?.();
+    await Promise.all([unreadApplication, folderApplication]);
+
+    expect(cache.upsertCachedFolder).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: FOLDER_A, title: "Backend inbox" }),
+    );
+  });
+
+  it("serializes authoritative catalog events behind unread projections", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseFirstStreamWrite: (() => void) | undefined;
+    const firstStreamWrite = new Promise<void>((resolve) => {
+      releaseFirstStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi
+        .fn()
+        .mockImplementationOnce(() => firstStreamWrite)
+        .mockResolvedValue(undefined),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 24,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          user_uuid: USER_A,
+          is_own: false,
+          read: false,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 25,
+        type: "stream",
+        kind: "stream.updated",
+        stream: createStreamDto({
+          unread_count: 9,
+          active_unread_count: 7,
+          passive_unread_count: 2,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 26,
+        type: "topic",
+        kind: "topic.updated",
+        topic: createTopicDto({
+          unread_count: 8,
+          active_unread_count: 6,
+          passive_unread_count: 2,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(1);
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+
+    releaseFirstStreamWrite?.();
+    await vi.waitFor(() => {
+      expect(cache.upsertCachedStream).toHaveBeenCalledTimes(2);
+      expect(cache.upsertCachedTopic).toHaveBeenCalledTimes(2);
+    });
+    expect(cache.upsertCachedStream).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ unreadCount: 9, activeUnreadCount: 7 }),
+    );
+    expect(cache.upsertCachedTopic).toHaveBeenLastCalledWith(
+      ownerKey,
+      expect.objectContaining({ unreadCount: 8, activeUnreadCount: 6 }),
+    );
+  });
+
+  it("drops queued cache projections after the runtime generation becomes stale", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let isCurrent = true;
+    let releaseFirstStreamWrite: (() => void) | undefined;
+    const firstStreamWrite = new Promise<void>((resolve) => {
+      releaseFirstStreamWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi
+        .fn()
+        .mockImplementationOnce(() => firstStreamWrite)
+        .mockResolvedValue(undefined),
+      upsertCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      isOwnerCurrent: () => isCurrent,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+
+    applier.applyEvent(
+      { epoch_version: 27, type: "message", kind: "message.created", message },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 28,
+        type: "message",
+        kind: "message.updated",
+        message: { ...message, read: true },
+      },
+      context,
+    );
+    isCurrent = false;
+    releaseFirstStreamWrite?.();
+    await firstStreamWrite;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cache.upsertCachedStream).toHaveBeenCalledTimes(1);
+    expect(cache.upsertCachedTopic).not.toHaveBeenCalled();
+  });
+
+  it("serializes topic deletion behind an older queued projection", async () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    let releaseTopicWrite: (() => void) | undefined;
+    const topicWrite = new Promise<void>((resolve) => {
+      releaseTopicWrite = resolve;
+    });
+    const cache = {
+      upsertCachedStream: vi.fn(() => Promise.resolve()),
+      upsertCachedTopic: vi.fn(() => topicWrite),
+      deleteCachedTopic: vi.fn(() => Promise.resolve()),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 29,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          user_uuid: USER_A,
+          is_own: false,
+          read: false,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 30,
+        type: "topic",
+        kind: "topic.deleted",
+        topic: { uuid: TOPIC_A, stream_uuid: STREAM_A },
+      },
+      context,
+    );
+
+    expect(cache.deleteCachedTopic).not.toHaveBeenCalled();
+    releaseTopicWrite?.();
+    await vi.waitFor(() => {
+      expect(cache.deleteCachedTopic).toHaveBeenCalledWith(ownerKey, TOPIC_A, STREAM_A);
+    });
+  });
+
+  it("projects exact messages.read batches without double-decrementing duplicate UUIDs", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(createStreamDto())],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(createTopicDto())],
+      conversations: [],
+      folders: [],
+    });
+    const message = createMessageDto({
+      author_uuid: USER_B,
+      user_uuid: USER_A,
+      is_own: false,
+      read: false,
+    });
+    applier.applyEvent(
+      {
+        epoch_version: 18,
+        type: "message",
+        kind: "message.created",
+        message,
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 19,
+        type: "messages",
+        kind: "messages.read",
+        messageUuids: [message.uuid, message.uuid],
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(3);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(2);
   });
 
   it("repairs last-message pointers when the deleted tail arrives through realtime", async () => {
@@ -1993,24 +4214,38 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Recreated");
   });
 
-  it("projects active owner realtime messages into the shared notification projection store", () => {
+  it("projects active owner realtime messages into the shared notification projection store", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    applyStreamAndTopicSnapshot(applier, context, {
-      stream: {
-        private: true,
-        notification_mode: "mentions_only",
+    await applier.applyEvent(
+      {
+        epoch_version: 1,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({
+          private: true,
+          notification_mode: "mentions_only",
+        }),
       },
-      topic: {
-        name: "Releases",
-        notification_mode: "follow",
+      context,
+    );
+    await applier.applyEvent(
+      {
+        epoch_version: 2,
+        type: "topic",
+        kind: "topic.created",
+        topic: createTopicDto({
+          name: "Releases",
+          notification_mode: "follow",
+        }),
       },
-    });
+      context,
+    );
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 3,
         type: "message",
@@ -2075,13 +4310,13 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
-  it("applies stream, binding, topic, folder, and delete skeleton mappings", () => {
+  it("applies stream, binding, topic, folder, and delete skeleton mappings", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 51,
         type: "stream",
@@ -2090,7 +4325,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 52,
         type: "stream_binding",
@@ -2100,7 +4335,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 53,
         type: "topic",
@@ -2109,7 +4344,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 54,
         type: "folder",
@@ -2119,7 +4354,7 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 55,
         type: "stream",
@@ -2134,7 +4369,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 56,
         type: "topic",
@@ -2151,7 +4386,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 57,
         type: "folder",
@@ -2189,7 +4424,7 @@ describe("messenger realtime active applier", () => {
       }),
     ]);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 58,
         type: "folder_item",
@@ -2198,7 +4433,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 59,
         type: "topic",
@@ -2207,7 +4442,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 60,
         type: "stream",
@@ -2216,7 +4451,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 61,
         type: "folder",

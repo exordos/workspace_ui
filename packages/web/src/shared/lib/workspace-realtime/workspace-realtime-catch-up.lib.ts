@@ -14,6 +14,7 @@ import {
   getEpoch as defaultGetEpoch,
   getEventsPage as defaultGetEventsPage,
 } from "~/shared/api/workspace-client";
+import { isWorkspaceRealtimeEventApplicationStale } from "./workspace-realtime-application.lib";
 import type {
   WorkspaceRealtimeCursorOwner,
   WorkspaceRealtimeCursor,
@@ -208,7 +209,19 @@ export async function catchUpWorkspaceRealtime(
         continue;
       }
 
-      await options.applier.applyEvent(event, context);
+      const applicationResult = await options.applier.applyEvent(event, context);
+      if (
+        isWorkspaceRealtimeEventApplicationStale(applicationResult) ||
+        !isCatchUpOwnerCurrent(options)
+      ) {
+        return {
+          startedFrom: startCursor,
+          lastCursor,
+          appliedCount,
+          skippedCount,
+          isStale: true,
+        };
+      }
       appliedCount += 1;
       lastCursor = advanceCursor(options, {
         epochGeneration: startCursor.epochGeneration,

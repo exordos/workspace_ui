@@ -2,6 +2,8 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   advanceMessengerReadBoundaryCache,
+  advanceMessengerReadBoundaryCacheWithUnreadProjection,
+  cancelMessengerUnreadIncrementProjectionCache,
   clearMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
   deleteCachedStreamMessageBuckets,
@@ -14,13 +16,17 @@ import {
   deleteWorkspaceMessengerCacheDatabase,
   deleteWorkspaceMessengerOwnerCache,
   markCachedMessagesRead,
+  markCachedMessagesReadWithUnreadProjection,
   openWorkspaceMessengerCacheDb,
   patchCachedMessage,
+  persistMessengerUnreadProjectionCatalogCache,
+  queueMessengerUnreadProjectionCache,
   readCachedMessagesByUuids,
   readWorkspaceComposerDraft,
   readConversationMessageWindow,
   readMessengerCatalogCache,
   readMessengerReadBoundaries,
+  readMessengerUnreadProjectionCache,
   readOwnMessageReaction,
   readOwnMessageReactions,
   readMessengerSearchResults,
@@ -37,6 +43,7 @@ import {
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
   writeRealtimeCursor,
+  completeMessengerUnreadProjectionCache,
 } from "./workspace-messenger-cache-db";
 import type { WorkspaceMessengerComposerDraftCacheRow } from "./workspace-messenger-cache-db";
 
@@ -131,6 +138,7 @@ describe("workspace-messenger-cache-db", () => {
       "streamBindings",
       "streams",
       "topics",
+      "unreadProjections",
       "users",
     ]);
 
@@ -556,6 +564,117 @@ describe("workspace-messenger-cache-db", () => {
     ).toEqual([STREAM, "stream-realtime"]);
   });
 
+  it("merges newer metadata without rolling back post-fence unread projections", async () => {
+    const reconcileFence = createMessengerCatalogCacheReconcileFence();
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          color: 0x111111,
+          unreadCount: 4,
+          activeUnreadCount: 3,
+          passiveUnreadCount: 1,
+          lastMessageUuid: "msg-realtime",
+          updatedAt: "2026-07-01T08:00:00.000Z",
+        },
+      ],
+      topics: [
+        {
+          uuid: TOPIC,
+          streamUuid: STREAM,
+          summary: "Old summary",
+          unreadCount: 3,
+          activeUnreadCount: 2,
+          passiveUnreadCount: 1,
+          lastMessageUuid: "msg-realtime",
+          updatedAt: "2026-07-01T08:00:00.000Z",
+        },
+      ],
+      conversations: [
+        {
+          id: TOPIC_CONVERSATION,
+          streamUuid: STREAM,
+          topicUuid: TOPIC,
+          title: "Old title",
+          unreadCount: 3,
+          activeUnreadCount: 2,
+          passiveUnreadCount: 1,
+          lastMessageUuid: "msg-realtime",
+          updatedAt: "2026-07-01T08:00:00.000Z",
+        },
+      ],
+    });
+
+    await writeMessengerCatalogCache(
+      OWNER,
+      {
+        streams: [
+          {
+            uuid: STREAM,
+            color: 0x222222,
+            unreadCount: 1,
+            activeUnreadCount: 1,
+            passiveUnreadCount: 0,
+            lastMessageUuid: "msg-before-request",
+            updatedAt: "2026-07-01T08:05:00.000Z",
+          },
+        ],
+        topics: [
+          {
+            uuid: TOPIC,
+            streamUuid: STREAM,
+            summary: "New summary",
+            unreadCount: 1,
+            activeUnreadCount: 1,
+            passiveUnreadCount: 0,
+            lastMessageUuid: "msg-before-request",
+            updatedAt: "2026-07-01T08:05:00.000Z",
+          },
+        ],
+        conversations: [
+          {
+            id: TOPIC_CONVERSATION,
+            streamUuid: STREAM,
+            topicUuid: TOPIC,
+            title: "New title",
+            unreadCount: 1,
+            activeUnreadCount: 1,
+            passiveUnreadCount: 0,
+            lastMessageUuid: "msg-before-request",
+            updatedAt: "2026-07-01T08:05:00.000Z",
+          },
+        ],
+      },
+      { mode: "reconcile", reconcileFence },
+    );
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+    expect(snapshot.streams[0]).toMatchObject({
+      color: 0x222222,
+      unreadCount: 4,
+      activeUnreadCount: 3,
+      passiveUnreadCount: 1,
+      lastMessageUuid: "msg-realtime",
+      updatedAt: "2026-07-01T08:05:00.000Z",
+    });
+    expect(snapshot.topics[0]).toMatchObject({
+      summary: "New summary",
+      unreadCount: 3,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 1,
+      lastMessageUuid: "msg-realtime",
+      updatedAt: "2026-07-01T08:05:00.000Z",
+    });
+    expect(snapshot.conversations[0]).toMatchObject({
+      title: "New title",
+      unreadCount: 3,
+      activeUnreadCount: 2,
+      passiveUnreadCount: 1,
+      lastMessageUuid: "msg-realtime",
+      updatedAt: "2026-07-01T08:05:00.000Z",
+    });
+  });
+
   it("keeps newer realtime catalog rows when an older snapshot arrives later", async () => {
     await writeMessengerCatalogCache(OWNER, {
       streams: [
@@ -726,6 +845,188 @@ describe("workspace-messenger-cache-db", () => {
     expect(otherOwnerWindow.messages).toEqual([
       expect.objectContaining({ uuid: "msg-a", read: false }),
     ]);
+  });
+
+  it("stages exact cached read batches in the same transaction as their read flags", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        { ...message("msg-a", "2026-07-01T08:01:00.000Z"), read: false, isOwn: false },
+        { ...message("msg-b", "2026-07-01T08:02:00.000Z"), read: false, isOwn: true },
+        { ...message("msg-c", "2026-07-01T08:03:00.000Z"), read: false, isOwn: false },
+      ],
+    });
+    await queueMessengerUnreadProjectionCache(
+      OWNER,
+      { ...message("msg-c", "2026-07-01T08:03:00.000Z"), read: false, isOwn: false },
+      "increment",
+      22,
+    );
+
+    const stagedProjectionMessageUuids = await markCachedMessagesReadWithUnreadProjection(
+      OWNER,
+      ["msg-a", "msg-b", "msg-c", "msg-d"],
+      23,
+      [],
+      [{ ...message("msg-d", "2026-07-01T08:04:00.000Z"), read: false, isOwn: false }],
+    );
+
+    expect(stagedProjectionMessageUuids).toEqual(["msg-a", "msg-d"]);
+
+    expect(
+      (await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION)).messages.map(
+        (cached) => cached.read,
+      ),
+    ).toEqual([true, true, true]);
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          messageUuid: "msg-a",
+          operation: "decrement",
+          applied: false,
+          mutationRevision: 23,
+        }),
+        expect.objectContaining({
+          messageUuid: "msg-d",
+          operation: "decrement",
+          applied: false,
+          mutationRevision: 23,
+        }),
+      ]),
+    );
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toHaveLength(2);
+  });
+
+  it("propagates an atomic read-batch staging failure", async () => {
+    const uncloneableMessage = {
+      ...message("msg-abort", "2026-07-01T08:04:00.000Z"),
+      read: false,
+      isOwn: false,
+      uncloneable: () => undefined,
+    };
+
+    await expect(
+      markCachedMessagesReadWithUnreadProjection(
+        OWNER,
+        [uncloneableMessage.uuid],
+        24,
+        [],
+        [uncloneableMessage],
+      ),
+    ).rejects.toBeDefined();
+  });
+
+  it("stores a realtime message body and its unread recovery row atomically", async () => {
+    const unreadMessage = {
+      ...message("msg-atomic", "2026-07-01T08:05:00.000Z"),
+      read: false,
+      isOwn: false,
+    };
+
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [unreadMessage],
+      unreadProjection: { operation: "increment", mutationRevision: 31 },
+    });
+
+    await expect(readCachedMessagesByUuids(OWNER, [unreadMessage.uuid])).resolves.toEqual([
+      unreadMessage,
+    ]);
+    await expect(readMessengerUnreadProjectionCache(OWNER)).resolves.toEqual([
+      expect.objectContaining({
+        messageUuid: unreadMessage.uuid,
+        operation: "increment",
+        applied: false,
+        mutationRevision: 31,
+      }),
+    ]);
+  });
+
+  it("retains the inverse recovery delta after an applied increment", async () => {
+    const unreadMessage = {
+      ...message("msg-recovery", "2026-07-01T08:06:00.000Z"),
+      read: false,
+      isOwn: false,
+    };
+    await queueMessengerUnreadProjectionCache(OWNER, unreadMessage, "increment", 41);
+    await persistMessengerUnreadProjectionCatalogCache(OWNER, {
+      messageUuid: unreadMessage.uuid,
+      operation: "increment",
+      mutationRevision: 41,
+      stream: {
+        uuid: STREAM,
+        unreadCount: 3,
+        activeUnreadCount: 3,
+        passiveUnreadCount: 0,
+        updatedAt: "2026-07-01T08:00:00.000Z",
+      },
+      topic: {
+        uuid: TOPIC,
+        streamUuid: STREAM,
+        unreadCount: 2,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 0,
+        updatedAt: "2026-07-01T08:00:00.000Z",
+      },
+      conversations: [],
+      folders: [],
+      folderItems: [],
+    });
+
+    await queueMessengerUnreadProjectionCache(OWNER, unreadMessage, "decrement", 42);
+    await completeMessengerUnreadProjectionCache(OWNER, [
+      { messageUuid: unreadMessage.uuid, mutationRevision: 41 },
+    ]);
+
+    await expect(readMessengerUnreadProjectionCache(OWNER)).resolves.toEqual([
+      expect.objectContaining({
+        messageUuid: unreadMessage.uuid,
+        operation: "decrement",
+        applied: false,
+        mutationRevision: 42,
+      }),
+    ]);
+
+    await persistMessengerUnreadProjectionCatalogCache(OWNER, {
+      messageUuid: unreadMessage.uuid,
+      operation: "decrement",
+      mutationRevision: 42,
+      stream: {
+        uuid: STREAM,
+        unreadCount: 2,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 0,
+        updatedAt: "2026-07-01T08:00:00.000Z",
+      },
+      topic: {
+        uuid: TOPIC,
+        streamUuid: STREAM,
+        unreadCount: 1,
+        activeUnreadCount: 1,
+        passiveUnreadCount: 0,
+        updatedAt: "2026-07-01T08:00:00.000Z",
+      },
+      conversations: [],
+      folders: [],
+      folderItems: [],
+    });
+    await completeMessengerUnreadProjectionCache(OWNER, [
+      { messageUuid: unreadMessage.uuid, mutationRevision: 42 },
+    ]);
+    await expect(readMessengerUnreadProjectionCache(OWNER)).resolves.toEqual([]);
+    await expect(readMessengerCatalogCache(OWNER)).resolves.toMatchObject({
+      streams: [expect.objectContaining({ uuid: STREAM, unreadCount: 2 })],
+      topics: [expect.objectContaining({ uuid: TOPIC, unreadCount: 1 })],
+    });
+  });
+
+  it("cancels opposite recovery deltas while the first delta is still unapplied", async () => {
+    const unreadMessage = {
+      ...message("msg-cancel", "2026-07-01T08:07:00.000Z"),
+      read: false,
+      isOwn: false,
+    };
+    await queueMessengerUnreadProjectionCache(OWNER, unreadMessage, "increment", 51);
+    await queueMessengerUnreadProjectionCache(OWNER, unreadMessage, "decrement", 52);
+    await expect(readMessengerUnreadProjectionCache(OWNER)).resolves.toEqual([]);
   });
 
   it("deletes message bodies only after every bucket reference is removed", async () => {
@@ -1034,7 +1335,7 @@ describe("workspace-messenger-cache-db", () => {
       ],
     });
 
-    await advanceMessengerReadBoundaryCache({
+    const transitionedMessages = await advanceMessengerReadBoundaryCache({
       ownerKey: OWNER,
       streamUuid: STREAM,
       topicUuid: TOPIC,
@@ -1042,7 +1343,7 @@ describe("workspace-messenger-cache-db", () => {
       messageUuid: "msg-b",
       epochVersion: 3,
     });
-    await advanceMessengerReadBoundaryCache({
+    const repeatedTransition = await advanceMessengerReadBoundaryCache({
       ownerKey: OWNER,
       streamUuid: STREAM,
       topicUuid: TOPIC,
@@ -1058,6 +1359,8 @@ describe("workspace-messenger-cache-db", () => {
       messageUuid: "msg-a",
     });
 
+    expect(transitionedMessages.map((cached) => cached.uuid)).toEqual(["msg-a", "msg-b"]);
+    expect(repeatedTransition).toEqual([]);
     expect(await readMessengerReadBoundaries(OWNER)).toMatchObject([
       { topicUuid: TOPIC, messageUuid: "msg-b", epochVersion: 8 },
     ]);
@@ -1069,5 +1372,70 @@ describe("workspace-messenger-cache-db", () => {
     expect(
       (await readConversationMessageWindow(OWNER, `topic:${STREAM}:topic-b`)).messages[0]?.read,
     ).toBeUndefined();
+  });
+
+  it("stages cached-only read transitions atomically until their unread projection completes", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        message("msg-a", "2026-07-01T08:01:00.000Z"),
+        message("msg-b", "2026-07-01T08:02:00.000Z"),
+      ],
+    });
+
+    await advanceMessengerReadBoundaryCacheWithUnreadProjection(
+      {
+        ownerKey: OWNER,
+        streamUuid: STREAM,
+        topicUuid: TOPIC,
+        createdAt: "2026-07-01T08:02:00.000Z",
+        messageUuid: "msg-b",
+        epochVersion: 9,
+      },
+      17,
+    );
+
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toMatchObject([
+      { messageUuid: "msg-a", operation: "decrement", applied: false },
+      { messageUuid: "msg-b", operation: "decrement", applied: false },
+    ]);
+
+    await queueMessengerUnreadProjectionCache(
+      OWNER,
+      message("msg-b", "2026-07-01T08:02:00.000Z"),
+      "decrement",
+      17,
+    );
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toHaveLength(2);
+
+    await queueMessengerUnreadProjectionCache(
+      OWNER,
+      message("msg-c", "2026-07-01T08:03:00.000Z"),
+      "increment",
+      18,
+    );
+    await cancelMessengerUnreadIncrementProjectionCache(OWNER, "msg-c");
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toHaveLength(2);
+
+    await completeMessengerUnreadProjectionCache(OWNER, [
+      { messageUuid: "msg-a", mutationRevision: 17 },
+      { messageUuid: "msg-b", mutationRevision: 17 },
+    ]);
+    expect(await readMessengerUnreadProjectionCache(OWNER)).toHaveLength(2);
+  });
+
+  it("propagates an atomic read-boundary staging failure", async () => {
+    const uncloneableBoundary = {
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:02:00.000Z",
+      messageUuid: "msg-b",
+      epochVersion: 9,
+      uncloneable: () => undefined,
+    };
+
+    await expect(
+      advanceMessengerReadBoundaryCacheWithUnreadProjection(uncloneableBoundary, 17),
+    ).rejects.toBeDefined();
   });
 });
