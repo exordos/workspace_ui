@@ -739,6 +739,106 @@ describe("messenger message actions", () => {
     );
   });
 
+  function bootstrapCountersForReadUpTo(ownerKey: string, topicLastMessageUuid: string): void {
+    const streamDto = createStreamDto({
+      unread_count: 5,
+      active_unread_count: 5,
+      passive_unread_count: 0,
+      last_message_uuid: topicLastMessageUuid,
+    });
+    const topicDto = createTopicDto({
+      unread_count: 3,
+      active_unread_count: 3,
+      passive_unread_count: 0,
+      last_message_uuid: topicLastMessageUuid,
+    });
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [adaptMessengerStream(streamDto)],
+      streamBindings: [],
+      topics: [adaptMessengerTopic(topicDto)],
+      conversations: [
+        adaptStreamToMessengerConversation(streamDto),
+        adaptTopicToMessengerConversation(topicDto, streamDto),
+      ],
+      folders: [],
+    });
+  }
+
+  async function readUpToAnchorB(runtimeContext: WorkspaceRuntimeContext): Promise<void> {
+    const earlier = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_A,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:00:00Z",
+      }),
+    );
+    const anchor = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_B,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:10:00Z",
+      }),
+    );
+    replaceTailWindow(earlier.conversationId, [earlier, anchor]);
+    await markMessengerMessagesReadUpTo({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      conversationIds: [earlier.conversationId],
+      client: {
+        markMessagesReadUpTo: vi.fn(() =>
+          Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+        ),
+      },
+      cache: {},
+    });
+  }
+
+  it("settles topic and stream counters when read_up_to reaches the topic's last message", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+
+    await readUpToAnchorB(runtimeContext);
+
+    const state = useMessengerStore.getState();
+    expect(state.topicsById[TOPIC_A]).toMatchObject({
+      unreadCount: 0,
+      activeUnreadCount: 0,
+      passiveUnreadCount: 0,
+    });
+    expect(state.streamsById[STREAM_A]).toMatchObject({
+      unreadCount: 2,
+      activeUnreadCount: 2,
+    });
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]?.unreadCount).toBe(0);
+  });
+
+  it("settles counters when the read_up_to boundary is later than the topic's loaded last message", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_A);
+
+    await readUpToAnchorB(runtimeContext);
+
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
+  });
+
+  it("leaves counters to the server when the read_up_to boundary is not the topic's last message", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_C);
+
+    await readUpToAnchorB(runtimeContext);
+
+    const state = useMessengerStore.getState();
+    expect(state.topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(state.streamsById[STREAM_A]?.unreadCount).toBe(5);
+  });
+
   it("includes the read_up_to anchor in a bulk-only cache update", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);

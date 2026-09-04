@@ -1,4 +1,5 @@
 import { useActivityStore } from "~/entities/activity/activity.model";
+import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -32,6 +33,7 @@ import {
   repairDeletedMessagePointers,
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { settleWorkspaceTopicReadCounters } from "./messenger-read-actions.lib";
 import {
   advanceMessengerReadBoundary,
   type MessengerReadBoundary,
@@ -41,7 +43,12 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerTopic,
+  MessengerUuid,
+} from "./messenger.types";
 
 export interface MessengerMessageActionClientDeps {
   createMessage?: (
@@ -420,6 +427,17 @@ export async function markMessengerMessageRead({
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
 
+function reachesTopicEnd(
+  topic: MessengerTopic | null,
+  boundary: MessengerMessage,
+  messagesById: Readonly<Record<MessengerUuid, MessengerMessage>>,
+): boolean {
+  if (topic?.lastMessageUuid == null) return false;
+  if (topic.lastMessageUuid === boundary.uuid) return true;
+  const lastMessage = messagesById[topic.lastMessageUuid];
+  return lastMessage != null && compareWorkspaceMessages(boundary, lastMessage) >= 0;
+}
+
 export async function markMessengerMessagesReadUpTo({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -454,10 +472,21 @@ export async function markMessengerMessagesReadUpTo({
     createdAt: message.createdAt,
     messageUuid: message.uuid,
   });
+  const topicBeforeRead = useMessengerStore.getState().topicsById[message.topicUuid] ?? null;
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
     useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+  }
+  // A boundary at (or past) the topic's newest known message means the whole topic
+  // is read on the server: settle the badge now instead of waiting for the counter
+  // projection. Compared against the pointer as it was before this response, so the
+  // pointer heuristic above cannot vouch for the boundary itself.
+  if (reachesTopicEnd(topicBeforeRead, message, store.getState().messagesById)) {
+    settleWorkspaceTopicReadCounters(action.ownerKey, {
+      streamUuid: message.streamUuid,
+      topicUuid: message.topicUuid,
+    });
   }
 
   const scope = conversationIds ?? [

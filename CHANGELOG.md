@@ -6,6 +6,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A thread's unread badge now drops as soon as scrolling reads its last message.
+  The read-boundary path used to leave topic and stream counters untouched until
+  the backend counter projection arrived, so the badge could outlive the read.
+
 ## [0.6.3] — 2026-09-03
 
 ### Changed

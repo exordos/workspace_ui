@@ -217,6 +217,18 @@ function beginOptimisticCatalogRead(
   };
 }
 
+/**
+ * Settle catalog counters for a topic the server has just confirmed as fully read
+ * (a `read_up_to` boundary at the topic's last message). The authoritative
+ * `topic.updated` / `stream.updated` snapshots still arrive later and overwrite this.
+ */
+export function settleWorkspaceTopicReadCounters(
+  ownerKey: string,
+  scope: RunWorkspaceTopicReadOptions,
+): boolean {
+  return beginOptimisticCatalogRead(ownerKey, scope) != null;
+}
+
 function restoreFoldersAfterStreamUpsert(
   ownerKey: string,
   folderChanges: readonly OptimisticFolderReadChange[],
