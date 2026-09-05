@@ -1,4 +1,5 @@
 import { useActivityStore } from "~/entities/activity/activity.model";
+import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -33,6 +34,10 @@ import {
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
+  beginWorkspaceTopicReadCounters,
+  rollbackWorkspaceTopicReadCounters,
+} from "./messenger-read-actions.lib";
+import {
   advanceMessengerReadBoundary,
   type MessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
@@ -41,7 +46,12 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerTopic,
+  MessengerUuid,
+} from "./messenger.types";
 
 export interface MessengerMessageActionClientDeps {
   createMessage?: (
@@ -108,6 +118,8 @@ export interface MessengerMessageActionStoreApi {
     | "removeMessage"
     | "messageMutationRevision"
     | "messagesById"
+    | "beginOptimisticMessagesReadUpTo"
+    | "rollbackOptimisticMessagesRead"
   >;
 }
 
@@ -420,6 +432,97 @@ export async function markMessengerMessageRead({
   return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
 }
 
+function reachesTopicEnd(
+  topic: MessengerTopic | null,
+  boundary: MessengerMessage,
+  messagesById: Readonly<Record<MessengerUuid, MessengerMessage>>,
+): boolean {
+  if (topic?.lastMessageUuid == null) return false;
+  if (topic.lastMessageUuid === boundary.uuid) return true;
+  const lastMessage = messagesById[topic.lastMessageUuid];
+  return lastMessage != null && compareWorkspaceMessages(boundary, lastMessage) >= 0;
+}
+
+interface ReadUpToProjection {
+  projectedMessages: readonly MessengerMessage[];
+  rollback: () => void;
+}
+
+const EMPTY_READ_UP_TO_PROJECTION: ReadUpToProjection = {
+  projectedMessages: [],
+  rollback: () => undefined,
+};
+
+/** Flip loaded messages and shrink the badges before the server confirms the boundary. */
+function projectReadUpTo(
+  store: MessengerMessageActionStoreApi,
+  ownerKey: string,
+  anchor: MessengerMessage | null,
+  conversationIds: readonly MessengerConversationId[] | undefined,
+): ReadUpToProjection {
+  if (anchor == null) return EMPTY_READ_UP_TO_PROJECTION;
+  const topicBeforeRead = useMessengerStore.getState().topicsById[anchor.topicUuid] ?? null;
+  const messageChange = store.getState().beginOptimisticMessagesReadUpTo(anchor.uuid, {
+    conversationIds: conversationIds ?? [
+      anchor.conversationId,
+      conversationIdForStream(anchor.streamUuid),
+    ],
+  });
+  const readCount = reachesTopicEnd(topicBeforeRead, anchor, store.getState().messagesById)
+    ? undefined
+    : messageChange.projectedMessages.length;
+  const catalogChange =
+    readCount === 0
+      ? null
+      : beginWorkspaceTopicReadCounters(
+          ownerKey,
+          { streamUuid: anchor.streamUuid, topicUuid: anchor.topicUuid },
+          readCount,
+        );
+  return {
+    projectedMessages: messageChange.projectedMessages,
+    rollback: () => {
+      if (catalogChange != null) rollbackWorkspaceTopicReadCounters(catalogChange);
+      store.getState().rollbackOptimisticMessagesRead(messageChange);
+    },
+  };
+}
+
+async function writeReadUpToCache(
+  cache: MessengerMessageActionCacheWriter | undefined,
+  ownerKey: string,
+  boundary: MessengerReadBoundary,
+  anchorUuid: MessengerUuid,
+  effectiveMessage: MessengerMessage | null,
+  messagesToCache: readonly MessengerMessage[],
+): Promise<void> {
+  if (cache?.advanceReadBoundary != null) {
+    await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
+  }
+
+  if (cache?.markCachedMessagesRead != null) {
+    if (cache.patchCachedMessage != null && effectiveMessage != null) {
+      await writeActionCacheBestEffort(() =>
+        cache.patchCachedMessage?.(ownerKey, { ...effectiveMessage, read: true }),
+      );
+    }
+    const messageUuids = messagesToCache
+      .map((message) => message.uuid)
+      .filter((messageUuid) => cache.patchCachedMessage == null || messageUuid !== anchorUuid);
+    if (messageUuids.length > 0) {
+      await writeActionCacheBestEffort(() =>
+        cache.markCachedMessagesRead?.(ownerKey, messageUuids),
+      );
+    }
+  } else if (cache?.patchCachedMessage != null) {
+    for (const changedMessage of messagesToCache) {
+      await writeActionCacheBestEffort(() =>
+        cache.patchCachedMessage?.(ownerKey, { ...changedMessage, read: true }),
+      );
+    }
+  }
+}
+
 export async function markMessengerMessagesReadUpTo({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -437,14 +540,29 @@ export async function markMessengerMessagesReadUpTo({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  // Read state is applied locally first so the reader sees it at once; the server
+  // confirms in the background and the projection rolls back if it fails.
+  const anchor = store.getState().messagesById[messageUuid] ?? null;
+  const projection = projectReadUpTo(store, action.ownerKey, anchor, conversationIds);
+
   const capturedMutationRevision = store.getState().messageMutationRevision;
 
-  const dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    messageUuid,
-  );
-  if (action.isStale())
+  let dto: WorkspaceMessengerMessageDto;
+  try {
+    dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
+      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+      messageUuid,
+    );
+  } catch (error) {
+    // An abort (conversation switch, unmount) says nothing about whether the server
+    // took the request; keep the projection and let its snapshots settle the badge.
+    if (!(signal?.aborted ?? false)) projection.rollback();
+    throw error;
+  }
+  if (action.isStale()) {
+    projection.rollback();
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  }
 
   const message = adaptMessengerMessage(dto);
   const boundary = advanceMessengerReadBoundary({
@@ -459,7 +577,6 @@ export async function markMessengerMessagesReadUpTo({
   if (effectiveMessage != null) {
     useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
   }
-
   const scope = conversationIds ?? [
     message.conversationId,
     conversationIdForStream(message.streamUuid),
@@ -470,35 +587,15 @@ export async function markMessengerMessagesReadUpTo({
       : store.getState().markMessagesReadUpTo(message.uuid, { conversationIds: scope });
   const messagesToCache = new Map<string, MessengerMessage>();
   if (effectiveMessage != null) messagesToCache.set(message.uuid, effectiveMessage);
-  for (const changedMessage of changedMessages) {
-    messagesToCache.set(changedMessage.uuid, changedMessage);
+  for (const changedMessage of [...changedMessages, ...projection.projectedMessages]) {
+    if (!messagesToCache.has(changedMessage.uuid)) {
+      messagesToCache.set(changedMessage.uuid, changedMessage);
+    }
   }
 
-  if (cache?.advanceReadBoundary != null) {
-    await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
-  }
-
-  if (cache?.markCachedMessagesRead != null) {
-    if (cache.patchCachedMessage != null && effectiveMessage != null) {
-      await writeActionCacheBestEffort(() =>
-        cache.patchCachedMessage?.(action.ownerKey, { ...effectiveMessage, read: true }),
-      );
-    }
-    const messageUuids = [...messagesToCache.keys()].filter(
-      (messageUuid) => cache.patchCachedMessage == null || messageUuid !== message.uuid,
-    );
-    if (messageUuids.length > 0) {
-      await writeActionCacheBestEffort(() =>
-        cache.markCachedMessagesRead?.(action.ownerKey, messageUuids),
-      );
-    }
-  } else if (cache?.patchCachedMessage != null) {
-    for (const changedMessage of messagesToCache.values()) {
-      await writeActionCacheBestEffort(() =>
-        cache.patchCachedMessage?.(action.ownerKey, { ...changedMessage, read: true }),
-      );
-    }
-  }
+  await writeReadUpToCache(cache, action.ownerKey, boundary, message.uuid, effectiveMessage, [
+    ...messagesToCache.values(),
+  ]);
 
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
