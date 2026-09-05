@@ -554,7 +554,9 @@ export async function markMessengerMessagesReadUpTo({
       messageUuid,
     );
   } catch (error) {
-    projection.rollback();
+    // An abort (conversation switch, unmount) says nothing about whether the server
+    // took the request; keep the projection and let its snapshots settle the badge.
+    if (!(signal?.aborted ?? false)) projection.rollback();
     throw error;
   }
   if (action.isStale()) {
@@ -570,24 +572,11 @@ export async function markMessengerMessagesReadUpTo({
     createdAt: message.createdAt,
     messageUuid: message.uuid,
   });
-  const topicBeforeResponse = useMessengerStore.getState().topicsById[message.topicUuid];
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
     useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
   }
-  // Without a loaded anchor nothing was projected up front: settle the badge now if
-  // the confirmed boundary is at (or past) the topic's last known message.
-  if (
-    anchor == null &&
-    reachesTopicEnd(topicBeforeResponse ?? null, message, store.getState().messagesById)
-  ) {
-    beginWorkspaceTopicReadCounters(action.ownerKey, {
-      streamUuid: message.streamUuid,
-      topicUuid: message.topicUuid,
-    });
-  }
-
   const scope = conversationIds ?? [
     message.conversationId,
     conversationIdForStream(message.streamUuid),

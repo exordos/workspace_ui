@@ -774,6 +774,7 @@ describe("messenger message actions", () => {
       ),
     },
     getRuntimeContext: () => WorkspaceRuntimeContext = () => runtimeContext,
+    signal?: AbortSignal,
   ): Promise<MessengerMessageActionResult> {
     const earlier = adaptMessengerMessage(
       createMessageDto({
@@ -799,6 +800,7 @@ describe("messenger message actions", () => {
       conversationIds: [earlier.conversationId],
       client,
       cache: {},
+      signal,
     });
   }
 
@@ -881,6 +883,32 @@ describe("messenger message actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(false);
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(5);
+  });
+
+  it("keeps the projected read when read_up_to is aborted", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+    const controller = new AbortController();
+
+    const result = readUpToAnchorB(
+      runtimeContext,
+      {
+        markMessagesReadUpTo: () =>
+          new Promise((_resolve, reject) => {
+            controller.signal.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+          }),
+      },
+      () => runtimeContext,
+      controller.signal,
+    );
+    controller.abort();
+
+    await expect(result).rejects.toThrow("aborted");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
   });
 
   it("rolls back the projected read after a stale read_up_to response", async () => {
