@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
+import { recordMentionPick } from "~/features/mention-suggest/mention-frecency.lib";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -468,6 +469,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   outgoingBodyOverride,
   allowEmptyActiveValueSend = false,
   focusKey,
+  mentionContext,
   initialValue,
   draftSessionKey,
   onValueChange,
@@ -603,7 +605,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     mentionStartPos,
     setMentionStartPos,
     mentionUsers,
-  } = useComposerMentions({ enabled: mentionsSupported });
+  } = useComposerMentions({
+    enabled: mentionsSupported,
+    ...(mentionContext != null ? { context: mentionContext } : {}),
+  });
   const workspaceComposerMentions = useMemo<WorkspaceComposerMention[]>(() => {
     const displayNameCounts = new Map<string, number>();
     for (const user of mentionUsers) {
@@ -954,6 +959,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     (user: MentionSuggestion) => {
       const mention = workspaceComposerMentionsByUserUuid.get(user.userUuid);
       if (mention == null) return;
+      // Picking someone here is the only signal that they matter to this author.
+      recordMentionPick(user.userUuid);
       const insertion = insertWorkspaceMention(
         value,
         mentionStartPos,

@@ -1380,7 +1380,8 @@
     "copy": "Copy",
     "paste": "Paste",
     "selectAll": "Select All",
-    "messageTooLong": "The message is too long (maximum 40,000 characters)."
+    "messageTooLong": "The message is too long (maximum 40,000 characters).",
+    "mentionOutsideChannel": "not in channel"
   },
   "attachmentCard": {
     "remove": "Remove {{fileName}}",

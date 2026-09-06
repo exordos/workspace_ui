@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerStream,
+  MessengerStreamBinding,
+  MessengerTopic,
+} from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
@@ -205,6 +209,26 @@ function seedComposerWorkspaceStore(): void {
   store.startBootstrap(COMPOSER_OWNER_KEY);
   store.upsertStream(COMPOSER_OWNER_KEY, createComposerStream());
   store.upsertTopic(COMPOSER_OWNER_KEY, createComposerTopic());
+}
+
+function createComposerStreamBinding(userUuid: string): MessengerStreamBinding {
+  return {
+    uuid: `binding-${userUuid}`,
+    projectId: COMPOSER_TOPIC_UUID,
+    streamUuid: COMPOSER_STREAM_UUID,
+    userUuid,
+    whoUuid: userUuid,
+    role: "member",
+    notificationMode: "all_messages",
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+function seedComposerStreamMembers(userUuids: readonly string[]): void {
+  const store = useMessengerStore.getState();
+  store.upsertStreamBindings(COMPOSER_OWNER_KEY, userUuids.map(createComposerStreamBinding));
+  store.markStreamBindingsLoaded(COMPOSER_OWNER_KEY, COMPOSER_STREAM_UUID);
 }
 
 describe("MessageComposer async send behavior", () => {
@@ -1437,7 +1461,40 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("@Alex Roe ");
+    // "Alex Roe" leads the list as the shorter answer to "@a", so the arrow moves past it.
+    expect(textbox).toHaveValue("@Alice Johnson ");
+  });
+
+  it("offers channel members first and marks the rest as outside the channel", async () => {
+    seedComposerWorkspaceStore();
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+      createWorkspaceUser({
+        uuid: "user-alexandra-roe",
+        displayName: "Alexandra Roe",
+        username: "alexandra",
+        email: "alexandra@example.com",
+      }),
+    ]);
+    seedComposerStreamMembers(["user-alexandra-roe"]);
+
+    renderWithProviders(
+      <MessageComposer onSend={vi.fn()} mentionContext={{ streamUuid: COMPOSER_STREAM_UUID }} />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "@al", selectionStart: 3 } });
+
+    const options = await screen.findAllByRole("option");
+    expect(options[0]).toHaveTextContent("Alexandra Roe");
+    expect(options[0]).not.toHaveTextContent("not in channel");
+    expect(options[1]).toHaveTextContent("Alice Johnson");
+    expect(options[1]).toHaveTextContent("not in channel");
   });
 
   it("shows no-results popup when mention query has no matches", async () => {
@@ -1658,7 +1715,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue("@Alex Roe ");
+    expect(textbox).toHaveValue("@Alice Johnson ");
   });
 });
 
