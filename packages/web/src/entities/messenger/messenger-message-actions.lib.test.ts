@@ -911,7 +911,7 @@ describe("messenger message actions", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
   });
 
-  it("rolls back the projected read after a stale read_up_to response", async () => {
+  it("does not mutate stores after a stale read_up_to response", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
     bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
@@ -924,11 +924,16 @@ describe("messenger message actions", () => {
       () => currentRuntime,
     );
     currentRuntime = createRuntimeContext({ organizationId: ORGANIZATION_B });
+    const rollback = vi.spyOn(
+      useWorkspaceMessageStore.getState(),
+      "rollbackOptimisticMessagesRead",
+    );
     response.resolve(createMessageDto({ uuid: MESSAGE_B, read: true }));
 
     await expect(result).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-owner" });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
-    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(3);
+    expect(rollback).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
   });
 
   it("includes the read_up_to anchor in a bulk-only cache update", async () => {
@@ -968,6 +973,59 @@ describe("messenger message actions", () => {
     });
 
     expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_B, MESSAGE_A]);
+  });
+
+  it("confirms an evicted anchor using the server response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const cache = { advanceReadBoundary: vi.fn() };
+    await expect(
+      markMessengerMessagesReadUpTo({
+        runtimeContext,
+        messageUuid: MESSAGE_B,
+        cache,
+        client: {
+          markMessagesReadUpTo: () =>
+            Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+        },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+    expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerKey, messageUuid: MESSAGE_B }),
+    );
+  });
+
+  it("stops cache writes when the runtime changes during boundary persistence", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
+    let currentRuntime = runtimeContext;
+    const cache = {
+      advanceReadBoundary: vi.fn(() => {
+        currentRuntime = {
+          ...runtimeContext,
+          runtimeGeneration: runtimeContext.runtimeGeneration + 2,
+        };
+      }),
+      patchCachedMessage: vi.fn(),
+      markCachedMessagesRead: vi.fn(),
+    };
+    await expect(
+      markMessengerMessagesReadUpTo({
+        runtimeContext,
+        getRuntimeContext: () => currentRuntime,
+        messageUuid: MESSAGE_B,
+        cache,
+        client: {
+          markMessagesReadUpTo: () =>
+            Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+        },
+      }),
+    ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+    expect(cache.advanceReadBoundary).toHaveBeenCalledOnce();
+    expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+    expect(cache.markCachedMessagesRead).not.toHaveBeenCalled();
   });
 
   it("does not advance a boundary after a stale read response", async () => {

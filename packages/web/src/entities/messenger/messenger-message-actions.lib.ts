@@ -495,17 +495,21 @@ async function writeReadUpToCache(
   anchorUuid: MessengerUuid,
   effectiveMessage: MessengerMessage | null,
   messagesToCache: readonly MessengerMessage[],
+  isStale: () => boolean,
 ): Promise<void> {
+  if (isStale()) return;
   if (cache?.advanceReadBoundary != null) {
     await writeActionCacheBestEffort(() => cache.advanceReadBoundary?.(boundary));
   }
 
+  if (isStale()) return;
   if (cache?.markCachedMessagesRead != null) {
     if (cache.patchCachedMessage != null && effectiveMessage != null) {
       await writeActionCacheBestEffort(() =>
         cache.patchCachedMessage?.(ownerKey, { ...effectiveMessage, read: true }),
       );
     }
+    if (isStale()) return;
     const messageUuids = messagesToCache
       .map((message) => message.uuid)
       .filter((messageUuid) => cache.patchCachedMessage == null || messageUuid !== anchorUuid);
@@ -516,6 +520,7 @@ async function writeReadUpToCache(
     }
   } else if (cache?.patchCachedMessage != null) {
     for (const changedMessage of messagesToCache) {
+      if (isStale()) return;
       await writeActionCacheBestEffort(() =>
         cache.patchCachedMessage?.(ownerKey, { ...changedMessage, read: true }),
       );
@@ -554,13 +559,11 @@ export async function markMessengerMessagesReadUpTo({
       messageUuid,
     );
   } catch (error) {
-    // An abort (conversation switch, unmount) says nothing about whether the server
-    // took the request; keep the projection and let its snapshots settle the badge.
-    if (!(signal?.aborted ?? false)) projection.rollback();
+    // Runtime invalidation must not roll back state owned by a newer session.
+    if (!action.isStale()) projection.rollback();
     throw error;
   }
   if (action.isStale()) {
-    projection.rollback();
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   }
 
@@ -593,9 +596,15 @@ export async function markMessengerMessagesReadUpTo({
     }
   }
 
-  await writeReadUpToCache(cache, action.ownerKey, boundary, message.uuid, effectiveMessage, [
-    ...messagesToCache.values(),
-  ]);
+  await writeReadUpToCache(
+    cache,
+    action.ownerKey,
+    boundary,
+    message.uuid,
+    effectiveMessage,
+    [...messagesToCache.values()],
+    action.isStale,
+  );
 
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };

@@ -1,10 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { resetMessengerReadQueue } from "~/entities/messenger/messenger-read-queue.lib";
 import type {
   MessengerConversationId,
   MessengerMessage,
 } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useWorkspaceVisibleMessageRead } from "./workspace-visible-message-read.hook";
 
@@ -83,7 +85,14 @@ function createDeferred<T>(): {
   return { promise, resolve, reject };
 }
 
+let activeRuntime: WorkspaceRuntimeContext | null = runtimeContext;
+
 beforeEach(() => {
+  activeRuntime = runtimeContext;
+  vi.spyOn(useWorkspaceAuthStore.getState(), "getCurrentRuntimeContext").mockImplementation(
+    () => activeRuntime,
+  );
+  resetMessengerReadQueue();
   vi.useFakeTimers();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
@@ -97,6 +106,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetMessengerReadQueue();
   vi.restoreAllMocks();
   vi.useRealTimers();
   useWorkspaceMessageStore.getState().clear();
@@ -262,6 +272,13 @@ describe("useWorkspaceVisibleMessageRead", () => {
     });
     await act(settlePromiseCallbacks);
     expect(captured.markReadUpTo).toHaveBeenCalledTimes(3);
+    seedWorkspaceMessageBody({ ...first, read: true });
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    await act(settlePromiseCallbacks);
+    expect(captured.markReadUpTo).toHaveBeenCalledTimes(4);
   });
 
   it("retries the later pending boundary when an earlier request fails", async () => {
@@ -317,11 +334,6 @@ describe("useWorkspaceVisibleMessageRead", () => {
       nextContext: { ...runtimeContext, runtimeGeneration: 2 },
       nextConversationId: conversationId,
     },
-    {
-      changedScopePart: "conversation",
-      nextContext: runtimeContext,
-      nextConversationId: otherConversationId,
-    },
   ])(
     "cancels in-flight work and scheduled retries when $changedScopePart changes",
     async ({ nextContext, nextConversationId }) => {
@@ -359,6 +371,7 @@ describe("useWorkspaceVisibleMessageRead", () => {
       expect(secondSignal?.aborted).toBe(false);
       expect(result.current.readRequestBoundaryMessageUuids.size).toBe(2);
 
+      activeRuntime = nextContext;
       rerender({ context: nextContext, activeConversationId: nextConversationId });
       expect(secondSignal?.aborted).toBe(true);
       expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
@@ -447,5 +460,138 @@ describe("useWorkspaceVisibleMessageRead", () => {
       await settlePromiseCallbacks();
     });
     expect(result.current.readRequestBoundaryMessageUuids.size).toBe(0);
+  });
+  it("delivers a queued read after leaving and evicting its message", async () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+    act(() => result.current.scheduleReadBatch([first.uuid]));
+    unmount();
+    useWorkspaceMessageStore.getState().clear();
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+      await settlePromiseCallbacks();
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+    expect(captured.markReadUpTo.mock.calls[0]?.[0].messageUuid).toBe(first.uuid);
+  });
+
+  it("keeps an in-flight read on chat switch and return without duplicate requests", async () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
+    seedWorkspaceMessageBody(first);
+    seedWorkspaceMessageBody(second);
+    const response = createDeferred<{ status: "applied"; ownerKey: string; message: null }>();
+    captured.markReadUpTo.mockReturnValueOnce(response.promise);
+    const { result, rerender } = renderHook(
+      ({ activeConversationId }) =>
+        useWorkspaceVisibleMessageRead({ runtimeContext, conversationId: activeConversationId }),
+      { initialProps: { activeConversationId: conversationId } },
+    );
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    const signal = captured.markReadUpTo.mock.calls[0]?.[0].signal as AbortSignal;
+    const oldSchedule = result.current.scheduleReadBatch;
+    rerender({ activeConversationId: `topic:${STREAM_UUID}:${TOPIC_B_UUID}` });
+    act(() => oldSchedule([second.uuid]));
+    expect(signal.aborted).toBe(false);
+    rerender({ activeConversationId: otherConversationId });
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid, second.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+    await act(async () => {
+      response.resolve({ status: "applied", ownerKey: "owner-1", message: null });
+      await settlePromiseCallbacks();
+    });
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
+    expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(second.uuid);
+  });
+
+  it("retries after unmount even when the optimistic message is already read", async () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    captured.markReadUpTo.mockRejectedValueOnce(new Error("offline"));
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    seedWorkspaceMessageBody({ ...first, read: true });
+    unmount();
+    await act(settlePromiseCallbacks);
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await settlePromiseCallbacks();
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps queued work when only the context object changes", () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    const { result, rerender } = renderHook(
+      ({ context }) => useWorkspaceVisibleMessageRead({ runtimeContext: context, conversationId }),
+      { initialProps: { context: runtimeContext } },
+    );
+    act(() => result.current.scheduleReadBatch([first.uuid]));
+    rerender({ context: { ...runtimeContext } });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates delivery on logout without a mounted chat", () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    captured.markReadUpTo.mockReturnValue(new Promise(() => {}));
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    const signal = captured.markReadUpTo.mock.calls[0]?.[0].signal as AbortSignal;
+    unmount();
+    activeRuntime = null;
+    useWorkspaceAuthStore.setState({ sessions: [...useWorkspaceAuthStore.getState().sessions] });
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("does not accept a callback from an earlier runtime after A-B-A", () => {
+    const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
+    seedWorkspaceMessageBody(first);
+    const { result, rerender } = renderHook(
+      ({ context }) => useWorkspaceVisibleMessageRead({ runtimeContext: context, conversationId }),
+      { initialProps: { context: runtimeContext } },
+    );
+    const oldSchedule = result.current.scheduleReadBatch;
+    activeRuntime = { ...runtimeContext, projectId: "project-b", runtimeGeneration: 2 };
+    rerender({ context: activeRuntime });
+    activeRuntime = { ...runtimeContext, runtimeGeneration: 3 };
+    rerender({ context: activeRuntime });
+    act(() => {
+      oldSchedule([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    expect(captured.markReadUpTo).not.toHaveBeenCalled();
+    act(() => {
+      result.current.scheduleReadBatch([first.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
   });
 });

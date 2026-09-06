@@ -223,54 +223,78 @@ async function installThread(
 }
 
 test.describe("Thread unread badge after scroll read @mock", () => {
-  test("read_up_to reaches the last message and the badge drops", async ({
-    authenticatedMocked: page,
-  }) => {
-    const sockets: WebSocketRoute[] = [];
-    const readUpToCalls: string[] = [];
-    const gate = createReadUpToGate();
-    await installRealtime(page, sockets);
-    await installThread(page, readUpToCalls, gate);
+  for (const switchChat of [false, true]) {
+    test(
+      switchChat
+        ? "read_up_to survives chat switch and return without duplicate delivery"
+        : "read_up_to reaches the last message and the badge drops",
+      async ({ authenticatedMocked: page }) => {
+        const sockets: WebSocketRoute[] = [];
+        const readUpToCalls: string[] = [];
+        const gate = createReadUpToGate();
+        await installRealtime(page, sockets);
+        await installThread(page, readUpToCalls, gate);
 
-    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
-    await page.locator("[data-message-uuid]").first().waitFor({ timeout: 20_000 });
+        await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
+        await page.locator("[data-message-uuid]").first().waitFor({ timeout: 20_000 });
 
-    const streamRow = page.locator("a", { hasText: "#General" }).first();
-    await expect(streamRow).toBeVisible({ timeout: 15_000 });
-    await streamRow.hover();
-    await page.getByTestId("sidebar-stream-expand-chevron").first().click();
-    const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
-    await expect(threadRow).toBeVisible({ timeout: 15_000 });
-    const badge = threadRow.getByTestId("sidebar-chat-row-unread-badge");
-    // The first screenful is read on open, so the badge is already below the tail.
-    await expect(badge).toBeVisible();
+        const streamRow = page.locator("a", { hasText: "#General" }).first();
+        await expect(streamRow).toBeVisible({ timeout: 15_000 });
+        await streamRow.hover();
+        await page.getByTestId("sidebar-stream-expand-chevron").first().click();
+        const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
+        await expect(threadRow).toBeVisible({ timeout: 15_000 });
+        const badge = threadRow.getByTestId("sidebar-chat-row-unread-badge");
+        // The first screenful is read on open, so the badge is already below the tail.
+        await expect(badge).toBeVisible();
 
-    // Let the socket become ready, then scroll through the whole tail.
-    await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
-    await page.waitForTimeout(1_000);
-    const scroller = page.locator("[data-workspace-scroll-controller='true']");
-    for (let step = 0; step < 6; step += 1) {
-      await scroller.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-      });
-      await page.waitForTimeout(400);
-    }
+        // Let the socket become ready, then scroll through the whole tail.
+        await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
+        await page.waitForTimeout(1_000);
+        const scroller = page.locator("[data-workspace-scroll-controller='true']");
+        for (let step = 0; step < 6; step += 1) {
+          await scroller.evaluate((node) => {
+            node.scrollTop = node.scrollHeight;
+          });
+          await page.waitForTimeout(400);
+        }
 
-    // The boundary at the last message is requested; the server has not answered yet.
-    await gate.requested;
-    expect(readUpToCalls.at(-1)).toBe(LAST_MESSAGE_UUID);
-    await expect(badge).toBeHidden({ timeout: 10_000 });
+        // The boundary at the last message is requested; the server has not answered yet.
+        await gate.requested;
+        expect(readUpToCalls.at(-1)).toBe(LAST_MESSAGE_UUID);
+        await expect(badge).toBeHidden({ timeout: 10_000 });
 
-    gate.release();
-    await page.waitForTimeout(500);
-    await expect(badge).toBeHidden();
+        if (switchChat) {
+          await streamRow.click();
+          await expect(page).toHaveURL(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`);
+          await threadRow.click();
+          await expect(page).toHaveURL(
+            `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`,
+          );
+          await scroller.evaluate((node) => {
+            node.scrollTop = node.scrollHeight;
+          });
+          await expect(page.locator("[data-read-request-pending='true']").first()).toBeVisible();
+          expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
+        }
+        const confirmed = page.waitForResponse((response) =>
+          response.url().endsWith(`/messages/${LAST_MESSAGE_UUID}/actions/read_up_to/invoke`),
+        );
+        gate.release();
+        expect((await confirmed).status()).toBe(200);
+        await expect(page.locator("[data-read-request-pending='true']")).toHaveCount(0);
+        expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
+        await page.waitForTimeout(500);
+        await expect(badge).toBeHidden();
 
-    // The authoritative projection still applies when it arrives.
-    const socket = sockets.at(-1);
-    if (socket == null) throw new Error("no realtime socket");
-    socket.send(JSON.stringify(topicUpdatedFrame(2, 1)));
-    await expect(badge).toHaveText("1", { timeout: 10_000 });
-    socket.send(JSON.stringify(topicUpdatedFrame(3, 0)));
-    await expect(badge).toBeHidden({ timeout: 10_000 });
-  });
+        // The authoritative projection still applies when it arrives.
+        const socket = sockets.at(-1);
+        if (socket == null) throw new Error("no realtime socket");
+        socket.send(JSON.stringify(topicUpdatedFrame(2, 1)));
+        await expect(badge).toHaveText("1", { timeout: 10_000 });
+        socket.send(JSON.stringify(topicUpdatedFrame(3, 0)));
+        await expect(badge).toBeHidden({ timeout: 10_000 });
+      },
+    );
+  }
 });
