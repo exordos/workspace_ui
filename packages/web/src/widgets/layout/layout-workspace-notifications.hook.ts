@@ -5,6 +5,8 @@ import {
   type MessengerBackgroundNotificationCandidate,
 } from "~/entities/messenger/messenger-background-projection.model";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -45,6 +47,7 @@ const DEFAULT_NOTIFICATION_SENDER = "New message";
  * or has opened it — so the candidate is dropped rather than shown late.
  */
 const NOTIFICATION_METADATA_GRACE_MS = 30_000;
+const NOTIFICATION_METADATA_RETRY_MS = 250;
 const notificationLog = createLogger("layout:notification");
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -92,22 +95,40 @@ function markCandidateProcessed(
 function resolveCurrentCandidate(
   projection: MessengerBackgroundProjection,
   candidate: MessengerBackgroundNotificationCandidate,
+  activeMetadata?: {
+    ownerKey: string | null;
+    streamsById: Readonly<Record<string, MessengerStream>>;
+    topicsById: Readonly<Record<string, MessengerTopic>>;
+  },
 ): {
   candidate: MessengerBackgroundNotificationCandidate;
   missingMetadata: string[];
 } {
   const streamSnapshot = projection.streamSnapshotsById[candidate.streamUuid];
   const topicSnapshot = projection.topicSnapshotsById[candidate.topicUuid];
+  const activeStream =
+    activeMetadata?.ownerKey === candidate.ownerKey
+      ? activeMetadata.streamsById[candidate.streamUuid]
+      : undefined;
+  const activeTopic =
+    activeMetadata?.ownerKey === candidate.ownerKey
+      ? activeMetadata.topicsById[candidate.topicUuid]
+      : undefined;
   let audience = candidate.audience;
-  if (streamSnapshot != null) {
-    audience = streamSnapshot.isPrivate ? "private" : "channel";
+  if (streamSnapshot != null || activeStream != null) {
+    audience = (streamSnapshot?.isPrivate ?? activeStream?.isPrivate) ? "private" : "channel";
   }
   const streamNotificationMode =
-    streamSnapshot?.notificationMode ?? candidate.streamNotificationMode;
-  const topicNotificationMode = topicSnapshot?.notificationMode ?? candidate.topicNotificationMode;
+    activeStream?.notificationMode ??
+    streamSnapshot?.notificationMode ??
+    candidate.streamNotificationMode;
+  const topicNotificationMode =
+    activeTopic?.notificationMode ??
+    topicSnapshot?.notificationMode ??
+    candidate.topicNotificationMode;
   const missingMetadata: string[] = [];
 
-  if (streamSnapshot == null && candidate.audience === "unknown") {
+  if (streamSnapshot == null && activeStream == null && candidate.audience === "unknown") {
     missingMetadata.push("stream");
   }
 
@@ -115,6 +136,7 @@ function resolveCurrentCandidate(
     audience !== "private" &&
     streamNotificationMode !== "all_messages" &&
     topicSnapshot == null &&
+    activeTopic == null &&
     candidate.topicNotificationMode == null
   ) {
     missingMetadata.push("topic");
@@ -124,8 +146,11 @@ function resolveCurrentCandidate(
     candidate: {
       ...candidate,
       audience,
-      streamName: streamSnapshot?.streamName ?? candidate.streamName,
-      topicName: topicSnapshot?.topicName ?? candidate.topicName,
+      streamName: streamSnapshot?.streamName ?? activeStream?.name ?? candidate.streamName,
+      topicName:
+        topicSnapshot?.topicName ??
+        (activeTopic?.isDefault === true ? null : activeTopic?.name) ??
+        candidate.topicName,
       streamNotificationMode,
       topicNotificationMode,
     },
@@ -407,17 +432,51 @@ export function useLayoutWorkspaceNotifications(options: {
     }
 
     let cancelled = false;
+    let metadataRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const openConversationId = readOpenConversationId(pathname);
-    const nextCandidates = collectNextNotificationCandidates(
-      routeProjections,
-      processedCandidatesRef.current,
-    );
 
-    if (nextCandidates.length === 0) {
-      return;
+    const scheduleMetadataRetry = (observedAt: number): void => {
+      if (cancelled || !Number.isFinite(observedAt) || metadataRetryTimer != null) return;
+      const remainingGrace = Math.max(
+        1,
+        NOTIFICATION_METADATA_GRACE_MS - (Date.now() - observedAt),
+      );
+      metadataRetryTimer = setTimeout(
+        () => {
+          metadataRetryTimer = null;
+          void showNotifications();
+        },
+        Math.min(NOTIFICATION_METADATA_RETRY_MS, remainingGrace),
+      );
+    };
+
+    function deferCandidate(
+      candidate: MessengerBackgroundNotificationCandidate,
+      messageUuid: string,
+      scopeKey: string,
+      missingMetadata: string[],
+    ): number {
+      const expired = Date.now() - candidate.observedAt > NOTIFICATION_METADATA_GRACE_MS;
+      if (expired) {
+        markCandidateProcessed(processedCandidatesRef.current, candidate.ownerKey, messageUuid);
+      }
+      logDeferredCandidate({
+        deferredCandidates: deferredCandidatesRef.current,
+        scopeKey,
+        candidate,
+        messageUuid,
+        missingMetadata,
+        expired,
+      });
+      return expired ? Infinity : candidate.observedAt;
     }
 
     async function showNotifications(): Promise<void> {
+      let metadataRetryObservedAt = Infinity;
+      const nextCandidates = collectNextNotificationCandidates(
+        routeProjections,
+        processedCandidatesRef.current,
+      );
       for (const { projection, candidate } of nextCandidates) {
         if (cancelled) {
           return;
@@ -429,23 +488,17 @@ export function useLayoutWorkspaceNotifications(options: {
         }
 
         const scopeKey = buildCandidateScopeKey(candidate.ownerKey, messageUuid);
-        const resolvedCandidate = resolveCurrentCandidate(projection, candidate);
+        const activeMessengerState = useMessengerStore.getState();
+        const resolvedCandidate = resolveCurrentCandidate(projection, candidate, {
+          ownerKey: activeMessengerState.ownerKey,
+          streamsById: activeMessengerState.streamsById,
+          topicsById: activeMessengerState.topicsById,
+        });
         if (resolvedCandidate.missingMetadata.length > 0) {
-          // Once the grace window is over the candidate is dropped, not held: showing
-          // it later would announce a message the user has already been told about by
-          // a newer one in the same conversation, or has already opened.
-          const expired = Date.now() - candidate.observedAt > NOTIFICATION_METADATA_GRACE_MS;
-          if (expired) {
-            markCandidateProcessed(processedCandidatesRef.current, candidate.ownerKey, messageUuid);
-          }
-          logDeferredCandidate({
-            deferredCandidates: deferredCandidatesRef.current,
-            scopeKey,
-            candidate,
-            messageUuid,
-            missingMetadata: resolvedCandidate.missingMetadata,
-            expired,
-          });
+          metadataRetryObservedAt = Math.min(
+            metadataRetryObservedAt,
+            deferCandidate(candidate, messageUuid, scopeKey, resolvedCandidate.missingMetadata),
+          );
           continue;
         }
 
@@ -508,12 +561,16 @@ export function useLayoutWorkspaceNotifications(options: {
           isCancelled: () => cancelled,
         });
       }
+
+      // Retry after this batch finishes so pending author lookups are not duplicated.
+      scheduleMetadataRetry(metadataRetryObservedAt);
     }
 
     void showNotifications();
 
     return () => {
       cancelled = true;
+      if (metadataRetryTimer != null) clearTimeout(metadataRetryTimer);
     };
   }, [enabled, navigate, pathname, routeProjections]);
 }
