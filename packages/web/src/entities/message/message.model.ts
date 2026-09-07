@@ -26,6 +26,7 @@ import type {
   WorkspaceMessageStoreData,
   WorkspaceMessageStoreState,
   WorkspaceOptimisticMessageReadChange,
+  WorkspaceScopedMessageMutationOptions,
 } from "./message.model.types";
 
 export type {
@@ -283,6 +284,75 @@ function liveMessagesForReplacement(
 
 function nextWindowRevision(window: WorkspaceConversationWindow | undefined): number {
   return (window?.revision ?? 0) + 1;
+}
+
+/**
+ * Flip every loaded unread message of the anchor's topic up to and including the
+ * anchor. Returns the previous and projected rows so the caller can roll back.
+ */
+function readMessagesUpTo(
+  set: (
+    updater: (
+      state: WorkspaceMessageStoreState,
+    ) => Partial<WorkspaceMessageStoreState> | WorkspaceMessageStoreState,
+  ) => void,
+  messageUuid: MessengerUuid,
+  options: WorkspaceScopedMessageMutationOptions | undefined,
+): { previousMessages: MessengerMessage[]; projectedMessages: MessengerMessage[] } {
+  const change: { previousMessages: MessengerMessage[]; projectedMessages: MessengerMessage[] } = {
+    previousMessages: [],
+    projectedMessages: [],
+  };
+
+  set((state) => {
+    const anchor = state.messagesById[messageUuid];
+    if (anchor == null) return state;
+
+    const candidateMessageIds = new Set<MessengerUuid>();
+    const conversationIds = options?.conversationIds;
+    if (conversationIds == null) {
+      for (const candidateMessageUuid of Object.keys(state.messagesById)) {
+        candidateMessageIds.add(candidateMessageUuid);
+      }
+    } else {
+      for (const conversationId of conversationIds) {
+        for (const candidateMessageUuid of state.conversationWindowsById[conversationId]
+          ?.messageUuids ?? EMPTY_WORKSPACE_MESSAGE_IDS) {
+          candidateMessageIds.add(candidateMessageUuid);
+        }
+      }
+    }
+
+    const previousMessages = [...candidateMessageIds]
+      .map((candidateMessageUuid) => state.messagesById[candidateMessageUuid])
+      .filter(
+        (message): message is MessengerMessage =>
+          message != null &&
+          !message.read &&
+          message.streamUuid === anchor.streamUuid &&
+          message.topicUuid === anchor.topicUuid &&
+          compareWorkspaceMessages(message, anchor) <= 0,
+      );
+    if (previousMessages.length === 0) return state;
+
+    const nextMessagesById = { ...state.messagesById };
+    const nextMutationRevisionById = { ...state.messageMutationRevisionById };
+    const mutationRevision = state.messageMutationRevision + 1;
+    for (const message of previousMessages) {
+      const projectedMessage = { ...message, read: true };
+      nextMessagesById[message.uuid] = projectedMessage;
+      nextMutationRevisionById[message.uuid] = mutationRevision;
+      change.previousMessages.push(message);
+      change.projectedMessages.push(projectedMessage);
+    }
+    return {
+      messagesById: nextMessagesById,
+      messageMutationRevision: mutationRevision,
+      messageMutationRevisionById: nextMutationRevisionById,
+    };
+  });
+
+  return change;
 }
 
 export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set) => ({
@@ -899,59 +969,12 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
 
   markMessagesReadUpTo(messageUuid, options) {
     logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
-    let changedMessages: MessengerMessage[] = [];
+    return readMessagesUpTo(set, messageUuid, options).projectedMessages;
+  },
 
-    set((state) => {
-      const anchor = state.messagesById[messageUuid];
-      if (anchor == null) return state;
-
-      const candidateMessageIds = new Set<MessengerUuid>();
-      const conversationIds = options?.conversationIds;
-      if (conversationIds == null) {
-        for (const candidateMessageUuid of Object.keys(state.messagesById)) {
-          candidateMessageIds.add(candidateMessageUuid);
-        }
-      } else {
-        for (const conversationId of conversationIds) {
-          for (const candidateMessageUuid of state.conversationWindowsById[conversationId]
-            ?.messageUuids ?? EMPTY_WORKSPACE_MESSAGE_IDS) {
-            candidateMessageIds.add(candidateMessageUuid);
-          }
-        }
-      }
-
-      changedMessages = [...candidateMessageIds]
-        .map((candidateMessageUuid) => state.messagesById[candidateMessageUuid])
-        .filter(
-          (message): message is MessengerMessage =>
-            message != null &&
-            !message.read &&
-            message.streamUuid === anchor.streamUuid &&
-            message.topicUuid === anchor.topicUuid &&
-            compareWorkspaceMessages(message, anchor) <= 0,
-        );
-
-      if (changedMessages.length === 0) return state;
-
-      const nextMessagesById = { ...state.messagesById };
-      const nextMutationRevisionById = { ...state.messageMutationRevisionById };
-      const mutationRevision = state.messageMutationRevision + 1;
-      for (const message of changedMessages) {
-        nextMessagesById[message.uuid] = { ...message, read: true };
-        nextMutationRevisionById[message.uuid] = mutationRevision;
-      }
-
-      changedMessages = changedMessages
-        .map((message) => nextMessagesById[message.uuid])
-        .filter((message): message is MessengerMessage => message != null);
-      return {
-        messagesById: nextMessagesById,
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: nextMutationRevisionById,
-      };
-    });
-
-    return changedMessages;
+  beginOptimisticMessagesReadUpTo(messageUuid, options) {
+    logStoreAction("workspaceMessage", "beginOptimisticMessagesReadUpTo", { messageUuid });
+    return readMessagesUpTo(set, messageUuid, options);
   },
 
   beginOptimisticMessagesRead(scope) {

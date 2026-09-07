@@ -153,6 +153,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   beginOptimisticMessagesRead: (
     scope: WorkspaceMessageReadScope,
   ) => WorkspaceOptimisticMessageReadChange;
+  beginOptimisticMessagesReadUpTo: (
+    messageUuid: MessengerUuid,
+    options?: WorkspaceScopedMessageMutationOptions,
+  ) => WorkspaceOptimisticMessageReadChange;
   rollbackOptimisticMessagesRead: (change: WorkspaceOptimisticMessageReadChange) => void;
   setMessagesLoading: (conversationId: MessengerConversationId, loading: boolean) => void;
   setMessagesError: (conversationId: MessengerConversationId, error: string | null) => void;

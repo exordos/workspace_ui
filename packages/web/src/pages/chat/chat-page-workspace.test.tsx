@@ -1528,7 +1528,7 @@ describe("ChatPage Workspace route", () => {
     expect(setRightDrawerOpen).toHaveBeenCalledWith(false);
   });
 
-  it("drops a pending auto-read when the Workspace window loses focus", async () => {
+  it("delivers an already observed auto-read after focus loss without repeating it on focus", async () => {
     const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
@@ -1550,7 +1550,11 @@ describe("ChatPage Workspace route", () => {
         });
       });
 
-      expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+      expect(captured.markMessengerMessagesReadUpTo).toHaveBeenCalledOnce();
+
+      expect(captured.markMessengerMessagesReadUpTo).toHaveBeenCalledWith(
+        expect.objectContaining({ messageUuid: MESSAGE_UUID }),
+      );
 
       hasFocus.mockReturnValue(true);
       act(() => {
@@ -1562,7 +1566,7 @@ describe("ChatPage Workspace route", () => {
         });
       });
 
-      expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+      expect(captured.markMessengerMessagesReadUpTo).toHaveBeenCalledOnce();
     } finally {
       hasFocus.mockRestore();
     }

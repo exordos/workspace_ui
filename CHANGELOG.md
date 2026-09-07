@@ -6,6 +6,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Reading by scrolling now applies locally at once: message read state and the
+  topic and stream badges update before the server confirms the boundary, and
+  roll back if the request fails.
+
+### Fixed
+
+- A thread's unread badge now drops as soon as scrolling reads its last message.
+  The read-boundary path used to leave topic and stream counters untouched until
+  the backend counter projection arrived, so the badge could outlive the read.
+
 ## [0.6.3] — 2026-09-03
 
 ### Changed
