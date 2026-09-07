@@ -188,9 +188,10 @@ function resolveCurrentCandidate(
  *
  * The loaded catalog and the realtime projection answer for the owner on screen; for
  * any other owner the cached catalog behind them is the only source that knows the
- * conversation at all. A topic none of them knows was created by the very message
- * being announced, so nobody has had a chance to set a mode on it — the default is a
- * fact rather than a guess, and waiting for its event would cost the user a mention.
+ * conversation at all. A topic that none of them knows one retry tick later was
+ * created by the very message being announced, so nobody has had a chance to set a
+ * mode on it — the default is a fact rather than a guess, and waiting out the grace
+ * window for an event that is not coming would cost the user a mention.
  */
 async function resolveCandidateMetadata(
   projection: MessengerBackgroundProjection,
@@ -218,7 +219,16 @@ async function resolveCandidateMetadata(
     activeMetadata,
     cachedMetadata,
   );
-  if (!resolvedFromCache.missingMetadata.includes("topic")) {
+  if (
+    !resolvedFromCache.missingMetadata.includes("topic") ||
+    // The stream is missing too, so the candidate is deferred either way: leave the
+    // topic to the pass that finally has the stream, and keep the log to one line.
+    resolvedFromCache.missingMetadata.includes("stream") ||
+    // Spend one retry tick first. The topic event of the same catch-up batch lands
+    // milliseconds behind the message, and a source that has not seen the topic yet
+    // is indistinguishable here from one that says it does not exist.
+    Date.now() - candidate.observedAt < NOTIFICATION_METADATA_RETRY_MS
+  ) {
     return resolvedFromCache;
   }
 

@@ -6,6 +6,7 @@ import type {
   MessengerBackgroundMessageIdSnapshot,
 } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
+import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
@@ -38,6 +39,18 @@ const shouldWorkspaceDesktopNotifyMock = vi.hoisted(() =>
   vi.fn<typeof shouldWorkspaceDesktopNotify>(() => ({ notify: true, trigger: "dm" })),
 );
 const closeReadMessageNotificationsMock = vi.hoisted(() => vi.fn());
+interface WorkspaceConversationMetadataInput {
+  ownerKey: string;
+  streamUuid: string;
+  topicUuid: string;
+}
+
+/** No cached catalog by default, the way an IndexedDB that was never written answers. */
+const resolveConversationMetadataMock = vi.hoisted(() =>
+  vi.fn<(input: WorkspaceConversationMetadataInput) => Promise<WorkspaceConversationMetadata>>(() =>
+    Promise.resolve({ stream: null, topic: null }),
+  ),
+);
 
 vi.mock("~/shared/lib/notifications", () => ({
   notificationService: {
@@ -57,6 +70,12 @@ vi.mock("~/shared/lib/os-integration", () => ({
     requestAttention: (...args: Parameters<typeof requestAttentionMock>) =>
       requestAttentionMock(...args),
   },
+}));
+
+vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
+  resolveWorkspaceConversationMetadata: (
+    ...args: Parameters<typeof resolveConversationMetadataMock>
+  ) => resolveConversationMetadataMock(...args),
 }));
 
 vi.mock("~/entities/user/user-sync.lib", () => ({
@@ -195,6 +214,7 @@ function createProjection(
 describe("useLayoutWorkspaceNotifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resolveConversationMetadataMock.mockResolvedValue({ stream: null, topic: null });
     clearNotifiedMessageIds();
     clearNotificationAggregateRegistry();
     useWorkspaceAuthStore.setState({
@@ -976,6 +996,138 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
   });
 
+  it("decides with the default topic mode when no catalog knows the topic", async () => {
+    const session = createSession("unknown-topic");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "unknown-topic-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    // The topic was created by this very message: the stream is known, the topic is
+    // in no catalog and in no projection.
+    useMessengerStore.setState({
+      ownerKey,
+      streamsById: {
+        "stream-1": {
+          uuid: "stream-1",
+          name: "Engineering",
+          isPrivate: false,
+          notificationMode: "mentions_only",
+        } as MessengerStream,
+      },
+      topicsById: {},
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, messageUuid, {
+              audience: "channel",
+              streamName: "Engineering",
+              streamNotificationMode: null,
+              topicNotificationMode: null,
+              observedAt: Date.now(),
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          kind: "stream",
+          streamNotificationMode: "mentions_only",
+          topicNotificationMode: null,
+        }),
+      }),
+    );
+  });
+
+  it("rescues a background owner's candidate with the cached catalog", async () => {
+    const activeSession = createSession("cache-active");
+    const backgroundSession = createSession("cache-background");
+    const backgroundOwnerKey = workspaceRuntimeOwnerKey(backgroundSession);
+    const messageUuid = "cached-catalog-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [activeSession, backgroundSession],
+      currentAccountId: activeSession.accountId,
+      runtimeGeneration: 1,
+    });
+    // The messenger store holds the account on screen, so it cannot name a
+    // conversation of the other one; only the cached catalog can.
+    useMessengerStore.setState({
+      ownerKey: workspaceRuntimeOwnerKey(activeSession),
+      streamsById: {},
+      topicsById: {},
+    });
+    resolveConversationMetadataMock.mockResolvedValue({
+      stream: { streamName: "Direct chat", isPrivate: true, notificationMode: "mentions_only" },
+      topic: null,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [backgroundOwnerKey]: createProjection(backgroundOwnerKey, {
+          notificationCandidates: [
+            createCandidate(backgroundOwnerKey, messageUuid, {
+              audience: "unknown",
+              streamName: null,
+              streamNotificationMode: null,
+              topicNotificationMode: null,
+              observedAt: Date.now(),
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(backgroundOwnerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(resolveConversationMetadataMock).toHaveBeenCalledWith({
+      ownerKey: backgroundOwnerKey,
+      streamUuid: "stream-1",
+      topicUuid: "topic-1",
+    });
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          kind: "dm",
+          streamNotificationMode: "mentions_only",
+        }),
+      }),
+    );
+  });
+
   it("finishes ready notification work before scheduling a metadata retry", async () => {
     const session = createSession("metadata-retry-order");
     const ownerKey = workspaceRuntimeOwnerKey(session);
@@ -1123,6 +1275,7 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resolveConversationMetadataMock.mockResolvedValue({ stream: null, topic: null });
     clearNotifiedMessageIds();
     clearNotificationAggregateRegistry();
   });
@@ -1130,71 +1283,6 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
   // A candidate whose stream never arrived is not news any more: the user has since
   // been told about a newer message in the conversation, or has opened it. Showing it
   // when the metadata finally lands is the bug this drops.
-  it("decides with the default topic mode when no catalog knows the topic", async () => {
-    const session = createSession("unknown-topic");
-    const ownerKey = workspaceRuntimeOwnerKey(session);
-    const messageUuid = "unknown-topic-message";
-
-    useWorkspaceAuthStore.setState({
-      sessions: [session],
-      currentAccountId: session.accountId,
-      runtimeGeneration: 1,
-    });
-    // The topic was created by this very message: the stream is known, the topic is
-    // in no catalog and in no projection.
-    useMessengerStore.setState({
-      ownerKey,
-      streamsById: {
-        "stream-1": {
-          uuid: "stream-1",
-          name: "Engineering",
-          isPrivate: false,
-          notificationMode: "mentions_only",
-        } as MessengerStream,
-      },
-      topicsById: {},
-    });
-    useMessengerBackgroundProjectionStore.setState({
-      projectionsByOwnerKey: {
-        [ownerKey]: createProjection(ownerKey, {
-          notificationCandidates: [
-            createCandidate(ownerKey, messageUuid, {
-              audience: "channel",
-              streamName: "Engineering",
-              streamNotificationMode: null,
-              topicNotificationMode: null,
-              observedAt: Date.now(),
-            }),
-          ],
-          messageIdSnapshotsById: {
-            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
-          },
-        }),
-      },
-    });
-
-    renderHook(() =>
-      useLayoutWorkspaceNotifications({
-        enabled: true,
-        navigate: vi.fn(),
-        pathname: OTHER_CONVERSATION_PATHNAME,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(showNotificationMock).toHaveBeenCalledTimes(1);
-    });
-    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.objectContaining({
-          kind: "stream",
-          streamNotificationMode: "mentions_only",
-          topicNotificationMode: null,
-        }),
-      }),
-    );
-  });
-
   it("drops a candidate whose metadata did not arrive inside the grace window", async () => {
     const session = createSession("expired");
     const ownerKey = workspaceRuntimeOwnerKey(session);
