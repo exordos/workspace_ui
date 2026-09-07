@@ -1130,6 +1130,71 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
   // A candidate whose stream never arrived is not news any more: the user has since
   // been told about a newer message in the conversation, or has opened it. Showing it
   // when the metadata finally lands is the bug this drops.
+  it("decides with the default topic mode when no catalog knows the topic", async () => {
+    const session = createSession("unknown-topic");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "unknown-topic-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    // The topic was created by this very message: the stream is known, the topic is
+    // in no catalog and in no projection.
+    useMessengerStore.setState({
+      ownerKey,
+      streamsById: {
+        "stream-1": {
+          uuid: "stream-1",
+          name: "Engineering",
+          isPrivate: false,
+          notificationMode: "mentions_only",
+        } as MessengerStream,
+      },
+      topicsById: {},
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, messageUuid, {
+              audience: "channel",
+              streamName: "Engineering",
+              streamNotificationMode: null,
+              topicNotificationMode: null,
+              observedAt: Date.now(),
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          kind: "stream",
+          streamNotificationMode: "mentions_only",
+          topicNotificationMode: null,
+        }),
+      }),
+    );
+  });
+
   it("drops a candidate whose metadata did not arrive inside the grace window", async () => {
     const session = createSession("expired");
     const ownerKey = workspaceRuntimeOwnerKey(session);

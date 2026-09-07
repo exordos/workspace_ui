@@ -4,6 +4,8 @@ import {
   type MessengerBackgroundProjection,
   type MessengerBackgroundNotificationCandidate,
 } from "~/entities/messenger/messenger-background-projection.model";
+import { resolveWorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
+import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
@@ -36,13 +38,15 @@ import type { NavigateFunction } from "react-router-dom";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
 /**
- * How long a candidate may wait for the stream/topic snapshot that names it.
+ * How long a candidate may wait for the stream snapshot that names its conversation.
  *
  * The wait exists for one race: a message event and the stream event that
  * describes its conversation arrive in the same catch-up batch, normally
- * milliseconds apart. The bound is generous against a slow catch-up rather than
- * tuned, and the "metadata did not arrive in time" log carries `waitedMs` for
- * anyone who needs to revisit it. Past the bound the notification has stopped
+ * milliseconds apart. Only a stream no catalog knows either waits at all — an
+ * unknown topic is decided with the default mode instead. The bound is generous
+ * against a slow catch-up rather than tuned, and the "metadata did not arrive in
+ * time" log carries `waitedMs` for anyone who needs to revisit it. Past the bound
+ * the notification has stopped
  * being news — the user has already seen a later one for the same conversation,
  * or has opened it — so the candidate is dropped rather than shown late.
  */
@@ -100,6 +104,9 @@ function resolveCurrentCandidate(
     streamsById: Readonly<Record<string, MessengerStream>>;
     topicsById: Readonly<Record<string, MessengerTopic>>;
   },
+  // The cached catalog is the last source: it is the only one that knows a
+  // conversation of an owner whose messenger store is not the one on screen.
+  cachedMetadata?: WorkspaceConversationMetadata | null,
 ): {
   candidate: MessengerBackgroundNotificationCandidate;
   missingMetadata: string[];
@@ -114,21 +121,33 @@ function resolveCurrentCandidate(
     activeMetadata?.ownerKey === candidate.ownerKey
       ? activeMetadata.topicsById[candidate.topicUuid]
       : undefined;
+  const cachedStream = cachedMetadata?.stream ?? null;
+  const cachedTopic = cachedMetadata?.topic ?? null;
   let audience = candidate.audience;
-  if (streamSnapshot != null || activeStream != null) {
-    audience = (streamSnapshot?.isPrivate ?? activeStream?.isPrivate) ? "private" : "channel";
+  if (streamSnapshot != null || activeStream != null || cachedStream != null) {
+    audience =
+      (streamSnapshot?.isPrivate ?? activeStream?.isPrivate ?? cachedStream?.isPrivate)
+        ? "private"
+        : "channel";
   }
   const streamNotificationMode =
     activeStream?.notificationMode ??
     streamSnapshot?.notificationMode ??
+    cachedStream?.notificationMode ??
     candidate.streamNotificationMode;
   const topicNotificationMode =
     activeTopic?.notificationMode ??
     topicSnapshot?.notificationMode ??
+    cachedTopic?.notificationMode ??
     candidate.topicNotificationMode;
   const missingMetadata: string[] = [];
 
-  if (streamSnapshot == null && activeStream == null && candidate.audience === "unknown") {
+  if (
+    streamSnapshot == null &&
+    activeStream == null &&
+    cachedStream == null &&
+    candidate.audience === "unknown"
+  ) {
     missingMetadata.push("stream");
   }
 
@@ -137,6 +156,7 @@ function resolveCurrentCandidate(
     streamNotificationMode !== "all_messages" &&
     topicSnapshot == null &&
     activeTopic == null &&
+    cachedTopic == null &&
     candidate.topicNotificationMode == null
   ) {
     missingMetadata.push("topic");
@@ -146,15 +166,70 @@ function resolveCurrentCandidate(
     candidate: {
       ...candidate,
       audience,
-      streamName: streamSnapshot?.streamName ?? activeStream?.name ?? candidate.streamName,
+      streamName:
+        streamSnapshot?.streamName ??
+        activeStream?.name ??
+        cachedStream?.streamName ??
+        candidate.streamName,
       topicName:
         topicSnapshot?.topicName ??
         (activeTopic?.isDefault === true ? null : activeTopic?.name) ??
+        cachedTopic?.topicName ??
         candidate.topicName,
       streamNotificationMode,
       topicNotificationMode,
     },
     missingMetadata,
+  };
+}
+
+/**
+ * Resolves the conversation a candidate belongs to.
+ *
+ * The loaded catalog and the realtime projection answer for the owner on screen; for
+ * any other owner the cached catalog behind them is the only source that knows the
+ * conversation at all. A topic none of them knows was created by the very message
+ * being announced, so nobody has had a chance to set a mode on it — the default is a
+ * fact rather than a guess, and waiting for its event would cost the user a mention.
+ */
+async function resolveCandidateMetadata(
+  projection: MessengerBackgroundProjection,
+  candidate: MessengerBackgroundNotificationCandidate,
+): Promise<ReturnType<typeof resolveCurrentCandidate>> {
+  const activeMessengerState = useMessengerStore.getState();
+  const activeMetadata = {
+    ownerKey: activeMessengerState.ownerKey,
+    streamsById: activeMessengerState.streamsById,
+    topicsById: activeMessengerState.topicsById,
+  };
+  const resolved = resolveCurrentCandidate(projection, candidate, activeMetadata);
+  if (resolved.missingMetadata.length === 0) {
+    return resolved;
+  }
+
+  const cachedMetadata = await resolveWorkspaceConversationMetadata({
+    ownerKey: candidate.ownerKey,
+    streamUuid: candidate.streamUuid,
+    topicUuid: candidate.topicUuid,
+  });
+  const resolvedFromCache = resolveCurrentCandidate(
+    projection,
+    candidate,
+    activeMetadata,
+    cachedMetadata,
+  );
+  if (!resolvedFromCache.missingMetadata.includes("topic")) {
+    return resolvedFromCache;
+  }
+
+  notificationLog.warn("candidate topic is unknown, deciding with the default topic mode", {
+    ownerKey: candidate.ownerKey,
+    messageUuid: candidate.messageUuid,
+    topicUuid: candidate.topicUuid,
+  });
+  return {
+    candidate: resolvedFromCache.candidate,
+    missingMetadata: resolvedFromCache.missingMetadata.filter((entry) => entry !== "topic"),
   };
 }
 
@@ -488,12 +563,11 @@ export function useLayoutWorkspaceNotifications(options: {
         }
 
         const scopeKey = buildCandidateScopeKey(candidate.ownerKey, messageUuid);
-        const activeMessengerState = useMessengerStore.getState();
-        const resolvedCandidate = resolveCurrentCandidate(projection, candidate, {
-          ownerKey: activeMessengerState.ownerKey,
-          streamsById: activeMessengerState.streamsById,
-          topicsById: activeMessengerState.topicsById,
-        });
+        const resolvedCandidate = await resolveCandidateMetadata(projection, candidate);
+        if (cancelled) {
+          return;
+        }
+
         if (resolvedCandidate.missingMetadata.length > 0) {
           metadataRetryObservedAt = Math.min(
             metadataRetryObservedAt,
