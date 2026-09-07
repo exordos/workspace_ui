@@ -205,29 +205,37 @@ async function expectFocusedAnchor(page: Page, messageUuid: string): Promise<voi
   await expect(target).toBeVisible();
   await expect(target).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
 
-  const centerMetrics = await page
-    .locator("[data-workspace-scroll-controller='true']")
-    .evaluate((root, uuid) => {
-      const targetNode = root.querySelector<HTMLElement>(`[data-message-uuid="${uuid}"]`);
-      if (targetNode == null) {
-        throw new Error("Focused message is absent from the canonical list");
-      }
-      const rootRect = root.getBoundingClientRect();
-      const targetRect = targetNode.getBoundingClientRect();
-      return {
-        offset: Math.abs(
-          targetRect.top + targetRect.height / 2 - (rootRect.top + rootRect.height / 2),
-        ),
-        rowHeight: targetRect.height,
-        rootCenter: rootRect.top + rootRect.height / 2,
-        scrollTop: root.scrollTop,
-        targetCenter: targetRect.top + targetRect.height / 2,
-      };
-    }, messageUuid);
-  expect(
-    centerMetrics.offset,
-    `Expected ${messageUuid} to be centered: ${JSON.stringify(centerMetrics)}`,
-  ).toBeLessThanOrEqual(Math.max(24, centerMetrics.rowHeight / 2));
+  // The URL and an earlier highlight can be ready before Back finishes positioning.
+  await expect
+    .poll(
+      async () => {
+        const centerMetrics = await page
+          .locator("[data-workspace-scroll-controller='true']")
+          .evaluate((root, uuid) => {
+            const targetNode = root.querySelector<HTMLElement>(`[data-message-uuid="${uuid}"]`);
+            if (targetNode == null) {
+              throw new Error("Focused message is absent from the canonical list");
+            }
+            const rootRect = root.getBoundingClientRect();
+            const targetRect = targetNode.getBoundingClientRect();
+            return {
+              offset: Math.abs(
+                targetRect.top + targetRect.height / 2 - (rootRect.top + rootRect.height / 2),
+              ),
+              rowHeight: targetRect.height,
+              rootCenter: rootRect.top + rootRect.height / 2,
+              scrollTop: root.scrollTop,
+              targetCenter: targetRect.top + targetRect.height / 2,
+            };
+          }, messageUuid);
+        return {
+          ...centerMetrics,
+          centered: centerMetrics.offset <= Math.max(24, centerMetrics.rowHeight / 2),
+        };
+      },
+      { message: `Expected ${messageUuid} to be centered`, timeout: 10_000 },
+    )
+    .toMatchObject({ centered: true });
 }
 
 interface AnchorVisualSample {
