@@ -878,6 +878,7 @@
     "loadRecentCallsError": "Failed to load recent calls"
   },
   "info": {
+    "profileLinkUnavailable": "Could not open this profile. It may be unavailable or you may not have access.",
     "information": "Information",
     "channelInfo": "Channel info",
     "partnerInfo": "Partner info",

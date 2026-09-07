@@ -265,10 +265,13 @@ export function selectWorkspaceRightPanelInfoView(
   }: SelectWorkspaceRightPanelInfoViewOptions,
 ): WorkspaceRightPanelInfoView | null {
   const selection = selectMessengerConversationFromWorkspaceRoute(route);
-  if (selection.status !== "conversation" || route == null) return null;
+  if (route == null || selection.status === "invalid-route") return null;
 
   const normalizedWorkspaceUserUuidOverride = workspaceUserUuidOverride?.trim() ?? "";
-  if (normalizedWorkspaceUserUuidOverride.length > 0) {
+  if (
+    normalizedWorkspaceUserUuidOverride.length > 0 &&
+    (selection.status === "conversation" || usersById[normalizedWorkspaceUserUuidOverride] != null)
+  ) {
     return createWorkspaceRightPanelUserProfileView({
       userUuid: normalizedWorkspaceUserUuidOverride,
       usersById,
@@ -276,6 +279,8 @@ export function selectWorkspaceRightPanelInfoView(
       temporarilyNotConnectedText,
     });
   }
+
+  if (selection.status !== "conversation") return null;
 
   const stream = state.streamsById[selection.streamUuid];
   const conversation = state.conversationsById[selection.conversationId];

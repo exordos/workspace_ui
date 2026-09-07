@@ -15,10 +15,8 @@ import { env } from "~/shared/lib/env";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
-import {
-  parseWorkspaceMessengerRoute,
-  workspaceMessengerRootRoute,
-} from "~/shared/lib/workspace-messenger-route.lib";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
@@ -28,7 +26,10 @@ import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
 import { LoginPageOtpForm } from "./login-page-otp-form.ui";
 import { LoginPageProjectForm } from "./login-page-project-form.ui";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
-import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
+import {
+  resolveWorkspaceLoginRedirect,
+  sanitizeInternalRedirectTarget,
+} from "./login-redirect.lib";
 import { normalizeLoginRegistrationUrl } from "./login-registration-url.lib";
 
 type LoginStep = "organization" | "credentials" | "otp" | "project";
@@ -57,9 +58,17 @@ export const LoginPage: React.FC = () => {
   const sessions = useWorkspaceAuthStore((s) => s.sessions);
   const isAddServer = sessions.length > 0;
   const realmPrefill = useMemo(() => {
+    if (
+      !isElectron() &&
+      typeof window !== "undefined" &&
+      location.pathname === "/" &&
+      parseWorkspaceProfileShareHash(location.hash) != null
+    ) {
+      return window.location.origin;
+    }
     const raw = new URLSearchParams(location.search).get("realm");
     return raw?.trim() ? raw : null;
-  }, [location.search]);
+  }, [location.hash, location.pathname, location.search]);
   const [initialOrganization] = useState(() =>
     resolveInitialLoginOrganization({
       realmPrefill,
@@ -89,12 +98,15 @@ export const LoginPage: React.FC = () => {
     if (explicit) {
       return explicit;
     }
+    if (location.pathname === "/" && parseWorkspaceProfileShareHash(location.hash) != null) {
+      return `/${location.hash}`;
+    }
     const workspaceRoute = parseWorkspaceMessengerRoute(location.pathname);
     if (workspaceRoute?.kind !== "message") {
       return null;
     }
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, location.hash]);
   const realmTrim = realm.trim();
   const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
   const defaultOrganizationUrl = env.DEFAULT_LOGIN_ORGANIZATION_URL.trim();
@@ -350,8 +362,11 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const { session } = await completeWorkspaceProjectLogin({ preparedLogin, projectId });
-      const nextRoute =
-        redirectTarget ?? workspaceMessengerRootRoute(session.organizationId, session.projectId);
+      const nextRoute = resolveWorkspaceLoginRedirect({
+        redirectTarget,
+        organizationId: session.organizationId,
+        projectId: session.projectId,
+      });
       void navigate(nextRoute, { replace: true });
     } catch (err) {
       setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));

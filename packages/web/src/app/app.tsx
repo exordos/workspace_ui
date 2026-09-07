@@ -27,6 +27,7 @@ import {
   parseWorkspaceMessengerRoute,
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
@@ -135,6 +136,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!hasSessions || currentOrgRouteId == null) return;
+    // The public share entry selects a session for its server before adding an org prefix.
+    if (location.pathname === "/" && parseWorkspaceProfileShareHash(location.hash) != null) return;
 
     const fullPath = `${location.pathname}${location.search}${location.hash}`;
     const { orgId } = extractOrgRouteFromPathname(location.pathname);

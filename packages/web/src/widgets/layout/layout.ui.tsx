@@ -31,7 +31,8 @@ import { LayoutNotificationPermissionBanner } from "./layout-notification-permis
 import { shouldEnableLayoutNotificationPermission } from "./layout-notification-permission-ready.lib";
 import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
-import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-drawer-on-instance-change.hook";
+import { LayoutProfileShareLink } from "./layout-profile-share-link.ui";
+import { useLayoutResetRightDrawerOnOwnerChange } from "./layout-reset-right-drawer-on-owner-change.hook";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
@@ -158,8 +159,8 @@ export const Layout: React.FC = () => {
     }
   }, [openRightDrawerUserMenu, rightDrawerMode]);
 
-  useLayoutResetRightDrawerOnInstanceChange({
-    currentInstanceId: workspaceInstanceId,
+  useLayoutResetRightDrawerOnOwnerChange({
+    currentOwnerKey: currentWorkspaceOwnerKey,
     closeRightDrawer,
   });
 
@@ -260,6 +261,10 @@ export const Layout: React.FC = () => {
         />
       ) : null}
       <JitsiActiveCallHost />
+      <LayoutProfileShareLink
+        runtimeContext={currentWorkspaceRuntimeContext}
+        routeReady={workspaceRouteReady}
+      />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <LayoutLoadingGate
           showFullscreenLoader={showFullscreenLoader}
