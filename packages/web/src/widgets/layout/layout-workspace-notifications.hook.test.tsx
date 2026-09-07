@@ -7,6 +7,8 @@ import type {
 } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -202,6 +204,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
     useSettingsStore.setState({ notificationSound: "none" });
     useMessengerBackgroundProjectionStore.getState().clear();
+    useMessengerStore.getState().clear();
   });
 
   afterEach(() => {
@@ -214,6 +217,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
     useSettingsStore.setState({ notificationSound: "none" });
     useMessengerBackgroundProjectionStore.getState().clear();
+    useMessengerStore.getState().clear();
   });
 
   it("shows notifications for candidates from different ownerKey values", async () => {
@@ -731,6 +735,320 @@ describe("useLayoutWorkspaceNotifications", () => {
         }),
       }),
     );
+  });
+
+  it.each([true, false])(
+    "uses active catalog metadata only for its owner (matches: %s)",
+    async (sameOwner) => {
+      const session = createSession("active-metadata");
+      const ownerKey = workspaceRuntimeOwnerKey(session);
+      const messageUuid = "active-metadata-message";
+
+      useWorkspaceAuthStore.setState({
+        sessions: [session],
+        currentAccountId: session.accountId,
+        runtimeGeneration: 1,
+      });
+      useMessengerStore.setState({
+        ownerKey: sameOwner ? ownerKey : "another-owner",
+        streamsById: {
+          "stream-1": {
+            uuid: "stream-1",
+            name: "Sandbox",
+            isPrivate: false,
+            notificationMode: "mentions_only",
+          } as MessengerStream,
+        },
+        topicsById: {
+          "topic-1": {
+            uuid: "topic-1",
+            streamUuid: "stream-1",
+            name: "Unread race",
+            isDefault: false,
+            notificationMode: "follow",
+          } as MessengerTopic,
+        },
+      });
+      useMessengerBackgroundProjectionStore.setState({
+        projectionsByOwnerKey: {
+          [ownerKey]: createProjection(ownerKey, {
+            notificationCandidates: [
+              createCandidate(ownerKey, messageUuid, {
+                audience: "unknown",
+                streamName: null,
+                topicName: null,
+                streamNotificationMode: null,
+                topicNotificationMode: null,
+                observedAt: Date.now(),
+              }),
+            ],
+            messageIdSnapshotsById: {
+              [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+            },
+          }),
+        },
+      });
+
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: OTHER_CONVERSATION_PATHNAME,
+        }),
+      );
+
+      if (!sameOwner) {
+        expect(shouldWorkspaceDesktopNotifyMock).not.toHaveBeenCalled();
+        expect(showNotificationMock).not.toHaveBeenCalled();
+        return;
+      }
+
+      await waitFor(() => {
+        expect(showNotificationMock).toHaveBeenCalledTimes(1);
+      });
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            kind: "stream",
+            streamNotificationMode: "mentions_only",
+            topicNotificationMode: "follow",
+          }),
+        }),
+      );
+      expect(showNotificationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining("Sandbox") }),
+      );
+    },
+  );
+
+  it("prefers confirmed active notification modes over stale projection snapshots", async () => {
+    const session = createSession("active-mode");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "active-mode-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerStore.setState({
+      ownerKey,
+      streamsById: {
+        "stream-1": {
+          uuid: "stream-1",
+          name: "Sandbox",
+          isPrivate: false,
+          notificationMode: "muted",
+        } as MessengerStream,
+      },
+      topicsById: {
+        "topic-1": {
+          uuid: "topic-1",
+          streamUuid: "stream-1",
+          name: "Unread race",
+          isDefault: false,
+          notificationMode: "default",
+        } as MessengerTopic,
+      },
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, messageUuid, {
+              audience: "channel",
+              streamNotificationMode: "all_messages",
+              topicNotificationMode: "follow",
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+          streamSnapshotsById: {
+            "stream-1": {
+              ...createStreamSnapshot(ownerKey),
+              streamName: "Sandbox",
+              notificationMode: "all_messages",
+              isPrivate: false,
+            },
+          },
+          topicSnapshotsById: {
+            "topic-1": {
+              ownerKey,
+              topicUuid: "topic-1",
+              streamUuid: "stream-1",
+              topicName: "Unread race",
+              unreadCount: 1,
+              notificationMode: "follow",
+              lastMessageUuid: messageUuid,
+              isDefault: false,
+              isDone: false,
+              epochVersion: 1,
+              updatedAt: "2026-07-07T10:00:00.000Z",
+              observedAt: 2,
+            },
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+
+    await waitFor(() => expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalled());
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          streamNotificationMode: "muted",
+          topicNotificationMode: "default",
+        }),
+      }),
+    );
+  });
+
+  it("retries a deferred candidate when only active catalog metadata arrives", async () => {
+    const session = createSession("active-metadata-retry");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "active-metadata-retry-message";
+    const candidate = createCandidate(ownerKey, messageUuid, {
+      audience: "unknown",
+      streamName: null,
+      topicName: null,
+      streamNotificationMode: null,
+      topicNotificationMode: null,
+      observedAt: Date.now(),
+    });
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [candidate],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+    await Promise.resolve();
+    expect(showNotificationMock).not.toHaveBeenCalled();
+
+    useMessengerStore.setState({
+      ownerKey,
+      streamsById: {
+        "stream-1": {
+          uuid: "stream-1",
+          name: "Sandbox",
+          isPrivate: false,
+          notificationMode: "mentions_only",
+        } as MessengerStream,
+      },
+      topicsById: {
+        "topic-1": {
+          uuid: "topic-1",
+          streamUuid: "stream-1",
+          name: "Unread race",
+          isDefault: false,
+          notificationMode: "follow",
+        } as MessengerTopic,
+      },
+    });
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("finishes ready notification work before scheduling a metadata retry", async () => {
+    const session = createSession("metadata-retry-order");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const missingMessageUuid = "metadata-retry-missing";
+    const readyMessageUuid = "metadata-retry-ready";
+    const observedAt = Date.now();
+    let resolveAuthor: ((author: { displayName: string }) => void) | undefined;
+    const author = new Promise<{ displayName: string }>((resolve) => {
+      resolveAuthor = resolve;
+    });
+    resolveCachedWorkspaceUserMock.mockReturnValue(author);
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, missingMessageUuid, {
+              audience: "unknown",
+              streamName: null,
+              topicName: null,
+              streamNotificationMode: null,
+              topicNotificationMode: null,
+              observedAt,
+            }),
+            createCandidate(ownerKey, readyMessageUuid, { observedAt: observedAt + 1 }),
+          ],
+          messageIdSnapshotsById: {
+            [missingMessageUuid]: createMessageSnapshot(ownerKey, missingMessageUuid),
+            [readyMessageUuid]: createMessageSnapshot(ownerKey, readyMessageUuid),
+          },
+        }),
+      },
+    });
+
+    let renders = 0;
+    const { unmount } = renderHook(() => {
+      renders += 1;
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      });
+    });
+    const initialRenders = renders;
+
+    await waitFor(() => {
+      expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(1);
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(1);
+
+    resolveAuthor?.({ displayName: "Alice" });
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    expect(renders).toBe(initialRenders);
+    unmount();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(1);
   });
 
   it("plays app sound and requests attention even when native notification returns false", async () => {
