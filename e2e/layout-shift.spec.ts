@@ -200,12 +200,14 @@ async function openConversation(page: Page, href: string): Promise<void> {
   await page.waitForURL(`**${href}`);
 }
 
-async function readReservedStyle(page: Page): Promise<string> {
+async function readReservedStyle(page: Page): Promise<{ width: string; height: string }> {
   return page
     .locator("[data-workspace-file='true']")
     .first()
-    .evaluate((node) => node.getAttribute("style") ?? "none")
-    .catch(() => "none");
+    .evaluate((node) => ({
+      width: (node as HTMLElement).style.width,
+      height: (node as HTMLElement).style.height,
+    }));
 }
 
 /**
@@ -233,7 +235,10 @@ test.describe("Measured media sizes @mock", () => {
     await openConversation(page, TOPIC_PATH);
 
     // While the previews are in flight again: this is when a reserved box exists.
-    expect(await readReservedStyle(page)).toMatch(/^width: \d+px; height: \d+px;$/);
+    expect(await readReservedStyle(page)).toEqual({
+      width: expect.stringMatching(/^[1-9]\d*px$/),
+      height: expect.stringMatching(/^[1-9]\d*px$/),
+    });
 
     await page.waitForTimeout(FILE_RESPONSE_DELAY_MS * 3);
     expect((await readShiftScore(page)) - firstPass).toBeLessThan(firstPass / 2);
