@@ -22,13 +22,14 @@ import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui
 import { t } from "~/i18n/i18n";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
-import { isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
+import { validateFileUpload } from "~/shared/lib/validation";
 import { buildWorkspaceDefaultAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";
 import {
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { buildWorkspaceProfileShareLink } from "~/shared/lib/workspace-profile-link.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
@@ -122,14 +123,6 @@ function resolveStatusLabel(status: RightPanelUserProfileResolvedUser["status"])
   return t("presence.doNotDisturb");
 }
 
-function buildShareProfileLink(
-  organizationOrigin: string | undefined,
-  userUuid: string,
-): string | null {
-  if (organizationOrigin == null || !isValidRealmUrl(organizationOrigin)) return null;
-  return `${organizationOrigin.replace(/\/+$/, "")}/#user/${userUuid}`;
-}
-
 export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   info,
   onBack,
@@ -214,7 +207,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     headerTitle?.trim() ||
     (profile.isOwnProfile ? t("settings.personalInfo") : t("info.information"));
   const shareLink = useMemo(
-    () => buildShareProfileLink(runtimeContext?.organizationOrigin, profile.userUuid),
+    () => buildWorkspaceProfileShareLink(runtimeContext?.organizationOrigin, profile.userUuid),
     [profile.userUuid, runtimeContext?.organizationOrigin],
   );
   const showActions = !(profile.isOwnProfile && isEditing);

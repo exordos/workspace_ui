@@ -1,3 +1,4 @@
+// @vitest-environment-options {"url":"https://workspace.example.com"}
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as WorkspaceAuthLibModule from "~/entities/workspace-auth/workspace-auth.lib";
@@ -189,6 +190,19 @@ describe("LoginPage", () => {
     expect(screen.queryByRole("button", { name: /^back$/i })).not.toBeInTheDocument();
   });
 
+  it("uses the shared link's server instead of a different default login server", async () => {
+    isElectron.mockReturnValue(false);
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://other.example.com");
+    renderWithProviders(<LoginPage />, { route: "/#user/33333333-3333-4333-8333-333333333333" });
+    await screen.findByLabelText(/email or login/i);
+    expect(fetchWorkspaceServerSettingsForOrganization).toHaveBeenCalledWith(
+      window.location.origin,
+    );
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalledWith(
+      "https://other.example.com",
+    );
+  });
+
   it("shows registration only when server settings provide a safe URL", async () => {
     fetchWorkspaceServerSettingsForOrganization.mockResolvedValue({
       ...VALID_SERVER_SETTINGS,
@@ -343,6 +357,24 @@ describe("LoginPage", () => {
       );
     });
   });
+
+  it.each([false, true])(
+    "opens a shared profile directly after project login (explicit: %s)",
+    async (explicit) => {
+      const target = "/#user/33333333-3333-4333-8333-333333333333";
+      renderWithProviders(<LoginPage />, {
+        route: explicit ? `/login?redirectTo=${encodeURIComponent(target)}` : target,
+      });
+      await moveToProjectStep();
+      fireEvent.click(await screen.findByRole("button", { name: /login/i }));
+      await waitFor(() =>
+        expect(navigateSpy).toHaveBeenCalledWith(
+          "/org/chat.example.com/project/project-a/inbox#user/33333333-3333-4333-8333-333333333333",
+          { replace: true },
+        ),
+      );
+    },
+  );
 
   it("selects the only available project by default", async () => {
     prepareWorkspaceProjectLogin.mockResolvedValue({

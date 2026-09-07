@@ -722,6 +722,53 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     );
   });
 
+  it.each(["root", "inbox", "activity", "feed"] as const)(
+    "opens an accessible profile override on the %s route without a conversation",
+    (kind) => {
+      const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+        route: { kind, orgId: "org-a", projectId: "project-a", filter: "mentions" },
+        usersById: createUsersById(),
+        fallbackTitle: "Messenger",
+        currentUserUuid: USER_A_UUID,
+        workspaceUserUuidOverride: USER_B_UUID,
+        temporarilyNotConnectedText: "Temporarily not connected",
+      });
+
+      expect(view).toEqual(
+        expect.objectContaining({
+          kind: "userProfile",
+          userUuid: USER_B_UUID,
+          title: "Bob Reed",
+          isOwnProfile: false,
+        }),
+      );
+    },
+  );
+
+  it("does not expose a missing profile override outside a conversation", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: { kind: "inbox", orgId: "org-a", projectId: "project-a" },
+      usersById: createUsersByIdWithout(USER_B_UUID),
+      fallbackTitle: "Messenger",
+      workspaceUserUuidOverride: USER_B_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view).toBeNull();
+  });
+
+  it("does not open a profile override without a Workspace route", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: null,
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      workspaceUserUuidOverride: USER_B_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view).toBeNull();
+  });
+
   it("projects a Workspace user profile override by UUID with missing-user fallback", () => {
     const route = {
       kind: "stream" as const,

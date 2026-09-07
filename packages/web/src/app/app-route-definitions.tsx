@@ -7,7 +7,12 @@ import {
   workspaceInboxRoute,
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  parseWorkspaceProfileShareHash,
+  preserveWorkspaceProfileShareHash,
+} from "~/shared/lib/workspace-profile-link.lib";
 import { Layout } from "~/widgets/layout/layout.ui";
+import { resolveProfileShareEntryRoute } from "./app-profile-share-redirect.lib";
 import { WebViewShell } from "./webview-shell";
 
 const LoginPage = React.lazy(() =>
@@ -67,19 +72,42 @@ function resolveWorkspaceMessengerRootFromSessions(params: {
 }
 
 export const WorkspaceMessengerRootRedirect: React.FC = () => {
+  const { hash } = useLocation();
   const { orgId } = useParams<{ orgId?: string }>();
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const target = resolveWorkspaceMessengerRootFromSessions({ sessions, currentAccountId, orgId });
-  return <Navigate to={target} replace />;
+  return <Navigate to={preserveWorkspaceProfileShareHash(target, hash)} replace />;
 };
 
 export const WorkspaceMessengerDefaultRedirect: React.FC = () => {
+  const { hash } = useLocation();
   const { orgId, projectId } = useParams<{ orgId?: string; projectId?: string }>();
   if (orgId == null || orgId.length === 0 || projectId == null || projectId.length === 0) {
     return <WorkspaceMessengerRootRedirect />;
   }
-  return <Navigate to={workspaceInboxRoute(orgId, projectId)} replace />;
+  return (
+    <Navigate
+      to={preserveWorkspaceProfileShareHash(workspaceInboxRoute(orgId, projectId), hash)}
+      replace
+    />
+  );
+};
+
+const WorkspaceShareEntryRedirect: React.FC<{ fallback: string }> = ({ fallback }) => {
+  const { hash } = useLocation();
+  const sessions = useWorkspaceAuthStore((state) => state.sessions);
+  const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const target =
+    parseWorkspaceProfileShareHash(hash) == null
+      ? fallback
+      : resolveProfileShareEntryRoute({
+          sessions,
+          currentAccountId,
+          hash,
+          browserOrigin: window.location.origin,
+        });
+  return <Navigate to={target} replace />;
 };
 
 export const WebViewAppRoutes: React.FC = () => (
@@ -112,7 +140,7 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<Navigate to={defaultMessengerRoute} replace />} />
+      <Route path="/" element={<WorkspaceShareEntryRedirect fallback={defaultMessengerRoute} />} />
       <Route path="/org/:orgId" element={<WorkspaceMessengerRootRedirect />} />
       <Route path="/licenses" element={<LicensesPage />} />
       <Route path="/org/:orgId/licenses" element={<LicensesPage />} />

@@ -99,6 +99,7 @@ export function useLayoutRightPanelShell(
     (state) => state.streamBindingIdsByStreamId,
   );
   const workspaceUsersById = useUsersStore((state) => state.usersById);
+  const workspaceUsersOwnerKey = useUsersStore((state) => state.ownerKey);
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
   const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(
@@ -112,6 +113,13 @@ export function useLayoutRightPanelShell(
   const workspaceCurrentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
   const workspaceOwnerKey =
     workspaceRuntimeContext == null ? null : workspaceRuntimeOwnerKey(workspaceRuntimeContext);
+  const canSelectWorkspaceProfile =
+    workspaceRuntimeContext != null &&
+    workspaceRoute?.orgId === workspaceRuntimeContext.organizationId &&
+    workspaceRoute.projectId === workspaceRuntimeContext.projectId &&
+    workspaceUsersOwnerKey === workspaceOwnerKey;
+  const hasUnavailableProfileOverride =
+    (rightDrawerWorkspaceUserUuidOverride?.trim().length ?? 0) > 0 && !canSelectWorkspaceProfile;
   const shouldSelectWorkspaceTopicMessages =
     workspaceMessengerActive && rightDrawerOpen && rightDrawerMode === "info";
   const workspaceMessagesById = useWorkspaceMessageStore((state) =>
@@ -124,44 +132,45 @@ export function useLayoutRightPanelShell(
   const workspaceTopicSortMode = useSettingsStore((state) => state.messengerSidebarSortMode);
   // Workspace right panel reads chat structure from messenger store and user cards
   // from the new user store.
-  const workspaceRightPanelInfo = useMemo(
-    () =>
-      selectWorkspaceRightPanelInfoView(
-        {
-          conversationsById: workspaceConversationsById,
-          streamsById: workspaceStreamsById,
-          topicsById: workspaceTopicsById,
-          topicIds: workspaceTopicIds,
-          streamBindingsById: workspaceStreamBindingsById,
-          streamBindingIdsByStreamId: workspaceStreamBindingIdsByStreamId,
-        },
-        {
-          route: workspaceRoute,
-          usersById: workspaceUsersById,
-          fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
-          currentUserUuid: workspaceCurrentUserUuid,
-          messagesById: workspaceMessagesById,
-          sortMode: workspaceTopicSortMode,
-          workspaceUserUuidOverride: rightDrawerWorkspaceUserUuidOverride,
-          temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),
-        },
-      ),
-    [
-      rightDrawerTitle,
-      workspaceConversationsById,
-      workspaceRoute,
-      workspaceStreamBindingIdsByStreamId,
-      workspaceStreamBindingsById,
-      workspaceStreamsById,
-      workspaceTopicIds,
-      workspaceTopicsById,
-      workspaceCurrentUserUuid,
-      workspaceMessagesById,
-      workspaceTopicSortMode,
-      rightDrawerWorkspaceUserUuidOverride,
-      workspaceUsersById,
-    ],
-  );
+  const workspaceRightPanelInfo = useMemo(() => {
+    // Suppress the old card during the render before the owner-change effect closes it.
+    if (hasUnavailableProfileOverride) return null;
+    return selectWorkspaceRightPanelInfoView(
+      {
+        conversationsById: workspaceConversationsById,
+        streamsById: workspaceStreamsById,
+        topicsById: workspaceTopicsById,
+        topicIds: workspaceTopicIds,
+        streamBindingsById: workspaceStreamBindingsById,
+        streamBindingIdsByStreamId: workspaceStreamBindingIdsByStreamId,
+      },
+      {
+        route: workspaceRoute,
+        usersById: workspaceUsersById,
+        fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
+        currentUserUuid: workspaceCurrentUserUuid,
+        messagesById: workspaceMessagesById,
+        sortMode: workspaceTopicSortMode,
+        workspaceUserUuidOverride: rightDrawerWorkspaceUserUuidOverride,
+        temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),
+      },
+    );
+  }, [
+    hasUnavailableProfileOverride,
+    rightDrawerTitle,
+    workspaceConversationsById,
+    workspaceRoute,
+    workspaceStreamBindingIdsByStreamId,
+    workspaceStreamBindingsById,
+    workspaceStreamsById,
+    workspaceTopicIds,
+    workspaceTopicsById,
+    workspaceCurrentUserUuid,
+    workspaceMessagesById,
+    workspaceTopicSortMode,
+    rightDrawerWorkspaceUserUuidOverride,
+    workspaceUsersById,
+  ]);
   const effectiveWorkspaceRightPanelInfo = useMemo<WorkspaceRightPanelInfoView | null>(() => {
     if (!workspaceMessengerActive) return null;
     if (workspaceRightPanelInfo != null) return workspaceRightPanelInfo;

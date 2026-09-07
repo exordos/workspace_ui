@@ -1,19 +1,42 @@
-import { renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerBootstrapPayload } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";
 
-const OWNER_KEY = "account-a:org-a:project-a";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const DIRECT_USER_UUID = "44444444-4444-4444-8444-444444444444";
 const BINDING_UUID = "55555555-5555-4555-8555-555555555555";
 const DIRECT_STREAM_UUID = "66666666-6666-4666-8666-666666666666";
+const SESSION: WorkspaceAuthSession = {
+  accountId: "account-a",
+  instanceId: "instance-a",
+  organizationId: "org-a",
+  projectId: "project-a",
+  organizationOrigin: "https://workspace.example.com",
+  userUuid: USER_UUID,
+  accessToken: "test-token",
+  runtimeGeneration: 1,
+  login: "alice",
+  profile: {
+    uuid: USER_UUID,
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Stone",
+    email: "alice@example.com",
+  },
+};
+const OWNER_KEY = workspaceRuntimeOwnerKey(SESSION);
 
 function createBootstrapPayload(): MessengerBootstrapPayload {
   return {
@@ -121,8 +144,10 @@ function buildParams(
 
 describe("useLayoutRightPanelShell", () => {
   beforeEach(() => {
+    useWorkspaceAuthStore.setState({ sessions: [SESSION], currentAccountId: SESSION.accountId });
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
     useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, createBootstrapPayload());
+    useUsersStore.getState().startOwnerSync(OWNER_KEY);
     useUsersStore.getState().replaceUsers([
       createUser({
         uuid: USER_UUID,
@@ -140,9 +165,11 @@ describe("useLayoutRightPanelShell", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
   });
 
   it("uses Workspace projection on Workspace routes", () => {
@@ -210,6 +237,94 @@ describe("useLayoutRightPanelShell", () => {
         status: "idle",
       }),
     );
+  });
+
+  it("opens a current-owner profile on Inbox without a conversation", () => {
+    const { result } = renderHook(() =>
+      useLayoutRightPanelShell(
+        buildParams({
+          workspaceRoute: { kind: "inbox", orgId: "org-a", projectId: "project-a" },
+          rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+        }),
+      ),
+    );
+
+    expect(result.current.workspaceRightPanelInfo).toEqual(
+      expect.objectContaining({
+        kind: "userProfile",
+        userUuid: DIRECT_USER_UUID,
+        title: "Cora Lane",
+        isOwnProfile: false,
+      }),
+    );
+    expect(result.current.rightDrawerTitle).toBe("Information");
+  });
+
+  it.each([
+    { orgId: "org-b", projectId: "project-a" },
+    { orgId: "org-a", projectId: "project-b" },
+  ])("hides profile data on a mismatched route %o", (route) => {
+    const { result } = renderHook(() =>
+      useLayoutRightPanelShell(
+        buildParams({
+          workspaceRoute: { kind: "inbox", ...route },
+          rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+        }),
+      ),
+    );
+
+    expect(result.current.workspaceRightPanelInfo?.kind).not.toBe("userProfile");
+    expect(result.current.rightPanelTitleResolved).not.toBe("Cora Lane");
+  });
+
+  it.each(["inbox", "stream"] as const)(
+    "hides stale profile data on the %s route during an account switch",
+    (kind) => {
+      const { result } = renderHook(() =>
+        useLayoutRightPanelShell(
+          buildParams({
+            workspaceRoute: {
+              kind,
+              orgId: "org-a",
+              projectId: "project-a",
+              streamUuid: STREAM_UUID,
+            },
+            rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+          }),
+        ),
+      );
+      expect(result.current.workspaceRightPanelInfo?.kind).toBe("userProfile");
+
+      act(() => {
+        const nextSession = { ...SESSION, accountId: "account-b", runtimeGeneration: 2 };
+        useWorkspaceAuthStore.setState({
+          sessions: [SESSION, nextSession],
+          currentAccountId: nextSession.accountId,
+        });
+      });
+
+      expect(useUsersStore.getState().ownerKey).toBe(OWNER_KEY);
+      expect(result.current.workspaceRightPanelInfo?.kind).not.toBe("userProfile");
+      expect(result.current.rightPanelTitleResolved).not.toBe("Cora Lane");
+    },
+  );
+
+  it("hides profile data as soon as the current session is removed", () => {
+    const { result } = renderHook(() =>
+      useLayoutRightPanelShell(
+        buildParams({
+          workspaceRoute: { kind: "inbox", orgId: "org-a", projectId: "project-a" },
+          rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+        }),
+      ),
+    );
+
+    act(() => {
+      useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+    });
+
+    expect(result.current.workspaceRightPanelInfo?.kind).not.toBe("userProfile");
+    expect(result.current.rightPanelTitleResolved).not.toBe("Cora Lane");
   });
 
   it("keeps Workspace panel fallback when route data is not projected yet", () => {
