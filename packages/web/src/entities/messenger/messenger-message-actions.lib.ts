@@ -118,8 +118,7 @@ export interface MessengerMessageActionStoreApi {
     | "removeMessage"
     | "messageMutationRevision"
     | "messagesById"
-    | "beginOptimisticMessagesReadUpTo"
-    | "rollbackOptimisticMessagesRead"
+    | "conversationWindowsById"
   >;
 }
 
@@ -453,7 +452,7 @@ const EMPTY_READ_UP_TO_PROJECTION: ReadUpToProjection = {
   rollback: () => undefined,
 };
 
-/** Flip loaded messages and shrink the badges before the server confirms the boundary. */
+/** Project sidebar counters while message read flags still await confirmation. */
 function projectReadUpTo(
   store: MessengerMessageActionStoreApi,
   ownerKey: string,
@@ -462,15 +461,27 @@ function projectReadUpTo(
 ): ReadUpToProjection {
   if (anchor == null) return EMPTY_READ_UP_TO_PROJECTION;
   const topicBeforeRead = useMessengerStore.getState().topicsById[anchor.topicUuid] ?? null;
-  const messageChange = store.getState().beginOptimisticMessagesReadUpTo(anchor.uuid, {
-    conversationIds: conversationIds ?? [
-      anchor.conversationId,
-      conversationIdForStream(anchor.streamUuid),
-    ],
-  });
+  const state = store.getState();
+  const scope = conversationIds ?? [
+    anchor.conversationId,
+    conversationIdForStream(anchor.streamUuid),
+  ];
+  const candidateIds = new Set(
+    scope.flatMap((id) => state.conversationWindowsById[id]?.messageUuids ?? []),
+  );
+  const unreadMessages = [...candidateIds]
+    .map((id) => state.messagesById[id])
+    .filter(
+      (message): message is MessengerMessage =>
+        message != null &&
+        !message.read &&
+        message.streamUuid === anchor.streamUuid &&
+        message.topicUuid === anchor.topicUuid &&
+        compareWorkspaceMessages(message, anchor) <= 0,
+    );
   const readCount = reachesTopicEnd(topicBeforeRead, anchor, store.getState().messagesById)
     ? undefined
-    : messageChange.projectedMessages.length;
+    : unreadMessages.length;
   const catalogChange =
     readCount === 0
       ? null
@@ -480,10 +491,9 @@ function projectReadUpTo(
           readCount,
         );
   return {
-    projectedMessages: messageChange.projectedMessages,
+    projectedMessages: unreadMessages,
     rollback: () => {
       if (catalogChange != null) rollbackWorkspaceTopicReadCounters(catalogChange);
-      store.getState().rollbackOptimisticMessagesRead(messageChange);
     },
   };
 }
@@ -545,8 +555,7 @@ export async function markMessengerMessagesReadUpTo({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  // Read state is applied locally first so the reader sees it at once; the server
-  // confirms in the background and the projection rolls back if it fails.
+  // Counters respond immediately; unread bubbles remain until the server confirms.
   const anchor = store.getState().messagesById[messageUuid] ?? null;
   const projection = projectReadUpTo(store, action.ownerKey, anchor, conversationIds);
 

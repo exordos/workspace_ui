@@ -2,8 +2,8 @@
  * The sidebar badge of a thread (topic) after the reader scrolls through it.
  *
  * Scroll-driven reads go through `POST /messages/{uuid}/actions/read_up_to/invoke`.
- * The client projects the read (message flags, topic and stream badges) before the
- * server answers; the backend's `topic.updated` projection remains authoritative
+ * The client projects topic and stream badges before the server answers, while
+ * message flags await confirmation; the backend's `topic.updated` projection remains authoritative
  * when it arrives.
  */
 import { expect, test } from "./fixtures";
@@ -135,9 +135,9 @@ async function installThread(
   readUpToCalls: string[],
   gate: ReturnType<typeof createReadUpToGate>,
 ): Promise<void> {
-  const unreadFrom = REAL_CONVERSATION_SAMPLE.length - UNREAD_TAIL;
+  let readThroughIndex = REAL_CONVERSATION_SAMPLE.length - UNREAD_TAIL - 1;
   const allMessages = () =>
-    REAL_CONVERSATION_SAMPLE.map((message, index) => messageDto(message, index >= unreadFrom));
+    REAL_CONVERSATION_SAMPLE.map((message, index) => messageDto(message, index > readThroughIndex));
 
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
@@ -177,6 +177,10 @@ async function installThread(
         gate.markRequested();
         await gate.released;
       }
+      readThroughIndex = Math.max(
+        readThroughIndex,
+        REAL_CONVERSATION_SAMPLE.findIndex((message) => message.uuid === boundaryUuid),
+      );
       const boundary = allMessages().find((message) => message.uuid === boundaryUuid);
       await route.fulfill({
         status: 200,
@@ -264,6 +268,8 @@ test.describe("Thread unread badge after scroll read @mock", () => {
         expect(readUpToCalls.at(-1)).toBe(LAST_MESSAGE_UUID);
         await expect(badge).toBeHidden({ timeout: 10_000 });
 
+        await expect(page.locator("[data-read-request-pending='true']").first()).toBeVisible();
+
         if (switchChat) {
           await streamRow.click();
           await expect(page).toHaveURL(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`);
@@ -271,9 +277,11 @@ test.describe("Thread unread badge after scroll read @mock", () => {
           await expect(page).toHaveURL(
             `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`,
           );
-          await scroller.evaluate((node) => {
-            node.scrollTop = node.scrollHeight;
-          });
+          await expect
+            .poll(() =>
+              scroller.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight),
+            )
+            .toBeLessThanOrEqual(80);
           await expect(page.locator("[data-read-request-pending='true']").first()).toBeVisible();
           expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
         }
@@ -294,6 +302,7 @@ test.describe("Thread unread badge after scroll read @mock", () => {
         await expect(badge).toHaveText("1", { timeout: 10_000 });
         socket.send(JSON.stringify(topicUpdatedFrame(3, 0)));
         await expect(badge).toBeHidden({ timeout: 10_000 });
+        expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
       },
     );
   }

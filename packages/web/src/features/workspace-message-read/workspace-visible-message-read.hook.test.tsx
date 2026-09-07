@@ -164,6 +164,35 @@ describe("useWorkspaceVisibleMessageRead", () => {
     expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(ownUnread.uuid);
   });
 
+  it("does not queue an older own unread message covered by an in-flight boundary", async () => {
+    const ownUnread = {
+      ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
+      isOwn: true,
+    };
+    const later = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
+    seedWorkspaceMessageBody(ownUnread);
+    seedWorkspaceMessageBody(later);
+    const pending = createDeferred<{ status: string; ownerKey: string; message: null }>();
+    captured.markReadUpTo.mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+    act(() => {
+      result.current.scheduleReadBatch([later.uuid]);
+      vi.advanceTimersByTime(250);
+      result.current.scheduleReadBatch([ownUnread.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    await act(async () => {
+      pending.resolve({ status: "applied", ownerKey: "owner-1", message: null });
+      await settlePromiseCallbacks();
+    });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+  });
+
   it("sends the latest visible boundary separately for every topic", () => {
     const first = message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z");
     const second = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");

@@ -132,7 +132,7 @@ export function createMessengerReadQueue(initialContext: WorkspaceRuntimeContext
       if (
         queue.inFlight != null &&
         (queue.inFlight.message.uuid === message.uuid ||
-          (!message.isOwn && compareWorkspaceMessages(message, queue.inFlight.message) <= 0))
+          compareWorkspaceMessages(message, queue.inFlight.message) <= 0)
       )
         return;
       if (

@@ -23,6 +23,7 @@ import {
   upsertMessengerStreamCache,
   upsertMessengerTopicCache,
 } from "./messenger-cache.lib";
+import { forgetMessengerConversationPositions } from "./messenger-conversation-position.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
   buildMessengerRequestOptions,
@@ -348,6 +349,7 @@ export async function runWorkspaceStreamRead(
     const catalogChange = beginOptimisticCatalogRead(action.ownerKey, options);
     if (catalogChange == null)
       return { status: "skipped", ownerKey: action.ownerKey, reason: "missing-context" };
+    forgetMessengerConversationPositions(options);
     const messageChange = useWorkspaceMessageStore.getState().beginOptimisticMessagesRead({
       streamUuid: options.streamUuid,
     });
@@ -424,6 +426,7 @@ export async function runWorkspaceTopicRead(
     const catalogChange = beginOptimisticCatalogRead(action.ownerKey, options);
     if (catalogChange == null)
       return { status: "skipped", ownerKey: action.ownerKey, reason: "missing-context" };
+    forgetMessengerConversationPositions(options);
     const messageChange = useWorkspaceMessageStore.getState().beginOptimisticMessagesRead({
       streamUuid: options.streamUuid,
       topicUuid: options.topicUuid,

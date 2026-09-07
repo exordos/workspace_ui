@@ -848,7 +848,7 @@ describe("messenger message actions", () => {
     expect(state.streamsById[STREAM_A]?.unreadCount).toBe(3);
   });
 
-  it("applies read state and counters before the server confirms read_up_to", async () => {
+  it("projects counters but keeps unread messages until the server confirms read_up_to", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
     bootstrapCountersForReadUpTo(ownerKey, MESSAGE_B);
@@ -857,8 +857,8 @@ describe("messenger message actions", () => {
     const result = readUpToAnchorB(runtimeContext, {
       markMessagesReadUpTo: () => response.promise,
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(false);
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(2);
 
@@ -907,7 +907,7 @@ describe("messenger message actions", () => {
     controller.abort();
 
     await expect(result).rejects.toThrow("aborted");
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
   });
 
@@ -932,7 +932,7 @@ describe("messenger message actions", () => {
 
     await expect(result).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-owner" });
     expect(rollback).not.toHaveBeenCalled();
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(0);
   });
 
