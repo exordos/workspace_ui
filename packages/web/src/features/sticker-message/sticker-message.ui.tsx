@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { stickerCatalogRepository } from "~/entities/sticker/sticker-catalog.api";
+import { StickerMedia } from "~/entities/sticker/sticker-media.ui";
+import { stickerRuntimeKey } from "~/entities/sticker/sticker-workspace.repository";
+import { useStickerStore } from "~/entities/sticker/sticker.model";
 import type { StickerCatalogRepository } from "~/entities/sticker/sticker.repository";
 import type { Sticker, StickerReference } from "~/entities/sticker/sticker.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 
 interface StickerMessageProps {
@@ -46,7 +50,9 @@ export function StickerMessage({
   loadEnabled = true,
   repository = stickerCatalogRepository,
 }: Readonly<StickerMessageProps>): React.ReactElement {
-  const currentReferenceKey = referenceKey(reference);
+  const owner = useWorkspaceAuthStore(() => stickerRuntimeKey());
+  const revision = useStickerStore((state) => state.revision);
+  const currentReferenceKey = `${owner}:${revision}:${referenceKey(reference)}`;
   const [state, setState] = useState<StickerMessageState>({
     referenceKey: currentReferenceKey,
     status: "loading",
@@ -98,7 +104,7 @@ export function StickerMessage({
   }
 
   const { sticker } = effectiveState;
-  const renderedWidth = Math.min(Math.max(sticker.media.width, 1), 240);
+  const renderedWidth = Math.min(Math.max(sticker.media.width ?? 160, 1), 240);
 
   return (
     <div
@@ -107,16 +113,10 @@ export function StickerMessage({
       data-sticker-id={sticker.id}
       data-sticker-status="ready"
     >
-      <img
-        src={sticker.url}
-        alt={sticker.alt}
-        width={sticker.media.width}
-        height={sticker.media.height}
-        className="max-h-[240px] max-w-[240px] rounded-xl object-contain"
-        style={{ aspectRatio: sticker.media.aspectRatio, width: renderedWidth }}
-        loading="lazy"
-        draggable={false}
-        onError={() => setState({ referenceKey: currentReferenceKey, status: "unavailable" })}
+      <StickerMedia
+        sticker={sticker}
+        className="flex max-h-[240px] max-w-[240px] rounded-xl object-contain"
+        style={{ aspectRatio: sticker.media.aspectRatio, width: renderedWidth, maxHeight: 240 }}
       />
     </div>
   );

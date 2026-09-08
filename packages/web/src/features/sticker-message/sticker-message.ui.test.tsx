@@ -57,7 +57,7 @@ describe("StickerMessage", () => {
     expect(image).toHaveAttribute("src", STICKER.url);
     expect(image).toHaveAttribute("width", "480");
     expect(image).toHaveAttribute("height", "270");
-    expect(image).toHaveStyle({ aspectRatio: `${16 / 9}`, width: "240px" });
+    expect(image.parentElement).toHaveStyle({ aspectRatio: `${16 / 9}`, width: "240px" });
     expect(screen.queryByText("GIPHY")).not.toBeInTheDocument();
     expect(screen.queryByText("by Workspace Artist")).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();

@@ -52,8 +52,15 @@ export interface StickerCatalog {
 }
 
 /** Resolved media returned to UI. Provider result IDs are opaque and URLs are session-only. */
-export interface Sticker extends Omit<StickerCatalogEntry, "id"> {
+export interface Sticker extends Omit<Partial<StickerCatalogEntry>, "id" | "media"> {
   id: string;
+  title: string;
+  alt: string;
+  emoji: readonly string[];
+  tags: readonly string[];
+  media: Partial<StickerMediaMetadata>;
+  category?: "gif" | "sticker";
+  isFavorite?: boolean;
   reference: StickerReference;
   format: StickerFormat;
   url: string;

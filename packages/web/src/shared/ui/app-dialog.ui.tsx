@@ -131,6 +131,7 @@ export const AppDialogShell: React.FC<AppDialogShellProps> = ({
   contentClassName,
   children,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   modal = true,
   ariaDescribedBy,
   showOverlay = true,
@@ -149,6 +150,7 @@ export const AppDialogShell: React.FC<AppDialogShellProps> = ({
         aria-describedby={ariaDescribedBy}
         onPointerDownOutside={onPointerDownOutside}
         onInteractOutside={onInteractOutside}
+        onEscapeKeyDown={onEscapeKeyDown}
       >
         {children}
       </Dialog.Content>
@@ -168,6 +170,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   scrollBody = false,
   showCloseButton = true,
   onCloseAutoFocus,
+  onEscapeKeyDown,
 }) => {
   const contentClassName = `${
     scrollBody ? SCROLL_BODY_CONTENT_CLASS : DEFAULT_CONTENT_CLASS
@@ -200,6 +203,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       onOpenChange={onOpenChange}
       contentClassName={contentClassName}
       onCloseAutoFocus={onCloseAutoFocus}
+      onEscapeKeyDown={onEscapeKeyDown}
     >
       {scrollBody ? (
         <>

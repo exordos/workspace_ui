@@ -351,6 +351,7 @@ export async function getBinaryResult(
   path: string,
   options: MessengerClientOptions,
   params: MessengerQueryParams = {},
+  cache: RequestCache = "force-cache",
 ): Promise<MessengerBinaryResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
@@ -358,7 +359,7 @@ export async function getBinaryResult(
     method: "GET",
     // File UUIDs identify immutable bytes for the client. Let the browser
     // reuse a cached response before making another authenticated request.
-    cache: "force-cache",
+    cache,
     headers: buildMessengerRequestHeaders(
       await resolveMessengerAccessToken(options),
       undefined,

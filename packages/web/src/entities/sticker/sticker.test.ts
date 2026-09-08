@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   buildStickerMarkdown,
   buildStickerReferenceUrn,
@@ -7,11 +7,9 @@ import {
   parseStickerFromContent,
   parseStickerUrn,
 } from "./sticker.api";
-import { useStickerStore } from "./sticker.model";
 import type { Sticker } from "./sticker.types";
 
 const STICKER_1_ID = "11111111-1111-4111-8111-111111111111";
-const STICKER_2_ID = "22222222-2222-4222-8222-222222222222";
 const STICKER_1_URN = `urn:sticker:${STICKER_1_ID}`;
 const STICKER_1_MARKDOWN = `![sticker](${STICKER_1_URN})`;
 const GIPHY_ID = "xT4uQulxzV39haRFjG";
@@ -41,29 +39,6 @@ const STICKER_1: Sticker = {
   active: true,
   blocked: false,
   fileSize: 24000,
-};
-
-const STICKER_2: Sticker = {
-  id: STICKER_2_ID,
-  reference: { kind: "workspace", stickerId: STICKER_2_ID },
-  source: { provider: "giphy", externalId: "giphy-2" },
-  title: "Thumbs up",
-  emoji: ["👍"],
-  tags: ["approve"],
-  alt: "thumbs up",
-  format: "png",
-  url: "https://cdn.example.com/stickers/p1/s2.png",
-  media: {
-    animated: false,
-    width: 512,
-    height: 512,
-    aspectRatio: 1,
-    preferredFormat: "png",
-  },
-  attribution: { provider: "GIPHY" },
-  rating: "g",
-  active: true,
-  blocked: false,
 };
 
 describe("sticker URN", () => {
@@ -158,70 +133,5 @@ describe("isStickerMessage", () => {
 
   it("returns false for regular text", () => {
     expect(isStickerMessage("Just a message")).toBe(false);
-  });
-});
-
-// Verifies session-only recent sticker tracking.
-describe("useStickerStore", () => {
-  afterEach(() => {
-    useStickerStore.setState({
-      packs: [],
-      recent: [],
-      loading: false,
-      error: null,
-      searchResults: [],
-      sessionStickers: [],
-      searchLoading: false,
-      searchError: null,
-    });
-    // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
-    localStorage.clear();
-  });
-
-  it("starts with empty packs", () => {
-    expect(useStickerStore.getState().packs).toHaveLength(0);
-  });
-
-  it("addRecent tracks usage", () => {
-    useStickerStore.getState().addRecent(STICKER_1);
-    expect(useStickerStore.getState().recent).toHaveLength(1);
-    expect(useStickerStore.getState().recent[0]!.stickerId).toBe(STICKER_1_ID);
-    expect(useStickerStore.getState().sessionStickers).toEqual([STICKER_1]);
-  });
-
-  it("keeps a selected search-only provider sticker available for recent rendering", () => {
-    const providerSticker: Sticker = {
-      ...STICKER_1,
-      id: "giphy:provider-result",
-      reference: {
-        kind: "provider",
-        provider: "giphy",
-        externalId: "provider-result",
-      },
-    };
-    useStickerStore.getState().addRecent(providerSticker);
-    useStickerStore.getState().clearSearch();
-
-    expect(useStickerStore.getState().sessionStickers).toEqual([providerSticker]);
-  });
-
-  it("addRecent deduplicates", () => {
-    useStickerStore.getState().addRecent(STICKER_1);
-    useStickerStore.getState().addRecent(STICKER_1);
-    expect(useStickerStore.getState().recent).toHaveLength(1);
-    expect(useStickerStore.getState().sessionStickers).toHaveLength(1);
-  });
-
-  it("addRecent puts newest first", () => {
-    useStickerStore.getState().addRecent(STICKER_1);
-    useStickerStore.getState().addRecent(STICKER_2);
-    expect(useStickerStore.getState().recent[0]!.stickerId).toBe(STICKER_2_ID);
-    expect(useStickerStore.getState().sessionStickers[0]).toEqual(STICKER_2);
-  });
-
-  it("does not persist recent stickers to localStorage", () => {
-    useStickerStore.getState().addRecent(STICKER_1);
-
-    expect(localStorage.getItem("sticker_recent")).toBeNull();
   });
 });

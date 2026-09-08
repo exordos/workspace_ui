@@ -1,203 +1,204 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stickerFromDto } from "~/entities/sticker/sticker-workspace.repository";
+import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
 import { useStickerStore } from "~/entities/sticker/sticker.model";
-import type { StickerPack } from "~/entities/sticker/sticker.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { renderWithProviders } from "~/test/render";
+import {
+  requestUrl,
+  OTHER_STICKER_ID,
+  STICKER_ID,
+  stickerDto,
+  stickerPageResponse,
+  stickerSession,
+} from "~/test/sticker-contract.fixture";
 import { StickerPicker } from "./sticker-picker.ui";
 
-const PACK: StickerPack = {
-  id: "pack-1",
-  title: "Classic",
-  coverStickerId: "s-1",
-  stickers: [
-    {
-      id: "s-1",
-      reference: { kind: "workspace", stickerId: "11111111-1111-4111-8111-111111111111" },
-      source: { provider: "giphy", externalId: "giphy-s-1" },
-      title: "Classic grin",
-      emoji: ["😀"],
-      alt: "grinning",
-      tags: ["happy", "радость"],
-      media: {
-        animated: false,
-        width: 512,
-        height: 512,
-        aspectRatio: 1,
-        preferredFormat: "webp",
-      },
-      attribution: { provider: "GIPHY" },
-      rating: "g",
-      active: true,
-      blocked: false,
-      format: "webp",
-      url: "https://cdn.example.com/stickers/s-1.webp",
-      thumbnailUrl: "https://cdn.example.com/stickers/s-1-thumb.webp",
-    },
-  ],
-};
-
-describe("StickerPicker", () => {
-  beforeEach(() => {
-    useStickerStore.setState({
-      packs: [],
-      recent: [],
-      loading: false,
-      error: null,
-      searchResults: [],
-      sessionStickers: [],
-      searchLoading: false,
-      searchError: null,
-      loadCatalog: vi.fn(() => Promise.resolve()),
-      searchCatalog: vi.fn(() => Promise.resolve()),
-      clearSearch: vi.fn(),
-    });
-  });
-
-  it("shows load error state with retry when sticker fetch failed", async () => {
-    const loadCatalog = vi.fn(() => {
-      useStickerStore.setState({ error: null });
-      return Promise.resolve();
-    });
-    useStickerStore.setState({
-      packs: [],
-      recent: [],
-      loading: false,
-      error: "Network error",
-      loadCatalog,
-    });
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    expect(screen.getByText("Could not load sticker packs")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    await waitFor(() => expect(useStickerStore.getState().error).toBeNull());
-  });
-
-  it("renders localized empty state when no packs are available", async () => {
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    expect(await screen.findByText("No sticker packs installed yet.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Powered by GIPHY" })).toHaveAttribute(
-      "href",
-      "https://giphy.com/",
+let fetchMock = vi.fn<typeof fetch>();
+beforeEach(() => {
+  useStickerStore.getState().clear();
+  stickerSession();
+  useWorkspaceIamCapabilitiesStore.getState().clear();
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:sticker-fixture");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  fetchMock = vi
+    .fn<typeof fetch>()
+    .mockImplementation((url) =>
+      Promise.resolve(
+        requestUrl(url).includes("/download")
+          ? new Response("GIF89a")
+          : stickerPageResponse([stickerDto()]),
+      ),
     );
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => {
+  cleanup();
+  useStickerStore.getState().clear();
+  useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+  useWorkspaceIamCapabilitiesStore.getState().clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+function catalogCalls() {
+  return fetchMock.mock.calls.filter(([url]) => !requestUrl(url).includes("/actions/"));
+}
+
+describe("Workspace sticker picker HTTP integration", () => {
+  it("loads authenticated media and sends only canonical UUID markdown on selection", async () => {
+    const select = vi.fn();
+    renderWithProviders(
+      <StickerPicker onSelect={(sticker) => select(buildStickerMarkdown(sticker))} />,
+    );
+    const button = await screen.findByRole("button", { name: "Happy celebration" });
+    await screen.findByRole("img", { name: "Happy celebration" });
+    fireEvent.click(button);
+    expect(select).toHaveBeenCalledWith(`![sticker](urn:sticker:${STICKER_ID})`);
+    expect(screen.queryByText("Powered by GIPHY")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manage sticker catalog")).not.toBeInTheDocument();
+    const download = fetchMock.mock.calls.find(([url]) => requestUrl(url).endsWith("/download"));
+    expect(new Headers(download?.[1]?.headers).get("Authorization")).toBe(
+      "Bearer fixture-access-token",
+    );
+    cleanup();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:sticker-fixture");
   });
-
-  it("shows the catalog loading state", () => {
-    useStickerStore.setState({ loading: true, error: null });
-
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    expect(screen.getByRole("status")).toHaveTextContent("Loading stickers...");
-  });
-
-  it("uses localized search copy and empty search results text", async () => {
-    useStickerStore.setState({ packs: [PACK], recent: [], loading: false });
-
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    const searchInput = screen.getByPlaceholderText("Search stickers...");
-    fireEvent.change(searchInput, { target: { value: "zzz" } });
-
-    expect(await screen.findByText("No stickers found")).toBeInTheDocument();
-  });
-
-  it("hides results from the previous query during the debounce window", async () => {
-    const searchCatalog = vi.fn((query: string) => {
-      useStickerStore.setState({
-        searchResults: query === "happy" ? [...PACK.stickers] : [],
-        searchLoading: false,
-        searchError: null,
-      });
-      return Promise.resolve();
+  it("loads more without duplicates and resets cursor on category/search changes", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = new URL(requestUrl(input), "https://example.com");
+      if (url.pathname.endsWith("/download")) return Promise.resolve(new Response("GIF89a"));
+      return Promise.resolve(
+        url.searchParams.has("page_marker")
+          ? stickerPageResponse([
+              stickerDto(),
+              { ...stickerDto(OTHER_STICKER_ID), alt_text: "Second" },
+            ])
+          : stickerPageResponse([stickerDto()], "opaque-marker"),
+      );
     });
-    useStickerStore.setState({ packs: [PACK], searchCatalog });
-
     renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    const searchInput = screen.getByPlaceholderText("Search stickers...");
-    fireEvent.change(searchInput, { target: { value: "happy" } });
-    expect(await screen.findByRole("button", { name: "grinning" })).toBeInTheDocument();
-
-    fireEvent.change(searchInput, { target: { value: "sad" } });
-
-    expect(screen.queryByRole("button", { name: "grinning" })).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Loading stickers...");
-  });
-
-  it("shows search results even when the initial catalog is empty and failed", async () => {
-    const searchCatalog = vi.fn(() => {
-      useStickerStore.setState({
-        searchResults: [...PACK.stickers],
-        searchLoading: false,
-        searchError: null,
-      });
-      return Promise.resolve();
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await screen.findByRole("button", { name: "Second" });
+    expect(screen.getAllByRole("button", { name: "Happy celebration" })).toHaveLength(1);
+    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), {
+      target: { value: "gif" },
     });
-    useStickerStore.setState({ error: "Initial catalog failed", searchCatalog });
-
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-    fireEvent.change(screen.getByPlaceholderText("Search stickers..."), {
+    await waitFor(() => expect(requestUrl(catalogCalls().at(-1)?.[0])).toContain("category=gif"));
+    expect(requestUrl(catalogCalls().at(-1)?.[0])).not.toContain("page_marker");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search stickers" }), {
       target: { value: "happy" },
     });
-
-    expect(await screen.findByRole("button", { name: "grinning" })).toBeInTheDocument();
-    expect(screen.queryByText("Could not load sticker packs")).not.toBeInTheDocument();
-    expect(screen.queryByText("No sticker packs installed yet.")).not.toBeInTheDocument();
+    await waitFor(() => expect(requestUrl(catalogCalls().at(-1)?.[0])).toContain("q=happy"));
+    expect(requestUrl(catalogCalls().at(-1)?.[0])).not.toContain("page_marker");
   });
-
-  it("opens the first pack after initial load but preserves an explicit empty recent view", async () => {
-    const loadCatalog = vi.fn(() => {
-      useStickerStore.setState({ packs: [PACK], loading: false, error: null });
-      return Promise.resolve();
-    });
-    useStickerStore.setState({ loadCatalog });
-
-    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    expect(await screen.findByRole("button", { name: "grinning" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /recent stickers/i }));
-
-    expect(screen.getByText("No recent stickers")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "grinning" })).not.toBeInTheDocument();
-  });
-
-  it("searches the loaded catalog by local metadata tags", async () => {
-    const searchCatalog = vi.fn((query: string) => {
-      const normalizedQuery = query.toLocaleLowerCase();
-      const results = PACK.stickers.filter((sticker) =>
-        [sticker.title, sticker.alt, ...sticker.tags, ...sticker.emoji].some((value) =>
-          value.toLocaleLowerCase().includes(normalizedQuery),
-        ),
+  it("confirms favorite writes, serializes rapid clicks and loads the server favorites tab", async () => {
+    let starred = false;
+    let finish!: () => void;
+    fetchMock.mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/star/")) {
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        starred = true;
+        return new Response(null);
+      }
+      if (url.includes("/unstar/")) {
+        starred = false;
+        return new Response(null);
+      }
+      if (url.endsWith("/download")) return new Response("GIF89a");
+      return stickerPageResponse(
+        url.includes("favorite=true") && !starred ? [] : [stickerDto(STICKER_ID, starred)],
       );
-      useStickerStore.setState({ searchResults: results, searchLoading: false, searchError: null });
-      return Promise.resolve();
     });
-    useStickerStore.setState({
-      packs: [PACK],
-      recent: [],
-      loading: false,
-      searchCatalog,
-    });
-
     renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    fireEvent.change(screen.getByPlaceholderText("Search stickers..."), {
-      target: { value: "радость" },
-    });
-
-    expect(await screen.findByRole("button", { name: "grinning" })).toBeInTheDocument();
-    expect(screen.queryByText("No stickers found")).not.toBeInTheDocument();
+    const star = await screen.findByRole("button", { name: "Add to favorites" });
+    fireEvent.click(star);
+    fireEvent.click(star);
+    await waitFor(() => expect(star).toBeDisabled());
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    await act(() => Promise.resolve(finish()));
+    await screen.findByRole("button", { name: "Remove from favorites" });
+    expect(fetchMock.mock.calls.filter(([url]) => requestUrl(url).includes("/star/"))).toHaveLength(
+      1,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    const unstar = await screen.findByRole("button", { name: "Remove from favorites" });
+    fireEvent.click(unstar);
+    await screen.findByText("No stickers found");
   });
-
-  it("updates recent tab after selecting a sticker in the same open session", () => {
-    useStickerStore.setState({ packs: [PACK], recent: [], loading: false });
+  it("retains the confirmed favorite state after a failed mutation", async () => {
+    fetchMock.mockImplementation((url) => {
+      if (requestUrl(url).includes("/star/"))
+        return Promise.resolve(Response.json({}, { status: 500 }));
+      return Promise.resolve(
+        requestUrl(url).endsWith("/download")
+          ? new Response("GIF89a")
+          : stickerPageResponse([stickerDto()]),
+      );
+    });
     renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Classic" }));
-    fireEvent.click(screen.getByRole("button", { name: /grinning/i }));
-    fireEvent.click(screen.getByRole("button", { name: /recent stickers/i }));
-
-    expect(screen.queryByText("No recent stickers")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /grinning/i })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Add to favorites" }));
+    await screen.findByText("Could not update favorites. Please try again.");
+    expect(screen.getByRole("button", { name: "Add to favorites" })).not.toBeDisabled();
+  });
+  it("shows a network failure and retries the catalog", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Network error"));
+    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
+    await screen.findByText("Could not load stickers");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("button", { name: "Happy celebration" });
+  });
+  it("clears personalized data on account switch and rejects the earlier response", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = useStickerStore.getState().loadCatalog();
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    stickerSession("user-b", 2);
+    await useStickerStore.getState().loadCatalog();
+    finish(stickerPageResponse([{ ...stickerDto(OTHER_STICKER_ID, true), title: "Other user" }]));
+    await first;
+    expect(useStickerStore.getState().items.map((item) => item.id)).toEqual([STICKER_ID]);
+    expect(useStickerStore.getState().items[0]?.isFavorite).toBe(false);
+  });
+  it("rejects an older search response even if fetch ignores cancellation", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const old = useStickerStore.getState().loadCatalog({ q: "old" });
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    await useStickerStore.getState().loadCatalog({ q: "new" });
+    finish(stickerPageResponse([stickerDto(OTHER_STICKER_ID)]));
+    await old;
+    expect(useStickerStore.getState().items.map((item) => item.id)).toEqual([STICKER_ID]);
+  });
+  it("does not optimistically change a card while star is pending", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const card = stickerFromDto(stickerDto());
+    useStickerStore.setState({ items: [card] });
+    const mutation = useStickerStore.getState().toggleFavorite(card);
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    expect(useStickerStore.getState().items[0]?.isFavorite).toBe(false);
+    finish(new Response(null));
+    await mutation;
+    expect(useStickerStore.getState().items[0]?.isFavorite).toBe(true);
   });
 });

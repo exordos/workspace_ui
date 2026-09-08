@@ -1,128 +1,148 @@
 import { create } from "zustand";
-import { logStoreAction } from "~/shared/lib/logger";
-import { stickerCatalogRepository } from "./sticker-catalog.api";
-import type { RecentSticker, Sticker, StickerPack } from "./sticker.types";
-
-const APPROVED_PACK_ID = "workspace-approved-stickers";
-const MAX_RECENT = 30;
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { MessengerApiError } from "~/shared/api/messenger-client";
+import { setStickerFavorite } from "~/shared/api/messenger-stickers.api";
+import type { StickerListQuery } from "~/shared/api/messenger-stickers.api";
+import {
+  loadWorkspaceStickerPage,
+  stickerRequestOptions,
+  stickerRuntimeKey,
+} from "./sticker-workspace.repository";
+import type { Sticker } from "./sticker.types";
 
 interface StickerState {
-  packs: StickerPack[];
-  recent: RecentSticker[];
+  ownerKey: string | null;
+  items: Sticker[];
+  query: StickerListQuery;
+  nextPageMarker: string | null;
   loading: boolean;
   error: string | null;
-  searchResults: Sticker[];
-  /** Provider results retained only for the current app session. */
-  sessionStickers: Sticker[];
-  searchLoading: boolean;
-  searchError: string | null;
-  addRecent: (sticker: Sticker) => void;
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  searchCatalog: (query: string, signal?: AbortSignal) => Promise<void>;
-  clearSearch: () => void;
+  mutationError: string | null;
+  pendingFavorites: readonly string[];
+  revision: number;
+  loadCatalog: (query?: StickerListQuery) => Promise<void>;
+  loadMore: () => Promise<void>;
+  toggleFavorite: (sticker: Sticker) => Promise<void>;
+  refresh: () => Promise<void>;
+  clear: () => void;
+  cancelLoad: () => void;
 }
-
-let catalogLoadGeneration = 0;
-let catalogSearchGeneration = 0;
-
-function createApprovedPacks(stickers: readonly Sticker[]): StickerPack[] {
-  if (stickers.length === 0) return [];
-  return [
-    {
-      id: APPROVED_PACK_ID,
-      title: "Workspace",
-      coverStickerId: stickers[0]?.id,
-      stickers: [...stickers],
-    },
-  ];
-}
-
-export const useStickerStore = create<StickerState>((set) => ({
-  packs: [],
-  recent: [],
+let generation = 0;
+let controller: AbortController | null = null;
+const visitedMarkers = new Set<string>();
+const initial = {
+  ownerKey: null,
+  items: [],
+  query: {},
+  nextPageMarker: null,
   loading: false,
   error: null,
-  searchResults: [],
-  sessionStickers: [],
-  searchLoading: false,
-  searchError: null,
-
-  addRecent(sticker) {
-    logStoreAction("sticker", "addRecent", { stickerId: sticker.id });
-    set((state) => ({
-      recent: [
-        { stickerId: sticker.id, usedAt: Date.now() },
-        ...state.recent.filter((entry) => entry.stickerId !== sticker.id),
-      ].slice(0, MAX_RECENT),
-      sessionStickers: [
-        sticker,
-        ...state.sessionStickers.filter((entry) => entry.id !== sticker.id),
-      ].slice(0, MAX_RECENT),
-    }));
-  },
-
-  async loadCatalog(signal) {
-    const generation = ++catalogLoadGeneration;
-    set({ loading: true, error: null });
+  mutationError: null,
+  pendingFavorites: [],
+  revision: 0,
+};
+export const useStickerStore = create<StickerState>((set, get) => {
+  const load = async (query: StickerListQuery, append: boolean) => {
+    if (append && (get().loading || !get().nextPageMarker)) return;
+    controller?.abort();
+    const request = new AbortController();
+    controller = request;
+    const version = ++generation;
+    const ownerKey = stickerRuntimeKey();
+    const marker = append ? get().nextPageMarker : null;
+    if (!append) visitedMarkers.clear();
+    const current = () =>
+      version === generation && ownerKey === stickerRuntimeKey() && !request.signal.aborted;
+    set({
+      ownerKey,
+      query,
+      loading: true,
+      error: null,
+      ...(append ? {} : { items: [], nextPageMarker: null }),
+    });
     try {
-      const stickers = await stickerCatalogRepository.list(signal);
-      if (generation !== catalogLoadGeneration) return;
-      if (signal?.aborted === true) {
-        set({ loading: false });
-        return;
-      }
-      set({
-        packs: createApprovedPacks(stickers),
-        loading: false,
-        error: null,
-      });
+      const page = await loadWorkspaceStickerPage(
+        { ...query, pageMarker: marker ?? undefined },
+        request.signal,
+      );
+      if (!current()) return;
+      checkPageMarker(page.nextPageMarker, marker);
+      const byId = new Map((append ? get().items : []).map((item) => [item.id, item]));
+      for (const item of page.items) byId.set(item.id, item);
+      set({ items: [...byId.values()], nextPageMarker: page.nextPageMarker, loading: false });
     } catch (error) {
-      if (generation !== catalogLoadGeneration) return;
-      if (signal?.aborted === true) {
-        set({ loading: false });
-        return;
-      }
-      set({
-        loading: false,
-        error: error instanceof Error ? error.message : "Failed to load sticker catalog",
-      });
+      if (current())
+        set({
+          loading: false,
+          error: error instanceof Error ? error.message : "Sticker request failed",
+          ...(error instanceof MessengerApiError && error.status === 400
+            ? { nextPageMarker: null }
+            : {}),
+        });
     }
-  },
-
-  async searchCatalog(query, signal) {
-    const normalizedQuery = query.trim();
-    if (normalizedQuery.length === 0) {
-      catalogSearchGeneration += 1;
-      set({ searchResults: [], searchLoading: false, searchError: null });
-      return;
-    }
-
-    const generation = ++catalogSearchGeneration;
-    set({ searchResults: [], searchLoading: true, searchError: null });
-    try {
-      const stickers = await stickerCatalogRepository.search(normalizedQuery, signal);
-      if (generation !== catalogSearchGeneration) return;
-      if (signal?.aborted === true) {
-        set({ searchLoading: false });
-        return;
+  };
+  return {
+    ...initial,
+    loadCatalog: (query = {}) => load(query, false),
+    loadMore: () => load(get().query, true),
+    cancelLoad() {
+      controller?.abort();
+      generation += 1;
+      set({ items: [], nextPageMarker: null, loading: false, error: null });
+    },
+    async refresh() {
+      set((state) => ({ revision: state.revision + 1 }));
+      await load(get().query, false);
+    },
+    async toggleFavorite(sticker) {
+      // Serialize each card by disabling its action until the server confirms it.
+      if (get().pendingFavorites.includes(sticker.id)) return;
+      const owner = stickerRuntimeKey();
+      const favorite = !sticker.isFavorite;
+      set((state) => ({
+        pendingFavorites: [...state.pendingFavorites, sticker.id],
+        mutationError: null,
+      }));
+      try {
+        await setStickerFavorite(stickerRequestOptions(), sticker.id, favorite);
+        if (owner !== stickerRuntimeKey()) return;
+        set((state) => ({
+          items: state.items.flatMap((item) => {
+            if (item.id !== sticker.id) return [item];
+            return state.query.favorite && !favorite ? [] : [{ ...item, isFavorite: favorite }];
+          }),
+        }));
+        if (get().loading) await load(get().query, false);
+      } catch (error) {
+        if (owner === stickerRuntimeKey())
+          set({
+            mutationError: error instanceof Error ? error.message : "Sticker favorite failed",
+          });
+      } finally {
+        if (owner === stickerRuntimeKey())
+          set((state) => ({
+            pendingFavorites: state.pendingFavorites.filter((id) => id !== sticker.id),
+          }));
       }
-      set({ searchResults: [...stickers], searchLoading: false, searchError: null });
-    } catch (error) {
-      if (generation !== catalogSearchGeneration) return;
-      if (signal?.aborted === true) {
-        set({ searchLoading: false });
-        return;
-      }
-      set({
-        searchResults: [],
-        searchLoading: false,
-        searchError: error instanceof Error ? error.message : "Failed to search stickers",
-      });
-    }
-  },
+    },
+    clear() {
+      controller?.abort();
+      generation += 1;
+      set(initial);
+    },
+  };
+});
+let runtimeKey = stickerRuntimeKey();
+useWorkspaceAuthStore.subscribe(() => {
+  const next = stickerRuntimeKey();
+  if (next !== runtimeKey) {
+    runtimeKey = next;
+    useStickerStore.getState().clear();
+  }
+});
 
-  clearSearch() {
-    catalogSearchGeneration += 1;
-    set({ searchResults: [], searchLoading: false, searchError: null });
-  },
-}));
+function checkPageMarker(next: string | null, previous: string | null): void {
+  if (next && (next === previous || visitedMarkers.has(next)))
+    throw new Error("Repeated sticker page marker");
+  if (previous) visitedMarkers.add(previous);
+}

@@ -1,6 +1,7 @@
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
-import React from "react";
+import React, { useState } from "react";
 import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
+import { StickerAdmin } from "~/features/manage-stickers/sticker-admin.ui";
 import { StickerPicker } from "~/features/sticker-picker/sticker-picker.ui";
 import { t } from "~/i18n/i18n";
 import { AnchoredPopover } from "~/shared/ui/anchored-popover.ui";
@@ -17,10 +18,13 @@ export const MessageComposerMediaPickerPopover = React.memo(
     onEmojiClick,
     onStickerSelect,
   }: MessageComposerMediaPickerPopoverProps) {
+    const [adminOpen, setAdminOpen] = useState(false);
     return (
       <AnchoredPopover
         open
-        onClose={onClose}
+        onClose={() => {
+          if (!adminOpen) onClose();
+        }}
         panelStyle={mediaPickerStyle}
         panelClassName="max-h-[min(400px,60vh)]"
         testId="composer-media-picker"
@@ -76,6 +80,7 @@ export const MessageComposerMediaPickerPopover = React.memo(
           />
         ) : (
           <StickerPicker
+            adminAction={<StickerAdmin onOpenChange={setAdminOpen} />}
             embedded
             onSelect={(sticker) => {
               onStickerSelect(buildStickerMarkdown(sticker));

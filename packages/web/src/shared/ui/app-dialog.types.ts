@@ -21,6 +21,7 @@ export interface AppDialogProps {
    */
   showCloseButton?: boolean;
   onCloseAutoFocus?: (event: Event) => void;
+  onEscapeKeyDown?: DialogPrimitive.DialogContentProps["onEscapeKeyDown"];
 }
 
 export interface AppDialogFormFooterProps {
@@ -38,6 +39,7 @@ export interface AppDialogShellProps {
   contentClassName: string;
   children: ReactNode;
   onCloseAutoFocus?: (event: Event) => void;
+  onEscapeKeyDown?: DialogPrimitive.DialogContentProps["onEscapeKeyDown"];
   modal?: boolean;
   ariaDescribedBy?: string;
   showOverlay?: boolean;
