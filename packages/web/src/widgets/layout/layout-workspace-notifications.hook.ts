@@ -13,6 +13,7 @@ import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import {
   registerNotifiedWorkspaceMessage,
@@ -37,19 +38,7 @@ import {
 import type { NavigateFunction } from "react-router-dom";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
-/**
- * How long a candidate may wait for the stream snapshot that names its conversation.
- *
- * The wait exists for one race: a message event and the stream event that
- * describes its conversation arrive in the same catch-up batch, normally
- * milliseconds apart. Only a stream no catalog knows either waits at all — an
- * unknown topic is decided with the default mode instead. The bound is generous
- * against a slow catch-up rather than tuned, and the "metadata did not arrive in
- * time" log carries `waitedMs` for anyone who needs to revisit it. Past the bound
- * the notification has stopped
- * being news — the user has already seen a later one for the same conversation,
- * or has opened it — so the candidate is dropped rather than shown late.
- */
+/** Give conversation metadata time to arrive before showing a generic notification. */
 const NOTIFICATION_METADATA_GRACE_MS = 30_000;
 const NOTIFICATION_METADATA_RETRY_MS = 250;
 const notificationLog = createLogger("layout:notification");
@@ -183,16 +172,6 @@ function resolveCurrentCandidate(
   };
 }
 
-/**
- * Resolves the conversation a candidate belongs to.
- *
- * The loaded catalog and the realtime projection answer for the owner on screen; for
- * any other owner the cached catalog behind them is the only source that knows the
- * conversation at all. A topic that none of them knows one retry tick later was
- * created by the very message being announced, so nobody has had a chance to set a
- * mode on it — the default is a fact rather than a guess, and waiting out the grace
- * window for an event that is not coming would cost the user a mention.
- */
 async function resolveCandidateMetadata(
   projection: MessengerBackgroundProjection,
   candidate: MessengerBackgroundNotificationCandidate,
@@ -213,34 +192,7 @@ async function resolveCandidateMetadata(
     streamUuid: candidate.streamUuid,
     topicUuid: candidate.topicUuid,
   });
-  const resolvedFromCache = resolveCurrentCandidate(
-    projection,
-    candidate,
-    activeMetadata,
-    cachedMetadata,
-  );
-  if (
-    !resolvedFromCache.missingMetadata.includes("topic") ||
-    // The stream is missing too, so the candidate is deferred either way: leave the
-    // topic to the pass that finally has the stream, and keep the log to one line.
-    resolvedFromCache.missingMetadata.includes("stream") ||
-    // Spend one retry tick first. The topic event of the same catch-up batch lands
-    // milliseconds behind the message, and a source that has not seen the topic yet
-    // is indistinguishable here from one that says it does not exist.
-    Date.now() - candidate.observedAt < NOTIFICATION_METADATA_RETRY_MS
-  ) {
-    return resolvedFromCache;
-  }
-
-  notificationLog.warn("candidate topic is unknown, deciding with the default topic mode", {
-    ownerKey: candidate.ownerKey,
-    messageUuid: candidate.messageUuid,
-    topicUuid: candidate.topicUuid,
-  });
-  return {
-    candidate: resolvedFromCache.candidate,
-    missingMetadata: resolvedFromCache.missingMetadata.filter((entry) => entry !== "topic"),
-  };
+  return resolveCurrentCandidate(projection, candidate, activeMetadata, cachedMetadata);
 }
 
 function resolveTitleContext(
@@ -320,7 +272,7 @@ function logDeferredCandidate(options: {
   deferredCandidates.add(scopeKey);
   notificationLog.warn(
     options.expired
-      ? "candidate dropped: metadata did not arrive in time"
+      ? "candidate using generic notification: metadata did not arrive in time"
       : "candidate deferred until metadata arrives",
     {
       ownerKey: candidate.ownerKey,
@@ -359,6 +311,23 @@ function logPolicySkip(options: {
   });
 }
 
+function resolveGenericNotificationAccountLabel(ownerKey: string): string {
+  const session = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((entry) => workspaceRuntimeOwnerKey(entry) === ownerKey);
+  if (session == null) return "";
+
+  const username = trimNonEmpty(session.profile.username);
+  let domain: string | null = null;
+  try {
+    const url = new URL(session.organizationOrigin);
+    if (url.protocol === "https:" || url.protocol === "http:") domain = url.hostname;
+  } catch {
+    // An invalid origin must not expose a raw URL or internal identifiers.
+  }
+  return [username, domain].filter((part) => part != null && part !== "").join(" · ");
+}
+
 async function runNotificationEffects(options: {
   candidate: MessengerBackgroundNotificationCandidate;
   messageUuid: string;
@@ -368,38 +337,50 @@ async function runNotificationEffects(options: {
   processedCandidates: Set<string>;
   deferredCandidates: Set<string>;
   isCancelled: () => boolean;
+  metadataUnavailable: boolean;
 }): Promise<void> {
   const { candidate, messageUuid, scopeKey, trigger, navigate, processedCandidates } = options;
 
   try {
-    const author = await resolveCachedWorkspaceUser({
-      ownerKey: candidate.ownerKey,
-      userUuid: candidate.authorUuid,
-    });
+    // Generic notifications must not depend on another metadata lookup.
+    const author = options.metadataUnavailable
+      ? null
+      : await resolveCachedWorkspaceUser({
+          ownerKey: candidate.ownerKey,
+          userUuid: candidate.authorUuid,
+        });
     if (options.isCancelled()) {
       return;
     }
 
     const senderName = trimNonEmpty(author?.displayName) ?? DEFAULT_NOTIFICATION_SENDER;
     const titleContext = resolveTitleContext(candidate, senderName);
-    const body = trimNonEmpty(candidate.previewText) ?? "";
-    const conversationRoute = resolveNotificationConversationRoute(candidate);
-    const aggregateSnapshot = upsertNotificationAggregate({
-      candidate,
-      body,
-      clickRoute: conversationRoute,
-      titleContext,
-    });
+    const body = options.metadataUnavailable
+      ? resolveGenericNotificationAccountLabel(candidate.ownerKey)
+      : (trimNonEmpty(candidate.previewText) ?? "");
+    const conversationRoute = options.metadataUnavailable
+      ? candidate.messageRoute
+      : resolveNotificationConversationRoute(candidate);
+    const aggregateSnapshot = options.metadataUnavailable
+      ? null
+      : upsertNotificationAggregate({
+          candidate,
+          body,
+          clickRoute: conversationRoute,
+          titleContext,
+        });
     const notificationClickRoute = aggregateSnapshot?.latestClickRoute ?? conversationRoute;
 
     markCandidateProcessed(processedCandidates, candidate.ownerKey, messageUuid);
     options.deferredCandidates.delete(scopeKey);
 
     const notificationShown = notificationService.show({
-      title: formatNotificationTitle(
-        aggregateSnapshot?.titleContext ?? titleContext,
-        aggregateSnapshot?.count ?? 1,
-      ),
+      title: options.metadataUnavailable
+        ? t("notifications.genericNewMessage")
+        : formatNotificationTitle(
+            aggregateSnapshot?.titleContext ?? titleContext,
+            aggregateSnapshot?.count ?? 1,
+          ),
       body: aggregateSnapshot?.latestBody ?? body,
       tag: aggregateSnapshot?.tag ?? `msg:${candidate.ownerKey}::${messageUuid}`,
       silent: true,
@@ -541,19 +522,15 @@ export function useLayoutWorkspaceNotifications(options: {
       scopeKey: string,
       missingMetadata: string[],
     ): number {
-      const expired = Date.now() - candidate.observedAt > NOTIFICATION_METADATA_GRACE_MS;
-      if (expired) {
-        markCandidateProcessed(processedCandidatesRef.current, candidate.ownerKey, messageUuid);
-      }
       logDeferredCandidate({
         deferredCandidates: deferredCandidatesRef.current,
         scopeKey,
         candidate,
         messageUuid,
         missingMetadata,
-        expired,
+        expired: false,
       });
-      return expired ? Infinity : candidate.observedAt;
+      return candidate.observedAt;
     }
 
     async function showNotifications(): Promise<void> {
@@ -578,7 +555,11 @@ export function useLayoutWorkspaceNotifications(options: {
           return;
         }
 
-        if (resolvedCandidate.missingMetadata.length > 0) {
+        const metadataUnavailable = resolvedCandidate.missingMetadata.length > 0;
+        if (
+          metadataUnavailable &&
+          Date.now() - candidate.observedAt < NOTIFICATION_METADATA_GRACE_MS
+        ) {
           metadataRetryObservedAt = Math.min(
             metadataRetryObservedAt,
             deferCandidate(candidate, messageUuid, scopeKey, resolvedCandidate.missingMetadata),
@@ -610,6 +591,7 @@ export function useLayoutWorkspaceNotifications(options: {
 
         const viewport = readViewportState(currentCandidate, openConversationId);
         const decision = shouldWorkspaceDesktopNotify({
+          metadataUnavailable,
           message: {
             kind: currentCandidate.audience === "private" ? "dm" : "stream",
             isOwn: currentCandidate.isOwn,
@@ -634,7 +616,19 @@ export function useLayoutWorkspaceNotifications(options: {
           continue;
         }
 
+        if (metadataUnavailable) {
+          logDeferredCandidate({
+            deferredCandidates: deferredCandidatesRef.current,
+            scopeKey,
+            candidate: currentCandidate,
+            messageUuid,
+            missingMetadata: resolvedCandidate.missingMetadata,
+            expired: true,
+          });
+        }
+
         await runNotificationEffects({
+          metadataUnavailable,
           candidate: currentCandidate,
           messageUuid,
           scopeKey,

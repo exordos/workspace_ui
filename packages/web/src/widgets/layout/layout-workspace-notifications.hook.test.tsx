@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MessengerBackgroundNotificationCandidate,
@@ -14,6 +14,7 @@ import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-a
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
 import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
@@ -996,7 +997,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
   });
 
-  it("decides with the default topic mode when no catalog knows the topic", async () => {
+  it("uses a generic notification after the topic metadata grace window", async () => {
     const session = createSession("unknown-topic");
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const messageUuid = "unknown-topic-message";
@@ -1006,8 +1007,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
     });
-    // The topic was created by this very message: the stream is known, the topic is
-    // in no catalog and in no projection.
+    // The stream is known, but no source could resolve the topic.
     useMessengerStore.setState({
       ownerKey,
       streamsById: {
@@ -1029,7 +1029,7 @@ describe("useLayoutWorkspaceNotifications", () => {
               streamName: "Engineering",
               streamNotificationMode: null,
               topicNotificationMode: null,
-              observedAt: Date.now(),
+              observedAt: Date.now() - 30_001,
             }),
           ],
           messageIdSnapshotsById: {
@@ -1050,8 +1050,15 @@ describe("useLayoutWorkspaceNotifications", () => {
     await waitFor(() => {
       expect(showNotificationMock).toHaveBeenCalledTimes(1);
     });
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: t("notifications.genericNewMessage"),
+        body: "user-unknown-topic · workspace-unknown-topic.example.com",
+      }),
+    );
     expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        metadataUnavailable: true,
         message: expect.objectContaining({
           kind: "stream",
           streamNotificationMode: "mentions_only",
@@ -1280,10 +1287,7 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
     clearNotificationAggregateRegistry();
   });
 
-  // A candidate whose stream never arrived is not news any more: the user has since
-  // been told about a newer message in the conversation, or has opened it. Showing it
-  // when the metadata finally lands is the bug this drops.
-  it("drops a candidate whose metadata did not arrive inside the grace window", async () => {
+  it("shows an expired candidate generically once even when metadata arrives later", async () => {
     const session = createSession("expired");
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const staleUuid = "expired-message";
@@ -1322,11 +1326,10 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
     );
 
     await waitFor(() => {
-      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+      expect(showNotificationMock).toHaveBeenCalledTimes(2);
     });
 
-    // The metadata finally lands — the moment the user opens the chat and the stream
-    // event arrives. The stale candidate must not wake up now.
+    // Late metadata must not show the same message a second time.
     useMessengerBackgroundProjectionStore.setState({
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
@@ -1341,8 +1344,8 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
     await waitFor(() => {
       expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalled();
     });
-    expect(showNotificationMock).toHaveBeenCalledTimes(1);
-    expect(showNotificationMock).not.toHaveBeenCalledWith(
+    expect(showNotificationMock).toHaveBeenCalledTimes(2);
+    expect(showNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({ tag: expect.stringContaining(staleUuid) }),
     );
   });
@@ -1401,5 +1404,206 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
         viewport: { windowFocused: true, isConversationOnScreen: false },
       }),
     );
+  });
+});
+
+describe("generic notification fallback", () => {
+  const session = createSession("generic");
+  const ownerKey = workspaceRuntimeOwnerKey(session);
+  const messageUuid = "generic-message";
+
+  function seed(overrides: Partial<MessengerBackgroundNotificationCandidate> = {}) {
+    const candidate = createCandidate(ownerKey, messageUuid, {
+      audience: "unknown",
+      streamName: null,
+      topicName: null,
+      observedAt: Date.now(),
+      ...overrides,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [candidate],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+    return candidate;
+  }
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const policy = await vi.importActual<{
+      shouldWorkspaceDesktopNotify: typeof shouldWorkspaceDesktopNotify;
+    }>("~/shared/lib/workspace-desktop-notifications.lib");
+    shouldWorkspaceDesktopNotifyMock.mockImplementation(policy.shouldWorkspaceDesktopNotify);
+    resolveConversationMetadataMock.mockResolvedValue({ stream: null, topic: null });
+    clearNotifiedMessageIds();
+    clearNotificationAggregateRegistry();
+    useMessengerStore.getState().clear();
+    useSettingsStore.setState({ notificationSound: "none" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    shouldWorkspaceDesktopNotifyMock.mockImplementation(() => ({ notify: true, trigger: "dm" }));
+    useMessengerBackgroundProjectionStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+    clearNotifiedMessageIds();
+    clearNotificationAggregateRegistry();
+  });
+
+  it("waits the full grace window, hides content, skips author lookup and opens the message", async () => {
+    const candidate = seed();
+    const navigate = vi.fn();
+    const { rerender } = renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate,
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(29_999));
+    expect(showNotificationMock).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(showNotificationMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        title: t("notifications.genericNewMessage"),
+        body: "user-generic · workspace-generic.example.com",
+        clickRoute: candidate.messageRoute,
+        tag: `msg:${ownerKey}::${messageUuid}`,
+      }),
+    );
+    expect(resolveCachedWorkspaceUserMock).not.toHaveBeenCalled();
+    showNotificationMock.mock.calls[0]?.[0].onClick?.();
+    expect(navigate).toHaveBeenCalledWith(candidate.messageRoute);
+    rerender();
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(showNotificationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels the recipient account even when a different account is active", async () => {
+    const otherSession = createSession("other");
+    useWorkspaceAuthStore.setState({
+      sessions: [otherSession, session],
+      currentAccountId: otherSession.accountId,
+    });
+    seed({ observedAt: Date.now() - 30_001 });
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: t("notifications.genericNewMessage"),
+        body: "user-generic · workspace-generic.example.com",
+      }),
+    );
+  });
+
+  it.each([
+    [
+      "https://credentials:secret@workspace.example.com/path?token=secret#fragment",
+      "user-generic · workspace.example.com",
+    ],
+    ["invalid-origin", "user-generic"],
+  ])(
+    "only displays the hostname from the organization origin: %s",
+    async (organizationOrigin, body) => {
+      useWorkspaceAuthStore.setState({ sessions: [{ ...session, organizationOrigin }] });
+      seed({ observedAt: Date.now() - 30_001 });
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: OTHER_CONVERSATION_PATHNAME,
+        }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(showNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ body }));
+    },
+  );
+
+  it.each([
+    { isOwn: true },
+    { read: true },
+    { notificationEligible: false },
+    { streamNotificationMode: "muted" as const },
+    { topicNotificationMode: "mute" as const },
+  ])("preserves explicit suppression: %j", async (overrides) => {
+    seed({ ...overrides, observedAt: Date.now() - 30_001 });
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalled();
+    expect(showNotificationMock).not.toHaveBeenCalled();
+    expect(requestAttentionMock).not.toHaveBeenCalled();
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["read", "deleted"])(
+    "does not announce a message that becomes %s while waiting",
+    async (state) => {
+      const candidate = seed();
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: OTHER_CONVERSATION_PATHNAME,
+        }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      act(() =>
+        useMessengerBackgroundProjectionStore.setState({
+          projectionsByOwnerKey: {
+            [ownerKey]: createProjection(ownerKey, {
+              notificationCandidates: [candidate],
+              messageIdSnapshotsById: {
+                [messageUuid]: createMessageSnapshot(
+                  ownerKey,
+                  messageUuid,
+                  state === "read" ? { read: true } : { deletedAt: Date.now() },
+                ),
+              },
+            }),
+          },
+        }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      expect(showNotificationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("cancels the pending fallback when the owner session is removed", async () => {
+    seed();
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+        pathname: OTHER_CONVERSATION_PATHNAME,
+      }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    act(() => useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null }));
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(showNotificationMock).not.toHaveBeenCalled();
   });
 });
