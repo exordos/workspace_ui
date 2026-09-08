@@ -9,6 +9,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { containsStickerMarkdown } from "~/entities/sticker/sticker.api";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -783,6 +784,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     workspaceComposerMentions,
     imageAliases,
   ]);
+  const containsDraftSticker = containsStickerMarkdown(outgoingBody);
   const canSendWithEmptyActiveValue =
     allowEmptyActiveValueSend &&
     outgoingBodyOverride != null &&
@@ -1029,7 +1031,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         showUnsupportedAction(scheduledSendCapability);
         return;
       }
-      if (disabled || onSend == null) return;
+      if (disabled || containsDraftSticker || onSend == null) return;
 
       const subject = activeTopic ?? "";
       const scheduledMessage = buildScheduledComposerMessage({
@@ -1050,6 +1052,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     [
       activeTopic,
       clearComposerInput,
+      containsDraftSticker,
       disabled,
       files,
       onSend,
@@ -1101,6 +1104,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [disabled, onSend, scheduledMessages]);
 
   const handleSend = async () => {
+    if (containsDraftSticker) return;
     if (isEditing) {
       if (
         disabled ||
@@ -2043,7 +2047,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             onEmojiClick={handleEmojiClick}
             onStickerSelect={(markdown) => {
               setMediaPickerOpen(false);
-              if (onSendSticker == null) return;
+              if (disabled || sendInFlight || isEditing || onSendSticker == null) return;
               try {
                 const result = onSendSticker(markdown);
                 void Promise.resolve(result).catch(() => undefined);
@@ -2122,6 +2126,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
               disabled ||
               sendInFlight ||
               attachmentsBlockSend ||
+              containsDraftSticker ||
               (isEditing && value.trim().length === 0 && (attachments?.length ?? 0) === 0)
             }
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center self-end rounded-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -2130,6 +2135,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             <MessageComposerSendIcon className="text-on-accent" />
           </button>
         </div>
+        {containsDraftSticker && <p role="alert">{t("sticker.sendSeparately")}</p>}
         {isToolbarExpanded && (
           <div className={`${COMPOSER_TOOLBAR_SEND_CLEARANCE} mt-1`}>{toolbarRow}</div>
         )}

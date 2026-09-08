@@ -6,6 +6,7 @@ import { importStickerArchive } from "~/shared/api/messenger-stickers.api";
 import type { StickerImportResult } from "~/shared/api/messenger-stickers.api";
 import { DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { useStickerAdminRequest } from "./sticker-admin-request.hook";
+import { StickerImportThumbnail } from "./sticker-import-thumbnail.ui";
 
 export function StickerImport({
   onBusyChange,
@@ -78,7 +79,8 @@ export function StickerImport({
                 key={item.client_id}
                 className="flex items-center justify-between gap-3 py-3 text-sm"
               >
-                <div className="min-w-0">
+                <StickerImportThumbnail stickerId={item.sticker_uuid} />
+                <div className="min-w-0 flex-1">
                   <p className="break-words">{item.file}</p>
                   <p className="text-text-muted">
                     {item.status === "created" ? t("sticker.created") : t("sticker.duplicate")}

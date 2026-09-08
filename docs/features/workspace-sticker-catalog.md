@@ -1,6 +1,6 @@
 # Workspace sticker catalog integration
 
-Implemented on `feat/workspace-sticker-catalog`, based on `feat/giphy-stickers`.
+Implemented on `feat/workspace-sticker-catalog`.
 Backend reference: `workspace_backend`, `feature/sticker-catalog-api`, `c13e1ba`.
 
 ## Contract sources
@@ -29,8 +29,8 @@ follows the HTTP representation. No other differences from the supplied plan wer
   disabled until completion. Failures leave confirmed state intact; there is no
   optimistic update to roll back. Server page order is retained.
 - Messages continue through the existing markdown outbox with
-  `![sticker](urn:sticker:<uuid>)`. Historical `urn:sticker:giphy:<id>` uses the old
-  provider resolver. Workspace UUIDs never fall back to GIPHY IDs.
+  `![sticker](urn:sticker:<uuid>)`. Only Workspace UUID references are supported.
+  External provider resolution, catalog configuration and API keys have been removed.
 - History resolution batches up to 100 UUIDs per query, coalesces in-flight requests,
   follows every returned cursor and represents omitted UUIDs as unavailable.
 - Media uses the normal bearer/refresh/dev-proxy transport and the backend download
@@ -106,3 +106,45 @@ passed: sticker send/history, and opening the management dialog from the compose
 editing a card, saving and closing with Escape while retaining the picker.
 Web/Electron typecheck passed. These follow-up checks are separate from the full
 suite results recorded for the initial contract integration above.
+
+## Immediate send and media verification follow-up (2026-09-08)
+
+Selecting a sticker sends its canonical Markdown through the dedicated send callback;
+text, reply context and attachments in the current draft are not included. The draft
+is retained. Selection cannot send while the composer is disabled, sending or editing.
+Pasted inline sticker Markdown is rejected by ordinary send/edit/schedule actions,
+with an explanatory localized message, so it cannot be combined with draft content.
+
+Media readiness now waits for the image load event. Download failures and image
+decoding failures have distinct safe log messages. Failed message media can be
+retried without reopening the conversation; blob cleanup and account-generation
+checks also apply to retries.
+
+Verification: 229 focused tests passed, including authenticated media loading,
+decode failures, retry and stale-account responses. Two mocked Chromium flows
+passed, including actual image decoding (`complete` and `naturalWidth > 0`), preserved
+text draft, a 503 download followed by retry, history reload and blocked history.
+Web/Electron typecheck passed. Changed-file ESLint has no errors; existing composer
+warnings remain. These checks do not establish the cause of a placeholder on a
+live backend: that symptom was not reproduced with contract-shaped test data.
+
+## Workspace-only cleanup and import thumbnails (2026-09-08)
+
+Removed the external provider repository, bundled catalog parser/data, provider
+reference types, direct external media loading and browser API-key configuration.
+Only Workspace UUID sticker references remain. The old provider's tests have been
+removed or converted to the Workspace contract.
+
+Import result rows now show 48px thumbnails for created and duplicate items. The
+result contains UUIDs rather than media metadata, so the shared batch resolver loads
+cards by sticker_uuid and StickerMedia downloads visible previews with authorization.
+Unavailable previews preserve the row layout and do not prevent editing.
+
+Focused verification: 340 tests and web/Electron typecheck passed. Two mocked
+Chromium flows passed, including PNG decoding and 48px preview dimensions for both
+import result statuses, opening the corresponding editor, and immediate send/history.
+
+Full web verification after cleanup: 468 files / 4,941 tests passed with V8
+coverage (lines 84.64%). Full ESLint passed with zero errors and 344 warnings;
+full source Prettier passed. This run supersedes the earlier test count because
+provider-specific tests were removed along with their implementation.

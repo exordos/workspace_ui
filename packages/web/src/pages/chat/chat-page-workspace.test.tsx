@@ -4292,7 +4292,7 @@ describe("ChatPage Workspace route", () => {
   it("sends a sticker as a separate message and preserves the current draft", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
-    const stickerMarkdown = "![sticker](urn:sticker:giphy:sticker-id)";
+    const stickerMarkdown = "![sticker](urn:sticker:11111111-1111-4111-8111-111111111111)";
     useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
       text: "unfinished draft",
       replySession: { tabs: [], activeTabId: null },

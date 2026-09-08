@@ -1,23 +1,8 @@
-import { env } from "~/shared/lib/env";
-import { BUNDLED_STICKER_CATALOG } from "./sticker-catalog.lib";
-import { createGiphyStickerCatalogRepository } from "./sticker-giphy.repository";
 import {
   createWorkspaceStickerResolver,
   loadWorkspaceStickerPage,
 } from "./sticker-workspace.repository";
-import type { StickerCatalogSource, StickerCatalogRepository } from "./sticker.repository";
-
-const stickerCatalogSource: StickerCatalogSource = {
-  load(signal) {
-    signal?.throwIfAborted();
-    return Promise.resolve(BUNDLED_STICKER_CATALOG);
-  },
-};
-
-const historicalProviderRepository = createGiphyStickerCatalogRepository({
-  apiKey: env.GIPHY_API_KEY,
-  catalogSource: stickerCatalogSource,
-});
+import type { StickerCatalogRepository } from "./sticker.repository";
 
 const resolveWorkspaceSticker = createWorkspaceStickerResolver();
 export const stickerCatalogRepository: StickerCatalogRepository = {
@@ -30,8 +15,6 @@ export const stickerCatalogRepository: StickerCatalogRepository = {
     return page.items;
   },
   resolve(reference, signal) {
-    return reference.kind === "workspace"
-      ? resolveWorkspaceSticker(reference.stickerId, signal)
-      : historicalProviderRepository.resolve(reference, signal);
+    return resolveWorkspaceSticker(reference.stickerId, signal);
   },
 };

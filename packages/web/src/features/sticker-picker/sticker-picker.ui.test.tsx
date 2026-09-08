@@ -56,7 +56,6 @@ describe("Workspace sticker picker HTTP integration", () => {
     await screen.findByRole("img", { name: "Happy celebration" });
     fireEvent.click(button);
     expect(select).toHaveBeenCalledWith(`![sticker](urn:sticker:${STICKER_ID})`);
-    expect(screen.queryByText("Powered by GIPHY")).not.toBeInTheDocument();
     expect(screen.queryByText("Manage sticker catalog")).not.toBeInTheDocument();
     const download = fetchMock.mock.calls.find(([url]) => requestUrl(url).endsWith("/download"));
     expect(new Headers(download?.[1]?.headers).get("Authorization")).toBe(

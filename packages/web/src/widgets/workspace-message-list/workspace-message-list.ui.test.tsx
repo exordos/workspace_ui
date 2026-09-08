@@ -3945,7 +3945,7 @@ describe("WorkspaceMessageList", () => {
   });
 
   it("keeps failed outgoing sticker actions inside the media overlay", () => {
-    const externalId = "xT4uQulxzV39haRFjG";
+    const stickerId = "11111111-1111-4111-8111-111111111111";
     const onRetryOutgoingMessage = vi.fn();
     const onRemoveOutgoingMessage = vi.fn();
     stickerCatalogRepositoryMock.resolve.mockImplementationOnce(() => new Promise(() => {}));
@@ -3955,7 +3955,7 @@ describe("WorkspaceMessageList", () => {
         outgoingMessages={[
           createOutgoingMessage({
             localId: "outgoing-sticker-message",
-            markdown: `![sticker](urn:sticker:giphy:${externalId})`,
+            markdown: `![sticker](urn:sticker:${stickerId})`,
             status: "failed",
             error: "network failed",
           }),
@@ -3989,29 +3989,6 @@ describe("WorkspaceMessageList", () => {
 
     expect(onRetryOutgoingMessage).toHaveBeenCalledWith("outgoing-sticker-message");
     expect(onRemoveOutgoingMessage).toHaveBeenCalledWith("outgoing-sticker-message");
-  });
-
-  it("resolves a frontend-only GIPHY sticker reference", async () => {
-    const externalId = "xT4uQulxzV39haRFjG";
-    render(
-      <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: "giphy-sticker-message",
-            markdown: `![sticker](urn:sticker:giphy:${externalId})`,
-          }),
-        ]}
-        currentUserUuid="current-user-uuid"
-        conversationId="topic:stream-uuid-1:topic-uuid-1"
-      />,
-    );
-
-    await waitFor(() => {
-      expect(stickerCatalogRepositoryMock.resolve).toHaveBeenCalledWith(
-        { kind: "provider", provider: "giphy", externalId },
-        expect.any(AbortSignal),
-      );
-    });
   });
 
   it("does not treat mixed markdown containing a sticker URN as a sticker message", () => {

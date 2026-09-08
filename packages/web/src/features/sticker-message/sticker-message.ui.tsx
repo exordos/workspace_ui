@@ -20,9 +20,7 @@ type StickerMessageState =
   | { referenceKey: string; status: "unavailable" };
 
 function referenceKey(reference: StickerReference): string {
-  return reference.kind === "workspace"
-    ? `workspace:${reference.stickerId}`
-    : `${reference.provider}:${reference.externalId}`;
+  return `workspace:${reference.stickerId}`;
 }
 
 function StickerPlaceholder({
@@ -115,6 +113,7 @@ export function StickerMessage({
     >
       <StickerMedia
         sticker={sticker}
+        retryEnabled
         className="flex max-h-[240px] max-w-[240px] rounded-xl object-contain"
         style={{ aspectRatio: sticker.media.aspectRatio, width: renderedWidth, maxHeight: 240 }}
       />

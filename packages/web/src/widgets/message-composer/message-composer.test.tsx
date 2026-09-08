@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type * as StickerApi from "~/entities/sticker/sticker.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
@@ -89,7 +90,8 @@ vi.mock("~/features/sticker-picker/sticker-picker.ui", () => ({
   ),
 }));
 
-vi.mock("~/entities/sticker/sticker.api", () => ({
+vi.mock("~/entities/sticker/sticker.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof StickerApi>()),
   buildStickerMarkdown: () => ":sticker:",
 }));
 
@@ -3884,6 +3886,18 @@ describe("MessageComposer AI context wiring", () => {
 
     expect(stickersTab).toHaveAttribute("aria-selected", "true");
     expect(within(picker).getByTestId("sticker-picker-mock")).toBeInTheDocument();
+  });
+
+  it("blocks pasted sticker Markdown mixed with draft text", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+    const textbox = screen.getByRole("textbox");
+    const draft = "hello ![sticker](urn:sticker:11111111-1111-4111-8111-111111111111)";
+    fireEvent.change(textbox, { target: { value: draft } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Send stickers by selecting");
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue(draft);
   });
 
   it("sends a selected sticker immediately without changing the composer draft", () => {

@@ -9,6 +9,7 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
   let favorite = false;
   let hidden = false;
   let blocked = false;
+  let failNextDownload = false;
   await page.route("**/api/workspace/v1/messenger/stickers**", async (route) => {
     const url = new URL(route.request().url());
     const card = {
@@ -23,6 +24,11 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
     };
     if (url.pathname.endsWith("/download")) {
       expect(route.request().headers().authorization).toMatch(/^Bearer /);
+      if (failNextDownload) {
+        failNextDownload = false;
+        await route.fulfill({ status: 503, body: "Temporary media outage" });
+        return;
+      }
       await route.fulfill(
         blocked
           ? { status: 404, body: "" }
@@ -64,6 +70,8 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
     }
   });
   await openStreamChatWithComposer(page);
+  const draft = page.locator("textarea").first();
+  await draft.fill("Unfinished text draft");
   await page.getByRole("button", { name: /^эмод[зж]и$|^emoji$/i }).click();
   await page.getByRole("tab", { name: /стикеры|stickers/i }).click();
   const picker = page.getByTestId("composer-media-picker");
@@ -72,6 +80,15 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
   await expect(
     picker.getByRole("button", { name: /убрать из избранного|remove from favorites/i }),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      picker
+        .locator("img")
+        .first()
+        .evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0),
+    )
+    .toBe(true);
+  failNextDownload = true;
   const sent = page.waitForRequest(
     (request) =>
       request.method() === "POST" && /\/messages\/?$/.test(new URL(request.url()).pathname),
@@ -80,7 +97,19 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
   expect((await sent).postDataJSON()).toMatchObject({
     payload: { kind: "markdown", content: MARKDOWN },
   });
-  await expect(page.locator('[data-sticker-message="true"] img')).toBeVisible();
+  await expect(draft).toHaveValue("Unfinished text draft");
+  await page
+    .locator('[data-sticker-message="true"]')
+    .getByRole("button", { name: /повторить|try again/i })
+    .click();
+  const image = page.locator('[data-sticker-message="true"] img');
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0))
+    .toBe(true);
+  await expect(
+    page.locator('[data-sticker-message="true"] [data-sticker-media-status="ready"]'),
+  ).toBeVisible();
   hidden = true;
   await page.reload();
   await expect(page.locator('[data-sticker-message="true"] img')).toBeVisible();
@@ -109,10 +138,28 @@ test("Sticker management dialog keeps the picker open and edits a card @mock", a
   let title = "Celebration";
   await page.route("**/api/workspace/v1/messenger/stickers**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/import_archive/invoke")) {
+      await route.fulfill({
+        json: {
+          created: 1,
+          duplicates: 1,
+          items: [
+            { client_id: ID, file: "media/new.png", status: "created", sticker_uuid: ID },
+            {
+              client_id: "22222222-2222-4222-8222-222222222222",
+              file: "media/duplicate.png",
+              status: "duplicate",
+              sticker_uuid: ID,
+            },
+          ],
+        },
+      });
+      return;
+    }
     if (url.pathname.endsWith("/download")) {
       await route.fulfill({
-        contentType: "image/gif",
-        body: Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64"),
+        contentType: "image/png",
+        path: "packages/web/public/pwa-192x192.png",
       });
       return;
     }
@@ -128,7 +175,7 @@ test("Sticker management dialog keeps the picker open and edits a card @mock", a
       emoji: ["🎉"],
       category: "sticker",
       is_favorite: false,
-      media: { format: "gif", url: `/api/workspace/v1/messenger/stickers/${ID}/actions/download` },
+      media: { format: "png", url: `/api/workspace/v1/messenger/stickers/${ID}/actions/download` },
     };
     await route.fulfill({
       json: url.pathname.endsWith(ID) ? card : [card],
@@ -146,9 +193,31 @@ test("Sticker management dialog keeps the picker open and edits a card @mock", a
     name: /управление каталогом стикеров|manage sticker catalog/i,
   });
   await expect(dialog).toBeVisible();
-  await page.screenshot({ path: "/tmp/sticker-admin-import.png" });
-  await dialog.getByRole("button", { name: /^редактирование$|^edit stickers$/i }).click();
-  await dialog.getByRole("button", { name: /Celebration/ }).click();
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: "stickers.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from("mock archive"),
+  });
+  await dialog.getByRole("button", { name: /импортировать архив|import archive/i }).click();
+  const rows = dialog.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  for (const row of await rows.all()) {
+    const frame = row.locator("[data-sticker-import-thumbnail]");
+    await expect(frame).toHaveCSS("width", "48px");
+    await expect(frame).toHaveCSS("height", "48px");
+    const thumbnail = row.locator("img");
+    await expect(thumbnail).toBeVisible();
+    await expect
+      .poll(() =>
+        thumbnail.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0),
+      )
+      .toBe(true);
+  }
+  await page.screenshot({ path: "/tmp/sticker-admin-import-thumbnails.png" });
+  await rows
+    .first()
+    .getByRole("button", { name: /^редактировать$|^edit$/i })
+    .click();
   await dialog.getByLabel(/^название$|^title$/i).fill("Updated celebration");
   await page.screenshot({ path: "/tmp/sticker-admin-edit.png" });
   await dialog.getByRole("button", { name: /сохранить изменения|save changes/i }).click();

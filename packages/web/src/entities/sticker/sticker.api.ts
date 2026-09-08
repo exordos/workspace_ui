@@ -1,9 +1,7 @@
 import { isWorkspaceUuid } from "~/shared/lib/workspace-reference-urn.lib";
 import type { Sticker, StickerReference } from "./sticker.types";
 
-const GIPHY_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const WORKSPACE_STICKER_URN_PATTERN = /^urn:sticker:([^:]+)$/i;
-const GIPHY_STICKER_URN_PATTERN = /^urn:sticker:giphy:([A-Za-z0-9_-]+)$/;
 const STICKER_MARKDOWN_PATTERN = /^!\[sticker\]\((urn:sticker:[^)]+)\)$/i;
 
 export function buildStickerUrn(stickerId: string): string {
@@ -15,13 +13,7 @@ export function buildStickerUrn(stickerId: string): string {
 }
 
 export function buildStickerReferenceUrn(reference: StickerReference): string {
-  if (reference.kind === "workspace") return buildStickerUrn(reference.stickerId);
-
-  const externalId = reference.externalId.trim();
-  if (reference.provider !== "giphy" || !GIPHY_ID_PATTERN.test(externalId)) {
-    throw new TypeError("Sticker provider reference is invalid");
-  }
-  return `urn:sticker:giphy:${externalId}`;
+  return buildStickerUrn(reference.stickerId);
 }
 
 export function parseStickerUrn(value: unknown): StickerReference | null {
@@ -33,9 +25,7 @@ export function parseStickerUrn(value: unknown): StickerReference | null {
     return { kind: "workspace", stickerId: stickerId.toLowerCase() };
   }
 
-  const providerMatch = GIPHY_STICKER_URN_PATTERN.exec(normalizedValue);
-  const externalId = providerMatch?.[1];
-  return externalId == null ? null : { kind: "provider", provider: "giphy", externalId };
+  return null;
 }
 
 export function buildStickerMarkdown(sticker: Pick<Sticker, "reference">): string {
@@ -50,4 +40,8 @@ export function parseStickerFromContent(content: string): StickerReference | nul
 
 export function isStickerMessage(content: string): boolean {
   return parseStickerFromContent(content) != null;
+}
+
+export function containsStickerMarkdown(content: string): boolean {
+  return /!\[[^\]]*\]\(\s*urn:sticker:[^)]+\)/i.test(content);
 }
