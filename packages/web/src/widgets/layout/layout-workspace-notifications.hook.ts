@@ -4,6 +4,8 @@ import {
   type MessengerBackgroundProjection,
   type MessengerBackgroundNotificationCandidate,
 } from "~/entities/messenger/messenger-background-projection.model";
+import { resolveWorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
+import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
@@ -11,6 +13,7 @@ import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import {
   registerNotifiedWorkspaceMessage,
@@ -35,17 +38,7 @@ import {
 import type { NavigateFunction } from "react-router-dom";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
-/**
- * How long a candidate may wait for the stream/topic snapshot that names it.
- *
- * The wait exists for one race: a message event and the stream event that
- * describes its conversation arrive in the same catch-up batch, normally
- * milliseconds apart. The bound is generous against a slow catch-up rather than
- * tuned, and the "metadata did not arrive in time" log carries `waitedMs` for
- * anyone who needs to revisit it. Past the bound the notification has stopped
- * being news — the user has already seen a later one for the same conversation,
- * or has opened it — so the candidate is dropped rather than shown late.
- */
+/** Give conversation metadata time to arrive before showing a generic notification. */
 const NOTIFICATION_METADATA_GRACE_MS = 30_000;
 const NOTIFICATION_METADATA_RETRY_MS = 250;
 const notificationLog = createLogger("layout:notification");
@@ -100,6 +93,9 @@ function resolveCurrentCandidate(
     streamsById: Readonly<Record<string, MessengerStream>>;
     topicsById: Readonly<Record<string, MessengerTopic>>;
   },
+  // The cached catalog is the last source: it is the only one that knows a
+  // conversation of an owner whose messenger store is not the one on screen.
+  cachedMetadata?: WorkspaceConversationMetadata | null,
 ): {
   candidate: MessengerBackgroundNotificationCandidate;
   missingMetadata: string[];
@@ -114,21 +110,33 @@ function resolveCurrentCandidate(
     activeMetadata?.ownerKey === candidate.ownerKey
       ? activeMetadata.topicsById[candidate.topicUuid]
       : undefined;
+  const cachedStream = cachedMetadata?.stream ?? null;
+  const cachedTopic = cachedMetadata?.topic ?? null;
   let audience = candidate.audience;
-  if (streamSnapshot != null || activeStream != null) {
-    audience = (streamSnapshot?.isPrivate ?? activeStream?.isPrivate) ? "private" : "channel";
+  if (streamSnapshot != null || activeStream != null || cachedStream != null) {
+    audience =
+      (streamSnapshot?.isPrivate ?? activeStream?.isPrivate ?? cachedStream?.isPrivate)
+        ? "private"
+        : "channel";
   }
   const streamNotificationMode =
     activeStream?.notificationMode ??
     streamSnapshot?.notificationMode ??
+    cachedStream?.notificationMode ??
     candidate.streamNotificationMode;
   const topicNotificationMode =
     activeTopic?.notificationMode ??
     topicSnapshot?.notificationMode ??
+    cachedTopic?.notificationMode ??
     candidate.topicNotificationMode;
   const missingMetadata: string[] = [];
 
-  if (streamSnapshot == null && activeStream == null && candidate.audience === "unknown") {
+  if (
+    streamSnapshot == null &&
+    activeStream == null &&
+    cachedStream == null &&
+    candidate.audience === "unknown"
+  ) {
     missingMetadata.push("stream");
   }
 
@@ -137,6 +145,7 @@ function resolveCurrentCandidate(
     streamNotificationMode !== "all_messages" &&
     topicSnapshot == null &&
     activeTopic == null &&
+    cachedTopic == null &&
     candidate.topicNotificationMode == null
   ) {
     missingMetadata.push("topic");
@@ -146,16 +155,44 @@ function resolveCurrentCandidate(
     candidate: {
       ...candidate,
       audience,
-      streamName: streamSnapshot?.streamName ?? activeStream?.name ?? candidate.streamName,
+      streamName:
+        streamSnapshot?.streamName ??
+        activeStream?.name ??
+        cachedStream?.streamName ??
+        candidate.streamName,
       topicName:
         topicSnapshot?.topicName ??
         (activeTopic?.isDefault === true ? null : activeTopic?.name) ??
+        cachedTopic?.topicName ??
         candidate.topicName,
       streamNotificationMode,
       topicNotificationMode,
     },
     missingMetadata,
   };
+}
+
+async function resolveCandidateMetadata(
+  projection: MessengerBackgroundProjection,
+  candidate: MessengerBackgroundNotificationCandidate,
+): Promise<ReturnType<typeof resolveCurrentCandidate>> {
+  const activeMessengerState = useMessengerStore.getState();
+  const activeMetadata = {
+    ownerKey: activeMessengerState.ownerKey,
+    streamsById: activeMessengerState.streamsById,
+    topicsById: activeMessengerState.topicsById,
+  };
+  const resolved = resolveCurrentCandidate(projection, candidate, activeMetadata);
+  if (resolved.missingMetadata.length === 0) {
+    return resolved;
+  }
+
+  const cachedMetadata = await resolveWorkspaceConversationMetadata({
+    ownerKey: candidate.ownerKey,
+    streamUuid: candidate.streamUuid,
+    topicUuid: candidate.topicUuid,
+  });
+  return resolveCurrentCandidate(projection, candidate, activeMetadata, cachedMetadata);
 }
 
 function resolveTitleContext(
@@ -235,7 +272,7 @@ function logDeferredCandidate(options: {
   deferredCandidates.add(scopeKey);
   notificationLog.warn(
     options.expired
-      ? "candidate dropped: metadata did not arrive in time"
+      ? "candidate using generic notification: metadata did not arrive in time"
       : "candidate deferred until metadata arrives",
     {
       ownerKey: candidate.ownerKey,
@@ -274,6 +311,23 @@ function logPolicySkip(options: {
   });
 }
 
+function resolveGenericNotificationAccountLabel(ownerKey: string): string {
+  const session = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((entry) => workspaceRuntimeOwnerKey(entry) === ownerKey);
+  if (session == null) return "";
+
+  const username = trimNonEmpty(session.profile.username);
+  let domain: string | null = null;
+  try {
+    const url = new URL(session.organizationOrigin);
+    if (url.protocol === "https:" || url.protocol === "http:") domain = url.hostname;
+  } catch {
+    // An invalid origin must not expose a raw URL or internal identifiers.
+  }
+  return [username, domain].filter((part) => part != null && part !== "").join(" · ");
+}
+
 async function runNotificationEffects(options: {
   candidate: MessengerBackgroundNotificationCandidate;
   messageUuid: string;
@@ -283,38 +337,50 @@ async function runNotificationEffects(options: {
   processedCandidates: Set<string>;
   deferredCandidates: Set<string>;
   isCancelled: () => boolean;
+  metadataUnavailable: boolean;
 }): Promise<void> {
   const { candidate, messageUuid, scopeKey, trigger, navigate, processedCandidates } = options;
 
   try {
-    const author = await resolveCachedWorkspaceUser({
-      ownerKey: candidate.ownerKey,
-      userUuid: candidate.authorUuid,
-    });
+    // Generic notifications must not depend on another metadata lookup.
+    const author = options.metadataUnavailable
+      ? null
+      : await resolveCachedWorkspaceUser({
+          ownerKey: candidate.ownerKey,
+          userUuid: candidate.authorUuid,
+        });
     if (options.isCancelled()) {
       return;
     }
 
     const senderName = trimNonEmpty(author?.displayName) ?? DEFAULT_NOTIFICATION_SENDER;
     const titleContext = resolveTitleContext(candidate, senderName);
-    const body = trimNonEmpty(candidate.previewText) ?? "";
-    const conversationRoute = resolveNotificationConversationRoute(candidate);
-    const aggregateSnapshot = upsertNotificationAggregate({
-      candidate,
-      body,
-      clickRoute: conversationRoute,
-      titleContext,
-    });
+    const body = options.metadataUnavailable
+      ? resolveGenericNotificationAccountLabel(candidate.ownerKey)
+      : (trimNonEmpty(candidate.previewText) ?? "");
+    const conversationRoute = options.metadataUnavailable
+      ? candidate.messageRoute
+      : resolveNotificationConversationRoute(candidate);
+    const aggregateSnapshot = options.metadataUnavailable
+      ? null
+      : upsertNotificationAggregate({
+          candidate,
+          body,
+          clickRoute: conversationRoute,
+          titleContext,
+        });
     const notificationClickRoute = aggregateSnapshot?.latestClickRoute ?? conversationRoute;
 
     markCandidateProcessed(processedCandidates, candidate.ownerKey, messageUuid);
     options.deferredCandidates.delete(scopeKey);
 
     const notificationShown = notificationService.show({
-      title: formatNotificationTitle(
-        aggregateSnapshot?.titleContext ?? titleContext,
-        aggregateSnapshot?.count ?? 1,
-      ),
+      title: options.metadataUnavailable
+        ? t("notifications.genericNewMessage")
+        : formatNotificationTitle(
+            aggregateSnapshot?.titleContext ?? titleContext,
+            aggregateSnapshot?.count ?? 1,
+          ),
       body: aggregateSnapshot?.latestBody ?? body,
       tag: aggregateSnapshot?.tag ?? `msg:${candidate.ownerKey}::${messageUuid}`,
       silent: true,
@@ -456,19 +522,15 @@ export function useLayoutWorkspaceNotifications(options: {
       scopeKey: string,
       missingMetadata: string[],
     ): number {
-      const expired = Date.now() - candidate.observedAt > NOTIFICATION_METADATA_GRACE_MS;
-      if (expired) {
-        markCandidateProcessed(processedCandidatesRef.current, candidate.ownerKey, messageUuid);
-      }
       logDeferredCandidate({
         deferredCandidates: deferredCandidatesRef.current,
         scopeKey,
         candidate,
         messageUuid,
         missingMetadata,
-        expired,
+        expired: false,
       });
-      return expired ? Infinity : candidate.observedAt;
+      return candidate.observedAt;
     }
 
     async function showNotifications(): Promise<void> {
@@ -488,13 +550,16 @@ export function useLayoutWorkspaceNotifications(options: {
         }
 
         const scopeKey = buildCandidateScopeKey(candidate.ownerKey, messageUuid);
-        const activeMessengerState = useMessengerStore.getState();
-        const resolvedCandidate = resolveCurrentCandidate(projection, candidate, {
-          ownerKey: activeMessengerState.ownerKey,
-          streamsById: activeMessengerState.streamsById,
-          topicsById: activeMessengerState.topicsById,
-        });
-        if (resolvedCandidate.missingMetadata.length > 0) {
+        const resolvedCandidate = await resolveCandidateMetadata(projection, candidate);
+        if (cancelled) {
+          return;
+        }
+
+        const metadataUnavailable = resolvedCandidate.missingMetadata.length > 0;
+        if (
+          metadataUnavailable &&
+          Date.now() - candidate.observedAt < NOTIFICATION_METADATA_GRACE_MS
+        ) {
           metadataRetryObservedAt = Math.min(
             metadataRetryObservedAt,
             deferCandidate(candidate, messageUuid, scopeKey, resolvedCandidate.missingMetadata),
@@ -526,6 +591,7 @@ export function useLayoutWorkspaceNotifications(options: {
 
         const viewport = readViewportState(currentCandidate, openConversationId);
         const decision = shouldWorkspaceDesktopNotify({
+          metadataUnavailable,
           message: {
             kind: currentCandidate.audience === "private" ? "dm" : "stream",
             isOwn: currentCandidate.isOwn,
@@ -550,7 +616,19 @@ export function useLayoutWorkspaceNotifications(options: {
           continue;
         }
 
+        if (metadataUnavailable) {
+          logDeferredCandidate({
+            deferredCandidates: deferredCandidatesRef.current,
+            scopeKey,
+            candidate: currentCandidate,
+            messageUuid,
+            missingMetadata: resolvedCandidate.missingMetadata,
+            expired: true,
+          });
+        }
+
         await runNotificationEffects({
+          metadataUnavailable,
           candidate: currentCandidate,
           messageUuid,
           scopeKey,

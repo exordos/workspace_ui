@@ -47,6 +47,26 @@ describe("notifications-policy", () => {
       topicNotificationMode: "default" as const,
     };
 
+    it("allows a generic notification without guessing the conversation trigger", () => {
+      expect(
+        shouldWorkspaceDesktopNotify({
+          metadataUnavailable: true,
+          message: { ...baseStreamMessage, topicNotificationMode: null },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: true, trigger: "metadata_unavailable" });
+    });
+
+    it("suppresses the generic fallback in the focused conversation", () => {
+      expect(
+        shouldWorkspaceDesktopNotify({
+          metadataUnavailable: true,
+          message: baseStreamMessage,
+          viewport: { windowFocused: true, isConversationOnScreen: true },
+        }).notify,
+      ).toBe(false);
+    });
+
     it("returns false for own messages", () => {
       expect(
         shouldWorkspaceDesktopNotify({

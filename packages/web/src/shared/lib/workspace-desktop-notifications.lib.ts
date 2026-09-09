@@ -10,6 +10,7 @@ import type {
 } from "./workspace-message-render/workspace-message-document.types";
 
 export type WorkspaceNotificationMessageTrigger =
+  | "metadata_unavailable"
   | "dm"
   | "wildcard_mention"
   | "mention"
@@ -38,6 +39,8 @@ export interface WorkspaceDesktopNotificationViewportContext {
 }
 
 export interface ShouldWorkspaceDesktopNotifyInput {
+  /** Only after conversation metadata resolution has exhausted its grace window. */
+  metadataUnavailable?: boolean;
   message: WorkspaceDesktopNotificationMessageContext;
   viewport: WorkspaceDesktopNotificationViewportContext;
 }
@@ -183,6 +186,7 @@ export function isWorkspaceDesktopNotificationEnabledForTrigger(
   message: WorkspaceDesktopNotificationMessageContext,
 ): boolean {
   switch (trigger) {
+    case "metadata_unavailable":
     case "dm":
     case "mention":
     case "wildcard_mention":
@@ -223,7 +227,9 @@ export function classifyWorkspaceNotificationTrigger(
 export function shouldWorkspaceDesktopNotify(
   input: ShouldWorkspaceDesktopNotifyInput,
 ): ShouldWorkspaceDesktopNotifyResult {
-  const trigger = classifyWorkspaceNotificationTrigger(input.message);
+  const trigger = input.metadataUnavailable
+    ? "metadata_unavailable"
+    : classifyWorkspaceNotificationTrigger(input.message);
   const blocked =
     input.message.notificationEligible === false ||
     input.message.isOwn ||

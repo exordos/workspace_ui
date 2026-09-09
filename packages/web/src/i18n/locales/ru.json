@@ -1152,6 +1152,7 @@
     "workspaceUnsupportedDescription": "Поиск сообщений включим после готовности серверного поиска."
   },
   "notifications": {
+    "genericNewMessage": "У вас новое сообщение",
     "notifications": "Уведомления",
     "newMessage": "Новое сообщение",
     "messageCount_one": "{{count}} сообщение",

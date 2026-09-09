@@ -1142,6 +1142,7 @@
     "workspaceUnsupportedDescription": "Message search will be enabled after server search."
   },
   "notifications": {
+    "genericNewMessage": "You have a new message",
     "notifications": "Notifications",
     "newMessage": "New message",
     "messageCount_one": "{{count}} message",
