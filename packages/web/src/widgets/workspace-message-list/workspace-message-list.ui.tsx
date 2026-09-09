@@ -565,11 +565,21 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     }
 
     const outgoingLocalIds = new Set(outgoingMessages.map((message) => message.localId));
-    const serverItems = messages.map(createServerListItem);
+    const outgoingLocalIdsByMessageUuid = new Map(
+      outgoingMessages.map((message) => [message.messageUuid, message.localId]),
+    );
+    const serverItems = messages.map((message) =>
+      createWorkspaceMessageListServerItem(
+        message,
+        outgoingLocalIdsByMessageUuid.get(message.uuid) ??
+          resolveServerMessageRenderKey?.(message.uuid) ??
+          message.uuid,
+      ),
+    );
     const deliveredOutgoingLocalIds = new Set<string>();
     for (const serverItem of serverItems) {
-      // Only the key registered from this POST response may replace a local row.
-      // Realtime snapshots without that key stay visible instead of guessing by content.
+      // Exact client-assigned UUIDs let a realtime echo replace its local row
+      // even when the POST response has not registered a render key yet.
       if (outgoingLocalIds.has(serverItem.key)) {
         deliveredOutgoingLocalIds.add(serverItem.key);
       }
@@ -588,7 +598,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       .filter((message): message is WorkspaceMessageListOutgoingItem => message != null);
 
     return [...serverItems, ...outgoingListItems];
-  }, [createServerListItem, messages, outgoingMessages]);
+  }, [createServerListItem, messages, outgoingMessages, resolveServerMessageRenderKey]);
   const readRequestBoundariesByTopic = useMemo(() => {
     if (readRequestBoundaryMessageUuids.size === 0) return EMPTY_READ_REQUEST_BOUNDARIES;
     const boundaries = new Map<string, WorkspaceReadRequestBoundary>();
@@ -868,70 +878,77 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       >
         {/* The list already stores string Workspace UUIDs in the DOM. Later phases
           do not need to keep the old numeric DOM key around just for scrolling. */}
-        {dayGroups.map((dayGroup) => (
-          <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
-            {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
-            <div className="sticky top-0 z-sticky flex justify-center py-1">
-              <time
-                className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
-                dateTime={dayGroup.dateKey}
-                data-day-divider={dayGroup.dateKey}
-              >
-                {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
-              </time>
-            </div>
-            <div className="flex flex-col gap-2">
-              {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
-                const showUnreadMarker =
-                  stableFirstUnreadUuid != null &&
-                  authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
-                const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
-                const dividerTopicLabel = formatWorkspaceTopicLabel(
-                  resolveTopicLabel?.(authorGroup.topicUuid),
-                );
-                const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
+        {dayGroups.map((dayGroup) => {
+          const authorGroupOccurrences = new Map<string, number>();
+          return (
+            <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
+              {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
+              <div className="sticky top-0 z-sticky flex justify-center py-1">
+                <time
+                  className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
+                  dateTime={dayGroup.dateKey}
+                  data-day-divider={dayGroup.dateKey}
+                >
+                  {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
+                </time>
+              </div>
+              <div className="flex flex-col gap-2">
+                {dayGroup.authorGroups.map((authorGroup) => {
+                  const authorGroupSignature = `${authorGroup.authorUuid}:${authorGroup.topicUuid}`;
+                  const authorGroupOccurrence =
+                    authorGroupOccurrences.get(authorGroupSignature) ?? 0;
+                  authorGroupOccurrences.set(authorGroupSignature, authorGroupOccurrence + 1);
+                  const showUnreadMarker =
+                    stableFirstUnreadUuid != null &&
+                    authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
+                  const authorGroupKey = `${dayGroup.dateKey}:${authorGroupSignature}:${authorGroupOccurrence}`;
+                  const dividerTopicLabel = formatWorkspaceTopicLabel(
+                    resolveTopicLabel?.(authorGroup.topicUuid),
+                  );
+                  const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
 
-                return (
-                  <React.Fragment key={authorGroupKey}>
-                    {showUnreadMarker && !isUnreadDividerDismissed && (
-                      <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
-                    )}
-                    {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
-                      <WorkspaceMessageDivider
-                        data-topic-divider="true"
-                        data-topic-uuid={authorGroup.topicUuid}
-                      >
-                        {dividerTopicLabel != null && dividerStreamUuid != null ? (
-                          <WorkspaceMessageTopicLink
-                            label={dividerTopicLabel}
-                            streamUuid={dividerStreamUuid}
-                            topicUuid={authorGroup.topicUuid}
-                            onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
-                          />
-                        ) : null}
-                      </WorkspaceMessageDivider>
-                    ) : null}
-                    <WorkspaceMessageAuthorGroupView
-                      group={authorGroup}
-                      currentUserUuid={currentUserUuid}
-                      resolveAuthorLabel={effectiveResolveAuthorLabel}
-                      resolveTopicLabel={resolveTopicLabel}
-                      showTopicLabels={presentation?.topicLabels === true}
-                      resolveMention={resolveMention}
-                      quoteRenderMode={presentation?.quoteRenderMode}
-                      actions={messageActions}
-                      passiveLoadersEnabled={!anchorHandoffPending}
-                      selectedMessageUuids={selectedMessageUuids}
-                      readRequestBoundariesByTopic={readRequestBoundariesByTopic}
-                      selectionMode={selectionMode}
-                      usersById={usersById}
-                    />
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                  return (
+                    <React.Fragment key={authorGroupKey}>
+                      {showUnreadMarker && !isUnreadDividerDismissed && (
+                        <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
+                      )}
+                      {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
+                        <WorkspaceMessageDivider
+                          data-topic-divider="true"
+                          data-topic-uuid={authorGroup.topicUuid}
+                        >
+                          {dividerTopicLabel != null && dividerStreamUuid != null ? (
+                            <WorkspaceMessageTopicLink
+                              label={dividerTopicLabel}
+                              streamUuid={dividerStreamUuid}
+                              topicUuid={authorGroup.topicUuid}
+                              onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
+                            />
+                          ) : null}
+                        </WorkspaceMessageDivider>
+                      ) : null}
+                      <WorkspaceMessageAuthorGroupView
+                        group={authorGroup}
+                        currentUserUuid={currentUserUuid}
+                        resolveAuthorLabel={effectiveResolveAuthorLabel}
+                        resolveTopicLabel={resolveTopicLabel}
+                        showTopicLabels={presentation?.topicLabels === true}
+                        resolveMention={resolveMention}
+                        quoteRenderMode={presentation?.quoteRenderMode}
+                        actions={messageActions}
+                        passiveLoadersEnabled={!anchorHandoffPending}
+                        selectedMessageUuids={selectedMessageUuids}
+                        readRequestBoundariesByTopic={readRequestBoundariesByTopic}
+                        selectionMode={selectionMode}
+                        usersById={usersById}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
       </div>
       {!anchorHandoffPending && (!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages) ? (
         <FloatingScrollToBottomButton onClick={handleScrollToBottom} unreadCount={unreadCount} />

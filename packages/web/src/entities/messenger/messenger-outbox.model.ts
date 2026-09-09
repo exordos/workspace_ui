@@ -108,6 +108,7 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
     const createdAt = draft.createdAt ?? new Date().toISOString();
     const message: MessengerOutgoingMessage = {
       localId,
+      messageUuid: globalThis.crypto.randomUUID(),
       ownerKey: draft.ownerKey,
       conversationId: draft.conversationId,
       projectId: draft.projectId,

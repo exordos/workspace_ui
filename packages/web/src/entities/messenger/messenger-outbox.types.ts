@@ -4,6 +4,7 @@ export type MessengerOutgoingMessageStatus = "sending" | "failed";
 
 export interface MessengerOutgoingMessage {
   localId: string;
+  messageUuid: MessengerUuid;
   ownerKey: string;
   conversationId: MessengerConversationId;
   projectId: MessengerUuid;

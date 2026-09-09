@@ -3283,6 +3283,46 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
+  it("settles an outgoing row from its exact realtime echo when the POST response is lost", async () => {
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    let sendPromise: Promise<unknown> | undefined;
+    act(() => {
+      sendPromise = Promise.resolve(captured.composerProps?.onSend("committed message", ""));
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toHaveLength(1));
+    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+    if (outgoing == null) throw new Error("Expected an outgoing message");
+    const serverMessage = {
+      ...createMessage(),
+      uuid: outgoing.messageUuid,
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+
+    await act(async () => {
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(serverMessage);
+      sendRequest.reject(new Error("response lost"));
+      await sendPromise;
+    });
+    expect(captured.messageListProps?.outgoingMessages).toEqual([]);
+    expect(captured.messageListProps?.resolveServerMessageRenderKey?.(serverMessage.uuid)).toBe(
+      outgoing.localId,
+    );
+  });
+
   it("uploads composer files immediately and appends logical markdown refs on send", async () => {
     const sendRequest = createDeferred<{
       status: "applied";

@@ -41,6 +41,9 @@ describe("messenger outbox store", () => {
         CONVERSATION_A,
       ),
     ).toEqual([outgoing]);
+    expect(outgoing.messageUuid).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     expect(
       selectWorkspaceMessagesForConversation(useWorkspaceMessageStore.getState(), CONVERSATION_A),
     ).toEqual([]);
@@ -107,6 +110,7 @@ describe("messenger outbox store", () => {
     expect(messages[0]).toEqual(
       expect.objectContaining({
         localId: outgoing.localId,
+        messageUuid: outgoing.messageUuid,
         status: "sending",
         attempt: 2,
         error: null,

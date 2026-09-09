@@ -235,6 +235,18 @@ function normalizeWorkspaceActionError(error: unknown, fallback: string): string
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
 
+function isOutgoingMessageIndexed(outgoing: MessengerOutgoingMessage): boolean {
+  const messageState = useWorkspaceMessageStore.getState();
+  const message = messageState.messagesById[outgoing.messageUuid];
+  return (
+    messageState.ownerKey === outgoing.ownerKey &&
+    message?.projectId === outgoing.projectId &&
+    message.streamUuid === outgoing.streamUuid &&
+    message.topicUuid === outgoing.topicUuid &&
+    message.authorUuid === outgoing.authorUuid
+  );
+}
+
 function workspaceConversationRoute({
   organizationId,
   projectId,
@@ -912,6 +924,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
     return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
   }, [outgoingMessageLocalIds, outgoingMessagesByLocalId, ownerKey]);
+  const settleIndexedOutgoingMessage = useCallback(
+    (outgoing: MessengerOutgoingMessage): boolean => {
+      if (!isOutgoingMessageIndexed(outgoing)) return false;
+
+      registerDeliveredOutgoingMessage(
+        outgoing.ownerKey,
+        outgoing.conversationId,
+        outgoing.messageUuid,
+        outgoing.localId,
+      );
+      useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.localId);
+      return true;
+    },
+    [registerDeliveredOutgoingMessage],
+  );
+  useEffect(() => {
+    if (ownerKey == null || conversationId == null || outgoingMessages.length === 0) return;
+
+    const indexedMessageUuids = new Set(routeMessages.map((message) => message.uuid));
+    for (const outgoing of outgoingMessages) {
+      if (!indexedMessageUuids.has(outgoing.messageUuid)) continue;
+      settleIndexedOutgoingMessage(outgoing);
+    }
+  }, [conversationId, outgoingMessages, ownerKey, routeMessages, settleIndexedOutgoingMessage]);
   const messagesStatus = useWorkspaceMessageStore((state) =>
     conversationId == null || state.ownerKey !== ownerKey
       ? selectWorkspaceMessageStatusForConversation(state, "")
@@ -1379,6 +1415,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
+            messageUuid: outgoing.messageUuid,
             streamUuid: outgoing.streamUuid,
             topicUuid: outgoing.topicUuid,
             markdown,
@@ -1398,11 +1435,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             return true;
           }
 
+          if (settleIndexedOutgoingMessage(outgoing)) return true;
+
           useMessengerOutboxStore
             .getState()
             .markOutgoingMessageFailed(localId, t("message.sendFailed"));
           return false;
         } catch (error) {
+          if (settleIndexedOutgoingMessage(outgoing)) return true;
+
           useMessengerOutboxStore
             .getState()
             .markOutgoingMessageFailed(
@@ -1413,7 +1454,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         }
       });
     },
-    [ownerKey, registerDeliveredOutgoingMessage, runWorkspaceAction, runtimeContext],
+    [
+      ownerKey,
+      registerDeliveredOutgoingMessage,
+      runWorkspaceAction,
+      runtimeContext,
+      settleIndexedOutgoingMessage,
+    ],
   );
 
   const handleSend = useCallback(

@@ -137,6 +137,7 @@ export type MessengerMessageActionResult =
   | { status: "skipped"; ownerKey: string | null; reason: "missing-context" | "stale-owner" };
 
 export interface SendMessengerMessageOptions extends MessengerMessageActionBaseOptions {
+  messageUuid?: MessengerUuid;
   streamUuid: MessengerUuid;
   topicUuid: MessengerUuid;
   markdown: string;
@@ -240,6 +241,7 @@ export async function sendMessengerMessage({
   cache = messengerMessageActionCache,
   signal,
   store = useWorkspaceMessageStore,
+  messageUuid = globalThis.crypto.randomUUID(),
   streamUuid,
   topicUuid,
   markdown,
@@ -256,6 +258,7 @@ export async function sendMessengerMessage({
   const dto = await (client.createMessage ?? defaultCreateMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     {
+      uuid: messageUuid,
       stream_uuid: streamUuid,
       topic_uuid: topicUuid,
       payload: { kind: "markdown", content: markdown },

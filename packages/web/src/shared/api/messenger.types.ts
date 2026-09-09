@@ -369,6 +369,7 @@ export type WorkspaceMessengerTopicSummaryConfigurationRequestBody = AtLeastOne<
 }>;
 
 export interface WorkspaceMessengerCreateMessageRequestBody {
+  uuid?: WorkspaceMessengerUuid;
   stream_uuid: WorkspaceMessengerUuid;
   topic_uuid: WorkspaceMessengerUuid;
   payload: WorkspaceMessengerMessagePayloadDto;

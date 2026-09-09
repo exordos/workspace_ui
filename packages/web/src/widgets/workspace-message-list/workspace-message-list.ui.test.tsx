@@ -93,6 +93,7 @@ function createOutgoingMessage(
 ): MessengerOutgoingMessage {
   return {
     localId: "outgoing-local-id-1",
+    messageUuid: "outgoing-message-uuid-1",
     ownerKey: "owner-key-1",
     conversationId: "topic:stream-uuid-1:topic-uuid-1",
     projectId: "project-uuid-1",
@@ -561,7 +562,7 @@ describe("WorkspaceMessageList", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps an identical server message and local row separate until their exact mapping arrives", () => {
+  it("reconciles a server echo with its preassigned outgoing UUID", () => {
     const serverMessageUuid = "server-message-uuid";
     const localId = "local-outgoing-message";
     const serverMessage = createWorkspaceMessage({
@@ -574,6 +575,7 @@ describe("WorkspaceMessageList", () => {
     });
     const outgoingMessage = createOutgoingMessage({
       localId,
+      messageUuid: serverMessageUuid,
       markdown: "Local outgoing text",
       status: "sending",
     });
@@ -587,9 +589,11 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    expect(container.querySelectorAll("article")).toHaveLength(2);
+    expect(container.querySelectorAll("article")).toHaveLength(1);
     const articleBeforeResolve = container.querySelector(`[data-outgoing-message-id='${localId}']`);
-    expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", localId);
+    expect(articleBeforeResolve).toBeNull();
+    const serverArticle = container.querySelector(`[data-message-uuid='${serverMessageUuid}']`);
+    expect(serverArticle).toHaveAttribute("data-message-render-key", localId);
 
     rerender(
       <WorkspaceMessageList
@@ -605,7 +609,7 @@ describe("WorkspaceMessageList", () => {
 
     const articles = Array.from(container.querySelectorAll("article"));
     expect(articles).toHaveLength(1);
-    expect(articles[0]).toBe(articleBeforeResolve);
+    expect(articles[0]).toBe(serverArticle);
     expect(articles[0]).toHaveAttribute("data-message-uuid", serverMessageUuid);
     expect(articles[0]).toHaveAttribute("data-message-render-key", localId);
     expect(articles[0]).not.toHaveAttribute("data-outgoing-message-id");
@@ -624,7 +628,46 @@ describe("WorkspaceMessageList", () => {
     );
 
     expect(container.querySelectorAll("article")).toHaveLength(1);
-    expect(container.querySelector("article")).toBe(articleBeforeResolve);
+    expect(container.querySelector("article")).toBe(serverArticle);
+  });
+
+  it("keeps an existing media row mounted when an earlier author group is inserted", () => {
+    const firstMessage = createWorkspaceMessage({
+      uuid: "first-message",
+      authorUuid: "author-a",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const mediaMessage = createWorkspaceMessage({
+      uuid: "media-message",
+      authorUuid: "author-b",
+      markdown: "![preview](/v1/files/media-file/content)",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const insertedMessage = createWorkspaceMessage({
+      uuid: "inserted-message",
+      authorUuid: "author-c",
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage, mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const originalMediaArticle = container.querySelector("[data-message-uuid='media-message']");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[insertedMessage, firstMessage, mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-message-uuid='media-message']")).toBe(
+      originalMediaArticle,
+    );
   });
 
   it("renders edited content from the server snapshot", () => {

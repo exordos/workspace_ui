@@ -216,6 +216,7 @@ describe("messenger message actions", () => {
       sendMessengerMessage({
         runtimeContext,
         getRuntimeContext: () => runtimeContext,
+        messageUuid: "client-message-uuid",
         streamUuid: STREAM_A,
         topicUuid: TOPIC_A,
         markdown: "Hello, workspace",
@@ -240,6 +241,7 @@ describe("messenger message actions", () => {
         projectId: PROJECT_A,
       }),
       {
+        uuid: "client-message-uuid",
         stream_uuid: STREAM_A,
         topic_uuid: TOPIC_A,
         payload: { kind: "markdown", content: "Hello, workspace" },
