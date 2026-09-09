@@ -118,9 +118,9 @@ export type WorkspaceMessengerDeliveryClass = "live" | "backfill";
 
 export interface WorkspaceMessengerProviderDto {
   kind: "zulip";
-  account_uuid: WorkspaceMessengerUuid;
+  account_uuid?: WorkspaceMessengerUuid;
   external_id: string | null;
-  capabilities: Record<string, unknown>;
+  capabilities?: Record<string, unknown>;
   delivery_class?: WorkspaceMessengerDeliveryClass;
   notification_eligible?: boolean;
 }
@@ -1009,9 +1009,9 @@ export function isWorkspaceMessengerProviderDto(
   return (
     isRecord(value) &&
     value.kind === "zulip" &&
-    isUuid(value.account_uuid) &&
+    (value.account_uuid === undefined || isUuid(value.account_uuid)) &&
     (value.external_id === null || typeof value.external_id === "string") &&
-    isRecord(value.capabilities) &&
+    (value.capabilities === undefined || isRecord(value.capabilities)) &&
     (value.delivery_class === undefined || isDeliveryClass(value.delivery_class)) &&
     (value.notification_eligible === undefined || typeof value.notification_eligible === "boolean")
   );

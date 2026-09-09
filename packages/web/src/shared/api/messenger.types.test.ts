@@ -368,6 +368,17 @@ describe("Workspace messenger DTO guards", () => {
     expect(
       isWorkspaceMessengerMessageDto({
         ...messageDto,
+        provider: {
+          kind: "zulip",
+          external_id: "message-42",
+          provider_realm_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          chat_key: "channel:7",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
         provider: null,
         delivery: null,
       }),
@@ -395,6 +406,18 @@ describe("Workspace messenger DTO guards", () => {
       isWorkspaceMessengerMessageDto({
         ...messageDto,
         provider: { ...provider, notification_eligible: "false" },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: { ...provider, account_uuid: 42 },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        provider: { ...provider, capabilities: null },
       }),
     ).toBe(false);
   });
