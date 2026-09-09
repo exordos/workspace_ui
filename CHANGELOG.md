@@ -6,8 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-09
+
+### Added
+
+- Shared profile links now open the requested contact in the web client,
+  including across sign-in and account selection, while reusing cached profile
+  data when a background refresh is unavailable.
+
 ### Changed
 
+- Mention suggestions now rank people by match quality, conversation context,
+  and recent interaction, with deterministic tie-breaking and a focused result
+  limit.
 - Reading by scrolling now applies locally at once: message read state and the
   topic and stream badges update before the server confirms the boundary, and
   roll back if the request fails.
@@ -17,6 +28,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - A thread's unread badge now drops as soon as scrolling reads its last message.
   The read-boundary path used to leave topic and stream counters untouched until
   the backend counter projection arrived, so the badge could outlive the read.
+- Message notifications now resolve conversation metadata from active state,
+  background projections, and the persisted catalog, so quiet chats on another
+  account and newly created topics are not silently skipped. Minimized Electron
+  windows also use their last active conversation when deciding whether a
+  notification should be shown.
+- Imported provider messages with partial but otherwise valid provider metadata
+  no longer make the conversation fail to load.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.6.3`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.7.0`.
+- No manual migration is required.
 
 ## [0.6.3] — 2026-09-03
 
