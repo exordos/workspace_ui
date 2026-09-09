@@ -35,6 +35,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   notification should be shown.
 - Imported provider messages with partial but otherwise valid provider metadata
   no longer make the conversation fail to load.
+- macOS release signing now uses the temporary keychain password expected by
+  current GitHub runners.
 
 ### Requirements and compatibility
 
