@@ -174,7 +174,6 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onFocusedMessageMissing = vi.fn();
     const resolveAuthorLabel = vi.fn(() => "Bob Reed");
     const resolveMention = vi.fn(() => ({ userUuid: "mention-user-uuid" }));
-    const resolveServerMessageRenderKey = vi.fn(() => "transient-local-id");
 
     render(
       <ChatPageWorkspaceMessageListSection
@@ -216,7 +215,6 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         scrollToBottomAfterSendNonce={7}
         resolveAuthorLabel={resolveAuthorLabel}
         resolveMention={resolveMention}
-        resolveServerMessageRenderKey={resolveServerMessageRenderKey}
       />,
     );
 
@@ -256,9 +254,6 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     );
     expect(captured.workspaceMessageListProps?.resolveAuthorLabel).toBe(resolveAuthorLabel);
     expect(captured.workspaceMessageListProps?.resolveMention).toBe(resolveMention);
-    expect(captured.workspaceMessageListProps?.resolveServerMessageRenderKey).toBe(
-      resolveServerMessageRenderKey,
-    );
   });
 
   it("forwards Workspace message menu actions to the Workspace list", () => {

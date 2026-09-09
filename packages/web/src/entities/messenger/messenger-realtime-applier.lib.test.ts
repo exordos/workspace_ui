@@ -21,6 +21,7 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
 import { applyMessengerMessageWindow } from "./messenger-messages-loader.lib";
+import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import {
   clearMessengerReadBoundariesForOwner,
   readMessengerReadBoundary,
@@ -269,7 +270,45 @@ describe("messenger realtime active applier", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().setOwner(null, false);
     useWorkspaceMessageStore.getState().clear();
+    useMessengerOutboxStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
+  });
+
+  it("settles an outgoing message created outside the active chat route", () => {
+    const context = createContext();
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey: context.ownerKey,
+      conversationId: `topic:${STREAM_A}:${TOPIC_B}`,
+      projectId: PROJECT_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_B,
+      authorUuid: USER_A,
+      markdown: "Sent elsewhere",
+      status: "sending",
+      includeStreamConversation: false,
+    });
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: { writeConversationMessagePage: vi.fn(), writeRealtimeCursor: vi.fn() },
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 10,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: outgoing.placementUuid,
+          topic_uuid: TOPIC_B,
+          payload: { kind: "markdown", content: outgoing.markdown },
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid]).toBeDefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
   });
 
   it("advances a read boundary and marks the loaded topic prefix", () => {
@@ -451,6 +490,44 @@ describe("messenger realtime active applier", () => {
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 14 }),
     );
+  });
+
+  it("settles an outgoing message after its background created event is cached", async () => {
+    const context = createContext(createOwner(), { surface: "background" });
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey: context.ownerKey,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      projectId: PROJECT_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      authorUuid: USER_A,
+      markdown: "Confirmed in background",
+      status: "sending",
+      includeStreamConversation: false,
+    });
+    const applier = createMessengerRealtimeBackgroundApplier({
+      cache: { writeConversationMessagePage: vi.fn(), writeRealtimeCursor: vi.fn() },
+    });
+
+    await applier.applyEvent(
+      {
+        epoch_version: 15,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: outgoing.placementUuid,
+          payload: { kind: "markdown", content: outgoing.markdown },
+        }),
+      },
+      context,
+    );
+
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid],
+    ).toBeUndefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
   });
 
   it("keeps background message.read application pending until the boundary is durable", async () => {

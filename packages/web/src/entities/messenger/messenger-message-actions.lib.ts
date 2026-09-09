@@ -33,6 +33,8 @@ import {
   repairDeletedMessagePointers,
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { normalizeMessengerMessageUuid } from "./messenger-message-identity.lib";
+import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import {
   beginWorkspaceTopicReadCounters,
   rollbackWorkspaceTopicReadCounters,
@@ -140,8 +142,8 @@ export interface SendMessengerMessageOptions extends MessengerMessageActionBaseO
   streamUuid: MessengerUuid;
   topicUuid: MessengerUuid;
   markdown: string;
+  canonicalMessageUuid?: MessengerUuid;
   includeStreamConversation?: boolean;
-  onBeforeMessageIndexed?: (message: MessengerMessage) => void;
 }
 
 export interface EditMessengerMessageOptions extends MessengerMessageActionBaseOptions {
@@ -243,8 +245,8 @@ export async function sendMessengerMessage({
   streamUuid,
   topicUuid,
   markdown,
+  canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = false,
-  onBeforeMessageIndexed,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
   // Sending creates a markdown payload in the Workspace API and applies it to an active tail window.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
@@ -256,6 +258,7 @@ export async function sendMessengerMessage({
   const dto = await (client.createMessage ?? defaultCreateMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     {
+      uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
       stream_uuid: streamUuid,
       topic_uuid: topicUuid,
       payload: { kind: "markdown", content: markdown },
@@ -265,8 +268,8 @@ export async function sendMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
-  onBeforeMessageIndexed?.(message);
   store.getState().applyLiveCreatedMessage(message);
+  settleMessengerOutgoingMessage(action.ownerKey, message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   // Cache persistence must not delay the successful send transition in the UI.
   void writeMessagePageCacheBestEffort(

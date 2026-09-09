@@ -158,7 +158,6 @@ import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
-import { useWorkspaceTransientRenderKeys } from "./chat-page-workspace-transient-render-keys.hook";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
 interface WorkspaceChatPageProps {
@@ -219,7 +218,7 @@ interface WorkspaceConversationPaginationRequest extends WorkspaceConversationPa
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
-const EMPTY_OUTGOING_MESSAGE_LOCAL_IDS: readonly string[] = [];
+const EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
@@ -233,6 +232,26 @@ function normalizeWorkspaceMentionLookupText(value: string | null | undefined): 
 
 function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+}
+
+function isOutgoingMessageIndexed(outgoing: MessengerOutgoingMessage): boolean {
+  const state = useWorkspaceMessageStore.getState();
+  const indexedMessage = state.messagesById[outgoing.placementUuid];
+
+  return (
+    state.ownerKey === outgoing.ownerKey &&
+    indexedMessage?.projectId === outgoing.projectId &&
+    indexedMessage.streamUuid === outgoing.streamUuid &&
+    indexedMessage.topicUuid === outgoing.topicUuid &&
+    indexedMessage.authorUuid === outgoing.authorUuid
+  );
+}
+
+function settleOutgoingMessageIfIndexed(outgoing: MessengerOutgoingMessage): boolean {
+  if (!isOutgoingMessageIndexed(outgoing)) return false;
+
+  useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.placementUuid);
+  return true;
 }
 
 function workspaceConversationRoute({
@@ -889,29 +908,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       ? EMPTY_MESSAGES
       : selectWorkspaceMessagesForConversation(state, conversationId),
   );
-  const {
-    registerDeliveredOutgoingMessage,
-    removeServerMessageRenderKey,
-    resolveServerMessageRenderKey,
-  } = useWorkspaceTransientRenderKeys({ ownerKey, conversationId, messages: routeMessages });
-  const outgoingMessagesByLocalId = useMessengerOutboxStore(
-    (state) => state.outgoingMessagesByLocalId,
+  const outgoingMessagesByPlacementUuid = useMessengerOutboxStore(
+    (state) => state.outgoingMessagesByPlacementUuid,
   );
-  const outgoingMessageLocalIds = useMessengerOutboxStore((state) =>
+  const outgoingMessagePlacementUuids = useMessengerOutboxStore((state) =>
     conversationId == null
-      ? EMPTY_OUTGOING_MESSAGE_LOCAL_IDS
-      : (state.outgoingMessageLocalIdsByConversationId[conversationId] ??
-        EMPTY_OUTGOING_MESSAGE_LOCAL_IDS),
+      ? EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS
+      : (state.outgoingMessagePlacementUuidsByConversationId[conversationId] ??
+        EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS),
   );
   const outgoingMessages = useMemo(() => {
-    if (ownerKey == null || outgoingMessageLocalIds.length === 0) return EMPTY_OUTGOING_MESSAGES;
+    if (ownerKey == null || outgoingMessagePlacementUuids.length === 0) {
+      return EMPTY_OUTGOING_MESSAGES;
+    }
 
-    const messages = outgoingMessageLocalIds
-      .map((localId) => outgoingMessagesByLocalId[localId])
+    const messages = outgoingMessagePlacementUuids
+      .map((placementUuid) => outgoingMessagesByPlacementUuid[placementUuid])
       .filter((message): message is MessengerOutgoingMessage => message?.ownerKey === ownerKey);
 
     return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
-  }, [outgoingMessageLocalIds, outgoingMessagesByLocalId, ownerKey]);
+  }, [outgoingMessagePlacementUuids, outgoingMessagesByPlacementUuid, ownerKey]);
   const messagesStatus = useWorkspaceMessageStore((state) =>
     conversationId == null || state.ownerKey !== ownerKey
       ? selectWorkspaceMessageStatusForConversation(state, "")
@@ -1354,28 +1370,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [selection, topicsById]);
 
   const deliverOutgoingMessage = useCallback(
-    (localId: string): Promise<boolean> => {
-      const outgoing = useMessengerOutboxStore.getState().outgoingMessagesByLocalId[localId];
+    (placementUuid: MessengerUuid): Promise<boolean> => {
+      const outgoing =
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
       if (outgoing == null) return Promise.resolve(false);
+
+      if (settleOutgoingMessageIfIndexed(outgoing)) return Promise.resolve(true);
 
       if (runtimeContext == null || ownerKey == null || outgoing.ownerKey !== ownerKey) {
         useMessengerOutboxStore
           .getState()
-          .markOutgoingMessageFailed(localId, t("workspaceMessenger.runtimeUnavailable"));
+          .markOutgoingMessageFailed(placementUuid, t("workspaceMessenger.runtimeUnavailable"));
         return Promise.resolve(false);
       }
 
-      useMessengerOutboxStore.getState().markOutgoingMessageSending(localId);
+      useMessengerOutboxStore.getState().markOutgoingMessageSending(placementUuid);
 
       return runWorkspaceAction(async (signal) => {
         try {
           const markdown = outgoing.markdown;
           if (markdown.trim().length === 0) {
-            useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+            useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
             return false;
           }
 
-          const result = await sendMessengerMessage({
+          await sendMessengerMessage({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
@@ -1383,37 +1402,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             topicUuid: outgoing.topicUuid,
             markdown,
             includeStreamConversation: outgoing.includeStreamConversation,
-            onBeforeMessageIndexed: (message) => {
-              registerDeliveredOutgoingMessage(
-                outgoing.ownerKey,
-                outgoing.conversationId,
-                message.uuid,
-                localId,
-              );
-            },
+            canonicalMessageUuid: outgoing.canonicalMessageUuid,
           });
 
-          if (result.status === "applied" && result.message != null) {
-            useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+          if (settleOutgoingMessageIfIndexed(outgoing)) {
             return true;
           }
 
           useMessengerOutboxStore
             .getState()
-            .markOutgoingMessageFailed(localId, t("message.sendFailed"));
+            .markOutgoingMessageFailed(placementUuid, t("message.sendFailed"));
           return false;
         } catch (error) {
+          if (settleOutgoingMessageIfIndexed(outgoing)) return true;
+
           useMessengerOutboxStore
             .getState()
             .markOutgoingMessageFailed(
-              localId,
+              placementUuid,
               normalizeWorkspaceActionError(error, t("message.sendFailed")),
             );
           return false;
         }
       });
     },
-    [ownerKey, registerDeliveredOutgoingMessage, runWorkspaceAction, runtimeContext],
+    [ownerKey, runWorkspaceAction, runtimeContext],
   );
 
   const handleSend = useCallback(
@@ -1468,7 +1481,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       // Scroll right after the local row appears. A later server snapshot can
       // move it by backend created_at, but the user already sees the send happened.
       setScrollToBottomAfterSendNonce((value) => value + 1);
-      return deliverOutgoingMessage(outgoing.localId).then((sent) => {
+      return deliverOutgoingMessage(outgoing.placementUuid).then((sent) => {
         if (!sent) {
           throw new Error(t("message.sendFailed"));
         }
@@ -1669,15 +1682,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   ]);
 
   const handleRetryOutgoingMessage = useCallback(
-    (localId: string) => {
-      deliverOutgoingMessage(localId).catch(() => undefined);
+    (placementUuid: MessengerUuid) => {
+      deliverOutgoingMessage(placementUuid).catch(() => undefined);
       setScrollToBottomAfterSendNonce((value) => value + 1);
     },
     [deliverOutgoingMessage],
   );
 
-  const handleRemoveOutgoingMessage = useCallback((localId: string) => {
-    useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+  const handleRemoveOutgoingMessage = useCallback((placementUuid: MessengerUuid) => {
+    useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
   }, []);
 
   const handleSubmitEditFinalMarkdown = useCallback(
@@ -1804,7 +1817,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       setActionError(t("workspaceMessenger.runtimeUnavailable"));
       return;
     }
-    const messageOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const message =
       pendingDeleteMessageUuid == null
         ? null
@@ -1825,16 +1837,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         streamUuid: message.streamUuid,
         topicUuid: message.topicUuid,
       }),
-    )
-      .then((result) => {
-        if (result.status === "applied") {
-          removeServerMessageRenderKey(messageOwnerKey, message.conversationId, message.uuid);
-        }
-      })
-      .catch((error) => {
-        setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
-      });
-  }, [pendingDeleteMessageUuid, removeServerMessageRenderKey, runWorkspaceAction, runtimeContext]);
+    ).catch((error) => {
+      setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
+    });
+  }, [pendingDeleteMessageUuid, runWorkspaceAction, runtimeContext]);
 
   const resolveWorkspaceReplyQuote = useCallback(
     (messageUuid: string, selectedText?: string): WorkspaceReplyQuote | null => {
@@ -3003,7 +3009,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             initialPositionReady={initialPositionReady}
             messages={routeMessages}
             outgoingMessages={outgoingMessages}
-            resolveServerMessageRenderKey={resolveServerMessageRenderKey}
             currentUserUuid={currentUserUuid}
             conversationId={selection.conversationId}
             scrollToBottomKey={buildWorkspaceMessageScrollKey({

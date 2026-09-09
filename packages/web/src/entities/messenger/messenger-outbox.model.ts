@@ -1,102 +1,102 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import { createMessengerMessageIdentity } from "./messenger-message-identity.lib";
 import type {
   MessengerOutgoingMessage,
   MessengerOutgoingMessageDraft,
 } from "./messenger-outbox.types";
-import type { MessengerConversationId } from "./messenger.types";
+import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 const EMPTY_OUTGOING_MESSAGES: readonly MessengerOutgoingMessage[] = [];
-const EMPTY_LOCAL_IDS: readonly string[] = [];
-
-let nextOutgoingMessageOrdinal = 1;
+const EMPTY_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
 
 export interface MessengerOutboxStoreState {
-  outgoingMessagesByLocalId: Record<string, MessengerOutgoingMessage>;
-  outgoingMessageLocalIdsByConversationId: Record<MessengerConversationId, readonly string[]>;
+  outgoingMessagesByPlacementUuid: Record<string, MessengerOutgoingMessage>;
+  outgoingMessagePlacementUuidsByConversationId: Record<
+    MessengerConversationId,
+    readonly MessengerUuid[]
+  >;
 
   enqueueOutgoingMessage: (draft: MessengerOutgoingMessageDraft) => MessengerOutgoingMessage;
   markOutgoingMessageSending: (
-    localId: string,
+    placementUuid: MessengerUuid,
     patch?: { markdown?: string; sourceMarkdown?: string },
   ) => void;
-  markOutgoingMessageFailed: (localId: string, error: string) => void;
-  removeOutgoingMessage: (localId: string) => void;
+  markOutgoingMessageFailed: (placementUuid: MessengerUuid, error: string) => void;
+  removeOutgoingMessage: (placementUuid: MessengerUuid) => void;
   clearOwner: (ownerKey: string) => void;
   clear: () => void;
 }
 
-function createOutgoingMessageLocalId(): string {
-  const ordinal = nextOutgoingMessageOrdinal;
-  nextOutgoingMessageOrdinal += 1;
-  return `outgoing:${Date.now().toString(36)}:${ordinal.toString(36)}`;
-}
-
-function appendLocalId(
-  idsByConversationId: Record<MessengerConversationId, readonly string[]>,
+function appendPlacementUuid(
+  placementUuidsByConversationId: Record<MessengerConversationId, readonly MessengerUuid[]>,
   conversationId: MessengerConversationId,
-  localId: string,
-): Record<MessengerConversationId, readonly string[]> {
-  const previousIds = idsByConversationId[conversationId] ?? EMPTY_LOCAL_IDS;
-  if (previousIds.includes(localId)) return idsByConversationId;
+  placementUuid: MessengerUuid,
+): Record<MessengerConversationId, readonly MessengerUuid[]> {
+  const previousPlacementUuids =
+    placementUuidsByConversationId[conversationId] ?? EMPTY_PLACEMENT_UUIDS;
+  if (previousPlacementUuids.includes(placementUuid)) return placementUuidsByConversationId;
 
   return {
-    ...idsByConversationId,
-    [conversationId]: [...previousIds, localId],
+    ...placementUuidsByConversationId,
+    [conversationId]: [...previousPlacementUuids, placementUuid],
   };
 }
 
-function removeLocalId(
-  idsByConversationId: Record<MessengerConversationId, readonly string[]>,
+function removePlacementUuid(
+  placementUuidsByConversationId: Record<MessengerConversationId, readonly MessengerUuid[]>,
   conversationId: MessengerConversationId,
-  localId: string,
-): Record<MessengerConversationId, readonly string[]> {
-  const previousIds = idsByConversationId[conversationId];
-  if (previousIds?.includes(localId) !== true) return idsByConversationId;
+  placementUuid: MessengerUuid,
+): Record<MessengerConversationId, readonly MessengerUuid[]> {
+  const previousPlacementUuids = placementUuidsByConversationId[conversationId];
+  if (previousPlacementUuids?.includes(placementUuid) !== true)
+    return placementUuidsByConversationId;
 
-  const nextIds = previousIds.filter((candidate) => candidate !== localId);
-  const nextIdsByConversationId = { ...idsByConversationId };
-  if (nextIds.length === 0) {
-    delete nextIdsByConversationId[conversationId];
+  const nextPlacementUuids = previousPlacementUuids.filter(
+    (candidate) => candidate !== placementUuid,
+  );
+  const nextPlacementUuidsByConversationId = { ...placementUuidsByConversationId };
+  if (nextPlacementUuids.length === 0) {
+    delete nextPlacementUuidsByConversationId[conversationId];
   } else {
-    nextIdsByConversationId[conversationId] = nextIds;
+    nextPlacementUuidsByConversationId[conversationId] = nextPlacementUuids;
   }
-  return nextIdsByConversationId;
+  return nextPlacementUuidsByConversationId;
 }
 
 function removeOutgoingMessageFromState(
   state: Pick<
     MessengerOutboxStoreState,
-    "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
+    "outgoingMessagesByPlacementUuid" | "outgoingMessagePlacementUuidsByConversationId"
   >,
-  localId: string,
+  placementUuid: MessengerUuid,
 ): Pick<
   MessengerOutboxStoreState,
-  "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
+  "outgoingMessagesByPlacementUuid" | "outgoingMessagePlacementUuidsByConversationId"
 > {
-  const message = state.outgoingMessagesByLocalId[localId];
+  const message = state.outgoingMessagesByPlacementUuid[placementUuid];
   if (message == null) return state;
 
-  const nextMessagesByLocalId = { ...state.outgoingMessagesByLocalId };
-  delete nextMessagesByLocalId[localId];
+  const nextMessagesByPlacementUuid = { ...state.outgoingMessagesByPlacementUuid };
+  delete nextMessagesByPlacementUuid[placementUuid];
 
   return {
-    outgoingMessagesByLocalId: nextMessagesByLocalId,
-    outgoingMessageLocalIdsByConversationId: removeLocalId(
-      state.outgoingMessageLocalIdsByConversationId,
+    outgoingMessagesByPlacementUuid: nextMessagesByPlacementUuid,
+    outgoingMessagePlacementUuidsByConversationId: removePlacementUuid(
+      state.outgoingMessagePlacementUuidsByConversationId,
       message.conversationId,
-      localId,
+      placementUuid,
     ),
   };
 }
 
 function createEmptyOutboxState(): Pick<
   MessengerOutboxStoreState,
-  "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
+  "outgoingMessagesByPlacementUuid" | "outgoingMessagePlacementUuidsByConversationId"
 > {
   return {
-    outgoingMessagesByLocalId: {},
-    outgoingMessageLocalIdsByConversationId: {},
+    outgoingMessagesByPlacementUuid: {},
+    outgoingMessagePlacementUuidsByConversationId: {},
   };
 }
 
@@ -104,10 +104,11 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
   ...createEmptyOutboxState(),
 
   enqueueOutgoingMessage(draft) {
-    const localId = createOutgoingMessageLocalId();
+    const { canonicalMessageUuid, placementUuid } = createMessengerMessageIdentity(draft.topicUuid);
     const createdAt = draft.createdAt ?? new Date().toISOString();
     const message: MessengerOutgoingMessage = {
-      localId,
+      canonicalMessageUuid,
+      placementUuid,
       ownerKey: draft.ownerKey,
       conversationId: draft.conversationId,
       projectId: draft.projectId,
@@ -125,29 +126,29 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
     };
 
     logStoreAction("messengerOutbox", "enqueueOutgoingMessage", {
-      localId,
+      placementUuid,
       ownerKey: draft.ownerKey,
       conversationId: draft.conversationId,
       status: draft.status,
     });
     set((state) => ({
-      outgoingMessagesByLocalId: {
-        ...state.outgoingMessagesByLocalId,
-        [localId]: message,
+      outgoingMessagesByPlacementUuid: {
+        ...state.outgoingMessagesByPlacementUuid,
+        [placementUuid]: message,
       },
-      outgoingMessageLocalIdsByConversationId: appendLocalId(
-        state.outgoingMessageLocalIdsByConversationId,
+      outgoingMessagePlacementUuidsByConversationId: appendPlacementUuid(
+        state.outgoingMessagePlacementUuidsByConversationId,
         draft.conversationId,
-        localId,
+        placementUuid,
       ),
     }));
-    return get().outgoingMessagesByLocalId[localId] ?? message;
+    return get().outgoingMessagesByPlacementUuid[placementUuid] ?? message;
   },
 
-  markOutgoingMessageSending(localId, patch = {}) {
-    logStoreAction("messengerOutbox", "markOutgoingMessageSending", { localId });
+  markOutgoingMessageSending(placementUuid, patch = {}) {
+    logStoreAction("messengerOutbox", "markOutgoingMessageSending", { placementUuid });
     set((state) => {
-      const message = state.outgoingMessagesByLocalId[localId];
+      const message = state.outgoingMessagesByPlacementUuid[placementUuid];
       if (message == null) return state;
       const nextMessage: MessengerOutgoingMessage = {
         ...message,
@@ -159,24 +160,24 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
         error: null,
       };
       return {
-        outgoingMessagesByLocalId: {
-          ...state.outgoingMessagesByLocalId,
-          [localId]: nextMessage,
+        outgoingMessagesByPlacementUuid: {
+          ...state.outgoingMessagesByPlacementUuid,
+          [placementUuid]: nextMessage,
         },
       };
     });
   },
 
-  markOutgoingMessageFailed(localId, error) {
-    logStoreAction("messengerOutbox", "markOutgoingMessageFailed", { localId });
+  markOutgoingMessageFailed(placementUuid, error) {
+    logStoreAction("messengerOutbox", "markOutgoingMessageFailed", { placementUuid });
     set((state) => {
-      const message = state.outgoingMessagesByLocalId[localId];
+      const message = state.outgoingMessagesByPlacementUuid[placementUuid];
       if (message == null) return state;
 
       return {
-        outgoingMessagesByLocalId: {
-          ...state.outgoingMessagesByLocalId,
-          [localId]: {
+        outgoingMessagesByPlacementUuid: {
+          ...state.outgoingMessagesByPlacementUuid,
+          [placementUuid]: {
             ...message,
             status: "failed",
             updatedAt: new Date().toISOString(),
@@ -187,32 +188,32 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
     });
   },
 
-  removeOutgoingMessage(localId) {
-    logStoreAction("messengerOutbox", "removeOutgoingMessage", { localId });
-    set((state) => removeOutgoingMessageFromState(state, localId));
+  removeOutgoingMessage(placementUuid) {
+    logStoreAction("messengerOutbox", "removeOutgoingMessage", { placementUuid });
+    set((state) => removeOutgoingMessageFromState(state, placementUuid));
   },
 
   clearOwner(ownerKey) {
     logStoreAction("messengerOutbox", "clearOwner", { ownerKey });
     set((state) => {
-      const nextMessagesByLocalId: Record<string, MessengerOutgoingMessage> = {};
-      let nextIdsByConversationId = state.outgoingMessageLocalIdsByConversationId;
+      const nextMessagesByPlacementUuid: Record<string, MessengerOutgoingMessage> = {};
+      let nextPlacementUuidsByConversationId = state.outgoingMessagePlacementUuidsByConversationId;
 
-      for (const message of Object.values(state.outgoingMessagesByLocalId)) {
+      for (const message of Object.values(state.outgoingMessagesByPlacementUuid)) {
         if (message.ownerKey === ownerKey) {
-          nextIdsByConversationId = removeLocalId(
-            nextIdsByConversationId,
+          nextPlacementUuidsByConversationId = removePlacementUuid(
+            nextPlacementUuidsByConversationId,
             message.conversationId,
-            message.localId,
+            message.placementUuid,
           );
           continue;
         }
-        nextMessagesByLocalId[message.localId] = message;
+        nextMessagesByPlacementUuid[message.placementUuid] = message;
       }
 
       return {
-        outgoingMessagesByLocalId: nextMessagesByLocalId,
-        outgoingMessageLocalIdsByConversationId: nextIdsByConversationId,
+        outgoingMessagesByPlacementUuid: nextMessagesByPlacementUuid,
+        outgoingMessagePlacementUuidsByConversationId: nextPlacementUuidsByConversationId,
       };
     });
   },
@@ -226,19 +227,48 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
 export function selectMessengerOutgoingMessagesForConversation(
   state: Pick<
     MessengerOutboxStoreState,
-    "outgoingMessagesByLocalId" | "outgoingMessageLocalIdsByConversationId"
+    "outgoingMessagesByPlacementUuid" | "outgoingMessagePlacementUuidsByConversationId"
   >,
   ownerKey: string | null | undefined,
   conversationId: MessengerConversationId | null | undefined,
 ): readonly MessengerOutgoingMessage[] {
   if (ownerKey == null || conversationId == null) return EMPTY_OUTGOING_MESSAGES;
 
-  const localIds = state.outgoingMessageLocalIdsByConversationId[conversationId];
-  if (localIds == null || localIds.length === 0) return EMPTY_OUTGOING_MESSAGES;
+  const placementUuids = state.outgoingMessagePlacementUuidsByConversationId[conversationId];
+  if (placementUuids == null || placementUuids.length === 0) return EMPTY_OUTGOING_MESSAGES;
 
-  const messages = localIds
-    .map((localId) => state.outgoingMessagesByLocalId[localId])
+  const messages = placementUuids
+    .map((placementUuid) => state.outgoingMessagesByPlacementUuid[placementUuid])
     .filter((message): message is MessengerOutgoingMessage => message?.ownerKey === ownerKey);
 
   return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
+}
+
+export function settleMessengerOutgoingMessage(
+  ownerKey: string,
+  message: MessengerMessage,
+): boolean {
+  const state = useMessengerOutboxStore.getState();
+  const outgoingMessage = state.outgoingMessagesByPlacementUuid[message.uuid];
+  if (
+    outgoingMessage?.ownerKey !== ownerKey ||
+    outgoingMessage.projectId !== message.projectId ||
+    outgoingMessage.streamUuid !== message.streamUuid ||
+    outgoingMessage.topicUuid !== message.topicUuid ||
+    outgoingMessage.authorUuid !== message.authorUuid
+  ) {
+    return false;
+  }
+
+  state.removeOutgoingMessage(message.uuid);
+  return true;
+}
+
+export function settleMessengerOutgoingMessages(
+  ownerKey: string,
+  messages: readonly MessengerMessage[],
+): void {
+  for (const message of messages) {
+    settleMessengerOutgoingMessage(ownerKey, message);
+  }
 }

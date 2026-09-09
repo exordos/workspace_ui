@@ -23,7 +23,6 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   initialPositionReady: boolean;
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
-  resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   scrollToBottomKey: string | undefined;
@@ -73,8 +72,8 @@ export interface ChatPageWorkspaceMessageListSectionProps {
     gallery?: WorkspaceMessageMediaGalleryOpenRequest,
   ) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
-  onRetryOutgoingMessage?: (localId: string) => void;
-  onRemoveOutgoingMessage?: (localId: string) => void;
+  onRetryOutgoingMessage?: (placementUuid: MessengerUuid) => void;
+  onRemoveOutgoingMessage?: (placementUuid: MessengerUuid) => void;
   messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;
   boundaryLoadFailed: boolean;

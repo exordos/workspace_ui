@@ -15,7 +15,6 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     initialPositionReady,
     messages,
     outgoingMessages,
-    resolveServerMessageRenderKey,
     currentUserUuid,
     conversationId,
     scrollToBottomKey,
@@ -208,7 +207,6 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           <WorkspaceMessageList
             messages={messages}
             outgoingMessages={outgoingMessages}
-            resolveServerMessageRenderKey={resolveServerMessageRenderKey}
             currentUserUuid={currentUserUuid}
             conversationId={conversationId}
             initialPositionReady={initialPositionReady}

@@ -34,6 +34,7 @@ import {
   hydrateMessengerOwnMessageReactionsFromCache as defaultHydrateMessengerOwnMessageReactionsFromCache,
   syncMessengerOwnerOwnMessageReactions as defaultSyncMessengerOwnerOwnMessageReactions,
 } from "./messenger-message-reactions-actions.lib";
+import { settleMessengerOutgoingMessages } from "./messenger-outbox.model";
 import {
   applyMessengerReadBoundaries,
   restoreMessengerReadBoundaries,
@@ -601,7 +602,7 @@ async function restoreCachedConversationMessages({
 
   if (!hasLoadedWindow) {
     const cachedStore = store.getState();
-    cachedStore.replaceConversationWindow({
+    const appliedRevision = cachedStore.replaceConversationWindow({
       conversationId,
       expectedRevision,
       capturedMutationRevision,
@@ -613,6 +614,9 @@ async function restoreCachedConversationMessages({
         afterPageMarker: null,
       },
     });
+    if (appliedRevision != null) {
+      settleMessengerOutgoingMessages(ownerKey, effectiveMessages);
+    }
   }
   const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
     runtimeContext,
@@ -826,6 +830,7 @@ async function loadConversationMessagesFromServer({
         finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
         return { status: "skipped", ownerKey, reason: "stale-window" };
       }
+      settleMessengerOutgoingMessages(ownerKey, messages);
 
       await synchronizeLoadedConversationMessages({
         runtimeContext,
@@ -1213,6 +1218,7 @@ export async function applyMessengerMessageWindow({
       releaseMessageLoadingRequest(store, window.conversationId, requestToken);
       return { status: "skipped", ownerKey, reason: "stale-window" };
     }
+    settleMessengerOutgoingMessages(ownerKey, messages);
     const isReactionRequestCurrent = (): boolean =>
       !isStale() && ownsMessageLoadingRequest(store, window.conversationId, requestToken);
     void hydrateVisibleOwnReactionsFromCache({
@@ -1320,6 +1326,7 @@ async function applyLoadedMessengerMessageWindowPage({
     finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
     return { status: "skipped", ownerKey, reason: "stale-window" };
   }
+  settleMessengerOutgoingMessages(ownerKey, messages);
 
   await syncVisibleOwnReactionsFromCacheThenServer({
     runtimeContext,

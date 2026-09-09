@@ -53,8 +53,8 @@ export interface WorkspaceMessageListActions {
     gallery?: WorkspaceMessageMediaGalleryOpenRequest,
   ) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
-  onRetryOutgoingMessage?: (localId: string) => void;
-  onRemoveOutgoingMessage?: (localId: string) => void;
+  onRetryOutgoingMessage?: (placementUuid: MessengerUuid) => void;
+  onRemoveOutgoingMessage?: (placementUuid: MessengerUuid) => void;
 }
 
 export interface WorkspaceMessageListServerItem {
@@ -90,7 +90,6 @@ export interface WorkspaceMessageListPresentation {
 export interface WorkspaceMessageListProps {
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
-  resolveServerMessageRenderKey?: (messageUuid: MessengerUuid) => string | undefined;
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   initialPositionReady?: boolean;

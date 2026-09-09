@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
+  createWorkspaceMessageListOutgoingItem,
   createWorkspaceMessageListServerItem,
   groupWorkspaceMessagesByDayAndAuthor,
 } from "./workspace-message-list-grouping.lib";
@@ -34,6 +36,30 @@ function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMess
   };
 }
 
+function createOutgoingMessage(
+  overrides: Partial<MessengerOutgoingMessage> = {},
+): MessengerOutgoingMessage {
+  return {
+    canonicalMessageUuid: "canonical-message-uuid-1",
+    placementUuid: "placement-message-uuid-1",
+    ownerKey: "owner-key-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "author-uuid-1",
+    markdown: "Outgoing text",
+    sourceMarkdown: "Outgoing text",
+    status: "sending",
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    attempt: 1,
+    error: null,
+    includeStreamConversation: false,
+    ...overrides,
+  };
+}
+
 function createIsoStringFromLocalTime(
   year: number,
   monthIndex: number,
@@ -45,6 +71,14 @@ function createIsoStringFromLocalTime(
 }
 
 describe("groupWorkspaceMessagesByDayAndAuthor", () => {
+  it("uses the placement UUID as the outgoing render key", () => {
+    const item = createWorkspaceMessageListOutgoingItem(
+      createOutgoingMessage({ placementUuid: "stable-placement-uuid" }),
+    );
+
+    expect(item.key).toBe("stable-placement-uuid");
+  });
+
   it("sorts by createdAt and uuid without mutating the source array", () => {
     const sourceMessages = [
       createWorkspaceMessage({

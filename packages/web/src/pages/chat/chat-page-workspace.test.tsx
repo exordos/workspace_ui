@@ -10,7 +10,11 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
+import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
+import {
+  settleMessengerOutgoingMessage,
+  useMessengerOutboxStore,
+} from "~/entities/messenger/messenger-outbox.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
@@ -410,7 +414,7 @@ vi.mock("./chat-page-workspace-message-list-section.ui", async (importOriginal) 
             </article>
           ))}
           {props.outgoingMessages?.map((message) => (
-            <article key={message.localId} data-outgoing-message-id={message.localId}>
+            <article key={message.placementUuid} data-outgoing-message-id={message.placementUuid}>
               {message.markdown}:{message.status}
             </article>
           ))}
@@ -584,6 +588,47 @@ function createMessage(): MessengerMessage {
     createdAt: "2026-06-30T10:00:00.000Z",
     updatedAt: "2026-06-30T10:00:00.000Z",
   };
+}
+
+interface TestSendMessengerMessageRequest {
+  canonicalMessageUuid?: string;
+  streamUuid: string;
+  topicUuid: string;
+  markdown: string;
+}
+
+function createSentMessage(request: TestSendMessengerMessageRequest): MessengerMessage {
+  if (request.canonicalMessageUuid == null) {
+    throw new Error("Expected the client-generated canonical message UUID");
+  }
+  return {
+    ...createMessage(),
+    uuid: createMessengerPlacementUuid(request.topicUuid, request.canonicalMessageUuid),
+    conversationId: `topic:${request.streamUuid}:${request.topicUuid}`,
+    streamUuid: request.streamUuid,
+    topicUuid: request.topicUuid,
+    authorUuid: USER_UUID,
+    userUuid: USER_UUID,
+    payload: { kind: "markdown", content: request.markdown },
+    read: true,
+    isOwn: true,
+    createdAt: "2026-06-30T10:03:00.000Z",
+    updatedAt: "2026-06-30T10:03:00.000Z",
+  };
+}
+
+function applySentMessage(request: TestSendMessengerMessageRequest): MessengerMessage {
+  const message = createSentMessage(request);
+  useWorkspaceMessageStore.getState().applyLiveCreatedMessage(message);
+  return message;
+}
+
+function applyLastRequestedSentMessage(): MessengerMessage {
+  const request = captured.sendMessengerMessage.mock.calls.at(-1)?.[0] as
+    | TestSendMessengerMessageRequest
+    | undefined;
+  if (request == null) throw new Error("Expected a captured send request");
+  return applySentMessage(request);
 }
 
 function createSecondMessage(): MessengerMessage {
@@ -834,10 +879,20 @@ describe("ChatPage Workspace route", () => {
     captured.deleteWorkspaceFile.mockReset();
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
     captured.sendMessengerMessage.mockReset();
-    captured.sendMessengerMessage.mockResolvedValue({
-      status: "applied",
-      ownerKey: "owner-key",
-      message: createMessage(),
+    captured.sendMessengerMessage.mockImplementation((request: TestSendMessengerMessageRequest) => {
+      if (request.canonicalMessageUuid == null) {
+        return Promise.resolve({
+          status: "applied",
+          ownerKey: useWorkspaceMessageStore.getState().ownerKey,
+          message: createMessage(),
+        });
+      }
+      const message = applySentMessage(request);
+      return Promise.resolve({
+        status: "applied",
+        ownerKey: useWorkspaceMessageStore.getState().ownerKey,
+        message,
+      });
     });
     captured.editMessengerMessage.mockReset();
     captured.editMessengerMessage.mockResolvedValue({
@@ -3226,34 +3281,24 @@ describe("ChatPage Workspace route", () => {
     expect(useJitsiCallStore.getState().activeCall).toBeNull();
   });
 
-  it("removes the local outgoing row after Workspace send resolves", async () => {
+  it("uses the predicted placement UUID until the HTTP message is indexed", async () => {
     const sendRequest = createDeferred<{
       status: "applied";
       ownerKey: string;
       message: MessengerMessage;
     }>();
-    let onBeforeMessageIndexed: ((message: MessengerMessage) => void) | undefined;
-    const serverMessage = {
-      ...createMessage(),
-      uuid: "server-message-uuid",
-      authorUuid: USER_UUID,
-      userUuid: USER_UUID,
-      isOwn: true,
-    };
-    captured.sendMessengerMessage.mockImplementationOnce(
-      (request: { onBeforeMessageIndexed?: (message: MessengerMessage) => void }) => {
-        onBeforeMessageIndexed = request.onBeforeMessageIndexed;
-        return sendRequest.promise;
-      },
-    );
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
 
     await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    let sendPromise: Promise<unknown> = Promise.resolve();
     act(() => {
-      void captured.composerProps?.onSend("fast local text", "");
+      sendPromise = Promise.resolve(onSend("fast local text", ""));
     });
 
     await waitFor(() => {
@@ -3264,23 +3309,130 @@ describe("ChatPage Workspace route", () => {
         }),
       );
     });
-    const localId = captured.messageListProps?.outgoingMessages?.[0]?.localId;
-    expect(localId).toMatch(/^outgoing:/);
+    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+    const capturedRequest = captured.sendMessengerMessage.mock.calls[0]?.[0] as
+      | TestSendMessengerMessageRequest
+      | undefined;
+    if (outgoing == null || capturedRequest == null) {
+      throw new Error("Expected an outgoing message and its send request");
+    }
+    expect(outgoing.canonicalMessageUuid).toBe(capturedRequest.canonicalMessageUuid);
+    expect(outgoing.placementUuid).toBe(
+      createMessengerPlacementUuid(TOPIC_UUID, outgoing.canonicalMessageUuid),
+    );
+    expect(screen.getByText("fast local text:sending")).toHaveAttribute(
+      "data-outgoing-message-id",
+      outgoing.placementUuid,
+    );
 
-    act(() => {
-      onBeforeMessageIndexed?.(serverMessage);
+    const serverMessage = createSentMessage(capturedRequest);
+    expect(serverMessage.uuid).toBe(outgoing.placementUuid);
+
+    await act(async () => {
       useWorkspaceMessageStore.getState().applyLiveCreatedMessage(serverMessage);
       sendRequest.resolve({
         status: "applied",
-        ownerKey: "owner-key",
+        ownerKey: useWorkspaceMessageStore.getState().ownerKey ?? "",
         message: serverMessage,
       });
+      await sendPromise;
     });
 
     await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
-    expect(captured.messageListProps?.resolveServerMessageRenderKey?.(serverMessage.uuid)).toBe(
-      localId,
+    expect(
+      captured.messageListProps?.messages.some(
+        (message) => message.uuid === outgoing.placementUuid,
+      ),
+    ).toBe(true);
+  });
+
+  it("settles from realtime before HTTP and treats the lost response as delivered", async () => {
+    const sendRequest = createDeferred<never>();
+    let capturedRequest: TestSendMessengerMessageRequest | null = null;
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: TestSendMessengerMessageRequest) => {
+        capturedRequest = request;
+        return sendRequest.promise;
+      },
     );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("realtime wins", ""));
+    });
+
+    await waitFor(() => expect(capturedRequest).not.toBeNull());
+    const request = capturedRequest;
+    if (request == null) throw new Error("Expected a send request");
+    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+    if (outgoing == null) throw new Error("Expected an outgoing message");
+
+    act(() => {
+      const message = createSentMessage(request);
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(message);
+      settleMessengerOutgoingMessage(outgoing.ownerKey, message);
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+    expect(
+      captured.messageListProps?.messages.some(
+        (message) => message.uuid === outgoing.placementUuid,
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      sendRequest.reject(new TypeError("network response lost"));
+      await sendPromise;
+    });
+    await expect(sendPromise).resolves.toBeUndefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
+  });
+
+  it("does not settle an old-owner outgoing message from the active owner store", async () => {
+    const sendRequest = createDeferred<never>();
+    let capturedRequest: TestSendMessengerMessageRequest | null = null;
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: TestSendMessengerMessageRequest) => {
+        capturedRequest = request;
+        return sendRequest.promise;
+      },
+    );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    const sendPromise = Promise.resolve(onSend("old owner", ""));
+    await waitFor(() => expect(capturedRequest).not.toBeNull());
+    const request = capturedRequest;
+    if (request == null) throw new Error("Expected a send request");
+    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+    if (outgoing == null) throw new Error("Expected an outgoing message");
+
+    act(() => {
+      useWorkspaceMessageStore.getState().setOwner("other-owner", false);
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(createSentMessage(request));
+    });
+
+    await act(async () => {
+      sendRequest.reject(new Error("old request failed"));
+      await expect(sendPromise).rejects.toThrow();
+    });
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toEqual(expect.objectContaining({ status: "failed", ownerKey: outgoing.ownerKey }));
   });
 
   it("uploads composer files immediately and appends logical markdown refs on send", async () => {
@@ -3377,10 +3529,11 @@ describe("ChatPage Workspace route", () => {
     });
 
     await act(async () => {
+      const message = applyLastRequestedSentMessage();
       sendRequest.resolve({
         status: "applied",
-        ownerKey: "owner-key",
-        message: createMessage(),
+        ownerKey: useWorkspaceMessageStore.getState().ownerKey ?? "",
+        message,
       });
       await sendPromise;
     });
@@ -3556,10 +3709,13 @@ describe("ChatPage Workspace route", () => {
     });
     captured.sendMessengerMessage
       .mockRejectedValueOnce(new Error("send failed"))
-      .mockResolvedValueOnce({
-        status: "applied",
-        ownerKey: "owner-key",
-        message: createMessage(),
+      .mockImplementationOnce((request: TestSendMessengerMessageRequest) => {
+        const message = applySentMessage(request);
+        return Promise.resolve({
+          status: "applied",
+          ownerKey: useWorkspaceMessageStore.getState().ownerKey,
+          message,
+        });
       });
 
     renderWorkspaceChatPageWithShellContexts(
@@ -3581,7 +3737,8 @@ describe("ChatPage Workspace route", () => {
     expect(failedOutgoing).toEqual(expect.objectContaining({ status: "failed" }));
     if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
 
-    act(() => captured.messageListProps?.onRetryOutgoingMessage?.(failedOutgoing.localId));
+    const { canonicalMessageUuid, placementUuid } = failedOutgoing;
+    act(() => captured.messageListProps?.onRetryOutgoingMessage?.(placementUuid));
 
     await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
@@ -3590,8 +3747,10 @@ describe("ChatPage Workspace route", () => {
       expect.objectContaining({
         markdown:
           "message\n[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)",
+        canonicalMessageUuid,
       }),
     );
+    expect(createMessengerPlacementUuid(TOPIC_UUID, canonicalMessageUuid)).toBe(placementUuid);
     expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
   });
 
@@ -3621,7 +3780,7 @@ describe("ChatPage Workspace route", () => {
     const failedOutgoing = captured.messageListProps?.outgoingMessages?.[0];
     if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
 
-    act(() => captured.messageListProps?.onRemoveOutgoingMessage?.(failedOutgoing.localId));
+    act(() => captured.messageListProps?.onRemoveOutgoingMessage?.(failedOutgoing.placementUuid));
 
     await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
     expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
@@ -4357,7 +4516,8 @@ describe("ChatPage Workspace route", () => {
       captured.composerProps?.onComposerValueChange("newer draft");
     });
     await act(async () => {
-      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      const message = applyLastRequestedSentMessage();
+      sendRequest.resolve({ status: "applied", ownerKey, message });
       await sendPromise;
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
@@ -4472,7 +4632,8 @@ describe("ChatPage Workspace route", () => {
 
     await act(async () => {
       onComposerValueChange("newer reply");
-      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      const message = applyLastRequestedSentMessage();
+      sendRequest.resolve({ status: "applied", ownerKey, message });
       await sendPromise;
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
@@ -4541,7 +4702,8 @@ describe("ChatPage Workspace route", () => {
     );
 
     await act(async () => {
-      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      const message = applyLastRequestedSentMessage();
+      sendRequest.resolve({ status: "applied", ownerKey, message });
       await sendPromise;
     });
     await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });

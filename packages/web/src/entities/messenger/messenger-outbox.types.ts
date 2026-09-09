@@ -3,7 +3,8 @@ import type { MessengerConversationId, MessengerUuid } from "./messenger.types";
 export type MessengerOutgoingMessageStatus = "sending" | "failed";
 
 export interface MessengerOutgoingMessage {
-  localId: string;
+  canonicalMessageUuid: MessengerUuid;
+  placementUuid: MessengerUuid;
   ownerKey: string;
   conversationId: MessengerConversationId;
   projectId: MessengerUuid;
