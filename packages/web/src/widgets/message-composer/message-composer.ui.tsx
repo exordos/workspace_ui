@@ -459,6 +459,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onCreateCallLink,
   onCancelUpload,
   disabled = false,
+  sendDisabled = false,
   joinedTop = false,
   uploadProgress,
   placeholder = t("chat.sendPlaceholder"),
@@ -1035,7 +1036,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         showUnsupportedAction(scheduledSendCapability);
         return;
       }
-      if (disabled || onSend == null) return;
+      if (disabled || sendDisabled || onSend == null) return;
 
       const subject = activeTopic ?? "";
       const scheduledMessage = buildScheduledComposerMessage({
@@ -1057,6 +1058,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       activeTopic,
       clearComposerInput,
       disabled,
+      sendDisabled,
       files,
       onSend,
       outgoingBody,
@@ -1110,6 +1112,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     if (isEditing) {
       if (
         disabled ||
+        sendDisabled ||
         sendInFlight ||
         editSubmitInFlightRef.current ||
         attachmentsBlockSend ||
@@ -1143,6 +1146,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     if (
       (!hasText && !hasSendableExternalBody && !hasFiles && !hasControlledAttachments) ||
       disabled ||
+      sendDisabled ||
       sendInFlight ||
       attachmentsBlockSend
     )
@@ -2120,6 +2124,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             }}
             disabled={
               disabled ||
+              sendDisabled ||
               sendInFlight ||
               attachmentsBlockSend ||
               (isEditing && value.trim().length === 0 && (attachments?.length ?? 0) === 0)

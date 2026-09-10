@@ -126,6 +126,8 @@ export interface MessageComposerProps {
   onCreateCallLink?: () => string | null;
   onCancelUpload?: () => void;
   disabled?: boolean;
+  /** Prevents terminal submit while keeping the composer input editable. */
+  sendDisabled?: boolean;
   /** Visually connects a notice rendered immediately before the composer. */
   joinedTop?: boolean;
   uploadProgress?: ComposerUploadProgress | null;
