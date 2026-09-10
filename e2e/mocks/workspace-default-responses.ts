@@ -116,9 +116,9 @@ export function messagesSuccess() {
   return [messageSuccess("E2E initial message")];
 }
 
-export function messageSuccess(content: string) {
+export function messageSuccess(content: string, uuid = E2E_MESSAGE_UUID) {
   return {
-    uuid: E2E_MESSAGE_UUID,
+    uuid,
     project_id: E2E_PROJECT_ID,
     stream_uuid: E2E_STREAM_UUID,
     topic_uuid: E2E_TOPIC_UUID,
