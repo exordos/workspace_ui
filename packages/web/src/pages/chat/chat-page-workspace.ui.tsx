@@ -1394,7 +1394,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             return false;
           }
 
-          await sendMessengerMessage({
+          const result = await sendMessengerMessage({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
@@ -1404,6 +1404,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             includeStreamConversation: outgoing.includeStreamConversation,
             canonicalMessageUuid: outgoing.canonicalMessageUuid,
           });
+
+          if (result.status === "applied") {
+            useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
+            return true;
+          }
 
           if (settleOutgoingMessageIfIndexed(outgoing)) {
             return true;

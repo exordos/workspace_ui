@@ -3346,6 +3346,58 @@ describe("ChatPage Workspace route", () => {
     ).toBe(true);
   });
 
+  it("treats an applied send result as delivered after its local rows are gone", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("already committed", ""));
+    });
+
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toHaveLength(1));
+    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+    const request = captured.sendMessengerMessage.mock.calls[0]?.[0] as
+      | TestSendMessengerMessageRequest
+      | undefined;
+    if (outgoing == null || request == null) {
+      throw new Error("Expected an outgoing message and its send request");
+    }
+
+    act(() => {
+      useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.placementUuid);
+    });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid],
+    ).toBeUndefined();
+
+    await act(async () => {
+      sendRequest.resolve({
+        status: "applied",
+        ownerKey,
+        message: createSentMessage(request),
+      });
+      await sendPromise;
+    });
+
+    await expect(sendPromise).resolves.toBeUndefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
+  });
+
   it("settles from realtime before HTTP and treats the lost response as delivered", async () => {
     const sendRequest = createDeferred<never>();
     let capturedRequest: TestSendMessengerMessageRequest | null = null;
