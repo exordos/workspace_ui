@@ -3647,6 +3647,67 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("stores a localized outbox error when the runtime changes during send", async () => {
+    const session = createSession();
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: TestSendMessengerMessageRequest & { signal: AbortSignal }) => {
+        sendSignal = request.signal;
+        return sendRequest.promise;
+      },
+    );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("runtime changes", "")).catch((error) => error);
+    });
+    await waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+    const outgoing = Object.values(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+    )[0];
+    if (outgoing == null) throw new Error("Expected an outgoing message");
+
+    act(() => {
+      const nextSession = {
+        ...session,
+        accessToken: "next-access-token",
+        runtimeGeneration: 2,
+      };
+      useWorkspaceAuthStore.setState({
+        sessions: [nextSession],
+        currentAccountId: nextSession.accountId,
+        runtimeGeneration: 2,
+      });
+    });
+
+    await waitFor(() => expect(sendSignal?.aborted).toBe(true));
+    await waitFor(() =>
+      expect(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+      ).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          error: t("message.sendFailed"),
+        }),
+      ),
+    );
+    await expect(sendPromise).resolves.toEqual(
+      expect.objectContaining({ message: t("message.sendFailed") }),
+    );
+  });
+
   it("keeps an in-flight edit active when navigating to another chat", async () => {
     const ownMessage = {
       ...createMessage(),
@@ -5450,6 +5511,91 @@ describe("ChatPage Workspace route", () => {
       }),
     );
     await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+  });
+
+  it("clears a sent draft shadow after navigating from A to B and back to A", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, topicConversationId, {
+      text: "send before navigation",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    const streamHydration = createDeferred<null>();
+    const originalHydrateDraft = useWorkspaceComposerDraftStore.getState().hydrateDraft;
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn((draftOwnerKey, hydratedConversationId, requestedDraftUuid) => {
+        if (hydratedConversationId === streamConversationId) return streamHydration.promise;
+        return originalHydrateDraft(draftOwnerKey, hydratedConversationId, requestedDraftUuid);
+      }),
+    });
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.draftInitialValue).toBe("send before navigation"),
+    );
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("send before navigation", ""));
+    });
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(streamConversationId),
+    );
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(topicConversationId),
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.draftInitialValue).toBe("send before navigation"),
+    );
+
+    await act(async () => {
+      const message = applyLastRequestedSentMessage();
+      sendRequest.resolve({ status: "applied", ownerKey, message });
+      await sendPromise;
+    });
+
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      ),
+    ).toBeNull();
+
+    await act(async () => {
+      streamHydration.resolve(null);
+      await streamHydration.promise;
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe("");
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      ),
+    ).toBeNull();
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: originalHydrateDraft });
   });
 
   it("queues deletion for a second draft created without leaving the conversation", async () => {

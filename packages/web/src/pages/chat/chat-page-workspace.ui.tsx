@@ -182,6 +182,11 @@ interface WorkspaceFilePreviewResource {
   headers: Headers;
 }
 
+interface WorkspaceResolvedReplyTarget {
+  message: MessengerMessage;
+  quote: WorkspaceReplyQuote;
+}
+
 interface WorkspaceComposerSendCleanup {
   ownerKey: string;
   conversationId: string;
@@ -1534,14 +1539,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             );
           return false;
         }
-      }).catch((error) => {
+      }).catch(() => {
         if (settleOutgoingMessageIfIndexed(outgoing)) return true;
         useMessengerOutboxStore
           .getState()
-          .markOutgoingMessageFailed(
-            placementUuid,
-            normalizeWorkspaceActionError(error, t("message.sendFailed")),
-          );
+          .markOutgoingMessageFailed(placementUuid, t("message.sendFailed"));
         return false;
       });
     },
@@ -1578,6 +1580,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
+      const sentDraftScopeKey = createWorkspaceComposerDraftKey(sendOwnerKey, conversationId);
       if (content.trim().length === 0) return;
       const draftAtSend = selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
@@ -1617,6 +1620,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
             return { shouldClearComposer: false } satisfies MessageComposerSendResult;
           }
+          if (workspaceComposerDraftShadowRef.current?.scopeKey === sentDraftScopeKey) {
+            setComposerDraftShadow(sentDraftScopeKey, EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+          }
           if (isUiActionCurrent()) {
             // MessageComposer clears its value and reply after this promise resolves.
             // Both callbacks still close over the sent composer state. Only consume that
@@ -1634,10 +1640,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
                 workspaceComposerSendCleanupRef.current = null;
               }
             }, 0);
-            setComposerDraftShadow(
-              createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
-              EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
-            );
           }
           // The message is already sent. Deleting its draft must not delay
           // clearing the composer and must wait for an in-flight POST/PUT.
@@ -1988,8 +1990,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     });
   }, [captureWorkspaceChatUiAction, pendingDeleteMessageUuid, runtimeContext]);
 
-  const resolveWorkspaceReplyQuote = useCallback(
-    (messageUuid: string, selectedText?: string): WorkspaceReplyQuote | null => {
+  const resolveWorkspaceReplyTarget = useCallback(
+    (messageUuid: string, selectedText?: string): WorkspaceResolvedReplyTarget | null => {
       if (
         selection.status !== "conversation" ||
         (effectiveRoute?.kind !== "stream" && effectiveRoute?.kind !== "topic")
@@ -2010,11 +2012,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       if (quoteSource.length === 0) return null;
       const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
       return {
-        messageUuid: message.uuid,
-        senderUuid: message.authorUuid,
-        senderName: authorLabel,
-        quotedContent: message.payload.content.trim(),
-        ...(selectedQuoteText == null ? {} : { selectedText: selectedQuoteText }),
+        message,
+        quote: {
+          messageUuid: message.uuid,
+          senderUuid: message.authorUuid,
+          senderName: authorLabel,
+          quotedContent: message.payload.content.trim(),
+          ...(selectedQuoteText == null ? {} : { selectedText: selectedQuoteText }),
+        },
       };
     },
     [effectiveRoute, resolveAuthorLabel, selection.status],
@@ -2022,8 +2027,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleReplyMessage = useCallback(
     (messageUuid: string, selectedText?: string) => {
-      const quote = resolveWorkspaceReplyQuote(messageUuid, selectedText);
-      if (quote == null) return;
+      const target = resolveWorkspaceReplyTarget(messageUuid, selectedText);
+      if (target == null) return;
+      const { message, quote } = target;
       const identity = createWorkspaceReplyTabIdentity();
       invalidateWorkspaceReplyHandoffClaim();
 
@@ -2033,12 +2039,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         runtimeContext != null &&
         ownerKey != null
       ) {
-        const message = selectWorkspaceMessageById(
-          useWorkspaceMessageStore.getState(),
-          messageUuid,
-        );
-        if (message == null) return;
-
         const targetConversationId = conversationIdForTopic(message.streamUuid, message.topicUuid);
         const handoff = stageWorkspaceReplyHandoff({
           ownerKey,
@@ -2092,7 +2092,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       invalidateWorkspaceReplyHandoffClaim,
       navigate,
       ownerKey,
-      resolveWorkspaceReplyQuote,
+      resolveWorkspaceReplyTarget,
       runtimeContext,
       selection,
       updateWorkspaceComposerDraft,
@@ -2101,8 +2101,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleAddReplyMessage = useCallback(
     (messageUuid: string, selectedText?: string) => {
-      const quote = resolveWorkspaceReplyQuote(messageUuid, selectedText);
-      if (quote == null) return;
+      const target = resolveWorkspaceReplyTarget(messageUuid, selectedText);
+      if (target == null) return;
+      const { quote } = target;
       invalidateWorkspaceReplyHandoffClaim();
 
       if (isRestoredWorkspaceReplyEdit) {
@@ -2128,7 +2129,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       createWorkspaceReplyTabIdentity,
       invalidateWorkspaceReplyHandoffClaim,
       isRestoredWorkspaceReplyEdit,
-      resolveWorkspaceReplyQuote,
+      resolveWorkspaceReplyTarget,
       setWorkspaceReplySession,
     ],
   );
@@ -3370,9 +3371,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
     const quotes: WorkspaceReplyQuote[] = [];
     for (const messageUuid of messageUuids) {
-      const quote = resolveWorkspaceReplyQuote(messageUuid);
-      if (quote == null) return;
-      quotes.push(quote);
+      const target = resolveWorkspaceReplyTarget(messageUuid);
+      if (target == null) return;
+      quotes.push(target.quote);
     }
 
     setActionError(null);
@@ -3420,7 +3421,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     invalidateWorkspaceReplyHandoffClaim,
     isRestoredWorkspaceReplyEdit,
     replyTargetReady,
-    resolveWorkspaceReplyQuote,
+    resolveWorkspaceReplyTarget,
     selectedMessageUuids,
     updateWorkspaceComposerDraft,
     workspaceReplySession,

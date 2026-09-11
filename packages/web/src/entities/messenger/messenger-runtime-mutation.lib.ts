@@ -55,9 +55,7 @@ export function runMessengerRuntimeMutation<T>(
 
   const guardedResult = new Promise<T>((resolve, reject) => {
     const rejectForRuntimeChange = () => {
-      const error = new Error("The messenger runtime changed");
-      error.name = "AbortError";
-      reject(error);
+      reject(abortedMutationError());
     };
     controller.signal.addEventListener("abort", rejectForRuntimeChange, { once: true });
     if (controller.signal.aborted) rejectForRuntimeChange();

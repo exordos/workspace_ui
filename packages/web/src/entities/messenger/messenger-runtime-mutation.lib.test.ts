@@ -132,7 +132,10 @@ describe("messenger runtime mutations", () => {
     );
 
     expect(mutationSignal?.aborted).toBe(true);
-    await expect(mutation).rejects.toMatchObject({ name: "AbortError" });
+    await expect(mutation).rejects.toMatchObject({
+      name: "AbortError",
+      message: "The messenger runtime changed",
+    });
   });
 
   it("rejects immediately on owner change when the underlying mutation ignores abort", async () => {
