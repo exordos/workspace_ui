@@ -92,7 +92,8 @@ function createOutgoingMessage(
   overrides: Partial<MessengerOutgoingMessage> = {},
 ): MessengerOutgoingMessage {
   return {
-    localId: "outgoing-local-id-1",
+    canonicalMessageUuid: "canonical-message-uuid-1",
+    placementUuid: "outgoing-placement-uuid-1",
     ownerKey: "owner-key-1",
     conversationId: "topic:stream-uuid-1:topic-uuid-1",
     projectId: "project-uuid-1",
@@ -539,7 +540,7 @@ describe("WorkspaceMessageList", () => {
         ]}
         outgoingMessages={[
           createOutgoingMessage({
-            localId: "local-outgoing-message",
+            placementUuid: "local-outgoing-message",
             markdown: "Pending local text",
           }),
         ]}
@@ -561,11 +562,10 @@ describe("WorkspaceMessageList", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps an identical server message and local row separate until their exact mapping arrives", () => {
-    const serverMessageUuid = "server-message-uuid";
-    const localId = "local-outgoing-message";
+  it("hands an outgoing row to its server snapshot without changing the row or body DOM", () => {
+    const placementUuid = "server-message-uuid";
     const serverMessage = createWorkspaceMessage({
-      uuid: serverMessageUuid,
+      uuid: placementUuid,
       authorUuid: "current-user-uuid",
       userUuid: "current-user-uuid",
       isOwn: true,
@@ -573,31 +573,32 @@ describe("WorkspaceMessageList", () => {
       createdAt: "2026-07-03T09:01:00.000Z",
     });
     const outgoingMessage = createOutgoingMessage({
-      localId,
+      placementUuid,
       markdown: "Local outgoing text",
       status: "sending",
     });
 
     const { container, rerender } = render(
       <WorkspaceMessageList
-        messages={[serverMessage]}
+        messages={[]}
         outgoingMessages={[outgoingMessage]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
     );
 
-    expect(container.querySelectorAll("article")).toHaveLength(2);
-    const articleBeforeResolve = container.querySelector(`[data-outgoing-message-id='${localId}']`);
-    expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", localId);
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    const articleBeforeResolve = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+    const bodyBeforeResolve = articleBeforeResolve?.querySelector("[data-message-body='true']");
+    expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", placementUuid);
+    expect(bodyBeforeResolve).toBeInTheDocument();
 
     rerender(
       <WorkspaceMessageList
         messages={[serverMessage]}
         outgoingMessages={[outgoingMessage]}
-        resolveServerMessageRenderKey={(messageUuid) =>
-          messageUuid === serverMessageUuid ? localId : undefined
-        }
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
@@ -606,18 +607,16 @@ describe("WorkspaceMessageList", () => {
     const articles = Array.from(container.querySelectorAll("article"));
     expect(articles).toHaveLength(1);
     expect(articles[0]).toBe(articleBeforeResolve);
-    expect(articles[0]).toHaveAttribute("data-message-uuid", serverMessageUuid);
-    expect(articles[0]).toHaveAttribute("data-message-render-key", localId);
+    expect(articles[0]).toHaveAttribute("data-message-uuid", placementUuid);
+    expect(articles[0]).toHaveAttribute("data-message-render-key", placementUuid);
     expect(articles[0]).not.toHaveAttribute("data-outgoing-message-id");
-    expect(articles[0]).toHaveAttribute("data-server-message-uuid", serverMessageUuid);
+    expect(articles[0]).toHaveAttribute("data-server-message-uuid", placementUuid);
+    expect(articles[0]?.querySelector("[data-message-body='true']")).toBe(bodyBeforeResolve);
 
     rerender(
       <WorkspaceMessageList
         messages={[serverMessage]}
         outgoingMessages={[]}
-        resolveServerMessageRenderKey={(messageUuid) =>
-          messageUuid === serverMessageUuid ? localId : undefined
-        }
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
       />,
@@ -625,6 +624,154 @@ describe("WorkspaceMessageList", () => {
 
     expect(container.querySelectorAll("article")).toHaveLength(1);
     expect(container.querySelector("article")).toBe(articleBeforeResolve);
+  });
+
+  it("keeps outgoing row DOM when the server timestamp reorders it within the same day", () => {
+    const placementUuid = "reordered-server-message";
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      markdown: "Reordered outgoing text",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const neighboringMessage = createWorkspaceMessage({
+      uuid: "reorder-neighbor",
+      authorUuid: "neighbor-author",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[neighboringMessage]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+    const outgoingBody = outgoingArticle?.querySelector("[data-message-body='true']");
+    expect(Array.from(container.querySelectorAll("article"))).toEqual([
+      outgoingArticle,
+      container.querySelector("[data-message-uuid='reorder-neighbor']"),
+    ]);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          neighboringMessage,
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Reordered outgoing text",
+            createdAt: "2026-07-03T09:03:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const articles = Array.from(container.querySelectorAll("article"));
+    const confirmedArticle = container.querySelector(`[data-message-uuid='${placementUuid}']`);
+    expect(articles).toHaveLength(2);
+    expect(articles[1]).toBe(confirmedArticle);
+    expect(confirmedArticle).toBe(outgoingArticle);
+    expect(confirmedArticle?.querySelector("[data-message-body='true']")).toBe(outgoingBody);
+  });
+
+  it("keeps outgoing row DOM when confirmation splits its previous author group", () => {
+    const placementUuid = "split-group-server-message";
+    const existingOwnMessage = createWorkspaceMessage({
+      uuid: "split-group-existing-own",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const peerMessage = createWorkspaceMessage({
+      uuid: "split-group-peer",
+      authorUuid: "peer-user-uuid",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[existingOwnMessage, peerMessage]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          existingOwnMessage,
+          peerMessage,
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: outgoingMessage.markdown,
+            createdAt: "2026-07-03T09:03:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
+  });
+
+  it("keeps outgoing row DOM when the server timestamp moves it to another day", () => {
+    const placementUuid = "cross-day-server-message";
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      createdAt: "2026-07-03T23:59:59.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: outgoingMessage.markdown,
+            createdAt: "2026-07-04T00:00:01.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
   });
 
   it("renders edited content from the server snapshot", () => {
@@ -678,7 +825,7 @@ describe("WorkspaceMessageList", () => {
         messages={[]}
         outgoingMessages={[
           createOutgoingMessage({
-            localId: "failed-local-message",
+            placementUuid: "failed-local-message",
             status: "failed",
             error: "network failed",
           }),
@@ -3167,6 +3314,90 @@ describe("WorkspaceMessageList", () => {
     expect(authorGroups[2]?.querySelectorAll("article")).toHaveLength(1);
   });
 
+  it("keeps a media row mounted when an earlier unrelated author group appears", () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const mediaMessage = createWorkspaceMessage({
+      uuid: "media-message",
+      authorUuid: "author-a",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const mediaArticle = container.querySelector("[data-message-uuid='media-message']");
+    const mediaNode = mediaArticle?.querySelector("[data-workspace-file-kind='media']");
+    expect(mediaNode).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "earlier-author-b",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          mediaMessage,
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const currentArticle = container.querySelector("[data-message-uuid='media-message']");
+    expect(currentArticle).toBe(mediaArticle);
+    expect(currentArticle?.querySelector("[data-workspace-file-kind='media']")).toBe(mediaNode);
+  });
+
+  it("keeps a repeated-author media group mounted when an earlier matching group appears", () => {
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const separatorMessage = createWorkspaceMessage({
+      uuid: "separator-author-b",
+      authorUuid: "author-b",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const mediaMessage = createWorkspaceMessage({
+      uuid: "later-author-a-media",
+      authorUuid: "author-a",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[separatorMessage, mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const mediaArticle = container.querySelector("[data-message-uuid='later-author-a-media']");
+    const mediaNode = mediaArticle?.querySelector("[data-workspace-file-kind='media']");
+    expect(mediaNode).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "earlier-author-a",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          separatorMessage,
+          mediaMessage,
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const currentArticle = container.querySelector("[data-message-uuid='later-author-a-media']");
+    expect(currentArticle).toBe(mediaArticle);
+    expect(currentArticle?.querySelector("[data-workspace-file-kind='media']")).toBe(mediaNode);
+  });
+
   it("renders own and peer bubbles with resolved author label only for peer group start", () => {
     const { container } = render(
       <WorkspaceMessageList
@@ -3640,7 +3871,9 @@ describe("WorkspaceMessageList", () => {
   });
 
   it("does not render selection controls outside selection mode or for outgoing messages", () => {
-    const outgoingMessage = createOutgoingMessage({ localId: "outgoing-selection-message" });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid: "outgoing-selection-message",
+    });
     const onToggleMessageSelection = vi.fn();
     const { container, rerender } = render(
       <WorkspaceMessageList
@@ -3714,7 +3947,9 @@ describe("WorkspaceMessageList", () => {
       userUuid: "current-user-uuid",
       isOwn: true,
     });
-    const outgoingMessage = createOutgoingMessage({ localId: "selection-context-outgoing" });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid: "selection-context-outgoing",
+    });
     const resolveAuthorLabel = vi.fn(() => "Current user");
     const actions = { onToggleMessageSelection: vi.fn() };
     const toLocaleTimeString = vi

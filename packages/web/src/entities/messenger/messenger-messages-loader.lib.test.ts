@@ -24,6 +24,7 @@ import {
   resolveMessengerMessageAnchor,
   type MessengerFetchedMessageWindow,
 } from "./messenger-messages-loader.lib";
+import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -193,7 +194,51 @@ describe("messenger conversation messages loader", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().setOwner(null, false);
     useWorkspaceMessageStore.getState().clear();
+    useMessengerOutboxStore.getState().clear();
     clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
+  });
+
+  it("settles an outgoing message when a history page confirms its placement", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey,
+      conversationId,
+      projectId: PROJECT_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      authorUuid: USER_A,
+      markdown: "Confirmed from history",
+      status: "sending",
+      includeStreamConversation: false,
+    });
+
+    const result = await loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+        writeConversationMessagePage: vi.fn(),
+      },
+      client: {
+        getMessagesPage: () =>
+          Promise.resolve(
+            createMessagesPage([
+              createMessageDto({
+                uuid: outgoing.placementUuid,
+                payload: { kind: "markdown", content: outgoing.markdown },
+              }),
+            ]),
+          ),
+      },
+    });
+
+    expect(result.status).toBe("applied");
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
   });
 
   it("resolves an anchor body without changing its visible window", async () => {

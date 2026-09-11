@@ -30,6 +30,7 @@ import {
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
+import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import {
   advanceMessengerReadBoundary,
   applyMessengerReadBoundary,
@@ -383,6 +384,7 @@ function applyMessageRealtimeEvent(
   }
 
   messageStore.applyLiveCreatedMessage(message);
+  settleMessengerOutgoingMessage(ownerKey, message);
   store.applyMessagePointer(ownerKey, message);
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
   if (
@@ -740,6 +742,10 @@ export function createMessengerRealtimeBackgroundApplier(
           store.recordSkippedEvent(context.ownerKey, event, "background_apply_deferred", context);
         }
         return;
+      }
+
+      if (event.type === "message" && event.kind === "message.created") {
+        settleMessengerOutgoingMessage(context.ownerKey, adaptMessengerMessage(event.message));
       }
 
       if (event.type === "stream" && event.kind === "stream.deleted") {

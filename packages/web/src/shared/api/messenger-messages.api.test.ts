@@ -275,6 +275,7 @@ describe("messenger messages API", () => {
     );
 
     const createBody = {
+      uuid: "00000000-0000-4000-8000-000000000002",
       stream_uuid: STREAM_UUID,
       topic_uuid: TOPIC_UUID,
       payload: {

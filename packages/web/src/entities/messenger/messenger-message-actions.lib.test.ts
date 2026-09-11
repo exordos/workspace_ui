@@ -30,6 +30,7 @@ import {
   type MessengerMessageActionClientDeps,
   type MessengerMessageActionResult,
 } from "./messenger-message-actions.lib";
+import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerConversationId } from "./messenger.types";
@@ -191,9 +192,11 @@ function replaceTailWindow(
 
 describe("messenger message actions", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     useActivityStore.getState().clear();
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    useMessengerOutboxStore.getState().clear();
   });
 
   it("creates a markdown message without inventing a visible window", async () => {
@@ -208,9 +211,7 @@ describe("messenger message actions", () => {
     const cache = {
       writeConversationMessagePage: vi.fn(() => Promise.resolve()),
     };
-    const onBeforeMessageIndexed = vi.fn((message) => {
-      expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]).toBeUndefined();
-    });
+    const canonicalMessageUuid = "00000000-0000-4000-8000-000000000002";
 
     await expect(
       sendMessengerMessage({
@@ -219,10 +220,10 @@ describe("messenger message actions", () => {
         streamUuid: STREAM_A,
         topicUuid: TOPIC_A,
         markdown: "Hello, workspace",
+        canonicalMessageUuid,
         includeStreamConversation: true,
         client: { createMessage },
         cache,
-        onBeforeMessageIndexed,
       }),
     ).resolves.toEqual({
       status: "applied",
@@ -240,15 +241,13 @@ describe("messenger message actions", () => {
         projectId: PROJECT_A,
       }),
       {
+        uuid: canonicalMessageUuid,
         stream_uuid: STREAM_A,
         topic_uuid: TOPIC_A,
         payload: { kind: "markdown", content: "Hello, workspace" },
       },
     );
     expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
-    expect(onBeforeMessageIndexed).toHaveBeenCalledWith(
-      expect.objectContaining({ uuid: MESSAGE_A }),
-    );
     expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
       1,
       ownerKey,
@@ -278,9 +277,47 @@ describe("messenger message actions", () => {
     ).toEqual([]);
   });
 
+  it("settles the matching outbox row after the HTTP message is indexed", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      projectId: PROJECT_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      authorUuid: USER_A,
+      markdown: "Hello, workspace",
+      status: "sending",
+      includeStreamConversation: false,
+    });
+
+    await sendMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: outgoing.markdown,
+      canonicalMessageUuid: outgoing.canonicalMessageUuid,
+      client: {
+        createMessage: () => Promise.resolve(createMessageDto({ uuid: outgoing.placementUuid })),
+      },
+      cache: {},
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid]).toBeDefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
+  });
+
   it("does not wait for the cache before reporting a sent message", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
+    const generatedCanonicalMessageUuid = "00000000-0000-4000-8000-000000000003";
+    const randomUuid = vi
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue(generatedCanonicalMessageUuid);
     const cacheWrite = createDeferred<void>();
     const cache = {
       writeConversationMessagePage: vi.fn(() => cacheWrite.promise),
@@ -316,6 +353,13 @@ describe("messenger message actions", () => {
       message: expect.objectContaining({ uuid: MESSAGE_A }),
     });
     expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(1);
+    expect(randomUuid).toHaveBeenCalledOnce();
+    expect(createMessage).toHaveBeenCalledWith(expect.any(Object), {
+      uuid: generatedCanonicalMessageUuid,
+      stream_uuid: STREAM_A,
+      topic_uuid: TOPIC_A,
+      payload: { kind: "markdown", content: "Hello, workspace" },
+    });
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({ uuid: MESSAGE_A }),
     );

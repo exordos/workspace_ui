@@ -1,5 +1,6 @@
 /** Playwright route mock for the public Workspace REST contract. */
 import type { Page, Route } from "@playwright/test";
+import { createMessengerPlacementUuid } from "../../packages/web/src/entities/messenger/messenger-message-identity.lib";
 import {
   E2E_MESSAGE_UUID,
   E2E_PROJECT_ID,
@@ -157,9 +158,18 @@ function isAction(requestPath: WorkspaceRequestPath, resource: string, action: s
   );
 }
 
-function readMessageContent(route: Route): string {
-  const body = route.request().postDataJSON() as { payload?: { content?: unknown } } | null;
-  return typeof body?.payload?.content === "string" ? body.payload.content : "";
+function readMessageCreateResponse(route: Route) {
+  const body = route.request().postDataJSON() as {
+    uuid?: unknown;
+    topic_uuid?: unknown;
+    payload?: { content?: unknown };
+  } | null;
+  const content = typeof body?.payload?.content === "string" ? body.payload.content : "";
+  const uuid =
+    typeof body?.uuid === "string" && typeof body.topic_uuid === "string"
+      ? createMessengerPlacementUuid(body.topic_uuid, body.uuid)
+      : E2E_MESSAGE_UUID;
+  return messageSuccess(content, uuid);
 }
 
 export class WorkspaceApiMock {
@@ -309,7 +319,7 @@ export class WorkspaceApiMock {
         return;
       }
       if (method === "POST") {
-        await this.fulfillJson(route, 201, messageSuccess(readMessageContent(route)));
+        await this.fulfillJson(route, 201, readMessageCreateResponse(route));
         return;
       }
     }

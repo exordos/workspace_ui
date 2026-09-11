@@ -29,9 +29,11 @@ import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-me
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
 import { WorkspaceMessageSelectionControl } from "./workspace-message-selection-control.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
-import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-grouping.lib";
 import type {
-  WorkspaceMessageListOutgoingItem,
+  WorkspaceMessageAuthorGroup,
+  WorkspaceMessageDayGroup,
+} from "./workspace-message-list-grouping.lib";
+import type {
   WorkspaceMessageListItem,
   WorkspaceMessageListPresentation,
   WorkspaceMessageListProps,
@@ -68,6 +70,20 @@ const EMPTY_READ_REQUEST_BOUNDARY_MESSAGE_UUIDS = new Set<MessengerUuid>();
 const EMPTY_READ_REQUEST_BOUNDARIES = new Map<string, WorkspaceReadRequestBoundary>();
 const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
 
+interface WorkspaceAuthorGroupRenderKeyRecord {
+  dateKey: string;
+  authorUuid: MessengerUuid;
+  topicUuid: MessengerUuid;
+  messageKeys: ReadonlySet<string>;
+  messageKindsByKey: ReadonlyMap<string, WorkspaceMessageListItem["kind"]>;
+  renderKey: string;
+}
+
+interface WorkspaceAuthorGroupRenderKeyCalculation {
+  records: readonly WorkspaceAuthorGroupRenderKeyRecord[];
+  renderKeys: ReadonlyMap<WorkspaceMessageAuthorGroup, string>;
+}
+
 interface WorkspaceReadRequestBoundary {
   message: MessengerMessage;
 }
@@ -75,6 +91,180 @@ interface WorkspaceReadRequestBoundary {
 interface PendingLatestWindow {
   targetUuid: MessengerUuid;
   cancel?: (lastMessageUuid: MessengerUuid) => void;
+}
+
+function authorGroupFallbackRenderKey(dateKey: string, group: WorkspaceMessageAuthorGroup): string {
+  return `${dateKey}:${group.authorUuid}:${group.topicUuid}:${group.messages[0]?.key ?? "empty"}`;
+}
+
+function uniqueAuthorGroupFallbackRenderKey(
+  dateKey: string,
+  group: WorkspaceMessageAuthorGroup,
+  unavailableKeys: ReadonlySet<string>,
+): string {
+  const fallbackKey = authorGroupFallbackRenderKey(dateKey, group);
+  let renderKey = fallbackKey;
+  let collisionOrdinal = 1;
+  while (unavailableKeys.has(renderKey)) {
+    renderKey = `${fallbackKey}:split:${collisionOrdinal}`;
+    collisionOrdinal += 1;
+  }
+  return renderKey;
+}
+
+function indexPreviousAuthorGroupRecords(
+  records: readonly WorkspaceAuthorGroupRenderKeyRecord[],
+): ReadonlyMap<string, WorkspaceAuthorGroupRenderKeyRecord> {
+  const recordsByMessageKey = new Map<string, WorkspaceAuthorGroupRenderKeyRecord>();
+  for (const record of records) {
+    for (const messageKey of record.messageKeys) {
+      recordsByMessageKey.set(messageKey, record);
+    }
+  }
+  return recordsByMessageKey;
+}
+
+function reserveTransitionAuthorGroupRecords(
+  dayGroups: readonly WorkspaceMessageDayGroup[],
+  previousRecordByMessageKey: ReadonlyMap<string, WorkspaceAuthorGroupRenderKeyRecord>,
+): ReadonlyMap<WorkspaceMessageAuthorGroup, WorkspaceAuthorGroupRenderKeyRecord> {
+  const reservedRecordByGroup = new Map<
+    WorkspaceMessageAuthorGroup,
+    WorkspaceAuthorGroupRenderKeyRecord
+  >();
+  const reservedRecords = new Set<WorkspaceAuthorGroupRenderKeyRecord>();
+  for (const dayGroup of dayGroups) {
+    for (const authorGroup of dayGroup.authorGroups) {
+      const transitionedMessage = authorGroup.messages.find((message) => {
+        const candidate = previousRecordByMessageKey.get(message.key);
+        return (
+          candidate != null &&
+          !reservedRecords.has(candidate) &&
+          candidate.authorUuid === authorGroup.authorUuid &&
+          candidate.topicUuid === authorGroup.topicUuid &&
+          candidate.messageKindsByKey.get(message.key) !== message.kind
+        );
+      });
+      const candidate =
+        transitionedMessage == null
+          ? undefined
+          : previousRecordByMessageKey.get(transitionedMessage.key);
+      if (candidate == null) continue;
+
+      // A confirmed row inherits its optimistic parent even if ordering split
+      // the author group or moved the row across a local date boundary.
+      reservedRecordByGroup.set(authorGroup, candidate);
+      reservedRecords.add(candidate);
+    }
+  }
+  return reservedRecordByGroup;
+}
+
+function findReusableAuthorGroupRecord({
+  dateKey,
+  group,
+  previousRecordByMessageKey,
+  unavailableRecords,
+}: {
+  dateKey: string;
+  group: WorkspaceMessageAuthorGroup;
+  previousRecordByMessageKey: ReadonlyMap<string, WorkspaceAuthorGroupRenderKeyRecord>;
+  unavailableRecords: ReadonlySet<WorkspaceAuthorGroupRenderKeyRecord>;
+}): WorkspaceAuthorGroupRenderKeyRecord | undefined {
+  return group.messages
+    .map((message) => previousRecordByMessageKey.get(message.key))
+    .find(
+      (candidate) =>
+        candidate != null &&
+        !unavailableRecords.has(candidate) &&
+        candidate.dateKey === dateKey &&
+        candidate.authorUuid === group.authorUuid &&
+        candidate.topicUuid === group.topicUuid,
+    );
+}
+
+function createAuthorGroupRenderKeyRecord(
+  dateKey: string,
+  group: WorkspaceMessageAuthorGroup,
+  renderKey: string,
+): WorkspaceAuthorGroupRenderKeyRecord {
+  return {
+    dateKey,
+    authorUuid: group.authorUuid,
+    topicUuid: group.topicUuid,
+    messageKeys: new Set(group.messages.map((message) => message.key)),
+    messageKindsByKey: new Map(group.messages.map((message) => [message.key, message.kind])),
+    renderKey,
+  };
+}
+
+function buildWorkspaceAuthorGroupRenderKeyState(
+  dayGroups: readonly WorkspaceMessageDayGroup[],
+  previousRecords: readonly WorkspaceAuthorGroupRenderKeyRecord[],
+): WorkspaceAuthorGroupRenderKeyCalculation {
+  const previousRecordByMessageKey = indexPreviousAuthorGroupRecords(previousRecords);
+  const reservedRecordByGroup = reserveTransitionAuthorGroupRecords(
+    dayGroups,
+    previousRecordByMessageKey,
+  );
+  const reservedRecords = new Set(reservedRecordByGroup.values());
+
+  const claimedRecords = new Set<WorkspaceAuthorGroupRenderKeyRecord>();
+  const reservedRenderKeys = new Set(
+    Array.from(reservedRecordByGroup.values(), (record) => record.renderKey),
+  );
+  const usedRenderKeys = new Set<string>();
+  const renderKeys = new Map<WorkspaceMessageAuthorGroup, string>();
+  const nextRecords: WorkspaceAuthorGroupRenderKeyRecord[] = [];
+
+  for (const dayGroup of dayGroups) {
+    for (const authorGroup of dayGroup.authorGroups) {
+      let matchingRecord = reservedRecordByGroup.get(authorGroup);
+      matchingRecord ??= findReusableAuthorGroupRecord({
+        dateKey: dayGroup.dateKey,
+        group: authorGroup,
+        previousRecordByMessageKey,
+        unavailableRecords: new Set([...claimedRecords, ...reservedRecords]),
+      });
+
+      const unavailableFallbackKeys = new Set([...reservedRenderKeys, ...usedRenderKeys]);
+      const renderKey =
+        matchingRecord?.renderKey ??
+        uniqueAuthorGroupFallbackRenderKey(dayGroup.dateKey, authorGroup, unavailableFallbackKeys);
+      if (matchingRecord != null) {
+        claimedRecords.add(matchingRecord);
+      }
+      usedRenderKeys.add(renderKey);
+      renderKeys.set(authorGroup, renderKey);
+      nextRecords.push(createAuthorGroupRenderKeyRecord(dayGroup.dateKey, authorGroup, renderKey));
+    }
+  }
+
+  return { records: nextRecords, renderKeys };
+}
+
+function useWorkspaceAuthorGroupRenderKeys(
+  dayGroups: readonly WorkspaceMessageDayGroup[],
+  conversationId: MessengerConversationId,
+): ReadonlyMap<WorkspaceMessageAuthorGroup, string> {
+  const committedStateRef = useRef<{
+    conversationId: MessengerConversationId;
+    records: readonly WorkspaceAuthorGroupRenderKeyRecord[];
+  }>({ conversationId, records: [] });
+  const calculation = useMemo(() => {
+    const committedState = committedStateRef.current;
+    return buildWorkspaceAuthorGroupRenderKeyState(
+      dayGroups,
+      // eslint-disable-next-line react-hooks/refs -- Only the last committed groups may preserve DOM identity.
+      committedState.conversationId === conversationId ? committedState.records : [],
+    );
+  }, [conversationId, dayGroups]);
+
+  useLayoutEffect(() => {
+    committedStateRef.current = { conversationId, records: calculation.records };
+  }, [calculation.records, conversationId]);
+
+  return calculation.renderKeys;
 }
 
 function resolveMessageOwner(
@@ -274,7 +464,9 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
       data-message-uuid={messageUuid}
       data-message-render-key={message.key}
       data-server-message-uuid={serverMessageUuid}
-      data-outgoing-message-id={message.kind === "outgoing" ? message.message.localId : undefined}
+      data-outgoing-message-id={
+        message.kind === "outgoing" ? message.message.placementUuid : undefined
+      }
       data-author-uuid={message.authorUuid}
       data-message-owner={owner}
       data-message-kind={message.kind}
@@ -468,7 +660,6 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
 export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   messages,
   outgoingMessages = EMPTY_OUTGOING_MESSAGES,
-  resolveServerMessageRenderKey,
   currentUserUuid,
   conversationId,
   initialPositionReady = true,
@@ -548,47 +739,22 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       resolveWorkspaceAuthorLabel(authorUuid, resolveAuthorLabel, usersById),
     [resolveAuthorLabel, usersById],
   );
-  const createServerListItem = useCallback(
-    (message: WorkspaceMessageListProps["messages"][number]) =>
-      createWorkspaceMessageListServerItem(
-        message,
-        resolveServerMessageRenderKey?.(message.uuid) ?? message.uuid,
-      ),
-    [resolveServerMessageRenderKey],
-  );
   const listItems = useMemo<readonly WorkspaceMessageListItem[]>(() => {
     // The canonical store keeps only server snapshots. Local rows are merged
     // into the display model here so the UI sees one list, while cache,
     // realtime, and server-side ordering stay free of temporary ids.
     if (outgoingMessages.length === 0) {
-      return messages.map(createServerListItem);
+      return messages.map((message) => createWorkspaceMessageListServerItem(message));
     }
 
-    const outgoingLocalIds = new Set(outgoingMessages.map((message) => message.localId));
-    const serverItems = messages.map(createServerListItem);
-    const deliveredOutgoingLocalIds = new Set<string>();
-    for (const serverItem of serverItems) {
-      // Only the key registered from this POST response may replace a local row.
-      // Realtime snapshots without that key stay visible instead of guessing by content.
-      if (outgoingLocalIds.has(serverItem.key)) {
-        deliveredOutgoingLocalIds.add(serverItem.key);
-      }
-    }
+    const serverItems = messages.map((message) => createWorkspaceMessageListServerItem(message));
+    const serverMessageUuids = new Set(messages.map((message) => message.uuid));
     const outgoingListItems = outgoingMessages
-      .map((outgoingMessage) => {
-        if (outgoingMessage == null) {
-          return null;
-        }
-        if (deliveredOutgoingLocalIds.has(outgoingMessage.localId)) {
-          return null;
-        }
-
-        return createWorkspaceMessageListOutgoingItem(outgoingMessage);
-      })
-      .filter((message): message is WorkspaceMessageListOutgoingItem => message != null);
+      .filter((outgoingMessage) => !serverMessageUuids.has(outgoingMessage.placementUuid))
+      .map(createWorkspaceMessageListOutgoingItem);
 
     return [...serverItems, ...outgoingListItems];
-  }, [createServerListItem, messages, outgoingMessages]);
+  }, [messages, outgoingMessages]);
   const readRequestBoundariesByTopic = useMemo(() => {
     if (readRequestBoundaryMessageUuids.size === 0) return EMPTY_READ_REQUEST_BOUNDARIES;
     const boundaries = new Map<string, WorkspaceReadRequestBoundary>();
@@ -608,6 +774,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   const dayGroups = useMemo(() => {
     return groupWorkspaceMessagesByDayAndAuthor(listItems);
   }, [listItems]);
+  const authorGroupRenderKeys = useWorkspaceAuthorGroupRenderKeys(dayGroups, conversationId);
   const dayLabelsByDateKey = useMemo(() => {
     return new Map(
       dayGroups.map((dayGroup) => [
@@ -868,10 +1035,13 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       >
         {/* The list already stores string Workspace UUIDs in the DOM. Later phases
           do not need to keep the old numeric DOM key around just for scrolling. */}
-        {dayGroups.map((dayGroup) => (
-          <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
-            {/* Sticky day pill: stays under the chat header while this day's messages are in view. */}
-            <div className="sticky top-0 z-sticky flex justify-center py-1">
+        {dayGroups.flatMap((dayGroup) => {
+          const dayDivider = (
+            <div
+              className="sticky top-0 z-sticky flex justify-center py-1"
+              key={`day:${dayGroup.dateKey}`}
+              data-day-group="true"
+            >
               <time
                 className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
                 dateTime={dayGroup.dateKey}
@@ -880,58 +1050,60 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                 {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
               </time>
             </div>
-            <div className="flex flex-col gap-2">
-              {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
-                const showUnreadMarker =
-                  stableFirstUnreadUuid != null &&
-                  authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
-                const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
-                const dividerTopicLabel = formatWorkspaceTopicLabel(
-                  resolveTopicLabel?.(authorGroup.topicUuid),
-                );
-                const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
+          );
+          const authorGroups = dayGroup.authorGroups.map((authorGroup) => {
+            const showUnreadMarker =
+              stableFirstUnreadUuid != null &&
+              authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
+            const authorGroupKey =
+              authorGroupRenderKeys.get(authorGroup) ??
+              authorGroupFallbackRenderKey(dayGroup.dateKey, authorGroup);
+            const dividerTopicLabel = formatWorkspaceTopicLabel(
+              resolveTopicLabel?.(authorGroup.topicUuid),
+            );
+            const dividerStreamUuid = authorGroup.messages[0]?.message.streamUuid;
 
-                return (
-                  <React.Fragment key={authorGroupKey}>
-                    {showUnreadMarker && !isUnreadDividerDismissed && (
-                      <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
-                    )}
-                    {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
-                      <WorkspaceMessageDivider
-                        data-topic-divider="true"
-                        data-topic-uuid={authorGroup.topicUuid}
-                      >
-                        {dividerTopicLabel != null && dividerStreamUuid != null ? (
-                          <WorkspaceMessageTopicLink
-                            label={dividerTopicLabel}
-                            streamUuid={dividerStreamUuid}
-                            topicUuid={authorGroup.topicUuid}
-                            onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
-                          />
-                        ) : null}
-                      </WorkspaceMessageDivider>
+            return (
+              <React.Fragment key={authorGroupKey}>
+                {showUnreadMarker && !isUnreadDividerDismissed && (
+                  <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
+                )}
+                {presentation?.topicDividers === true && authorGroup.startsTopicRun ? (
+                  <WorkspaceMessageDivider
+                    data-topic-divider="true"
+                    data-topic-uuid={authorGroup.topicUuid}
+                  >
+                    {dividerTopicLabel != null && dividerStreamUuid != null ? (
+                      <WorkspaceMessageTopicLink
+                        label={dividerTopicLabel}
+                        streamUuid={dividerStreamUuid}
+                        topicUuid={authorGroup.topicUuid}
+                        onOpenWorkspaceReference={messageActions?.onOpenWorkspaceReference}
+                      />
                     ) : null}
-                    <WorkspaceMessageAuthorGroupView
-                      group={authorGroup}
-                      currentUserUuid={currentUserUuid}
-                      resolveAuthorLabel={effectiveResolveAuthorLabel}
-                      resolveTopicLabel={resolveTopicLabel}
-                      showTopicLabels={presentation?.topicLabels === true}
-                      resolveMention={resolveMention}
-                      quoteRenderMode={presentation?.quoteRenderMode}
-                      actions={messageActions}
-                      passiveLoadersEnabled={!anchorHandoffPending}
-                      selectedMessageUuids={selectedMessageUuids}
-                      readRequestBoundariesByTopic={readRequestBoundariesByTopic}
-                      selectionMode={selectionMode}
-                      usersById={usersById}
-                    />
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                  </WorkspaceMessageDivider>
+                ) : null}
+                <WorkspaceMessageAuthorGroupView
+                  group={authorGroup}
+                  currentUserUuid={currentUserUuid}
+                  resolveAuthorLabel={effectiveResolveAuthorLabel}
+                  resolveTopicLabel={resolveTopicLabel}
+                  showTopicLabels={presentation?.topicLabels === true}
+                  resolveMention={resolveMention}
+                  quoteRenderMode={presentation?.quoteRenderMode}
+                  actions={messageActions}
+                  passiveLoadersEnabled={!anchorHandoffPending}
+                  selectedMessageUuids={selectedMessageUuids}
+                  readRequestBoundariesByTopic={readRequestBoundariesByTopic}
+                  selectionMode={selectionMode}
+                  usersById={usersById}
+                />
+              </React.Fragment>
+            );
+          });
+
+          return [dayDivider, ...authorGroups];
+        })}
       </div>
       {!anchorHandoffPending && (!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages) ? (
         <FloatingScrollToBottomButton onClick={handleScrollToBottom} unreadCount={unreadCount} />

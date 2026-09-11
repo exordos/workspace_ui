@@ -88,7 +88,7 @@ export function createWorkspaceMessageListOutgoingItem(
 ): WorkspaceMessageListOutgoingItem {
   return {
     kind: "outgoing",
-    key: message.localId,
+    key: message.placementUuid,
     message,
     createdAt: message.createdAt,
     authorUuid: message.authorUuid,
@@ -140,9 +140,8 @@ export function groupWorkspaceMessagesByDayAndAuthor(
       dayGroup.authorGroups.push(authorGroup);
     }
 
-    // Группируем только соседние сообщения одного автора внутри одного дня.
-    // Если другой автор вклинился между двумя сообщениями, ниже появится новая
-    // группа того же authorUuid. Это важно для будущих аватаров и хвостиков bubble.
+    // Only neighboring messages from the same author and topic share a group.
+    // A repeated author after another group must start a new visual sequence.
     authorGroup.messages.push(message);
     previousTopicUuid = topicUuid;
   }

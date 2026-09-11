@@ -5,8 +5,8 @@ import { Icon } from "~/shared/ui/icon";
 
 interface WorkspaceMessageOutgoingDeliveryIndicatorProps {
   message: MessengerOutgoingMessage;
-  onRetry?: (localId: string) => void;
-  onRemove?: (localId: string) => void;
+  onRetry?: (placementUuid: MessengerOutgoingMessage["placementUuid"]) => void;
+  onRemove?: (placementUuid: MessengerOutgoingMessage["placementUuid"]) => void;
 }
 
 export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
@@ -49,7 +49,7 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onRetry(message.localId);
+              onRetry(message.placementUuid);
             }}
           >
             <Icon name="send" size={14} className="shrink-0" />
@@ -64,7 +64,7 @@ export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onRemove(message.localId);
+              onRemove(message.placementUuid);
             }}
           >
             <Icon name="delete" size={14} className="shrink-0" />
