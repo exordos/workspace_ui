@@ -35,6 +35,7 @@ export interface ChatPageComposerSectionProps {
     files?: File[],
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   optimisticClearOnSend?: boolean;
+  sendDisabled?: boolean;
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;
   onAddAttachments?: (files: readonly File[]) => void;
