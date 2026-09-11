@@ -462,6 +462,7 @@
     "defaultTopicMissing": "Базовая тема еще не загружена. Откройте тему или повторите позже.",
     "directPrivateUserUnavailable": "Временно не подключено",
     "temporarilyNotConnected": "Временно не подключено",
+    "topicClosed": "Тема закрыта. Новые сообщения отправлять нельзя.",
     "rightPanelUnsupported": "Информация Workspace для этого чата пока не подключена.",
     "routeUnsupportedForSend": "Из этой ссылки на чат отправка пока недоступна.",
     "messageActionTargetMissing": "Сообщение уже не загружено.",

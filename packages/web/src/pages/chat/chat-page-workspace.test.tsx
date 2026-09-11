@@ -1061,6 +1061,28 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
   });
 
+  it("hides the composer and shows a notice for a closed topic", async () => {
+    const payload = createBootstrapPayload();
+    const topic = payload.topics[0];
+    if (topic == null) throw new Error("Expected a Workspace topic fixture");
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      ...payload,
+      topics: [{ ...topic, isDone: true }],
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    expect(await screen.findByTestId("topic-closed-bar")).toHaveTextContent(
+      t("workspaceMessenger.topicClosed"),
+    );
+    expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(captured.composerProps).toBeNull();
+  });
+
   it("keeps an unread message authored by the current user in the unread range", async () => {
     const ownUnread = {
       ...createMessage(),
