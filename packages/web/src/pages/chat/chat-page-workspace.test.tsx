@@ -28,6 +28,10 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
+import {
+  clearWorkspaceReplyHandoff,
+  stageWorkspaceReplyHandoff,
+} from "~/features/workspace-reply/workspace-reply-handoff.model";
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
@@ -105,6 +109,8 @@ const captured = vi.hoisted(() => ({
   deleteWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
   editMessengerMessage: vi.fn(),
+  deleteMessengerMessage: vi.fn(),
+  toggleMessengerMessageReaction: vi.fn(),
   markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
@@ -346,9 +352,14 @@ vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOrigi
     ...actual,
     sendMessengerMessage: captured.sendMessengerMessage,
     editMessengerMessage: captured.editMessengerMessage,
+    deleteMessengerMessage: captured.deleteMessengerMessage,
     markMessengerMessagesReadUpTo: captured.markMessengerMessagesReadUpTo,
   };
 });
+
+vi.mock("~/entities/messenger/messenger-message-reactions-actions.lib", () => ({
+  toggleMessengerMessageReaction: captured.toggleMessengerMessageReaction,
+}));
 
 vi.mock("~/entities/messenger/messenger-stream-bindings-loader.lib", () => ({
   useMessengerStreamBindingsForRoute: captured.streamBindingsForRoute,
@@ -741,6 +752,8 @@ function createDeferred<T>(): {
 }
 
 let navigateTo: ReturnType<typeof useNavigate> | null = null;
+const defaultWorkspaceComposerDraftHydrateDraft =
+  useWorkspaceComposerDraftStore.getState().hydrateDraft;
 
 function WorkspaceNavigationProbe() {
   const navigate = useNavigate();
@@ -792,6 +805,10 @@ function WorkspaceLocationProbe() {
 
 describe("ChatPage Workspace route", () => {
   beforeEach(async () => {
+    clearWorkspaceReplyHandoff();
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: defaultWorkspaceComposerDraftHydrateDraft,
+    });
     delete (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
     resetWorkspaceComposerDraftStoreForTests();
     // Survives a page rebuild by design, so it also survives the previous case.
@@ -900,6 +917,18 @@ describe("ChatPage Workspace route", () => {
       ownerKey: "owner-key",
       message: createMessage(),
     });
+    captured.deleteMessengerMessage.mockReset();
+    captured.deleteMessengerMessage.mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner-key",
+      message: null,
+    });
+    captured.toggleMessengerMessageReaction.mockReset();
+    captured.toggleMessengerMessageReaction.mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner-key",
+      message: createMessage(),
+    });
     captured.markMessengerMessagesReadUpTo.mockReset();
     captured.markMessengerMessagesReadUpTo.mockResolvedValue({
       status: "applied",
@@ -923,6 +952,10 @@ describe("ChatPage Workspace route", () => {
   });
 
   afterEach(async () => {
+    clearWorkspaceReplyHandoff();
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: defaultWorkspaceComposerDraftHydrateDraft,
+    });
     cleanup();
     navigateTo = null;
     useWorkspaceForwardMessageStore.getState().reset();
@@ -3204,7 +3237,7 @@ describe("ChatPage Workspace route", () => {
         captured.directHeaderProps?.onCallClick?.();
       });
 
-      expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
 
       await act(async () => {
         sendRequest.resolve({
@@ -3226,7 +3259,7 @@ describe("ChatPage Workspace route", () => {
     }
   });
 
-  it("does not open a Workspace Jitsi call when the send resolves after abort", async () => {
+  it("does not open a Workspace Jitsi call after unmounting without aborting the send", async () => {
     const session = createSession();
     const ownerKey = workspaceRuntimeOwnerKey(session);
     useMessengerStore.getState().clear();
@@ -3266,7 +3299,7 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       rendered.unmount();
     });
-    expect(sendSignal?.aborted).toBe(true);
+    expect(sendSignal?.aborted).toBe(false);
 
     await act(async () => {
       sendRequest.resolve({
@@ -3279,6 +3312,180 @@ describe("ChatPage Workspace route", () => {
     });
 
     expect(useJitsiCallStore.getState().activeCall).toBeNull();
+  });
+
+  it("keeps an in-flight Workspace header call send active across a topic to stream route change", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      sendSignal = request.signal;
+      return sendRequest.promise;
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
+    act(() => captured.directHeaderProps?.onCallClick?.());
+    await waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${DIRECT_STREAM_UUID}`),
+    );
+    expect(sendSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      await sendRequest.promise;
+      await Promise.resolve();
+    });
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+  });
+
+  it("does not let an old header call completion open Jitsi or reset a new pending call after A to B to A navigation", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const oldSendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    const currentSendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    captured.sendMessengerMessage
+      .mockReturnValueOnce(oldSendRequest.promise)
+      .mockReturnValueOnce(currentSendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
+    act(() => captured.directHeaderProps?.onCallClick?.());
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${DIRECT_STREAM_UUID}`),
+    );
+    await act(async () => {
+      await navigateTo?.(
+        `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`,
+      );
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(
+        `topic:${DIRECT_STREAM_UUID}:${DIRECT_TOPIC_UUID}`,
+      ),
+    );
+    act(() => captured.directHeaderProps?.onCallClick?.());
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      oldSendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      await oldSendRequest.promise;
+      await Promise.resolve();
+    });
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+
+    act(() => captured.directHeaderProps?.onCallClick?.());
+    expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      currentSendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      await currentSendRequest.promise;
+      await Promise.resolve();
+    });
+    expect(useJitsiCallStore.getState().activeCall).not.toBeNull();
+  });
+
+  it("aborts an in-flight Workspace header call when the runtime generation changes", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      sendSignal = request.signal;
+      return sendRequest.promise;
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.directHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
+    act(() => captured.directHeaderProps?.onCallClick?.());
+    await waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+
+    act(() => {
+      const nextSession = {
+        ...session,
+        accessToken: "next-access-token",
+        runtimeGeneration: 2,
+      };
+      useWorkspaceAuthStore.setState({
+        sessions: [nextSession],
+        currentAccountId: nextSession.accountId,
+        runtimeGeneration: 2,
+      });
+    });
+    await waitFor(() => expect(sendSignal?.aborted).toBe(true));
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(screen.queryByText(t("message.sendFailed"))).not.toBeInTheDocument();
+
+    await act(async () => {
+      sendRequest.resolve({ status: "applied", ownerKey, message: createMessage() });
+      await sendRequest.promise;
+      await Promise.resolve();
+    });
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(screen.queryByText(t("message.sendFailed"))).not.toBeInTheDocument();
   });
 
   it("uses the predicted placement UUID until the HTTP message is indexed", async () => {
@@ -3396,6 +3603,367 @@ describe("ChatPage Workspace route", () => {
     expect(
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
     ).toBeUndefined();
+  });
+
+  it("keeps an in-flight send active when navigating to another chat", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: TestSendMessengerMessageRequest & { signal: AbortSignal }) => {
+        sendSignal = request.signal;
+        return sendRequest.promise;
+      },
+    );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("survives route change", ""));
+    });
+    await waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    expect(sendSignal?.aborted).toBe(false);
+
+    const sentMessage = applyLastRequestedSentMessage();
+    await act(async () => {
+      sendRequest.resolve({ status: "applied", ownerKey, message: sentMessage });
+      await sendPromise;
+    });
+  });
+
+  it("stores a localized outbox error when the runtime changes during send", async () => {
+    const session = createSession();
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce(
+      (request: TestSendMessengerMessageRequest & { signal: AbortSignal }) => {
+        sendSignal = request.signal;
+        return sendRequest.promise;
+      },
+    );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("runtime changes", "")).catch((error) => error);
+    });
+    await waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+    const outgoing = Object.values(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+    )[0];
+    if (outgoing == null) throw new Error("Expected an outgoing message");
+
+    act(() => {
+      const nextSession = {
+        ...session,
+        accessToken: "next-access-token",
+        runtimeGeneration: 2,
+      };
+      useWorkspaceAuthStore.setState({
+        sessions: [nextSession],
+        currentAccountId: nextSession.accountId,
+        runtimeGeneration: 2,
+      });
+    });
+
+    await waitFor(() => expect(sendSignal?.aborted).toBe(true));
+    await waitFor(() =>
+      expect(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+      ).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          error: t("message.sendFailed"),
+        }),
+      ),
+    );
+    await expect(sendPromise).resolves.toEqual(
+      expect.objectContaining({ message: t("message.sendFailed") }),
+    );
+  });
+
+  it("keeps an in-flight edit active when navigating to another chat", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownMessage]);
+    const editRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    let editSignal: AbortSignal | undefined;
+    captured.editMessengerMessage.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      editSignal = request.signal;
+      return editRequest.promise;
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => captured.messageListProps?.onEditMessage?.(MESSAGE_UUID));
+    await waitFor(() => expect(captured.composerProps?.editSession).not.toBeNull());
+    const onSubmitEdit = captured.composerProps?.onSubmitEdit;
+    if (onSubmitEdit == null) throw new Error("Workspace edit submit handler is missing");
+    let editPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      editPromise = Promise.resolve(onSubmitEdit(1, "Edited after navigation"));
+    });
+    await waitFor(() => expect(editSignal).toBeInstanceOf(AbortSignal));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    expect(editSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      editRequest.resolve({
+        status: "applied",
+        ownerKey: workspaceRuntimeOwnerKey(createSession()),
+        message: {
+          ...ownMessage,
+          payload: { kind: "markdown", content: "Edited after navigation" },
+        },
+      });
+      await editPromise;
+    });
+  });
+
+  it("keeps an in-flight delete active when navigating to another chat", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownMessage]);
+    const deleteRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    let deleteSignal: AbortSignal | undefined;
+    captured.deleteMessengerMessage.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      deleteSignal = request.signal;
+      return deleteRequest.promise;
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function)),
+    );
+    act(() => captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID));
+    const deleteDialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: t("message.delete") }));
+    await waitFor(() => expect(deleteSignal).toBeInstanceOf(AbortSignal));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    expect(deleteSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      deleteRequest.resolve({
+        status: "applied",
+        ownerKey: workspaceRuntimeOwnerKey(createSession()),
+        message: null,
+      });
+      await deleteRequest.promise;
+    });
+  });
+
+  it("keeps an in-flight reaction active when navigating to another chat", async () => {
+    const reactionRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    let reactionSignal: AbortSignal | undefined;
+    captured.toggleMessengerMessageReaction.mockImplementationOnce(
+      (request: { signal: AbortSignal }) => {
+        reactionSignal = request.signal;
+        return reactionRequest.promise;
+      },
+    );
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.messageListProps?.onToggleMessageReaction).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      void captured.messageListProps?.onToggleMessageReaction?.(MESSAGE_UUID, "thumbsup");
+    });
+    await waitFor(() => expect(reactionSignal).toBeInstanceOf(AbortSignal));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    expect(reactionSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      reactionRequest.resolve({
+        status: "applied",
+        ownerKey: workspaceRuntimeOwnerKey(createSession()),
+        message: createMessage(),
+      });
+      await reactionRequest.promise;
+    });
+  });
+
+  it("does not let an old edit completion close a new edit session after A to B to A navigation", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownMessage]);
+    const oldEditRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    captured.editMessengerMessage.mockReturnValueOnce(oldEditRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => captured.messageListProps?.onEditMessage?.(MESSAGE_UUID));
+    await waitFor(() => expect(captured.composerProps?.editSession).not.toBeNull());
+    const submitOldEdit = captured.composerProps?.onSubmitEdit;
+    if (submitOldEdit == null) throw new Error("Workspace edit submit handler is missing");
+    let oldEditPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      oldEditPromise = Promise.resolve(submitOldEdit(1, "Old edit"));
+    });
+    await waitFor(() => expect(captured.editMessengerMessage).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`),
+    );
+    act(() => captured.messageListProps?.onEditMessage?.(MESSAGE_UUID));
+    await waitFor(() => expect(captured.composerProps?.editSession).not.toBeNull());
+
+    await act(async () => {
+      oldEditRequest.resolve({
+        status: "applied",
+        ownerKey: workspaceRuntimeOwnerKey(createSession()),
+        message: { ...ownMessage, payload: { kind: "markdown", content: "Old edit" } },
+      });
+      await oldEditPromise;
+    });
+
+    expect(captured.composerProps?.editSession).not.toBeNull();
+  });
+
+  it("does not surface old delete or reaction errors after A to B to A navigation", async () => {
+    const ownMessage = {
+      ...createMessage(),
+      authorUuid: USER_UUID,
+      userUuid: USER_UUID,
+      isOwn: true,
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [ownMessage]);
+    const deleteRequest = createDeferred<never>();
+    const reactionRequest = createDeferred<never>();
+    captured.deleteMessengerMessage.mockReturnValueOnce(deleteRequest.promise);
+    captured.toggleMessengerMessageReaction.mockReturnValueOnce(reactionRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function)),
+    );
+    act(() => captured.messageListProps?.onRequestDeleteMessage?.(MESSAGE_UUID));
+    const deleteDialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: t("message.delete") }));
+    act(() => {
+      void captured.messageListProps?.onToggleMessageReaction?.(MESSAGE_UUID, "thumbsup");
+    });
+    await waitFor(() => {
+      expect(captured.deleteMessengerMessage).toHaveBeenCalledOnce();
+      expect(captured.toggleMessengerMessageReaction).toHaveBeenCalledOnce();
+    });
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`),
+    );
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`),
+    );
+
+    await act(async () => {
+      deleteRequest.reject(new Error("late delete failure"));
+      reactionRequest.reject(new Error("late reaction failure"));
+      await Promise.all([
+        deleteRequest.promise.catch(() => undefined),
+        reactionRequest.promise.catch(() => undefined),
+      ]);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("late delete failure")).not.toBeInTheDocument();
+    expect(screen.queryByText("late reaction failure")).not.toBeInTheDocument();
   });
 
   it("settles from realtime before HTTP and treats the lost response as delivered", async () => {
@@ -4150,6 +4718,446 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("opens the message topic and applies a stream reply after target draft hydration", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, topicConversationId, {
+      text: "existing topic draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, streamConversationId, {
+      text: "unchanged stream draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    const targetDraft = selectWorkspaceComposerDraft(
+      useWorkspaceComposerDraftStore.getState(),
+      ownerKey,
+      topicConversationId,
+    );
+    if (targetDraft == null) throw new Error("Expected target topic draft");
+    const streamDraft = selectWorkspaceComposerDraft(
+      useWorkspaceComposerDraftStore.getState(),
+      ownerKey,
+      streamConversationId,
+    );
+    if (streamDraft == null) throw new Error("Expected source stream draft");
+    const targetHydration = createDeferred<typeof targetDraft>();
+    const streamHydration = createDeferred<typeof streamDraft>();
+    const originalHydrateDraft = useWorkspaceComposerDraftStore.getState().hydrateDraft;
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn((draftOwnerKey, hydratedConversationId, requestedDraftUuid) => {
+        if (hydratedConversationId === topicConversationId) return targetHydration.promise;
+        if (hydratedConversationId === streamConversationId) return streamHydration.promise;
+        return originalHydrateDraft(draftOwnerKey, hydratedConversationId, requestedDraftUuid);
+      }),
+    });
+
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    await screen.findByTestId("stream-topic-prompt");
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID, "selected from stream");
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-location").textContent).toBe(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      ),
+    );
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe("existing topic draft");
+    expect(captured.composerProps?.sendDisabled).toBe(true);
+    act(() => {
+      captured.composerProps?.onComposerValueChange("typed while handoff is pending");
+    });
+    await act(async () => {
+      await captured.composerProps?.onSend("typed while handoff is pending", "");
+    });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    expect(
+      Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
+    ).toHaveLength(0);
+    await act(async () => {
+      streamHydration.resolve(streamDraft);
+      await streamHydration.promise;
+    });
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+    await act(async () => {
+      targetHydration.resolve(targetDraft);
+      await targetHydration.promise;
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject({
+        activeTabId: expect.any(String),
+        tabs: [
+          {
+            messageUuid: MESSAGE_UUID,
+            selectedText: "selected from stream",
+            answer: "typed while handoff is pending",
+          },
+        ],
+      });
+      expect(captured.composerProps?.draftInitialValue).toBe("typed while handoff is pending");
+      expect(captured.composerProps?.focusKey).toBe(
+        captured.composerProps?.workspaceReplySession?.activeTabId,
+      );
+      expect(captured.composerProps?.sendDisabled).toBe(false);
+    });
+
+    const replyMarkdown = captured.composerProps?.outgoingBodyOverride;
+    if (replyMarkdown == null) throw new Error("Expected assembled reply markdown");
+    await act(async () => {
+      await captured.composerProps?.onSend(replyMarkdown, "");
+    });
+    expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      ),
+    ).toBeNull();
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        streamConversationId,
+      )?.content,
+    ).toEqual({
+      text: "unchanged stream draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+
+    await act(async () => {
+      await navigateTo?.(-1);
+    });
+    expect(screen.getByTestId("workspace-location").textContent).toBe(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}`,
+    );
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: originalHydrateDraft });
+  });
+
+  it("keeps a newer local reply when target hydration finishes later", async () => {
+    seedSecondMessage();
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const targetHydration = createDeferred<null>();
+    stageWorkspaceReplyHandoff({
+      ownerKey,
+      runtimeGeneration: 1,
+      conversationId: topicConversationId,
+      intentId: "older-stream-reply",
+      quote: {
+        messageUuid: MESSAGE_UUID,
+        senderUuid: USER_B_UUID,
+        senderName: "Bob Reed",
+        quotedContent: "workspace message",
+      },
+      identity: {
+        id: "older-stream-tab",
+        createdAt: "2026-09-10T09:00:00.000Z",
+      },
+    });
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn().mockReturnValue(targetHydration.promise),
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const locationKey = screen.getByTestId("workspace-location").getAttribute("data-location-key");
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(SECOND_MESSAGE_UUID, "newer local selection");
+    });
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.tabs[0]).toMatchObject({
+        messageUuid: SECOND_MESSAGE_UUID,
+        selectedText: "newer local selection",
+      }),
+    );
+
+    await act(async () => {
+      targetHydration.resolve(null);
+      await targetHydration.promise;
+    });
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(1);
+    expect(captured.composerProps?.workspaceReplySession?.tabs[0]).toMatchObject({
+      messageUuid: SECOND_MESSAGE_UUID,
+      selectedText: "newer local selection",
+    });
+    expect(screen.getByTestId("workspace-location")).toHaveAttribute(
+      "data-location-key",
+      locationKey,
+    );
+  });
+
+  it("uses text typed during target hydration as the stream reply answer", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const targetHydration = createDeferred<null>();
+    stageWorkspaceReplyHandoff({
+      ownerKey,
+      runtimeGeneration: 1,
+      conversationId: topicConversationId,
+      intentId: "pending-stream-reply",
+      quote: {
+        messageUuid: MESSAGE_UUID,
+        senderUuid: USER_B_UUID,
+        senderName: "Bob Reed",
+        quotedContent: "workspace message",
+      },
+      identity: {
+        id: "pending-stream-tab",
+        createdAt: "2026-09-10T09:00:00.000Z",
+      },
+    });
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn().mockReturnValue(targetHydration.promise),
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => {
+      captured.composerProps?.onComposerValueChange("typed during hydration");
+    });
+
+    await act(async () => {
+      targetHydration.resolve(null);
+      await targetHydration.promise;
+    });
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.tabs[0]).toMatchObject({
+        messageUuid: MESSAGE_UUID,
+        answer: "typed during hydration",
+      }),
+    );
+  });
+
+  it("discards a claimed reply when target draft hydration rejects", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const targetHydration = createDeferred<null>();
+    stageWorkspaceReplyHandoff({
+      ownerKey,
+      runtimeGeneration: 1,
+      conversationId: topicConversationId,
+      intentId: "rejected-hydration-intent",
+      quote: {
+        messageUuid: MESSAGE_UUID,
+        senderUuid: USER_B_UUID,
+        senderName: "Bob Reed",
+        quotedContent: "workspace message",
+      },
+      identity: {
+        id: "rejected-hydration-tab",
+        createdAt: "2026-09-10T09:00:00.000Z",
+      },
+    });
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn().mockReturnValue(targetHydration.promise),
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    expect(captured.composerProps?.sendDisabled).toBe(true);
+    act(() => {
+      captured.composerProps?.onComposerValueChange("typed before hydration rejection");
+    });
+    await act(async () => {
+      await captured.composerProps?.onSend("typed before hydration rejection", "");
+    });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    expect(
+      Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
+    ).toHaveLength(0);
+    expect(captured.composerProps?.draftInitialValue).toBe("typed before hydration rejection");
+
+    await act(async () => {
+      targetHydration.reject(new Error("draft hydration failed"));
+      await targetHydration.promise.catch(() => undefined);
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.sendDisabled).toBe(false);
+      expect(captured.composerProps?.workspaceReplySession).toEqual({
+        tabs: [],
+        activeTabId: null,
+      });
+      expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:");
+      expect(captured.composerProps?.draftInitialValue).toBe("typed before hydration rejection");
+    });
+
+    await act(async () => {
+      await captured.composerProps?.onSend("typed before hydration rejection", "");
+    });
+    expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+  });
+
+  it("does not replay a claimed reply after the target unmounts during hydration", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const targetHydration = createDeferred<null>();
+    stageWorkspaceReplyHandoff({
+      ownerKey,
+      runtimeGeneration: 1,
+      conversationId: topicConversationId,
+      intentId: "abandoned-target-intent",
+      quote: {
+        messageUuid: MESSAGE_UUID,
+        senderUuid: USER_B_UUID,
+        senderName: "Bob Reed",
+        quotedContent: "workspace message",
+      },
+      identity: {
+        id: "abandoned-target-tab",
+        createdAt: "2026-09-10T09:00:00.000Z",
+      },
+    });
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn().mockReturnValue(targetHydration.promise),
+    });
+
+    const rendered = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    await act(async () => {
+      rendered.unmount();
+      await Promise.resolve();
+      targetHydration.resolve(null);
+      await targetHydration.promise;
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+  });
+
+  it("replaces the active target-topic reply while preserving its answer and ordinary text", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, topicConversationId, {
+      text: "ordinary topic text",
+      replySession: {
+        activeTabId: "existing-tab",
+        tabs: [
+          {
+            id: "existing-tab",
+            messageUuid: SECOND_MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "old quote",
+            createdAt: "2026-09-10T08:00:00.000Z",
+            answer: "existing answer",
+          },
+        ],
+      },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    await screen.findByTestId("stream-topic-prompt");
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject({
+        activeTabId: "existing-tab",
+        tabs: [
+          {
+            id: "existing-tab",
+            messageUuid: MESSAGE_UUID,
+            answer: "existing answer",
+          },
+        ],
+      }),
+    );
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      )?.content.text,
+    ).toBe("ordinary topic text");
+  });
+
+  it("keeps an ordinary topic reply on the current route", async () => {
+    const route = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+    renderWorkspaceChatPageWithShellContexts(route);
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+    });
+
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(1),
+    );
+    expect(screen.getByTestId("workspace-location").textContent).toBe(route);
+  });
+
+  it("does not apply a reply handoff from a stale runtime", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    stageWorkspaceReplyHandoff({
+      ownerKey,
+      runtimeGeneration: 0,
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      intentId: "stale-intent",
+      quote: {
+        messageUuid: MESSAGE_UUID,
+        senderUuid: USER_B_UUID,
+        senderName: "Bob Reed",
+        quotedContent: "workspace message",
+      },
+      identity: {
+        id: "stale-tab",
+        createdAt: "2026-09-10T09:00:00.000Z",
+      },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    expect(captured.composerProps?.workspaceReplySession).toEqual({
+      tabs: [],
+      activeTabId: null,
+    });
+  });
+
   it("preserves ordinary text from a saved draft when clearing its reply session", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
@@ -4323,6 +5331,7 @@ describe("ChatPage Workspace route", () => {
     });
     expect(await screen.findByTestId("stream-topic-prompt")).toBeInTheDocument();
     expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(captured.messageListProps?.onAddReplyMessage).toBeUndefined();
     expect(
       selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
@@ -4502,6 +5511,91 @@ describe("ChatPage Workspace route", () => {
       }),
     );
     await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+  });
+
+  it("clears a sent draft shadow after navigating from A to B and back to A", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, topicConversationId, {
+      text: "send before navigation",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage;
+    }>();
+    const streamHydration = createDeferred<null>();
+    const originalHydrateDraft = useWorkspaceComposerDraftStore.getState().hydrateDraft;
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn((draftOwnerKey, hydratedConversationId, requestedDraftUuid) => {
+        if (hydratedConversationId === streamConversationId) return streamHydration.promise;
+        return originalHydrateDraft(draftOwnerKey, hydratedConversationId, requestedDraftUuid);
+      }),
+    });
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.draftInitialValue).toBe("send before navigation"),
+    );
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend("send before navigation", ""));
+    });
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(streamConversationId),
+    );
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.messageListProps?.conversationId).toBe(topicConversationId),
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.draftInitialValue).toBe("send before navigation"),
+    );
+
+    await act(async () => {
+      const message = applyLastRequestedSentMessage();
+      sendRequest.resolve({ status: "applied", ownerKey, message });
+      await sendPromise;
+    });
+
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      ),
+    ).toBeNull();
+
+    await act(async () => {
+      streamHydration.resolve(null);
+      await streamHydration.promise;
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe("");
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        topicConversationId,
+      ),
+    ).toBeNull();
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: originalHydrateDraft });
   });
 
   it("queues deletion for a second draft created without leaving the conversation", async () => {

@@ -2947,6 +2947,20 @@ describe("MessageComposer controlled attachments", () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith("attachment-uploading");
   });
 
+  it("blocks button and Enter with sendDisabled while keeping text editable", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} sendDisabled />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "reply answer in progress" } });
+    expect(textbox).toHaveValue("reply answer in progress");
+    expect(screen.getByRole("button", { name: "Write a message..." })).toBeDisabled();
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("reply answer in progress");
+  });
+
   it("allows sending a ready attachment without text", async () => {
     const onSend = vi.fn();
     renderWithProviders(
