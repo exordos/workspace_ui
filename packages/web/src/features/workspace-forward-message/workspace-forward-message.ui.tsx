@@ -26,6 +26,7 @@ import { t } from "~/i18n/i18n";
 import { getMessagesByUuids } from "~/shared/api/messenger-client";
 import { createLogger } from "~/shared/lib/logger";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
 import {
   AppDialogShell,
   APP_DIALOG_CONTENT_BASE_CLASS,
@@ -434,6 +435,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
           if (messages.length === 0) {
             throw new Error(t("message.forwardError"));
           }
+          const messengerState = useMessengerStore.getState();
           const markdown = buildWorkspaceForwardMarkdown({
             messages,
             selectedText,
@@ -442,8 +444,30 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
               const user = useUsersStore.getState().usersById[authorUuid];
               return user == null ? authorUuid : selectUserDisplayName(user, authorUuid);
             },
+            resolveSourceLabel: (message) => {
+              const stream = messengerState.streamsById[message.streamUuid];
+              const topic = messengerState.topicsById[message.topicUuid];
+              const streamLabel = stream?.name.trim() || message.streamUuid;
+              if (stream?.isPrivate && stream.directUserUuid != null) {
+                const directUser = useUsersStore.getState().usersById[stream.directUserUuid];
+                return selectUserDisplayName(directUser, streamLabel);
+              }
+              const topicLabel = topic == null ? "" : resolveTopicDisplayInfo(topic.name).label;
+              return topicLabel.length === 0 || topic?.isDefault === true
+                ? streamLabel
+                : `${streamLabel} · ${topicLabel}`;
+            },
+            resolveSourceKind: (message) => {
+              const stream = messengerState.streamsById[message.streamUuid];
+              return stream?.isPrivate && stream.directUserUuid != null ? "direct" : "channel";
+            },
           });
-          const messengerState = useMessengerStore.getState();
+          if (markdown == null) {
+            throw new Error(t("message.forwardError"));
+          }
+          if (!isWorkspaceMessageWithinLimit(markdown)) {
+            throw new Error(t("composer.messageTooLong"));
+          }
           const resolvedTarget = await resolveWorkspaceForwardTarget({
             target,
             runtimeContext: submitRuntimeContext,

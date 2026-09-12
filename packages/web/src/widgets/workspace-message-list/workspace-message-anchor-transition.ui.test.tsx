@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { setLocale, t } from "~/i18n/i18n";
+import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { createUser } from "~/test/factories";
 import { WorkspaceMessageAnchorTransition } from "./workspace-message-anchor-transition.ui";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
@@ -262,6 +263,37 @@ describe("WorkspaceMessageAnchorTransition", () => {
     for (const callback of Object.values(actions)) {
       expect(callback).not.toHaveBeenCalled();
     }
+  });
+
+  it("renders full forward snapshot content and metadata in the passive preview", () => {
+    const sourceUuid = "55555555-5555-4555-8555-555555555555";
+    const forwardUrn = buildWorkspaceForwardUrn(sourceUuid, "Forwarded **preview** body", {
+      sourceLabel: "A very long source channel and topic",
+      sourceCreatedAt: "2020-09-11T16:47:00Z",
+    });
+    expect(forwardUrn).not.toBeNull();
+
+    render(
+      <WorkspaceMessageBubble
+        message={createWorkspaceMessageListServerItem(
+          createMessage(`[Original Author](${forwardUrn})`),
+        )}
+        currentUserUuid="current-user"
+        usersById={{}}
+        isFirstInGroup
+        isLastInGroup
+        presentationMode="preview"
+      />,
+    );
+
+    expect(screen.getByText("Original Author")).toBeInTheDocument();
+    expect(document.querySelector("[data-workspace-quote='true']")).toHaveTextContent(
+      "Forwarded preview body",
+    );
+    expect(screen.getByTitle("A very long source channel and topic")).toHaveTextContent(
+      "# A very long source channel and topic",
+    );
+    expect(screen.getByText(/2020/)).toBeInTheDocument();
   });
 
   it("aligns peer and own previews to their message owner", () => {

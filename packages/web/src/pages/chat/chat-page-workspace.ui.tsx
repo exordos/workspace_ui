@@ -124,15 +124,19 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
-import { countUnicodeCodePoints } from "~/shared/lib/unicode-string.lib";
 import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
 } from "~/shared/lib/workspace-file-loader.lib";
+import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import {
+  hasWorkspaceForwardSnapshot,
+  parseWorkspaceMessageBody,
+} from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import {
   parseWorkspaceMessengerMessageAnchor,
   workspaceMessengerMessageAnchor,
@@ -174,8 +178,6 @@ interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
   presentation?: "default" | "favorites";
 }
-
-const WORKSPACE_MESSAGE_MAX_LENGTH = 40_000;
 
 interface WorkspaceFilePreviewResource {
   blob: Blob;
@@ -1557,7 +1559,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
       // The shared composer shell sends only through Workspace POST /messages/.
       setSendError(null);
-      if (countUnicodeCodePoints(content) > WORKSPACE_MESSAGE_MAX_LENGTH) {
+      if (!isWorkspaceMessageWithinLimit(content)) {
         const error = t("composer.messageTooLong");
         setSendError(error);
         throw new Error(error);
@@ -1902,7 +1904,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleEditMessage = useCallback(
     (messageUuid: string) => {
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-      if (!message?.isOwn) {
+      if (
+        !message?.isOwn ||
+        hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))
+      ) {
         setActionError(t("message.editUnavailable"));
         return;
       }
@@ -2660,7 +2665,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleEditLastMessage = useCallback(() => {
     for (let index = routeMessages.length - 1; index >= 0; index -= 1) {
       const message = routeMessages[index];
-      if (message?.isOwn === true) {
+      if (
+        message?.isOwn === true &&
+        !hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))
+      ) {
         handleEditMessage(message.uuid);
         return;
       }
