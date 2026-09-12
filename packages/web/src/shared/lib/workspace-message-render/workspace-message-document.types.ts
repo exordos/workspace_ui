@@ -145,6 +145,10 @@ export interface WorkspaceMessageQuoteBlock {
 export interface WorkspaceMessageQuoteReference {
   messageUuid: string;
   selectedText?: string;
+  snapshotMarkdown?: string;
+  sourceLabel?: string;
+  sourceKind?: "direct";
+  sourceCreatedAt?: string;
   fallbackAuthorLabel: string;
 }
 

@@ -6,11 +6,12 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 
 const mocked = vi.hoisted(() => ({
-  resolve: vi.fn<(messageUuid: string) => ResolvedMessengerQuoteMessage>(),
+  resolve: vi.fn<(messageUuid: string, enabled?: boolean) => ResolvedMessengerQuoteMessage>(),
 }));
 
 vi.mock("~/entities/messenger/messenger-quote-resolver.hook", () => ({
-  useResolvedMessengerQuoteMessage: (messageUuid: string) => mocked.resolve(messageUuid),
+  useResolvedMessengerQuoteMessage: (messageUuid: string, enabled?: boolean) =>
+    mocked.resolve(messageUuid, enabled),
 }));
 
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
@@ -130,6 +131,82 @@ describe("WorkspaceMessageQuote", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText("<b>saved fragment</b>")).toBeInTheDocument();
     expect(screen.queryByText("Old Bob")).not.toBeInTheDocument();
+  });
+
+  it("renders selected forward text literally instead of interpreting Markdown", () => {
+    const snapshotText = "[docs](https://example.test) **literal**";
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_B,
+          selectedText: snapshotText,
+          snapshotMarkdown: snapshotText,
+          fallbackAuthorLabel: "Saved Bob",
+        }}
+      />,
+    );
+
+    expect(screen.getByText(snapshotText)).toBeInTheDocument();
+    expect(container.querySelector("a[href='https://example.test']")).toBeNull();
+    expect(container.querySelector("strong")).toBeNull();
+  });
+
+  it("renders a forward snapshot without reading the source message", () => {
+    const imageUuid = "55555555-5555-4555-8555-555555555555";
+    mocked.resolve.mockReturnValue({ status: "loading", message: null });
+    const onLoadWorkspaceFilePreview = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_B,
+          snapshotMarkdown: [
+            "## Saved title",
+            "",
+            "Forwarded **body** ✓",
+            "",
+            `![private.png](urn:image:${imageUuid})`,
+          ].join("\n"),
+          sourceLabel: "Engineering · General",
+          sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+          fallbackAuthorLabel: "Saved Bob",
+        }}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+      />,
+    );
+
+    expect(mocked.resolve).toHaveBeenCalledWith(MESSAGE_B, false);
+    expect(screen.getByText("Saved Bob")).toBeInTheDocument();
+    expect(screen.getByText("# Engineering · General")).toBeInTheDocument();
+    expect(container.querySelector("time")?.getAttribute("datetime")).toBe(
+      "2026-07-06T09:00:00.000Z",
+    );
+    expect(container.querySelector("time")?.textContent).toContain("2026");
+    expect(screen.getByRole("heading", { name: "Saved title" })).toBeInTheDocument();
+    expect(screen.getByText("body")).toBeInTheDocument();
+    expect(screen.getByText("Изображение")).toBeInTheDocument();
+    expect(onLoadWorkspaceFilePreview).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-workspace-quote-status='snapshot']")).not.toBeNull();
+    expect(screen.queryByText("Loading messages")).not.toBeInTheDocument();
+    expect(screen.queryByText("Message unavailable")).not.toBeInTheDocument();
+  });
+
+  it("shows direct sources as people instead of channels", () => {
+    mocked.resolve.mockReturnValue({ status: "loading", message: null });
+    render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_B,
+          snapshotMarkdown: "Direct message",
+          sourceLabel: "Bob Reed",
+          sourceKind: "direct",
+          sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+          fallbackAuthorLabel: "Alice",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Bob Reed")).toBeInTheDocument();
+    expect(screen.queryByText("# Bob Reed")).not.toBeInTheDocument();
   });
 
   it("shows the preferred media thumbnail without changing quote navigation", async () => {

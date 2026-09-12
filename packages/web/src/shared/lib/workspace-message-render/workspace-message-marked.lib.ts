@@ -445,13 +445,28 @@ export function getStandaloneWorkspaceQuoteReference(
     return null;
   }
   const reference = parseWorkspaceReferenceUrn(onlyToken.href);
-  if (reference?.kind !== "quote") {
+  if (reference?.kind !== "quote" && reference?.kind !== "forward") {
     return null;
   }
   const fallbackAuthorLabel = plainTextFromTokens(onlyToken.tokens ?? []);
   return {
     messageUuid: reference.messageUuid,
-    ...(reference.text == null ? {} : { selectedText: reference.text }),
+    ...(reference.kind === "quote" && reference.text != null
+      ? { selectedText: reference.text }
+      : {}),
+    ...(reference.kind === "forward"
+      ? {
+          snapshotMarkdown: reference.snapshotMarkdown,
+          ...(reference.snapshotFormat === "plain"
+            ? { selectedText: reference.snapshotMarkdown }
+            : {}),
+          ...(reference.sourceLabel != null ? { sourceLabel: reference.sourceLabel } : {}),
+          ...(reference.sourceKind != null ? { sourceKind: reference.sourceKind } : {}),
+          ...(reference.sourceCreatedAt != null
+            ? { sourceCreatedAt: reference.sourceCreatedAt }
+            : {}),
+        }
+      : {}),
     fallbackAuthorLabel,
   };
 }

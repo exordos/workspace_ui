@@ -1,5 +1,5 @@
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import { buildWorkspaceQuoteReference } from "~/shared/lib/workspace-message-quote.lib";
+import { buildWorkspaceForwardReference } from "~/shared/lib/workspace-message-quote.lib";
 import type {
   CreateWorkspaceDirectForwardStream,
   WorkspaceForwardDirectStreamAppliedResult,
@@ -67,24 +67,35 @@ export function buildWorkspaceForwardMarkdown(options: {
     authorUuid: MessengerUuid,
     message: WorkspaceForwardSourceMessage,
   ) => string;
+  resolveSourceLabel: (message: WorkspaceForwardSourceMessage) => string;
+  resolveSourceKind?: (message: WorkspaceForwardSourceMessage) => "direct" | "channel";
   wroteLabel?: string;
-}): string {
+}): string | null {
   const selectedText = normalizeSelectedForwardText(options.selectedText);
   const shouldUseSelectedText = options.messages.length === 1 && selectedText != null;
 
-  return options.messages
-    .flatMap((message) => {
-      const senderName =
-        options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
-      const quoteReference = buildWorkspaceQuoteReference({
-        senderName,
-        messageUuid: message.uuid,
-        ...(shouldUseSelectedText ? { selectedText } : {}),
-      });
-      return quoteReference == null ? [] : [quoteReference];
-    })
-    .join("\n\n")
-    .trimEnd();
+  const references = options.messages.map((message) => {
+    const senderName =
+      options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
+    const sourceLabel = options.resolveSourceLabel(message).trim() || message.streamUuid;
+    const forwardReference = buildWorkspaceForwardReference({
+      senderName,
+      messageUuid: message.uuid,
+      snapshotMarkdown: shouldUseSelectedText ? selectedText : message.payload.content,
+      ...(shouldUseSelectedText ? { snapshotFormat: "plain" as const } : {}),
+      sourceLabel,
+      ...(options.resolveSourceKind?.(message) === "direct"
+        ? { sourceKind: "direct" as const }
+        : {}),
+      sourceCreatedAt: message.createdAt,
+    });
+    return forwardReference;
+  });
+
+  if (references.some((reference) => reference == null)) {
+    return null;
+  }
+  return references.join("\n\n").trimEnd();
 }
 
 export function buildWorkspaceForwardStreamOptions(

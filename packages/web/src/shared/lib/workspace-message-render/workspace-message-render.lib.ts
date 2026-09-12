@@ -341,7 +341,10 @@ function renderMentionToken(
 }
 
 function renderWorkspaceMessageReference(
-  reference: Extract<ReturnType<typeof parseWorkspaceReferenceUrn>, { kind: "message" | "quote" }>,
+  reference: Extract<
+    ReturnType<typeof parseWorkspaceReferenceUrn>,
+    { kind: "message" | "quote" | "forward" }
+  >,
   labelHtml: string,
   titleAttribute: string,
 ): string {
@@ -392,7 +395,11 @@ function renderLinkToken(
       options,
     );
   }
-  if (reference?.kind === "message" || reference?.kind === "quote") {
+  if (
+    reference?.kind === "message" ||
+    reference?.kind === "quote" ||
+    reference?.kind === "forward"
+  ) {
     return renderWorkspaceMessageReference(reference, labelHtml, titleAttribute);
   }
   if (reference?.kind === "stream" || reference?.kind === "topic") {

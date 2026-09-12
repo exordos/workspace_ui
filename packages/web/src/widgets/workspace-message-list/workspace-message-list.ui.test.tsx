@@ -11,6 +11,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 
 vi.mock("emoji-picker-react", () => ({
@@ -6377,6 +6378,40 @@ describe("WorkspaceMessageList", () => {
 
     fireEvent.click(screen.getByLabelText("Thumbs up"));
     expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
+  });
+
+  it("does not offer editing for immutable forward snapshots", async () => {
+    const forwardUrn = buildWorkspaceForwardUrn(
+      "22222222-2222-4222-8222-222222222222",
+      "Forwarded text",
+    );
+    expect(forwardUrn).not.toBeNull();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-forward-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: `[Original Author](${forwardUrn})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onEditMessage: vi.fn(),
+          onRequestDeleteMessage: vi.fn(),
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
   });
 
   it("sends native emoji from the Workspace reaction picker", async () => {

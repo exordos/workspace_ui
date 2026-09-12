@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildWorkspaceForwardUrn,
   buildWorkspaceMessageUrn,
   buildWorkspaceQuoteUrn,
   buildWorkspaceReferenceUrn,
@@ -22,6 +23,9 @@ describe("Workspace reference URNs", () => {
     expect(buildWorkspaceStreamUrn(STREAM_UUID)).toBe(`urn:stream:${STREAM_UUID}`);
     expect(buildWorkspaceTopicUrn(TOPIC_UUID)).toBe(`urn:topic:${TOPIC_UUID}`);
     expect(buildWorkspaceQuoteUrn(MESSAGE_UUID)).toBe(`urn:quote:${MESSAGE_UUID}`);
+    expect(buildWorkspaceForwardUrn(MESSAGE_UUID, "Forwarded body")).toMatch(
+      new RegExp(`^urn:forward:${MESSAGE_UUID}\\?snapshot=[A-Za-z0-9_-]+$`),
+    );
   });
 
   it("builds the same contract from typed references", () => {
@@ -45,6 +49,19 @@ describe("Workspace reference URNs", () => {
         text: "Selected text",
       }),
     ).toBe(`urn:quote:${MESSAGE_UUID}?text=Selected%20text`);
+    expect(
+      parseWorkspaceReferenceUrn(
+        buildWorkspaceReferenceUrn({
+          kind: "forward",
+          messageUuid: MESSAGE_UUID,
+          snapshotMarkdown: "Selected **markdown** ✓",
+        }),
+      ),
+    ).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown: "Selected **markdown** ✓",
+    });
   });
 
   it("parses existing user/message URNs and both topic URN formats", () => {
@@ -89,6 +106,84 @@ describe("Workspace reference URNs", () => {
     });
   });
 
+  it("round-trips a UTF-8 Markdown forward snapshot through canonical base64url", () => {
+    const snapshotMarkdown = [
+      "## Привет, Троя",
+      "",
+      "[report (final).pdf](urn:file:33333333-3333-4333-8333-333333333333)",
+      "",
+      "`a+b/c=` ✓",
+    ].join("\n");
+    const urn = buildWorkspaceForwardUrn(MESSAGE_UUID, snapshotMarkdown);
+    const encodedSnapshot = urn?.split("?snapshot=")[1];
+
+    expect(encodedSnapshot).not.toContain("+");
+    expect(encodedSnapshot).not.toContain("/");
+    expect(encodedSnapshot).not.toContain("=");
+    expect(parseWorkspaceReferenceUrn(urn)).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown,
+    });
+  });
+
+  it("keeps the cross-client UTF-8 base64url vector stable", () => {
+    expect(buildWorkspaceForwardUrn(MESSAGE_UUID, "Привет ✓")).toBe(
+      `urn:forward:${MESSAGE_UUID}?snapshot=0J_RgNC40LLQtdGCIOKckw`,
+    );
+  });
+
+  it("round-trips source display metadata without turning it into routing authority", () => {
+    const urn = buildWorkspaceForwardUrn(MESSAGE_UUID, "Привет ✓", {
+      sourceLabel: "Engineering · Общий чат",
+      sourceCreatedAt: "2026-09-11T16:47:00+03:00",
+    });
+
+    expect(urn).toBe(
+      `urn:forward:${MESSAGE_UUID}?snapshot=0J_RgNC40LLQtdGCIOKckw&source=RW5naW5lZXJpbmcgwrcg0J7QsdGJ0LjQuSDRh9Cw0YI&created_at=2026-09-11T16%3A47%3A00%2B03%3A00`,
+    );
+    expect(parseWorkspaceReferenceUrn(urn)).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown: "Привет ✓",
+      sourceLabel: "Engineering · Общий чат",
+      sourceCreatedAt: "2026-09-11T16:47:00+03:00",
+    });
+  });
+
+  it("round-trips an explicitly plain-text forward snapshot", () => {
+    const snapshotText = "[docs](https://example.test) **literal**";
+    const urn = buildWorkspaceForwardUrn(MESSAGE_UUID, snapshotText, {
+      snapshotFormat: "plain",
+    });
+
+    expect(urn).toContain("&format=plain");
+    expect(parseWorkspaceReferenceUrn(urn)).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown: snapshotText,
+      snapshotFormat: "plain",
+    });
+  });
+
+  it("round-trips a direct source without presenting it as a channel", () => {
+    const urn = buildWorkspaceForwardUrn(MESSAGE_UUID, "Direct message", {
+      sourceLabel: "Bob Reed",
+      sourceKind: "direct",
+      sourceCreatedAt: "2026-09-11T16:47:00+03:00",
+    });
+
+    expect(urn).toContain("&source_kind=direct&");
+    expect(parseWorkspaceReferenceUrn(urn)).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown: "Direct message",
+      sourceLabel: "Bob Reed",
+      sourceKind: "direct",
+      sourceCreatedAt: "2026-09-11T16:47:00+03:00",
+    });
+  });
+
   it("treats empty quote text as absent", () => {
     expect(buildWorkspaceQuoteUrn(MESSAGE_UUID, "")).toBe(`urn:quote:${MESSAGE_UUID}`);
     expect(parseWorkspaceReferenceUrn(`urn:quote:${MESSAGE_UUID}?text=`)).toEqual({
@@ -112,6 +207,19 @@ describe("Workspace reference URNs", () => {
       `urn:quote:${MESSAGE_UUID}?text=first&text=second`,
       `urn:quote:${MESSAGE_UUID}?text=value&unknown=value`,
       `urn:quote:${MESSAGE_UUID}?text=%E0%A4%A`,
+      `urn:forward:${MESSAGE_UUID}`,
+      `urn:forward:${MESSAGE_UUID}?snapshot`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=%%%`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v=`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&unknown=value`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&format=markdown`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&source_kind=direct`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&source=RW5naW5lZXJpbmc&source_kind=channel&created_at=2026-09-11T16%3A47%3A00Z`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&source=RW5naW5lZXJpbmc`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&created_at=2026-09-11T16%3A47%3A00Z`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&source=RW5naW5lZXJpbmc&created_at=not-a-date`,
+      `urn:forward:${MESSAGE_UUID}?snapshot=Zm9v&snapshot=YmFy`,
+      `urn:forward:${MESSAGE_UUID}?unknown=Zm9v`,
       "/stream/10-general/topic/Bugs",
       "https://zulip.example/#narrow/channel/10-general/topic/Bugs",
     ];

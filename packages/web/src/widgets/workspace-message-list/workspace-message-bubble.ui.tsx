@@ -14,7 +14,10 @@ import {
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import {
+  hasWorkspaceForwardSnapshot,
+  parseWorkspaceMessageBody,
+} from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
@@ -431,6 +434,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       });
       return {
         ...segmented,
+        hasForwardSnapshot: hasWorkspaceForwardSnapshot(document),
         hasQuoteSegments: segmented.segments.some((segment) => segment.kind === "quote"),
         html: segmented.segments
           .filter((segment) => segment.kind === "html")
@@ -499,7 +503,15 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     });
     const renderQuote = useCallback(
       (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode =>
-        isPreview ? (
+        isPreview && segment.reference.snapshotMarkdown != null ? (
+          <WorkspaceMessageQuote
+            reference={segment.reference}
+            mode={quoteRenderMode}
+            visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
+            resolveMention={resolveMention}
+            loadEnabled={false}
+          />
+        ) : isPreview ? (
           <WorkspaceMessageQuoteFrame header={segment.reference.fallbackAuthorLabel}>
             {segment.reference.selectedText}
           </WorkspaceMessageQuoteFrame>
@@ -577,7 +589,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             onAddReplyMessage={interactiveActions?.onAddReplyMessage}
             onForwardMessage={interactiveActions?.onForwardMessage}
             onToggleMessageSelection={interactiveActions?.onToggleMessageSelection}
-            onEditMessage={interactiveActions?.onEditMessage}
+            onEditMessage={
+              renderedBody.hasForwardSnapshot ? undefined : interactiveActions?.onEditMessage
+            }
             onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
             onCopyMessageText={interactiveActions?.onCopyMessageText}
             onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}

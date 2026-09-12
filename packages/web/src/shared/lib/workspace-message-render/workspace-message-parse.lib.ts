@@ -640,7 +640,7 @@ function parseInlineTokens(
             ];
           }
 
-          if (workspaceReference?.kind === "quote") {
+          if (workspaceReference?.kind === "quote" || workspaceReference?.kind === "forward") {
             context.state.hasLinks = true;
             return [
               {
@@ -781,7 +781,11 @@ function toQuoteReferenceBlock(
   }
 
   const onlyChild = children[0];
-  if (onlyChild?.kind !== "link" || onlyChild.workspaceReference?.kind !== "quote") {
+  if (
+    onlyChild?.kind !== "link" ||
+    (onlyChild.workspaceReference?.kind !== "quote" &&
+      onlyChild.workspaceReference?.kind !== "forward")
+  ) {
     return null;
   }
 
@@ -793,7 +797,22 @@ function toQuoteReferenceBlock(
     kind: "quote-reference",
     reference: {
       messageUuid: reference.messageUuid,
-      ...(reference.text == null ? {} : { selectedText: reference.text }),
+      ...(reference.kind === "quote" && reference.text != null
+        ? { selectedText: reference.text }
+        : {}),
+      ...(reference.kind === "forward"
+        ? {
+            snapshotMarkdown: reference.snapshotMarkdown,
+            ...(reference.snapshotFormat === "plain"
+              ? { selectedText: reference.snapshotMarkdown }
+              : {}),
+            ...(reference.sourceLabel != null ? { sourceLabel: reference.sourceLabel } : {}),
+            ...(reference.sourceKind != null ? { sourceKind: reference.sourceKind } : {}),
+            ...(reference.sourceCreatedAt != null
+              ? { sourceCreatedAt: reference.sourceCreatedAt }
+              : {}),
+          }
+        : {}),
       fallbackAuthorLabel,
     },
   };
@@ -985,4 +1004,10 @@ export function parseWorkspaceMessageBody(
     metadata: buildMetadata(blocks, state, lastBlockKind, safeTextPreview),
     safeTextPreview,
   };
+}
+
+export function hasWorkspaceForwardSnapshot(document: WorkspaceMessageDocument): boolean {
+  return document.blocks.some(
+    (block) => block.kind === "quote-reference" && block.reference.snapshotMarkdown != null,
+  );
 }

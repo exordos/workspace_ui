@@ -1,5 +1,8 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { useResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
+import {
+  useResolvedMessengerQuoteMessage,
+  type ResolvedMessengerQuoteMessage,
+} from "~/entities/messenger/messenger-quote-resolver.hook";
 import {
   WorkspaceMessageMediaThumbnail,
   type WorkspaceMessageMediaThumbnailStatus,
@@ -11,7 +14,9 @@ import {
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
+import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
@@ -31,6 +36,100 @@ const QUOTE_RENDER_OPTIONS = {
   enableGallery: false,
 } as const;
 
+function resolveQuoteAuthorLabel(options: {
+  isForwardSnapshot: boolean;
+  status: ResolvedMessengerQuoteMessage["status"];
+  author: User | undefined;
+  fallbackAuthorLabel: string;
+}): string {
+  const fallback = options.fallbackAuthorLabel.trim() || t("composer.quote");
+  if (options.isForwardSnapshot || options.status === "loading") return fallback;
+  return options.status === "ready" ? selectUserDisplayName(options.author, fallback) : "";
+}
+
+const ForwardSnapshotHeader = React.memo(function ForwardSnapshotHeader({
+  authorLabel,
+  sourceLabel,
+  sourceKind,
+  sourceCreatedAt,
+}: {
+  authorLabel: string;
+  sourceLabel?: string;
+  sourceKind?: "direct";
+  sourceCreatedAt?: string;
+}): React.ReactElement {
+  const sourceTime = useMemo(() => {
+    if (sourceCreatedAt == null) return null;
+    const timestampMs = Date.parse(sourceCreatedAt);
+    return Number.isFinite(timestampMs)
+      ? formatMessageTimeWithDate(Math.floor(timestampMs / 1000))
+      : null;
+  }, [sourceCreatedAt]);
+
+  return (
+    <span className="flex min-w-0 items-baseline gap-1.5">
+      <span className="shrink-0 truncate text-accent">{authorLabel}</span>
+      {sourceLabel != null ? (
+        <span
+          className="min-w-0 truncate border-l-2 border-accent pl-1 text-text-muted"
+          title={sourceLabel}
+        >
+          {sourceKind === "direct" ? sourceLabel : `# ${sourceLabel}`}
+        </span>
+      ) : null}
+      {sourceTime != null ? (
+        <time className="ml-auto shrink-0 font-normal text-text-muted" dateTime={sourceCreatedAt}>
+          {sourceTime}
+        </time>
+      ) : null}
+    </span>
+  );
+});
+
+function resolveQuotePresentation(options: {
+  isForwardSnapshot: boolean;
+  resolvedStatus: ResolvedMessengerQuoteMessage["status"];
+  authorLabel: string;
+  selectedText?: string;
+  renderedSource: ReturnType<typeof renderWorkspaceMessageBodySegments> | null;
+  renderedHtml: string;
+  visibleSegments: ReturnType<typeof renderWorkspaceMessageBodySegments>["segments"];
+  renderNestedQuote: (segment: WorkspaceMessageBodyQuoteSegment) => React.ReactNode;
+}): { headerLabel: string; messageContent: React.ReactNode } {
+  if (!options.isForwardSnapshot && options.resolvedStatus === "unavailable") {
+    return { headerLabel: t("message.quoteUnavailable"), messageContent: null };
+  }
+  if (!options.isForwardSnapshot && options.resolvedStatus === "loading") {
+    return {
+      headerLabel: options.authorLabel,
+      messageContent: <span className="text-xs text-text-muted">{t("chat.loadingMessages")}</span>,
+    };
+  }
+  if (options.selectedText != null) {
+    return {
+      headerLabel: options.authorLabel,
+      messageContent: (
+        <div className="whitespace-pre-wrap break-words text-sm">{options.selectedText}</div>
+      ),
+    };
+  }
+  if (options.renderedSource != null) {
+    return {
+      headerLabel: options.authorLabel,
+      messageContent: (
+        <WorkspaceMessageBody
+          html={options.renderedHtml}
+          segments={options.visibleSegments}
+          renderQuote={options.renderNestedQuote}
+          metadata={options.renderedSource.metadata}
+          useInlineMeta={false}
+        />
+      ),
+    };
+  }
+  return { headerLabel: options.authorLabel, messageContent: null };
+}
+
 export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   reference,
   mode = DEFAULT_WORKSPACE_QUOTE_RENDER_MODE,
@@ -42,7 +141,11 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   onLoadWorkspaceFilePreview,
   loadEnabled = true,
 }: WorkspaceMessageQuoteProps): React.ReactElement {
-  const resolved = useResolvedMessengerQuoteMessage(reference.messageUuid, loadEnabled);
+  const isForwardSnapshot = reference.snapshotMarkdown != null;
+  const resolved = useResolvedMessengerQuoteMessage(
+    reference.messageUuid,
+    loadEnabled && !isForwardSnapshot,
+  );
   const [readyMediaFileUuid, setReadyMediaFileUuid] = useState<string | null>(null);
   const handleMediaThumbnailStatusChange = useCallback(
     (fileUuid: string, status: WorkspaceMessageMediaThumbnailStatus) => {
@@ -53,33 +156,45 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   const author = useUsersStore((state) =>
     resolved.message == null ? undefined : state.usersById[resolved.message.authorUuid],
   );
-  let authorLabel = "";
-  if (resolved.status === "loading") {
-    authorLabel = reference.fallbackAuthorLabel.trim() || t("composer.quote");
-  } else if (resolved.status === "ready") {
-    authorLabel = selectUserDisplayName(
-      author,
-      reference.fallbackAuthorLabel.trim() || t("composer.quote"),
-    );
-  }
+  const authorLabel = resolveQuoteAuthorLabel({
+    isForwardSnapshot,
+    status: resolved.status,
+    author,
+    fallbackAuthorLabel: reference.fallbackAuthorLabel,
+  });
+  const header = isForwardSnapshot ? (
+    <ForwardSnapshotHeader
+      authorLabel={authorLabel}
+      sourceLabel={reference.sourceLabel}
+      sourceKind={reference.sourceKind}
+      sourceCreatedAt={reference.sourceCreatedAt}
+    />
+  ) : (
+    authorLabel
+  );
   const sourceMarkdown =
-    resolved.status === "ready" && resolved.message != null ? resolved.message.payload.content : "";
+    reference.snapshotMarkdown ??
+    (resolved.status === "ready" && resolved.message != null
+      ? resolved.message.payload.content
+      : "");
   const sourceDocument = useMemo(() => {
-    if (resolved.status !== "ready" || reference.selectedText != null) {
+    if ((!isForwardSnapshot && resolved.status !== "ready") || reference.selectedText != null) {
       return null;
     }
     const document = parseWorkspaceMessageBody(sourceMarkdown, { resolveMention });
     const previewReferences = collectWorkspaceMessagePreviewFileReferences(document);
     return {
       document,
-      mediaReference: selectWorkspaceMessageMediaPreviewReference(document),
+      mediaReference: isForwardSnapshot
+        ? null
+        : selectWorkspaceMessageMediaPreviewReference(document),
       mediaFileUuids: new Set(
         previewReferences
           .filter((reference) => reference.kind === "media")
           .map((reference) => reference.fileUuid),
       ),
     };
-  }, [reference.selectedText, resolveMention, resolved.status, sourceMarkdown]);
+  }, [isForwardSnapshot, reference.selectedText, resolveMention, resolved.status, sourceMarkdown]);
   const renderedSource = useMemo(() => {
     if (sourceDocument == null) return null;
     const { document, mediaFileUuids, mediaReference } = sourceDocument;
@@ -184,34 +299,25 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     },
     [onOpenMessage, openMessage],
   );
-  let headerLabel = authorLabel;
-  let messageContent: React.ReactNode = null;
-  if (resolved.status === "unavailable") {
-    headerLabel = t("message.quoteUnavailable");
-  } else if (resolved.status === "loading") {
-    messageContent = <span className="text-xs text-text-muted">{t("chat.loadingMessages")}</span>;
-  } else if (reference.selectedText != null) {
-    messageContent = (
-      <div className="whitespace-pre-wrap break-words text-sm">{reference.selectedText}</div>
-    );
-  } else if (renderedSource != null) {
-    messageContent = (
-      <WorkspaceMessageBody
-        html={renderedHtml}
-        segments={visibleSegments}
-        renderQuote={renderNestedQuote}
-        metadata={renderedSource.metadata}
-        useInlineMeta={false}
-      />
-    );
-  }
+  const { headerLabel, messageContent } = resolveQuotePresentation({
+    isForwardSnapshot,
+    resolvedStatus: resolved.status,
+    authorLabel,
+    selectedText: reference.selectedText,
+    renderedSource,
+    renderedHtml,
+    visibleSegments,
+    renderNestedQuote,
+  });
 
   return (
     <WorkspaceMessageQuoteFrame
-      header={headerLabel}
-      headerMuted={resolved.status === "unavailable"}
+      header={isForwardSnapshot ? header : headerLabel}
+      headerMuted={!isForwardSnapshot && resolved.status === "unavailable"}
       leading={
-        sourceDocument?.mediaReference != null && onLoadWorkspaceFilePreview != null ? (
+        !isForwardSnapshot &&
+        sourceDocument?.mediaReference != null &&
+        onLoadWorkspaceFilePreview != null ? (
           <WorkspaceMessageMediaThumbnail
             key={sourceDocument.mediaReference.fileUuid}
             reference={sourceDocument.mediaReference}
@@ -220,12 +326,15 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
           />
         ) : null
       }
-      headerProps={{ "data-workspace-quote-open": "true" }}
+      headerProps={{
+        "data-workspace-quote-open": "true",
+        className: isForwardSnapshot ? "mb-1" : "",
+      }}
       className={onOpenMessage == null ? "" : "cursor-pointer"}
       data-workspace-quote="true"
       data-workspace-quote-mode={mode}
       data-workspace-quote-message-uuid={reference.messageUuid}
-      data-workspace-quote-status={resolved.status}
+      data-workspace-quote-status={isForwardSnapshot ? "snapshot" : resolved.status}
       role="link"
       tabIndex={onOpenMessage == null ? -1 : 0}
       aria-disabled={onOpenMessage == null}
