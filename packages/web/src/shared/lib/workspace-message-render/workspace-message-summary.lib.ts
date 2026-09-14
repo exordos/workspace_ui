@@ -1,3 +1,4 @@
+import { t } from "~/i18n/i18n";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_SUMMARY_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
@@ -22,6 +23,17 @@ interface SummaryBuildResult {
 interface BlockSummaryBuildResult extends SummaryBuildResult {
   sourceKind: WorkspaceMessageBlock["kind"];
 }
+
+interface SummaryBuildContext {
+  forwardDepth: number;
+  seenForwardSnapshots: ReadonlySet<string>;
+}
+
+const MAX_FORWARD_SUMMARY_DEPTH = 4;
+const ROOT_SUMMARY_BUILD_CONTEXT: SummaryBuildContext = {
+  forwardDepth: 0,
+  seenForwardSnapshots: new Set<string>(),
+};
 
 function truncatePreview(text: string, maxLength: number): string {
   const limit = Math.max(0, Math.floor(maxLength));
@@ -166,6 +178,7 @@ function summarizeParagraph(
 function summarizeBlock(
   block: WorkspaceMessageBlock,
   options: WorkspaceMessageSummaryOptions,
+  context: SummaryBuildContext,
 ): SummaryBuildResult {
   switch (block.kind) {
     case "paragraph":
@@ -175,17 +188,44 @@ function summarizeBlock(
         block.blocks,
         { ...options, includeQuotePrefix: false },
         false,
+        context,
       );
       return {
         text: options.includeQuotePrefix ? `Цитата: ${quote.text}` : quote.text,
         leadingKind: "quote",
       };
     }
-    case "quote-reference":
+    case "quote-reference": {
+      if (block.reference.snapshotMarkdown != null) {
+        const snapshotMarkdown = block.reference.snapshotMarkdown;
+        let snapshotText = block.reference.selectedText;
+        if (
+          snapshotText == null &&
+          context.forwardDepth < MAX_FORWARD_SUMMARY_DEPTH &&
+          !context.seenForwardSnapshots.has(snapshotMarkdown)
+        ) {
+          const seenForwardSnapshots = new Set(context.seenForwardSnapshots);
+          seenForwardSnapshots.add(snapshotMarkdown);
+          snapshotText = summarizeBlocksInternal(
+            parseWorkspaceMessageBody(snapshotMarkdown).blocks,
+            options,
+            true,
+            {
+              forwardDepth: context.forwardDepth + 1,
+              seenForwardSnapshots,
+            },
+          ).text;
+        }
+        return {
+          text: normalizePreviewText(snapshotText ?? "") || t("message.forwardedMessage"),
+          leadingKind: "quote",
+        };
+      }
       return {
         text: "Цитата",
         leadingKind: "quote",
       };
+    }
     case "code":
       return {
         text: `Код: ${normalizePreviewText(block.text)}`,
@@ -210,16 +250,17 @@ function summarizeBlocks(
   blocks: readonly WorkspaceMessageBlock[],
   options: WorkspaceMessageSummaryOptions,
 ): SummaryBuildResult {
-  return summarizeBlocksInternal(blocks, options, true);
+  return summarizeBlocksInternal(blocks, options, true, ROOT_SUMMARY_BUILD_CONTEXT);
 }
 
 function summarizeBlocksInternal(
   blocks: readonly WorkspaceMessageBlock[],
   options: WorkspaceMessageSummaryOptions,
   skipQuotesWhenOwnTextExists: boolean,
+  context: SummaryBuildContext,
 ): SummaryBuildResult {
   const parts: BlockSummaryBuildResult[] = blocks.map((block) => ({
-    ...summarizeBlock(block, options),
+    ...summarizeBlock(block, options, context),
     sourceKind: block.kind,
   }));
   const ownParts = parts.filter(

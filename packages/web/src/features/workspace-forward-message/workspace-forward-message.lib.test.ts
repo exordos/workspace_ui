@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseWorkspaceReferenceUrn } from "~/shared/lib/workspace-reference-urn.lib";
 
 interface ForwardMessage {
   uuid: string;
@@ -12,6 +13,7 @@ interface ForwardMessage {
 const LIB_MODULE = "./workspace-forward-message.lib";
 const MESSAGE_A = "11111111-1111-4111-8111-111111111111";
 const MESSAGE_B = "22222222-2222-4222-8222-222222222222";
+const SOURCE_LABEL = "Engineering · General";
 
 function createForwardMessage(overrides: Partial<ForwardMessage> = {}): ForwardMessage {
   return {
@@ -65,22 +67,40 @@ describe("workspace forward message lib contract", () => {
       messages: [createForwardMessage()],
       selectedText: "selected fragment",
       resolveAuthorLabel: vi.fn(() => "Alice"),
+      resolveSourceLabel: vi.fn(() => SOURCE_LABEL),
     });
 
-    expect(markdown).toContain("text=selected%20fragment");
+    const match = /^\[Alice\]\((.+)\)$/.exec(markdown ?? "");
+    expect(parseWorkspaceReferenceUrn(match?.[1])).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_A,
+      snapshotMarkdown: "selected fragment",
+      snapshotFormat: "plain",
+      sourceLabel: SOURCE_LABEL,
+      sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+    });
     expect(markdown).not.toContain("full message text");
   });
 
-  it("preserves selected text whitespace and line breaks in the quote URN", async () => {
+  it("preserves selected text whitespace and line breaks in the forward snapshot", async () => {
     const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
 
     const markdown = buildWorkspaceForwardMarkdown({
       messages: [createForwardMessage()],
       selectedText: " foo \nbar ",
       resolveAuthorLabel: vi.fn(() => "Alice"),
+      resolveSourceLabel: vi.fn(() => SOURCE_LABEL),
     });
 
-    expect(markdown).toBe(`[Alice](urn:quote:${MESSAGE_A}?text=%20foo%20%0Abar%20)`);
+    const match = /^\[Alice\]\((.+)\)$/.exec(markdown ?? "");
+    expect(parseWorkspaceReferenceUrn(match?.[1])).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_A,
+      snapshotMarkdown: " foo \nbar ",
+      snapshotFormat: "plain",
+      sourceLabel: SOURCE_LABEL,
+      sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+    });
   });
 
   it("does not replace several messages with one selected text", async () => {
@@ -99,25 +119,68 @@ describe("workspace forward message lib contract", () => {
       ],
       selectedText: "selected fragment",
       resolveAuthorLabel: vi.fn(() => "Alice"),
+      resolveSourceLabel: vi.fn(() => SOURCE_LABEL),
     });
 
-    expect(markdown).toContain(`urn:quote:${MESSAGE_A}`);
-    expect(markdown).toContain(`urn:quote:${MESSAGE_B}`);
+    const references = (markdown ?? "").split("\n\n").map((line: string) => {
+      const match = /^\[Alice\]\((.+)\)$/.exec(line);
+      return parseWorkspaceReferenceUrn(match?.[1]);
+    });
+    expect(references).toEqual([
+      {
+        kind: "forward",
+        messageUuid: MESSAGE_A,
+        snapshotMarkdown: "first full text",
+        sourceLabel: SOURCE_LABEL,
+        sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+      },
+      {
+        kind: "forward",
+        messageUuid: MESSAGE_B,
+        snapshotMarkdown: "second full text",
+        sourceLabel: SOURCE_LABEL,
+        sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+      },
+    ]);
     expect(markdown).not.toContain("first full text");
     expect(markdown).not.toContain("second full text");
     expect(markdown).not.toContain("selected fragment");
   });
 
-  it("uses a canonical Workspace quote reference", async () => {
+  it("uses a canonical Workspace forward reference", async () => {
     const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
 
     const markdown = buildWorkspaceForwardMarkdown({
       messages: [createForwardMessage()],
       resolveAuthorLabel: vi.fn(() => "Alice [Admin]"),
+      resolveSourceLabel: vi.fn(() => SOURCE_LABEL),
       wroteLabel: "said",
     });
 
-    expect(markdown).toBe(`[Alice \\[Admin\\]](urn:quote:${MESSAGE_A})`);
+    const match = /^\[Alice \\\[Admin\\\]\]\((.+)\)$/.exec(markdown ?? "");
+    expect(parseWorkspaceReferenceUrn(match?.[1])).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_A,
+      snapshotMarkdown: "full message text",
+      sourceLabel: SOURCE_LABEL,
+      sourceCreatedAt: "2026-07-06T09:00:00.000Z",
+    });
+  });
+
+  it("rejects the whole forward when any selected message cannot be serialized", async () => {
+    const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
+
+    const markdown = buildWorkspaceForwardMarkdown({
+      messages: [
+        createForwardMessage(),
+        createForwardMessage({ uuid: MESSAGE_B, payload: { kind: "markdown", content: "two" } }),
+      ],
+      resolveAuthorLabel: vi.fn(() => "Alice"),
+      resolveSourceLabel: (message: ForwardMessage) =>
+        message.uuid === MESSAGE_B ? "x".repeat(513) : SOURCE_LABEL,
+    });
+
+    expect(markdown).toBeNull();
   });
 
   it("reuses an existing private stream with default topic for a direct target", async () => {

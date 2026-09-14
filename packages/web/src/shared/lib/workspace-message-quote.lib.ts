@@ -1,4 +1,4 @@
-import { buildWorkspaceQuoteUrn } from "./workspace-reference-urn.lib";
+import { buildWorkspaceForwardUrn, buildWorkspaceQuoteUrn } from "./workspace-reference-urn.lib";
 
 export interface WorkspaceQuoteHeaderInput {
   senderName: string;
@@ -11,6 +11,16 @@ export interface WorkspaceQuoteReferenceInput {
   senderName: string;
   messageUuid: string;
   selectedText?: string;
+}
+
+export interface WorkspaceForwardReferenceInput {
+  senderName: string;
+  messageUuid: string;
+  snapshotMarkdown: string;
+  snapshotFormat?: "plain";
+  sourceLabel: string;
+  sourceKind?: "direct";
+  sourceCreatedAt: string;
 }
 
 export function escapeWorkspaceMarkdownInline(value: string): string {
@@ -34,6 +44,28 @@ export function buildWorkspaceQuoteReference({
     return null;
   }
   return `[${authorLabel}](${quoteUrn})`;
+}
+
+export function buildWorkspaceForwardReference({
+  senderName,
+  messageUuid,
+  snapshotMarkdown,
+  snapshotFormat,
+  sourceLabel,
+  sourceKind,
+  sourceCreatedAt,
+}: WorkspaceForwardReferenceInput): string | null {
+  const forwardUrn = buildWorkspaceForwardUrn(messageUuid, snapshotMarkdown, {
+    snapshotFormat,
+    sourceLabel,
+    sourceKind,
+    sourceCreatedAt,
+  });
+  const authorLabel = escapeWorkspaceMarkdownInline(senderName.trim());
+  if (forwardUrn == null || authorLabel.length === 0) {
+    return null;
+  }
+  return `[${authorLabel}](${forwardUrn})`;
 }
 
 function normalizeQuoteMarkdown(value: string): string {

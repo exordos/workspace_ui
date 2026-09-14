@@ -12,6 +12,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
+import { parseWorkspaceReferenceUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { useWorkspaceForwardMessageStore } from "./workspace-forward-message.model";
 
 const mocks = vi.hoisted(() => ({
@@ -48,6 +49,7 @@ const TOPIC_UUID = "00000000-0000-4000-8000-000000000005";
 const DIRECT_STREAM_UUID = "00000000-0000-4000-8000-000000000006";
 const DIRECT_TOPIC_UUID = "00000000-0000-4000-8000-000000000007";
 const MESSAGE_UUID = "00000000-0000-4000-8000-000000000008";
+const SECOND_MESSAGE_UUID = "00000000-0000-4000-8000-00000000000b";
 const CREATED_STREAM_UUID = "00000000-0000-4000-8000-000000000009";
 const CREATED_TOPIC_UUID = "00000000-0000-4000-8000-00000000000a";
 
@@ -363,16 +365,109 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => {
-      expect(mocks.sendMessengerMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          streamUuid: STREAM_UUID,
-          topicUuid: TOPIC_UUID,
-          markdown: `[Bob Reed](urn:quote:${MESSAGE_UUID})`,
-          includeStreamConversation: false,
-        }),
-      );
+      expect(mocks.sendMessengerMessage).toHaveBeenCalledTimes(1);
+    });
+    const request = mocks.sendMessengerMessage.mock.calls[0]?.[0];
+    expect(request).toEqual(
+      expect.objectContaining({
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        includeStreamConversation: false,
+      }),
+    );
+    const match = /^\[Bob Reed\]\((.+)\)$/.exec(request?.markdown ?? "");
+    expect(parseWorkspaceReferenceUrn(match?.[1])).toEqual({
+      kind: "forward",
+      messageUuid: MESSAGE_UUID,
+      snapshotMarkdown: "full message text",
+      sourceLabel: "General · General topic",
+      sourceCreatedAt: "2026-01-01T00:00:00.000Z",
     });
     expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(false);
+  });
+
+  it("uses the direct partner display name as the forwarded source label", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);
+    const messengerState = useMessengerStore.getState();
+    useMessengerStore.setState({
+      streamsById: {
+        ...messengerState.streamsById,
+        [DIRECT_STREAM_UUID]: {
+          ...messengerState.streamsById[DIRECT_STREAM_UUID]!,
+          name: "",
+        },
+      },
+    });
+    mocks.getMessagesByUuids.mockResolvedValueOnce([
+      createMessageDto({
+        stream_uuid: DIRECT_STREAM_UUID,
+        topic_uuid: DIRECT_TOPIC_UUID,
+      }),
+    ]);
+
+    useWorkspaceForwardMessageStore.getState().open({ messageUuids: [MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+
+    await waitForForwardMessageInStore();
+    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
+    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(mocks.sendMessengerMessage).toHaveBeenCalledTimes(1));
+    const match = /^\[Bob Reed\]\((.+)\)$/.exec(
+      mocks.sendMessengerMessage.mock.calls[0]?.[0]?.markdown ?? "",
+    );
+    expect(parseWorkspaceReferenceUrn(match?.[1])).toEqual(
+      expect.objectContaining({ sourceLabel: "Bob Reed", sourceKind: "direct" }),
+    );
+  });
+
+  it("sends several ordered snapshots in one destination message", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);
+    mocks.getMessagesByUuids.mockResolvedValueOnce([
+      createMessageDto(),
+      createMessageDto({
+        uuid: SECOND_MESSAGE_UUID,
+        payload: { kind: "markdown", content: "second message text" },
+      }),
+    ]);
+
+    useWorkspaceForwardMessageStore
+      .getState()
+      .open({ messageUuids: [MESSAGE_UUID, SECOND_MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+
+    await waitFor(() => {
+      expect(useWorkspaceMessageStore.getState().messagesById[SECOND_MESSAGE_UUID]).toBeDefined();
+    });
+    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
+    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(mocks.sendMessengerMessage).toHaveBeenCalledTimes(1));
+    const markdown: string = mocks.sendMessengerMessage.mock.calls[0]?.[0]?.markdown ?? "";
+    const references = markdown.split("\n\n").map((line: string) => {
+      const match = /^\[Bob Reed\]\((.+)\)$/.exec(line);
+      return parseWorkspaceReferenceUrn(match?.[1]);
+    });
+    expect(references).toEqual([
+      {
+        kind: "forward",
+        messageUuid: MESSAGE_UUID,
+        snapshotMarkdown: "full message text",
+        sourceLabel: "General · General topic",
+        sourceCreatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        kind: "forward",
+        messageUuid: SECOND_MESSAGE_UUID,
+        snapshotMarkdown: "second message text",
+        sourceLabel: "General · General topic",
+        sourceCreatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
   });
 
   it("calls success callback after successful topic forward", async () => {
@@ -557,6 +652,30 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(await screen.findByText("Send failed")).toBeInTheDocument();
+    expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(true);
+  });
+
+  it("rejects a forward snapshot that exceeds the message size limit before sending", async () => {
+    const { WorkspaceForwardMessageDialog } = await import(UI_MODULE);
+    const { useWorkspaceForwardMessageStore } = await import(MODEL_MODULE);
+    mocks.getMessagesByUuids.mockResolvedValueOnce([
+      createMessageDto({ payload: { kind: "markdown", content: "x".repeat(30_100) } }),
+    ]);
+
+    useWorkspaceForwardMessageStore.getState().open({ messageUuids: [MESSAGE_UUID] });
+    render(<WorkspaceForwardMessageDialog />);
+
+    await waitFor(() => {
+      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeDefined();
+    });
+    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
+    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    expect(
+      await screen.findByText("The message is too long (maximum 40,000 characters)."),
+    ).toBeInTheDocument();
+    expect(mocks.sendMessengerMessage).not.toHaveBeenCalled();
     expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(true);
   });
 });

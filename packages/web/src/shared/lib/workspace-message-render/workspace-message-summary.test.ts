@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { setLocale } from "~/i18n/i18n";
+import { buildWorkspaceForwardUrn } from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { renderWorkspaceMessageBody } from "./workspace-message-render.lib";
 import {
@@ -169,6 +171,66 @@ describe("workspace message summary core", () => {
       leadingKind: "text",
     });
     expect(withReply.safeTextPreview).toBe("Собственный ответ");
+  });
+
+  it("summarizes the decoded content of forward snapshots", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const forwardUrn = buildWorkspaceForwardUrn(messageUuid, "Visible **forwarded** text");
+    expect(forwardUrn).not.toBeNull();
+
+    const document = parseWorkspaceMessageBody(`[Original Author](${forwardUrn})`);
+
+    expect(summarizeWorkspaceMessageBody(document)).toEqual({
+      text: "Visible forwarded text",
+      leadingKind: "quote",
+    });
+    expect(summarizeWorkspaceMessageBody(document).text).not.toContain("snapshot=");
+  });
+
+  it("summarizes nested forward snapshots recursively without leaking a quote fallback", () => {
+    const innerUuid = "22222222-2222-4222-8222-222222222222";
+    const outerUuid = "33333333-3333-4333-8333-333333333333";
+    const innerUrn = buildWorkspaceForwardUrn(innerUuid, "Nested **forwarded** text");
+    expect(innerUrn).not.toBeNull();
+    const outerUrn = buildWorkspaceForwardUrn(outerUuid, `[Inner Author](${innerUrn})`);
+    expect(outerUrn).not.toBeNull();
+
+    setLocale("en");
+    const summary = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(`[Outer Author](${outerUrn})`),
+    );
+
+    expect(summary).toEqual({ text: "Nested forwarded text", leadingKind: "quote" });
+    expect(summary.text).not.toContain("Цитата");
+  });
+
+  it("limits recursive summaries for deeply nested forward snapshots", () => {
+    let markdown = "Deepest text";
+    for (let index = 0; index < 6; index += 1) {
+      const messageUuid = `22222222-2222-4222-8222-${String(index).padStart(12, "0")}`;
+      const urn = buildWorkspaceForwardUrn(messageUuid, markdown);
+      expect(urn).not.toBeNull();
+      markdown = `[Nested Author](${urn})`;
+    }
+
+    setLocale("en");
+    expect(summarizeWorkspaceMessageMarkdown(markdown)).toEqual({
+      text: "Forwarded message",
+      leadingKind: "quote",
+    });
+  });
+
+  it("localizes the fallback for forward snapshots without visible text", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const forwardUrn = buildWorkspaceForwardUrn(messageUuid, "   ");
+    expect(forwardUrn).not.toBeNull();
+    const document = parseWorkspaceMessageBody(`[Original Author](${forwardUrn})`);
+
+    setLocale("en");
+    expect(summarizeWorkspaceMessageBody(document).text).toBe("Forwarded message");
+    setLocale("ru");
+    expect(summarizeWorkspaceMessageBody(document).text).toBe("Пересланное сообщение");
+    setLocale("en");
   });
 
   it("uses readable link labels instead of cluttering preview with urls", () => {

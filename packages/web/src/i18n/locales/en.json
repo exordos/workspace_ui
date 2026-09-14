@@ -667,6 +667,7 @@
     "joinCall": "Join call",
     "copyCallLink": "Copy call link",
     "forward": "Forward",
+    "forwardedMessage": "Forwarded message",
     "star": "Star",
     "unstar": "Unstar",
     "delete": "Delete",

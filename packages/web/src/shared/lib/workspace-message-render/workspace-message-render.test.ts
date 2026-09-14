@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import {
@@ -1025,6 +1026,68 @@ describe("workspace message render core", () => {
         reference: {
           messageUuid,
           selectedText,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+  });
+
+  it("parses a standalone forward URN as an immutable snapshot segment", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const snapshotMarkdown = "## Saved title\n\nForwarded **body** ✓";
+    const urn = buildWorkspaceForwardUrn(messageUuid, snapshotMarkdown);
+    const document = parseWorkspaceMessageBody(`[Sleep](${urn})`);
+    const result = renderWorkspaceMessageBodySegments(document);
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "quote-reference",
+        reference: {
+          messageUuid,
+          snapshotMarkdown,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+    expect(result.segments).toEqual([
+      {
+        kind: "quote",
+        reference: {
+          messageUuid,
+          snapshotMarkdown,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+  });
+
+  it("keeps an explicitly plain forward snapshot literal", () => {
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const snapshotText = "[docs](https://example.test) **literal**";
+    const urn = buildWorkspaceForwardUrn(messageUuid, snapshotText, {
+      snapshotFormat: "plain",
+    });
+    const document = parseWorkspaceMessageBody(`[Sleep](${urn})`);
+    const result = renderWorkspaceMessageBodySegments(document);
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "quote-reference",
+        reference: {
+          messageUuid,
+          selectedText: snapshotText,
+          snapshotMarkdown: snapshotText,
+          fallbackAuthorLabel: "Sleep",
+        },
+      },
+    ]);
+    expect(result.segments).toEqual([
+      {
+        kind: "quote",
+        reference: {
+          messageUuid,
+          selectedText: snapshotText,
+          snapshotMarkdown: snapshotText,
           fallbackAuthorLabel: "Sleep",
         },
       },
