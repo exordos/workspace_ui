@@ -111,6 +111,7 @@ const captured = vi.hoisted(() => ({
   editMessengerMessage: vi.fn(),
   deleteMessengerMessage: vi.fn(),
   toggleMessengerMessageReaction: vi.fn(),
+  runWorkspaceTopicDoneToggle: vi.fn(),
   markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
@@ -359,6 +360,10 @@ vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOrigi
 
 vi.mock("~/entities/messenger/messenger-message-reactions-actions.lib", () => ({
   toggleMessengerMessageReaction: captured.toggleMessengerMessageReaction,
+}));
+
+vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
+  runWorkspaceTopicDoneToggle: captured.runWorkspaceTopicDoneToggle,
 }));
 
 vi.mock("~/entities/messenger/messenger-stream-bindings-loader.lib", () => ({
@@ -924,6 +929,8 @@ describe("ChatPage Workspace route", () => {
       message: null,
     });
     captured.toggleMessengerMessageReaction.mockReset();
+    captured.runWorkspaceTopicDoneToggle.mockReset();
+    captured.runWorkspaceTopicDoneToggle.mockResolvedValue({ status: "applied" });
     captured.toggleMessengerMessageReaction.mockResolvedValue({
       status: "applied",
       ownerKey: "owner-key",
@@ -1076,11 +1083,30 @@ describe("ChatPage Workspace route", () => {
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
 
-    expect(await screen.findByTestId("topic-closed-bar")).toHaveTextContent(
-      t("workspaceMessenger.topicClosed"),
+    expect(await screen.findByTestId("topic-closed-prompt")).toHaveTextContent(
+      `${t("workspaceMessenger.topicResolved")} ${t(
+        "workspaceMessenger.topicResolvedRemoveMark",
+      )} ${t("workspaceMessenger.topicResolvedSendHint")}`,
     );
     expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
     expect(captured.composerProps).toBeNull();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: t("workspaceMessenger.topicResolvedRemoveMark") }),
+    );
+    expect(captured.runWorkspaceTopicDoneToggle).not.toHaveBeenCalled();
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: t("workspaceMessenger.topicResolvedRemoveMark"),
+      }),
+    );
+    await waitFor(() =>
+      expect(captured.runWorkspaceTopicDoneToggle).toHaveBeenCalledWith({
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        done: false,
+      }),
+    );
   });
 
   it("keeps an unread message authored by the current user in the unread range", async () => {
