@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MessengerSidebarTopicItem } from "~/entities/messenger/messenger.types";
-import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
+import { t } from "~/i18n/i18n";
+import {
+  ChatPageClosedTopicPrompt,
+  ChatPageStreamTopicPrompt,
+} from "./chat-page-stream-topic-prompt.ui";
 
 function createTopic(
   overrides: Partial<MessengerSidebarTopicItem> = {},
@@ -64,5 +68,30 @@ describe("ChatPageStreamTopicPrompt", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "# Planning" }));
     expect(onSelectTopic).toHaveBeenCalledWith("topic-1");
+  });
+
+  it("requires a menu choice before reopening a resolved topic", async () => {
+    const onReopenTopic = vi.fn();
+    render(<ChatPageClosedTopicPrompt pending={false} onReopenTopic={onReopenTopic} />);
+
+    const prompt = screen.getByTestId("topic-closed-prompt");
+    expect(prompt).toHaveClass("border-t", "border-border-subtle", "text-base");
+    expect(prompt).toHaveTextContent(
+      `${t("workspaceMessenger.topicResolved")} ${t(
+        "workspaceMessenger.topicResolvedRemoveMark",
+      )} ${t("workspaceMessenger.topicResolvedSendHint")}`,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: t("workspaceMessenger.topicResolvedRemoveMark") }),
+    );
+    expect(onReopenTopic).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: t("workspaceMessenger.topicResolvedRemoveMark"),
+      }),
+    );
+    expect(onReopenTopic).toHaveBeenCalledTimes(1);
   });
 });

@@ -46,6 +46,7 @@ import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-ou
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { runMessengerRuntimeMutation } from "~/entities/messenger/messenger-runtime-mutation.lib";
 import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
+import { runWorkspaceTopicDoneToggle } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { selectMessengerSidebarTopicsForStream } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
@@ -170,8 +171,10 @@ import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { resolveInitialPositionReady } from "./chat-page-initial-position.lib";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
-import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
-import { ChatPageTopicClosedBar } from "./chat-page-topic-closed-bar.ui";
+import {
+  ChatPageClosedTopicPrompt,
+  ChatPageStreamTopicPrompt,
+} from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
@@ -514,6 +517,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [topicReopenPending, setTopicReopenPending] = useState(false);
   const [windowPaginationDirection, setWindowPaginationDirection] = useState<
     "before" | "after" | "tail" | null
   >(null);
@@ -1454,6 +1458,33 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const epoch = workspaceChatUiActionEpochRef.current;
     return () => workspaceChatUiActionEpochRef.current === epoch;
   }, []);
+
+  const handleReopenClosedTopic = useCallback((): void => {
+    if (topic == null || !topic.isDone || topicReopenPending) return;
+
+    const isUiActionCurrent = captureWorkspaceChatUiAction();
+    setActionError(null);
+    setTopicReopenPending(true);
+    void runWorkspaceTopicDoneToggle({
+      streamUuid: topic.streamUuid,
+      topicUuid: topic.uuid,
+      done: false,
+    })
+      .then((result) => {
+        if (isUiActionCurrent() && result.status !== "applied") {
+          setActionError(t("workspaceMessenger.topicReopenFailed"));
+        }
+      })
+      .catch((error: unknown) => {
+        if (!isUiActionCurrent()) return;
+        setActionError(
+          normalizeWorkspaceActionError(error, t("workspaceMessenger.topicReopenFailed")),
+        );
+      })
+      .finally(() => {
+        setTopicReopenPending(false);
+      });
+  }, [captureWorkspaceChatUiAction, topic, topicReopenPending]);
 
   const resolveSendTarget = useCallback(():
     | { status: "ready"; streamUuid: string; topicUuid: string; includeStreamConversation: boolean }
@@ -3605,7 +3636,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             renderComposer={renderWorkspaceAttachmentComposer}
           />
         ) : isTopicClosed ? (
-          <ChatPageTopicClosedBar joinedAbove={composerJoinedTop} />
+          <ChatPageClosedTopicPrompt
+            pending={topicReopenPending}
+            onReopenTopic={handleReopenClosedTopic}
+            topBorderVisible={!composerJoinedTop}
+          />
         ) : (
           <ChatPageComposerSection
             isDmView={false}
