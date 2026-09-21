@@ -171,7 +171,6 @@ import { resolveInitialPositionReady } from "./chat-page-initial-position.lib";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageStreamTopicPrompt } from "./chat-page-stream-topic-prompt.ui";
-import { ChatPageTopicClosedBar } from "./chat-page-topic-closed-bar.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
@@ -990,8 +989,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
-  const isTopicClosed =
-    selection.status === "conversation" && selection.kind === "topic" && topic?.isDone === true;
   let lastMessageUuid: MessengerUuid | null = null;
   if (selection.status === "conversation") {
     lastMessageUuid =
@@ -1463,9 +1460,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       return { status: "blocked", error: t("workspaceMessenger.routeUnsupportedForSend") };
     }
     if (selection.kind === "topic") {
-      if (isTopicClosed) {
-        return { status: "blocked", error: t("workspaceMessenger.topicClosed") };
-      }
       return {
         status: "ready",
         streamUuid: selection.streamUuid,
@@ -1485,7 +1479,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       topicUuid: defaultTopic.uuid,
       includeStreamConversation: true,
     };
-  }, [isTopicClosed, selection, topicsById]);
+  }, [selection, topicsById]);
 
   const deliverOutgoingMessage = useCallback(
     (placementUuid: MessengerUuid): Promise<boolean> => {
@@ -3359,7 +3353,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     runtimeContext != null &&
     ownerKey != null &&
     conversationId != null &&
-    !isTopicClosed &&
     resolvedComposerTarget.status === "ready"
       ? {
           conversationId,
@@ -3604,8 +3597,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onSubmitEditFinalMarkdown={handleSubmitEditFinalMarkdown}
             renderComposer={renderWorkspaceAttachmentComposer}
           />
-        ) : isTopicClosed ? (
-          <ChatPageTopicClosedBar joinedAbove={composerJoinedTop} />
         ) : (
           <ChatPageComposerSection
             isDmView={false}
