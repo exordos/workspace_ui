@@ -111,6 +111,14 @@ resources:
           - kind: local_dir_download
             url: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/workspace_ui/{{ version }}/artifacts/workspace-ui.tar.zst"
             is_spa: true
+        modifiers:
+          - kind: auto_header
+            headers:
+              - Host
+              - X-Forwarded-For
+              - X-Forwarded-Port
+              - X-Forwarded-Proto
+              - X-Forwarded-Prefix
 
 exports:
   load_balancer:
