@@ -33,4 +33,11 @@ describe("Workspace notification mode indicators", () => {
 
     expect(screen.getByLabelText(label)).toBeInTheDocument();
   });
+
+  it("presents a legacy unmuted direct topic as followed", () => {
+    render(<WorkspaceTopicNotificationModeIndicator mode="unmute" isDirectPrivate />);
+
+    expect(screen.getByLabelText("Follow")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Unmute")).not.toBeInTheDocument();
+  });
 });

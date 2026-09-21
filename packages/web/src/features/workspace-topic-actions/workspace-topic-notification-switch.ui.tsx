@@ -15,6 +15,7 @@ export interface WorkspaceTopicNotificationSwitchProps {
   onChange: (level: TopicVisibilityLevel) => void;
   streamMuted: boolean;
   topicExplicitlyUnmuted: boolean;
+  allowUnmuted?: boolean;
   disabled?: boolean;
   size?: NotificationLevelSwitchSize;
   className?: string;
@@ -26,13 +27,14 @@ export const WorkspaceTopicNotificationSwitch = React.memo<WorkspaceTopicNotific
     onChange,
     streamMuted,
     topicExplicitlyUnmuted,
+    allowUnmuted = true,
     disabled = false,
     size = "md",
     className,
   }) => {
     const options = useMemo(
-      () => getTopicVisibilityLevelOptions(streamMuted, topicExplicitlyUnmuted),
-      [streamMuted, topicExplicitlyUnmuted],
+      () => getTopicVisibilityLevelOptions(streamMuted, topicExplicitlyUnmuted, allowUnmuted),
+      [allowUnmuted, streamMuted, topicExplicitlyUnmuted],
     );
 
     const handleSelect = useCallback(

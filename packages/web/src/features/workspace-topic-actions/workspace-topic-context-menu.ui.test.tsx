@@ -45,12 +45,19 @@ const topic = {
   updatedAt: "2026-08-22T00:00:00Z",
 } satisfies MessengerTopicListItem;
 
-function renderTopicMenu(): void {
+function renderTopicMenu(
+  overrides: Partial<{
+    topic: MessengerTopicListItem;
+    streamNotificationMode: "all_messages" | "mentions_only" | "muted" | null;
+    isDirectPrivate: boolean;
+  }> = {},
+): void {
   renderWithProviders(
     <WorkspaceTopicContextMenu
-      topic={topic}
+      topic={overrides.topic ?? topic}
       streamTitle="Engineering"
-      streamNotificationMode="all_messages"
+      streamNotificationMode={overrides.streamNotificationMode ?? "all_messages"}
+      isDirectPrivate={overrides.isDirectPrivate}
     >
       <button type="button">Release</button>
     </WorkspaceTopicContextMenu>,
@@ -85,6 +92,22 @@ describe("WorkspaceTopicContextMenu", () => {
         notificationMode: "mute",
       });
     });
+  });
+
+  it("presents a legacy unmuted direct topic as followed without writing on open", async () => {
+    renderTopicMenu({
+      topic: { ...topic, notificationMode: "unmute" },
+      streamNotificationMode: "muted",
+      isDirectPrivate: true,
+    });
+
+    openTopicMenu();
+
+    const followedOption = await screen.findByRole("radio", { name: "Follow" });
+    expect(followedOption).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radio", { name: "Unmute" })).not.toBeInTheDocument();
+    fireEvent.click(followedOption);
+    expect(runWorkspaceTopicNotificationUpdateMock).not.toHaveBeenCalled();
   });
 
   it("uses the shared read and done actions", async () => {

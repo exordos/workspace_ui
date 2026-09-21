@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isWorkspaceStreamFullyMuted,
   mapTopicVisibilityLevelToWorkspaceMode,
+  mapWorkspaceStreamNotificationModeToLevel,
   mapWorkspaceTopicNotificationModeToLevel,
   resolveWorkspaceDisplayedUnread,
 } from "./messenger-notification-mode.lib";
@@ -47,5 +48,12 @@ describe("Workspace notification projections", () => {
     expect(mapTopicVisibilityLevelToWorkspaceMode("muted")).toBe("mute");
     expect(mapTopicVisibilityLevelToWorkspaceMode("unmuted")).toBe("unmute");
     expect(mapTopicVisibilityLevelToWorkspaceMode("followed")).toBe("follow");
+  });
+
+  it("presents legacy direct-chat notification modes as all messages", () => {
+    expect(mapWorkspaceStreamNotificationModeToLevel("mentions_only", true)).toBe("subscribed");
+    expect(mapWorkspaceTopicNotificationModeToLevel("unmute", true)).toBe("followed");
+    expect(mapWorkspaceTopicNotificationModeToLevel("mute", true)).toBe("muted");
+    expect(mapWorkspaceTopicNotificationModeToLevel("default", true)).toBe("inherit");
   });
 });

@@ -119,16 +119,18 @@ export function getTopicVisibilityLevelOption(
 export function shouldShowTopicUnmuteOption(
   streamMuted: boolean,
   topicExplicitlyUnmuted: boolean,
+  allowUnmuted = true,
 ): boolean {
-  return streamMuted || topicExplicitlyUnmuted;
+  return allowUnmuted && (streamMuted || topicExplicitlyUnmuted);
 }
 
 export function getTopicVisibilityLevelOptions(
   streamMuted: boolean,
   topicExplicitlyUnmuted: boolean,
+  allowUnmuted = true,
 ): readonly TopicVisibilityLevelOption[] {
   const levels: TopicVisibilityLevel[] = ["muted", "inherit"];
-  if (shouldShowTopicUnmuteOption(streamMuted, topicExplicitlyUnmuted)) {
+  if (shouldShowTopicUnmuteOption(streamMuted, topicExplicitlyUnmuted, allowUnmuted)) {
     levels.push("unmuted");
   }
   levels.push("followed");

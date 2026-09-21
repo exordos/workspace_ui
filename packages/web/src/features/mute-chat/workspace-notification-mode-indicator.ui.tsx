@@ -48,14 +48,18 @@ export const WorkspaceStreamNotificationModeIndicator = React.memo(
 export const WorkspaceTopicNotificationModeIndicator = React.memo(
   function WorkspaceTopicNotificationModeIndicator({
     mode,
+    isDirectPrivate = false,
   }: Readonly<{
     mode: WorkspaceMessengerTopicNotificationMode;
+    isDirectPrivate?: boolean;
   }>): React.ReactElement | null {
     if (mode === "default") return null;
 
     return (
       <NotificationModeIndicator
-        option={getTopicVisibilityLevelOption(mapWorkspaceTopicNotificationModeToLevel(mode))}
+        option={getTopicVisibilityLevelOption(
+          mapWorkspaceTopicNotificationModeToLevel(mode, isDirectPrivate),
+        )}
       />
     );
   },

@@ -28,10 +28,15 @@ import {
   wrapChildWithContextMenuHandlers,
 } from "~/shared/ui/dropdown-context-menu.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
+import { STREAM_NOTIFICATION_LEVEL_OPTIONS } from "~/shared/ui/notification-level-switch.lib";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =
   "data-[highlighted]:bg-sidebar-hover flex cursor-pointer select-none items-center gap-2 px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-sidebar-hover focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0";
+
+const DIRECT_PRIVATE_STREAM_NOTIFICATION_OPTIONS = STREAM_NOTIFICATION_LEVEL_OPTIONS.filter(
+  (option) => option.level !== "default",
+);
 
 function reportWorkspaceMenuActionError(action: string, error: unknown): void {
   reportUnexpectedError("workspace-sidebar-menu", error, { action });
@@ -179,6 +184,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   below,
   onTopicCreated,
 }: WorkspaceStreamContextMenuProps): React.ReactElement {
+  const isDirectPrivate = stream.uiKind === "directPrivate";
   const {
     menuOpen,
     contextAnchor,
@@ -340,7 +346,8 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
             {t("channel.notifications")}
           </p>
           <StreamNotificationLevelSwitch
-            value={mapWorkspaceStreamNotificationModeToLevel(notificationMode)}
+            value={mapWorkspaceStreamNotificationModeToLevel(notificationMode, isDirectPrivate)}
+            options={isDirectPrivate ? DIRECT_PRIVATE_STREAM_NOTIFICATION_OPTIONS : undefined}
             disabled={notificationPending}
             size="sm"
             onChange={(level) =>
@@ -350,7 +357,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         </div>
       ),
     }),
-    [handleSetNotificationMode, notificationMode, notificationPending],
+    [handleSetNotificationMode, isDirectPrivate, notificationMode, notificationPending],
   );
 
   const folderAssignmentsItem = useMemo<DropdownMenuItem>(
