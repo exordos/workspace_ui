@@ -84,8 +84,8 @@ describe("formatSidebarTopicTitle", () => {
 });
 
 describe("SIDEBAR_TOPIC_LIST_CLASS", () => {
-  it("spaces topic cards without a shared indent rail", () => {
-    expect(SIDEBAR_TOPIC_LIST_CLASS).toContain("space-y-1");
+  it("uses the same 2px gap from stream to topic and between topics", () => {
+    expect(SIDEBAR_TOPIC_LIST_CLASS).toBe("mt-0.5 space-y-0.5");
     expect(SIDEBAR_TOPIC_LIST_CLASS).not.toContain("border-l");
     expect(SIDEBAR_TOPIC_LIST_CLASS).not.toContain("ml-4");
   });

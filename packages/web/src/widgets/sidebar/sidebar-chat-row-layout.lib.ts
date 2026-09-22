@@ -85,8 +85,8 @@ export function sidebarTopicShowMoreButtonClass(compact: boolean): string {
     : "flex w-full min-w-0 items-center justify-between gap-3 py-2 pl-6 pr-2 text-left text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-sidebar-hover";
 }
 
-/** List gap between topic cards under an expanded stream (Figma: 4px). */
-export const SIDEBAR_TOPIC_LIST_CLASS = "mt-0.5 space-y-1";
+/** Keep the stream-to-topic and topic-to-topic gaps equal (2px). */
+export const SIDEBAR_TOPIC_LIST_CLASS = "mt-0.5 space-y-0.5";
 
 /**
  * Stream card highlight follows the visible active location.
