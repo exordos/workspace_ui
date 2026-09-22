@@ -1,5 +1,6 @@
 import React from "react";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { useMessageComposerInlineImageDropCaret } from "./message-composer-inline-image-drop-caret.hook";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";
 import { handleComposerWriteBodyKeyDown } from "./message-composer-write-body-keydown.lib";
 import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
@@ -31,6 +32,7 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   reserveExpandControlSpace = false,
   compactInline = false,
 }: MessageComposerWriteBodyProps) {
+  const inlineImageDropCaretHandlers = useMessageComposerInlineImageDropCaret(textareaRef);
   const listboxId = `${textareaId}-suggestions`;
   const activeSuggestion = mentionSuggestions[activeMentionIndex];
   const activeDescendantId =
@@ -65,6 +67,10 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
         ref={textareaRef}
         value={value}
         onPaste={onPaste}
+        onDragOver={inlineImageDropCaretHandlers.onDragOver}
+        onDragLeave={inlineImageDropCaretHandlers.onDragLeave}
+        onDrop={inlineImageDropCaretHandlers.onDrop}
+        onScroll={inlineImageDropCaretHandlers.onScroll}
         onContextMenu={onContextMenu}
         onChange={(e) => {
           onValueChange(e.target.value);

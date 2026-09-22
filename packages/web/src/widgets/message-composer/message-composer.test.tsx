@@ -2757,11 +2757,46 @@ describe("MessageComposer controlled attachments", () => {
     expect(dragSource.parentElement).toHaveClass("pt-2");
     expect(dragSource.parentElement).not.toHaveClass("pb-0.5");
     const setData = vi.fn();
+    const setDragImage = vi.fn();
+    vi.spyOn(dragSource, "getBoundingClientRect").mockReturnValue({
+      bottom: 100,
+      height: 60,
+      left: 20,
+      right: 220,
+      top: 40,
+      width: 200,
+      x: 20,
+      y: 40,
+      toJSON: () => ({}),
+    });
     fireEvent.dragStart(dragSource, {
-      dataTransfer: { effectAllowed: "none", setData },
+      clientY: 55,
+      dataTransfer: { effectAllowed: "none", setData, setDragImage },
     });
     expect(setData).toHaveBeenCalledWith("text/plain", "![screen.png]");
     expect(setData).toHaveBeenCalledWith("application/x-workspace-inline-image", "ready-image");
+    expect(setDragImage).toHaveBeenCalledOnce();
+    const [dragPreview, pointerOffsetX, pointerOffsetY] = setDragImage.mock.calls[0] ?? [];
+    if (!(dragPreview instanceof HTMLDivElement)) {
+      throw new Error("Expected an HTML drag preview");
+    }
+    expect(dragPreview).toHaveAttribute("data-composer-inline-image-drag-preview");
+    expect(dragPreview).toHaveStyle({ height: "60px" });
+    const dragThumbnail = dragPreview.firstElementChild;
+    if (!(dragThumbnail instanceof HTMLDivElement)) {
+      throw new Error("Expected the current thumbnail inside the drag preview");
+    }
+    expect(dragThumbnail).toHaveClass(...dragSource.className.split(" "));
+    const previewWidth = Number.parseFloat(dragPreview.style.width);
+    const thumbnailWidth = Number.parseFloat(dragThumbnail.style.width);
+    const transparentGap = Number.parseFloat(dragPreview.style.paddingLeft);
+    expect(transparentGap).toBeGreaterThan(0);
+    expect(previewWidth - thumbnailWidth).toBe(transparentGap);
+    expect(pointerOffsetX).toBe(0);
+    expect(pointerOffsetY).toBe(30);
+    expect(document.body).toContainElement(dragPreview);
+    fireEvent.dragEnd(dragSource);
+    expect(document.body).not.toContainElement(dragPreview);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "Before ![screen.png] after" } });
@@ -2785,6 +2820,73 @@ describe("MessageComposer controlled attachments", () => {
         undefined,
       );
     });
+  });
+
+  it("shows the inline image insertion caret at the current drag position", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        initialValue={"Before after"}
+        attachments={[readyInlineImage]}
+        onAddAttachments={vi.fn()}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+    vi.spyOn(textbox, "getBoundingClientRect").mockReturnValue({
+      bottom: 130,
+      height: 80,
+      left: 100,
+      right: 400,
+      top: 50,
+      width: 300,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    Object.defineProperties(textbox, {
+      clientHeight: { configurable: true, value: 80 },
+      clientWidth: { configurable: true, value: 300 },
+    });
+
+    const originalCaretPositionFromPoint = document.caretPositionFromPoint;
+    document.caretPositionFromPoint = vi.fn(() => {
+      const mirror = document.querySelector<HTMLElement>("[data-composer-drop-caret-mirror]");
+      const offsetNode = mirror?.firstChild;
+      if (offsetNode == null) return null;
+      return {
+        offset: 7,
+        offsetNode,
+        getClientRect: () => new DOMRect(174, 58, 0, 20),
+      };
+    });
+
+    try {
+      fireEvent.dragOver(textbox, {
+        clientX: 174,
+        clientY: 68,
+        dataTransfer: { types: ["application/x-workspace-inline-image"] },
+      });
+
+      const caret = document.querySelector<HTMLElement>("[data-composer-drop-caret]");
+      expect(caret).not.toBeNull();
+      expect(caret).toHaveStyle({ height: "20px", left: "174px", top: "58px" });
+
+      fireEvent.dragLeave(textbox);
+      expect(document.querySelector("[data-composer-drop-caret]")).toBeNull();
+
+      fireEvent.dragOver(textbox, {
+        clientX: 174,
+        clientY: 68,
+        dataTransfer: { types: ["Files"] },
+      });
+      expect(document.querySelector("[data-composer-drop-caret]")).toBeNull();
+    } finally {
+      document.caretPositionFromPoint = originalCaretPositionFromPoint;
+    }
   });
 
   it("offers an accessible inline remove control and keeps the attachment draggable after removing its token", async () => {

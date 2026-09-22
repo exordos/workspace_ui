@@ -20,6 +20,44 @@ interface MessageComposerControlledAttachmentCardsProps {
 const EMPTY_IMAGE_ALIASES: readonly { localId: string; visibleText: string }[] = [];
 const EMPTY_INLINE_IMAGE_LOCAL_IDS: ReadonlySet<string> = new Set();
 const WORKSPACE_INLINE_IMAGE_DRAG_TYPE = "application/x-workspace-inline-image";
+const INLINE_IMAGE_DRAG_PREVIEW_GAP_PX = 24;
+
+function createInlineImageDragPreview(
+  event: React.DragEvent<HTMLDivElement>,
+): HTMLDivElement | null {
+  if (typeof event.dataTransfer.setDragImage !== "function") return null;
+  const source = event.currentTarget;
+  const bounds = source.getBoundingClientRect();
+  const pointerY = Number.isFinite(event.clientY) ? event.clientY : bounds.top + bounds.height / 2;
+  const pointerOffsetY = Math.min(Math.max(pointerY - bounds.top, 0), bounds.height);
+  const preview = source.ownerDocument.createElement("div");
+  preview.dataset.composerInlineImageDragPreview = "";
+  preview.setAttribute("aria-hidden", "true");
+  preview.inert = true;
+  // Chromium clamps negative drag-image offsets, so transparent space must be part of the image.
+  Object.assign(preview.style, {
+    position: "fixed",
+    left: "-100000px",
+    top: "0",
+    width: `${bounds.width + INLINE_IMAGE_DRAG_PREVIEW_GAP_PX}px`,
+    height: `${bounds.height}px`,
+    boxSizing: "border-box",
+    paddingLeft: `${INLINE_IMAGE_DRAG_PREVIEW_GAP_PX}px`,
+    overflow: "hidden",
+    pointerEvents: "none",
+  });
+
+  const thumbnail = source.cloneNode(true) as HTMLDivElement;
+  thumbnail.draggable = false;
+  Object.assign(thumbnail.style, {
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`,
+  });
+  preview.append(thumbnail);
+  source.ownerDocument.body.append(preview);
+  event.dataTransfer.setDragImage(preview, 0, pointerOffsetY);
+  return preview;
+}
 
 function ReadyImageDragWrapper({
   attachmentLocalId,
@@ -36,6 +74,13 @@ function ReadyImageDragWrapper({
   previewAvailable: boolean;
   onRemoveImageFromText?: (localId: string) => void;
 }>) {
+  const dragPreviewRef = React.useRef<HTMLDivElement | null>(null);
+  useEffect(
+    () => () => {
+      dragPreviewRef.current?.remove();
+    },
+    [],
+  );
   const canDragIntoMessage = !inText && previewAvailable;
   const className = inText
     ? "relative rounded-lg [&>article]:ring-2 [&>article]:ring-accent/60"
@@ -48,6 +93,13 @@ function ReadyImageDragWrapper({
         event.dataTransfer.effectAllowed = "copy";
         event.dataTransfer.setData("text/plain", visibleText);
         event.dataTransfer.setData(WORKSPACE_INLINE_IMAGE_DRAG_TYPE, attachmentLocalId);
+        dragPreviewRef.current?.remove();
+        // Chromium may capture an HTMLElement drag image after this handler returns.
+        dragPreviewRef.current = createInlineImageDragPreview(event);
+      }}
+      onDragEnd={() => {
+        dragPreviewRef.current?.remove();
+        dragPreviewRef.current = null;
       }}
       className={`${className} group/inline-image`}
       title={canDragIntoMessage ? t("attachmentCard.dragIntoMessage") : t("attachmentCard.inText")}
