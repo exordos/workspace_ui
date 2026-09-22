@@ -149,6 +149,7 @@ function WorkspaceSidebarTopicRow({
   topic,
   streamNotificationMode,
   streamTitle,
+  isDirectPrivate,
   activeTopicUuid,
   compact,
   barColor,
@@ -156,6 +157,7 @@ function WorkspaceSidebarTopicRow({
   topic: MessengerTopicListItem;
   streamNotificationMode: MessengerSidebarStreamItem["notificationMode"];
   streamTitle: string;
+  isDirectPrivate: boolean;
   activeTopicUuid: string | null;
   compact: boolean;
   barColor: string;
@@ -170,6 +172,7 @@ function WorkspaceSidebarTopicRow({
       topic={topic}
       streamTitle={streamTitle}
       streamNotificationMode={streamNotificationMode}
+      isDirectPrivate={isDirectPrivate}
     >
       <Link
         to={topic.route}
@@ -206,7 +209,10 @@ function WorkspaceSidebarTopicRow({
           hasMention={topic.hasUnreadPersonalMention}
           time={formatWorkspaceMessageTime(topic.lastMessageCreatedAt)}
           notificationIndicator={
-            <WorkspaceTopicNotificationModeIndicator mode={topic.notificationMode} />
+            <WorkspaceTopicNotificationModeIndicator
+              mode={topic.notificationMode}
+              isDirectPrivate={isDirectPrivate}
+            />
           }
         />
       </Link>
@@ -250,6 +256,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
                 topic={topic}
                 streamNotificationMode={stream.notificationMode}
                 streamTitle={stream.title}
+                isDirectPrivate={stream.uiKind === "directPrivate"}
                 activeTopicUuid={activeTopicUuid}
                 compact={compact}
                 barColor={barColor}

@@ -58,7 +58,14 @@ export function resolveWorkspaceDisplayedUnread(
 
 export function mapWorkspaceStreamNotificationModeToLevel(
   mode: WorkspaceMessengerStreamNotificationMode,
+  directPrivate = false,
 ): WorkspaceStreamNotificationLevel {
+  // Direct messages already notify for every inbound message, so keep legacy
+  // mentions-only values without exposing a duplicate UI choice.
+  if (directPrivate && mode === "mentions_only") {
+    return "subscribed";
+  }
+
   switch (mode) {
     case "mentions_only":
       return "default";
@@ -84,7 +91,13 @@ export function mapNotificationLevelToWorkspaceStreamMode(
 
 export function mapWorkspaceTopicNotificationModeToLevel(
   mode: WorkspaceMessengerTopicNotificationMode,
+  directPrivate = false,
 ): WorkspaceTopicVisibilityLevel {
+  // Unmute and follow have the same delivery behavior inside a direct chat.
+  if (directPrivate && mode === "unmute") {
+    return "followed";
+  }
+
   switch (mode) {
     case "default":
       return "inherit";

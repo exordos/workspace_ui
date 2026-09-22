@@ -72,5 +72,14 @@ describe("notification-level-switch.lib", () => {
       const options = getTopicVisibilityLevelOptions(false, true);
       expect(options.map((o) => o.level)).toContain("unmuted");
     });
+
+    it("hides unmute when the caller disables that mode", () => {
+      expect(shouldShowTopicUnmuteOption(true, true, false)).toBe(false);
+      expect(getTopicVisibilityLevelOptions(true, true, false).map((o) => o.level)).toEqual([
+        "muted",
+        "inherit",
+        "followed",
+      ]);
+    });
   });
 });

@@ -28,6 +28,7 @@ export interface WorkspaceTopicContextMenuProps {
   topic: MessengerTopicListItem;
   streamTitle: string;
   streamNotificationMode: MessengerStream["notificationMode"] | null;
+  isDirectPrivate?: boolean;
   children: React.ReactNode;
 }
 
@@ -105,6 +106,7 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
   topic,
   streamTitle,
   streamNotificationMode,
+  isDirectPrivate = false,
   children,
 }: WorkspaceTopicContextMenuProps): React.ReactElement {
   const {
@@ -213,9 +215,10 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
             {t("channel.topicNotifications")}
           </p>
           <WorkspaceTopicNotificationSwitch
-            value={mapWorkspaceTopicNotificationModeToLevel(notificationMode)}
+            value={mapWorkspaceTopicNotificationModeToLevel(notificationMode, isDirectPrivate)}
             streamMuted={streamNotificationMode === "muted"}
             topicExplicitlyUnmuted={notificationMode === "unmute"}
+            allowUnmuted={!isDirectPrivate}
             disabled={notificationPending}
             size="sm"
             onChange={(level) =>
@@ -225,7 +228,13 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
         </div>
       ),
     }),
-    [handleSetNotificationMode, notificationMode, notificationPending, streamNotificationMode],
+    [
+      handleSetNotificationMode,
+      isDirectPrivate,
+      notificationMode,
+      notificationPending,
+      streamNotificationMode,
+    ],
   );
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {

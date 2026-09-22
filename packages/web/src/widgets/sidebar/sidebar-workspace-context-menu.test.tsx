@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { act, type ReactElement } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -394,6 +394,108 @@ describe("WorkspaceSidebar context menu", () => {
     await waitFor(() => {
       expect(runWorkspaceStreamReadMock).toHaveBeenCalledWith({ streamUuid: STREAM_UUID });
     });
+  });
+
+  it("hides the duplicate mentions mode for a personal chat", async () => {
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "directPrivate",
+        directUserUuid: "user-alice",
+        notificationMode: "mentions_only",
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
+
+    const notificationSwitch = await screen.findByRole("radiogroup", {
+      name: "Notifications",
+    });
+    expect(within(notificationSwitch).queryByRole("radio", { name: "Mentions only" })).toBeNull();
+    const allMessagesOption = within(notificationSwitch).getByRole("radio", {
+      name: "All messages",
+    });
+    expect(allMessagesOption).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(allMessagesOption);
+    expect(runWorkspaceStreamNotificationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps mentions mode available for a private non-direct channel", async () => {
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Private room",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "channel",
+        notificationMode: "mentions_only",
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /private room/i }));
+
+    const notificationSwitch = await screen.findByRole("radiogroup", {
+      name: "Notifications",
+    });
+    expect(
+      within(notificationSwitch).getByRole("radio", { name: "Mentions only" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps unmute available for a topic in a private non-direct channel", async () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Private room",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "channel",
+        notificationMode: "muted",
+        topics: [createTopic({ notificationMode: "unmute" })],
+      }),
+    ]);
+
+    expect(screen.getByLabelText("Unmute")).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /release/i }));
+
+    const notificationSwitch = await screen.findByRole("radiogroup", {
+      name: "Topic notifications",
+    });
+    expect(within(notificationSwitch).getByRole("radio", { name: "Unmute" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("presents a legacy unmuted personal topic as followed", async () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "directPrivate",
+        directUserUuid: "user-alice",
+        notificationMode: "muted",
+        topics: [createTopic({ notificationMode: "unmute" })],
+      }),
+    ]);
+
+    expect(screen.getByLabelText("Follow")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Unmute")).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /release/i }));
+
+    const notificationSwitch = await screen.findByRole("radiogroup", {
+      name: "Topic notifications",
+    });
+    expect(within(notificationSwitch).queryByRole("radio", { name: "Unmute" })).toBeNull();
+    const followedOption = within(notificationSwitch).getByRole("radio", { name: "Follow" });
+    expect(followedOption).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(followedOption);
+    expect(runWorkspaceTopicNotificationUpdateMock).not.toHaveBeenCalled();
   });
 
   it("disables the stream read action while its request is pending", async () => {
