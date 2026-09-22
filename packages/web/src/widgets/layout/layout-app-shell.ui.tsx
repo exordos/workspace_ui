@@ -4,7 +4,10 @@ import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
-import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
+import type {
+  RightDrawerAccountScreen,
+  RightDrawerMode,
+} from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
@@ -12,7 +15,10 @@ import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 export interface LayoutAppShellProps {
   openSearch: () => void;
   rightDrawerOpen: boolean;
+  rightDrawerChatInfoOpen: boolean;
   setRightDrawerOpen: (open: boolean) => void;
+  toggleRightDrawerChatInfo: () => void;
+  closeCurrentRightDrawer: () => void;
   openRightDrawerInfo: () => void;
   openRightDrawerUserProfile: (userId: number) => void;
   openWorkspaceUserProfile: (userUuid: string) => void;
@@ -20,8 +26,10 @@ export interface LayoutAppShellProps {
   pathname: string;
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;
+  rightDrawerAccountScreen: RightDrawerAccountScreen | null;
+  rightDrawerCanGoBack: boolean;
   onCloseRightDrawer: () => void;
-  /** Shell back control for nested drawer modes (e.g. personal-info → user-menu). */
+  /** Shell back control for the active layer's internal screen history. */
   onBackRightDrawer?: () => void;
   /** Shell title shown next to the drawer close button. */
   rightDrawerTitle: string;
@@ -32,12 +40,16 @@ export interface LayoutAppShellProps {
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
   onOpenPersonalInfoDrawer?: () => void;
+  onAccountScreenChange: (screen: RightDrawerAccountScreen) => void;
 }
 
 export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutAppShell({
   openSearch,
   rightDrawerOpen,
+  rightDrawerChatInfoOpen,
   setRightDrawerOpen,
+  toggleRightDrawerChatInfo,
+  closeCurrentRightDrawer,
   openRightDrawerInfo,
   openRightDrawerUserProfile,
   openWorkspaceUserProfile,
@@ -45,6 +57,8 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   pathname,
   sidebarOpen,
   rightDrawerMode,
+  rightDrawerAccountScreen,
+  rightDrawerCanGoBack,
   onCloseRightDrawer,
   onBackRightDrawer,
   rightDrawerTitle,
@@ -55,13 +69,17 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
+  onAccountScreenChange,
 }) {
   return (
     <OpenSearchContext.Provider value={openSearch}>
       <RightDrawerContext.Provider
         value={{
           open: rightDrawerOpen,
+          chatInfoOpen: rightDrawerChatInfoOpen,
           setOpen: setRightDrawerOpen,
+          toggleChatInfo: toggleRightDrawerChatInfo,
+          closeCurrent: closeCurrentRightDrawer,
           openInfo: openRightDrawerInfo,
           openUserProfile: openRightDrawerUserProfile,
           openWorkspaceUserProfile,
@@ -81,6 +99,8 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             sidebarOpen={sidebarOpen}
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerMode={rightDrawerMode}
+            rightDrawerAccountScreen={rightDrawerAccountScreen}
+            rightDrawerCanGoBack={rightDrawerCanGoBack}
             onCloseRightDrawer={onCloseRightDrawer}
             onBackRightDrawer={onBackRightDrawer}
             rightDrawerTitle={rightDrawerTitle}
@@ -91,6 +111,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
             onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
+            onAccountScreenChange={onAccountScreenChange}
           />
         </div>
       </RightDrawerContext.Provider>

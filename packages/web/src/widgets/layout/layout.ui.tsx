@@ -13,7 +13,10 @@ import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
-import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
+import {
+  useRightDrawerStore,
+  type RightDrawerAccountScreen,
+} from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
@@ -81,8 +84,16 @@ export const Layout: React.FC = () => {
   const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
-  const closeRightDrawer = useRightDrawerStore((s) => s.close);
+  const closeCurrentRightDrawer = useRightDrawerStore((s) => s.closeCurrent);
+  const clearRightDrawer = useRightDrawerStore((s) => s.clearAll);
+  const backRightDrawer = useRightDrawerStore((s) => s.back);
+  const toggleRightDrawerChatInfo = useRightDrawerStore((s) => s.toggleChatInfo);
   const rightDrawerMode = useRightDrawerStore((s) => s.mode);
+  const rightDrawerAccountScreen = useRightDrawerStore((s) => s.accountScreen);
+  const rightDrawerActiveLayerKind = useRightDrawerStore((s) => s.layers.at(-1)?.kind ?? null);
+  const rightDrawerCanGoBack = useRightDrawerStore(
+    (s) => (s.layers.at(-1)?.screens.length ?? 0) > 1,
+  );
   const rightDrawerUserIdOverride = useRightDrawerStore((s) => s.userIdOverride);
   const rightDrawerWorkspaceUserUuidOverride = useRightDrawerStore(
     (s) => s.workspaceUserUuidOverride,
@@ -91,9 +102,8 @@ export const Layout: React.FC = () => {
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
-  const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
   const openRightDrawerPersonalInfo = useRightDrawerStore((s) => s.openPersonalInfo);
-  const openRightDrawerUserMenu = useRightDrawerStore((s) => s.openUserMenu);
+  const openRightDrawerAccountScreen = useRightDrawerStore((s) => s.openAccountScreen);
 
   const online = useLayoutOnlineStatus();
   const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
@@ -148,20 +158,23 @@ export const Layout: React.FC = () => {
   });
 
   const openSearch = useSearchModalStore((s) => s.openModal);
-  const handleCloseRightDrawer = useCallback(() => {
-    closeRightDrawer();
-  }, [closeRightDrawer]);
-
-  // Personal-info is a nested account subview: back returns to the account menu, X still closes all.
-  const handleBackRightDrawer = useCallback(() => {
-    if (rightDrawerMode === "personal-info") {
-      openRightDrawerUserMenu();
-    }
-  }, [openRightDrawerUserMenu, rightDrawerMode]);
+  const handleAccountScreenChange = useCallback(
+    (screen: RightDrawerAccountScreen) => {
+      if (screen === "root") {
+        backRightDrawer();
+        return;
+      }
+      openRightDrawerAccountScreen(screen);
+    },
+    [backRightDrawer, openRightDrawerAccountScreen],
+  );
+  const handleOpenAccountAbout = useCallback(() => {
+    openRightDrawerAccountScreen("about");
+  }, [openRightDrawerAccountScreen]);
 
   useLayoutResetRightDrawerOnOwnerChange({
     currentOwnerKey: currentWorkspaceOwnerKey,
-    closeRightDrawer,
+    closeRightDrawer: clearRightDrawer,
   });
 
   const showFullscreenLoader = false;
@@ -273,7 +286,10 @@ export const Layout: React.FC = () => {
           <LayoutAppShell
             openSearch={openSearch}
             rightDrawerOpen={rightDrawerOpen}
+            rightDrawerChatInfoOpen={rightDrawerOpen && rightDrawerActiveLayerKind === "chat-info"}
             setRightDrawerOpen={setRightDrawerOpen}
+            toggleRightDrawerChatInfo={toggleRightDrawerChatInfo}
+            closeCurrentRightDrawer={closeCurrentRightDrawer}
             openRightDrawerInfo={openRightDrawerInfo}
             openRightDrawerUserProfile={openRightDrawerUserProfile}
             openWorkspaceUserProfile={openWorkspaceUserProfile}
@@ -281,18 +297,19 @@ export const Layout: React.FC = () => {
             pathname={location.pathname}
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}
-            onCloseRightDrawer={handleCloseRightDrawer}
-            onBackRightDrawer={
-              rightDrawerMode === "personal-info" ? handleBackRightDrawer : undefined
-            }
+            rightDrawerAccountScreen={rightDrawerAccountScreen}
+            rightDrawerCanGoBack={rightDrawerCanGoBack}
+            onCloseRightDrawer={closeCurrentRightDrawer}
+            onBackRightDrawer={rightDrawerCanGoBack ? backRightDrawer : undefined}
             rightDrawerTitle={rightDrawerTitle}
             rightPanelTitle={rightPanelTitleResolved}
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             workspaceRightPanelInfo={workspaceRightPanelInfo}
             onOpenSettingsDrawer={openRightDrawerSettings}
-            onOpenAboutDrawer={openRightDrawerAbout}
+            onOpenAboutDrawer={handleOpenAccountAbout}
             onOpenPersonalInfoDrawer={openRightDrawerPersonalInfo}
+            onAccountScreenChange={handleAccountScreenChange}
           />
         </LayoutLoadingGate>
       </div>

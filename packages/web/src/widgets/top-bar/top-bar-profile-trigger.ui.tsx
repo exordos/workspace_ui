@@ -82,9 +82,8 @@ function resolveStatusLabel(
 }
 
 export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
-  const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.mode === "user-menu");
-  const openUserMenu = useRightDrawerStore((s) => s.openUserMenu);
-  const closeDrawer = useRightDrawerStore((s) => s.close);
+  const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.layers.at(-1)?.kind === "account");
+  const toggleUserMenu = useRightDrawerStore((s) => s.toggleUserMenu);
   const workspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
@@ -110,12 +109,8 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const statusLabel = resolveStatusLabel(selectUserStatusLabel(currentUser), presenceState);
 
   const handleClick = useCallback(() => {
-    if (isUserMenuOpen) {
-      closeDrawer();
-    } else {
-      openUserMenu();
-    }
-  }, [closeDrawer, isUserMenuOpen, openUserMenu]);
+    toggleUserMenu();
+  }, [toggleUserMenu]);
 
   return (
     <button

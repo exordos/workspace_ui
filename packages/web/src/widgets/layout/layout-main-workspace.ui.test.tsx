@@ -48,9 +48,9 @@ vi.mock("~/widgets/right-panel/right-drawer.ui", () => ({
 
 vi.mock("~/widgets/right-panel/right-panel-shell.ui", () => ({
   RightPanelShell: ({
-    onNestedPanelChange,
+    onAccountScreenChange,
   }: {
-    onNestedPanelChange?: (nested: { titleKey: string; onBack: () => void } | null) => void;
+    onAccountScreenChange?: (screen: "settings") => void;
   }) => {
     const { t } = useTranslation();
     return (
@@ -58,9 +58,7 @@ vi.mock("~/widgets/right-panel/right-panel-shell.ui", () => ({
         <button
           type="button"
           data-testid="open-nested-settings"
-          onClick={() =>
-            onNestedPanelChange?.({ titleKey: "settings.settings", onBack: () => undefined })
-          }
+          onClick={() => onAccountScreenChange?.("settings")}
         >
           Open nested settings
         </button>
@@ -77,6 +75,8 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     sidebarOpen: true,
     rightDrawerOpen: false,
     rightDrawerMode: "info",
+    rightDrawerAccountScreen: null,
+    rightDrawerCanGoBack: false,
     onCloseRightDrawer: vi.fn(),
     rightDrawerTitle: "",
     rightPanelTitle: "",
@@ -85,6 +85,7 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     workspaceRightPanelInfo: null,
     onOpenSettingsDrawer: vi.fn(),
     onOpenAboutDrawer: vi.fn(),
+    onAccountScreenChange: vi.fn(),
     ...overrides,
   };
 }
@@ -100,14 +101,18 @@ describe("LayoutMainWorkspace", () => {
     });
   });
 
-  it("updates nested drawer header and body translations after a locale switch", () => {
+  it("updates controlled account drawer title and body translations after a locale switch", () => {
     render(
       <LayoutMainWorkspace
-        {...buildProps({ rightDrawerOpen: true, rightDrawerMode: "settings" })}
+        {...buildProps({
+          rightDrawerOpen: true,
+          rightDrawerMode: "user-menu",
+          rightDrawerAccountScreen: "settings",
+          rightDrawerCanGoBack: true,
+        })}
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-nested-settings"));
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByTestId("nested-settings-body-title")).toHaveTextContent("Settings");
 

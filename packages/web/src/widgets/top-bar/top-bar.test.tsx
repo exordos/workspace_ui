@@ -66,7 +66,7 @@ function resetTopBarRelatedStores(): void {
   useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   setCurrentOrgRouteIdResolver(null);
   useSearchModalStore.getState().closeModal();
-  useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+  useRightDrawerStore.getState().clearAll();
   for (const action of Object.values(downloadActions)) action.mockClear();
 }
 
@@ -291,7 +291,7 @@ describe("TopBar", () => {
     expect(profileButton).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("closes user menu when profile trigger is clicked again", () => {
+  it("collapses user menu when profile trigger is clicked again", () => {
     renderWithProviders(<TopBar />);
 
     const profileButton = screen.getByRole("button", { name: /profile/i });
@@ -307,6 +307,28 @@ describe("TopBar", () => {
     const drawer = useRightDrawerStore.getState();
     expect(drawer.open).toBe(false);
     expect(profileButton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("collapses and restores the active account screen without clearing its history", () => {
+    renderWithProviders(<TopBar />);
+
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    act(() => {
+      useRightDrawerStore.getState().openUserMenu();
+      useRightDrawerStore.getState().openSettings();
+    });
+
+    fireEvent.click(profileButton);
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: false,
+      accountScreen: "settings",
+    });
+
+    fireEvent.click(profileButton);
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
   });
 
   it("uses semantic token class for active section background from route", () => {

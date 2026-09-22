@@ -124,6 +124,7 @@ import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/w
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { createLogger } from "~/shared/lib/logger";
 import {
   createWorkspaceFileResourceCache,
@@ -177,6 +178,17 @@ import {
 } from "./chat-page-stream-topic-prompt.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
+
+const toggleChatInfoDrawer = (rightDrawer: RightDrawerContextValue | null): void => {
+  if (rightDrawer?.toggleChatInfo != null) {
+    rightDrawer.toggleChatInfo();
+    return;
+  }
+  rightDrawer?.setOpen(!rightDrawer.open);
+};
+
+const isChatInfoDrawerOpen = (rightDrawer: RightDrawerContextValue | null): boolean =>
+  rightDrawer?.chatInfoOpen ?? rightDrawer?.open ?? false;
 
 interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
@@ -3097,7 +3109,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [settleTailWindowIntent, tailRequestScopeKey]);
 
   const handleToggleRightPanel = useCallback(() => {
-    rightDrawer?.setOpen(!rightDrawer.open);
+    toggleChatInfoDrawer(rightDrawer);
   }, [rightDrawer]);
 
   const handleOpenRightPanel = useCallback(() => {
@@ -3182,7 +3194,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     () => ({
       onOpenSearch: openSearch ?? undefined,
       onToggleRightPanel: rightDrawer == null ? undefined : handleToggleRightPanel,
-      rightPanelOpen: rightDrawer?.open ?? false,
+      rightPanelOpen: isChatInfoDrawerOpen(rightDrawer),
     }),
     [handleToggleRightPanel, openSearch, rightDrawer],
   );

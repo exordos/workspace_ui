@@ -67,7 +67,7 @@ export function LayoutProfileShareLink({
       isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal);
     requestRef.current?.controller.abort();
     requestRef.current = request;
-    useRightDrawerStore.getState().close();
+    useRightDrawerStore.getState().clearAll();
 
     const consumeLink = () => {
       void navigate(

@@ -142,6 +142,41 @@ describe("RightPanelShell", () => {
     expect(useSettingsStore.getState().notificationSound).toBe("digital");
   });
 
+  it("restores the controlled account screen and reports internal back navigation", () => {
+    const onAccountScreenChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <RightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="root"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("user-menu-appearance-row"));
+    expect(onAccountScreenChange).toHaveBeenCalledWith("appearance");
+
+    rerender(
+      <RightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="appearance"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+    expect(screen.getByTestId("right-panel-appearance")).toBeInTheDocument();
+
+    rerender(
+      <RightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="root"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+    expect(screen.getByTestId("user-menu-appearance-row")).toBeInTheDocument();
+  });
+
   it("uses the shared root menu row alignment for settings and appearance", () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 

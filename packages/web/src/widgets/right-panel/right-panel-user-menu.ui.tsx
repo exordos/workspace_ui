@@ -50,6 +50,8 @@ const MenuChevron: React.FC<{ open?: boolean }> = ({ open = false }) => (
 );
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
+  accountScreen = "root",
+  onAccountScreenChange,
   onOpenAboutDrawer,
   onOpenPersonalInfo,
   onNestedPanelChange,
@@ -70,7 +72,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       : undefined,
   );
   const currentThemeMode = useThemeStore((s) => s.mode);
-  const [menuSubview, setMenuSubview] = useState<"root" | "settings" | "appearance">("root");
+  const [legacyMenuSubview, setLegacyMenuSubview] = useState<"root" | "settings" | "appearance">(
+    "root",
+  );
+  const activeScreen = onAccountScreenChange != null ? accountScreen : legacyMenuSubview;
   const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTextDraft, setStatusTextDraft] = useState("");
@@ -110,6 +115,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   );
 
   const closeDrawer = useCallback(() => {
+    if (rightDrawer?.closeCurrent != null) {
+      rightDrawer.closeCurrent();
+      return;
+    }
     rightDrawer?.setOpen(false);
   }, [rightDrawer]);
 
@@ -176,10 +185,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
-    if (onOpenPersonalInfo != null) {
-      onOpenPersonalInfo();
-      return;
-    }
+    onOpenPersonalInfo?.();
   }, [onOpenPersonalInfo]);
 
   const openDiagnostics = useCallback(() => {
@@ -191,17 +197,20 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [onOpenAboutDrawer]);
 
   const returnToRoot = useCallback(() => {
-    setMenuSubview("root");
+    if (onAccountScreenChange != null) onAccountScreenChange("root");
+    else setLegacyMenuSubview("root");
     onNestedPanelChange?.(null);
-  }, [onNestedPanelChange]);
+  }, [onAccountScreenChange, onNestedPanelChange]);
   const openSettings = useCallback(() => {
-    setMenuSubview("settings");
+    if (onAccountScreenChange != null) onAccountScreenChange("settings");
+    else setLegacyMenuSubview("settings");
     onNestedPanelChange?.({ titleKey: "settings.settings", onBack: returnToRoot });
-  }, [onNestedPanelChange, returnToRoot]);
+  }, [onAccountScreenChange, onNestedPanelChange, returnToRoot]);
   const openAppearance = useCallback(() => {
-    setMenuSubview("appearance");
+    if (onAccountScreenChange != null) onAccountScreenChange("appearance");
+    else setLegacyMenuSubview("appearance");
     onNestedPanelChange?.({ titleKey: "settings.appearance", onBack: returnToRoot });
-  }, [onNestedPanelChange, returnToRoot]);
+  }, [onAccountScreenChange, onNestedPanelChange, returnToRoot]);
 
   const handleClearCache = useCallback(async () => {
     const confirmed = window.confirm(t("settings.clearCacheConfirm"));
@@ -244,13 +253,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     setStatusEmojiPickerOpen(false);
   }, []);
 
-  if (menuSubview === "settings") {
+  if (activeScreen === "settings") {
     return (
       <RightPanelUserSettings onBack={returnToRoot} onClose={closeDrawer} showHeader={false} />
     );
   }
 
-  if (menuSubview === "appearance") {
+  if (activeScreen === "appearance") {
     return (
       <RightPanelUserAppearance onBack={returnToRoot} onClose={closeDrawer} showHeader={false} />
     );
