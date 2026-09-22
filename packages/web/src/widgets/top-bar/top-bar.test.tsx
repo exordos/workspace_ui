@@ -331,6 +331,32 @@ describe("TopBar", () => {
     });
   });
 
+  it("promotes existing account history over chat instead of duplicating it", () => {
+    renderWithProviders(<TopBar />);
+
+    act(() => {
+      useRightDrawerStore.getState().openUserMenu();
+      useRightDrawerStore.getState().openSettings();
+      useRightDrawerStore.getState().openInfo();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /profile/i }));
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
+      "chat-info",
+      "account",
+    ]);
+
+    act(() => useRightDrawerStore.getState().closeCurrent());
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: true, mode: "info" });
+    act(() => useRightDrawerStore.getState().closeCurrent());
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: false, layers: [] });
+  });
+
   it("uses semantic token class for active section background from route", () => {
     renderWithProviders(<TopBar />, { route: "/mail" });
 

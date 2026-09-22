@@ -37,6 +37,56 @@ describe("useRightDrawerStore navigation", () => {
       mode: "user-menu",
       accountScreen: "settings",
     });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual(["account"]);
+  });
+
+  it("promotes an existing account layer instead of duplicating it", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("settings");
+    store.openInfo();
+    store.openUserMenu();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
+      "chat-info",
+      "account",
+    ]);
+
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: true, mode: "info" });
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: false, layers: [] });
+  });
+
+  it("preserves internal screens when promoting a root layer", () => {
+    const store = useRightDrawerStore.getState();
+    store.openInfo();
+    store.openUserProfile(42);
+    store.openUserMenu();
+    store.openInfo();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      userIdOverride: 42,
+    });
+    expect(useRightDrawerStore.getState().layers).toHaveLength(2);
+  });
+
+  it("applies a requested nested screen after promoting its root layer", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("appearance");
+    store.openInfo();
+    store.openAccountScreen("settings");
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
     expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
       "chat-info",
       "account",

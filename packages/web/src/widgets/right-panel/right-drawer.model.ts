@@ -107,6 +107,21 @@ function sameScreen(left: RightDrawerScreen | undefined, right: RightDrawerScree
   );
 }
 
+function openUniqueLayer(
+  layers: RightDrawerLayer[],
+  requestedLayer: RightDrawerLayer,
+): RightDrawerLayer[] {
+  const existingIndex = layers.findIndex(({ kind }) => kind === requestedLayer.kind);
+  if (existingIndex < 0) return [...layers, requestedLayer];
+  if (existingIndex === layers.length - 1) {
+    return [...layers.slice(0, -1), requestedLayer];
+  }
+
+  const existingLayer = layers[existingIndex];
+  if (existingLayer == null) return layers;
+  return [...layers.slice(0, existingIndex), ...layers.slice(existingIndex + 1), existingLayer];
+}
+
 export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
   ...project(false, []),
   setOpen(open) {
@@ -144,12 +159,7 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
   },
   openLayer(layer) {
     set((state) => {
-      const active = state.layers.at(-1);
-      const layers =
-        active?.kind === layer.kind
-          ? [...state.layers.slice(0, -1), layer]
-          : [...state.layers, layer];
-      return project(true, layers);
+      return project(true, openUniqueLayer(state.layers, layer));
     });
   },
   openScreen(screen) {
@@ -168,9 +178,9 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
     if (state.layers.at(-1)?.kind !== "account") {
       state.openLayer({
         kind: "account",
-        screens:
-          screen === "root" ? [ACCOUNT_ROOT_SCREEN] : [ACCOUNT_ROOT_SCREEN, accountScreen(screen)],
+        screens: [ACCOUNT_ROOT_SCREEN],
       });
+      if (screen !== "root") get().openScreen(accountScreen(screen));
       return;
     }
     state.openScreen(accountScreen(screen));
@@ -224,14 +234,20 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
     const state = get();
     const screen = profileScreen({ kind: "legacy-user-id", userId });
     if (state.layers.at(-1)?.kind === "chat-info") state.openScreen(screen);
-    else state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN, screen] });
+    else {
+      state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN] });
+      get().openScreen(screen);
+    }
   },
   openWorkspaceUserProfile(userUuid) {
     logStoreAction("rightDrawer", "openWorkspaceUserProfile", { userUuid });
     const state = get();
     const screen = profileScreen({ kind: "workspace-user-uuid", userUuid });
     if (state.layers.at(-1)?.kind === "chat-info") state.openScreen(screen);
-    else state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN, screen] });
+    else {
+      state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN] });
+      get().openScreen(screen);
+    }
   },
   clearUserProfileOverride() {
     logStoreAction("rightDrawer", "clearUserProfileOverride", {});
