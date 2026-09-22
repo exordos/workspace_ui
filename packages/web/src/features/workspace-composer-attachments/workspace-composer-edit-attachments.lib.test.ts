@@ -53,6 +53,38 @@ describe("Workspace composer edit attachments", () => {
     ).toBe(`Before\n${image}\n${file}`);
   });
 
+  it("restores a standalone inline image without moving it from editable text", () => {
+    const image = `![screen.png](urn:image:${IMAGE_UUID}?name=screen.png&content_type=image%2Fpng&size=8)`;
+    const markdown = `Before\n${image}\nAfter`;
+
+    const result = extractWorkspaceComposerEditContent(markdown);
+
+    expect(result.markdown).toBe(markdown);
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        markdown: image,
+        reference: expect.objectContaining({
+          fileUuid: IMAGE_UUID,
+          mediaKind: "image",
+          name: "screen.png",
+        }),
+      }),
+    ]);
+    expect(
+      appendWorkspaceComposerExistingAttachmentMarkdown(result.markdown, result.attachments),
+    ).toBe(markdown);
+  });
+
+  it("uses one attachment card for repeated inline image Markdown", () => {
+    const image = `![screen.png](urn:image:${IMAGE_UUID}?name=screen.png)`;
+    const markdown = `${image}\nBetween\n${image}\nAfter`;
+
+    const result = extractWorkspaceComposerEditContent(markdown);
+
+    expect(result.markdown).toBe(markdown);
+    expect(result.attachments).toHaveLength(1);
+  });
+
   it("preserves the exact Markdown before the canonical attachment tail", () => {
     const image = `![screen.png](urn:image:${IMAGE_UUID}?name=screen.png)`;
     const body = [`Use \`${image}\`  `, "", "", "```md", "line  ", "", "", image, "```"].join("\n");
