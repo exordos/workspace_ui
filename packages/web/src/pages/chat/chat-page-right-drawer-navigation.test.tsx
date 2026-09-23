@@ -26,6 +26,7 @@ const RightDrawerHeaderHarness: React.FC = () => {
         chatInfoOpen,
         setOpen: setRightDrawerOpen,
         toggleChatInfo: toggleRightDrawerChatInfo,
+        closeCurrent: useRightDrawerStore.getState().closeCurrent,
         openInfo: openRightDrawerInfo,
         openUserProfile: openRightDrawerUserProfile,
       }}

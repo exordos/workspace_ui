@@ -786,6 +786,8 @@ function renderWorkspaceChatPageWithShellContexts(
           value={{
             open: false,
             setOpen: vi.fn(),
+            toggleChatInfo: vi.fn(),
+            closeCurrent: vi.fn(),
             openInfo: vi.fn(),
             openUserProfile: vi.fn(),
             openWorkspaceUserProfile: vi.fn(),

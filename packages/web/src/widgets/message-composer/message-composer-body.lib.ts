@@ -69,7 +69,16 @@ function replaceImageAliases(
   }
   const tokens = [...byToken.keys()].sort((left, right) => right.length - left.length);
   if (tokens.length === 0) return value;
-  const pattern = new RegExp(tokens.map(escapeRegExp).join("|"), "g");
+  const pattern = new RegExp(
+    tokens
+      .map((token) => {
+        const escaped = escapeRegExp(token);
+        // A visible token can prefix another image's canonical Markdown link.
+        return byToken.get(token)?.isCanonical ? escaped : `${escaped}(?!\\()`;
+      })
+      .join("|"),
+    "g",
+  );
   return value.replace(pattern, (token) => {
     const match = byToken.get(token);
     return match == null ? token : replacement(match.alias, match.isCanonical);
@@ -90,11 +99,10 @@ export function getWorkspaceComposerImageAliasLocalIds(
   aliases: readonly WorkspaceComposerImageAlias[],
 ): Set<string> {
   const result = new Set<string>();
-  for (const alias of aliases) {
-    if (value.includes(alias.visibleText) || value.includes(alias.canonicalMarkdown)) {
-      result.add(alias.localId);
-    }
-  }
+  replaceImageAliases(value, aliases, (alias, isCanonical) => {
+    result.add(alias.localId);
+    return isCanonical ? alias.canonicalMarkdown : alias.visibleText;
+  });
   return result;
 }
 

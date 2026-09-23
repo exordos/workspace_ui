@@ -4,6 +4,7 @@ import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
+import { resolveLayoutAccountScreenTitle } from "./layout-right-drawer-title.lib";
 import {
   clampLayoutSidebarWidth,
   getLayoutSidebarWidthBounds,
@@ -43,13 +44,12 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
   );
-  let accountDrawerTitle = rightDrawerTitle;
-  if (rightDrawerAccountScreen === "settings") accountDrawerTitle = t("settings.settings");
-  if (rightDrawerAccountScreen === "appearance") accountDrawerTitle = t("settings.appearance");
-  if (rightDrawerAccountScreen === "about") accountDrawerTitle = t("settings.appVersion");
-  if (rightDrawerAccountScreen === "personal-info") {
-    accountDrawerTitle = t("settings.personalInfo");
-  }
+  const accountDrawerTitle =
+    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ?? rightDrawerTitle;
+  const showAccountMenuRows =
+    (rightDrawerMode === "user-menu" || rightDrawerMode === "settings") &&
+    rightDrawerAccountScreen !== "about" &&
+    rightDrawerAccountScreen !== "personal-info";
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -180,8 +180,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
             onClose={onCloseRightDrawer}
             onBack={rightDrawerCanGoBack ? onBackRightDrawer : undefined}
             title={accountDrawerTitle}
-            // Account/settings menu: edge-to-edge row hover (must flush on this slot, not nested).
-            contentFlush={rightDrawerMode === "user-menu" || rightDrawerMode === "settings"}
+            // Account menu rows need edge-to-edge hover; detail screens keep drawer padding.
+            contentFlush={showAccountMenuRows}
           >
             <RightPanel
               mode={rightDrawerMode}
@@ -189,7 +189,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               participantsCount={participantsCount}
               onlineCount={onlineCount}
               workspaceInfo={workspaceRightPanelInfo}
-              accountScreen={rightDrawerAccountScreen ?? undefined}
+              accountScreen={rightDrawerAccountScreen ?? "root"}
               onAccountScreenChange={onAccountScreenChange}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}

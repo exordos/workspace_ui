@@ -8,6 +8,8 @@ describe("RightPanelShell Workspace info", () => {
     renderWithProviders(
       <RightPanelShell
         title="Legacy Alice"
+        accountScreen="root"
+        onAccountScreenChange={() => undefined}
         workspaceInfo={{
           kind: "directPrivate",
           directUserUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",

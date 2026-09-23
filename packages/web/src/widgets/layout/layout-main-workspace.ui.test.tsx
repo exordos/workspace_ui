@@ -33,12 +33,14 @@ vi.mock("~/widgets/right-panel/right-drawer.ui", () => ({
     children,
     onBack,
     title,
+    contentFlush,
   }: {
     children: ReactNode;
     onBack?: () => void;
     title?: string;
+    contentFlush?: boolean;
   }) => (
-    <aside data-testid="right-drawer">
+    <aside data-testid="right-drawer" data-content-flush={contentFlush ? "true" : "false"}>
       {onBack != null ? <button onClick={onBack}>Back</button> : null}
       {title ? <h2>{title}</h2> : null}
       {children}
@@ -119,6 +121,46 @@ describe("LayoutMainWorkspace", () => {
     act(() => setLocale("ru"));
     expect(screen.getByRole("heading", { name: "Настройки" })).toBeInTheDocument();
     expect(screen.getByTestId("nested-settings-body-title")).toHaveTextContent("Настройки");
+  });
+
+  it.each([
+    { screen: "root", title: "Account", flush: "true" },
+    { screen: "settings", title: "Settings", flush: "true" },
+    { screen: "appearance", title: "Appearance", flush: "true" },
+    { screen: "about", title: "App version", flush: "false" },
+    { screen: "personal-info", title: "Personal info", flush: "false" },
+  ] as const)(
+    "uses the correct drawer spacing and title for $screen",
+    ({ screen: accountScreen, title, flush }) => {
+      render(
+        <LayoutMainWorkspace
+          {...buildProps({
+            rightDrawerOpen: true,
+            rightDrawerMode: "user-menu",
+            rightDrawerAccountScreen: accountScreen,
+            rightDrawerTitle: "Account",
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", flush);
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+    },
+  );
+
+  it("keeps padding and the app-version title for the update indicator About drawer", () => {
+    render(
+      <LayoutMainWorkspace
+        {...buildProps({
+          rightDrawerOpen: true,
+          rightDrawerMode: "about",
+          rightDrawerTitle: "App version",
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "false");
+    expect(screen.getByRole("heading", { name: "App version" })).toBeInTheDocument();
   });
 
   it("does not limit the workspace row width", () => {

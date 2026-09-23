@@ -180,11 +180,7 @@ import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-messa
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
 const toggleChatInfoDrawer = (rightDrawer: RightDrawerContextValue | null): void => {
-  if (rightDrawer?.toggleChatInfo != null) {
-    rightDrawer.toggleChatInfo();
-    return;
-  }
-  rightDrawer?.setOpen(!rightDrawer.open);
+  rightDrawer?.toggleChatInfo();
 };
 
 const isChatInfoDrawerOpen = (rightDrawer: RightDrawerContextValue | null): boolean =>

@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -7,7 +8,32 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
-import { RightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
+import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
+
+function RightPanelShell(
+  props: Readonly<Omit<RightPanelProps, "accountScreen" | "onAccountScreenChange">>,
+) {
+  const [accountScreen, setAccountScreen] = useState<RightPanelAccountScreen>("root");
+  return (
+    <>
+      {accountScreen !== "root" ? (
+        <button
+          type="button"
+          data-testid="controlled-shell-back"
+          onClick={() => setAccountScreen("root")}
+        >
+          Back
+        </button>
+      ) : null}
+      <ProductionRightPanelShell
+        {...props}
+        accountScreen={accountScreen}
+        onAccountScreenChange={setAccountScreen}
+      />
+    </>
+  );
+}
 
 const updateOwnProfileMock = vi.hoisted(() => vi.fn());
 const writeTextMock = vi.hoisted(() => vi.fn());
@@ -165,11 +191,11 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.getByTestId("right-panel-profile-custom-status")).toHaveTextContent("☕ Focus");
   });
 
-  it("returns to the account menu from personal-info back control", () => {
+  it("returns to the account menu when the controlled shell goes back", () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
-    fireEvent.click(screen.getByTestId("right-panel-user-profile-back"));
+    fireEvent.click(screen.getByTestId("controlled-shell-back"));
 
     expect(screen.queryByTestId("right-panel-user-profile")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: t("settings.personalInfo") })).toBeInTheDocument();

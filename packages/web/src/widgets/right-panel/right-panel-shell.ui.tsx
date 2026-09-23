@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { createWorkspaceRightPanelUserProfileView } from "~/entities/messenger/messenger-right-panel.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -14,15 +14,12 @@ import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.typ
 
 export const RightPanelShell: React.FC<RightPanelProps> = ({
   mode = "info",
-  accountScreen: controlledAccountScreen,
+  accountScreen,
   onAccountScreenChange,
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
-  onNestedPanelChange,
   workspaceInfo,
 }) => {
-  const [legacyMenuSubview, setLegacyMenuSubview] = useState<RightPanelAccountScreen>("root");
-  const accountScreen = controlledAccountScreen ?? legacyMenuSubview;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const usersById = useUsersStore((state) => state.usersById);
@@ -33,8 +30,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
 
   const changeAccountScreen = useCallback(
     (screen: RightPanelAccountScreen) => {
-      if (onAccountScreenChange != null) onAccountScreenChange(screen);
-      else setLegacyMenuSubview(screen);
+      onAccountScreenChange(screen);
     },
     [onAccountScreenChange],
   );
@@ -55,10 +51,6 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
     changeAccountScreen("personal-info");
   }, [changeAccountScreen, onOpenPersonalInfoDrawer]);
 
-  const handleBackToMenu = useCallback(() => {
-    changeAccountScreen("root");
-  }, [changeAccountScreen]);
-
   const ownProfileInfo = useMemo(() => {
     const userUuid = runtimeContext?.userUuid?.trim() ?? "";
     if (userUuid.length === 0) return null;
@@ -78,14 +70,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
   if (mode === "settings" || mode === "user-menu") {
     if (accountScreen === "about") return <RightPanelAbout />;
     if (accountScreen === "personal-info" && ownProfileInfo != null) {
-      if (controlledAccountScreen != null) return <RightPanelUserProfile info={ownProfileInfo} />;
-      return (
-        <RightPanelUserProfile
-          info={ownProfileInfo}
-          onBack={handleBackToMenu}
-          headerTitle={t("settings.personalInfo")}
-        />
-      );
+      return <RightPanelUserProfile info={ownProfileInfo} />;
     }
 
     return (
@@ -96,7 +81,6 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
         onAccountScreenChange={changeAccountScreen}
         onOpenAboutDrawer={handleOpenAbout}
         onOpenPersonalInfo={handleOpenPersonalInfo}
-        onNestedPanelChange={onNestedPanelChange}
       />
     );
   }

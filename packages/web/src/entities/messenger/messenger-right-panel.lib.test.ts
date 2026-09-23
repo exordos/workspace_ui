@@ -722,6 +722,42 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     );
   });
 
+  it("keeps an explicitly opened profile while ordinary chat info follows the route", () => {
+    const options = {
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_A_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    };
+    const routes = [
+      { kind: "stream" as const, orgId: "org-a", projectId: "project-a", streamUuid: STREAM_UUID },
+      {
+        kind: "stream" as const,
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: "99999999-9999-4999-8999-999999999999",
+      },
+    ];
+
+    expect(
+      routes.map((route) =>
+        selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), { ...options, route }),
+      ),
+    ).toEqual([
+      expect.objectContaining({ kind: "channel", title: "#general" }),
+      expect.objectContaining({ kind: "directPrivate", directUserUuid: DIRECT_USER_UUID }),
+    ]);
+    for (const route of routes) {
+      expect(
+        selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+          ...options,
+          route,
+          workspaceUserUuidOverride: USER_B_UUID,
+        }),
+      ).toEqual(expect.objectContaining({ kind: "userProfile", userUuid: USER_B_UUID }));
+    }
+  });
+
   it.each(["root", "inbox", "activity", "feed"] as const)(
     "opens an accessible profile override on the %s route without a conversation",
     (kind) => {

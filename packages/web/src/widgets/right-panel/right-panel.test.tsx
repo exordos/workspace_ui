@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -9,7 +10,21 @@ import {
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
-import { RightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
+import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
+
+function RightPanelShell(
+  props: Readonly<Omit<RightPanelProps, "accountScreen" | "onAccountScreenChange">>,
+) {
+  const [accountScreen, setAccountScreen] = useState<RightPanelAccountScreen>("root");
+  return (
+    <ProductionRightPanelShell
+      {...props}
+      accountScreen={accountScreen}
+      onAccountScreenChange={setAccountScreen}
+    />
+  );
+}
 
 const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 
@@ -145,7 +160,7 @@ describe("RightPanelShell", () => {
   it("restores the controlled account screen and reports internal back navigation", () => {
     const onAccountScreenChange = vi.fn();
     const { rerender } = renderWithProviders(
-      <RightPanelShell
+      <ProductionRightPanelShell
         mode="user-menu"
         title="Profile"
         accountScreen="root"
@@ -157,7 +172,7 @@ describe("RightPanelShell", () => {
     expect(onAccountScreenChange).toHaveBeenCalledWith("appearance");
 
     rerender(
-      <RightPanelShell
+      <ProductionRightPanelShell
         mode="user-menu"
         title="Profile"
         accountScreen="appearance"
@@ -167,7 +182,7 @@ describe("RightPanelShell", () => {
     expect(screen.getByTestId("right-panel-appearance")).toBeInTheDocument();
 
     rerender(
-      <RightPanelShell
+      <ProductionRightPanelShell
         mode="user-menu"
         title="Profile"
         accountScreen="root"

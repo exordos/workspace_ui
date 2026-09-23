@@ -198,8 +198,32 @@ describe("message-composer-body.lib", () => {
         ),
       ).toBe("x  y ");
       expect(
+        removeWorkspaceComposerImageAlias(
+          "x ![shot.png] y ![shot.png](urn:image:two)",
+          aliases[0]!,
+        ),
+      ).toBe("x  y ![shot.png](urn:image:two)");
+      expect(
+        removeWorkspaceComposerImageAlias(
+          "edited ![shot.png](urn:image:one) and ![shot.png](urn:image:two)",
+          aliases[0]!,
+        ),
+      ).toBe("edited  and ![shot.png](urn:image:two)");
+      expect(
         stripWorkspaceComposerImageAliases("A ![shot.png] B ![shot.png](urn:image:one)", aliases),
       ).toBe("A  B ![shot.png](urn:image:one)");
+    });
+
+    it("does not mark a same-named image as inline from another image canonical token", () => {
+      expect(getWorkspaceComposerImageAliasLocalIds("![shot.png](urn:image:two)", aliases)).toEqual(
+        new Set(["two"]),
+      );
+      expect(
+        getWorkspaceComposerImageAliasLocalIds("![shot.png](https://example.com/x)", aliases),
+      ).toEqual(new Set());
+      expect(
+        serializeWorkspaceComposerImageAliases("![shot.png](https://example.com/x)", aliases),
+      ).toBe("![shot.png](https://example.com/x)");
     });
 
     it("keeps unknown text", () => {

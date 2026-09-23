@@ -666,6 +666,8 @@ describe("WorkspaceSidebar context menu", () => {
       {
         open: false,
         setOpen: vi.fn(),
+        toggleChatInfo: vi.fn(),
+        closeCurrent: vi.fn(),
         openInfo,
         openWorkspaceUserProfile,
       },
@@ -688,6 +690,8 @@ describe("WorkspaceSidebar context menu", () => {
     renderWorkspaceSidebar([createStream()], {
       open: false,
       setOpen,
+      toggleChatInfo: vi.fn(),
+      closeCurrent: vi.fn(),
       openInfo,
     });
 

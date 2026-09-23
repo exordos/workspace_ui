@@ -21,7 +21,9 @@ function renderFavoritesPage(state: WorkspaceSelfChatViewState, setOpen: (open: 
   mocked.useWorkspaceSelfChat.mockReturnValue(state);
   return render(
     <MemoryRouter initialEntries={["/org/org-a/project/project-a/activity/favorites"]}>
-      <RightDrawerContext.Provider value={{ open: true, setOpen }}>
+      <RightDrawerContext.Provider
+        value={{ open: true, setOpen, toggleChatInfo: vi.fn(), closeCurrent: vi.fn() }}
+      >
         <FavoritesPage />
       </RightDrawerContext.Provider>
     </MemoryRouter>,
