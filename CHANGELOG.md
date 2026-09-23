@@ -6,6 +6,52 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-23
+
+### Added
+
+- Forwarded messages are now stored as self-contained snapshots with the
+  original author, source, timestamp, and selected text. They remain readable
+  when the original message changes or becomes unavailable, while navigation
+  back to the source still goes through the normal access check.
+
+### Changed
+
+- Outgoing messages keep a stable local identity while sending and reconcile
+  cleanly with API and realtime updates, avoiding transient duplicates and
+  keeping reply, edit, and other mutations active when the user changes chats.
+- Closed topics now use a dedicated resolved-state divider and hide the
+  composer until the topic is reopened.
+- Direct-message notification controls now show only the supported modes and
+  use consistent labels across the sidebar and conversation menus.
+- Message composition, attachment editing, inline image placement, responsive
+  navigation, and the profile and conversation drawers received a coordinated
+  UI polish pass.
+
+### Fixed
+
+- Forwarded and quoted message content now preserves its structured rendering,
+  source labels, long names, timestamps, and anchor transitions more reliably.
+- Chat navigation no longer cancels in-flight message mutations or leaves
+  optimistic messages with unstable render keys.
+
+### Requirements and compatibility
+
+- Base requirements are unchanged from `0.7.0`: Exordos Core `0.2.3` or newer
+  and Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- Existing `urn:quote` messages keep their current behavior, and clients that
+  do not understand forward snapshots can still show their Markdown link label.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.0`.
+- No manual migration is required.
+
 ## [0.7.0] — 2026-09-09
 
 ### Added
