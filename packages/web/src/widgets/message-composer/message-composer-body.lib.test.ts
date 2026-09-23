@@ -177,18 +177,58 @@ describe("message-composer-body.lib", () => {
 
     it("serializes aliases and identifies only present local ids", () => {
       expect(
-        serializeWorkspaceComposerImageAliases("A ![shot.png (2)] B ![shot.png]", aliases),
+        serializeWorkspaceComposerImageAliases(
+          "A ![shot.png (2)] B ![shot.png](urn:image:one)",
+          aliases,
+        ),
       ).toBe("A ![shot.png](urn:image:two) B ![shot.png](urn:image:one)");
-      expect(getWorkspaceComposerImageAliasLocalIds("![shot.png (2)]", aliases)).toEqual(
-        new Set(["two"]),
-      );
+      expect(
+        getWorkspaceComposerImageAliasLocalIds(
+          "![shot.png (2)] ![shot.png](urn:image:one)",
+          aliases,
+        ),
+      ).toEqual(new Set(["one", "two"]));
     });
 
-    it("keeps unknown text and removes every occurrence of one token", () => {
-      expect(removeWorkspaceComposerImageAlias("x ![shot.png] y ![shot.png]", aliases[0]!)).toBe(
-        "x  y ",
+    it("removes readable and canonical forms without corrupting canonical Markdown", () => {
+      expect(
+        removeWorkspaceComposerImageAlias(
+          "x ![shot.png] y ![shot.png](urn:image:one)",
+          aliases[0]!,
+        ),
+      ).toBe("x  y ");
+      expect(
+        removeWorkspaceComposerImageAlias(
+          "x ![shot.png] y ![shot.png](urn:image:two)",
+          aliases[0]!,
+        ),
+      ).toBe("x  y ![shot.png](urn:image:two)");
+      expect(
+        removeWorkspaceComposerImageAlias(
+          "edited ![shot.png](urn:image:one) and ![shot.png](urn:image:two)",
+          aliases[0]!,
+        ),
+      ).toBe("edited  and ![shot.png](urn:image:two)");
+      expect(
+        stripWorkspaceComposerImageAliases("A ![shot.png] B ![shot.png](urn:image:one)", aliases),
+      ).toBe("A  B ![shot.png](urn:image:one)");
+    });
+
+    it("does not mark a same-named image as inline from another image canonical token", () => {
+      expect(getWorkspaceComposerImageAliasLocalIds("![shot.png](urn:image:two)", aliases)).toEqual(
+        new Set(["two"]),
       );
+      expect(
+        getWorkspaceComposerImageAliasLocalIds("![shot.png](https://example.com/x)", aliases),
+      ).toEqual(new Set());
+      expect(
+        serializeWorkspaceComposerImageAliases("![shot.png](https://example.com/x)", aliases),
+      ).toBe("![shot.png](https://example.com/x)");
+    });
+
+    it("keeps unknown text", () => {
       expect(serializeWorkspaceComposerImageAliases("unknown", aliases)).toBe("unknown");
+      expect(getWorkspaceComposerImageAliasLocalIds("unknown", aliases)).toEqual(new Set());
     });
 
     it("serializes image aliases in outgoing body before trimming", () => {

@@ -60,15 +60,28 @@ export function buildWorkspaceComposerImageAliases(
 function replaceImageAliases(
   value: string,
   aliases: readonly WorkspaceComposerImageAlias[],
-  replacement: (alias: WorkspaceComposerImageAlias) => string,
+  replacement: (alias: WorkspaceComposerImageAlias, isCanonical: boolean) => string,
 ): string {
-  const byToken = new Map(aliases.map((alias) => [alias.visibleText, alias] as const));
+  const byToken = new Map<string, { alias: WorkspaceComposerImageAlias; isCanonical: boolean }>();
+  for (const alias of aliases) {
+    byToken.set(alias.canonicalMarkdown, { alias, isCanonical: true });
+    byToken.set(alias.visibleText, { alias, isCanonical: false });
+  }
   const tokens = [...byToken.keys()].sort((left, right) => right.length - left.length);
   if (tokens.length === 0) return value;
-  const pattern = new RegExp(tokens.map(escapeRegExp).join("|"), "g");
+  const pattern = new RegExp(
+    tokens
+      .map((token) => {
+        const escaped = escapeRegExp(token);
+        // A visible token can prefix another image's canonical Markdown link.
+        return byToken.get(token)?.isCanonical ? escaped : `${escaped}(?!\\()`;
+      })
+      .join("|"),
+    "g",
+  );
   return value.replace(pattern, (token) => {
-    const alias = byToken.get(token);
-    return alias == null ? token : replacement(alias);
+    const match = byToken.get(token);
+    return match == null ? token : replacement(match.alias, match.isCanonical);
   });
 }
 
@@ -80,13 +93,16 @@ export function serializeWorkspaceComposerImageAliases(
   return replaceImageAliases(value, aliases, (alias) => alias.canonicalMarkdown);
 }
 
-/** Returns local ids whose visible image token occurs in the value. */
+/** Returns local ids whose visible or canonical image token occurs in the value. */
 export function getWorkspaceComposerImageAliasLocalIds(
   value: string,
   aliases: readonly WorkspaceComposerImageAlias[],
 ): Set<string> {
   const result = new Set<string>();
-  for (const alias of aliases) if (value.includes(alias.visibleText)) result.add(alias.localId);
+  replaceImageAliases(value, aliases, (alias, isCanonical) => {
+    result.add(alias.localId);
+    return isCanonical ? alias.canonicalMarkdown : alias.visibleText;
+  });
   return result;
 }
 
@@ -95,7 +111,7 @@ export function removeWorkspaceComposerImageAlias(
   value: string,
   alias: WorkspaceComposerImageAlias,
 ): string {
-  return value.split(alias.visibleText).join("");
+  return replaceImageAliases(value, [alias], () => "");
 }
 
 /** Removes all readable image aliases before persisting a draft value. */
@@ -103,7 +119,9 @@ export function stripWorkspaceComposerImageAliases(
   value: string,
   aliases: readonly WorkspaceComposerImageAlias[],
 ): string {
-  return replaceImageAliases(value, aliases, () => "");
+  return replaceImageAliases(value, aliases, (alias, isCanonical) =>
+    isCanonical ? alias.canonicalMarkdown : "",
+  );
 }
 
 /** Replaces the active @query with the person's name shown in the composer. */

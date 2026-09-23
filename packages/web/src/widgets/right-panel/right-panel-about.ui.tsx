@@ -15,7 +15,7 @@ export const RightPanelAbout: React.FC = () => {
 
   const handleOpenLicenses = useCallback(() => {
     void navigate(withCurrentOrgRoute("/licenses"));
-    rightDrawer?.setOpen(false);
+    rightDrawer?.closeCurrent();
   }, [navigate, rightDrawer]);
 
   return (

@@ -4,6 +4,7 @@ import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
+import { resolveLayoutAccountScreenTitle } from "./layout-right-drawer-title.lib";
 import {
   clampLayoutSidebarWidth,
   getLayoutSidebarWidthBounds,
@@ -18,6 +19,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   sidebarOpen,
   rightDrawerOpen,
   rightDrawerMode,
+  rightDrawerAccountScreen,
+  rightDrawerCanGoBack,
   onCloseRightDrawer,
   onBackRightDrawer,
   rightDrawerTitle,
@@ -28,6 +31,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
+  onAccountScreenChange,
 }: LayoutMainWorkspaceProps) {
   const { t } = useTranslation();
   const showRightPanel =
@@ -40,13 +44,12 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   const [sidebarPreferredWidth, setSidebarPreferredWidth] = useState(() =>
     loadLayoutSidebarWidth(),
   );
-  const [nestedDrawerHeader, setNestedDrawerHeader] = useState<{
-    titleKey: string;
-    onBack: () => void;
-  } | null>(null);
-  useEffect(() => {
-    setNestedDrawerHeader(null);
-  }, [rightDrawerMode, rightDrawerOpen]);
+  const accountDrawerTitle =
+    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ?? rightDrawerTitle;
+  const showAccountMenuRows =
+    (rightDrawerMode === "user-menu" || rightDrawerMode === "settings") &&
+    rightDrawerAccountScreen !== "about" &&
+    rightDrawerAccountScreen !== "personal-info";
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -175,10 +178,10 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
         {showRightPanel && (
           <RightDrawer
             onClose={onCloseRightDrawer}
-            onBack={nestedDrawerHeader?.onBack ?? onBackRightDrawer}
-            title={nestedDrawerHeader == null ? rightDrawerTitle : t(nestedDrawerHeader.titleKey)}
-            // Account/settings menu: edge-to-edge row hover (must flush on this slot, not nested).
-            contentFlush={rightDrawerMode === "user-menu" || rightDrawerMode === "settings"}
+            onBack={rightDrawerCanGoBack ? onBackRightDrawer : undefined}
+            title={accountDrawerTitle}
+            // Account menu rows need edge-to-edge hover; detail screens keep drawer padding.
+            contentFlush={showAccountMenuRows}
           >
             <RightPanel
               mode={rightDrawerMode}
@@ -186,10 +189,11 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               participantsCount={participantsCount}
               onlineCount={onlineCount}
               workspaceInfo={workspaceRightPanelInfo}
+              accountScreen={rightDrawerAccountScreen ?? "root"}
+              onAccountScreenChange={onAccountScreenChange}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
               onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
-              onNestedPanelChange={setNestedDrawerHeader}
             />
           </RightDrawer>
         )}

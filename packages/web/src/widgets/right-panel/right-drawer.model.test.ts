@@ -1,114 +1,209 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useRightDrawerStore } from "./right-drawer.model";
 
-describe("useRightDrawerStore", () => {
-  afterEach(() => {
-    useRightDrawerStore.setState({
-      open: false,
-      mode: "info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: null,
-    });
-  });
+const reset = () => useRightDrawerStore.getState().clearAll();
 
-  it("close fully resets the drawer state", () => {
-    useRightDrawerStore.setState({
-      open: true,
-      mode: "settings",
-      userIdOverride: 42,
-      workspaceUserUuidOverride: "33333333-3333-4333-8333-333333333333",
-    });
+describe("useRightDrawerStore navigation", () => {
+  afterEach(reset);
 
-    useRightDrawerStore.getState().close();
+  it("collapses and expands without deleting layer or screen history", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("appearance");
+    store.toggleVisibility();
 
     expect(useRightDrawerStore.getState()).toMatchObject({
       open: false,
+      accountScreen: "appearance",
+    });
+
+    store.toggleVisibility();
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "appearance",
+    });
+    expect(useRightDrawerStore.getState().layers[0]?.screens).toHaveLength(2);
+  });
+
+  it("X closes the active layer and reveals the previous one", () => {
+    const store = useRightDrawerStore.getState();
+    store.openInfo();
+    store.openAccountScreen("settings");
+    store.openInfo();
+    store.closeCurrent();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      mode: "user-menu",
+      accountScreen: "settings",
+    });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual(["account"]);
+  });
+
+  it("promotes an existing account layer instead of duplicating it", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("settings");
+    store.openInfo();
+    store.openUserMenu();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
+      "chat-info",
+      "account",
+    ]);
+
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: true, mode: "info" });
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: false, layers: [] });
+  });
+
+  it("preserves internal screens when promoting a root layer", () => {
+    const store = useRightDrawerStore.getState();
+    store.openInfo();
+    store.openUserProfile(42);
+    store.openUserMenu();
+    store.openInfo();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      userIdOverride: 42,
+    });
+    expect(useRightDrawerStore.getState().layers).toHaveLength(2);
+  });
+
+  it("applies a requested nested screen after promoting its root layer", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("appearance");
+    store.openInfo();
+    store.openAccountScreen("settings");
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "settings",
+    });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
+      "chat-info",
+      "account",
+    ]);
+  });
+
+  it("Back pops only internal screen history", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("settings");
+    store.back();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      mode: "user-menu",
+      accountScreen: "root",
+    });
+    expect(useRightDrawerStore.getState().layers).toHaveLength(1);
+  });
+
+  it("closing the last layer hides the drawer and leaves an empty stack", () => {
+    const store = useRightDrawerStore.getState();
+    store.openAbout();
+    store.closeCurrent();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: false,
+      layers: [],
+      mode: "info",
+      accountScreen: null,
+    });
+  });
+
+  it("clearAll resets visibility and all history", () => {
+    const store = useRightDrawerStore.getState();
+    store.openInfo();
+    store.openAccountScreen("settings");
+    store.clearAll();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: false,
+      layers: [],
+      mode: "info",
+      accountScreen: null,
+    });
+  });
+
+  it("chat and account toggles collapse only their active layer", () => {
+    const store = useRightDrawerStore.getState();
+    store.toggleChatInfo();
+    store.toggleChatInfo();
+    expect(useRightDrawerStore.getState()).toMatchObject({ open: false, mode: "info" });
+
+    store.toggleUserMenu();
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      accountScreen: "root",
+    });
+    store.openAccountScreen("appearance");
+    store.toggleUserMenu();
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: false,
+      accountScreen: "appearance",
+    });
+  });
+
+  it("openInfo resets a nested profile while preserving earlier root layers", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openWorkspaceUserProfile("33333333-3333-4333-8333-333333333333");
+    store.openInfo();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
       mode: "info",
       userIdOverride: null,
       workspaceUserUuidOverride: null,
     });
+    expect(useRightDrawerStore.getState().layers.map(({ kind }) => kind)).toEqual([
+      "account",
+      "chat-info",
+    ]);
   });
 
-  it("clearUserProfileOverride clears only userIdOverride and keeps drawer open", () => {
-    useRightDrawerStore.getState().openUserProfile(42);
+  it("keeps profiles inside chat history for Back and supports UUID and legacy ids", () => {
+    const store = useRightDrawerStore.getState();
+    store.openInfo();
+    store.openWorkspaceUserProfile("33333333-3333-4333-8333-333333333333");
+    expect(useRightDrawerStore.getState().workspaceUserUuidOverride).toBe(
+      "33333333-3333-4333-8333-333333333333",
+    );
+
+    store.back();
     expect(useRightDrawerStore.getState()).toMatchObject({
       open: true,
-      mode: "info",
+      workspaceUserUuidOverride: null,
+    });
+
+    store.openUserProfile(42);
+    expect(useRightDrawerStore.getState()).toMatchObject({
       userIdOverride: 42,
       workspaceUserUuidOverride: null,
     });
-
-    useRightDrawerStore.getState().clearUserProfileOverride();
-
+    store.clearUserProfileOverride();
     expect(useRightDrawerStore.getState()).toMatchObject({
       open: true,
-      mode: "info",
       userIdOverride: null,
       workspaceUserUuidOverride: null,
     });
   });
 
-  it("opens a Workspace user profile by UUID without setting a legacy user id", () => {
-    useRightDrawerStore.getState().openWorkspaceUserProfile("33333333-3333-4333-8333-333333333333");
+  it("does not duplicate the active account screen", () => {
+    const store = useRightDrawerStore.getState();
+    store.openUserMenu();
+    store.openAccountScreen("settings");
+    store.openAccountScreen("settings");
 
-    expect(useRightDrawerStore.getState()).toMatchObject({
-      open: true,
-      mode: "info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: "33333333-3333-4333-8333-333333333333",
-    });
-  });
-
-  it("legacy profile opening clears the Workspace UUID override", () => {
-    useRightDrawerStore.getState().openWorkspaceUserProfile("33333333-3333-4333-8333-333333333333");
-
-    useRightDrawerStore.getState().openUserProfile(42);
-
-    expect(useRightDrawerStore.getState()).toMatchObject({
-      open: true,
-      mode: "info",
-      userIdOverride: 42,
-      workspaceUserUuidOverride: null,
-    });
-  });
-
-  it("openInfo resets nested profile override and keeps drawer open", () => {
-    useRightDrawerStore.getState().openWorkspaceUserProfile("33333333-3333-4333-8333-333333333333");
-
-    useRightDrawerStore.getState().openInfo();
-
-    expect(useRightDrawerStore.getState()).toMatchObject({
-      open: true,
-      mode: "info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: null,
-    });
-  });
-
-  it("openPersonalInfo opens the nested personal-info mode", () => {
-    useRightDrawerStore.getState().openPersonalInfo();
-
-    expect(useRightDrawerStore.getState()).toMatchObject({
-      open: true,
-      mode: "personal-info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: null,
-    });
-  });
-
-  it("clearUserProfileOverride is a no-op when override is already null", () => {
-    useRightDrawerStore.setState({
-      open: true,
-      mode: "info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: null,
-    });
-    useRightDrawerStore.getState().clearUserProfileOverride();
-    expect(useRightDrawerStore.getState()).toMatchObject({
-      open: true,
-      mode: "info",
-      userIdOverride: null,
-      workspaceUserUuidOverride: null,
-    });
+    expect(useRightDrawerStore.getState().layers[0]?.screens).toHaveLength(2);
   });
 });

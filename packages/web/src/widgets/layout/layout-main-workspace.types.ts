@@ -1,4 +1,7 @@
-import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
+import type {
+  RightDrawerAccountScreen,
+  RightDrawerMode,
+} from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
 
 export interface LayoutMainWorkspaceProps {
@@ -7,8 +10,10 @@ export interface LayoutMainWorkspaceProps {
   sidebarOpen: boolean;
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
+  rightDrawerAccountScreen: RightDrawerAccountScreen | null;
+  rightDrawerCanGoBack: boolean;
   onCloseRightDrawer: () => void;
-  /** Shell back control for nested drawer modes (e.g. personal-info → user-menu). */
+  /** Shell back control for the active layer's internal screen history. */
   onBackRightDrawer?: () => void;
   /** Shell title shown next to the drawer close button. */
   rightDrawerTitle: string;
@@ -19,4 +24,5 @@ export interface LayoutMainWorkspaceProps {
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
   onOpenPersonalInfoDrawer?: () => void;
+  onAccountScreenChange: (screen: RightDrawerAccountScreen) => void;
 }

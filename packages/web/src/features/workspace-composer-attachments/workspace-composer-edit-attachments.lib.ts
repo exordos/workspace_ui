@@ -32,6 +32,20 @@ function parseAttachmentLine(line: string): ParsedAttachmentLine | null {
   return reference == null ? null : { markdown: line, reference };
 }
 
+function parseInlineImages(markdown: string): ParsedAttachmentLine[] {
+  return workspaceMarkdownLexer
+    .lexer(markdown, { async: false, breaks: true, gfm: true })
+    .flatMap((block) => {
+      if (block.type !== "paragraph") return [];
+      return (block.tokens ?? []).flatMap((inline) => {
+        if (inline.type !== "image") return [];
+        const image = inline as Tokens.Image;
+        const reference = parseWorkspaceMessageFileHref(image.href, image.text);
+        return reference?.mediaKind === "image" ? [{ markdown: image.raw, reference }] : [];
+      });
+    });
+}
+
 export function extractWorkspaceComposerEditContent(
   markdown: string,
 ): WorkspaceComposerEditContent {
@@ -52,11 +66,18 @@ export function extractWorkspaceComposerEditContent(
     firstAttachmentIndex = index;
   }
 
-  if (reversedAttachments.length === 0) {
-    return { markdown, attachments: [] };
-  }
-
-  const orderedAttachments = reversedAttachments.toReversed();
+  const editableMarkdown =
+    reversedAttachments.length === 0
+      ? markdown
+      : lines.slice(0, firstAttachmentIndex).join("\n").replace(/\n+$/, "");
+  const inlineImages = parseInlineImages(editableMarkdown);
+  const orderedAttachments = [
+    ...new Map(
+      [...inlineImages, ...reversedAttachments.toReversed()].map(
+        (attachment) => [attachment.markdown, attachment] as const,
+      ),
+    ).values(),
+  ];
   const attachments = orderedAttachments.map((attachment, index) => ({
     id: `existing:${attachment.reference.fileUuid}:${index}`,
     markdown: attachment.markdown,
@@ -64,7 +85,7 @@ export function extractWorkspaceComposerEditContent(
   }));
 
   return {
-    markdown: lines.slice(0, firstAttachmentIndex).join("\n").replace(/\n+$/, ""),
+    markdown: editableMarkdown,
     attachments,
   };
 }

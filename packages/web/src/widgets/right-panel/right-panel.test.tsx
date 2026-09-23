@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -9,7 +10,21 @@ import {
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
-import { RightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
+import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
+
+function RightPanelShell(
+  props: Readonly<Omit<RightPanelProps, "accountScreen" | "onAccountScreenChange">>,
+) {
+  const [accountScreen, setAccountScreen] = useState<RightPanelAccountScreen>("root");
+  return (
+    <ProductionRightPanelShell
+      {...props}
+      accountScreen={accountScreen}
+      onAccountScreenChange={setAccountScreen}
+    />
+  );
+}
 
 const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 
@@ -140,6 +155,41 @@ describe("RightPanelShell", () => {
     });
 
     expect(useSettingsStore.getState().notificationSound).toBe("digital");
+  });
+
+  it("restores the controlled account screen and reports internal back navigation", () => {
+    const onAccountScreenChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <ProductionRightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="root"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("user-menu-appearance-row"));
+    expect(onAccountScreenChange).toHaveBeenCalledWith("appearance");
+
+    rerender(
+      <ProductionRightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="appearance"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+    expect(screen.getByTestId("right-panel-appearance")).toBeInTheDocument();
+
+    rerender(
+      <ProductionRightPanelShell
+        mode="user-menu"
+        title="Profile"
+        accountScreen="root"
+        onAccountScreenChange={onAccountScreenChange}
+      />,
+    );
+    expect(screen.getByTestId("user-menu-appearance-row")).toBeInTheDocument();
   });
 
   it("uses the shared root menu row alignment for settings and appearance", () => {

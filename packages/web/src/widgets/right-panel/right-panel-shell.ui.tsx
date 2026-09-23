@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { createWorkspaceRightPanelUserProfileView } from "~/entities/messenger/messenger-right-panel.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -10,12 +10,16 @@ import { RightPanelAbout } from "./right-panel-about.ui";
 import { RightPanelUserMenu } from "./right-panel-user-menu.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
-import type { RightPanelProps } from "./right-panel.types";
+import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
 
-type MenuSubview = "menu" | "about" | "personal-info";
-
-export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...props }) => {
-  const [menuSubview, setMenuSubview] = useState<MenuSubview>("menu");
+export const RightPanelShell: React.FC<RightPanelProps> = ({
+  mode = "info",
+  accountScreen,
+  onAccountScreenChange,
+  onOpenAboutDrawer,
+  onOpenPersonalInfoDrawer,
+  workspaceInfo,
+}) => {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const usersById = useUsersStore((state) => state.usersById);
@@ -24,29 +28,28 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
     [currentAccountId, sessions],
   );
 
-  useEffect(() => {
-    setMenuSubview("menu");
-  }, [mode]);
+  const changeAccountScreen = useCallback(
+    (screen: RightPanelAccountScreen) => {
+      onAccountScreenChange(screen);
+    },
+    [onAccountScreenChange],
+  );
 
   const handleOpenAbout = useCallback(() => {
-    if (props.onOpenAboutDrawer != null) {
-      props.onOpenAboutDrawer();
+    if (onOpenAboutDrawer != null) {
+      onOpenAboutDrawer();
       return;
     }
-    setMenuSubview("about");
-  }, [props.onOpenAboutDrawer]);
+    changeAccountScreen("about");
+  }, [changeAccountScreen, onOpenAboutDrawer]);
 
   const handleOpenPersonalInfo = useCallback(() => {
-    if (props.onOpenPersonalInfoDrawer != null) {
-      props.onOpenPersonalInfoDrawer();
+    if (onOpenPersonalInfoDrawer != null) {
+      onOpenPersonalInfoDrawer();
       return;
     }
-    setMenuSubview("personal-info");
-  }, [props.onOpenPersonalInfoDrawer]);
-
-  const handleBackToMenu = useCallback(() => {
-    setMenuSubview("menu");
-  }, []);
+    changeAccountScreen("personal-info");
+  }, [changeAccountScreen, onOpenPersonalInfoDrawer]);
 
   const ownProfileInfo = useMemo(() => {
     const userUuid = runtimeContext?.userUuid?.trim() ?? "";
@@ -65,30 +68,27 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
   }
 
   if (mode === "settings" || mode === "user-menu") {
-    if (menuSubview === "about") return <RightPanelAbout />;
-    if (menuSubview === "personal-info" && ownProfileInfo != null) {
-      return (
-        <RightPanelUserProfile
-          info={ownProfileInfo}
-          onBack={handleBackToMenu}
-          headerTitle={t("settings.personalInfo")}
-        />
-      );
+    if (accountScreen === "about") return <RightPanelAbout />;
+    if (accountScreen === "personal-info" && ownProfileInfo != null) {
+      return <RightPanelUserProfile info={ownProfileInfo} />;
     }
 
     return (
       <RightPanelUserMenu
+        accountScreen={
+          accountScreen === "settings" || accountScreen === "appearance" ? accountScreen : "root"
+        }
+        onAccountScreenChange={changeAccountScreen}
         onOpenAboutDrawer={handleOpenAbout}
         onOpenPersonalInfo={handleOpenPersonalInfo}
-        onNestedPanelChange={props.onNestedPanelChange}
       />
     );
   }
 
   if (mode === "about") return <RightPanelAbout />;
 
-  if (props.workspaceInfo != null) {
-    return <RightPanelWorkspaceInfo info={props.workspaceInfo} />;
+  if (workspaceInfo != null) {
+    return <RightPanelWorkspaceInfo info={workspaceInfo} />;
   }
 
   return (

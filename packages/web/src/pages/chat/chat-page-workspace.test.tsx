@@ -786,6 +786,8 @@ function renderWorkspaceChatPageWithShellContexts(
           value={{
             open: false,
             setOpen: vi.fn(),
+            toggleChatInfo: vi.fn(),
+            closeCurrent: vi.fn(),
             openInfo: vi.fn(),
             openUserProfile: vi.fn(),
             openWorkspaceUserProfile: vi.fn(),
@@ -6306,6 +6308,43 @@ describe("ChatPage Workspace route", () => {
         activeTabId: null,
       });
     });
+  });
+
+  it("restores a standalone mid-message image in the attachment strip without moving it", async () => {
+    const imageUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const imageMarkdown = `![screen.png](urn:image:${imageUuid}?name=screen.png&content_type=image%2Fpng&size=8)`;
+    const markdown = `Before\n${imageMarkdown}\nAfter`;
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      {
+        ...createMessage(),
+        isOwn: true,
+        payload: { kind: "markdown", content: markdown },
+      },
+    ]);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => captured.messageListProps?.onEditMessage?.(MESSAGE_UUID));
+    await waitFor(() => {
+      expect(captured.composerProps?.editSession?.initialMarkdown).toBe(markdown);
+      expect(captured.composerProps?.attachments).toEqual([
+        expect.objectContaining({
+          fileName: "screen.png",
+          previewMarkdown: imageMarkdown,
+          workspaceFile: expect.objectContaining({ fileUuid: imageUuid, mediaKind: "image" }),
+        }),
+      ]);
+    });
+
+    await act(async () => {
+      await captured.composerProps?.onSubmitEdit(1, markdown);
+    });
+    expect(captured.editMessengerMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageUuid: MESSAGE_UUID, markdown }),
+    );
   });
 
   it("restores message files outside the edit textbox and rebuilds Markdown on save", async () => {

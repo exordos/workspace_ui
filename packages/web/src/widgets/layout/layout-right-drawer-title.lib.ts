@@ -1,7 +1,21 @@
 import type { WorkspaceRightPanelInfoView } from "~/entities/messenger/messenger-right-panel.lib";
-import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
+import type {
+  RightDrawerAccountScreen,
+  RightDrawerMode,
+} from "~/widgets/right-panel/right-drawer.model";
 
 export type RightDrawerInfoKind = WorkspaceRightPanelInfoView["kind"];
+
+export function resolveLayoutAccountScreenTitle(
+  screen: RightDrawerAccountScreen | null,
+  translate: (key: string) => string,
+): string | null {
+  if (screen === "settings") return translate("settings.settings");
+  if (screen === "appearance") return translate("settings.appearance");
+  if (screen === "about") return translate("settings.appVersion");
+  if (screen === "personal-info") return translate("settings.personalInfo");
+  return null;
+}
 
 /**
  * Resolves the right-drawer shell title (panel purpose), not the entity name.
@@ -14,9 +28,10 @@ export function resolveLayoutRightPanelTitle(
 ): string {
   // Same unified panel for settings and user-menu: shell title is the whole account drawer.
   if (mode === "settings" || mode === "user-menu") return translate("nav.account");
-  // Nested account subview: shell shows personal-info title + back (Figma right menu).
-  if (mode === "personal-info") return translate("settings.personalInfo");
-  if (mode === "about") return translate("settings.appVersion");
+  // Preserve titles for dedicated legacy drawer modes and the update indicator entry point.
+  if (mode === "personal-info" || mode === "about") {
+    return resolveLayoutAccountScreenTitle(mode, translate) ?? "";
+  }
   if (infoKind === "directPrivate" || infoKind === "userProfile") {
     return translate("info.information");
   }
