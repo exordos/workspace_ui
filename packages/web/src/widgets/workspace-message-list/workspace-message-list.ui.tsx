@@ -1035,22 +1035,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       >
         {/* The list already stores string Workspace UUIDs in the DOM. Later phases
           do not need to keep the old numeric DOM key around just for scrolling. */}
-        {dayGroups.flatMap((dayGroup) => {
-          const dayDivider = (
-            <div
-              className="sticky top-0 z-sticky flex justify-center py-1"
-              key={`day:${dayGroup.dateKey}`}
-              data-day-group="true"
-            >
-              <time
-                className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
-                dateTime={dayGroup.dateKey}
-                data-day-divider={dayGroup.dateKey}
-              >
-                {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
-              </time>
-            </div>
-          );
+        {dayGroups.map((dayGroup) => {
           const authorGroups = dayGroup.authorGroups.map((authorGroup) => {
             const showUnreadMarker =
               stableFirstUnreadUuid != null &&
@@ -1102,7 +1087,24 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
             );
           });
 
-          return [dayDivider, ...authorGroups];
+          return (
+            <div
+              className="flex flex-col gap-2"
+              key={`day:${dayGroup.dateKey}`}
+              data-day-group="true"
+            >
+              <div className="sticky top-0 z-sticky flex justify-center py-1">
+                <time
+                  className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text-muted backdrop-blur-sm"
+                  dateTime={dayGroup.dateKey}
+                  data-day-divider={dayGroup.dateKey}
+                >
+                  {dayLabelsByDateKey.get(dayGroup.dateKey) ?? dayGroup.dateKey}
+                </time>
+              </div>
+              {authorGroups}
+            </div>
+          );
         })}
       </div>
       {!anchorHandoffPending && (!isAtBottom || isKnownTailOutsideWindow || hasNewerMessages) ? (

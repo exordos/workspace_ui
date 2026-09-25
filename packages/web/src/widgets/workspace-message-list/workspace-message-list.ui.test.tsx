@@ -1435,7 +1435,7 @@ describe("WorkspaceMessageList", () => {
     expect(divider).not.toHaveTextContent("2026-07-03");
   });
 
-  it("keeps day dividers sticky at the top of the scroll container", () => {
+  it("keeps each sticky day divider within its own day's messages", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
 
@@ -1456,13 +1456,22 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const stickyWrappers = Array.from(container.querySelectorAll("[data-day-divider]")).map(
-      (divider) => divider.parentElement,
-    );
+    const dayGroups = Array.from(container.querySelectorAll("[data-day-group]"));
 
-    expect(stickyWrappers).toHaveLength(2);
-    for (const wrapper of stickyWrappers) {
-      expect(wrapper).toHaveClass("sticky", "top-0", "z-sticky");
+    expect(dayGroups).toHaveLength(2);
+    expect(dayGroups[0]?.querySelector("[data-day-divider='2026-07-02']")).toBeInTheDocument();
+    expect(
+      dayGroups[0]?.querySelector("[data-message-uuid='day-one-message']"),
+    ).toBeInTheDocument();
+    expect(dayGroups[1]?.querySelector("[data-day-divider='2026-07-03']")).toBeInTheDocument();
+    expect(
+      dayGroups[1]?.querySelector("[data-message-uuid='day-two-message']"),
+    ).toBeInTheDocument();
+
+    for (const dayGroup of dayGroups) {
+      expect(dayGroup.firstElementChild).toHaveClass("sticky", "top-0", "z-sticky");
+      expect(dayGroup).toHaveClass("flex", "flex-col", "gap-2");
+      expect(dayGroup.querySelectorAll("[data-day-divider]")).toHaveLength(1);
     }
   });
 
