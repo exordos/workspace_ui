@@ -993,6 +993,25 @@ describe("RightPanelWorkspaceInfo", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps a member's away badge instead of turning it into offline", () => {
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          members: [
+            {
+              ...createInfo().members[0]!,
+              status: "idle",
+              isOnline: false,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText(t("presence.away"))).toHaveClass("bg-indicator-orange");
+    expect(screen.queryByLabelText(t("presence.offline"))).not.toBeInTheDocument();
+  });
+
   it("does not render remove action without runtime context", () => {
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 

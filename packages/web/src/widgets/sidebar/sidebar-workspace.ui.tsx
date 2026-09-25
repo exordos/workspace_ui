@@ -28,7 +28,6 @@ import {
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
@@ -373,22 +372,14 @@ function WorkspaceSidebarStreamRow({
             className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
             onClick={handleStreamLinkClick}
           >
-            <span className="relative shrink-0">
-              <WorkspaceAvatar
-                size={avatarSize}
-                avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
-                style={avatarStyle}
-              >
-                {avatarLabel}
-              </WorkspaceAvatar>
-              {isDirectPrivate && (
-                <PresenceIndicator
-                  status={stream.presence ?? null}
-                  size="sm"
-                  className="absolute bottom-0 right-0 ring-border-subtle"
-                />
-              )}
-            </span>
+            <WorkspaceAvatar
+              size={avatarSize}
+              avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
+              style={avatarStyle}
+              presence={isDirectPrivate ? (stream.presence ?? null) : null}
+            >
+              {avatarLabel}
+            </WorkspaceAvatar>
           </Link>
           <div className={sidebarChatRowBodyClass(compact)}>
             <Link

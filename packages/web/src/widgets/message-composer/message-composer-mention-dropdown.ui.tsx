@@ -2,7 +2,6 @@ import React from "react";
 import { resolveUserPresenceVisual } from "~/entities/user/user-selectors.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { getWorkspaceComposerReferenceLabel } from "./message-composer-reference.lib";
 import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 
@@ -94,20 +93,14 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
               }}
               onMouseEnter={() => onHoverIndex(index)}
             >
-              <span className="relative flex shrink-0">
-                <WorkspaceAvatar
-                  size="sm"
-                  avatarUrn={user.avatarUrl}
-                  className="bg-bg text-text-primary"
-                >
-                  {initials}
-                </WorkspaceAvatar>
-                <PresenceIndicator
-                  status={presence}
-                  size="sm"
-                  className="absolute -bottom-0.5 -right-0.5"
-                />
-              </span>
+              <WorkspaceAvatar
+                size="sm"
+                avatarUrn={user.avatarUrl}
+                className="bg-bg text-text-primary"
+                presence={presence}
+              >
+                {initials}
+              </WorkspaceAvatar>
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center justify-between gap-2">
                   <span className="truncate font-medium">{user.displayName}</span>

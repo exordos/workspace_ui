@@ -13,7 +13,6 @@ import {
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import {
   getTopBarProfileStatusMaxWidthClass,
@@ -120,17 +119,14 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
       aria-label={t("nav.profile")}
       aria-expanded={isUserMenuOpen}
     >
-      <div className="relative flex-shrink-0">
-        <WorkspaceAvatar size="xs" interactive avatarUrn={currentUser?.avatarUrl}>
-          {avatarLetter}
-        </WorkspaceAvatar>
-        <PresenceIndicator
-          status={presenceState}
-          size="md"
-          tone="header"
-          className="absolute right-0 top-0 ring-bg-elevated"
-        />
-      </div>
+      <WorkspaceAvatar
+        size="xs"
+        interactive
+        avatarUrn={currentUser?.avatarUrl}
+        presence={presenceState}
+      >
+        {avatarLetter}
+      </WorkspaceAvatar>
       <div className="hidden w-max min-w-0 flex-col items-start leading-tight sm:flex">
         <span className="whitespace-nowrap text-sm font-medium text-text-primary">
           {displayName}

@@ -339,6 +339,7 @@ describe("WorkspaceMessageAnchorTransition", () => {
       uuid: "44444444-4444-4444-8444-444444444444",
       full_name: "Alice Stone",
       avatar_url: "urn:url:https://cdn.example/preview-avatar.png",
+      status: "idle",
     });
     const { container, rerender } = render(
       <WorkspaceMessageAnchorTransition
@@ -367,6 +368,7 @@ describe("WorkspaceMessageAnchorTransition", () => {
       "src",
       "https://cdn.example/preview-avatar.png",
     );
+    expect(peerAvatar?.querySelector('[data-presence="idle"]')).toHaveClass("bg-indicator-orange");
 
     rerender(
       <WorkspaceMessageAnchorTransition

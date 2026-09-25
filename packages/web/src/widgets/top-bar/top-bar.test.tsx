@@ -451,6 +451,10 @@ describe("TopBar", () => {
       );
     });
     expect(screen.getByLabelText(/away/i)).toHaveClass("bg-indicator-orange");
+    expect(screen.getByLabelText(/away/i)).toHaveClass(
+      "bottom-[calc(14.65%-4px)]",
+      "right-[calc(14.65%-4px)]",
+    );
   });
 
   it("updates profile trigger avatar src when users store avatar changes", () => {

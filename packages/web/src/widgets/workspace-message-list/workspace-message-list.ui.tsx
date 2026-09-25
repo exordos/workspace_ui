@@ -16,7 +16,6 @@ import { t, useTranslation } from "~/i18n/i18n";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
 import { WorkspaceMessageDivider } from "./workspace-message-divider.ui";
@@ -633,22 +632,16 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
-            <span className="relative block">
-              <WorkspaceAvatar
-                size="lg"
-                interactive
-                className="bg-bg-elevated text-accent-soft"
-                avatarUrn={passiveLoadersEnabled ? author?.avatarUrl : null}
-                imageLoading="lazy"
-              >
-                {displayName.slice(0, 1)}
-              </WorkspaceAvatar>
-              <PresenceIndicator
-                status={presence}
-                size="sm"
-                className="absolute bottom-0 right-0"
-              />
-            </span>
+            <WorkspaceAvatar
+              size="lg"
+              interactive
+              className="bg-bg-elevated text-accent-soft"
+              avatarUrn={passiveLoadersEnabled ? author?.avatarUrl : null}
+              imageLoading="lazy"
+              presence={presence}
+            >
+              {displayName.slice(0, 1)}
+            </WorkspaceAvatar>
           </button>
         </div>
       ) : null}

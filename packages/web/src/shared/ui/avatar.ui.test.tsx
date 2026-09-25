@@ -65,4 +65,48 @@ describe("Avatar", () => {
     // interactive = кликабельный аватар (профиль и т.п.) → курсор «пальчик»
     expect(interactiveAvatar?.className).toContain("cursor-pointer");
   });
+
+  it("places the same orange away badge on avatars of different sizes", () => {
+    const { container, rerender } = render(
+      <Avatar size="sm" presence="idle">
+        A
+      </Avatar>,
+    );
+    const smallBadge = container.querySelector('[data-presence="idle"]');
+    expect(smallBadge).toHaveClass("bg-indicator-orange", "h-2", "w-2");
+    expect(smallBadge).toHaveClass(
+      "absolute",
+      "bottom-[calc(14.65%-4px)]",
+      "right-[calc(14.65%-4px)]",
+    );
+
+    rerender(
+      <Avatar size="xl" presence="idle">
+        A
+      </Avatar>,
+    );
+    expect(container.querySelector('[data-presence="idle"]')).toHaveClass(
+      "bg-indicator-orange",
+      "h-2",
+      "w-2",
+      "bottom-[calc(14.65%-4px)]",
+      "right-[calc(14.65%-4px)]",
+    );
+  });
+
+  it("distinguishes an absent badge, offline, and a deactivated account", () => {
+    const { container, rerender } = render(<Avatar presence={null}>A</Avatar>);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+
+    rerender(<Avatar presence="offline">A</Avatar>);
+    expect(container.querySelector('[data-presence="offline"]')).toHaveClass("bg-text-muted");
+
+    rerender(
+      <Avatar presence="offline" deactivated>
+        A
+      </Avatar>,
+    );
+    expect(container.querySelector('[data-presence="offline"]')).toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
 });

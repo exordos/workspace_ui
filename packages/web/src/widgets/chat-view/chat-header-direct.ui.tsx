@@ -1,7 +1,6 @@
 import React from "react";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ChatHeaderShell } from "./chat-header-shell.ui";
 import { resolveDmStatusText } from "./chat-header.lib";
 import type { ChatDirectHeaderProps } from "./chat-header.types";
@@ -32,22 +31,15 @@ export const ChatDirectHeader: React.FC<ChatDirectHeaderProps> = ({
       infoLabel={infoLabel}
     >
       <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
-        <span className="relative shrink-0">
-          <WorkspaceAvatar
-            size="md"
-            className="border border-border-subtle bg-bg-elevated text-text-muted"
-            avatarUrn={partner.avatarUrl}
-          >
-            {partner.name.slice(0, 1).toUpperCase()}
-          </WorkspaceAvatar>
-          <PresenceIndicator
-            status={partner.presenceState}
-            size="md"
-            tone="header"
-            deactivated={partner.isAccountDeactivated === true}
-            className="absolute bottom-0 right-0 ring-border-subtle"
-          />
-        </span>
+        <WorkspaceAvatar
+          size="md"
+          className="border border-border-subtle bg-bg-elevated text-text-muted"
+          avatarUrn={partner.avatarUrl}
+          presence={partner.presenceState}
+          deactivated={partner.isAccountDeactivated === true}
+        >
+          {partner.name.slice(0, 1).toUpperCase()}
+        </WorkspaceAvatar>
         <span className="flex min-w-0 flex-1 flex-col">
           <h1 className="truncate text-sm font-semibold text-text-primary">{partner.name}</h1>
           <span className="truncate text-xs text-text-muted">{statusText}</span>

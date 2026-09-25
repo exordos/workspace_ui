@@ -32,7 +32,7 @@ import {
 import { buildWorkspaceProfileShareLink } from "~/shared/lib/workspace-profile-link.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 import { resolvePresenceStatusTextClass } from "~/shared/ui/presence-status-text.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelUserProfileActions } from "./right-panel-user-profile-actions.ui";
@@ -63,14 +63,16 @@ interface ProfileAvatarProps {
   resetAvatarUrn: string;
   pendingChange: PendingAvatarChange | null;
   interactive?: boolean;
+  presence?: PresenceVisual;
   children: React.ReactNode;
 }
 
 const ProfileAvatar = React.memo<ProfileAvatarProps>(
-  ({ avatarUrn, resetAvatarUrn, pendingChange, interactive = false, children }) => {
+  ({ avatarUrn, resetAvatarUrn, pendingChange, interactive = false, presence, children }) => {
     const commonProps = {
       size: "xl" as const,
       interactive,
+      presence,
       className: "bg-bg-elevated text-text-secondary",
       children,
     };
@@ -566,20 +568,14 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
                 </span>
               </button>
             ) : (
-              <div className="relative shrink-0">
-                <ProfileAvatar
-                  avatarUrn={resolvedAvatarUrl}
-                  resetAvatarUrn={resetAvatarUrn}
-                  pendingChange={pendingAvatarChange}
-                >
-                  {profile.title.slice(0, 1)}
-                </ProfileAvatar>
-                {profile.status != null && (
-                  <span className="absolute -bottom-0.5 -right-0.5">
-                    <PresenceIndicator status={presence} size="sm" />
-                  </span>
-                )}
-              </div>
+              <ProfileAvatar
+                avatarUrn={resolvedAvatarUrl}
+                resetAvatarUrn={resetAvatarUrn}
+                pendingChange={pendingAvatarChange}
+                presence={profile.status == null ? null : presence}
+              >
+                {profile.title.slice(0, 1)}
+              </ProfileAvatar>
             )}
 
             {showEditChrome ? (
