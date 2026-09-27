@@ -291,6 +291,26 @@ describe("messenger bootstrap store", () => {
     loadWorkspaceComposerDrafts.mockResolvedValue(undefined);
   });
 
+  it.each(["users", "folders"] as const)(
+    "keeps the catalog visible but rejects a strict bootstrap when %s fail",
+    async (resource) => {
+      const runtimeContext = createRuntimeContext();
+      const error = new Error(`${resource} unavailable`);
+      const result = await bootstrapMessengerStore({
+        runtimeContext,
+        client: createClient({
+          ...(resource === "users"
+            ? { getUsers: () => Promise.reject(error) }
+            : { getFolders: () => Promise.reject(error) }),
+        }),
+        requireCompleteSnapshot: true,
+      });
+      expect(result).toMatchObject({ status: "failed", error: error.message });
+      expect(useMessengerStore.getState().streamIds).toHaveLength(1);
+      expect(useMessengerStore.getState().error).toBe(error.message);
+    },
+  );
+
   it("applies a successful Workspace payload to domain state", async () => {
     const runtimeContext = createRuntimeContext();
     const getStreams = vi.fn(() => Promise.resolve([createStreamDto()]));
@@ -584,6 +604,71 @@ describe("messenger bootstrap store", () => {
 
     streamRequest.resolve([createStreamDto({ last_message_uuid: MESSAGE_A })]);
     await bootstrap;
+  });
+
+  it("restores the catalog while the epoch is pending and starts snapshot requests only after it", async () => {
+    const runtimeContext = createRuntimeContext();
+    const epochRequest = createDeferred<void>();
+    const cachedPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto({ name: "Cached stream" })],
+      topics: [],
+      folders: [],
+    });
+    const getStreams = vi.fn(() => Promise.resolve([createStreamDto({ name: "Fresh stream" })]));
+    const getTopics = vi.fn(() => Promise.resolve([]));
+    const getUsers = vi.fn(() => Promise.resolve([]));
+    const getFolders = vi.fn(() => Promise.resolve([]));
+    const resultPromise = bootstrapMessengerStore({
+      runtimeContext,
+      beforeServerRefresh: () => epochRequest.promise,
+      client: createClient({ getStreams, getTopics, getUsers, getFolders }),
+      cache: {
+        readMessengerCatalogPayloadCache: () =>
+          Promise.resolve({ payload: cachedPayload, epochVersion: 3 }),
+      },
+    });
+    await flushPromises();
+    await flushPromises();
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Cached stream");
+    expect(getStreams).not.toHaveBeenCalled();
+    expect(getTopics).not.toHaveBeenCalled();
+    expect(getUsers).not.toHaveBeenCalled();
+    expect(getFolders).not.toHaveBeenCalled();
+
+    epochRequest.resolve();
+    expect(await resultPromise).toMatchObject({ status: "applied" });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Fresh stream");
+    expect(getStreams).toHaveBeenCalledOnce();
+    expect(getTopics).toHaveBeenCalledOnce();
+    expect(getUsers).toHaveBeenCalledOnce();
+    expect(getFolders).toHaveBeenCalledOnce();
+  });
+
+  it("restores a late cache after epoch failure while keeping the refresh error visible", async () => {
+    const runtimeContext = createRuntimeContext();
+    const cachedPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto({ name: "Offline stream" })],
+      topics: [],
+      folders: [],
+    });
+    const cachedRequest = createDeferred<{ payload: typeof cachedPayload; epochVersion: number }>();
+    const getStreams = vi.fn(() => Promise.resolve([]));
+    const result = await bootstrapMessengerStore({
+      runtimeContext,
+      beforeServerRefresh: () => Promise.reject(new Error("Epoch unavailable")),
+      client: createClient({ getStreams }),
+      cache: { readMessengerCatalogPayloadCache: () => cachedRequest.promise },
+    });
+    expect(result).toMatchObject({ status: "failed", error: "Epoch unavailable" });
+    expect(getStreams).not.toHaveBeenCalled();
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
+
+    cachedRequest.resolve({ payload: cachedPayload, epochVersion: 3 });
+    await flushPromises();
+    await flushPromises();
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Offline stream");
+    expect(useMessengerStore.getState().error).toBe("Epoch unavailable");
+    expect(useMessengerStore.getState().isLoading).toBe(false);
   });
 
   it("does not let a delayed cache hydrate replace fresh topic names", async () => {

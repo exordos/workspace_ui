@@ -211,6 +211,97 @@ async function flushAsyncHandlers(): Promise<void> {
 }
 
 describe("workspace-realtime transport runtime", () => {
+  it.each([3, 99])(
+    "starts from the bootstrap boundary with stored cursor %i and reconnects from applied events",
+    async (storedEpoch) => {
+      const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+      cursorStorage.write(cursorOwner, cursor(storedEpoch));
+      const { applier, appliedEpochs } = createApplier();
+      const sockets: FakeWebSocket[] = [];
+      const getEpoch = vi.fn();
+      const getEventsPage = vi
+        .fn()
+        .mockResolvedValueOnce(createPage([createRestEventDto(11)]))
+        .mockResolvedValueOnce(createPage([createRestEventDto(12)]));
+      const runtime = createWorkspaceRealtimeTransportCore({
+        clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+        cursorStorage,
+        applier,
+        getEpoch,
+        getEventsPage,
+        webSocketFactory: (url, protocols) => {
+          const socket = new FakeWebSocket(url, protocols);
+          sockets.push(socket);
+          return socket;
+        },
+      });
+
+      await runtime.start({ ...context, startCursor: cursor(10) });
+      expect(getEventsPage).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        expect.objectContaining({ afterEpochVersion: 10, epochGeneration: EPOCH_GENERATION }),
+      );
+      expect(sockets[0]?.url).toContain("last_epoch_version=11");
+
+      await runtime.reconnect();
+      expect(getEventsPage).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        expect.objectContaining({ afterEpochVersion: 11, epochGeneration: EPOCH_GENERATION }),
+      );
+      expect(sockets[1]?.url).toContain("last_epoch_version=12");
+      expect(appliedEpochs).toEqual([11, 12]);
+      expect(getEpoch).not.toHaveBeenCalled();
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(Math.max(storedEpoch, 12)));
+      await runtime.stop();
+    },
+  );
+
+  it("persists a completed bootstrap boundary even when the catch-up is empty", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(3));
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => new FakeWebSocket(url, protocols),
+    });
+
+    await runtime.start({ ...context, startCursor: cursor(10) });
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+    await runtime.stop();
+  });
+
+  it.each(["aborted", "stale-owner"] as const)(
+    "does not persist a bootstrap boundary or request events for an %s start",
+    async (reason) => {
+      const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+      cursorStorage.write(cursorOwner, cursor(3));
+      const { applier } = createApplier();
+      const controller = new AbortController();
+      if (reason === "aborted") controller.abort();
+      const getEventsPage = vi.fn();
+      const webSocketFactory = vi.fn();
+      const runtime = createWorkspaceRealtimeTransportCore({
+        clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+        cursorStorage,
+        applier,
+        isOwnerCurrent: () => reason !== "stale-owner",
+        getEventsPage,
+        webSocketFactory,
+      });
+
+      await runtime.start({ ...context, startCursor: cursor(10), signal: controller.signal });
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(3));
+      expect(getEventsPage).not.toHaveBeenCalled();
+      expect(webSocketFactory).not.toHaveBeenCalled();
+      await runtime.stop();
+    },
+  );
+
   it("runs catch-up before opening the websocket", async () => {
     const order: string[] = [];
     const sockets: FakeWebSocket[] = [];

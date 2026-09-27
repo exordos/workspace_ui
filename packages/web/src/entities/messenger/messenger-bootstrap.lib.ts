@@ -128,6 +128,9 @@ export interface BootstrapMessengerStoreOptions {
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   loadDrafts?: boolean;
+  // Replacing a realtime cursor requires every catalog request to succeed.
+  requireCompleteSnapshot?: boolean;
+  beforeServerRefresh?: () => Promise<void>;
   store?: MessengerStoreApi;
   userCache?: Pick<UserCacheDeps, "readUsersCache" | "replaceUsersCache">;
 }
@@ -168,6 +171,7 @@ interface BootstrapFoldersOptions {
   ownerKey: string;
   store: MessengerStoreApi;
   isCurrentBootstrap: () => boolean;
+  requireCompleteSnapshot: boolean;
 }
 
 async function loadBootstrapFolders({
@@ -180,11 +184,14 @@ async function loadBootstrapFolders({
   ownerKey,
   store,
   isCurrentBootstrap,
+  requireCompleteSnapshot,
 }: BootstrapFoldersOptions): Promise<MessengerBootstrapResult | null> {
   try {
     const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      return { status: "applied", ownerKey };
+      return requireCompleteSnapshot
+        ? { status: "skipped", ownerKey, reason: "stale-owner" }
+        : { status: "applied", ownerKey };
     }
     if (!isCurrentBootstrap()) {
       return { status: "skipped", ownerKey, reason: "superseded" };
@@ -201,17 +208,21 @@ async function loadBootstrapFolders({
     return null;
   } catch (folderError) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      return { status: "applied", ownerKey };
+      return requireCompleteSnapshot
+        ? { status: "skipped", ownerKey, reason: "stale-owner" }
+        : { status: "applied", ownerKey };
     }
     if (!isCurrentBootstrap()) {
       return { status: "skipped", ownerKey, reason: "superseded" };
     }
     if (isAbortError(folderError)) {
-      return { status: "applied", ownerKey };
+      return requireCompleteSnapshot
+        ? { status: "skipped", ownerKey, reason: "aborted" }
+        : { status: "applied", ownerKey };
     }
     const message = normalizeBootstrapError(folderError);
     store.getState().setBootstrapError(ownerKey, message);
-    return null;
+    return requireCompleteSnapshot ? { status: "failed", ownerKey, error: message } : null;
   }
 }
 
@@ -230,6 +241,8 @@ export async function bootstrapMessengerStore({
   clientOptions,
   signal,
   loadDrafts = true,
+  requireCompleteSnapshot = false,
+  beforeServerRefresh,
   store = useMessengerStore,
   userCache,
 }: BootstrapMessengerStoreOptions): Promise<MessengerBootstrapResult> {
@@ -269,18 +282,21 @@ export async function bootstrapMessengerStore({
     signal,
     cache: userCache,
   });
-  const loadLastMessagesForCurrentSidebar = (): void => {
+  const loadLastMessagesForCurrentSidebar = (revalidateCached = false): void => {
     void loadMessengerLastMessagesForSidebar({
       runtimeContext,
       getRuntimeContext,
       client: { getMessagesByUuids: client.getMessagesByUuids },
       cache: lastMessagesCache,
+      revalidateCached,
       clientOptions,
       signal,
       store,
     });
   };
 
+  let hasFreshCatalog = false;
+  let bootstrapError: string | null = null;
   void (async () => {
     const cached = await (
       cache.readMessengerCatalogPayloadCache ?? defaultReadMessengerCatalogPayloadCache
@@ -288,8 +304,7 @@ export async function bootstrapMessengerStore({
     if (cached == null) return;
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
-    const currentState = store.getState();
-    if (!isCurrentBootstrap() || !currentState.isLoading) return;
+    if (!isCurrentBootstrap() || hasFreshCatalog) return;
 
     await primeMessengerLastMessagesFromCache({
       ownerKey,
@@ -299,11 +314,15 @@ export async function bootstrapMessengerStore({
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
     const stateAfterMessageHydrate = store.getState();
-    if (!isCurrentBootstrap() || !stateAfterMessageHydrate.isLoading) {
+    if (!isCurrentBootstrap() || hasFreshCatalog) {
       return;
     }
 
     stateAfterMessageHydrate.replaceBootstrapState(ownerKey, cached.payload);
+    // A failed refresh must not prevent late cache hydration or hide its error.
+    if (bootstrapError != null) {
+      store.getState().setBootstrapError(ownerKey, bootstrapError);
+    }
     if (cached.epochVersion != null) {
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
     }
@@ -333,6 +352,10 @@ export async function bootstrapMessengerStore({
   }
 
   try {
+    await beforeServerRefresh?.();
+    const skipBeforeRefresh = currentBootstrapSkipResult();
+    if (skipBeforeRefresh != null) return skipBeforeRefresh;
+
     // Streams and topics are needed first: they quickly build the base chat list.
     // Folders are loaded separately below, so a folder error does not break the whole sidebar.
     const usersRequest: Promise<BootstrapUsersResult> = (client.getUsers ?? defaultGetUsers)(
@@ -384,6 +407,7 @@ export async function bootstrapMessengerStore({
     const skipAfterMessageHydrate = currentBootstrapSkipResult();
     if (skipAfterMessageHydrate != null) return skipAfterMessageHydrate;
 
+    hasFreshCatalog = true;
     const preservedFolders = currentFolders(store.getState());
     store.getState().replaceBootstrapState(ownerKey, {
       ...payloadWithoutFolders,
@@ -400,7 +424,7 @@ export async function bootstrapMessengerStore({
         },
       ),
     );
-    loadLastMessagesForCurrentSidebar();
+    loadLastMessagesForCurrentSidebar(true);
 
     // Folders arrive as a separate user layer above streams.
     const folderResult = await loadBootstrapFolders({
@@ -413,8 +437,15 @@ export async function bootstrapMessengerStore({
       ownerKey,
       store,
       isCurrentBootstrap,
+      requireCompleteSnapshot,
     });
     if (folderResult != null) return folderResult;
+
+    if (requireCompleteSnapshot && usersResult.status === "rejected") {
+      const message = normalizeBootstrapError(usersResult.reason);
+      store.getState().setBootstrapError(ownerKey, message);
+      return { status: "failed", ownerKey, error: message };
+    }
 
     return { status: "applied", ownerKey };
   } catch (error) {
@@ -426,6 +457,7 @@ export async function bootstrapMessengerStore({
     }
 
     const message = normalizeBootstrapError(error);
+    bootstrapError = message;
     store.getState().setBootstrapError(ownerKey, message);
     return { status: "failed", ownerKey, error: message };
   }

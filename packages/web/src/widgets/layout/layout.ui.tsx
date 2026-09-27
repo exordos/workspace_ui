@@ -141,10 +141,14 @@ export const Layout: React.FC = () => {
 
   useLayoutUnreadMentionsBootstrap(currentWorkspaceRuntimeContext);
   useLayoutWorkspaceIamCapabilities(currentWorkspaceRuntimeContext);
-  useLayoutWorkspaceMessengerBootstrap({ enabled: true, retryNonce: bootstrapRetryNonce });
+  const bootstrapBoundary = useLayoutWorkspaceMessengerBootstrap({
+    enabled: true,
+    retryNonce: bootstrapRetryNonce,
+  });
   useLayoutWorkspaceRealtime({
     enabled: workspaceMessengerActive,
     pathname: location.pathname,
+    bootstrapBoundary,
   });
 
   useLayoutWindowBranding({

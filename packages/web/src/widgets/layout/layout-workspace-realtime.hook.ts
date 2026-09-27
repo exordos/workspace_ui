@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
@@ -60,6 +60,7 @@ import {
   type WorkspaceRealtimeSessionRefresh,
   type WorkspaceRealtimeTransportCore,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import type { LayoutWorkspaceBootstrapBoundary } from "./layout-workspace-messenger-bootstrap.hook";
 
 export interface LayoutWorkspaceRealtimeRuntimeFactoryOptions {
   runtimeContext: WorkspaceRuntimeContext;
@@ -81,6 +82,7 @@ export type LayoutWorkspacePresenceReporterFactory = (
 export interface UseLayoutWorkspaceRealtimeOptions {
   enabled: boolean;
   pathname: string;
+  bootstrapBoundary?: LayoutWorkspaceBootstrapBoundary | null;
   runtimeFactory?: LayoutWorkspaceRealtimeRuntimeFactory;
   cursorStorageFactory?: () => WorkspaceRealtimeDurableCursorStorage | null;
   applier?: WorkspaceRealtimeEventApplier;
@@ -131,6 +133,48 @@ function toLayoutRealtimeManagerContext(
     // When token/origin changes, runtimeKey makes the manager recreate the socket.
     runtimeKey: [runtimeContext.organizationOrigin, runtimeContext.accessToken].join("\u0000"),
     runtimeContext,
+  };
+}
+
+function isBootstrapBoundaryForRuntime(
+  boundary: LayoutWorkspaceBootstrapBoundary,
+  runtimeContext: WorkspaceRuntimeContext,
+): boolean {
+  const prepared = boundary.runtimeContext;
+  return (
+    !boundary.signal.aborted &&
+    workspaceRuntimeOwnerKey(prepared) === workspaceRuntimeOwnerKey(runtimeContext) &&
+    prepared.runtimeGeneration === runtimeContext.runtimeGeneration &&
+    prepared.accessToken === runtimeContext.accessToken &&
+    prepared.organizationOrigin === runtimeContext.organizationOrigin
+  );
+}
+
+function withBootstrapBoundary(
+  runtime: WorkspaceRealtimeTransportCore,
+  runtimeContext: WorkspaceRuntimeContext,
+  boundaryRef: RefObject<LayoutWorkspaceBootstrapBoundary | null | undefined>,
+  consumedBoundaryRef: RefObject<LayoutWorkspaceBootstrapBoundary | null>,
+  isOwnerCurrent: (owner: WorkspaceRealtimeRuntimeOwner) => boolean,
+): WorkspaceRealtimeTransportCore {
+  return {
+    ...runtime,
+    start(context) {
+      const boundary = boundaryRef.current;
+      if (
+        context.surface === "active" &&
+        boundary != null &&
+        boundary !== consumedBoundaryRef.current &&
+        context.signal?.aborted !== true &&
+        isOwnerCurrent(context.owner) &&
+        isBootstrapBoundaryForRuntime(boundary, runtimeContext)
+      ) {
+        // Route re-entry must resume progress, not replay this bootstrap boundary again.
+        consumedBoundaryRef.current = boundary;
+        return runtime.start({ ...context, startCursor: boundary.cursor });
+      }
+      return runtime.start(context);
+    },
   };
 }
 
@@ -300,6 +344,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   const {
     enabled,
     pathname,
+    bootstrapBoundary,
     runtimeFactory = defaultRuntimeFactory,
     cursorStorageFactory = createWorkspaceRealtimeBrowserCursorStorage,
     applier,
@@ -313,6 +358,13 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
       sessions.find((session) => session.accountId === currentAccountId) ?? null;
     return activeSession == null ? null : toWorkspaceRuntimeContext(activeSession);
   }, [sessions, currentAccountId]);
+  const bootstrapReady =
+    bootstrapBoundary === undefined ||
+    (bootstrapBoundary != null &&
+      activeRuntimeContext != null &&
+      isBootstrapBoundaryForRuntime(bootstrapBoundary, activeRuntimeContext));
+  const bootstrapBoundaryRef = useRef(bootstrapBoundary);
+  const consumedBootstrapBoundaryRef = useRef<LayoutWorkspaceBootstrapBoundary | null>(null);
   const managerContexts = useMemo(
     () => sessions.map((session) => toLayoutRealtimeManagerContext(session)),
     [sessions],
@@ -345,8 +397,9 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   }, [applier, cursorStorageFactory, runtimeFactory]);
 
   useEffect(() => {
-    managerContextsRef.current = managerContexts;
-  }, [managerContexts]);
+    managerContextsRef.current = bootstrapReady ? managerContexts : [];
+    bootstrapBoundaryRef.current = bootstrapBoundary;
+  }, [bootstrapBoundary, bootstrapReady, managerContexts]);
 
   useEffect(() => {
     function ensureManager(): WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null {
@@ -361,15 +414,23 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           applier: runtimeApplier,
           isOwnerCurrent,
           onDiagnostic,
-        }) =>
-          runtimeFactory({
+        }) => {
+          const runtime = runtimeFactory({
             runtimeContext: runtimeContext.runtimeContext,
             cursorStorage,
             applier: runtimeApplier,
             isOwnerCurrent,
             refreshSession,
             onDiagnostic,
-          }),
+          });
+          return withBootstrapBoundary(
+            runtime,
+            runtimeContext.runtimeContext,
+            bootstrapBoundaryRef,
+            consumedBootstrapBoundaryRef,
+            isOwnerCurrent,
+          );
+        },
         activeApplierFactory: ({ isOwnerCurrent }) =>
           applier ??
           composeWorkspaceRealtimeAppliers([
@@ -448,7 +509,10 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
       return manager;
     }
 
-    if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
+    if (
+      !bootstrapReady ||
+      !shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)
+    ) {
       // Outside the workspace messenger route, do not keep realtime alive: this is the current route host, not a global daemon.
       const messengerState = useMessengerStore.getState();
       if (
@@ -478,6 +542,8 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   }, [
     activeRuntimeContext,
     applier,
+    bootstrapReady,
+    bootstrapBoundary,
     cursorStorageFactory,
     enabled,
     managerContexts,
@@ -487,10 +553,13 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   ]);
 
   useEffect(() => {
-    if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
+    if (
+      !bootstrapReady ||
+      !shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)
+    ) {
       return undefined;
     }
 
     return presenceReporterFactory(activeRuntimeContext);
-  }, [activeRuntimeContext, enabled, pathname, presenceReporterFactory]);
+  }, [activeRuntimeContext, bootstrapReady, enabled, pathname, presenceReporterFactory]);
 }

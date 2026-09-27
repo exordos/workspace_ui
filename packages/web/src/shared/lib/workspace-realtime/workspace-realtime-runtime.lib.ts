@@ -63,6 +63,8 @@ export interface WorkspaceRealtimeRuntimeContext {
   ownerKey: string;
   surface: WorkspaceRealtimeSurface;
   signal?: AbortSignal;
+  // A completed bootstrap can supply its own boundary for this start only.
+  startCursor?: WorkspaceRealtimeCursor;
 }
 
 export interface WorkspaceRealtimeEventContext extends WorkspaceRealtimeRuntimeContext {
@@ -1033,9 +1035,13 @@ export function createWorkspaceRealtimeTransportCore(
     epochCheckPromise = null;
     clearEpochWatchdogTimers();
     notificationsEnabled = false;
-    lastCursor = options.cursorStorage.read(nextContext.owner);
+    lastCursor = nextContext.startCursor ?? options.cursorStorage.read(nextContext.owner);
     lastEpochVersion = lastCursor?.epochVersion ?? null;
     attachExternalAbort(nextContext.signal);
+    if (!isCurrentRuntime()) return;
+    if (nextContext.startCursor != null) {
+      options.cursorStorage.write(nextContext.owner, nextContext.startCursor);
+    }
     await emitState("starting");
     await runCatchUpAndConnect("start");
   }

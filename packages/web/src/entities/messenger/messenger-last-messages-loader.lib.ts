@@ -88,6 +88,7 @@ export interface LoadMessengerLastMessagesForSidebarOptions {
   cache?: MessengerLastMessagesCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
+  revalidateCached?: boolean;
   store?: MessengerLastMessagesStoreApi;
   messageStore?: MessengerLastMessagesMessageStoreApi;
 }
@@ -208,6 +209,7 @@ export async function loadMessengerLastMessagesForSidebar({
   cache = {},
   clientOptions,
   signal,
+  revalidateCached = false,
   store = useMessengerStore,
   messageStore = useWorkspaceMessageStore,
 }: LoadMessengerLastMessagesForSidebarOptions): Promise<MessengerLastMessagesResult> {
@@ -250,10 +252,10 @@ export async function loadMessengerLastMessagesForSidebar({
     }
   }
 
-  const missingMessageUuids = messageUuids.filter(
-    (messageUuid) => !cachedMessageUuids.has(messageUuid),
+  const requestedMessageUuids = messageUuids.filter(
+    (messageUuid) => revalidateCached || !cachedMessageUuids.has(messageUuid),
   );
-  if (missingMessageUuids.length === 0) {
+  if (requestedMessageUuids.length === 0) {
     return {
       status: "loaded",
       ownerKey,
@@ -268,7 +270,7 @@ export async function loadMessengerLastMessagesForSidebar({
   try {
     const messages = await (client.getMessagesByUuids ?? defaultGetMessagesByUuids)(
       requestOptions,
-      missingMessageUuids,
+      requestedMessageUuids,
     );
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
@@ -298,7 +300,7 @@ export async function loadMessengerLastMessagesForSidebar({
     return {
       status: "loaded",
       ownerKey,
-      requested: missingMessageUuids.length,
+      requested: requestedMessageUuids.length,
       applied: appliedCachedMessages + appliedMessages.length,
     };
   } catch (error) {
