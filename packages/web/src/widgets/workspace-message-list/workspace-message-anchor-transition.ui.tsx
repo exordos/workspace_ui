@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import type { WorkspaceMessageAnchorPreviewPresentation } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
@@ -85,6 +88,7 @@ function WorkspaceMessageAnchorPreviewRow({
           className="bg-bg-elevated text-accent-soft"
           avatarUrn={author?.avatarUrl}
           imageLoading="lazy"
+          presence={resolveUserPresenceVisual(author?.status)}
         >
           {authorLabel.slice(0, 1)}
         </WorkspaceAvatar>

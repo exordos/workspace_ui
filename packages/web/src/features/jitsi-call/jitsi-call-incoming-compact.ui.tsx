@@ -1,6 +1,7 @@
 import React from "react";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 
@@ -35,9 +36,9 @@ export const IncomingCallCompact: React.FC<IncomingCallCompactProps> = ({
               {inviteAvatarLetter}
             </WorkspaceAvatar>
           ) : (
-            <span className="bg-call-green/15 inline-flex h-8 w-8 items-center justify-center rounded-full text-call-green">
+            <Avatar size="sm" className="bg-call-green/15 !border-0 text-call-green">
               <Icon name="phone" size={16} className="text-current" />
-            </span>
+            </Avatar>
           )}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-text-primary">

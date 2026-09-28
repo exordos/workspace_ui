@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { PresenceIndicator } from "./presence-indicator";
 import type { AvatarProps, AvatarSize } from "./avatar.types";
 import type { CSSProperties } from "react";
 
@@ -17,6 +18,12 @@ const SIZE_CLASS: Record<AvatarSize, string> = {
  */
 const INTERACTIVE_CLASS =
   "cursor-pointer transition-shadow duration-150 group-hover:ring-2 group-hover:ring-accent-soft group-hover:ring-offset-1 group-hover:ring-offset-bg";
+
+// The 14.65% inset places the badge center on the circle at 45 degrees.
+const PRESENCE_POSITION_CLASS =
+  "pointer-events-none absolute bottom-[calc(14.65%-4px)] right-[calc(14.65%-4px)]";
+const DEACTIVATED_POSITION_CLASS =
+  "pointer-events-none absolute bottom-[calc(14.65%-7px)] right-[calc(14.65%-7px)]";
 
 const AvatarImage = React.memo<{
   baseClass: string;
@@ -45,6 +52,8 @@ export const Avatar = React.memo<AvatarProps>(
     src,
     imageLoading = "lazy",
     interactive = false,
+    presence,
+    deactivated = false,
     children,
     className = "",
     style,
@@ -60,8 +69,8 @@ export const Avatar = React.memo<AvatarProps>(
       setImageFailed(false);
     }, [trimmedSrc]);
 
-    if (trimmedSrc != null && trimmedSrc.length > 0 && !imageFailed) {
-      return (
+    const avatar =
+      trimmedSrc != null && trimmedSrc.length > 0 && !imageFailed ? (
         <AvatarImage
           baseClass={baseClass}
           src={trimmedSrc}
@@ -69,12 +78,24 @@ export const Avatar = React.memo<AvatarProps>(
           onError={() => setImageFailed(true)}
           style={style}
         />
+      ) : (
+        <div className={baseClass} style={style}>
+          {children}
+        </div>
       );
-    }
+
+    if (presence == null && !deactivated) return avatar;
+
     return (
-      <div className={baseClass} style={style}>
-        {children}
-      </div>
+      <span className="relative inline-flex shrink-0">
+        {avatar}
+        <PresenceIndicator
+          status={presence ?? null}
+          deactivated={deactivated}
+          size={deactivated ? "md" : "sm"}
+          className={deactivated ? DEACTIVATED_POSITION_CLASS : PRESENCE_POSITION_CLASS}
+        />
+      </span>
     );
   },
 );

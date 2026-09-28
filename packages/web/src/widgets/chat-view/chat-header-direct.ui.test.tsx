@@ -53,6 +53,8 @@ describe("ChatDirectHeader", () => {
 
     expect(screen.getByText(/deactivated|заблокирован/i)).toBeInTheDocument();
     expect(screen.queryByText(/online|в сети/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /deactivated|заблокирован/i })).toBeInTheDocument();
+    expect(document.querySelector('[data-presence="active"]')).toBeNull();
   });
 
   it("never shows channel participant counters", () => {

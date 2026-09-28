@@ -245,6 +245,102 @@ describe("messenger last messages loader", () => {
     );
   });
 
+  it("shows cached previews while revalidating their unchanged uuids from the server", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    const cachedMessage = adaptMessengerMessage(createMessageDto());
+    const messageRequest = createDeferred<WorkspaceMessengerMessageDto[]>();
+    const requestStarted = createDeferred<void>();
+    const getMessagesByUuids = vi.fn(() => {
+      requestStarted.resolve();
+      return messageRequest.promise;
+    });
+    const writeMessages = vi.fn(() => Promise.resolve());
+
+    const loading = loadMessengerLastMessagesForSidebar({
+      runtimeContext,
+      revalidateCached: true,
+      client: { getMessagesByUuids },
+      cache: {
+        readMessagesByUuids: () => Promise.resolve([cachedMessage]),
+        writeMessages,
+      },
+    });
+    await requestStarted.promise;
+
+    expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
+      "Hello, workspace",
+    );
+    expect(writeMessages).not.toHaveBeenCalled();
+
+    messageRequest.resolve([
+      createMessageDto({ payload: { kind: "markdown", content: "Edited on server" } }),
+    ]);
+    await expect(loading).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      requested: 2,
+      applied: 2,
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
+      "Edited on server",
+    );
+    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Edited on server" },
+      }),
+    ]);
+  });
+
+  it("preserves a newer realtime edit while cached preview revalidation is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    const messageRequest = createDeferred<WorkspaceMessengerMessageDto[]>();
+    const requestStarted = createDeferred<void>();
+    const writeMessages = vi.fn(() => Promise.resolve());
+
+    const loading = loadMessengerLastMessagesForSidebar({
+      runtimeContext,
+      revalidateCached: true,
+      client: {
+        getMessagesByUuids: () => {
+          requestStarted.resolve();
+          return messageRequest.promise;
+        },
+      },
+      cache: {
+        readMessagesByUuids: () => Promise.resolve([adaptMessengerMessage(createMessageDto())]),
+        writeMessages,
+      },
+    });
+    await requestStarted.promise;
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveKnownBodyMutation(
+        adaptMessengerMessage(
+          createMessageDto({ payload: { kind: "markdown", content: "Newer realtime edit" } }),
+        ),
+      );
+    messageRequest.resolve([
+      createMessageDto({ payload: { kind: "markdown", content: "Older server snapshot" } }),
+    ]);
+
+    await expect(loading).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      requested: 2,
+      applied: 1,
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
+      "Newer realtime edit",
+    );
+    expect(writeMessages).toHaveBeenCalledWith(ownerKey, []);
+  });
+
   it("loads only cache misses from the client", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);

@@ -2,6 +2,7 @@ import React from "react";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import IncomingCallVideoIcon from "~/shared/assets/icons/call_incoming_video_toggle.svg?react";
+import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 
 /**
@@ -57,7 +58,10 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
               {inviteAvatarLetter}
             </WorkspaceAvatar>
           ) : (
-            <span className="flex h-[160px] w-[160px] items-center justify-center rounded-full bg-neutral-500 text-white sm:h-[200px] sm:w-[200px]">
+            <Avatar
+              size="lg"
+              className="!h-[160px] !w-[160px] !border-0 bg-neutral-500 text-white sm:!h-[200px] sm:!w-[200px]"
+            >
               {inviteAvatarLetter !== "?" ? (
                 <span className="text-6xl font-semibold text-white sm:text-7xl">
                   {inviteAvatarLetter}
@@ -69,7 +73,7 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
                   className="text-current"
                 />
               )}
-            </span>
+            </Avatar>
           )}
           <div className="space-y-2 text-center">
             <p className="text-2xl font-semibold text-white">{inviteTitle}</p>

@@ -1,8 +1,8 @@
 /**
  * PresenceIndicator — online/idle/offline dot, or a deactivated-account block badge.
  *
- * Sizes: sm (8px), md (10px), lg (12px) for dots; block icon scales with the same breakpoint.
- * Colors: green (active), yellow (idle), gray (offline).
+ * Sizes: xs (6px), sm (8px), md (10px), lg (12px) for dots.
+ * Colors: green (active), orange (idle), gray (offline).
  *
  * The dot is static. It renders once per roster row, per message author and per
  * mention candidate, so an infinite animation on it keeps the compositor busy for
@@ -16,24 +16,19 @@ import type { PresenceIndicatorProps, PresenceVisual } from "./presence-indicato
 export type { PresenceVisual } from "./presence-indicator.types";
 
 const SIZE_MAP = {
+  xs: "h-1.5 w-1.5",
   sm: "h-2 w-2",
   md: "h-2.5 w-2.5",
   lg: "h-3 w-3",
 } as const;
 
 const COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
-  active: "bg-call-green",
-  idle: "bg-indicator-yellow",
-  offline: "bg-text-muted",
-};
-
-const HEADER_COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
   active: "bg-indicator-green",
   idle: "bg-indicator-orange",
   offline: "bg-text-muted",
 };
 
-const BLOCK_ICON_PX = { sm: 12, md: 14, lg: 14 } as const;
+const BLOCK_ICON_PX = { xs: 12, sm: 12, md: 14, lg: 14 } as const;
 
 export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   status,
@@ -41,16 +36,11 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   size = "md",
   className = "",
   withBorder = true,
-  tone = "default",
 }) => {
   if (deactivated) {
-    const ringClass =
-      tone === "header"
-        ? "rounded-full bg-card-bg ring-2 ring-border-subtle"
-        : "rounded-full bg-card-bg ring-2 ring-bg";
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center ${ringClass} ${className}`.trim()}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full bg-card-bg ring-2 ring-bg ${className}`.trim()}
         role="status"
         aria-label={t("dm.partnerBlocked")}
       >
@@ -62,8 +52,11 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   if (!status) return null;
 
   const sizeClass = SIZE_MAP[size];
-  const colorClass = (tone === "header" ? HEADER_COLOR_MAP : COLOR_MAP)[status];
-  const borderClass = withBorder ? "ring-2 ring-bg" : "";
+  const colorClass = COLOR_MAP[status];
+  let borderClass = "";
+  if (withBorder) {
+    borderClass = size === "xs" ? "ring-1 ring-bg" : "ring-2 ring-bg";
+  }
 
   let ariaLabel: string;
   if (status === "active") {

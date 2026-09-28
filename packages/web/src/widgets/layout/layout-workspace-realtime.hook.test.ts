@@ -24,6 +24,7 @@ import {
   isLayoutWorkspaceRealtimeOwnerCurrent,
   useLayoutWorkspaceRealtime,
 } from "./layout-workspace-realtime.hook";
+import type { LayoutWorkspaceBootstrapBoundary } from "./layout-workspace-messenger-bootstrap.hook";
 import type { LayoutWorkspaceRealtimeRuntimeFactory } from "./layout-workspace-realtime.hook";
 
 const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
@@ -225,6 +226,98 @@ describe("useLayoutWorkspaceRealtime", () => {
     useJitsiCallStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
+  });
+
+  it("waits for bootstrap and gives its boundary only to the active owner", async () => {
+    const session = createSession();
+    const backgroundSession = createSession({
+      accountId: "background",
+      projectId: "background-project",
+      runtimeGeneration: 8,
+    });
+    setWorkspaceSession(session);
+    useWorkspaceAuthStore.setState({ sessions: [session, backgroundSession] });
+    const { runtimeFactory, startedContexts } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const cursorStorageFactory = () => cursorStorage;
+    const applier = createWorkspaceRealtimeNoopApplier();
+    const boundary: LayoutWorkspaceBootstrapBoundary = {
+      runtimeContext: session,
+      cursor: { epochGeneration: "generation-a", epochVersion: 100 },
+      signal: new AbortController().signal,
+    };
+    const { rerender } = renderHook<
+      void,
+      { bootstrapBoundary: LayoutWorkspaceBootstrapBoundary | null }
+    >(
+      ({ bootstrapBoundary }) =>
+        useLayoutWorkspaceRealtime({
+          enabled: true,
+          pathname: "/org/org-a/project/project-a/messenger",
+          bootstrapBoundary,
+          runtimeFactory,
+          cursorStorageFactory,
+          applier,
+          presenceReporterFactory: noopPresenceReporterFactory,
+        }),
+      { initialProps: { bootstrapBoundary: null } },
+    );
+    expect(startedContexts).toEqual([]);
+    rerender({ bootstrapBoundary: { ...boundary, runtimeContext: backgroundSession } });
+    expect(startedContexts).toEqual([]);
+    rerender({ bootstrapBoundary: boundary });
+    await waitFor(() => expect(startedContexts).toHaveLength(2));
+    expect(startedContexts[0]).toMatchObject({ surface: "active", startCursor: boundary.cursor });
+    expect(startedContexts[1]).toMatchObject({ surface: "background" });
+    expect(startedContexts[1]?.startCursor).toBeUndefined();
+  });
+
+  it("consumes a bootstrap boundary once across route re-entry and accepts a later bootstrap", async () => {
+    const session = createSession();
+    setWorkspaceSession(session);
+    const { runtimeFactory, startedContexts, runtimes } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const cursorStorageFactory = () => cursorStorage;
+    const applier = createWorkspaceRealtimeNoopApplier();
+    const boundary: LayoutWorkspaceBootstrapBoundary = {
+      runtimeContext: session,
+      cursor: { epochGeneration: "generation-a", epochVersion: 100 },
+      signal: new AbortController().signal,
+    };
+    const pathname = "/org/org-a/project/project-a/messenger";
+    const { rerender } = renderHook<
+      void,
+      { pathname: string; bootstrapBoundary: LayoutWorkspaceBootstrapBoundary | null }
+    >(
+      (props) =>
+        useLayoutWorkspaceRealtime({
+          ...props,
+          enabled: true,
+          runtimeFactory,
+          cursorStorageFactory,
+          applier,
+          presenceReporterFactory: noopPresenceReporterFactory,
+        }),
+      {
+        initialProps: {
+          pathname,
+          bootstrapBoundary: boundary,
+        },
+      },
+    );
+    await waitFor(() => expect(startedContexts).toHaveLength(1));
+    expect(startedContexts[0]?.startCursor).toEqual(boundary.cursor);
+    rerender({ pathname: "/settings", bootstrapBoundary: boundary });
+    await waitFor(() => expect(runtimes[0]?.stop).toHaveBeenCalled());
+    rerender({ pathname, bootstrapBoundary: boundary });
+    await waitFor(() => expect(startedContexts).toHaveLength(2));
+    expect(startedContexts[1]?.startCursor).toBeUndefined();
+    rerender({ pathname, bootstrapBoundary: null });
+    await waitFor(() => expect(runtimes[1]?.stop).toHaveBeenCalled());
+    const nextBoundary = { ...boundary, cursor: { ...boundary.cursor, epochVersion: 200 } };
+    rerender({ pathname, bootstrapBoundary: nextBoundary });
+    await waitFor(() => expect(startedContexts).toHaveLength(3));
+    expect(startedContexts[2]?.startCursor).toEqual(nextBoundary.cursor);
   });
 
   it("starts active realtime runtime for current Workspace project route", async () => {

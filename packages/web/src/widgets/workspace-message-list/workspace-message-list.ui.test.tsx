@@ -736,11 +736,13 @@ describe("WorkspaceMessageList", () => {
     expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
   });
 
-  it("keeps outgoing row DOM when the server timestamp moves it to another day", () => {
+  it("renders the confirmed message in the server timestamp's day group", () => {
     const placementUuid = "cross-day-server-message";
+    const outgoingCreatedAt = new Date(2026, 6, 3, 23, 59, 59).toISOString();
+    const confirmedCreatedAt = new Date(2026, 6, 4, 0, 0, 1).toISOString();
     const outgoingMessage = createOutgoingMessage({
       placementUuid,
-      createdAt: "2026-07-03T23:59:59.000Z",
+      createdAt: outgoingCreatedAt,
     });
     const { container, rerender } = render(
       <WorkspaceMessageList
@@ -753,6 +755,10 @@ describe("WorkspaceMessageList", () => {
     const outgoingArticle = container.querySelector(
       `[data-outgoing-message-id='${placementUuid}']`,
     );
+    const outgoingDayGroup = outgoingArticle?.closest("[data-day-group='true']");
+    const outgoingDateKey = outgoingDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
 
     rerender(
       <WorkspaceMessageList
@@ -763,7 +769,7 @@ describe("WorkspaceMessageList", () => {
             userUuid: "current-user-uuid",
             isOwn: true,
             markdown: outgoingMessage.markdown,
-            createdAt: "2026-07-04T00:00:01.000Z",
+            createdAt: confirmedCreatedAt,
           }),
         ]}
         outgoingMessages={[outgoingMessage]}
@@ -772,7 +778,21 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
+    const confirmedArticle = container.querySelector(`[data-message-uuid='${placementUuid}']`);
+    const confirmedDayGroup = confirmedArticle?.closest("[data-day-group='true']");
+    const confirmedDateKey = confirmedDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(confirmedArticle).toHaveAttribute("data-message-kind", "server");
+    expect(confirmedArticle).toHaveAttribute("data-server-message-uuid", placementUuid);
+    expect(confirmedArticle).not.toHaveAttribute("data-outgoing-message-id");
+    expect(confirmedArticle).toHaveTextContent(outgoingMessage.markdown);
+    expect(outgoingDateKey).toBe("2026-07-03");
+    expect(confirmedDateKey).toBe("2026-07-04");
+    expect(confirmedDateKey).not.toBe(outgoingDateKey);
+    expect(confirmedDayGroup?.contains(confirmedArticle)).toBe(true);
   });
 
   it("renders edited content from the server snapshot", () => {
@@ -1435,7 +1455,7 @@ describe("WorkspaceMessageList", () => {
     expect(divider).not.toHaveTextContent("2026-07-03");
   });
 
-  it("keeps day dividers sticky at the top of the scroll container", () => {
+  it("keeps each sticky day divider within its own day's messages", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
 
@@ -1456,13 +1476,22 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const stickyWrappers = Array.from(container.querySelectorAll("[data-day-divider]")).map(
-      (divider) => divider.parentElement,
-    );
+    const dayGroups = Array.from(container.querySelectorAll("[data-day-group]"));
 
-    expect(stickyWrappers).toHaveLength(2);
-    for (const wrapper of stickyWrappers) {
-      expect(wrapper).toHaveClass("sticky", "top-0", "z-sticky");
+    expect(dayGroups).toHaveLength(2);
+    expect(dayGroups[0]?.querySelector("[data-day-divider='2026-07-02']")).toBeInTheDocument();
+    expect(
+      dayGroups[0]?.querySelector("[data-message-uuid='day-one-message']"),
+    ).toBeInTheDocument();
+    expect(dayGroups[1]?.querySelector("[data-day-divider='2026-07-03']")).toBeInTheDocument();
+    expect(
+      dayGroups[1]?.querySelector("[data-message-uuid='day-two-message']"),
+    ).toBeInTheDocument();
+
+    for (const dayGroup of dayGroups) {
+      expect(dayGroup.firstElementChild).toHaveClass("sticky", "top-0", "z-sticky");
+      expect(dayGroup).toHaveClass("flex", "flex-col", "gap-2");
+      expect(dayGroup.querySelectorAll("[data-day-divider]")).toHaveLength(1);
     }
   });
 
