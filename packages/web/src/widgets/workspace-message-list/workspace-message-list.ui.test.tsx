@@ -736,11 +736,13 @@ describe("WorkspaceMessageList", () => {
     expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
   });
 
-  it("keeps outgoing row DOM when the server timestamp moves it to another day", () => {
+  it("renders the confirmed message in the server timestamp's day group", () => {
     const placementUuid = "cross-day-server-message";
+    const outgoingCreatedAt = new Date(2026, 6, 3, 23, 59, 59).toISOString();
+    const confirmedCreatedAt = new Date(2026, 6, 4, 0, 0, 1).toISOString();
     const outgoingMessage = createOutgoingMessage({
       placementUuid,
-      createdAt: "2026-07-03T23:59:59.000Z",
+      createdAt: outgoingCreatedAt,
     });
     const { container, rerender } = render(
       <WorkspaceMessageList
@@ -753,6 +755,10 @@ describe("WorkspaceMessageList", () => {
     const outgoingArticle = container.querySelector(
       `[data-outgoing-message-id='${placementUuid}']`,
     );
+    const outgoingDayGroup = outgoingArticle?.closest("[data-day-group='true']");
+    const outgoingDateKey = outgoingDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
 
     rerender(
       <WorkspaceMessageList
@@ -763,7 +769,7 @@ describe("WorkspaceMessageList", () => {
             userUuid: "current-user-uuid",
             isOwn: true,
             markdown: outgoingMessage.markdown,
-            createdAt: "2026-07-04T00:00:01.000Z",
+            createdAt: confirmedCreatedAt,
           }),
         ]}
         outgoingMessages={[outgoingMessage]}
@@ -772,7 +778,21 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
+    const confirmedArticle = container.querySelector(`[data-message-uuid='${placementUuid}']`);
+    const confirmedDayGroup = confirmedArticle?.closest("[data-day-group='true']");
+    const confirmedDateKey = confirmedDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(confirmedArticle).toHaveAttribute("data-message-kind", "server");
+    expect(confirmedArticle).toHaveAttribute("data-server-message-uuid", placementUuid);
+    expect(confirmedArticle).not.toHaveAttribute("data-outgoing-message-id");
+    expect(confirmedArticle).toHaveTextContent(outgoingMessage.markdown);
+    expect(outgoingDateKey).toBe("2026-07-03");
+    expect(confirmedDateKey).toBe("2026-07-04");
+    expect(confirmedDateKey).not.toBe(outgoingDateKey);
+    expect(confirmedDayGroup?.contains(confirmedArticle)).toBe(true);
   });
 
   it("renders edited content from the server snapshot", () => {
