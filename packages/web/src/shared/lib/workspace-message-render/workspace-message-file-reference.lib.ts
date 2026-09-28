@@ -22,14 +22,20 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
   return normalized == null || normalized.length === 0 ? undefined : normalized;
 }
 
-function parsePositiveIntegerParam(searchParams: URLSearchParams, key: string): number | undefined {
+function parseIntegerParam(
+  searchParams: URLSearchParams,
+  key: string,
+  allowZero = false,
+): number | undefined {
   const rawValue = normalizeOptionalText(searchParams.get(key));
   if (rawValue == null || !POSITIVE_INTEGER_PATTERN.test(rawValue)) {
     return undefined;
   }
 
   const parsed = Number(rawValue);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  return Number.isSafeInteger(parsed) && (parsed > 0 || (allowZero && parsed === 0))
+    ? parsed
+    : undefined;
 }
 
 function parseWorkspaceFileUrn(href: string): ParsedWorkspaceFileUrn | null {
@@ -69,9 +75,9 @@ export function parseWorkspaceMessageFileHref(
   const queryName = normalizeOptionalText(parsed.searchParams.get("name"));
   const name = queryName ?? labelName;
   const contentType = normalizeOptionalText(parsed.searchParams.get("content_type"));
-  const width = parsePositiveIntegerParam(parsed.searchParams, "w");
-  const height = parsePositiveIntegerParam(parsed.searchParams, "h");
-  const sizeBytes = parsePositiveIntegerParam(parsed.searchParams, "size");
+  const width = parseIntegerParam(parsed.searchParams, "w");
+  const height = parseIntegerParam(parsed.searchParams, "h");
+  const sizeBytes = parseIntegerParam(parsed.searchParams, "size", true);
   const mediaKind = parsed.type === "image" || parsed.type === "video" ? parsed.type : undefined;
   const kind = mediaKind == null ? "attachment" : "media";
 

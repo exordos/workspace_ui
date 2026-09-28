@@ -257,7 +257,11 @@ function renderWorkspaceFilePlaceholder(
     ? " workspace-message-file-placeholder--composition"
     : "";
   const reservedAttribute = imageLayout == null ? "" : ` data-workspace-media-reserved="true"`;
-  return `<span role="button" tabindex="0" class="workspace-message-file-placeholder${compositionClass}" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${reservedAttribute}${placeholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
+  const placeholderClass =
+    reference.kind === "attachment"
+      ? "workspace-message-attachment-host"
+      : `workspace-message-file-placeholder${compositionClass}`;
+  return `<span role="button" tabindex="0" class="${placeholderClass}" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(reference.fileUuid)}" data-workspace-file-kind="${reference.kind}"${optionalAttributes}${reservedAttribute}${placeholderStyle} title="${escapeHtmlText(label)}" aria-label="${escapeHtmlText(label)}">${imageHtml}${videoHtml}${labelHtml}</span>`;
 }
 
 function renderFileReference(

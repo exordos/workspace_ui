@@ -2,20 +2,19 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import AttachmentRetryIcon from "~/shared/assets/icons/attachment-retry.svg?react";
 import AttachmentUploadErrorIcon from "~/shared/assets/icons/attachment-upload-error.svg?react";
+import { getAttachmentCardMetadata } from "~/shared/lib/attachment-card-meta.lib";
 import type {
   AttachmentCardListProps,
-  AttachmentCardMetadata,
   AttachmentCardProps,
   AttachmentErrorCardProps,
-  AttachmentFileCardProps,
-  AttachmentImageCardProps,
   AttachmentPendingCardProps,
+  AttachmentReadyCardProps,
   AttachmentUploadingCardProps,
 } from "~/shared/ui/attachment-card.types";
 import { Icon } from "~/shared/ui/icon";
 
 const ATTACHMENT_CARD_CLASS_NAME =
-  "flex h-[58px] w-60 shrink-0 items-center gap-3 border bg-composer-outer p-2 text-text-primary";
+  "flex h-[58px] w-60 max-w-full shrink-0 items-center gap-3 border p-2 text-text-primary";
 
 interface AttachmentCardFrameProps {
   fileName: string;
@@ -23,7 +22,9 @@ interface AttachmentCardFrameProps {
   details: React.ReactNode;
   action: React.ReactNode;
   tone?: "default" | "error";
+  appearance?: "default" | "embedded";
   className?: string;
+  role?: "listitem" | "presentation";
 }
 
 function AttachmentCardFrame({
@@ -32,14 +33,20 @@ function AttachmentCardFrame({
   details,
   action,
   tone = "default",
+  appearance = "default",
   className = "",
+  role = "listitem",
 }: Readonly<AttachmentCardFrameProps>) {
   return (
-    <article
+    <span
       className={`${ATTACHMENT_CARD_CLASS_NAME} ${
-        tone === "error" ? "rounded-xl border-danger" : "rounded-lg border-border-subtle"
+        tone === "error"
+          ? "rounded-xl border-danger bg-composer-outer"
+          : appearance === "embedded"
+            ? "rounded-lg border-transparent bg-transparent"
+            : "rounded-lg border-border-subtle bg-composer-outer"
       } ${className}`.trim()}
-      role="listitem"
+      role={role}
     >
       {preview}
       <span className="w-[134px] min-w-0 flex-1">
@@ -50,19 +57,24 @@ function AttachmentCardFrame({
           {details}
         </span>
       </span>
-      <span className="flex h-6 min-w-6 shrink-0 items-center justify-center">{action}</span>
-    </article>
+      {action == null ? null : (
+        <span className="flex h-6 min-w-6 shrink-0 items-center justify-center">{action}</span>
+      )}
+    </span>
   );
 }
 
-function AttachmentMetadataText({ metadata }: Readonly<{ metadata: AttachmentCardMetadata }>) {
+function AttachmentMetadataText({
+  formatLabel,
+  sizeLabel,
+}: Readonly<{ formatLabel: string; sizeLabel?: string }>) {
   return (
     <>
-      <span>{metadata.formatLabel}</span>
-      {metadata.sizeLabel != null && metadata.sizeLabel.length > 0 ? (
+      <span>{formatLabel}</span>
+      {sizeLabel != null && sizeLabel.length > 0 ? (
         <>
           <span aria-hidden> · </span>
-          <span>{metadata.sizeLabel}</span>
+          <span>{sizeLabel}</span>
         </>
       ) : null}
     </>
@@ -93,62 +105,54 @@ function AttachmentActionButton({
   );
 }
 
-function AttachmentFilePreview() {
+function AttachmentFilePreview({
+  iconName,
+}: Readonly<{ iconName: "files" | "images" | "videos" }>) {
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg">
-      <Icon name="files" size={18} className="text-text-muted" />
+      <Icon name={iconName} size={18} className="text-text-muted" />
     </span>
   );
 }
 
-export const AttachmentFileCard = React.memo<AttachmentFileCardProps>(
-  ({ fileName, metadata, onRemove, className }) => (
-    <AttachmentCardFrame
-      fileName={fileName}
-      preview={<AttachmentFilePreview />}
-      details={<AttachmentMetadataText metadata={metadata} />}
-      action={
-        <AttachmentActionButton
-          ariaLabel={t("attachmentCard.remove", { fileName })}
-          onClick={onRemove}
-        >
-          <Icon name="close" size={12} />
-        </AttachmentActionButton>
-      }
-      className={className}
-    />
-  ),
+export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
+  ({ fileName, contentType, sizeBytes, previewUrl, onRemove, appearance, role, className }) => {
+    const metadata = getAttachmentCardMetadata(fileName, contentType, sizeBytes);
+    return (
+      <AttachmentCardFrame
+        fileName={fileName}
+        preview={
+          previewUrl == null ? (
+            <AttachmentFilePreview iconName={metadata.iconName} />
+          ) : (
+            <img
+              src={previewUrl}
+              alt={fileName}
+              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+              loading="lazy"
+            />
+          )
+        }
+        details={<AttachmentMetadataText {...metadata} />}
+        action={
+          onRemove == null ? null : (
+            <AttachmentActionButton
+              ariaLabel={t("attachmentCard.remove", { fileName })}
+              onClick={onRemove}
+            >
+              <Icon name="close" size={12} />
+            </AttachmentActionButton>
+          )
+        }
+        role={role}
+        appearance={appearance}
+        className={className}
+      />
+    );
+  },
 );
 
-AttachmentFileCard.displayName = "AttachmentFileCard";
-
-export const AttachmentImageCard = React.memo<AttachmentImageCardProps>(
-  ({ fileName, previewUrl, metadata, onRemove, className }) => (
-    <AttachmentCardFrame
-      fileName={fileName}
-      preview={
-        <img
-          src={previewUrl}
-          alt={fileName}
-          className="h-10 w-10 shrink-0 rounded-lg object-cover"
-          loading="lazy"
-        />
-      }
-      details={<AttachmentMetadataText metadata={metadata} />}
-      action={
-        <AttachmentActionButton
-          ariaLabel={t("attachmentCard.remove", { fileName })}
-          onClick={onRemove}
-        >
-          <Icon name="close" size={12} />
-        </AttachmentActionButton>
-      }
-      className={className}
-    />
-  ),
-);
-
-AttachmentImageCard.displayName = "AttachmentImageCard";
+AttachmentReadyCard.displayName = "AttachmentReadyCard";
 
 function clampProgress(progress: number): number {
   if (!Number.isFinite(progress)) return 0;
@@ -213,7 +217,7 @@ export const AttachmentPendingCard = React.memo<AttachmentPendingCardProps>(
   ({ fileName, detailText, onRemove, className }) => (
     <AttachmentCardFrame
       fileName={fileName}
-      preview={<AttachmentFilePreview />}
+      preview={<AttachmentFilePreview iconName="files" />}
       details={detailText}
       action={
         <AttachmentActionButton
@@ -267,9 +271,8 @@ AttachmentErrorCard.displayName = "AttachmentErrorCard";
 export const AttachmentCard = React.memo<AttachmentCardProps>((props) => {
   switch (props.status) {
     case "file":
-      return <AttachmentFileCard {...props} />;
     case "image":
-      return <AttachmentImageCard {...props} />;
+      return <AttachmentReadyCard {...props} />;
     case "validating":
     case "queued":
       return <AttachmentPendingCard {...props} />;

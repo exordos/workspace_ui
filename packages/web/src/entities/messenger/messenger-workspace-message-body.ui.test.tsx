@@ -1,6 +1,8 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import {
   renderWorkspaceMessageBody,
   renderWorkspaceMessageBodySegments,
@@ -128,6 +130,54 @@ describe("WorkspaceMessageBody", () => {
     expect(quote?.nextElementSibling).toHaveTextContent("After quote");
     expect(quote?.previousElementSibling?.querySelector(".workspace-message-gap")).toBeNull();
     expect(quote?.nextElementSibling?.querySelector(".workspace-message-gap")).toBeNull();
+  });
+
+  it("mounts shared file cards across quote segments and removes them when content changes", () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const archiveUuid = "22222222-2222-4222-8222-222222222222";
+    const quoteUuid = "33333333-3333-4333-8333-333333333333";
+    const document = parseWorkspaceMessageBody(
+      [
+        `[report.pdf](urn:file:${fileUuid}?name=report.pdf&content_type=application%2Fpdf&size=1258291)`,
+        "",
+        `[Alice](urn:quote:${quoteUuid})`,
+        "",
+        `[archive.zip](urn:file:${archiveUuid}?name=archive.zip&content_type=application%2Fzip&size=0)`,
+      ].join("\n"),
+    );
+    const rendered = renderWorkspaceMessageBodySegments(document, {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      enableAttachments: true,
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageBody
+        html=""
+        segments={rendered.segments}
+        fileReferences={collectWorkspaceMessageFileReferences(document)}
+        renderQuote={() => <aside>Quoted message</aside>}
+        metadata={rendered.metadata}
+        useInlineMeta={false}
+      />,
+    );
+
+    const hosts = container.querySelectorAll<HTMLElement>(".workspace-message-attachment-host");
+    expect(hosts).toHaveLength(2);
+    expect(hosts[0]?.querySelector("[role='presentation']")).toHaveTextContent("PDF · 1.2 MB");
+    expect(hosts[1]?.querySelector("[role='presentation']")).toHaveTextContent("ZIP · 0 B");
+    expect(hosts[0]?.querySelector(".workspace-message-file-placeholder__label")).toHaveAttribute(
+      "hidden",
+    );
+
+    const plain = renderWorkspaceMessageBody(parseWorkspaceMessageBody("No attachments"));
+    rerender(
+      <WorkspaceMessageBody
+        html={plain.html}
+        fileReferences={[]}
+        metadata={plain.metadata}
+        useInlineMeta={false}
+      />,
+    );
+    expect(container.querySelector(".workspace-message-attachment-host")).toBeNull();
   });
 
   it("drops the injected DOM when an edit switches the body to quote segments", () => {

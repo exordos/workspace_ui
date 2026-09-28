@@ -1402,6 +1402,7 @@
     "mentionOutsideChannel": "не в канале"
   },
   "attachmentCard": {
+    "unnamedFile": "Файл",
     "remove": "Удалить {{fileName}}",
     "validating": "Проверка файла",
     "queued": "Ожидает загрузки",

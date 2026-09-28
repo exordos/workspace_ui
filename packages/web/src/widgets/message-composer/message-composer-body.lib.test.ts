@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAttachmentSize,
+  getAttachmentExtensionLabel,
+} from "~/shared/lib/attachment-card-meta.lib";
+import {
   buildOutgoingMessageBody,
   buildWorkspaceComposerImageAliases,
-  formatAttachmentSize,
   formatScheduledTimestamp,
-  getAttachmentExtensionLabel,
   insertWorkspaceMention,
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,

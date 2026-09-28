@@ -1,10 +1,21 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { t } from "~/i18n/i18n";
+import { resolveAttachmentMediaKind } from "~/shared/lib/attachment-card-meta.lib";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
+import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { AttachmentReadyCard } from "~/shared/ui/attachment-card.ui";
 import type { WorkspaceMessageBodyProps } from "./messenger-workspace-message-body.types";
 
 const bodyLog = createLogger("workspace-message-body");
+const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
+
+interface MountedAttachmentCard {
+  host: HTMLElement;
+  reference: WorkspaceMessageFileReference;
+}
 
 function assignBodyRef(
   ref: React.Ref<HTMLDivElement> | undefined,
@@ -51,6 +62,16 @@ const BASE_BODY_CLASS_NAME = [
   "[&_.workspace-message-file-placeholder]:focus-visible:outline-none",
   "[&_.workspace-message-file-placeholder]:focus-visible:ring-2",
   "[&_.workspace-message-file-placeholder]:focus-visible:ring-accent-soft",
+  "[&_.workspace-message-attachment-host]:my-1",
+  "[&_.workspace-message-attachment-host]:inline-flex",
+  "[&_.workspace-message-attachment-host]:max-w-full",
+  "[&_.workspace-message-attachment-host]:align-middle",
+  "[&_.workspace-message-attachment-host]:cursor-pointer",
+  "[&_.workspace-message-attachment-host--static]:cursor-default",
+  "[&_.workspace-message-attachment-host]:rounded-lg",
+  "[&_.workspace-message-attachment-host]:focus-visible:outline-none",
+  "[&_.workspace-message-attachment-host]:focus-visible:ring-2",
+  "[&_.workspace-message-attachment-host]:focus-visible:ring-accent-soft",
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='image']]:my-1",
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='image']]:h-40",
   "[&_.workspace-message-file-placeholder[data-workspace-media-kind='image']]:w-60",
@@ -131,6 +152,7 @@ function areWorkspaceMessageBodyPropsEqual(
   return (
     prev.html === next.html &&
     prev.segments === next.segments &&
+    prev.fileReferences === next.fileReferences &&
     prev.renderQuote === next.renderQuote &&
     prev.useInlineMeta === next.useInlineMeta &&
     prev.bodyRef === next.bodyRef &&
@@ -175,6 +197,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     useInlineMeta,
     bodyRef,
     onBodyClick,
+    fileReferences = EMPTY_FILE_REFERENCES,
   }): React.ReactElement {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const lastInjectedHtmlRef = useRef<string | null>(null);
@@ -182,6 +205,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     // Nodes injected through innerHTML are invisible to React, so switching to
     // segment rendering has to drop them by hand.
     const injectedNodesRef = useRef<ChildNode[]>([]);
+    const [attachmentCards, setAttachmentCards] = useState<MountedAttachmentCard[]>([]);
     const className = `${BASE_BODY_CLASS_NAME} ${
       useInlineMeta ? "workspace-message-bubble-inline-text" : ""
     }`;
@@ -247,6 +271,53 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
       safeHtml,
     ]);
 
+    useLayoutEffect(() => {
+      const body = containerRef.current;
+      if (body == null) return;
+
+      const hosts = body.querySelectorAll<HTMLElement>(
+        ".workspace-message-attachment-host[data-workspace-file-uuid][data-workspace-file-kind='attachment']",
+      );
+      const referencesByUuid = new Map<string, WorkspaceMessageFileReference>();
+      for (const file of fileReferences) {
+        if (file.kind === "attachment" && !referencesByUuid.has(file.fileUuid)) {
+          referencesByUuid.set(file.fileUuid, file);
+        }
+      }
+      const nextCards: MountedAttachmentCard[] = [];
+      for (const host of hosts) {
+        const interactive = onBodyClick != null;
+        host.classList.toggle("workspace-message-attachment-host--static", !interactive);
+        if (interactive) {
+          host.setAttribute("role", "button");
+          host.setAttribute("tabindex", "0");
+        } else {
+          host.setAttribute("role", "group");
+          host.removeAttribute("tabindex");
+        }
+        const fileUuid = host.dataset.workspaceFileUuid;
+        const reference = fileUuid == null ? undefined : referencesByUuid.get(fileUuid);
+        const showCard =
+          reference != null &&
+          resolveAttachmentMediaKind(reference.name ?? "", reference.contentType) == null;
+        const fallback = host.querySelector<HTMLElement>(
+          ".workspace-message-file-placeholder__label",
+        );
+        if (fallback != null) fallback.hidden = showCard;
+        if (showCard && reference != null) nextCards.push({ host, reference });
+      }
+
+      setAttachmentCards((previous) =>
+        previous.length === nextCards.length &&
+        previous.every(
+          (card, index) =>
+            card.host === nextCards[index]?.host && card.reference === nextCards[index]?.reference,
+        )
+          ? previous
+          : nextCards,
+      );
+    }, [fileReferences, hasStructuredSegments, onBodyClick, safeHtml, segments]);
+
     return (
       <div
         ref={setContainerRef}
@@ -263,6 +334,19 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
             <React.Fragment key={`quote:${segment.reference.messageUuid}:${index}`}>
               {renderQuote?.(segment, index)}
             </React.Fragment>
+          ),
+        )}
+        {attachmentCards.map(({ host, reference }, index) =>
+          createPortal(
+            <AttachmentReadyCard
+              fileName={reference.name ?? t("attachmentCard.unnamedFile")}
+              contentType={reference.contentType}
+              sizeBytes={reference.sizeBytes}
+              appearance="embedded"
+              role="presentation"
+            />,
+            host,
+            `${reference.fileUuid}:${index}`,
           ),
         )}
       </div>

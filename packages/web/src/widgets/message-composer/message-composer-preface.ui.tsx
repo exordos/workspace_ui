@@ -8,11 +8,7 @@ import {
 } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { AttachmentCard, AttachmentCardList } from "~/shared/ui/attachment-card.ui";
 import { Icon } from "~/shared/ui/icon";
-import {
-  formatAttachmentSize,
-  formatScheduledTimestamp,
-  getAttachmentExtensionLabel,
-} from "./message-composer-body.lib";
+import { formatScheduledTimestamp } from "./message-composer-body.lib";
 import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
 import { MessageComposerReplyQuotePreview } from "./message-composer-reply-quote-preview.ui";
 import type { MessageComposerPrefaceProps } from "./message-composer.types";
@@ -145,10 +141,6 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
             {showDraftFiles &&
               files.map((file, i) => {
                 const previewUrl = filePreviewUrls[i] ?? null;
-                const metadata = {
-                  formatLabel: getAttachmentExtensionLabel(file.name),
-                  sizeLabel: formatAttachmentSize(file.size),
-                };
                 if (i === activeUploadIndex) {
                   return (
                     <AttachmentCard
@@ -167,7 +159,8 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
                       status="image"
                       fileName={file.name}
                       previewUrl={previewUrl}
-                      metadata={metadata}
+                      contentType={file.type}
+                      sizeBytes={file.size}
                       onRemove={() => removeFile(i)}
                     />
                   );
@@ -177,7 +170,8 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
                     key={`${file.name}-${i}`}
                     status="file"
                     fileName={file.name}
-                    metadata={metadata}
+                    contentType={file.type}
+                    sizeBytes={file.size}
                     onRemove={() => removeFile(i)}
                   />
                 );

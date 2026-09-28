@@ -13,7 +13,10 @@ import {
 } from "~/shared/lib/emoji-shortcodes.lib";
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
-import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type {
+  WorkspaceMessageBodyQuoteSegment,
+  WorkspaceMessageFileReference,
+} from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import {
   hasWorkspaceForwardSnapshot,
   parseWorkspaceMessageBody,
@@ -59,6 +62,7 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
   enableAttachments: false,
   enableGallery: false,
 } as const;
+const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
 
 const BASE_BUBBLE_CLASS_NAME =
   "max-w-[88%] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
@@ -450,7 +454,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
     }, [interactiveActions?.onOpenMentionUser, isPreview, markdown, resolveMention]);
-    const fileReferences = passiveContentEnabled ? renderedBody.fileReferences : [];
+    const fileReferences = passiveContentEnabled
+      ? renderedBody.fileReferences
+      : EMPTY_FILE_REFERENCES;
     const {
       menuOpen,
       contextMenuAnchor,
@@ -651,6 +657,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           <WorkspaceMessageBody
             bodyRef={bodyRef}
             html={renderedBody.html}
+            fileReferences={fileReferences}
             segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
             renderQuote={renderQuote}
             metadata={renderedBody.metadata}
