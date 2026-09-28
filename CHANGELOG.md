@@ -6,6 +6,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-09-28
+
+### Changed
+
+- Avatar presence markers now use the shared avatar presentation across calls,
+  message lists, mention suggestions, chat headers, sidebars, and profile views
+  for consistent sizing and placement.
+
+### Fixed
+
+- Messenger startup now records its realtime boundary before requesting the
+  fresh catalog and starts catch-up only after that snapshot is complete. This
+  prevents events that arrive during bootstrap from being skipped and avoids
+  reusing a cursor from a stale account or session.
+- Fresh catalog refreshes now revalidate cached sidebar last messages so the
+  visible previews converge with the server after startup.
+- Sticky date dividers now remain inside their own day groups instead of
+  crossing into messages from an adjacent day while scrolling.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.0`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.1`.
+- No manual migration is required.
+
 ## [0.8.0] — 2026-09-23
 
 ### Added
