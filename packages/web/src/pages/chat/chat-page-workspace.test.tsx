@@ -4177,7 +4177,7 @@ describe("ChatPage Workspace route", () => {
           streamUuid: STREAM_UUID,
           topicUuid: TOPIC_UUID,
           markdown:
-            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
+            "[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)\nhello",
         }),
       ),
     );
@@ -4190,7 +4190,7 @@ describe("ChatPage Workspace route", () => {
       expect(outgoing).toEqual(
         expect.objectContaining({
           markdown:
-            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
+            "[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)\nhello",
           status: "sending",
         }),
       );
@@ -4416,7 +4416,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         markdown:
-          "message\n[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)",
+          "[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)\nmessage",
         canonicalMessageUuid,
       }),
     );
@@ -6397,7 +6397,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.editMessengerMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         messageUuid: MESSAGE_UUID,
-        markdown: `Edited text\n${fileMarkdown}`,
+        markdown: `${fileMarkdown}\nEdited text`,
       }),
     );
   });
@@ -6442,9 +6442,9 @@ describe("ChatPage Workspace route", () => {
     expect(captured.editMessengerMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: [
-          "Edited",
           existingMarkdown,
           `[new.pdf](urn:file:${uploadedUuid}?name=new.pdf&content_type=application%2Fpdf&size=3)`,
+          "Edited",
         ].join("\n"),
       }),
     );

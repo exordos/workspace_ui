@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  appendWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMetadata,
+  prependWorkspaceComposerAttachmentMarkdown,
 } from "./workspace-composer-attachments.lib";
 import { createWorkspaceComposerAttachmentsController } from "./workspace-composer-attachments.model";
 import type { WorkspaceComposerAttachmentUploadContext } from "./workspace-composer-attachments.types";
@@ -45,15 +45,15 @@ afterEach(() => {
 });
 
 describe("workspace composer attachment metadata", () => {
-  it("does not append links already present and removes duplicate input links", () => {
+  it("prepends new links while keeping existing inline links in place", () => {
     const image = "![screen.png](urn:image:image-uuid)";
     expect(
-      appendWorkspaceComposerAttachmentMarkdown(`Before\n${image}`, [
+      prependWorkspaceComposerAttachmentMarkdown(`Before\n${image}`, [
         image,
         image,
         "[file](urn:file:file-uuid)",
       ]),
-    ).toBe(`Before\n${image}\n[file](urn:file:file-uuid)`);
+    ).toBe(`[file](urn:file:file-uuid)\nBefore\n${image}`);
   });
 
   it("preserves portrait image dimensions in the image URN", async () => {

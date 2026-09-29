@@ -10,11 +10,11 @@ import {
 } from "~/shared/api/messenger-files.api";
 import { useWorkspaceComposerAttachments } from "./workspace-composer-attachments.hook";
 import {
-  appendWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMetadata,
+  prependWorkspaceComposerAttachmentMarkdown,
 } from "./workspace-composer-attachments.lib";
-import { appendWorkspaceComposerEditAttachmentMarkdown } from "./workspace-composer-edit-attachments.lib";
+import { prependWorkspaceComposerEditAttachmentMarkdown } from "./workspace-composer-edit-attachments.lib";
 import type {
   WorkspaceComposerAttachmentRequestContext,
   WorkspaceComposerAttachmentUploadContext,
@@ -174,7 +174,7 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     (content: string, subjectOverride?: string) => {
       if (attachments.length === 0) return onSendFinalMarkdown(content, subjectOverride);
       const result = transferReady((ready) => {
-        const markdown = appendWorkspaceComposerAttachmentMarkdown(
+        const markdown = prependWorkspaceComposerAttachmentMarkdown(
           content,
           ready.map((attachment: WorkspaceComposerReadyAttachmentTransfer) =>
             buildWorkspaceComposerAttachmentMarkdown(attachment.serverMetadata),
@@ -194,12 +194,12 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
         throw new Error(t("attachmentCard.uploadPending"));
       }
       const result = await commitReady(async (ready) => {
-        const markdown = appendWorkspaceComposerEditAttachmentMarkdown(
-          appendWorkspaceComposerEditAttachmentMarkdown(content, editAttachmentMarkdown),
-          ready.map((attachment) =>
+        const markdown = prependWorkspaceComposerEditAttachmentMarkdown(content, [
+          ...editAttachmentMarkdown,
+          ...ready.map((attachment) =>
             buildWorkspaceComposerAttachmentMarkdown(attachment.serverMetadata),
           ),
-        );
+        ]);
         await onSubmitEditFinalMarkdown(messageId, markdown);
         return true;
       });

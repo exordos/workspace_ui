@@ -77,8 +77,8 @@ import {
   type WorkspaceComposerControlledProps,
 } from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
 import {
-  appendWorkspaceComposerExistingAttachmentMarkdown,
   extractWorkspaceComposerEditContent,
+  prependWorkspaceComposerExistingAttachmentMarkdown,
   type WorkspaceComposerExistingAttachment,
 } from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
 import {
@@ -1931,7 +1931,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (editSessionId: number, markdown: string) =>
       handleSubmitEditFinalMarkdown(
         editSessionId,
-        appendWorkspaceComposerExistingAttachmentMarkdown(markdown, composerEditAttachments),
+        prependWorkspaceComposerExistingAttachmentMarkdown(markdown, composerEditAttachments),
       ),
     [composerEditAttachments, handleSubmitEditFinalMarkdown],
   );
