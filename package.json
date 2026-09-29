@@ -14,6 +14,7 @@
     "bootstrap": "lerna bootstrap",
     "dev": "lerna run dev --parallel --ignore workspace",
     "dev:web": "lerna run dev --scope web --stream",
+    "docs:check": "node scripts/check-docs.mjs",
     "lint": "npm run lint --workspace=web",
     "lint:cc": "node scripts/count-cognitive-complexity.mjs",
     "lint:smells": "node scripts/lint-code-smells-report.mjs",

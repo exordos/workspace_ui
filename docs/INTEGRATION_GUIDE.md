@@ -1,325 +1,41 @@
-# Integration Guide — Adding New Features
-
-Step-by-step guide for integrating new functionality using Feature-Sliced Design (FSD).
-
-> **Canonical structure:** [PROJECT_FACTS.md](PROJECT_FACTS.md) · **Architecture:** [fsd-architecture.md](fsd-architecture.md) · **Async org safety:** [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md)
-
----
-
-## Project Structure (FSD)
-
-```
-packages/web/src/
-├── app/                 ← Entry point, router, providers, contexts
-├── pages/               ← 14 route pages (lazy-loaded)
-├── widgets/             ← 9 composite UI blocks
-├── features/            ← 22 user scenarios
-├── entities/            ← 17 business entities (stores + API)
-├── shared/              ← Design system, utilities, API helpers, icons
-│   ├── ui/
-│   ├── api/             ← client.ts, workspace-client.ts, zulip-*.ts
-│   ├── lib/             ← event-loop.ts, brand.ts, guards.ts, …
-│   └── config/
-└── i18n/
-```
-
-Import rules: `shared → entities → features → widgets → pages → app` (only downward). Use **concrete segment imports** — no barrel-only `index.ts` (see `.cursor/rules/no-barrel-index.mdc`).
-
----
-
-## Checklist for Adding a New Feature
-
-Before adding any organization-scoped async loader or mutation, read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md). Active-organization validation is mandatory for async work that can outlive organization switch and later write into store state or IndexedDB.
-
-### 1. Entity API (if new data source)
-
-**Where**: `entities/<name>/<name>.api.ts`
-
-```typescript
-// entities/draft/draft.api.ts
-import { zulipFetch, zulipPost, zulipDelete } from "~/shared/api/client";
-import type { Draft, DraftInput } from "./draft.types";
-
-export async function fetchDrafts(): Promise<Draft[]> {
-  const res = await zulipFetch("drafts");
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  const data = await res.json();
-  return data.drafts;
-}
-
-export async function createDraft(draft: DraftInput): Promise<{ ids: number[] }> {
-  const res = await zulipPost("drafts", {
-    drafts: JSON.stringify([draft]),
-  });
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  return res.json();
-}
-
-export async function deleteDraft(id: number): Promise<void> {
-  const res = await zulipDelete(`drafts/${id}`);
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-}
-```
-
-**Workspace API** (via `shared/api/workspace-client.ts`):
-
-```typescript
-// entities/folder/folder.api.ts
-import { request } from "~/shared/api/workspace-client";
-import type { WorkspaceFolder } from "./folder.types";
-
-export async function getFolders(): Promise<WorkspaceFolder[]> {
-  return request<WorkspaceFolder[]>("folders/");
-}
-```
-
-### 2. TypeScript Types
-
-**Where**: `entities/<name>/<name>.types.ts`
-
-```typescript
-// entities/draft/draft.types.ts
-export interface Draft {
-  id: number;
-  type: "private" | "stream";
-  to: number[];
-  topic: string;
-  content: string;
-  timestamp?: number;
-}
-
-export interface DraftInput {
-  type: "private" | "stream";
-  to: number[];
-  topic: string;
-  content: string;
-}
-```
-
-### 3. Zustand Store (entity model)
-
-**Where**: `entities/<name>/<name>.model.ts`
-
-```typescript
-// entities/draft/draft.model.ts
-import { create } from "zustand";
-import { createLogger } from "~/shared/lib/logger";
-import { fetchDrafts, createDraft as apiCreateDraft, deleteDraft as apiDeleteDraft } from "./draft.api";
-import type { Draft, DraftInput } from "./draft.types";
-
-const log = createLogger("draft");
-
-interface DraftsState {
-  drafts: Draft[];
-  loading: boolean;
-
-  loadDrafts: () => Promise<void>;
-  createDraft: (draft: DraftInput) => Promise<void>;
-  deleteDraft: (id: number) => Promise<void>;
-  getDraftForChat: (chatId: string) => Draft | undefined;
-  clear: () => void;
-}
+# Integrating a Workspace feature
 
-export const useDraftsStore = create<DraftsState>((set, get) => ({
-  drafts: [],
-  loading: false,
+Start with [AGENTS.md](../AGENTS.md), [PROJECT_FACTS.md](PROJECT_FACTS.md) and [FSD architecture](fsd-architecture.md). The Workspace API is the source of truth for the new messenger. Preserve the visible chat shell unless the task explicitly includes redesign.
 
-  async loadDrafts() {
-    set({ loading: true });
-    try {
-      const drafts = await fetchDrafts();
-      set({ drafts, loading: false });
-      log.info("Drafts loaded", { count: drafts.length });
-    } catch (err) {
-      log.error("Failed to load drafts", { error: String(err) });
-      set({ loading: false });
-    }
-  },
+## 1. Find the owner and the contract
 
-  async createDraft(input) {
-    const { ids } = await apiCreateDraft(input);
-    log.info("Draft created", { id: ids[0] });
-    await get().loadDrafts();
-  },
+Trace the current UI entry point to its feature, entity and API module. Use the [component map](COMPONENT_CATALOG.md), [state map](STORES_REFERENCE.md) and [API map](API_CLIENT_REFERENCE.md) for navigation, then read the actual code. Identify which layer owns the change before creating files.
 
-  async deleteDraft(id) {
-    await apiDeleteDraft(id);
-    set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
-    log.info("Draft deleted", { id });
-  },
+Dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Keep new route/page wiring thin. Extend existing helpers and models where they own the behavior; do not create a store, API wrapper, type file or page merely to complete a template. Import from concrete files, without barrel-only `index.ts` files.
 
-  getDraftForChat(chatId) {
-    return get().drafts.find((d) => /* match logic */);
-  },
+Check the backend contract links in `PROJECT_FACTS.md` before relying on an endpoint, mutation or event. Keep Workspace identifiers UUID-native. If an action is not supported by the available contract/integration, expose an explicit unsupported, read-only or error state. Never substitute a hidden Zulip request or fake successful result.
 
-  clear() {
-    set({ drafts: [], loading: false });
-  },
-}));
-```
+## 2. Integrate data through the existing boundary
 
-### 4. Feature (user scenario)
+Use the relevant [Workspace API module](API_CLIENT_REFERENCE.md) and existing runtime token provider. Parse incoming DTOs with the domain guards and adapt them before store writes. Errors must preserve enough information for the feature to distinguish authentication, authorization, validation and transport failures; do not log credentials, PII or message bodies.
 
-If the feature has UI and its own logic beyond the entity, create a feature slice:
+For persistent data, preserve cache-first rendering where supported: restore the owner's cache, refresh from the server, then update the active state and the appropriate cache. Use a stricter loading policy only when showing stale data would violate the feature's contract, and record why.
 
-**Where**: `features/<action>/`
+Before async work starts, capture `captureWorkspaceRuntimeRequestContext()` from [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts). Before applying results, use `isWorkspaceRuntimeRequestInvalidated()` with the current-context getter and the request's abort signal. Owner fields and `runtimeGeneration` matter even if the request was not aborted. Guard success, error/finally state, cache writes and optimistic rollback. Read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md) for the full invariant.
 
-```typescript
-// features/manage-drafts/manage-drafts.ui.tsx
-import { useDraftStore } from "~/entities/draft/draft.model";
-import { ScrollArea } from "~/shared/ui/scroll-area";
-import { Icon } from "~/shared/ui/icon";
+Use narrow selectors and keep derived values stable. Do not introduce a second store for data already owned by the messenger or message store.
 
-export const DraftList: React.FC = () => {
-  const drafts = useDraftStore((s) => s.drafts);
-  // ...
-};
-```
+## 3. Connect realtime only when the feature needs it
 
-Import concrete segment files from other slices (example above).
+Inspect the current [layout realtime hook](../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [event applier](../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts) and [cache application](../packages/web/src/entities/messenger/messenger-realtime-cache.lib.ts). Extend the existing event path instead of adding the legacy Zulip event loop.
 
-### 5. Page or activity tab
+Preserve REST catch-up ordering, epoch generation/version cursor semantics, deduplication, active conversation updates and background projections. Bind listeners and cleanup to the runtime that created them. A newly visible message must not bypass existing unread/read or notification policy.
 
-Drafts are shown on the **activity** page, not a separate `/drafts` route. For a new dedicated route:
+## 4. Wire UI and explicit capabilities
 
-**Where**: `pages/<name>/<name>-page.ui.tsx`
+Reuse existing primitives and feature components. Keep visible text in both English and Russian [i18n files](../packages/web/src/i18n). Use the established keyboard, focus and accessible-name patterns.
 
-```typescript
-// pages/logs/logs-page.ui.tsx
-import { useTranslation } from "~/i18n/i18n";
+The [composer](../packages/web/src/widgets/message-composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
 
-export const LogsPage: React.FC = () => {
-  const { t } = useTranslation();
-  return <div>{t("nav.logs")}</div>;
-};
-```
+## 5. Verify the changed behavior
 
-### 6. Route
-
-**Where**: `app/app.tsx`
-
-```tsx
-const LogsPage = React.lazy(() =>
-  import("~/pages/logs/logs-page.ui").then((m) => ({ default: m.LogsPage })),
-);
-
-<Route path="/logs" element={<LogsPage />} />;
-```
-
-### 8. Navigation
-
-**Sidebar link** → `widgets/sidebar/sidebar-activity.ui.tsx`:
-Add an item or update `MY_ACTIVITY` data.
-
-**TopBar section** → `widgets/top-bar/top-bar.ui.tsx`:
-Add a section button if a top-level tab is needed.
-
-### 9. Real-time Events
-
-**Where**: `widgets/layout/layout-zulip-event-dispatch.lib.ts` (extend dispatch for new event types)
-
-The loop itself lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-zulip-event-loop.hook.ts`.
-
-### 10. Theme / Styles
-
-New colors → `app/app.styles.css` (CSS variable) + `shared/lib/themes/` (token mapping).
-
-Never use hardcoded colors. Always use semantic tokens: `text-primary`, `bg-card-bg`, `accent`, etc.
-
-### 11. Cleanup on Instance Switch
-
-**Where**: `widgets/layout/layout.ui.tsx` → useEffect on `currentInstanceId` change:
-
-```typescript
-useEffect(() => {
-  useDraftsStore.getState().clear();
-  // ...other stores
-}, [currentInstanceId]);
-```
-
----
-
-## Context Patterns
-
-### When to Use Context vs Store
-
-| Situation                          | Solution                         |
-| ---------------------------------- | -------------------------------- |
-| Global state (data from API)       | Zustand store in `entities/`     |
-| UI state of a single screen        | `useState`                       |
-| Callback passed through 3+ levels  | React Context in `app/contexts/` |
-| State needed in sibling components | Zustand store                    |
-| Persist between sessions           | Zustand store + localStorage     |
-
-### When to Create a New Entity vs Feature
-
-| If the code is...                      | Place it in...       |
-| -------------------------------------- | -------------------- |
-| Data model + API + store (domain)      | `entities/<name>/`   |
-| User interaction / scenario            | `features/<action>/` |
-| Composite block used on multiple pages | `widgets/<name>/`    |
-| UI primitive (button, badge, icon)     | `shared/ui/`         |
-| Utility function                       | `shared/lib/`        |
-| API helper                             | `shared/api/`        |
-
-### Naming Style (FSD)
-
-| Type           | Pattern              | Example                   |
-| -------------- | -------------------- | ------------------------- |
-| Entity folder  | `kebab-case`         | `entities/sticker/`       |
-| Feature folder | `kebab-case`         | `features/ai-reply/`      |
-| Store file     | `<name>.model.ts`    | `sticker.model.ts`        |
-| Store hook     | `use<Name>Store`     | `useStickerStore`         |
-| API file       | `<name>.api.ts`      | `sticker.api.ts`          |
-| Types file     | `<name>.types.ts`    | `ai-reply.types.ts`       |
-| UI file        | `<name>.ui.tsx`      | `sticker-picker.ui.tsx`   |
-| Page file      | `<name>-page.ui.tsx` | `drafts-page.ui.tsx`      |
-| API function   | `camelCase`          | `fetchStickerPacks`       |
-| Interface      | `PascalCase`         | `Sticker`, `AiSuggestion` |
-
----
-
-## Complete Checklist for a New Feature
-
-When implementing each feature, verify:
-
-```
-[ ] Entity: API (entities/<name>/<name>.api.ts) or shared/api/
-[ ] Entity: Types (entities/<name>/<name>.types.ts) — no `any`
-[ ] Entity: Zustand store (entities/<name>/<name>.model.ts) with createLogger
-[ ] Imports: concrete segment paths only (no barrel index.ts)
-[ ] Feature: UI component (features/<action>/<action>.ui.tsx) if needed
-[ ] Page: lazy-loaded page (pages/<name>/<name>-page.ui.tsx) if new route
-[ ] Route in app/app.tsx (React.lazy + Suspense)
-[ ] i18n: strings in ru.json + en.json, uses t("key")
-[ ] Branding: brand.* instead of hardcoded "Workspace"
-[ ] Permissions: hasPermission() for role-dependent UI
-[ ] Keyboard shortcuts: SHORTCUTS[] if there are new actions
-[ ] Logging: createLogger("scope"), logApiCall — no PII
-[ ] Security: sanitizeHtml, isValidUrl, validateFileUpload
-[ ] Theme: semantic tokens only, verify dark+light
-[ ] Tests: store + utility + component render
-[ ] Performance: lazy imports, minimal selectors, React.memo for list items
-[ ] Error handling: try/catch, loading/error state, ErrorBoundary
-[ ] TypeCheck: npm run typecheck — 0 errors
-[ ] Cleanup on instance switch: store.clear()
-[ ] Docs: update docs/ if needed
-```
-
-## React FSD: Quick Reference
-
-| Pattern               | Recommended approach                                         |
-| --------------------- | ------------------------------------------------------------ |
-| Read state in UI      | `const x = useStore((s) => s.x)`                             |
-| Trigger store action  | `useStore.getState().action()`                               |
-| React to state change | `useEffect(() => { ... }, [state])`                          |
-| Update state          | `set((s) => ({ field: next }))`                              |
-| Define domain store   | `create<State>(...)` in `entities/<name>/<name>.model.ts`    |
-| Add route             | `<Route path=\"...\" element={<.../>} />` in `app/app.tsx`   |
-| Navigate              | `navigate(\"/path\")`                                        |
-| Component             | `const Component: React.FC = () => { ... }`                  |
-| Resource cleanup      | `useEffect` cleanup function                                 |
-| Async cancellation    | `AbortController` + cleanup                                  |
-| API calls             | `zulipFetch/zulipPost` from `~/shared/api`                   |
-| Cross-slice usage     | Import concrete `*.model.ts` / `*.api.ts` / `*.ui.tsx` paths |
-| UI primitives         | Radix UI + Tailwind + `~/shared/ui`                          |
+Use the commands and working directories in [PROJECT_FACTS.md](PROJECT_FACTS.md). Run focused existing tests for a narrow behavior change, typecheck for a type/API/store contract change, and the broader project check for broad changes. Use E2E when user flow or route behavior changes. Add tests for meaningful new behavior or regressions, not to mirror a trivial implementation.
+
+For async changes, exercise an owner switch or reset while the request is pending and verify both store and cache boundaries. For UI changes, report whether browser/native visual interaction was actually checked; unit tests do not replace it. Documentation-only maintenance needs link/source checks and `git diff --check`, not a claim that the app was tested.
+
+Inspect `git status --short` and the relevant diff before reporting. Preserve unrelated work. Update the affected canonical document when a responsibility or contract changes; avoid copying the same instructions into multiple catalogs or creating a new rule for each fix. Analysis/review requests remain read-only unless the user authorizes edits.

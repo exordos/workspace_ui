@@ -1,83 +1,50 @@
 ---
 name: design-to-code
 description: >-
-  Translate UI mockups into React components with Tailwind CSS.
-  Use when the user references Figma, screenshots, design exports, or asks to
-  implement a screen from a mockup. IMPORTANT: Design system tokens take
-  priority over pixel-perfect matching.
+  Implement or refine Workspace UI from a mockup, screenshot, or Figma reference,
+  reusing current components and tokens while honoring the requested visual behavior.
 ---
 
-# Design-to-Code Workflow
+# Design to Workspace UI
 
-> **Design system > Pixel Perfect.** See `.cursor/rules/design-system.mdc`.
-> Mockups are a guide. Tokens are the contract. If they conflict, tokens win.
+Read [AGENTS.md](../../../AGENTS.md) and [PROJECT_FACTS.md](../../../docs/PROJECT_FACTS.md).
+Use the supplied design and latest user feedback to establish the target. Preserve the
+existing chat shell unless redesign is requested. Analysis-only requests remain read-only.
 
-## Input Sources
+## Inspect and map
 
-Use whichever design input is available in the task:
+Identify layout, spacing, typography, colors, required interaction states, and responsive
+behavior. Use the available reference; do not require a local design folder. With Figma,
+use the available Figma integration instructions, and keep the design file read-only unless
+the user requests edits there. State when measurements are inferred from screenshots.
 
-- Figma links or screenshots shared by the user
-- Attached PNG/JPG/SVG files
-- Existing UI in the running app (for parity refinements)
+Find the current component and owning FSD layer before creating another one. Reuse existing
+primitives, semantic tokens, and shared avatar/presence behavior. Inspect the current theme
+and design-system rules for actual token names. Do not silently override explicit visual
+requirements with a generic spacing grid; explain any real constraint that affects fidelity.
 
-Do not require a local `design` directory.
+## Implement
 
-## Step 1: Clarify target state
+Use concrete imports without barrel-only `index.ts` files. Keep reusable visuals in `shared`,
+domain binding in entities, user actions in features, compositions in widgets, and routes thin.
+Create only the files needed by the change.
 
-Identify and write down:
+Keep API behavior contract-backed and UUID-native. If the screen loads or mutates scoped
+data, reuse existing ownership and cache flows from
+[async safety](../../../docs/ORG_SCOPED_ASYNC_SAFETY.md). Use an explicit unsupported state for
+missing capabilities rather than fake production data.
 
-1. Screen/flow being implemented
-2. Required states (default, hover, active, selected, loading, empty, error)
-3. Responsive behavior (desktop/tablet/mobile expectations)
+Put UI text through the current i18n path with both locales. Preserve keyboard navigation,
+accessible names, focus handling, sanitized content rendering, and relevant loading, empty,
+error, and disabled states.
 
-## Step 2: Visual analysis
+## Verify
 
-From the design input, extract:
+Compare the result with the reference in the browser when available. Check the viewport and
+states affected by the change: alignment, overflow/wrapping, focus/hover, scrolling, and theme
+variants. Do not claim pixel accuracy from source inspection alone.
 
-- Layout structure and spacing rhythm
-- Typography hierarchy (title/body/meta)
-- Color intent (surface, text, accent, borders)
-- Component patterns (avatars, badges, menus, composer, etc.)
-
-## Step 3: Map to design system
-
-Map design intent to existing tokens:
-
-- Colors -> semantic tokens (`bg-card-bg`, `text-text-primary`)
-- Spacing -> Tailwind 4px grid (`p-3`, `gap-2`, `mt-4`)
-- Typography -> Tailwind scale (`text-sm`, `text-base`, `text-lg`)
-- Radius -> `rounded-lg`, `rounded-full`
-
-Never hardcode color hex values in component classes.
-
-## Step 4: Implement in FSD layer
-
-Place code by responsibility:
-
-- Scenario UI -> `features/<name>/`
-- Composite block -> `widgets/<name>/`
-- Reusable primitive -> `shared/ui/`
-- Route screen -> `pages/<name>/`
-
-Import slices only through `index.ts` public APIs.
-
-## Step 5: Validate quality gates
-
-Check before completion:
-
-- Works in dark and light modes
-- Works with both palettes
-- UI strings use i18n `t("key")`
-- Interactive controls are keyboard accessible
-- No regression to existing layout behavior
-
-## Step 6: Verify visually
-
-Use browser checks for:
-
-- Alignment and spacing consistency
-- Hover/focus/active states
-- Overflow handling (ellipsis, wrapping)
-- Empty/loading/error states
-
-Iterate until parity with the intended design behavior is reached.
+Run relevant existing tests and the checks appropriate to the scope in project facts. Add
+behavioral coverage when justified; visual token or spacing changes do not automatically
+need new tests. Report what changed, verification results, and any visual checks unavailable
+in the environment.

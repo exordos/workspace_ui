@@ -1,68 +1,18 @@
 ---
-description: Deep link support — URL builders, custom protocol, sharing
-globs: "packages/**/*.{ts,tsx}"
+description: "Use when changing Workspace routes, share links, custom protocol handling, or tray navigation."
 alwaysApply: false
+globs:
+  - "packages/web/src/shared/lib/*route*"
+  - "packages/web/src/shared/lib/deeplinks*"
+  - "packages/electron/src/deeplink-route*"
 ---
 
-# Deep Links
+# Deep links
 
-## Route Builders
+Sources: `packages/web/src/shared/lib/workspace-messenger-route.lib.ts`, `packages/web/src/shared/lib/deeplinks.ts`, and `packages/electron/src/deeplink-route.lib.ts`.
 
-```typescript
-import { deeplink } from "~/shared/lib/deeplinks";
-
-deeplink.toStream(5, "general");           // "/stream/5-general"
-deeplink.toTopic(5, "general", "bugs");    // "/stream/5-general/topic/bugs"
-deeplink.toMessage(5, "general", "bugs", 12345);  // "…/topic/bugs?msg=12345"
-deeplink.toDm(42);                         // "/dm/42"
-deeplink.toActivity("starred");            // "/activity/starred"
-```
-
-## Shareable URLs
-
-```typescript
-const url = deeplink.toShareableUrl("/stream/5-general");
-// Web:      "https://app.example.com/stream/5-general"
-// Electron: "workspace://open/stream/5-general"
-```
-
-## Parsing (incoming deep links)
-
-```typescript
-const parsed = deeplink.parse("workspace://open/dm/42");
-// { type: "dm", path: "/dm/42", dmId: "42" }
-
-const parsed2 = deeplink.parse("https://app.example.com/stream/5-general/topic/bugs?msg=12345");
-// { type: "message", streamSlug: "5-general", topicName: "bugs", messageId: 12345 }
-```
-
-## Sharing
-
-```typescript
-await deeplink.share({
-  title: "#general — bugs",
-  url: deeplink.toShareableUrl(deeplink.toTopic(5, "general", "bugs")),
-});
-// Web Share API → native share dialog (mobile/PWA)
-// Fallback → clipboard copy
-```
-
-## Electron Custom Protocol
-
-Protocol: `workspace://`
-
-Flow:
-1. User clicks `workspace://open/dm/42` in external app
-2. OS launches Electron (or focuses existing instance)
-3. Main process extracts route from URL
-4. Sends `deeplink:navigate` IPC to renderer
-5. React navigates to `/dm/42`
-
-Registration: `app.setAsDefaultProtocolClient("workspace")` in main.ts.
-
-## For AI Agent
-
-- Use `deeplink.toStream/toTopic/toDm` to build navigation URLs
-- Never construct route strings manually — always use builders
-- For "share" buttons: `deeplink.toShareableUrl()` + `deeplink.share()`
-- Notification `onClick`: navigate using `deeplink.parse()` result
+- Use Workspace builders with organization, project, and UUID scope. Do not introduce numeric Zulip routes into new messenger navigation.
+- Preserve message anchors and URL encoding. Treat externally supplied routes as untrusted input; use the existing parser/validator.
+- BrowserRouter, Electron HashRouter, share URLs, and `workspace://` links have different envelopes around the internal route.
+- Tray navigation is resolved by `packages/web/src/app/app-electron-navigation.lib.ts`; preserve the last-messenger-route behavior.
+- Verify both generation and parsing, including invalid links and unavailable destination scope, when a route contract changes.

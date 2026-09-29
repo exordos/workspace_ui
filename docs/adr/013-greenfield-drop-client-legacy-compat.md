@@ -1,5 +1,7 @@
 # ADR 013: Greenfield — drop client legacy compatibility
 
+> Scope clarification (2026-09-28): this decision covers the historical client-data cutover. It does not authorize dropping current Workspace schema upgrades, wiping user data, or adding Zulip fallbacks to Workspace flows. Use [current cache guidance](../WORKSPACE_MESSENGER_CACHE.md) and [AGENTS.md](../../AGENTS.md).
+
 **Date**: 2026-06-02  
 **Status**: accepted
 

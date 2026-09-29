@@ -1,58 +1,39 @@
 # AGENTS.md — Workspace UI
 
-## Core Context
+## Start here
 
-This project is migrating from legacy Zulip to the Workspace API. The new Workspace messenger path is the target path. Legacy Zulip code may be used as context, but it must not be silently pulled into new Workspace logic.
+Workspace API is the source of truth for the messenger. Read [Project Facts](docs/PROJECT_FACTS.md) for current entrypoints, backend contracts, and verification commands. Use source files and tests to verify details; archived plans and old ADR snapshots are not current implementation instructions.
 
-`docs/PROJECT_FACTS.md` is the project facts file: versions, important paths, slices, verification commands, and current backend contract links. Do not duplicate those volatile facts here.
+- [Architecture](docs/fsd-architecture.md): ownership and imports.
+- [Async safety](docs/ORG_SCOPED_ASYNC_SAFETY.md): runtime ownership and stale writes.
+- [Integration guide](docs/INTEGRATION_GUIDE.md): workflow for feature changes.
+- [Documentation index](docs/README.md): topic-specific references.
 
-## Sources Of Truth
+## Scope and working tree
 
-- `docs/PROJECT_FACTS.md` — current project facts and backend contract links.
-- `docs/fsd-architecture.md` — FSD layer rules.
-- `.cursor/rules/no-barrel-index.mdc` — no barrel-only imports.
-- `docs/ORG_SCOPED_ASYNC_SAFETY.md` — stale async write protection across org/project switches.
+- Analysis and review requests are read-only unless the user also authorizes edits. Report findings before proposing implementation.
+- Preserve unrelated changes. Inspect `git status --short` before edits and before the final report. Stage only intended paths; commit or push only when requested.
+- Extend existing flows before adding stores, helpers, or files. Create only the FSD segments the task needs.
+- Preserve the visible UI unless the task asks for a design change. Follow the user's latest visual requirements and report unperformed visual checks.
 
-If a conclusion depends on Workspace backend capabilities, check the backend contract links from `docs/PROJECT_FACTS.md` first. A local `../workspace_backend` checkout may be missing; use the GitHub fallback links from the facts file when needed.
+## Domain and architecture
 
-## Workspace Migration
+- Use Workspace UUIDs and the existing DTO-to-domain adapters. Do not add hidden Zulip fallbacks, numeric ID conversions, or fabricated domain data.
+- Check the backend contract before declaring a capability unsupported. If it is unsupported, expose that state explicitly.
+- `entities/messenger` owns catalogs and domain actions; `entities/message` owns the Workspace message store. Session and request ownership belong to `entities/workspace-auth` and `entities/workspace-runtime`.
+- Dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Keep routes thin; compose workflows in their owning layer.
+- Import concrete module files. Do not add barrel-only `index.ts` re-exports.
+- Restore durable cache first where appropriate, refresh from the server, and update store and cache consistently. Scope data by runtime owner and reject stale async writes. Explain stricter loading when stale data would be unsafe.
 
-- Workspace API is the source of truth for the new messenger path.
-- Do not add hidden Zulip fallbacks or adapters to Workspace logic.
-- If Workspace API does not support something, use an explicit `unsupported` state, read-only state, or clear error instead of fake domain data.
-- Workspace code should be UUID-native: `user_uuid`, `message_uuid`, `project_id`, owner/runtime key. Do not return to Zulip numeric ids.
-- Preserve the old visible chat UI shell unless the task explicitly asks for redesign.
-- `entities/unread-sync`, `entities/chat-list`, `entities/message`, `entities/instance`, `shared/api/zulip-*` are legacy/bridge code, not the new source of truth.
-- Keep route/page code thin: pass intent into features/entities instead of building workflows locally in pages.
+## Code requirements
 
-## Data Loading
-
-- For screens and features that can show persistent cached data, prefer an SWR approach by default: restore cache first, refresh from server in the background, then update both the active store and cache.
-- Cache means any durable layer already used by the app: IndexedDB, localStorage, snapshot DB, persisted store, or another cache helper.
-- Fast messenger startup matters. Do not replace cache-first behavior with an empty loading state without a reason.
-- If SWR makes the contract too complex or may show dangerously stale data, record that in the analysis and choose stricter loading.
-- New cache work must include owner/org/project scoping and stale-write protection.
-
-## Code Rules
-
-- FSD dependency direction: `app -> pages -> widgets -> features -> entities -> shared`.
-- For a new feature, first identify the owning layer and data source. Do not create `types` / `api` / `store` / `page` files by template unless the task actually needs them.
-- Import from concrete files only: `*.model.ts`, `*.api.ts`, `*.ui.tsx`, `*.lib.ts`; no barrel `index.ts`.
-- TypeScript strict: no `any`, use type-only imports, and handle `undefined` from indexed access.
-- Zustand: use narrow selectors, cache derived data, and adapt DTOs into domain models before writing to stores.
-- UI text goes through `~/i18n`; add new keys to both `en.json` and `ru.json`.
-- Render HTML/markdown only through the existing sanitize/render path. `dangerouslySetInnerHTML` without `sanitizeHtml()` is forbidden.
-- Use `createLogger` and project logging helpers. Do not log tokens, PII, message bodies, or credentials.
-- Code comments must be in simple English. Use comments only to explain why, not obvious actions.
+- TypeScript strict: no `any`, use type-only imports, handle missing indexed values.
+- Zustand: narrow selectors and stable derived results; keep DTO adaptation outside UI rendering.
+- UI text uses `~/i18n/i18n`; add keys to both locales. Use existing components, semantic theme tokens, and branding helpers.
+- Render untrusted content through the existing sanitize/render path. Preserve keyboard access, focus handling, and accessible names.
+- Use project logging helpers; never log credentials, tokens, PII, or message bodies.
+- Code comments use simple English and explain non-obvious reasons.
 
 ## Verification
 
-- Narrow change: run the relevant `vitest`.
-- Type, API, or store contract change: run `npm run typecheck`.
-- Broad change: run `npm run check`.
-- E2E only when user flow or route-level behavior changes.
-- Before the final report, check `git status --short` and state what changed.
-
-## Dirty Tree
-
-The working tree may be dirty. Do not revert changes made by others. If a file already has unrelated changes, work around them carefully; if there is a real conflict, stop and explain it.
+Use the command table in [Project Facts](docs/PROJECT_FACTS.md#verification). Run focused tests for changed behavior, typecheck for type/API/store changes, and broader checks when scope warrants them. Documentation-only work needs link/consistency checks, not the app test suite. Report actual commands and any gaps; do not claim manual or platform QA from unit tests.

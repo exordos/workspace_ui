@@ -1,133 +1,73 @@
-# Project Facts (canonical reference)
+# Project Facts
 
-Single source of truth for volatile repository facts, important module paths, and workflow. Keep this file short; long design notes belong in the linked docs.
+Verified against the local source tree on 2026-09-28. This is a navigation map; package manifests, scripts, and source files own exact versions and signatures.
 
-**Last verified:** 2026-07-09 (branch `workspace-api`, version `0.1.13`).
+## Packages and versions
 
-## Monorepo packages
+| Package             | Manifest                                                            | Purpose                                    |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------------ |
+| `web`               | [packages/web/package.json](../packages/web/package.json)           | React SPA, Vite, Zustand, Tailwind, Vitest |
+| `exordos-workspace` | [packages/electron/package.json](../packages/electron/package.json) | Electron shell and packaging               |
 
-| Package             | Path                 | Role             |
-| ------------------- | -------------------- | ---------------- |
-| `web`               | `packages/web/`      | React SPA (Vite) |
-| `exordos-workspace` | `packages/electron/` | Desktop shell    |
+The release version is in [lerna.json](../lerna.json); use `npm run version:print`. Root commands and Node requirements are in [package.json](../package.json) and [.nvmrc](../.nvmrc). Do not copy dependency versions or slice counts into other documents.
 
-## Stack versions
+## Runtime map
 
-| Technology | Version |
-| ---------- | ------- |
-| TypeScript | 6.0.3   |
-| React      | 19.2.7  |
-| Vite       | 8.0.16  |
-| Zustand    | 5.0.14  |
-| Electron   | 42.4.0  |
-| Vitest     | 4.1.8   |
-| Playwright | 1.60.0  |
-| Lerna      | 9.0.7   |
-| Tailwind   | 4.3.0   |
-| ESLint     | 10.4.1  |
-| Prettier   | 3.8.4   |
+All paths below are relative to `packages/web/src`.
 
-## FSD slices
+| Concern                                 | Source                                                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Routes                                  | [app/app.tsx](../packages/web/src/app/app.tsx)                                                              |
+| IAM sessions and current runtime        | [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts)              |
+| Owner keys and request validity         | [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts)         |
+| Catalogs, conversations, domain actions | [entities/messenger](../packages/web/src/entities/messenger/)                                               |
+| Workspace message store                 | [message.model.ts](../packages/web/src/entities/message/message.model.ts)                                   |
+| Users and presence                      | [entities/user](../packages/web/src/entities/user/)                                                         |
+| Messenger REST                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts) and adjacent `messenger-*.api.ts` |
+| Common Workspace REST                   | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                   |
+| IAM token requests                      | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                               |
+| Realtime transport                      | [shared/lib/workspace-realtime](../packages/web/src/shared/lib/workspace-realtime/)                         |
+| Messenger cache                         | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)           |
+| Message rendering                       | [shared/lib/workspace-message-render](../packages/web/src/shared/lib/workspace-message-render/)             |
+| Shell lifecycle                         | [widgets/layout](../packages/web/src/widgets/layout/)                                                       |
+| Message list                            | [widgets/workspace-message-list](../packages/web/src/widgets/workspace-message-list/)                       |
 
-Use this section for orientation, not for exact counts. Check the filesystem for the full current list:
+Do not infer a module's backend from its old name. In particular, `entities/message` is Workspace-native. Remaining `zulip-*` helpers are not the default integration path for new messenger work.
 
-```bash
-find packages/web/src/{entities,features,pages,widgets} -maxdepth 1 -type d | sort
-```
+## Backend contracts
 
-| Area                              | Main slices / paths                                                                                         | Responsibility                                                                      |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Workspace messenger core          | `entities/messenger`, `entities/workspace-auth`, `entities/workspace-runtime`                               | Workspace IAM session, project runtime, messenger state, outbox, cache, realtime    |
-| Workspace-aware shared domains    | `entities/user`, `entities/feed`, `entities/activity`                                                       | Shared product state with Workspace API paths for users, feed, starred/activity     |
-| Legacy Zulip and unread bridges   | `entities/chat-list`, `entities/message`, `entities/instance`, `entities/unread-sync`, `shared/api/zulip-*` | Old Zulip-shaped state, instance state, and unread synchronization for old surfaces |
-| Legacy inbox and settings domains | `entities/inbox`, `entities/notification-settings`, `shared/lib/event-loop`                                 | Zulip unread inbox, Zulip notification settings, and legacy event loop              |
-| Workspace messenger features      | `features/workspace-forward-message`, `features/mention-suggest`, `features/media-viewer`                   | User actions on the Workspace messenger path                                        |
-| App shell and chat widgets        | `widgets/layout`, `widgets/sidebar`, `widgets/message-composer`, `widgets/workspace-message-list`           | Route shell, navigation, composer, and Workspace message rendering                  |
-| Route pages                       | `pages/workspace-messenger`, `pages/chat`, `pages/activity`, `pages/inbox`, `pages/feed`, `pages/settings`  | Route-level composition; keep pages thin and delegate actions to features           |
+Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.
 
-`entities/unread-sync` is not Workspace-native. It still consumes Zulip unread snapshots / events and writes old sidebar and instance unread surfaces.
+Local paths, when the sibling checkout exists:
 
-## Key module paths
+- `../workspace_backend/docs/en/workspace_api.md`
+- `../workspace_backend/docs/en/workspace_ui_realtime_integration.md`
 
-| Concern                    | Path                                                          |
-| -------------------------- | ------------------------------------------------------------- |
-| HTTP client middleware     | `packages/web/src/shared/api/client.ts`                       |
-| Workspace IAM auth         | `packages/web/src/shared/api/workspace-iam-auth.ts`           |
-| Workspace messenger client | `packages/web/src/shared/api/messenger-client.ts`             |
-| Workspace messenger APIs   | `packages/web/src/shared/api/messenger-*.api.ts`              |
-| Workspace realtime API     | `packages/web/src/shared/api/messenger-realtime.api.ts`       |
-| Workspace realtime runtime | `packages/web/src/shared/lib/workspace-realtime/`             |
-| Workspace message renderer | `packages/web/src/shared/lib/workspace-message-render/`       |
-| Workspace messenger cache  | `packages/web/src/shared/lib/workspace-messenger-cache-db.ts` |
-| Workspace user cache       | `packages/web/src/shared/lib/workspace-user-cache-db.ts`      |
-| Legacy Zulip API modules   | `packages/web/src/shared/api/zulip-*.ts`                      |
-| Legacy Zulip event loop    | `packages/web/src/shared/lib/event-loop.ts`                   |
-| White-label config         | `packages/web/src/shared/lib/brand.ts`                        |
-| User API split             | `packages/web/src/entities/user/api/`                         |
+GitHub fallback (requires repository access):
 
-## Workspace API source of truth
+- [Workspace API](https://github.com/exordos/workspace_backend/blob/master/docs/en/workspace_api.md)
+- [Realtime integration](https://github.com/exordos/workspace_backend/blob/master/docs/en/workspace_ui_realtime_integration.md)
 
-For Workspace messenger work, verify the backend contract before declaring a gap or adding a frontend fallback:
-
-Local checkout, if available next to this repo:
-
-- `../workspace_backend/docs/workspace_api.md`
-- `../workspace_backend/docs/workspace_ui_realtime_integration.md`
-
-GitHub fallback when the backend repo is not available locally:
-
-- `https://github.com/exordos/workspace_backend/blob/workspace-backend/docs/workspace_api.md`
-- `https://github.com/exordos/workspace_backend/blob/workspace-backend/docs/workspace_ui_realtime_integration.md`
-
-The local backend branch observed during this verification was `workspace-backend`; re-check the branch/source before treating GitHub links as current.
-
-## Import policy
-
-Import **concrete segment files** (`*.model.ts`, `*.api.ts`, `*.ui.tsx`). Do not add barrel-only `index.ts` re-exports. See `.cursor/rules/no-barrel-index.mdc`.
-
-```typescript
-import { useUsersStore } from "~/entities/user/user.model";
-import { zulipFetch } from "~/shared/api/client";
-```
-
-## Git workflow
-
-- Default branch: **`master`**
-- Current migration branch: **`workspace-api`**
-- Feature/fix branches from `master` → PR targets **`master`**
-- Releases: Lerna bump → MR to `master` → tag on `master` (see `docs/adr/006-versioning.md`)
+These branch links can move. For a release or a cross-repository change, record the backend revision actually inspected. A missing local file or failed network request is not evidence that a backend capability is absent.
 
 ## Verification
 
-Prefer workspace scripts over direct `tsc` / `vitest` calls from the repo root:
+Run commands from the repository root unless stated otherwise.
 
-```bash
-npm run typecheck
-npm run test
-npm run check
-npm run e2e
-```
+| Change or purpose             | Command                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| Documentation                 | `npm run docs:check` and `git diff --check`                                                      |
+| Focused web behavior          | `npm run test --workspace=web -- src/path/to/file.test.ts` (replace the path)                    |
+| Type/API/store contracts      | `npm run typecheck` (web and Electron)                                                           |
+| All unit tests                | `npm run test` (web Vitest and Electron script tests)                                            |
+| Broad web quality gate        | `npm run check` (web typecheck, lint, format, coverage; complexity report; npm audit)            |
+| Electron scripts              | `npm run test --workspace=exordos-workspace`                                                     |
+| User flow or route regression | Focused Playwright spec, e.g. `npm run e2e -- e2e/workspace-realtime.spec.ts --project=chromium` |
 
-`npm run check` runs the web quality gate, cognitive-complexity report, and high-severity npm audit. Use narrower package scripts when a change is intentionally scoped.
+`npm run check` is not a substitute for Electron tests/typecheck, E2E, or visual QA. [GitHub CI](../.github/workflows/ci.yml) and [GitLab CI](../.gitlab-ci.yml) define what automation currently executes; not every local gate is enabled in CI.
 
-## Documentation
+## Git and releases
 
-Core references:
+The integration branch is `master`. Inspect the active checkout with `git branch --show-current`; do not assume a permanent migration branch. Follow the user's branch/PR target when specified.
 
-- `docs/fsd-architecture.md` — FSD layers and conventions
-- `docs/STORES_REFERENCE.md` — Zustand stores
-- `docs/COMPONENT_CATALOG.md` — UI inventory
-- `docs/API_CLIENT_REFERENCE.md` — HTTP and realtime API
-- `docs/INTEGRATION_GUIDE.md` — adding features
-- `docs/SECURITY_ARCHITECTURE.md` — security model
-- `docs/ORG_SCOPED_ASYNC_SAFETY.md` — organization-scoped async safety
-
-## Legacy compatibility
-
-Client-side backward compatibility for persisted browser state was dropped per [ADR-013](adr/013-greenfield-drop-client-legacy-compat.md). Pre-FSD directories (`components/`, `stores/`, `lib/`) are removed.
-
-## Related docs
-
-- `docs/adr/013-greenfield-drop-client-legacy-compat.md` — dropped client legacy compatibility
-- `docs/adr/008-workspace-http-path-defaults.md` — Workspace HTTP path defaults
-- `.cursor/rules/no-barrel-index.mdc` — concrete segment imports only
+Release commands live in [version-bump.mjs](../scripts/version-bump.mjs) and [release-tag.mjs](../scripts/release-tag.mjs). Tagging/publishing is a separate action requiring authorization. See [Contributing](../CONTRIBUTING.md) and the deployment guides in the [documentation index](README.md).

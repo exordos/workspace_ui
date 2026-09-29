@@ -1,87 +1,18 @@
 ---
-description: Theme system — palettes, tokens, Tailwind integration
-globs: "packages/web/src/**/*.{tsx,css,ts}"
+description: "Use when editing palettes, token types, theme application, or Tailwind mapping."
 alwaysApply: false
+globs:
+  - "packages/web/src/shared/lib/themes/**"
+  - "packages/web/src/entities/theme/**"
+  - "packages/web/tailwind.config.ts"
 ---
 
-# Theme System
+# Themes
 
-## Architecture
+Sources: `packages/web/src/shared/lib/themes/tokens.ts`, `registry.ts`, and `engine.ts` in that directory; `packages/web/tailwind.config.ts`.
 
-```
-ThemePalette (TypeScript)     →  CSS Variables  →  Tailwind Classes
-  orange-warm.ts / blue-cold.ts    engine.ts          tailwind.config.ts
-                                   applyTheme()       colorVar("bg")
-```
-
-One palette = a `ThemePalette` object with two token sets: `light` + `dark`.
-`applyTheme()` sets CSS variables on `<html>`.
-Tailwind reads them via `var(--color-*)`.
-
-## Creating a New Palette
-
-1. Create a file `shared/lib/themes/my-palette.ts`:
-
-```typescript
-import type { ThemePalette } from "./tokens";
-
-export const myPalette: ThemePalette = {
-  id: "my-palette",
-  name: "My Palette",
-  dark: {
-    bg: "#...",
-    "bg-elevated": "#...",
-    // ... all 42 tokens from PaletteTokens
-  },
-  light: {
-    bg: "#...",
-    // ... all 42 tokens
-  },
-};
-```
-
-2. Register in `shared/lib/themes/registry.ts`:
-
-```typescript
-import { myPalette } from "./my-palette";
-export const palettes = [orangeWarm, blueCold, myPalette];
-```
-
-Done — the palette is available in the UI.
-
-## Token Groups (42 tokens)
-
-| Group | Tokens | Tailwind |
-|-------|--------|---------|
-| Surfaces | `bg`, `bg-elevated`, `card-bg`, `card-bg-active`, `text-field-bg` | `bg-bg`, `bg-card-bg` |
-| Typography | `text-primary`, `text-secondary`, `text-muted` | `text-text-primary` |
-| Brand | `accent`, `accent-soft`, `on-accent` | `bg-accent`, `text-on-accent` |
-| Borders | `border-subtle` | `border-border-subtle` |
-| Sidebar | `sidebar-bg`, `sidebar-item-hover`, `sidebar-sender`, `sidebar-unread` | `bg-sidebar-bg` |
-| Composer | `composer-outer`, `composer-send`, `composer-icon` | `bg-composer-send` |
-| Messages | `msg-bg`, `msg-own-bg`, `msg-time`, `msg-call-bg`, `msg-selected` | `bg-msg-own-bg` |
-| Icons | `icon-base`, `icon-disable`, `icon-hover`, `icon-active` | `text-icon-base` |
-| Notice | `notice-base`, `notice-disable`, `badge-bg`, `badge-text` | `bg-badge-bg` |
-| Call | `call-bg`, `call-green` | `bg-call-bg` |
-| Search | `search-bg`, `search-hint` | `bg-search-bg` |
-| Indicators | `indicator-yellow`, `-pink`, `-purple`, `-green`, `-orange` | `bg-indicator-green` |
-
-## Store API
-
-```typescript
-import { useThemeStore } from "~/entities/theme";
-
-const { paletteId, mode, setPalette, setMode, toggleMode } = useThemeStore();
-
-setPalette("blue-cold");     // Switch palette
-setMode("light");            // Switch mode
-setMode("system");           // Follow OS preference
-toggleMode();                // Dark ↔ Light
-```
-
-## Rules
-
-- NEVER use hardcoded colors in components (`bg-[#333]` is forbidden)
-- Always use semantic tokens: `bg-bg`, `text-text-primary`, `bg-accent`
-- If a new token is needed — add to `PaletteTokens` interface + all palettes + Tailwind config
-- CSS fallbacks in `index.css` = Orange Warm Dark (for the first render before JS initializes)
+- Use semantic tokens for theme-dependent colors. Do not hardcode the current palette into components.
+- A new token must be represented in the token contract, relevant palettes, CSS initial values, and Tailwind mapping as needed.
+- Preserve persisted theme selection and startup application to avoid a first-render theme flash.
+- Test affected light/dark modes and palettes; token counts and names come from the source, not a copied table.
+- Use exact geometry when the user/design requires it; the spacing scale is guidance, not permission to alter the requested layout.

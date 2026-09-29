@@ -1,31 +1,19 @@
 ## Summary
 
-Brief description of the changes.
+Describe the problem and resulting behavior. Link related issues when applicable.
 
-## Type of Change
+## Validation
 
-- [ ] `feat` — New feature
-- [ ] `fix` — Bug fix
-- [ ] `refactor` — Code improvement (no behavior change)
-- [ ] `docs` — Documentation
-- [ ] `test` — Tests
-- [ ] `chore` — Maintenance / dependencies
-
-## Related Issues
-
-Closes #
+List commands actually run and their results. Explain skipped checks, pre-existing failures, and any browser/native QA gaps. Use the scope guidance in [Project Facts](../docs/PROJECT_FACTS.md#verification).
 
 ## Checklist
 
-- [ ] `npm run check` passes (typecheck + lint + test)
-- [ ] New code has tests
-- [ ] No hardcoded strings (using `t("key")` from i18n)
-- [ ] No hardcoded colors (using Tailwind semantic tokens)
-- [ ] No `brand.appName` violations (using `brand.*`)
-- [ ] Security: no credentials in logs, HTML sanitized
-- [ ] Documentation updated (if needed)
-- [ ] CHANGELOG updated (for features/fixes)
+- [ ] Changes stay within the requested scope; unrelated working-tree changes are excluded.
+- [ ] Relevant behavior is verified, with regression coverage where useful.
+- [ ] Affected UI follows i18n, accessibility, branding and theme conventions.
+- [ ] Runtime ownership, sanitized rendering and sensitive-data handling are preserved where affected.
+- [ ] Documentation and release notes updated where their contract changed.
 
-## Screenshots
+## Visual changes
 
-If visual changes, add before/after screenshots.
+Include before/after screenshots when useful, or state that visual verification was not performed.

@@ -1,5 +1,7 @@
 # ADR 009: Internal libraries inventory (cognitive complexity reduction)
 
+> Historical decision record. Versions, file inventories, commands and audit counts below describe the original decision or its dated updates. Use [Project Facts](../PROJECT_FACTS.md) and [active architecture](../fsd-architecture.md) for current implementation guidance.
+
 ## Status
 
 Accepted (living document — update when hot files shrink)
