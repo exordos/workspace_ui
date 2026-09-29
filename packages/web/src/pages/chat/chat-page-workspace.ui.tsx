@@ -2522,10 +2522,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
   }, []);
 
-  const { scheduleReadBatch, readRequestBoundaryMessageUuids } = useWorkspaceVisibleMessageRead({
-    runtimeContext,
-    conversationId,
-  });
+  const { scheduleReadBatch, scheduleTopicReadAtBottom, readRequestBoundaryMessageUuids } =
+    useWorkspaceVisibleMessageRead({ runtimeContext, conversationId, topicUuid });
 
   const hasAnchorRoute = routeSelection.status === "message" || messageAnchorUuid != null;
   const focusedAnchorIntentId =
@@ -3324,7 +3322,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             selectedMessageUuids={selectedMessageUuids}
             readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
             onUnreadMessagesVisible={anchorHandoffPending ? undefined : scheduleReadBatch}
-            onUnreadMessagesAtBottom={anchorHandoffPending ? undefined : scheduleReadBatch}
+            onUnreadMessagesAtBottom={
+              anchorHandoffPending || selection.kind !== "topic"
+                ? undefined
+                : scheduleTopicReadAtBottom
+            }
             onReplyMessage={handleReplyMessage}
             onAddReplyMessage={
               selection.kind !== "topic" || workspaceReplySession.tabs.length === 0

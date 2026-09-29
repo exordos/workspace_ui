@@ -59,6 +59,7 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   onLoadNewer?: () => void;
   onUserScrollInput?: () => void;
   onUnreadMessagesVisible?: (messageKeys: string[]) => void;
+  /** Reaching the loaded tail may cover unread messages outside the viewport. */
   onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }
 
@@ -333,20 +334,20 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
     const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
 
-    if (visibleKeys.length === 0) {
+    if (visibleKeys.length === 0 && onUnreadMessagesAtBottom == null) {
       return;
     }
 
     const orderedKeys = sortKeysByMessageOrder(visibleKeys);
-    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${orderedKeys.join(",")}`;
+    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${tailOutsideWindow}:${orderedKeys.join(",")}`;
 
     if (bottomUnreadDispatchKeyRef.current === dispatchKey) {
       return;
     }
 
     bottomUnreadDispatchKeyRef.current = dispatchKey;
-    onUnreadMessagesVisible?.(orderedKeys);
-    onUnreadMessagesAtBottom?.(orderedKeys);
+    if (orderedKeys.length > 0) onUnreadMessagesVisible?.(orderedKeys);
+    if (!tailOutsideWindow) onUnreadMessagesAtBottom?.(orderedKeys);
   }, [
     hasNewerMessages,
     isInitialPositionApplied,
@@ -355,6 +356,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     onUnreadMessagesVisible,
     scrollToBottomKey,
     sortKeysByMessageOrder,
+    tailOutsideWindow,
     unreadCandidateKeys,
   ]);
 
@@ -420,11 +422,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
     unreadCandidateKeys,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (anchorHandoffPending) return;
     viewportUnreadKeysRef.current.clear();
     bottomUnreadDispatchKeyRef.current = null;
-  }, [anchorHandoffPending, unreadCandidateKeys]);
+  }, [anchorHandoffPending, onUnreadMessagesAtBottom, unreadCandidateKeys]);
 
   useLayoutEffect(() => {
     const lease = conversationId == null ? null : openMessengerConversationPosition(conversationId);
