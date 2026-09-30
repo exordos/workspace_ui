@@ -37,6 +37,7 @@ import {
 import { settleMessengerOutgoingMessages } from "./messenger-outbox.model";
 import {
   applyMessengerReadBoundaries,
+  compareMessengerMessageOrder,
   restoreMessengerReadBoundaries,
 } from "./messenger-read-boundary.lib";
 import {
@@ -65,6 +66,7 @@ interface MessengerMessagesPageQuery {
   pageMarker?: string | number;
   sortKey?: "created_at";
   sortDir?: "asc" | "desc";
+  read?: boolean;
 }
 
 export interface MessengerMessagesCacheDeps {
@@ -225,6 +227,10 @@ export interface LoadMessengerConversationMessagesOptions {
   conversationId: MessengerConversationId;
   pageLimit?: number;
   pageMarker?: string | number;
+  resolveUnreadBoundary?: boolean;
+  openingAnchorUuid?: MessengerUuid;
+  retainCurrentWindow?: () => boolean;
+  onServerWindowApplied?: () => void;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
   cache?: MessengerMessagesCacheDeps;
@@ -745,6 +751,260 @@ function writeLoadedConversationMessagesCache({
   );
 }
 
+/** Keep the existing window and expose the gap through supported forward pagination. */
+function retainConversationWindow(
+  state: ReturnType<MessengerMessagesStoreApi["getState"]>,
+  window: NonNullable<
+    ReturnType<MessengerMessagesStoreApi["getState"]>["conversationWindowsById"][string]
+  >,
+  freshMessages: readonly MessengerMessage[],
+  serverTail: readonly WorkspaceMessengerMessageDto[],
+  ownerKey: string,
+): { messages: MessengerMessage[]; afterPageMarker: string | null } {
+  const freshById = new Map(freshMessages.map((message) => [message.uuid, message]));
+  const messages = applyMessengerReadBoundaries(
+    window.messageUuids
+      .map((uuid) => freshById.get(uuid) ?? state.messagesById[uuid])
+      .filter((message): message is MessengerMessage => message != null),
+    ownerKey,
+  );
+  const retainedTail = messages.at(-1);
+  const serverHasNewer =
+    retainedTail != null &&
+    serverTail.some(
+      (message) =>
+        compareMessengerMessageOrder(
+          { createdAt: message.created_at, messageUuid: message.uuid },
+          { createdAt: retainedTail.createdAt, messageUuid: retainedTail.uuid },
+        ) > 0,
+    );
+  return {
+    messages,
+    afterPageMarker: serverHasNewer ? (retainedTail?.uuid ?? null) : window.afterPageMarker,
+  };
+}
+
+interface ResolvedOpeningMessageWindow {
+  status: "resolved";
+  messages: MessengerMessage[];
+  mode: "tail" | "around-anchor";
+  anchorMessageUuid: MessengerUuid | null;
+  nextPageMarker: string | null;
+  afterPageMarker: string | null;
+  unreadMessage: MessengerMessage | null;
+}
+
+/** Resolve a bounded opening target before the caller applies the guarded window. */
+async function resolveOpeningMessageWindow({
+  page,
+  unreadPage,
+  ownerKey,
+  openingAnchorUuid,
+  shouldRetainWindow,
+  store,
+  client,
+  requestOptions,
+  parsedConversationId,
+  pageLimit,
+  isRequestStale,
+}: {
+  page: MessengerCollectionPage<WorkspaceMessengerMessageDto>;
+  unreadPage: MessengerCollectionPage<WorkspaceMessengerMessageDto> | null;
+  ownerKey: string;
+  openingAnchorUuid: MessengerUuid | undefined;
+  shouldRetainWindow: () => boolean;
+  store: MessengerMessagesStoreApi;
+  client: MessengerMessagesClientDeps;
+  requestOptions: MessengerClientOptions;
+  parsedConversationId: NonNullable<ReturnType<typeof parseMessengerConversationId>>;
+  pageLimit: number;
+  isRequestStale: () => boolean;
+}): Promise<ResolvedOpeningMessageWindow | { status: "retry" } | { status: "stale" }> {
+  let nextPageMarker = page.nextPageMarker;
+  let afterPageMarker: string | null = null;
+  let messages = applyMessengerReadBoundaries(page.items.map(adaptMessengerMessage), ownerKey);
+  let mode: "tail" | "around-anchor" = "tail";
+  let anchorMessageUuid: string | null = null;
+  const unreadDto = unreadPage?.items[0];
+  const unreadMessage =
+    unreadDto == null
+      ? null
+      : (applyMessengerReadBoundaries([adaptMessengerMessage(unreadDto)], ownerKey)[0] ?? null);
+  // A read event can overtake the HTTP snapshot. Retry once instead of opening
+  // at an anchor already consumed on another device.
+  if (
+    !shouldRetainWindow() &&
+    (unreadMessage?.read ||
+      (unreadPage != null &&
+        messages.some(
+          (message) =>
+            !message.read &&
+            store.getState().messagesById[message.uuid]?.read !== true &&
+            (unreadMessage == null ||
+              compareMessengerMessageOrder(
+                { createdAt: message.createdAt, messageUuid: message.uuid },
+                { createdAt: unreadMessage.createdAt, messageUuid: unreadMessage.uuid },
+              ) < 0),
+        )))
+  ) {
+    return { status: "retry" };
+  }
+  let savedAnchor =
+    openingAnchorUuid == null ? null : (store.getState().messagesById[openingAnchorUuid] ?? null);
+  if (openingAnchorUuid != null && savedAnchor == null && !shouldRetainWindow()) {
+    savedAnchor = adaptMessengerMessage(
+      await (client.getMessage ?? defaultGetMessage)(requestOptions, openingAnchorUuid),
+    );
+    if (isRequestStale()) return { status: "stale" };
+    if (
+      savedAnchor.streamUuid !== parsedConversationId.streamUuid ||
+      (parsedConversationId.kind === "topic" &&
+        savedAnchor.topicUuid !== parsedConversationId.topicUuid)
+    ) {
+      throw new Error("Saved position does not belong to the conversation");
+    }
+  }
+  const windowAnchor = savedAnchor ?? unreadMessage;
+  if (
+    windowAnchor != null &&
+    !messages.some((message) => message.uuid === windowAnchor.uuid) &&
+    !shouldRetainWindow()
+  ) {
+    const around = await (
+      client.getMessagePagesAroundResolvedMessage ?? defaultGetMessagePagesAroundResolvedMessage
+    )(requestOptions, {
+      messageUuid: windowAnchor.uuid,
+      streamUuid: parsedConversationId.streamUuid,
+      topicUuid: parsedConversationId.kind === "topic" ? parsedConversationId.topicUuid : undefined,
+      beforeLimit: pageLimit,
+      afterLimit: pageLimit,
+    });
+    if (isRequestStale()) return { status: "stale" };
+    messages = applyMessengerReadBoundaries(
+      [
+        ...around.before.map(adaptMessengerMessage),
+        windowAnchor,
+        ...around.after.map(adaptMessengerMessage),
+      ],
+      ownerKey,
+    );
+    mode = "around-anchor";
+    anchorMessageUuid = windowAnchor.uuid;
+    nextPageMarker = around.beforePageMarker;
+    afterPageMarker = around.afterPageMarker;
+  }
+  // Around-window requests may be overtaken by cross-device read events too.
+  if (
+    !shouldRetainWindow() &&
+    unreadMessage != null &&
+    applyMessengerReadBoundaries([unreadMessage], ownerKey)[0]?.read
+  ) {
+    return { status: "retry" };
+  }
+  return {
+    status: "resolved",
+    messages,
+    mode,
+    anchorMessageUuid,
+    nextPageMarker,
+    afterPageMarker,
+    unreadMessage,
+  };
+}
+
+/** Commit against the captured revision and the latest viewport intent in one synchronous step. */
+function applyResolvedConversationWindow({
+  resolved,
+  store,
+  conversationId,
+  pageMarker,
+  expectedRevision,
+  capturedMutationRevision,
+  shouldRetainWindow,
+  serverTail,
+  ownerKey,
+}: {
+  resolved: ResolvedOpeningMessageWindow;
+  store: MessengerMessagesStoreApi;
+  conversationId: MessengerConversationId;
+  pageMarker: string | number | undefined;
+  expectedRevision: number | null;
+  capturedMutationRevision: number;
+  shouldRetainWindow: () => boolean;
+  serverTail: readonly WorkspaceMessengerMessageDto[];
+  ownerKey: string;
+}):
+  | {
+      status: "applied";
+      appliedRevision: number;
+      messages: MessengerMessage[];
+      nextPageMarker: string | null;
+      hasMore: boolean;
+    }
+  | { status: "stale-window" }
+  | { status: "changed-boundary" } {
+  let { messages, mode, anchorMessageUuid, nextPageMarker, afterPageMarker } = resolved;
+  const { unreadMessage } = resolved;
+  const currentState = store.getState();
+  const currentWindow = currentState.conversationWindowsById[conversationId];
+  const retainWindow = shouldRetainWindow();
+  if (retainWindow && currentWindow != null) {
+    const retained = retainConversationWindow(
+      currentState,
+      currentWindow,
+      messages,
+      serverTail,
+      ownerKey,
+    );
+    messages = retained.messages;
+    mode = "around-anchor";
+    anchorMessageUuid = currentWindow.anchorMessageUuid ?? messages[0]?.uuid ?? null;
+    nextPageMarker = currentWindow.beforePageMarker;
+    afterPageMarker = retained.afterPageMarker;
+  }
+  messages = applyMessengerReadBoundaries(messages, ownerKey);
+  if (
+    unreadMessage != null &&
+    !retainWindow &&
+    applyMessengerReadBoundaries([unreadMessage], ownerKey)[0]?.read
+  ) {
+    return { status: "changed-boundary" };
+  }
+  const hasMore = nextPageMarker != null;
+  const appliedRevision =
+    pageMarker == null
+      ? store.getState().replaceConversationWindow({
+          conversationId,
+          expectedRevision: expectedRevision,
+          capturedMutationRevision,
+          mode,
+          anchorMessageUuid,
+          messages,
+          markers: { beforePageMarker: nextPageMarker, afterPageMarker },
+        })
+      : store.getState().mergeConversationWindowPage({
+          conversationId,
+          expectedRevision: expectedRevision ?? 0,
+          expectedPageMarker: String(pageMarker),
+          capturedMutationRevision,
+          direction: "before",
+          messages,
+          pageMarker: nextPageMarker,
+        });
+  if (appliedRevision == null) return { status: "stale-window" };
+  const appliedState = store.getState();
+  const appliedWindow = appliedState.conversationWindowsById[conversationId];
+  if (
+    unreadMessage != null &&
+    !retainWindow &&
+    (appliedState.messagesById[unreadMessage.uuid]?.read !== false ||
+      !appliedWindow?.messageUuids.includes(unreadMessage.uuid))
+  ) {
+    return { status: "changed-boundary" };
+  }
+  return { status: "applied", appliedRevision, messages, nextPageMarker, hasMore };
+}
+
 async function loadConversationMessagesFromServer({
   runtimeContext,
   conversationId,
@@ -762,6 +1022,10 @@ async function loadConversationMessagesFromServer({
   signal,
   store,
   cachedWindow,
+  resolveUnreadBoundary,
+  openingAnchorUuid,
+  retainCurrentWindow,
+  onServerWindowApplied,
 }: {
   runtimeContext: WorkspaceRuntimeContext;
   conversationId: MessengerConversationId;
@@ -779,6 +1043,10 @@ async function loadConversationMessagesFromServer({
   signal: AbortSignal | undefined;
   store: MessengerMessagesStoreApi;
   cachedWindow: MessengerConversationCacheWindow;
+  resolveUnreadBoundary: boolean;
+  openingAnchorUuid: MessengerUuid | undefined;
+  retainCurrentWindow: (() => boolean) | undefined;
+  onServerWindowApplied: (() => void) | undefined;
 }): Promise<MessengerConversationMessagesResult> {
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query = buildMessengerMessagesPageQuery({
@@ -787,50 +1055,71 @@ async function loadConversationMessagesFromServer({
     pageMarker,
     sortDir: "desc",
   });
+  // Intent alone cannot retain an absent window. Recheck after every async stage.
+  const shouldRetainWindow = (): boolean =>
+    pageMarker == null &&
+    retainCurrentWindow?.() === true &&
+    (store.getState().conversationWindowsById[conversationId]?.messageUuids.length ?? 0) > 0;
   try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const requestStoreState = store.getState();
       const expectedWindowRevision =
         requestStoreState.conversationWindowsById[conversationId]?.revision ?? null;
       const capturedMutationRevision = requestStoreState.messageMutationRevision;
-      const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
+      const getPage = client.getMessagesPage ?? defaultGetMessagesPage;
+      const [page, unreadPage] = await Promise.all([
+        getPage(requestOptions, query),
+        resolveUnreadBoundary && pageMarker == null && !shouldRetainWindow()
+          ? getPage(requestOptions, { ...query, read: false, sortDir: "asc", pageLimit: 1 })
+          : Promise.resolve(null),
+      ]);
 
       if (isRequestStale()) {
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
 
-      const nextPageMarker = page.nextPageMarker;
-      const hasMore = nextPageMarker != null;
-      const messages = applyMessengerReadBoundaries(
-        page.items.map(adaptMessengerMessage),
+      const resolved = await resolveOpeningMessageWindow({
+        page,
+        unreadPage,
         ownerKey,
-      );
-      const appliedRevision =
-        pageMarker == null
-          ? store.getState().replaceConversationWindow({
-              conversationId,
-              expectedRevision: expectedWindowRevision,
-              capturedMutationRevision,
-              mode: "tail",
-              anchorMessageUuid: null,
-              messages,
-              markers: { beforePageMarker: nextPageMarker, afterPageMarker: null },
-            })
-          : store.getState().mergeConversationWindowPage({
-              conversationId,
-              expectedRevision: expectedWindowRevision ?? 0,
-              expectedPageMarker: String(pageMarker),
-              capturedMutationRevision,
-              direction: "before",
-              messages,
-              pageMarker: nextPageMarker,
-            });
-      if (appliedRevision == null) {
+        openingAnchorUuid,
+        shouldRetainWindow,
+        store,
+        client,
+        requestOptions,
+        parsedConversationId,
+        pageLimit,
+        isRequestStale,
+      });
+      if (isRequestStale() || resolved.status === "stale")
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      if (resolved.status === "retry") {
+        if (attempt === 0) continue;
+        throw new Error("Unread boundary changed while opening the conversation");
+      }
+      const applied = applyResolvedConversationWindow({
+        resolved,
+        store,
+        conversationId,
+        pageMarker,
+        expectedRevision: expectedWindowRevision,
+        capturedMutationRevision,
+        shouldRetainWindow,
+        serverTail: page.items,
+        ownerKey,
+      });
+      if (applied.status === "changed-boundary") {
+        if (attempt === 0) continue;
+        throw new Error("Unread boundary changed while opening the conversation");
+      }
+      if (applied.status === "stale-window") {
         if (pageMarker == null && attempt === 0) continue;
         finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
         return { status: "skipped", ownerKey, reason: "stale-window" };
       }
+      const { messages, nextPageMarker, hasMore, appliedRevision } = applied;
       settleMessengerOutgoingMessages(ownerKey, messages);
+      onServerWindowApplied?.();
 
       await synchronizeLoadedConversationMessages({
         runtimeContext,
@@ -845,16 +1134,19 @@ async function loadConversationMessagesFromServer({
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
 
-      writeLoadedConversationMessagesCache({
-        ownerKey,
-        conversationId,
-        nextPageMarker,
-        hasMore,
-        appliedRevision,
-        cache,
-        store,
-        isRequestStale,
-      });
+      if (store.getState().conversationWindowsById[conversationId]?.mode === "tail")
+        writeLoadedConversationMessagesCache({
+          ownerKey,
+          conversationId,
+          nextPageMarker,
+          hasMore,
+          appliedRevision,
+          cache,
+          store,
+          // A completed request releases its loading token before IndexedDB commits.
+          isRequestStale: () =>
+            isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal),
+        });
       finishMessageLoadingRequest(store, conversationId, requestToken, null);
       return {
         status: "applied",
@@ -889,6 +1181,10 @@ export async function loadMessengerConversationMessages({
   conversationId,
   pageLimit = DEFAULT_MESSAGES_PAGE_LIMIT,
   pageMarker,
+  resolveUnreadBoundary = false,
+  openingAnchorUuid,
+  retainCurrentWindow,
+  onServerWindowApplied,
   getRuntimeContext = () => runtimeContext,
   client = {},
   cache = {
@@ -976,6 +1272,10 @@ export async function loadMessengerConversationMessages({
     signal,
     store,
     cachedWindow,
+    resolveUnreadBoundary,
+    openingAnchorUuid,
+    retainCurrentWindow,
+    onServerWindowApplied,
   });
 }
 

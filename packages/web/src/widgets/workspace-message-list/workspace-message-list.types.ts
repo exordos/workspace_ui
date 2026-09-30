@@ -93,6 +93,8 @@ export interface WorkspaceMessageListProps {
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   initialPositionReady?: boolean;
+  initialPositionCancelled?: boolean;
+  onUserScrollInput?: () => void;
   scrollToBottomKey?: string;
   scrollToBottomAfterSendNonce?: number;
   firstUnreadUuid?: MessengerUuid;

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetMessengerConversationPositions } from "~/entities/messenger/messenger-conversation-position.lib";
 import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
@@ -26,21 +27,37 @@ const messages: Message[] = Array.from({ length: 10 }, (_, index) => ({
 function Harness({
   conversationId,
   items = messages,
+  initialPositionReady = true,
 }: {
   readonly conversationId: MessengerConversationId;
   readonly items?: Message[];
+  readonly initialPositionReady?: boolean;
 }) {
-  const { scrollContainerRef, handleScroll } = useWorkspaceMessageListScroll({
-    conversationId,
-    messages: items,
-    getMessageKey,
-    isUnreadCandidate,
-    scrollToBottomKey: conversationId,
-    firstUnreadKey: items.find(isUnreadCandidate)?.key,
-    unreadCount: items.filter(isUnreadCandidate).length,
-  });
+  const [control, setControl] = useState({ conversationId, cancelled: false });
+  if (control.conversationId !== conversationId) {
+    setControl({ conversationId, cancelled: false });
+  }
+  const { scrollContainerRef, handleScroll, handleWheel, handleTouchMove } =
+    useWorkspaceMessageListScroll({
+      initialPositionReady,
+      initialPositionCancelled: control.conversationId === conversationId && control.cancelled,
+      onUserScrollInput: () => setControl({ conversationId, cancelled: true }),
+      conversationId,
+      messages: items,
+      getMessageKey,
+      isUnreadCandidate,
+      scrollToBottomKey: conversationId,
+      firstUnreadKey: items.find(isUnreadCandidate)?.key,
+      unreadCount: items.filter(isUnreadCandidate).length,
+    });
   return (
-    <div ref={scrollContainerRef} onScroll={handleScroll} data-testid="viewport">
+    <div
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      onWheel={handleWheel}
+      onTouchMove={handleTouchMove}
+      data-testid="viewport"
+    >
       {items.map((message, index) => (
         <div
           key={message.key}
@@ -122,6 +139,26 @@ function saveScroll(top: number) {
 }
 
 describe("session conversation position", () => {
+  it.each(["wheel", "touch"] as const)(
+    "preserves the reader position after %s input while fresh history is pending",
+    (input) => {
+      const cached = messages.map((message) => ({ ...message, read: true }));
+      const view = render(
+        <Harness conversationId={conversationA} items={cached} initialPositionReady={false} />,
+      );
+      const root = screen.getByTestId("viewport");
+      if (input === "wheel") fireEvent.wheel(root, { deltaY: -100 });
+      else fireEvent.touchMove(root);
+      saveScroll(325);
+      scrollIntoView.mockClear();
+      view.rerender(
+        <Harness conversationId={conversationA} items={messages} initialPositionReady />,
+      );
+      expect(root.scrollTop).toBe(325);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    },
+  );
+
   it("restores a middle message and its offset when the same list switches away and back", () => {
     const view = render(<Harness conversationId={conversationA} />);
     saveScroll(325);

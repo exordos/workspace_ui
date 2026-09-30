@@ -21,6 +21,8 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   messagesLoading: boolean;
   hasInitialPayload: boolean;
   initialPositionReady: boolean;
+  initialPositionCancelled?: boolean;
+  onUserScrollInput?: () => void;
   messages: readonly MessengerMessage[];
   outgoingMessages?: readonly MessengerOutgoingMessage[];
   currentUserUuid: MessengerUuid;

@@ -656,6 +656,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   currentUserUuid,
   conversationId,
   initialPositionReady = true,
+  initialPositionCancelled = false,
+  onUserScrollInput,
   scrollToBottomKey,
   scrollToBottomAfterSendNonce,
   firstUnreadUuid,
@@ -841,9 +843,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   }, []);
   const handleUserScrollInput = useCallback(() => {
     if (anchorHandoffPending) return;
+    onUserScrollInput?.();
     tailIntentConversationRef.current = null;
     cancelPendingLatestWindow();
-  }, [anchorHandoffPending, cancelPendingLatestWindow]);
+  }, [anchorHandoffPending, cancelPendingLatestWindow, onUserScrollInput]);
   const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
   const isUnreadCandidate = useCallback(
     (message: WorkspaceMessageListItem) => message.kind === "server" && !message.read,
@@ -863,6 +866,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     getMessageKey,
     isUnreadCandidate,
     initialPositionReady,
+    initialPositionCancelled,
     scrollToBottomKey: scrollRequestKey,
     scrollToBottomAfterSendNonce,
     firstUnreadKey: firstUnreadUuid,
@@ -880,6 +884,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     onLoadOlder,
     onLoadNewer,
     onUserScrollInput: handleUserScrollInput,
+    onPositionIntent: onUserScrollInput,
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
   });

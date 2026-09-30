@@ -10,6 +10,13 @@ const BASE = {
 };
 
 describe("resolveInitialPositionReady", () => {
+  it("waits for authoritative history despite a cached window and ready realtime", () => {
+    expect(resolveInitialPositionReady({ ...BASE, historyReady: false })).toBe(false);
+    expect(resolveInitialPositionReady({ ...BASE, historyReady: false, viewedBefore: true })).toBe(
+      false,
+    );
+  });
+
   it("waits while there is nothing to position", () => {
     expect(resolveInitialPositionReady({ ...BASE, hasConversationWindow: false })).toBe(false);
     expect(resolveInitialPositionReady({ ...BASE, hasRuntimeContext: false })).toBe(false);
@@ -29,7 +36,12 @@ describe("resolveInitialPositionReady", () => {
 
   it("does not wait when the navigation carries its own anchor", () => {
     expect(
-      resolveInitialPositionReady({ ...BASE, realtimeReady: false, hasFocusTarget: true }),
+      resolveInitialPositionReady({
+        ...BASE,
+        realtimeReady: false,
+        historyReady: false,
+        hasFocusTarget: true,
+      }),
     ).toBe(true);
   });
 

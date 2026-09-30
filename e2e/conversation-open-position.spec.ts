@@ -21,6 +21,8 @@ import {
   E2E_MESSAGE_UUID,
   E2E_PROJECT_ID,
   E2E_USER_UUID,
+  streamsSuccess,
+  topicsSuccess,
 } from "./mocks/workspace-default-responses";
 import {
   REAL_CONVERSATION_AUTHOR_UUIDS,
@@ -116,7 +118,7 @@ async function installRealtime(page: Page, readyDelayMs: number): Promise<void> 
 
 async function installConversation(
   page: Page,
-  options: { unreadTail?: number } = {},
+  options: { unreadTail?: number; messageCount?: number; historyGate?: Promise<void> } = {},
 ): Promise<void> {
   const unreadTail = options.unreadTail ?? 0;
   const unreadFrom = REAL_CONVERSATION_SAMPLE.length - unreadTail;
@@ -128,6 +130,19 @@ async function installConversation(
 
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
+
+    if (route.request().method() === "GET" && /\/(streams|topics)\/?$/.test(url.pathname)) {
+      const tail = REAL_CONVERSATION_SAMPLE.slice(0, options.messageCount).at(-1);
+      const items = url.pathname.includes("/topics") ? topicsSuccess() : streamsSuccess();
+      await route.fulfill({
+        json: items.map((item) => ({
+          ...item,
+          last_message_uuid: tail == null ? null : sampleUuid(tail),
+          unread_count: unreadTail,
+        })),
+      });
+      return;
+    }
 
     if (route.request().method() === "GET" && /\/users\/?$/.test(url.pathname)) {
       await route.fulfill({
@@ -141,6 +156,10 @@ async function installConversation(
     }
 
     if (route.request().method() === "GET" && /\/messages\/?$/.test(url.pathname)) {
+      if (url.searchParams.get("mentioned") === "true") {
+        await route.fulfill({ json: [] });
+        return;
+      }
       const requestedUuids = url.searchParams.getAll("uuid");
       if (requestedUuids.length > 0) {
         await new Promise((resolve) => setTimeout(resolve, RESPONSE_DELAY_MS));
@@ -156,12 +175,16 @@ async function installConversation(
         return;
       }
 
+      await options.historyGate;
       const sortDir = url.searchParams.get("sort_dir") ?? "asc";
       const pageLimit = Number(url.searchParams.get("page_limit") ?? "0");
       const pageMarker = url.searchParams.get("page_marker");
-      let items = REAL_CONVERSATION_SAMPLE.map((message, index) =>
+      let items = REAL_CONVERSATION_SAMPLE.slice(0, options.messageCount).map((message, index) =>
         messageDto(message, unreadTail > 0 && index >= unreadFrom),
       );
+      if (url.searchParams.get("read") === "false") {
+        items = items.filter((item) => !item.read);
+      }
       if (pageMarker != null) {
         const markerIndex = items.findIndex((item) => item.uuid === pageMarker);
         if (markerIndex >= 0) {
@@ -294,6 +317,81 @@ function driftAllowance(painted: TracePoint[]): number {
 }
 
 test.describe("Conversation open position @mock", () => {
+  test("cached tail stays provisional until delayed unread history chooses its boundary", async ({
+    authenticatedMocked: page,
+  }) => {
+    await installRealtime(page, 0);
+    await installConversation(page, { messageCount: REAL_CONVERSATION_SAMPLE.length - 12 });
+    await page.goto(TOPIC_PATH);
+    const cachedTail = REAL_CONVERSATION_SAMPLE.at(-13);
+    const firstUnread = REAL_CONVERSATION_SAMPLE.at(-12);
+    if (cachedTail == null || firstUnread == null) throw new Error("Expected a populated fixture");
+    await expect(page.locator(`[data-message-uuid="${sampleUuid(cachedTail)}"]`)).toBeAttached();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async ({ conversationId, newestMessageUuid }) => {
+              return await new Promise<boolean>((resolve, reject) => {
+                const request = indexedDB.open("workspace-messenger-cache-v1");
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                  const db = request.result;
+                  const rows = db
+                    .transaction("messageWindows", "readonly")
+                    .objectStore("messageWindows")
+                    .getAll();
+                  rows.onsuccess = () => {
+                    db.close();
+                    const windows = rows.result as {
+                      conversationId: string;
+                      newestMessageUuid: string | null;
+                    }[];
+                    resolve(
+                      windows.some(
+                        (window) =>
+                          window.conversationId === conversationId &&
+                          window.newestMessageUuid === newestMessageUuid,
+                      ),
+                    );
+                  };
+                  rows.onerror = () => {
+                    db.close();
+                    reject(rows.error);
+                  };
+                };
+              });
+            },
+            {
+              conversationId: `topic:${E2E_STREAM_UUID}:${E2E_TOPIC_UUID}`,
+              newestMessageUuid: sampleUuid(cachedTail),
+            },
+          ),
+        {
+          message:
+            "The first visit must persist this conversation before testing a stale-cache reload",
+        },
+      )
+      .toBe(true);
+
+    let releaseHistory = () => {};
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    await installConversation(page, { unreadTail: 12, historyGate });
+    const readRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/actions/read_up_to/")) readRequests.push(request.url());
+    });
+    await page.reload();
+    await expect(page.locator(`[data-message-uuid="${sampleUuid(cachedTail)}"]`)).toBeAttached();
+    await expect(page.locator(`[data-message-uuid="${sampleUuid(firstUnread)}"]`)).toHaveCount(0);
+    expect(readRequests).toHaveLength(0);
+    releaseHistory();
+    const unreadNode = page.locator(`[data-message-uuid="${sampleUuid(firstUnread)}"]`);
+    await expect(unreadNode).toBeInViewport();
+  });
+
   test("a read conversation opens at the tail and stays there", async ({
     authenticatedMocked: page,
   }) => {
