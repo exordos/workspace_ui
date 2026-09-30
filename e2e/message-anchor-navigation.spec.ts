@@ -150,7 +150,16 @@ async function installMessageRoute(
     const pageMarker = url.searchParams.get("page_marker");
     if (pageMarker == null) {
       if (options.tailMessages != null && hasTopicQuery(url)) {
-        await fulfillJson(route, 200, options.tailMessages);
+        const read = url.searchParams.get("read");
+        const sortDirection = url.searchParams.get("sort_dir");
+        const pageLimit = Number(url.searchParams.get("page_limit") ?? "0");
+        let messages = options.tailMessages.filter(
+          (message) => read == null || message.read === (read === "true"),
+        );
+        messages.sort((left, right) => left.created_at.localeCompare(right.created_at));
+        if (sortDirection === "desc") messages.reverse();
+        if (pageLimit > 0) messages = messages.slice(0, pageLimit);
+        await fulfillJson(route, 200, messages);
         return;
       }
       await route.fallback();

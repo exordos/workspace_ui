@@ -315,7 +315,11 @@ export class WorkspaceApiMock {
 
     if (isCollection(requestPath, "messages")) {
       if (method === "GET") {
-        await this.fulfillJson(route, 200, messagesSuccess());
+        const read = new URL(route.request().url()).searchParams.get("read");
+        const messages = messagesSuccess().filter(
+          (message) => read == null || message.read === (read === "true"),
+        );
+        await this.fulfillJson(route, 200, messages);
         return;
       }
       if (method === "POST") {

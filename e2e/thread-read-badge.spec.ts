@@ -220,6 +220,8 @@ async function installThread(
           items = sortDir === "desc" ? items.slice(0, markerIndex) : items.slice(markerIndex + 1);
         }
       }
+      const read = url.searchParams.get("read");
+      if (read != null) items = items.filter((item) => item.read === (read === "true"));
       if (sortDir === "desc") items = [...items].reverse();
       if (pageLimit > 0) items = items.slice(0, pageLimit);
       await route.fulfill({
