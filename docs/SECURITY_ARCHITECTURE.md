@@ -1,116 +1,39 @@
-# Security Architecture
+# Security boundaries in the current client
 
-> Defense-in-depth security model for Workspace UI.
-> This document defines the security boundaries, threat model, and enforcement mechanisms.
+This document maps mechanisms present in source and their limits. It is not a security certification, a completed audit report or proof of a deployed server configuration. Report vulnerabilities through [SECURITY.md](../SECURITY.md). Backend contracts and environment references live in [PROJECT_FACTS.md](PROJECT_FACTS.md).
 
-## Threat Model
+## Assets and trust boundaries
 
-### Assets to Protect
+Workspace session tokens and profile data are held by [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts). The store serializes sessions, including token fields, into `localStorage` using the keys in [workspace-auth-storage.lib.ts](../packages/web/src/shared/lib/workspace-auth-storage.lib.ts). This is not a secure enclave or encrypted credential vault: script execution in the application origin can read these credentials.
 
-| Asset            | Location                         | Threat                                  |
-| ---------------- | -------------------------------- | --------------------------------------- |
-| Zulip API key    | `localStorage` (plain)           | XSS reads token → full account takeover |
-| Message content  | Zustand store (memory)           | XSS reads messages → data exfiltration  |
-| User credentials | Login form → POST → never stored | MITM intercepts → credential theft      |
-| File uploads     | API multipart → Zulip server     | Malicious file → server-side exploit    |
+Message data exists in active stores and durable [IndexedDB cache](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts). Runtime owner scoping separates accounts/projects logically; it does not encrypt their cached content against origin-level script execution or local device access. Do not infer end-to-end message encryption from HTTPS, cache scoping or a proposed protocol.
 
-### Attack Surfaces
+## Implemented controls and limits
 
-| Surface            | Vectors                                      | Mitigations                                            |
-| ------------------ | -------------------------------------------- | ------------------------------------------------------ |
-| Zulip message HTML | XSS via `<script>`, event handlers, SVG, CSS | DOMPurify whitelist + CSP + ESLint                     |
-| User-entered URLs  | `javascript:`, `data:`, protocol injection   | `isValidUrl()` + `guard.url()` + `isSafeExternalUrl()` |
-| Deep links         | `workspace://javascript:...` route injection | `isSafeDeeplinkRoute()` in Electron main               |
-| Electron IPC       | Malicious renderer → main process            | Input validation on every handler                      |
-| Push payloads      | Spoofed / tampered notifications             | Middleware pipeline: decrypt → validate → dedup        |
-| WebView bridge     | Malicious native → web injection             | `postMessage` type checking, auth via bridge only      |
-| Dependencies       | Supply chain (npm)                           | `npm audit`, Dependabot, pinned versions               |
-| Build artifacts    | Source maps, debug info                      | Source maps for Sentry only, not served to users       |
+| Boundary                                   | Implementation                                                                                                                                                                                                                                                                                                   | Limit                                                                                                                                                            |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace REST authentication              | [messenger-auth.ts](../packages/web/src/shared/api/messenger-auth.ts), [transport](../packages/web/src/shared/api/messenger-transport.internal.ts) construct bearer-authenticated requests.                                                                                                                      | A bearer token grants the access the server accepts. Client code does not establish deployment TLS or server-side authorization.                                 |
+| WebSocket authentication                   | [messenger-auth.ts](../packages/web/src/shared/api/messenger-auth.ts) builds the bearer subprotocol.                                                                                                                                                                                                             | Avoid logging protocol values as well as ordinary auth headers; they contain credentials.                                                                        |
+| Cross-session async writes                 | [runtime helpers](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts) compare owner and generation.                                                                                                                                                                                         | Callers must use the guard at store/cache application boundaries; an owner key alone does not cancel stale work.                                                 |
+| Message HTML                               | [Workspace renderer](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts) uses [DOMPurify rules](../packages/web/src/shared/lib/workspace-message-render/workspace-message-sanitize.lib.ts); [html.ts](../packages/web/src/shared/lib/html.ts) serves the general HTML path. | Reuse the relevant render/sanitize path. Sanitization does not validate authorization to fetch an attachment or execute a message action.                        |
+| API input/output shape                     | [DTO guards](../packages/web/src/shared/api/messenger.types.ts) and transport parsers validate supported payload shapes.                                                                                                                                                                                         | TypeScript alone cannot validate network data. Legacy positive-integer ID guards are unsuitable for Workspace UUIDs.                                             |
+| Diagnostic output                          | [logger](../packages/web/src/shared/lib/logger.ts), [request parameter redaction](../packages/web/src/shared/lib/logger-request-params.lib.ts), [Sentry](../packages/web/src/shared/lib/sentry.ts).                                                                                                              | Redaction is defense in depth, not permission to log tokens, message bodies or PII. Inspect the actual payload path when adding diagnostics.                     |
+| Electron renderer/process boundary         | [main.ts](../packages/electron/src/main.ts) enables context isolation, sandboxing and disables Node integration for the main window; [preload.ts](../packages/electron/src/preload.ts) exposes bridge APIs.                                                                                                      | Each IPC handler and each other window needs its own validation review. These settings do not make arbitrary bridge methods safe.                                |
+| Desktop external navigation and deep links | [security-policy.lib.ts](../packages/electron/src/security-policy.lib.ts), [deeplink-route.lib.ts](../packages/electron/src/deeplink-route.lib.ts), and main-process handlers.                                                                                                                                   | URL checks are specific to the operation. Do not apply one generic validator to external links, internal routes, file paths and iframe targets indiscriminately. |
+| Desktop content policy and permissions     | [main.ts](../packages/electron/src/main.ts) installs shell CSP and permission handlers.                                                                                                                                                                                                                          | Shell policies are scoped; do not infer identical policies for third-party call pages or web hosting.                                                            |
 
-## Security Layers
+## Plugins and UI permissions
 
-```
-┌─────────────────────────────────────────────────┐
-│  Layer 1: Compile-Time                           │
-│  TypeScript strict + noUncheckedIndexedAccess    │
-│  No `any`, no `@ts-ignore`                       │
-├─────────────────────────────────────────────────┤
-│  Layer 2: Lint-Time                              │
-│  ESLint: no-eval, no-implied-eval, no-new-func  │
-│  no-script-url, jsx-a11y rules                  │
-├─────────────────────────────────────────────────┤
-│  Layer 3: Pre-Commit                             │
-│  Secret detection, sensitive file block          │
-│  dangerouslySetInnerHTML guard, large file block │
-├─────────────────────────────────────────────────┤
-│  Layer 4: Runtime — Input Boundary               │
-│  guard.*, invariant(), isValidUrl()              │
-│  sanitizeHtml(), validateFileUpload()            │
-├─────────────────────────────────────────────────┤
-│  Layer 5: Runtime — Transport                    │
-│  Auth middleware (Basic auth header)             │
-│  No-cache headers, HTTPS enforcement             │
-│  Push middleware (decrypt → validate → dedup)    │
-├─────────────────────────────────────────────────┤
-│  Layer 6: Runtime — Output                       │
-│  Logger credential redaction                     │
-│  Analytics PII stripping                         │
-│  Sentry beforeSend data sanitization            │
-├─────────────────────────────────────────────────┤
-│  Layer 7: Platform                               │
-│  CSP headers (Electron + Vite)                   │
-│  Electron: contextIsolation, sandbox, no node    │
-│  IPC input validation                            │
-│  macOS hardened runtime + notarization           │
-└─────────────────────────────────────────────────┘
-```
+The [plugin registry](../packages/web/src/shared/lib/plugins/registry.ts) calls plugin activation functions in the application JavaScript context. [Plugin API wrappers](../packages/web/src/shared/lib/plugins/api.ts) check declared permissions for certain API methods and prefix their storage keys. This is an in-process API convention, not an isolation sandbox: plugin code can still use ambient browser APIs. Treat loaded plugin code as trusted application code unless a real execution isolation boundary is added and reviewed.
 
-## Enforcement Matrix
+[IAM capability state](../packages/web/src/entities/workspace-auth/workspace-iam-capabilities.model.ts) and disabled/read-only controls help present allowed actions. They do not replace backend authorization. A hidden button must never be the only check protecting an operation.
 
-| Principle             | Compile                    | Lint         | Pre-commit                      | Runtime                         | Platform                |
-| --------------------- | -------------------------- | ------------ | ------------------------------- | ------------------------------- | ----------------------- |
-| No code injection     | —                          | `no-eval`    | —                               | CSP                             | CSP                     |
-| No raw HTML           | —                          | —            | `dangerouslySetInnerHTML` check | `sanitizeHtml()`                | CSP                     |
-| URL validation        | —                          | —            | —                               | `isValidUrl()`, `guard.url()`   | `isSafeExternalUrl()`   |
-| Credential protection | —                          | `no-console` | Secret detection                | Logger redaction                | `authMiddleware`        |
-| Input validation      | `noUncheckedIndexedAccess` | —            | —                               | `guard.*`, `invariant()`        | IPC validation          |
-| Session management    | —                          | —            | —                               | `initAuthGuard()` (24h timeout) | —                       |
-| Dependency safety     | —                          | —            | —                               | —                               | `npm audit`, Dependabot |
+## Requirements for changes
 
-## Modules
+- Keep credentials out of URLs, logs, errors displayed to other users and analytics. Follow the existing token provider/refresh flow.
+- Validate external data at the appropriate boundary. Use DTO-specific or operation-specific validators; do not blindly apply numeric legacy guards to UUIDs.
+- Keep HTML in the existing sanitized rendering flow. Review URL schemes, attachment fetching and user actions separately from HTML sanitization.
+- Review async writes and cleanup across account/project changes, including persistent caches. Follow [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md).
+- For IPC, validate both input and the calling context as required by that handler. For dependency or platform changes, inspect the relevant build/runtime controls rather than assuming a historical checklist still applies.
 
-| Module          | Path                            | Purpose                                       |
-| --------------- | ------------------------------- | --------------------------------------------- |
-| HTML sanitizer  | `shared/lib/html.ts`            | DOMPurify whitelist for Zulip HTML            |
-| Input validator | `shared/lib/validation.ts`      | URL, email, file, filename validation         |
-| Auth guard      | `shared/lib/auth-guard.ts`      | Auth header, credential wipe, session timeout |
-| Logger          | `shared/lib/logger.ts`          | Auto-redaction of 15 sensitive key patterns   |
-| Guards          | `shared/lib/guards.ts`          | Runtime invariants and domain validators      |
-| Analytics       | `shared/lib/analytics/index.ts` | PII stripping, consent management             |
-| Sentry          | `shared/lib/sentry.ts`          | `beforeSend` strips auth headers + cookies    |
-| Roles           | `shared/lib/roles.ts`           | `hasPermission()` for RBAC                    |
-| Embed           | `shared/lib/embed.tsx`          | Iframe allowlist + sandbox policies           |
-| API client      | `shared/api/client.ts`          | Auth + no-cache + retry middleware            |
-
-## Audit History
-
-| Date       | Scope                                                        | Findings                                                     | Status                                          |
-| ---------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------- |
-| 2026-03-14 | Full codebase (~350 source files, 11 entities, 16 features)  | 0 Critical, 7 High (fixed), 5 Medium (3 fixed, 2 documented) | Complete                                        |
-| 2026-06-04 | Full codebase (~1200 TS/TSX files, 17 entities, 22 features) | Re-audit pending                                             | See [SECURITY.md](../SECURITY.md) for reporting |
-| 2026-03-14 | Electron + config (15 files)                                 | 0 Critical, 2 High (fixed), 3 Medium (1 fixed, 2 documented) | Complete                                        |
-
-## For AI Agents
-
-When writing security-sensitive code:
-
-1. **Read `.cursor/rules/security.mdc`** first
-2. **Use `guard.*`** for ALL external input (user input, API responses, IPC messages)
-3. **Use `sanitizeHtml()`** EVERY TIME before `dangerouslySetInnerHTML`
-4. **Use `isValidUrl()`** before `window.open()`, `navigate()`, iframe `src`
-5. **NEVER** log credentials, tokens, message content, or PII
-6. **NEVER** use `eval`, `new Function`, `document.write`
-7. **ALWAYS** wrap `JSON.parse()` on external data in `try/catch`
-8. **ALWAYS** validate IPC input in Electron main process
-9. **Run** `npm audit` after adding dependencies
-10. **Check** the Security Review Checklist in `security.mdc` before every PR
+Adjacent tests document individual regression protections. A passing test suite, old audit counts or source-level review cannot establish complete protection of every flow or deployed environment.

@@ -1,130 +1,44 @@
 # Workspace UI
 
-The web application is also published as the independent `workspace_ui`
-Exordos element. Its manifest owns the public load balancer, serves the
-versioned static artifact, and proxies `/api/` to the separately deployed
-Workspace backend. See [the Exordos element guide](docs/exordos-element.md).
+Open-source corporate messenger using the Workspace API and IAM authentication. One React codebase serves the web/PWA and Electron desktop app; a WebView shell supports embedded hosts.
 
-Open-source corporate messenger built on the [Zulip](https://zulip.com/) API.
+The independent `workspace_ui` Exordos element serves the web artifact and proxies `/api/` to the separately deployed backend. See the [deployment guide](docs/exordos-element.md).
 
-Single React codebase, multiple targets:
+## Getting started
 
-- Web SPA
-- PWA
-- Electron desktop app (Windows, macOS, Linux)
-- Embedded WebView shell (mobile hosts)
-
-## Highlights
-
-- React 19 + TypeScript 5.9 (`strict`, `noUncheckedIndexedAccess`)
-- Feature-Sliced Design (FSD): `app -> pages -> widgets -> features -> entities -> shared`
-- Zustand domain stores + API middleware pipeline
-- Tailwind design tokens (dark/light + multiple palettes)
-- i18n (English + Russian)
-- 3800+ tests (Vitest + Testing Library + MSW + Playwright)
-- Security-focused defaults: CSP, sanitization, guarded APIs, secret checks in hooks
-
-## Requirements
-
-- Node.js 22+
-- npm 10+
-
-Use `.nvmrc`:
+Use the Node version in [.nvmrc](.nvmrc). Configure the Workspace backend origin and optional local settings using [the environment example](packages/web/.env.example).
 
 ```bash
-nvm use
-```
-
-## Quick Start
-
-```bash
-git clone https://github.com/exordos/workspace_ui.git
-cd workspace_ui
 npm install
 cp packages/web/.env.example packages/web/.env
 npm run dev:web
 ```
 
-Default app URL: `http://localhost:5173`
+The default development URL is `http://localhost:5173`. A configured Workspace backend/IAM is required for real login and messaging; a vanilla Zulip server is not the new messenger contract.
 
-## Main Scripts
+## Development
 
-| Command                    | Purpose                            |
-| -------------------------- | ---------------------------------- |
-| `npm run dev:web`          | Web app in Vite dev mode           |
-| `npm run dev:electron`     | Web + Electron desktop shell       |
-| `npm run dev`              | Monorepo dev mode (parallel)       |
-| `npm run check`            | Typecheck + lint + tests           |
-| `npm run test`             | Unit/integration tests             |
-| `npm run e2e`              | Playwright E2E                     |
-| `npm run lint`             | ESLint                             |
-| `npm run typecheck`        | TypeScript checks                  |
-| `npm run package:electron` | Build desktop package (current OS) |
+| Command                    | Purpose                                       |
+| -------------------------- | --------------------------------------------- |
+| `npm run dev:web`          | Web development server                        |
+| `npm run dev:electron`     | Web server and desktop shell                  |
+| `npm run typecheck`        | Web and Electron TypeScript checks            |
+| `npm run test`             | Web and Electron unit tests                   |
+| `npm run check`            | Broad web quality gate and dependency audit   |
+| `npm run docs:check`       | Documentation links and concrete import paths |
+| `npm run e2e`              | Playwright tests                              |
+| `npm run package:electron` | Local desktop package                         |
 
-## Architecture
+Exact versions and command coverage are maintained in manifests and [Project Facts](docs/PROJECT_FACTS.md).
 
-Workspace UI uses Feature-Sliced Design with strict downward dependencies:
+## Architecture and documentation
 
-```text
-app -> pages -> widgets -> features -> entities -> shared
-```
+The FSD dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Workspace sessions provide runtime ownership; entity loaders hydrate owned caches and refresh through REST; realtime catch-up and WebSocket events update domain state. UI subscribes to narrow selectors.
 
-Core flow:
-
-1. `main.tsx` mounts the app shell and routes
-2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` start Zulip event queue polling
-3. `shared/api/client.ts` handles auth/logging/retry middleware
-4. Entity stores (`entities/*`) provide domain state
-5. UI subscribes through minimal selectors
-
-## Repository Structure
-
-```text
-workspace_ui/
-├── packages/
-│   ├── web/              React SPA
-│   ├── electron/         Electron shell
-├── docs/             Technical docs + ADRs
-├── e2e/              Playwright tests
-├── scripts/          Tooling utilities
-└── .cursor/          Agent rules, skills, prompts
-```
-
-## Documentation Map
-
-### Project Docs
-
-- `AGENTS.md` — architecture and coding standards for AI/dev workflows
-- `CONTRIBUTING.md` — contribution process and quality gates
-- `SECURITY.md` — vulnerability reporting process
-- `CHANGELOG.md` — release history
-- `CODE_OF_CONDUCT.md` — community guidelines
-
-### Technical Docs
-
-- `docs/PROJECT_FACTS.md`
-- `docs/fsd-architecture.md`
-- `docs/STORES_REFERENCE.md`
-- `docs/API_CLIENT_REFERENCE.md`
-- `docs/COMPONENT_CATALOG.md`
-- `docs/INTEGRATION_GUIDE.md`
-- `docs/USE_CASES.md`
-- `docs/MACOS_SIGNING.md`
-- `docs/apt-repository.md`
-- `docs/SECURITY_ARCHITECTURE.md`
-
-## Development Rules (Short)
-
-- Import concrete segment files (`*.model.ts`, `*.api.ts`, `*.ui.tsx`) — no barrel-only `index.ts`
-- No hardcoded UI strings (`t("key")` for all user-facing text)
-- No hardcoded brand values (use `brand.*`)
-- No `console.log` in app code (use logger)
-- Sanitize untrusted HTML before render
-- Add or adjust tests for behavior changes
-- Run `npm run check` before commit
-
-## Open Source
+- [AGENTS.md](AGENTS.md): concise instructions for agents.
+- [Documentation index](docs/README.md): architecture, domain maps and operational guides.
+- [Contributing](CONTRIBUTING.md): workflow and verification.
+- [Security policy](SECURITY.md): vulnerability reporting.
+- [Code of conduct](CODE_OF_CONDUCT.md) and [changelog](CHANGELOG.md).
 
 Project license: [Apache 2.0](LICENSE).
-
-Contributions are welcome via pull requests and issues. Start from `CONTRIBUTING.md`.

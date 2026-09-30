@@ -1,5 +1,7 @@
 # ADR 010: IndexedDB subsystem layout
 
+> Superseded for the Workspace messenger cache. The deferred Zulip snapshot design below is historical; use [the current cache guide](../WORKSPACE_MESSENGER_CACHE.md) and its schema/upgrade sources. Do not recreate the old snapshot subsystem.
+
 ## Status
 
 Deferred — `shared/lib/idb/` scaffold removed (2026-06-01); full snapshot unification pending

@@ -1,387 +1,45 @@
-# API Client Reference
-
-Complete documentation for all API functions in the FSD architecture.
-
----
-
-## Architecture
-
-```
-shared/api/client.ts              Low-level Zulip fetch helpers + middleware pipeline
-shared/api/workspace-client.ts    Workspace API request helper
-entities/<name>/<name>.api.ts      Entity-level API functions (user, folder, sticker, draft, inbox, feed)
-features/<name>/<name>.api.ts      Feature-level API functions (ai-reply, mute-chat, pin-chat, create-chat,
-                                   manage-folders, user-profile, message-readers)
-```
-
-### Authentication
-
-All Zulip API calls use **HTTP Basic Auth**: `Authorization: Basic base64(email:apiKey)`.
-Credentials are taken from `useInstancesStore.getState().getCurrentInstance()`.
-
-Two approaches:
-
-1. **Middleware client** (`shared/api/client.ts`) — `zulipFetch/zulipPost/zulipPatch/zulipDelete` with middleware pipeline (auth, logging, retry)
-2. **Workspace API** (`shared/api/workspace-client.ts`) — `request()` for Workspace backend
-
-New code should use the functions from `shared/api/` directly, or entity-level API functions from `entities/*/`.
-
----
-
-## shared/api/client.ts — Zulip API Helpers
-
-**Import**: `import { zulipFetch, zulipPost, zulipPatch, zulipDelete } from '~/shared/api/client'`
-
-These low-level helpers construct the full URL, attach Basic Auth headers, and handle form encoding for POST/PATCH/DELETE.
-
-| Function                        | Purpose                                        |
-| ------------------------------- | ---------------------------------------------- |
-| `zulipFetch(endpoint, params?)` | GET request to `/api/v1/{endpoint}`            |
-| `zulipPost(endpoint, data?)`    | POST with `application/x-www-form-urlencoded`  |
-| `zulipPatch(endpoint, data?)`   | PATCH with `application/x-www-form-urlencoded` |
-| `zulipDelete(endpoint, data?)`  | DELETE with optional body                      |
-
-Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, logging, and retry middleware.
-
----
-
-## shared/api/workspace-client.ts — Workspace API
-
-**Import**: `import { request, getFolders } from '~/shared/api'`
-
-**Base URL**: `VITE_WORKSPACE_API_BASE_URL` or `/workspace-api/api/v1` (dev proxy) / `{VITE_WORKSPACE_API_ORIGIN}/api/v1` (prod)
-
-**Auth**: Basic (same as Zulip — email:apiKey from instancesStore)
-
-| Function                     | Purpose                               |
-| ---------------------------- | ------------------------------------- |
-| `request<T>(path, options?)` | Generic JSON request to Workspace API |
-
----
-
-## Entity API Functions
-
-### entities/user/api/
-
-**Import**: `import { reportPresence } from '~/entities/user/api/user.api'`
-
-| Function                               | Endpoint                  | Params                                       | Returns |
-| -------------------------------------- | ------------------------- | -------------------------------------------- | ------- |
-| `reportPresence(status, newUserInput)` | `POST /users/me/presence` | `status` ("active"/"idle"), `new_user_input` | `void`  |
-
-> Core Zulip HTTP helpers live in `packages/web/src/shared/api/zulip-*.ts` and are consumed by entity/feature APIs.
-
-### entities/folder/folder.api.ts
-
-**Import**: `import { getFolders, mapWorkspaceFoldersToRail } from '~/entities/folder'`
-
-| Function                             | Endpoint                        | Returns                    |
-| ------------------------------------ | ------------------------------- | -------------------------- |
-| `getFolders()`                       | `GET /folders/` (Workspace API) | `WorkspaceFolder[]`        |
-| `mapWorkspaceFoldersToRail(folders)` | — (pure mapping)                | `WorkspaceFolderForRail[]` |
-
-#### Types
-
-```typescript
-interface WorkspaceFolder {
-  uuid: string;
-  created_at: string;
-  updated_at: string;
-  title: string;
-  background_color_value: number;
-  unread_messages: unknown[];
-  system_type: "created" | "all";
-}
-
-interface WorkspaceFolderForRail {
-  id: string;
-  label: string;
-  badge?: number;
-}
-```
-
-### entities/sticker/sticker.api.ts
-
-**Import**: `import { fetchStickerPacks, fetchStickerPack, searchStickers, installStickerPack, uninstallStickerPack, buildStickerMarkdown, parseStickerFromContent, isStickerMessage } from '~/entities/sticker'`
-
-| Function                        | Purpose                                        | Returns                 |
-| ------------------------------- | ---------------------------------------------- | ----------------------- |
-| `fetchStickerPacks()`           | Load all available sticker packs               | `StickerPack[]`         |
-| `fetchStickerPack(packId)`      | Load a single pack by ID                       | `StickerPack`           |
-| `installStickerPack(packId)`    | Mark pack as installed                         | `void`                  |
-| `uninstallStickerPack(packId)`  | Remove installed pack                          | `void`                  |
-| `searchStickers(query)`         | Search stickers by text                        | `StickerSearchResult[]` |
-| `buildStickerMarkdown(sticker)` | Builds markdown for sending sticker as message | `string`                |
-| `parseStickerFromContent(html)` | Extracts sticker data from message HTML        | `Sticker \| null`       |
-| `isStickerMessage(content)`     | Checks if a message is a sticker               | `boolean`               |
-
-#### Types
-
-```typescript
-type StickerFormat = "png" | "webp" | "lottie" | "gif";
-
-interface Sticker {
-  id: string;
-  emoji: string;
-  alt?: string;
-  url: string;
-  format: StickerFormat;
-  width?: number;
-  height?: number;
-}
-
-interface StickerPack {
-  id: string;
-  title: string;
-  author?: string;
-  thumbnail?: string;
-  stickers: Sticker[];
-  installed?: boolean;
-}
-```
-
-### entities/draft/draft.api.ts
-
-**Import**: `import { fetchDrafts, createDraft, updateDraftOnServer, deleteDraftOnServer } from '~/entities/draft'`
-
-| Function                         | Endpoint                   | Method | Returns                     |
-| -------------------------------- | -------------------------- | ------ | --------------------------- |
-| `fetchDrafts()`                  | `GET /drafts`              | GET    | `Draft[]`                   |
-| `createDraft(input)`             | `POST /drafts`             | POST   | `number \| null` (draft ID) |
-| `updateDraftOnServer(id, input)` | `PATCH /drafts/{id}`       | PATCH  | `boolean`                   |
-| `deleteDraftOnServer(id)`        | `POST /drafts/{id}/delete` | POST   | `boolean`                   |
-
-### entities/inbox/inbox.api.ts
-
-**Import**: `import { fetchInboxEntries } from '~/entities/inbox'`
-
-| Function              | Endpoint                              | Method | Returns        |
-| --------------------- | ------------------------------------- | ------ | -------------- |
-| `fetchInboxEntries()` | `GET /messages` (narrow: `is:unread`) | GET    | `InboxEntry[]` |
-
-### entities/feed/feed.api.ts
-
-**Import**: `import { fetchFeedMessages } from '~/entities/feed'`
-
-| Function                                 | Endpoint                    | Method | Returns         |
-| ---------------------------------------- | --------------------------- | ------ | --------------- |
-| `fetchFeedMessages(anchor?, numBefore?)` | `GET /messages` (no narrow) | GET    | `MockMessage[]` |
-
----
-
-## Feature API Functions
-
-### features/ai-reply/ai-reply.api.ts
-
-**Import**: `import { createMockProvider, createHttpProvider } from '~/features/ai-reply'`
-
-| Function                     | Purpose                                    | Returns           |
-| ---------------------------- | ------------------------------------------ | ----------------- |
-| `createMockProvider()`       | Creates a mock AI provider for development | `AiReplyProvider` |
-| `createHttpProvider(apiUrl)` | Creates an HTTP-backed AI provider         | `AiReplyProvider` |
-
-#### Provider Interface
-
-```typescript
-interface AiReplyProvider {
-  name: string;
-  isAvailable: () => boolean;
-  generate: (request: AiReplyRequest) => Promise<AiReplyResponse>;
-  generateStream?: (request: AiReplyRequest, onChunk: AiStreamCallback) => Promise<() => void>;
-}
-
-interface AiReplyRequest {
-  action: AiAction; // "smart-reply" | "rewrite" | "translate" | "summarize" | "expand" | "fix-grammar"
-  messages: AiMessageContext[];
-  draft?: string;
-  tone?: AiTone; // "formal" | "casual" | "friendly" | "professional"
-  targetLanguage?: string;
-  chatContext?: { streamName?: string; topic?: string };
-}
-
-interface AiReplyResponse {
-  suggestions: AiSuggestion[];
-  model?: string;
-  durationMs?: number;
-}
-
-interface AiSuggestion {
-  id: string;
-  text: string;
-  action: AiAction;
-  confidence?: number;
-}
-```
-
-### features/mute-chat/mute-chat.api.ts
-
-**Import**: `import { muteStream, unmuteStream, muteTopic, unmuteTopic } from '~/features/mute-chat'`
-
-| Function                                      | Endpoint                                  | Method | Returns   |
-| --------------------------------------------- | ----------------------------------------- | ------ | --------- |
-| `setStreamMuted(streamId, muted)`             | `POST /users/me/subscriptions/properties` | POST   | `boolean` |
-| `setTopicVisibility(streamId, topic, policy)` | `POST /user_topics`                       | POST   | `boolean` |
-| `muteStream(streamId)`                        | `POST /users/me/subscriptions/properties` | POST   | `boolean` |
-| `unmuteStream(streamId)`                      | `POST /users/me/subscriptions/properties` | POST   | `boolean` |
-| `muteTopic(streamId, topic)`                  | `POST /user_topics`                       | POST   | `boolean` |
-| `unmuteTopic(streamId, topic)`                | `POST /user_topics`                       | POST   | `boolean` |
-
-### features/pin-chat/pin-chat.api.ts
-
-**Import**: `import { pinChatInFolder, unpinChatInFolder } from '~/features/pin-chat'`
-
-| Function                                        | Endpoint                                                                 | Method | Returns   |
-| ----------------------------------------------- | ------------------------------------------------------------------------ | ------ | --------- |
-| `pinChatInFolder(folderUuid, folderItemUuid)`   | `POST /folders/{folderUuid}/items/{folderItemUuid}/actions/pin/invoke`   | POST   | `boolean` |
-| `unpinChatInFolder(folderUuid, folderItemUuid)` | `POST /folders/{folderUuid}/items/{folderItemUuid}/actions/unpin/invoke` | POST   | `boolean` |
-
-### features/create-chat/create-chat.api.ts
-
-**Import**: `import { createChannel, fetchSubscribedChannels, unsubscribeChannel } from '~/features/create-chat'`
-
-| Function                         | Endpoint                         | Method | Returns                        |
-| -------------------------------- | -------------------------------- | ------ | ------------------------------ |
-| `createChannel(params)`          | `POST /users/me/subscriptions`   | POST   | `{ streamId: number } \| null` |
-| `fetchSubscribedChannels()`      | `GET /users/me/subscriptions`    | GET    | `SubscribedChannel[]`          |
-| `unsubscribeChannel(streamName)` | `DELETE /users/me/subscriptions` | DELETE | `boolean`                      |
-
-### features/manage-folders/manage-folders.api.ts
-
-**Import**: `import { createFolder, updateFolder, deleteFolder } from '~/features/manage-folders'`
-
-| Function                        | Endpoint                                      | Method | Returns              |
-| ------------------------------- | --------------------------------------------- | ------ | -------------------- |
-| `createFolder(input)`           | `POST /folders/` (Workspace API)              | POST   | `FolderItem \| null` |
-| `updateFolder(folderId, input)` | `POST /folders/{folderId}/` (Workspace API)   | POST   | `FolderItem \| null` |
-| `deleteFolder(folderId)`        | `DELETE /folders/{folderId}/` (Workspace API) | DELETE | `boolean`            |
-
-### features/user-profile/user-profile.api.ts
-
-**Import**: `import { fetchUserProfile } from '~/features/user-profile'`
-
-| Function                   | Endpoint              | Method | Returns                   |
-| -------------------------- | --------------------- | ------ | ------------------------- |
-| `fetchUserProfile(userId)` | `GET /users/{userId}` | GET    | `UserProfileData \| null` |
-
-### features/message-readers/message-readers.api.ts
-
-**Import**: `import { fetchReadReceipts } from '~/features/message-readers'`
-
-| Function                       | Endpoint                                  | Method | Returns                |
-| ------------------------------ | ----------------------------------------- | ------ | ---------------------- |
-| `fetchReadReceipts(messageId)` | `GET /messages/{messageId}/read_receipts` | GET    | `ReadReceiptsResponse` |
-
-### features/mention-suggest/mention-suggest.lib.ts
-
-**Import**: `import { filterUsers } from '~/features/mention-suggest'`
-
-| Function                                 | Purpose                                          | Returns               |
-| ---------------------------------------- | ------------------------------------------------ | --------------------- |
-| `filterUsers(query, users, maxResults?)` | Filter users by query for @-mention autocomplete | `MentionSuggestion[]` |
-
----
-
-## Zulip API modules (`shared/api/zulip-*.ts`)
-
-Legacy monolithic `lib/zulipClient.ts` was removed. Zulip REST calls are split across modules such as:
-
-| Module                     | Examples                                   |
-| -------------------------- | ------------------------------------------ |
-| `zulip-messages.ts`        | fetch/send/update/delete messages, flags   |
-| `zulip-queue.ts`           | `registerQueue`, `getEvents`               |
-| `zulip-streams.ts`         | streams, topics, subscriptions             |
-| `zulip-client.internal.ts` | shared fetch helpers used by modules above |
-
-Import the specific module you need, or use entity/feature `*.api.ts` wrappers.
-
----
-
-## Event Loop (`shared/lib/event-loop.ts`)
-
-### Configuration
-
-```typescript
-const DEFAULT_EVENT_TYPES = ["message", "update_message_flags", "reaction", "delete_message"];
-const RETRY_PAUSE_MS = 2000;
-const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
-```
-
-### Interface
-
-```typescript
-interface StartZulipEventLoopOptions {
-  onEvent: (event: ZulipEvent) => void;
-  onBadQueue?: () => void;
-  signal?: AbortSignal;
-  eventTypes?: string[];
-}
-
-function startZulipEventLoop(options: StartZulipEventLoopOptions): void;
-```
-
-### Algorithm
-
-1. `registerQueue(eventTypes)` → `queue_id`, `last_event_id`
-2. `while(true)`:
-   - Check `signal.aborted` → exit
-   - `getEvents(queueId, lastEventId, { timeoutSec, signal })` — blocking long-poll
-   - If `BAD_EVENT_QUEUE_ID` → re-register queue
-   - For each event: `lastEventId = max(lastEventId, event.id)`, skip `heartbeat`, call `onEvent(event)`
-3. On fetch error: `queueId = null`, sleep 2s, retry
-
-### Event Handling
-
-Events are dispatched in `widgets/layout/layout-zulip-event-dispatch*.lib.ts` (message, subscription, presence, typing, etc.) — not inline in the event loop module.
-
-```
-onEvent(event) → layout-zulip-event-dispatch.lib.ts
-  ├── message / update_message / delete_message → message + chat-list stores
-  ├── update_message_flags → unread counts + message flags
-  ├── subscription / user_settings / … → chat-list, folder-sync, user stores
-  └── heartbeat → skipped
-```
-
----
-
-## Helper Modules (shared/lib/)
-
-### shared/config/constants.ts
-
-| Constant              | Value                                | Usage                    |
-| --------------------- | ------------------------------------ | ------------------------ |
-| `SCROLL_AREA_CLASS`   | Tailwind scrollbar classes           | Custom scrollbar styling |
-| `JITSI_MEET_DOMAIN`   | from env `VITE_JITSI_MEET_DOMAIN`    | Jitsi integration        |
-| `JITSI_MEET_BASE_URL` | `https://{JITSI_MEET_DOMAIN}`        | Building meeting URLs    |
-| `WORKSPACE_ORIGIN`    | from env `VITE_WORKSPACE_API_ORIGIN` | Workspace API base       |
-
-### shared/lib/format.ts
-
-| Function                               | Signature                                | Returns                         |
-| -------------------------------------- | ---------------------------------------- | ------------------------------- |
-| `formatMessageTime(timestamp)`         | `(number) => string`                     | `"HH:MM"` (ru-RU)               |
-| `formatLastSeen(timestamp, status?)`   | `(number, "active"\|"idle"?) => string`  | `"online"`, `"N min ago"`, etc. |
-| `isPresenceOnline(timestamp, status?)` | `(number, "active"\|"idle"?) => boolean` | true if active and < 120s       |
-| `getPresenceState(timestamp, status?)` | → `"active" \| "idle" \| null`           |                                 |
-| `sidebarRowClass(isActive)`            | `(boolean) => string`                    | Tailwind class                  |
-
-### shared/lib/html.ts
-
-| Function                       | Signature                     | Returns                      |
-| ------------------------------ | ----------------------------- | ---------------------------- |
-| `stripHtml(html)`              | `(string) => string`          | Text without HTML tags       |
-| `sanitizeHtml(html, baseUrl?)` | `(string, string?) => string` | Sanitized HTML via DOMPurify |
-
-### shared/lib/jitsi.ts
-
-| Function                         | Signature                                  | Returns                      |
-| -------------------------------- | ------------------------------------------ | ---------------------------- |
-| `getJitsiMeetingUrl(content)`    | `(string) => string \| null`               | Extracts Jitsi URL from text |
-| `parseJitsiUrl(url)`             | `(string) => { domain, roomName } \| null` | Parses Jitsi URL             |
-| `buildJitsiMeetingUrl(roomName)` | `(string) => string`                       | Builds full Jitsi URL        |
-
-### Contexts (app/contexts/)
-
-| Context              | Type                                            | Used In                                             |
-| -------------------- | ----------------------------------------------- | --------------------------------------------------- |
-| `OpenSearchContext`  | `(() => void) \| null`                          | Layout → provides; ChatPage/ActivityPage → consumes |
-| `RightDrawerContext` | `{ open: boolean; setOpen: (boolean) => void }` | Layout → provides; ChatPage → consumes              |
+# Workspace API client map
+
+Workspace Messenger uses the Workspace/IAM contracts. Canonical backend contract locations and checkout fallbacks are maintained in [PROJECT_FACTS.md](PROJECT_FACTS.md). This document maps frontend responsibilities; it does not replace the backend endpoint specification.
+
+## Clients and authentication
+
+| Responsibility                                                                  | Source                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IAM login and token operations                                                  | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                                                                                                                          |
+| IAM project discovery and capability introspection                              | [workspace-iam-projects.api.ts](../packages/web/src/shared/api/workspace-iam-projects.api.ts), [workspace-iam-introspection.api.ts](../packages/web/src/shared/api/workspace-iam-introspection.api.ts) |
+| Workspace users, current user, services, presence, avatars and workspace events | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                                                                                                              |
+| Messenger entry points                                                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts)                                                                                                                              |
+| Transport, options, pagination parsing and API errors                           | [messenger-transport.internal.ts](../packages/web/src/shared/api/messenger-transport.internal.ts)                                                                                                      |
+| REST and WebSocket bearer construction                                          | [messenger-auth.ts](../packages/web/src/shared/api/messenger-auth.ts)                                                                                                                                  |
+| Runtime token/session orchestration                                             | [workspace-auth.lib.ts](../packages/web/src/entities/workspace-auth/workspace-auth.lib.ts)                                                                                                             |
+
+The transport defaults are `/api/workspace/v1` for Workspace and `/api/workspace/v1/messenger` for Messenger. Existing runtime helpers supply the appropriate base URL, project and access-token provider. REST authenticates with `Authorization: Bearer …`; public calls omit bearer authentication. Browser WebSocket authentication uses the `bearer.…` subprotocol, not a token in the URL. Do not duplicate token refresh in a component or copy Basic Auth from legacy code.
+
+## Domain endpoints
+
+| Domain                                   | Concrete module                                                                                                                                                                                            |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Streams and memberships                  | [messenger-streams.api.ts](../packages/web/src/shared/api/messenger-streams.api.ts)                                                                                                                        |
+| Topics                                   | [messenger-topics.api.ts](../packages/web/src/shared/api/messenger-topics.api.ts)                                                                                                                          |
+| Messages and message operations          | [messenger-messages.api.ts](../packages/web/src/shared/api/messenger-messages.api.ts)                                                                                                                      |
+| Folders                                  | [messenger-folders.api.ts](../packages/web/src/shared/api/messenger-folders.api.ts)                                                                                                                        |
+| Drafts                                   | [messenger-drafts.api.ts](../packages/web/src/shared/api/messenger-drafts.api.ts)                                                                                                                          |
+| Files and multipart upload               | [messenger-files.api.ts](../packages/web/src/shared/api/messenger-files.api.ts), [messenger-upload.internal.ts](../packages/web/src/shared/api/messenger-upload.internal.ts)                               |
+| Realtime epoch, events and subscriptions | [messenger-realtime.api.ts](../packages/web/src/shared/api/messenger-realtime.api.ts)                                                                                                                      |
+| External accounts and chats              | [messenger-external-accounts.api.ts](../packages/web/src/shared/api/messenger-external-accounts.api.ts), [messenger-external-chats.api.ts](../packages/web/src/shared/api/messenger-external-chats.api.ts) |
+| External provider administration         | [messenger-external-provider-admin.api.ts](../packages/web/src/shared/api/messenger-external-provider-admin.api.ts)                                                                                        |
+| Topic summary management                 | [messenger-topic-summary-management.api.ts](../packages/web/src/shared/api/messenger-topic-summary-management.api.ts)                                                                                      |
+
+DTO definitions and runtime guards live in [messenger.types.ts](../packages/web/src/shared/api/messenger.types.ts) and specialized adjacent `*.types.ts` modules. Do not duplicate those interfaces here. Convert DTOs through the existing [domain adapters](../packages/web/src/entities/messenger/messenger-adapters.lib.ts) before writing stores.
+
+## Calling rules
+
+- Use the concrete domain API module and its typed options. `workspace-client.ts` is not a generic `request()` interface, and `shared/api/client.ts` is not the entry point for new Workspace requests.
+- Preserve UUID identifiers, backend pagination markers and event generation/version pairs. Do not pass UUIDs into legacy integer-only guards or infer pagination completion from an arbitrary page size.
+- Capture async runtime ownership before a request; cancellation alone does not prevent every stale store/cache write. Follow [async safety](ORG_SCOPED_ASYNC_SAFETY.md).
+- Keep transport errors and server authorization failures visible to the owning feature. Do not turn failures into fabricated successful domain data or automatically retry a mutation without checking its contract.
+- Confirm endpoint availability in the backend contract before implementing it. A UI capability marked `unsupported` describes the current frontend path; it is not proof that every backend deployment lacks the endpoint.
+- Extend the existing transport and domain modules rather than introducing a parallel fetch/token/error layer. Import symbols from concrete modules, not a new barrel.
+
+For integration steps and appropriately scoped checks, see [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).

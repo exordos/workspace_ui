@@ -1,5 +1,7 @@
 # ADR-008: Workspace gateway HTTP path defaults
 
+> Historical decision record. Versions, file inventories, commands and audit counts below describe the original decision or its dated updates. Use [Project Facts](../PROJECT_FACTS.md) and [active architecture](../fsd-architecture.md) for current implementation guidance.
+
 **Date**: 2026-04-14  
 **Status**: accepted (superseded in part: path env overrides removed 2026-05)
 
@@ -10,7 +12,7 @@ Workspace UI supports both:
 1. **Vanilla Zulip** — JSON API and upload-related URLs use `/api/v1` on the realm host.
 2. **Workspace gateway** — Workspace REST mount `/workspace` and uploads prefix `/workspace/v1` are fixed in code; gateway-aligned API path defaults to `/workspace/v1` while the Zulip realm may stay on `/api/v1`.
 
-Previously, path defaults lived only as string literals in [`packages/web/src/shared/lib/env.ts`](packages/web/src/shared/lib/env.ts), duplicated from mental model to [`packages/web/vite.config.ts`](packages/web/vite.config.ts). Product scope for the primary shipping configuration (gateway) was not documented in one place.
+Previously, path defaults lived only as string literals in [`packages/web/src/shared/lib/env.ts`](../../packages/web/src/shared/lib/env.ts), duplicated from mental model to [`packages/web/vite.config.ts`](../../packages/web/vite.config.ts). Product scope for the primary shipping configuration (gateway) was not documented in one place.
 
 ## Options
 
@@ -22,9 +24,9 @@ Previously, path defaults lived only as string literals in [`packages/web/src/sh
 
 Adopt **option 2**:
 
-- [`packages/web/src/shared/config/workspace-api-layout.ts`](packages/web/src/shared/config/workspace-api-layout.ts) exports fixed `ZULIP_API_PATH`, `WORKSPACE_REST_API_PATH`, `WORKSPACE_GATEWAY_V1_PATH`, `WORKSPACE_API_PATH`.
-- [`env.ts`](packages/web/src/shared/lib/env.ts) re-exports those constants on `env`; no `VITE_ZULIP_API_PATH` / `VITE_WORKSPACE_API_PATH`.
-- [`vite.config.ts`](packages/web/vite.config.ts) uses the same defaults for dev proxy path resolution when `loadEnv` omits keys (undefined), keeping dev aligned with the client bundle.
+- [`packages/web/src/shared/config/workspace-api-layout.ts`](../../packages/web/src/shared/config/workspace-api-layout.ts) exports fixed `ZULIP_API_PATH`, `WORKSPACE_REST_API_PATH`, `WORKSPACE_GATEWAY_V1_PATH`, `WORKSPACE_API_PATH`.
+- [`env.ts`](../../packages/web/src/shared/lib/env.ts) re-exports those constants on `env`; no `VITE_ZULIP_API_PATH` / `VITE_WORKSPACE_API_PATH`.
+- [`vite.config.ts`](../../packages/web/vite.config.ts) uses the same defaults for dev proxy path resolution when `loadEnv` omits keys (undefined), keeping dev aligned with the client bundle.
 
 `ZULIP_API_PATH` is fixed to `/api/v1` so JSON API calls against a canonical Zulip realm URL stay standard.
 

@@ -1,69 +1,16 @@
 ---
-description: External content embedding with security allowlist
-globs: "packages/web/src/**/*.{ts,tsx}"
+description: "Use when adding or changing embedded external content and iframe trust policy."
 alwaysApply: false
+globs:
+  - "packages/web/src/shared/lib/embed*"
 ---
 
-# External Embedding
+# External embedding
 
-## Architecture
+Sources: `packages/web/src/shared/lib/embed.lib.ts` and `packages/web/src/shared/lib/embed-frame.ui.tsx`.
 
-```
-VITE_EMBED_ALLOWED_ORIGINS="https://wiki.example.com,https://grafana.internal.com"
-              ↓
-  shared/lib/embed.tsx → allowlist (+ auto: Jitsi, Workspace API)
-              ↓
-  isEmbedAllowed(url) → true/false
-              ↓
-  <EmbedFrame url={url} title="Wiki" sandbox="interactive" />
-              ↓
-  <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-```
-
-## Usage
-
-```tsx
-import { EmbedFrame, isEmbedAllowed } from "~/shared/lib/embed";
-
-// Check before rendering
-if (isEmbedAllowed(url)) {
-  <EmbedFrame
-    url="https://wiki.example.com/page"
-    title="Corporate Wiki"
-    sandbox="interactive"     // "strict" | "interactive" | "full"
-    className="h-[600px]"
-    onLoad={() => log.info("loaded")}
-    fallback={<p>Content blocked</p>}
-  />
-}
-```
-
-## Sandbox Levels
-
-| Level | Permissions | Use case |
-|-------|-----------|----------|
-| `strict` | scripts, same-origin | Read-only dashboards, documentation |
-| `interactive` | + forms, popups | Wiki, form-based tools |
-| `full` | + downloads, popup-escape | Full-featured web apps (Grafana, etc.) |
-
-## Security
-
-- Only `https:` and `http:` protocols allowed
-- Origin must be in `VITE_EMBED_ALLOWED_ORIGINS` (or auto-allowed: Jitsi, Workspace)
-- `referrerPolicy="strict-origin-when-cross-origin"` on iframe
-- Sandbox attribute always present (never unrestricted)
-- Blocked URLs logged with `logger.warn`
-
-## Auto-allowed Origins
-
-- Jitsi Meet domain (from `VITE_JITSI_MEET_DOMAIN`)
-- Workspace API origin (from `VITE_WORKSPACE_API_ORIGIN`)
-
-These don't need to be listed in `VITE_EMBED_ALLOWED_ORIGINS`.
-
-## For AI Agent
-
-- Use `<EmbedFrame>` — never raw `<iframe>`
-- Always check `isEmbedAllowed(url)` before rendering
-- Choose minimum sandbox level needed
-- New embedded services → add origin to `VITE_EMBED_ALLOWED_ORIGINS`
+- Use the existing allowlist validator and `EmbedFrame` rather than a new raw iframe path. Import the concrete modules.
+- An allowlisted origin is a trust decision; do not weaken the allowlist merely to make a preview render.
+- Choose the minimum sandbox capabilities required. Preserve URL protocol checks and referrer policy.
+- Keep the configured CSP frame policy consistent with application allowlisting; an iframe rendering successfully is not proof its contents are isolated safely.
+- Display an explicit blocked/failed state rather than silently redirecting to an unvalidated origin.

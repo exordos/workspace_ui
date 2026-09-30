@@ -1,66 +1,17 @@
 ---
-description: Environment variables — access, validation, security
-globs: "packages/web/src/**/*.{ts,tsx}"
+description: "Use when changing client configuration, build variables, or environment parsing."
 alwaysApply: false
+globs:
+  - "packages/web/src/shared/lib/env.ts"
+  - "packages/web/src/vite-env.d.ts"
+  - "packages/web/.env.example"
+  - "packages/web/vite.config.ts"
 ---
 
-# Environment Variables
+# Environment configuration
 
-## Access
-
-**Core app config** — `~/shared/lib/env`:
-
-```typescript
-import { env } from "~/shared/lib/env";
-
-env.WORKSPACE_API_ORIGIN // optional default origin (multi-org uses instance at runtime)
-env.WORKSPACE_API_BASE // dev: `/workspace{rest}`; prod: origin + rest or override
-env.JITSI_MEET_DOMAIN
-env.JITSI_MEET_BASE_URL
-env.WORKSPACE_UPLOADS_ORIGIN
-env.ZULIP_API_PATH
-env.WORKSPACE_API_PATH
-env.CDN_URL
-env.BASE_URL
-env.DEV
-env.PROD
-```
-
-**Integrations** (read `import.meta.env` in dedicated modules — do not duplicate in `env.ts` unless widely used): `~/shared/lib/brand` (`VITE_BRAND_*`), analytics (`VITE_GA4_*`, `VITE_YM_*`), FCM (`VITE_FIREBASE_*`), `VITE_APP_VERSION` in UI, `VITE_SENTRY_DSN` in `sentry.ts`.
-
-## Rules
-
-- Prefer `env` or a single module (`brand`, `analytics/setup`) per concern — avoid scattering new `import.meta.env` reads in random components.
-- `constants.ts` re-exports from `env` for backward compatibility.
-- New **core** env vars: add to `ImportMetaEnv` in `vite-env.d.ts`, parsing in `shared/lib/env.ts` if part of the core object, and `.env.example`.
-
-## Variables (core `env`)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_WORKSPACE_API_ORIGIN` | No | Optional default API/realm host; multi-org uses instance + `X-Workspace-Dev-Target-Origin` in dev |
-| `ZULIP_API_PATH` / `WORKSPACE_API_PATH` / `WORKSPACE_REST_API_PATH` / `WORKSPACE_GATEWAY_V1_PATH` | — | Fixed in `~/shared/config/workspace-api-layout.ts`; exposed on `env`, not `VITE_*` |
-| `VITE_JITSI_MEET_DOMAIN` | No | Jitsi Meet domain (without protocol) |
-| `VITE_WORKSPACE_API_BASE_URL` | No | Override Workspace REST base |
-| `VITE_CDN_URL` | No | CDN origin for static assets |
-| `VITE_SENTRY_DSN` | No | Sentry DSN (production only when set; see `sentry.ts`) |
-| `VITE_APP_VERSION` | No | Version string for Sentry / about UI |
-| `ELECTRON` | No | Build-time (Vite config): disables PWA, `./` base — set by Electron `npm` scripts, not usually in `.env` |
-
-See `vite-env.d.ts` for the full `VITE_*` list (flags, embed, metadata bootstrap, brand, etc.).
-
-## Security
-
-- `VITE_*` variables end up in the client bundle — DO NOT store secrets
-- API Key is stored in localStorage, not in env vars
-- `ELECTRON` does NOT have the `VITE_` prefix — not exposed to client bundle via Vite env injection
-
-## Environment files (Vite order)
-
-```
-.env                 ← always loaded
-.env.local           ← always, gitignored
-.env.development     ← only npm run dev
-.env.production      ← only npm run build
-.env.[mode].local    ← mode-specific, gitignored
-```
+- Read current declarations in `packages/web/src/vite-env.d.ts`, parsing in `packages/web/src/shared/lib/env.ts`, and examples in `packages/web/.env.example`.
+- Keep a single configuration owner per concern: core `env`, branding, analytics, or another existing integration module. Avoid scattered component-level reads.
+- `VITE_*` values are public client-bundle configuration, never secrets or user credentials.
+- Default API origins do not replace runtime organization/project selection. Preserve `packages/web/src/shared/config/workspace-api-layout.ts` and the transport's target selection.
+- Add only variables required by the implemented feature; update the parser/type/example together where relevant. Distinguish build-time flags from runtime capabilities.

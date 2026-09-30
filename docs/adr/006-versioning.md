@@ -1,5 +1,7 @@
 # ADR-006: Semantic Versioning with synced monorepo packages
 
+> Historical decision record. Versions, file inventories, commands and audit counts below describe the original decision or its dated updates. Use [Project Facts](../PROJECT_FACTS.md) and [active architecture](../fsd-architecture.md) for current implementation guidance.
+
 **Date**: 2026-03
 **Status**: accepted
 
@@ -23,7 +25,7 @@ Each release (local):
 
 1. `npm run version:bump -- <patch|minor|major>` — Lerna updates all workspace packages + `lerna.json`, then syncs root `package.json`
 2. Edit `CHANGELOG.md` if needed
-3. `git add -A && git commit -m "chore: release v<version>"` → merge to `master` via MR (direct push forbidden)
+3. Stage the intended release files, inspect `git diff --cached`, then commit the release → merge to `master` via MR (direct push forbidden)
 4. On `master` after merge: `npm run version:tag` — creates tag `<version>` (no `v` prefix) and pushes tag only
 
 Pushing a semver tag to GitHub triggers CI (`build-electron` + GitHub Release with desktop artifacts). Push to `master` alone runs check/e2e/build but does **not** create a GitHub Release.
@@ -33,5 +35,5 @@ GitLab CI does not run pipelines on tags (branch/MR only).
 ## Consequences
 
 - Positive: one version to track, standard Lerna tooling, Electron updater and Sentry aligned
-- Negative: packages bump even if unchanged (`forcePublish`); root version requires sync script (not a Lerna package)
+- Negative: packages bump even if unchanged (`forcePublish`); all packages share one release cadence
 - Git tags trigger GitHub Actions release builds

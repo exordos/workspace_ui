@@ -1,106 +1,18 @@
 ---
-description: E2E testing with Playwright
-globs: "e2e/**/*.{ts,spec.ts}"
+description: "Use when adding, changing, or running Playwright user-flow tests."
 alwaysApply: false
+globs:
+  - "e2e/**"
+  - "playwright.config.ts"
 ---
 
-# E2E Testing (Playwright)
+# Playwright tests
 
-## Structure
+Sources: `playwright.config.ts`, `e2e/fixtures.ts`, `e2e/helpers/workspace-api-mock.ts`, and the closest current spec.
 
-```
-e2e/
-├── fixtures.ts                    # loginAs, zulipApi, authenticated (+ mock)
-├── helpers/
-│   ├── zulip-api-mock.ts          # page.route mock for /api/v1/**
-│   ├── workspace-api-mock.ts      # page.route mock for /workspace/v1/**
-│   ├── seed-auth.ts               # localStorage instance seed
-│   ├── seed-chat-list-cache.ts    # IndexedDB sidebar cache seed
-│   ├── network.ts                 # setBrowserOffline/Online
-│   └── live-auth-env.ts           # TEST_USER_* from .env
-├── mocks/
-│   ├── zulip-default-responses.ts # default Zulip JSON bodies
-│   └── workspace-default-responses.ts # default Workspace JSON bodies
-├── pages/
-│   └── connection-banner.page.ts
-├── connection-resilience.spec.ts  # @mock — network/API failures
-├── live/                          # @live — real Zulip (skipped without secrets)
-│   ├── live-auth.spec.ts
-│   └── feed-forward-live.spec.ts
-└── results/                       # gitignored
-```
-
-Config: `playwright.config.ts` (root).
-
-## Commands
-
-```bash
-npm run e2e                              # All tests (headless)
-npm run e2e -- --project=chromium        # Chromium only
-npm run e2e -- --grep @mock              # Resilience / mock API only
-npm run e2e -- --grep-invert @live       # CI default (no live server)
-npm run e2e:headed
-npm run e2e:ui
-npm run e2e:report
-```
-
-## Fixtures
-
-```typescript
-import { test, expect } from "./fixtures";
-
-test("mocked shell", async ({ authenticated, zulipApi }) => {
-  await expect(authenticated.locator("[data-focus-zone='topbar']")).toBeVisible();
-  zulipApi.abortMatching(/\/events/, 1);
-});
-
-test("live login", async ({ page, loginAs }) => {
-  test.describe.configure({ tag: "@live" });
-  await loginAs(email, password, realm);
-});
-```
-
-| Fixture | Description |
-|---------|-------------|
-| `zulipApi` | `ZulipApiMock` — intercepts `**/api/v1/**` |
-| (auto) | `WorkspaceApiMock` — intercepts `**/*workspace*/**` on every `page` |
-| `authenticated` | Seeds auth + opens shell (uses mock) |
-| `loginAs` | Real login form (live tests) |
-
-## ZulipApiMock
-
-```typescript
-zulipApi.statusMatching(/\/api\/v1\//, 503, 10);
-zulipApi.abortMatching(/\/events/, 2);
-zulipApi.setNextEventsResponse({ result: "error", code: "BAD_EVENT_QUEUE_ID" });
-zulipApi.restoreDefaults();
-expect(zulipApi.getRegisterCallCount()).toBeGreaterThanOrEqual(2);
-```
-
-Long-poll `/events` returns immediately with `{ result: "success", events: [] }` by default.
-
-## Locators (priority)
-
-1. `getByRole` / `getByLabel`
-2. `getByText` (locale-aware regex: `/Перезагрузить|Reload/`)
-3. `getByTestId("connection-banner")`
-4. Avoid brittle CSS classes
-
-## Tags
-
-- `@mock` — uses `ZulipApiMock`, no real Zulip server
-- `@live` — requires `TEST_USER_ZULIP_SERVER`, `TEST_USER_EMAIL`, `TEST_USER_PASSWORD`
-
-CI runs `npm run e2e -- --project=chromium --grep-invert @live`.
-
-## CI
-
-GitHub Actions job `e2e` (after `check`) and GitLab `e2e-web` stage.
-Artifacts: `e2e/results` on failure.
-
-## For AI Agent
-
-1. Prefer `authenticated` + `zulipApi` for app shell tests
-2. Add resilience scenarios to `connection-resilience.spec.ts`
-3. Do not add live tests without `@live` + `test.skip` for missing env
-4. Never rely on real long-poll timeouts in E2E
+- Current authenticated fixtures seed a Workspace session and install Workspace API mocks. Do not introduce the removed `zulipApi` fixture.
+- Prefer role/label locators, then stable test IDs. Avoid implementation-specific CSS selectors and arbitrary sleeps.
+- Test observable flows and recovery: navigation, cache restoration, mutations, owner switches, or offline behavior relevant to the change.
+- Tag live-server tests `@live`, keep credentials out of fixtures/logs, and preserve skip behavior when required configuration is unavailable.
+- CI's non-live Chromium command is in the workflows. Choose a focused spec locally; use `AGENTS.md` for when E2E is required.
+- Report browser/server limitations rather than calling mocked coverage a live integration test.
