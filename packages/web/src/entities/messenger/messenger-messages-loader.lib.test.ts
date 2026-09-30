@@ -201,6 +201,90 @@ describe("messenger conversation messages loader", () => {
     clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
   });
 
+  it("exposes a retryable opening error after two live window races and recovers on retry", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const first = createMessageDto({ read: true });
+    const second = createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, read: true });
+    const remaining = createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST, read: true });
+    const stalePage = createMessagesPage([remaining, second, first]);
+    const initialResponse = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const retriedResponse = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const responses = [initialResponse, retriedResponse];
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, query: { read?: boolean }) => {
+      if (query.read === false) return Promise.resolve(createMessagesPage([]));
+      const response = responses.shift();
+      if (response == null) throw new Error("Unexpected automatic history retry");
+      return response.promise;
+    });
+    const onServerWindowApplied = vi.fn();
+    const writeConversationMessagePage = vi.fn();
+    const loading = loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId,
+      resolveUnreadBoundary: true,
+      onServerWindowApplied,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [first, second, remaining].map(adaptMessengerMessage),
+            nextPageMarker: null,
+            hasMore: false,
+          }),
+        writeConversationMessagePage,
+      },
+      client: { getMessagesPage },
+    });
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(2));
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
+    initialResponse.resolve(stalePage);
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(4));
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_B);
+    retriedResponse.resolve(stalePage);
+
+    await expect(loading).resolves.toMatchObject({ status: "failed", ownerKey, conversationId });
+    const failedState = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessageStatusForConversation(failedState, conversationId)).toMatchObject({
+      loading: false,
+      error: expect.any(String),
+    });
+    expect(failedState.conversationWindowsById[conversationId]?.messageUuids).toEqual([MESSAGE_C]);
+    expect(getMessagesPage).toHaveBeenCalledTimes(4);
+    expect(onServerWindowApplied).not.toHaveBeenCalled();
+    expect(writeConversationMessagePage).not.toHaveBeenCalled();
+
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        retainCurrentWindow: () => true,
+        resolveUnreadBoundary: true,
+        onServerWindowApplied,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [adaptMessengerMessage(remaining)],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage,
+        },
+        client: { getMessagesPage: () => Promise.resolve(createMessagesPage([remaining])) },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ),
+    ).toMatchObject({ loading: false, error: null });
+    expect(onServerWindowApplied).toHaveBeenCalledExactlyOnceWith();
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.messageUuids,
+    ).toEqual([MESSAGE_C]);
+  });
+
   it("allows the asynchronous cache write to finish after its successful history request settles", async () => {
     const runtimeContext = createRuntimeContext();
     prepareStoreOwner(runtimeContext);

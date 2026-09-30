@@ -1113,7 +1113,10 @@ async function loadConversationMessagesFromServer({
         throw new Error("Unread boundary changed while opening the conversation");
       }
       if (applied.status === "stale-window") {
-        if (pageMarker == null && attempt === 0) continue;
+        if (pageMarker == null) {
+          if (attempt === 0) continue;
+          throw new Error("Message window changed while opening the conversation");
+        }
         finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
         return { status: "skipped", ownerKey, reason: "stale-window" };
       }
