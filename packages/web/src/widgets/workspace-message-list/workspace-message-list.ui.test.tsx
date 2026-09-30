@@ -4393,9 +4393,9 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
-  it("keeps video references out of the shared file card", () => {
+  it("renders video sent as a file as a card while keeping video media separate", () => {
     const videoUuid = "11111111-1111-4111-8111-111111111111";
-    const mismatchedFileUuid = "22222222-2222-4222-8222-222222222222";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
     const { container } = render(
       <WorkspaceMessageList
         messages={[
@@ -4403,7 +4403,7 @@ describe("WorkspaceMessageList", () => {
             uuid: "workspace-video-card-boundary",
             markdown: [
               `[clip.mp4](urn:video:${videoUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
-              `[legacy.mp4](urn:file:${mismatchedFileUuid}?name=legacy.mp4&content_type=video%2Fmp4)`,
+              `[attachment.mp4](urn:file:${fileUuid}?name=attachment.mp4&content_type=video%2Fmp4)`,
             ].join("\n\n"),
           }),
         ]}
@@ -4412,15 +4412,17 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    expect(container.querySelector(`[data-workspace-file-uuid='${videoUuid}']`)).toHaveAttribute(
-      "data-workspace-file-kind",
-      "media",
+    const video = container.querySelector(`[data-workspace-file-uuid='${videoUuid}']`);
+    expect(video).toHaveAttribute("data-workspace-file-kind", "media");
+    expect(video?.querySelector("[role='presentation']")).toBeNull();
+    const attachment = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid='${fileUuid}']`,
     );
-    const fallback = container.querySelector<HTMLElement>(
-      `[data-workspace-file-uuid='${mismatchedFileUuid}']`,
+    expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
+    expect(attachment?.querySelector("[role='presentation']")).toHaveTextContent("attachment.mp4");
+    expect(attachment?.querySelector(".workspace-message-file-placeholder__label")).toHaveAttribute(
+      "hidden",
     );
-    expect(fallback).toHaveTextContent("Файл: legacy.mp4");
-    expect(fallback?.querySelector("[role='presentation']")).toBeNull();
   });
 
   it("activates Workspace attachment placeholders with Enter and Space", () => {
