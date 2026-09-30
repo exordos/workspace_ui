@@ -164,7 +164,7 @@ export function buildWorkspaceComposerAttachmentMarkdown(
   return metadata.markdownLink;
 }
 
-export function appendWorkspaceComposerAttachmentMarkdown(
+export function prependWorkspaceComposerAttachmentMarkdown(
   content: string,
   links: readonly string[],
 ): string {
@@ -172,5 +172,5 @@ export function appendWorkspaceComposerAttachmentMarkdown(
   const uniqueLinks = [...new Set(links)].filter((link) => !trimmed.includes(link));
   if (uniqueLinks.length === 0) return trimmed;
   if (trimmed.length === 0) return uniqueLinks.join("\n");
-  return `${trimmed}\n${uniqueLinks.join("\n")}`;
+  return `${uniqueLinks.join("\n")}\n${trimmed}`;
 }

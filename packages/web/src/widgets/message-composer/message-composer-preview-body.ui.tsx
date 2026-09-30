@@ -3,9 +3,12 @@ import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-m
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import {
+  formatAttachmentSize,
+  getAttachmentExtensionLabel,
+} from "~/shared/lib/attachment-card-meta.lib";
 import { AttachmentCardList } from "~/shared/ui/attachment-card.ui";
 import { Icon } from "~/shared/ui/icon";
-import { formatAttachmentSize, getAttachmentExtensionLabel } from "./message-composer-body.lib";
 import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
 import type { MessageComposerPreviewBodyProps } from "./message-composer-preview-body.types";
 
@@ -57,6 +60,7 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
     return (
       <WorkspaceMessageBody
         html={previewHtml}
+        fileReferences={fileReferences}
         metadata={previewMetadata}
         useInlineMeta={false}
         bodyRef={bodyRef}

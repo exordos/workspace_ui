@@ -40,6 +40,7 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   getMessageKey: (message: TMessage) => string;
   isUnreadCandidate: (message: TMessage) => boolean;
   initialPositionReady?: boolean;
+  initialPositionCancelled?: boolean;
   scrollToBottomKey?: string;
   scrollToBottomAfterSendNonce?: number;
   firstUnreadKey?: string;
@@ -58,7 +59,9 @@ interface WorkspaceMessageListScrollOptions<TMessage> {
   onLoadOlder?: () => void;
   onLoadNewer?: () => void;
   onUserScrollInput?: () => void;
+  onPositionIntent?: () => void;
   onUnreadMessagesVisible?: (messageKeys: string[]) => void;
+  /** Reaching the loaded tail may cover unread messages outside the viewport. */
   onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }
 
@@ -134,6 +137,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   getMessageKey,
   isUnreadCandidate,
   initialPositionReady = true,
+  initialPositionCancelled = false,
   scrollToBottomKey,
   scrollToBottomAfterSendNonce = 0,
   firstUnreadKey,
@@ -151,6 +155,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   onLoadOlder,
   onLoadNewer,
   onUserScrollInput,
+  onPositionIntent,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: WorkspaceMessageListScrollOptions<TMessage>): WorkspaceMessageListScrollResult {
@@ -163,6 +168,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const pendingSameMessagesScrollAnchorRef = useRef<PendingSameMessagesScrollAnchor | null>(null);
   const wasAtBottomRef = useRef(true);
   const userScrollSeenRef = useRef(false);
+  const consumedSendNonceRef = useRef(scrollToBottomAfterSendNonce);
   const userScrolledAwayFromBottomRef = useRef(false);
   const programmaticScrollRef = useRef(false);
   const programmaticScrollGenerationRef = useRef(0);
@@ -313,7 +319,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   );
 
   const dispatchUnreadAtBottom = useCallback(() => {
-    if (!isInitialPositionApplied()) {
+    if (!initialPositionReady || !isInitialPositionApplied()) {
       return;
     }
 
@@ -333,28 +339,30 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
     const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
 
-    if (visibleKeys.length === 0) {
+    if (visibleKeys.length === 0 && onUnreadMessagesAtBottom == null) {
       return;
     }
 
     const orderedKeys = sortKeysByMessageOrder(visibleKeys);
-    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${orderedKeys.join(",")}`;
+    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${tailOutsideWindow}:${orderedKeys.join(",")}`;
 
     if (bottomUnreadDispatchKeyRef.current === dispatchKey) {
       return;
     }
 
     bottomUnreadDispatchKeyRef.current = dispatchKey;
-    onUnreadMessagesVisible?.(orderedKeys);
-    onUnreadMessagesAtBottom?.(orderedKeys);
+    if (orderedKeys.length > 0) onUnreadMessagesVisible?.(orderedKeys);
+    if (!tailOutsideWindow) onUnreadMessagesAtBottom?.(orderedKeys);
   }, [
     hasNewerMessages,
+    initialPositionReady,
     isInitialPositionApplied,
     isLoadingNewer,
     onUnreadMessagesAtBottom,
     onUnreadMessagesVisible,
     scrollToBottomKey,
     sortKeysByMessageOrder,
+    tailOutsideWindow,
     unreadCandidateKeys,
   ]);
 
@@ -388,7 +396,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
   useEffect(() => {
     if (anchorHandoffPending) return;
     const dispatchVisibleUnreadAfterFocus = (): void => {
-      if (!isWindowActive() || !isInitialPositionApplied()) {
+      if (!initialPositionReady || !isWindowActive() || !isInitialPositionApplied()) {
         return;
       }
 
@@ -414,17 +422,18 @@ export function useWorkspaceMessageListScroll<TMessage>({
     };
   }, [
     anchorHandoffPending,
+    initialPositionReady,
     isInitialPositionApplied,
     onUnreadMessagesVisible,
     sortKeysByMessageOrder,
     unreadCandidateKeys,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (anchorHandoffPending) return;
     viewportUnreadKeysRef.current.clear();
     bottomUnreadDispatchKeyRef.current = null;
-  }, [anchorHandoffPending, unreadCandidateKeys]);
+  }, [anchorHandoffPending, onUnreadMessagesAtBottom, unreadCandidateKeys]);
 
   useLayoutEffect(() => {
     const lease = conversationId == null ? null : openMessengerConversationPosition(conversationId);
@@ -484,7 +493,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     pendingSameMessagesScrollAnchorRef.current = null;
 
     if (
-      pending?.messageKeysKey === messageKeysKey &&
+      pending != null &&
       pending.scrollToBottomKey === scrollToBottomKey &&
       !pending.wasAtBottom &&
       pending.anchor != null &&
@@ -529,7 +538,10 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
   useLayoutEffect(() => {
     if (anchorHandoffPending) return;
-    if (scrollToBottomAfterSendNonce === 0 || !isInitialPositionApplied()) {
+    if (
+      scrollToBottomAfterSendNonce === 0 ||
+      consumedSendNonceRef.current === scrollToBottomAfterSendNonce
+    ) {
       return;
     }
 
@@ -539,6 +551,9 @@ export function useWorkspaceMessageListScroll<TMessage>({
       return;
     }
 
+    consumedSendNonceRef.current = scrollToBottomAfterSendNonce;
+    initialPositionAppliedKeyRef.current = scrollToBottomKey ?? "__default__";
+    onPositionIntent?.();
     userScrollSeenRef.current = true;
     userScrolledAwayFromBottomRef.current = false;
     bottomUnreadDispatchKeyRef.current = null;
@@ -550,6 +565,8 @@ export function useWorkspaceMessageListScroll<TMessage>({
     isInitialPositionApplied,
     pinTailToBottom,
     scrollToBottomAfterSendNonce,
+    scrollToBottomKey,
+    onPositionIntent,
   ]);
 
   useLayoutEffect(() => {
@@ -616,6 +633,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
       // Provisional placement is not recorded as applied, so the settled one still
       // runs, and in the ordinary case it lands on the same place and moves nothing.
       const provisional = !initialPositionReady;
+      const remembered = positionLeaseRef.current?.read();
+      const rememberedScrollTop =
+        remembered?.kind === "anchor"
+          ? computeWorkspaceScrollTopFromRenderAnchor(root, remembered)
+          : null;
       if (
         provisional &&
         // Not while the reader is driving, aiming at a particular message, or the
@@ -623,8 +645,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
         // settle on is not in this window and guessing it would be the jump again.
         (focusedMessageTarget != null ||
           userScrollSeenRef.current ||
-          hasNewerMessages ||
-          tailOutsideWindow)
+          ((hasNewerMessages || tailOutsideWindow) && rememberedScrollTop == null))
       ) {
         return;
       }
@@ -711,6 +732,11 @@ export function useWorkspaceMessageListScroll<TMessage>({
         return;
       }
 
+      if (initialPositionCancelled || userScrollSeenRef.current) {
+        initialPositionAppliedKeyRef.current = initialPositionKey;
+        return;
+      }
+
       if (messageCount === 0) {
         if (!provisional) {
           initialPositionAppliedKeyRef.current = initialPositionKey;
@@ -718,9 +744,8 @@ export function useWorkspaceMessageListScroll<TMessage>({
         return;
       }
 
-      const remembered = positionLeaseRef.current?.read();
       if (remembered?.kind === "anchor") {
-        const nextScrollTop = computeWorkspaceScrollTopFromRenderAnchor(root, remembered);
+        const nextScrollTop = rememberedScrollTop;
         if (nextScrollTop != null) {
           runProgrammaticScroll(() => {
             root.scrollTop = nextScrollTop;
@@ -740,6 +765,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
             .slice(previousTailIndex + 1)
             .find((key) => unreadCandidateKeys.has(key));
         }
+      }
+      if (remembered?.kind === "bottom" && openingUnreadKey == null && hasNewerMessages) {
+        const target = findWorkspaceMessageNode(root, remembered.messageKey);
+        if (target != null) runProgrammaticScroll(() => centerWorkspaceMessageInRoot(root, target));
+        if (!provisional) initialPositionAppliedKeyRef.current = initialPositionKey;
+        syncAtBottomFromElement(root);
+        return;
       }
       if (openingUnreadKey != null && unreadCount > 0) {
         const target = findWorkspaceMessageNode(root, openingUnreadKey);
@@ -772,6 +804,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       anchorHandoffPending,
       finishFocusedMessagePosition,
       initialPositionReady,
+      initialPositionCancelled,
       messageCount,
       pinTailToBottom,
       reportFocusedMessageMissing,
@@ -812,7 +845,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
       return;
     }
 
-    if (wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
+    if (initialPositionReady && wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
       // Append внизу должен ощущаться как продолжение живого диалога.
       // Если пользователь уже ушел читать историю выше, этот флаг будет false
       // и новые сообщения не отберут у него текущую позицию.
@@ -823,6 +856,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     syncAtBottomFromElement(root);
   }, [
     anchorNavigationActive,
+    initialPositionReady,
     applyInitialPosition,
     focusedMessageKey,
     focusedMessageTarget,
@@ -939,7 +973,12 @@ export function useWorkspaceMessageListScroll<TMessage>({
 
     const root = scrollContainerRef.current;
 
-    if (root == null || unreadCandidateKeys.size === 0 || !isInitialPositionApplied()) {
+    if (
+      !initialPositionReady ||
+      root == null ||
+      unreadCandidateKeys.size === 0 ||
+      !isInitialPositionApplied()
+    ) {
       return;
     }
 
@@ -1180,12 +1219,13 @@ export function useWorkspaceMessageListScroll<TMessage>({
       return;
     }
 
+    initialPositionAppliedKeyRef.current = scrollToBottomKey ?? "__default__";
     userScrollSeenRef.current = true;
     userScrolledAwayFromBottomRef.current = false;
     bottomUnreadDispatchKeyRef.current = null;
     pinTailToBottom(root);
     dispatchUnreadAtBottom();
-  }, [anchorHandoffPending, dispatchUnreadAtBottom, pinTailToBottom]);
+  }, [anchorHandoffPending, dispatchUnreadAtBottom, pinTailToBottom, scrollToBottomKey]);
 
   return {
     scrollContainerRef,

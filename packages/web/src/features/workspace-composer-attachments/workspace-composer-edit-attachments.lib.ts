@@ -50,6 +50,17 @@ export function extractWorkspaceComposerEditContent(
   markdown: string,
 ): WorkspaceComposerEditContent {
   const lines = markdown.split("\n");
+  const leadingAttachments: ParsedAttachmentLine[] = [];
+  let firstContentIndex = 0;
+  for (; firstContentIndex < lines.length; firstContentIndex += 1) {
+    const attachment = parseAttachmentLine(lines[firstContentIndex] ?? "");
+    if (attachment == null) break;
+    leadingAttachments.push(attachment);
+  }
+  const remainingMarkdown = lines.slice(firstContentIndex).join("\n");
+  if (leadingAttachments.some((attachment) => remainingMarkdown.includes(attachment.markdown))) {
+    firstContentIndex = 0;
+  }
   let lastContentIndex = lines.length - 1;
   while (lastContentIndex >= 0 && lines[lastContentIndex]?.trim().length === 0) {
     lastContentIndex -= 1;
@@ -57,7 +68,7 @@ export function extractWorkspaceComposerEditContent(
 
   const reversedAttachments: ParsedAttachmentLine[] = [];
   let firstAttachmentIndex = lastContentIndex + 1;
-  for (let index = lastContentIndex; index >= 0; index -= 1) {
+  for (let index = lastContentIndex; index >= firstContentIndex; index -= 1) {
     const line = lines[index];
     if (line == null) break;
     const attachment = parseAttachmentLine(line);
@@ -66,14 +77,18 @@ export function extractWorkspaceComposerEditContent(
     firstAttachmentIndex = index;
   }
 
+  const contentMarkdown = lines
+    .slice(
+      firstContentIndex,
+      reversedAttachments.length === 0 ? lines.length : firstAttachmentIndex,
+    )
+    .join("\n");
   const editableMarkdown =
-    reversedAttachments.length === 0
-      ? markdown
-      : lines.slice(0, firstAttachmentIndex).join("\n").replace(/\n+$/, "");
+    reversedAttachments.length === 0 ? contentMarkdown : contentMarkdown.replace(/\n+$/, "");
   const inlineImages = parseInlineImages(editableMarkdown);
   const orderedAttachments = [
     ...new Map(
-      [...inlineImages, ...reversedAttachments.toReversed()].map(
+      [...leadingAttachments, ...inlineImages, ...reversedAttachments.toReversed()].map(
         (attachment) => [attachment.markdown, attachment] as const,
       ),
     ).values(),
@@ -90,22 +105,21 @@ export function extractWorkspaceComposerEditContent(
   };
 }
 
-export function appendWorkspaceComposerEditAttachmentMarkdown(
+export function prependWorkspaceComposerEditAttachmentMarkdown(
   markdown: string,
   links: readonly string[],
 ): string {
   const uniqueLinks = [...new Set(links)].filter((link) => !markdown.includes(link));
   if (uniqueLinks.length === 0) return markdown;
   if (markdown.length === 0) return uniqueLinks.join("\n");
-  const separator = markdown.endsWith("\n") ? "" : "\n";
-  return `${markdown}${separator}${uniqueLinks.join("\n")}`;
+  return `${uniqueLinks.join("\n")}\n${markdown}`;
 }
 
-export function appendWorkspaceComposerExistingAttachmentMarkdown(
+export function prependWorkspaceComposerExistingAttachmentMarkdown(
   markdown: string,
   attachments: readonly WorkspaceComposerExistingAttachment[],
 ): string {
-  return appendWorkspaceComposerEditAttachmentMarkdown(
+  return prependWorkspaceComposerEditAttachmentMarkdown(
     markdown,
     attachments.map((attachment) => attachment.markdown),
   );

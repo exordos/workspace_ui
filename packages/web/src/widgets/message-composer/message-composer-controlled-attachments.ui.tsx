@@ -4,7 +4,6 @@ import { t } from "~/i18n/i18n";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { AttachmentCard } from "~/shared/ui/attachment-card.ui";
 import { Icon } from "~/shared/ui/icon";
-import { formatAttachmentSize, getAttachmentExtensionLabel } from "./message-composer-body.lib";
 import type { MessageComposerAttachmentView } from "./message-composer.types";
 
 interface MessageComposerControlledAttachmentCardsProps {
@@ -83,7 +82,7 @@ function ReadyImageDragWrapper({
   );
   const canDragIntoMessage = !inText && previewAvailable;
   const className = inText
-    ? "relative rounded-lg [&>article]:ring-2 [&>article]:ring-accent/60"
+    ? "relative rounded-lg [&>span]:ring-2 [&>span]:ring-accent/60"
     : "relative cursor-grab [&_img]:pointer-events-none";
   return (
     <div
@@ -176,16 +175,13 @@ function RestoredWorkspaceAttachmentCard({
     };
   }, [onLoadWorkspaceFilePreview, reference]);
 
-  const metadata = {
-    formatLabel: getAttachmentExtensionLabel(attachment.fileName),
-    sizeLabel: formatAttachmentSize(attachment.sizeBytes),
-  };
   const card =
     previewUrl == null ? (
       <AttachmentCard
         status="file"
         fileName={attachment.fileName}
-        metadata={metadata}
+        contentType={attachment.contentType || reference?.contentType}
+        sizeBytes={attachment.sizeBytes}
         onRemove={onRemove}
       />
     ) : (
@@ -193,7 +189,8 @@ function RestoredWorkspaceAttachmentCard({
         status="image"
         fileName={attachment.fileName}
         previewUrl={previewUrl}
-        metadata={metadata}
+        contentType={attachment.contentType || reference?.contentType}
+        sizeBytes={attachment.sizeBytes}
         onRemove={onRemove}
       />
     );
@@ -257,10 +254,6 @@ export const MessageComposerControlledAttachmentCards = React.memo(
           />
         );
       }
-      const metadata = {
-        formatLabel: getAttachmentExtensionLabel(attachment.fileName),
-        sizeLabel: formatAttachmentSize(attachment.sizeBytes),
-      };
       if (attachment.status === "error") {
         return (
           <AttachmentCard
@@ -309,7 +302,8 @@ export const MessageComposerControlledAttachmentCards = React.memo(
             status="image"
             fileName={attachment.fileName}
             previewUrl={attachment.previewUrl}
-            metadata={metadata}
+            contentType={attachment.contentType}
+            sizeBytes={attachment.sizeBytes}
             onRemove={() => onRemoveAttachment?.(attachment.localId)}
           />,
         );
@@ -318,7 +312,8 @@ export const MessageComposerControlledAttachmentCards = React.memo(
         <AttachmentCard
           status="file"
           fileName={attachment.fileName}
-          metadata={metadata}
+          contentType={attachment.contentType}
+          sizeBytes={attachment.sizeBytes}
           onRemove={() => onRemoveAttachment?.(attachment.localId)}
         />,
       );

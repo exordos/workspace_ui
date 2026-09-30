@@ -1,10 +1,5 @@
 import type { ReactNode } from "react";
 
-export interface AttachmentCardMetadata {
-  formatLabel: string;
-  sizeLabel?: string;
-}
-
 interface AttachmentCardBaseProps {
   fileName: string;
   className?: string;
@@ -14,15 +9,13 @@ interface AttachmentCardRemovableProps {
   onRemove?: () => void;
 }
 
-export interface AttachmentFileCardProps
+export interface AttachmentReadyCardProps
   extends AttachmentCardBaseProps, AttachmentCardRemovableProps {
-  metadata: AttachmentCardMetadata;
-}
-
-export interface AttachmentImageCardProps
-  extends AttachmentCardBaseProps, AttachmentCardRemovableProps {
-  previewUrl: string;
-  metadata: AttachmentCardMetadata;
+  contentType?: string;
+  sizeBytes?: number;
+  previewUrl?: string;
+  appearance?: "default" | "embedded";
+  role?: "listitem" | "presentation";
 }
 
 export interface AttachmentUploadingCardProps extends AttachmentCardBaseProps {
@@ -43,8 +36,8 @@ export interface AttachmentErrorCardProps
 }
 
 export type AttachmentCardProps =
-  | ({ status: "file" } & AttachmentFileCardProps)
-  | ({ status: "image" } & AttachmentImageCardProps)
+  | ({ status: "file" } & AttachmentReadyCardProps)
+  | ({ status: "image"; previewUrl: string } & AttachmentReadyCardProps)
   | ({ status: "validating" | "queued" } & AttachmentPendingCardProps)
   | ({ status: "uploading" } & AttachmentUploadingCardProps)
   | ({ status: "error" } & AttachmentErrorCardProps);

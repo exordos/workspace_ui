@@ -25,7 +25,10 @@ import {
   type MessengerFetchedMessageWindow,
 } from "./messenger-messages-loader.lib";
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
-import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
+import {
+  advanceMessengerReadBoundary,
+  clearMessengerReadBoundariesForOwner,
+} from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
@@ -196,6 +199,377 @@ describe("messenger conversation messages loader", () => {
     useWorkspaceMessageStore.getState().clear();
     useMessengerOutboxStore.getState().clear();
     clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
+  });
+
+  it("exposes a retryable opening error after two live window races and recovers on retry", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const first = createMessageDto({ read: true });
+    const second = createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, read: true });
+    const remaining = createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST, read: true });
+    const stalePage = createMessagesPage([remaining, second, first]);
+    const initialResponse = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const retriedResponse = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const responses = [initialResponse, retriedResponse];
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, query: { read?: boolean }) => {
+      if (query.read === false) return Promise.resolve(createMessagesPage([]));
+      const response = responses.shift();
+      if (response == null) throw new Error("Unexpected automatic history retry");
+      return response.promise;
+    });
+    const onServerWindowApplied = vi.fn();
+    const writeConversationMessagePage = vi.fn();
+    const loading = loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId,
+      resolveUnreadBoundary: true,
+      onServerWindowApplied,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [first, second, remaining].map(adaptMessengerMessage),
+            nextPageMarker: null,
+            hasMore: false,
+          }),
+        writeConversationMessagePage,
+      },
+      client: { getMessagesPage },
+    });
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(2));
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
+    initialResponse.resolve(stalePage);
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(4));
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_B);
+    retriedResponse.resolve(stalePage);
+
+    await expect(loading).resolves.toMatchObject({ status: "failed", ownerKey, conversationId });
+    const failedState = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessageStatusForConversation(failedState, conversationId)).toMatchObject({
+      loading: false,
+      error: expect.any(String),
+    });
+    expect(failedState.conversationWindowsById[conversationId]?.messageUuids).toEqual([MESSAGE_C]);
+    expect(getMessagesPage).toHaveBeenCalledTimes(4);
+    expect(onServerWindowApplied).not.toHaveBeenCalled();
+    expect(writeConversationMessagePage).not.toHaveBeenCalled();
+
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        retainCurrentWindow: () => true,
+        resolveUnreadBoundary: true,
+        onServerWindowApplied,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [adaptMessengerMessage(remaining)],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage,
+        },
+        client: { getMessagesPage: () => Promise.resolve(createMessagesPage([remaining])) },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ),
+    ).toMatchObject({ loading: false, error: null });
+    expect(onServerWindowApplied).toHaveBeenCalledExactlyOnceWith();
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.messageUuids,
+    ).toEqual([MESSAGE_C]);
+  });
+
+  it("allows the asynchronous cache write to finish after its successful history request settles", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const writeConversationMessagePage = vi.fn();
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage,
+        },
+        client: {
+          getMessagesPage: () =>
+            Promise.resolve({
+              items: [createMessageDto()],
+              nextPageMarker: null,
+              pageLimit: 50,
+            }),
+        },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    const isWriteCurrent = writeConversationMessagePage.mock.calls[0]?.[3] as
+      | (() => boolean)
+      | undefined;
+    expect(isWriteCurrent).toEqual(expect.any(Function));
+    expect(isWriteCurrent?.()).toBe(true);
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
+    expect(isWriteCurrent?.()).toBe(false);
+  });
+
+  it("loads around the remembered bottom when the fresh tail no longer contains it", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const savedBottom = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+    );
+    const newer = createMessageDto({
+      uuid: MESSAGE_C,
+      read: false,
+      is_own: false,
+      created_at: DATE_LATEST,
+    });
+    const getMessagesPage = vi.fn(() =>
+      Promise.resolve({
+        items: [newer],
+        nextPageMarker: MESSAGE_C,
+        pageLimit: 50,
+      }),
+    );
+    const getMessagePagesAroundResolvedMessage = vi.fn(() =>
+      Promise.resolve({
+        before: [createMessageDto({ read: false, is_own: false })],
+        after: [newer],
+        beforePageMarker: null,
+        afterPageMarker: null,
+      }),
+    );
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        openingAnchorUuid: MESSAGE_B,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [savedBottom],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage: vi.fn(),
+        },
+        client: { getMessagesPage, getMessagePagesAroundResolvedMessage },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(getMessagesPage).toHaveBeenCalledTimes(1);
+    expect(getMessagePagesAroundResolvedMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ messageUuid: MESSAGE_B }),
+    );
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toMatchObject({
+      messageUuids: [MESSAGE_A, MESSAGE_B, MESSAGE_C],
+      anchorMessageUuid: MESSAGE_B,
+    });
+  });
+
+  it("keeps a reader-owned cached window contiguous when the fresh tail is disjoint", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const cached = adaptMessengerMessage(createMessageDto());
+    const response = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const getMessagesPage = vi.fn(() => response.promise);
+    let readerTookControl = false;
+    const writeConversationMessagePage = vi.fn();
+    const loading = loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId,
+      retainCurrentWindow: () => readerTookControl,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [cached],
+            nextPageMarker: "older",
+            hasMore: true,
+          }),
+        writeConversationMessagePage,
+      },
+      client: { getMessagesPage },
+    });
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(1));
+    readerTookControl = true;
+    response.resolve({
+      items: [createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST })],
+      nextPageMarker: MESSAGE_B,
+      pageLimit: 50,
+    });
+    await expect(loading).resolves.toMatchObject({ status: "applied" });
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toMatchObject({
+      messageUuids: [MESSAGE_A],
+      beforePageMarker: "older",
+      afterPageMarker: MESSAGE_A,
+    });
+    expect(writeConversationMessagePage).not.toHaveBeenCalled();
+  });
+
+  it.each(["automatic", "reader"] as const)(
+    "handles another-device read during the around-window fetch with %s control",
+    async (control) => {
+      let readerTookControl = false;
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const frontier = createMessageDto({
+        uuid: MESSAGE_B,
+        read: false,
+        is_own: false,
+        created_at: DATE_LATER,
+      });
+      const nextUnread = createMessageDto({
+        uuid: MESSAGE_C,
+        read: false,
+        is_own: false,
+        created_at: DATE_LATEST,
+      });
+      const around = createDeferred<{
+        before: WorkspaceMessengerMessageDto[];
+        after: WorkspaceMessengerMessageDto[];
+        beforePageMarker: string | null;
+        afterPageMarker: string | null;
+      }>();
+      let unreadQueries = 0;
+      const getMessagesPage = vi.fn((_options: MessengerClientOptions, query: { read?: boolean }) =>
+        Promise.resolve({
+          items:
+            query.read === false ? [++unreadQueries === 1 ? frontier : nextUnread] : [nextUnread],
+          nextPageMarker: null,
+          pageLimit: query.read === false ? 1 : 50,
+        }),
+      );
+      const getMessagePagesAroundResolvedMessage = vi.fn(() => around.promise);
+      const onServerWindowApplied = vi.fn();
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        resolveUnreadBoundary: true,
+        retainCurrentWindow: () => readerTookControl,
+        onServerWindowApplied,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [adaptMessengerMessage(createMessageDto())],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage: vi.fn(),
+        },
+        client: { getMessagesPage, getMessagePagesAroundResolvedMessage },
+      });
+      await vi.waitFor(() => expect(getMessagePagesAroundResolvedMessage).toHaveBeenCalledTimes(1));
+      readerTookControl = control === "reader";
+      advanceMessengerReadBoundary({
+        ownerKey,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        createdAt: DATE_LATER,
+        messageUuid: MESSAGE_B,
+      });
+      around.resolve({
+        before: [createMessageDto()],
+        after: [],
+        beforePageMarker: null,
+        afterPageMarker: MESSAGE_B,
+      });
+      await expect(loading).resolves.toMatchObject({ status: "applied" });
+      expect(onServerWindowApplied).toHaveBeenCalledExactlyOnceWith();
+      const window = useWorkspaceMessageStore.getState().conversationWindowsById[conversationId];
+      if (control === "reader") {
+        expect(unreadQueries).toBe(1);
+        expect(getMessagesPage).toHaveBeenCalledTimes(2);
+        expect(window).toMatchObject({ messageUuids: [MESSAGE_A], afterPageMarker: MESSAGE_A });
+      } else {
+        expect(unreadQueries).toBe(2);
+        expect(window?.messageUuids).toContain(MESSAGE_C);
+      }
+    },
+  );
+
+  it("loads the server unread frontier outside the fresh tail with its surrounding window", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const frontier = createMessageDto({
+      uuid: MESSAGE_B,
+      read: false,
+      is_own: false,
+      created_at: DATE_LATER,
+    });
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, query: { read?: boolean }) =>
+      Promise.resolve({
+        items:
+          query.read === false
+            ? [frontier]
+            : [createMessageDto({ uuid: MESSAGE_C, read: false, created_at: DATE_LATEST })],
+        nextPageMarker: query.read === false ? null : MESSAGE_C,
+        pageLimit: query.read === false ? 1 : 50,
+      }),
+    );
+    const getMessagePagesAroundResolvedMessage = vi.fn(() =>
+      Promise.resolve({
+        before: [createMessageDto()],
+        after: [],
+        beforePageMarker: null,
+        afterPageMarker: MESSAGE_B,
+      }),
+    );
+    const onServerWindowApplied = vi.fn();
+    const writeConversationMessagePage = vi.fn();
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        resolveUnreadBoundary: true,
+        onServerWindowApplied,
+        cache: {
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage,
+        },
+        client: { getMessagesPage, getMessagePagesAroundResolvedMessage },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(getMessagesPage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ read: false, sortDir: "asc", pageLimit: 1 }),
+    );
+    expect(getMessagePagesAroundResolvedMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ messageUuid: MESSAGE_B, streamUuid: STREAM_A, topicUuid: TOPIC_A }),
+    );
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toMatchObject({
+      messageUuids: [MESSAGE_A, MESSAGE_B],
+      mode: "around-anchor",
+      anchorMessageUuid: MESSAGE_B,
+      afterPageMarker: MESSAGE_B,
+    });
+    expect(onServerWindowApplied).toHaveBeenCalledExactlyOnceWith();
+    expect(writeConversationMessagePage).not.toHaveBeenCalled();
   });
 
   it("settles an outgoing message when a history page confirms its placement", async () => {

@@ -1392,6 +1392,7 @@
     "mentionOutsideChannel": "not in channel"
   },
   "attachmentCard": {
+    "unnamedFile": "File",
     "remove": "Remove {{fileName}}",
     "validating": "Checking file",
     "queued": "Waiting to upload",

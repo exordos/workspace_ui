@@ -2804,7 +2804,7 @@ describe("MessageComposer controlled attachments", () => {
     const inlineCard = screen.getByTitle("In text");
     expect(inlineCard).toHaveAttribute("draggable", "false");
     expect(inlineCard.parentElement).toHaveClass("pt-2", "pb-1.5");
-    expect(inlineCard).toHaveClass("[&>article]:ring-accent/60");
+    expect(inlineCard).toHaveClass("[&>span]:ring-accent/60");
     expect(within(inlineCard).getByText("TX")).toHaveClass(
       "bg-accent",
       "text-on-accent",

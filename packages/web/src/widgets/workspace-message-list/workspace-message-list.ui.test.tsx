@@ -4354,7 +4354,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-attachment-message",
-            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf&content_type=application%2Fpdf&size=1258291)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -4369,6 +4369,8 @@ describe("WorkspaceMessageList", () => {
     expect(attachment).toHaveAttribute("data-workspace-file-uuid", fileUuid);
     expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
     expect(attachment).toHaveAttribute("title", "Файл: report.pdf");
+    expect(attachment.querySelector("[role='presentation']")).toHaveClass("h-[58px]", "w-60");
+    expect(attachment).toHaveTextContent("PDF · 1.2 MB");
     expect(attachment).not.toHaveAttribute("href");
     expect(container).not.toHaveTextContent(`urn:file:${fileUuid}`);
     expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
@@ -4389,6 +4391,38 @@ describe("WorkspaceMessageList", () => {
     expect(article).toHaveAttribute("data-message-uuid", "workspace-attachment-message");
 
     openSpy.mockRestore();
+  });
+
+  it("renders video sent as a file as a card while keeping video media separate", () => {
+    const videoUuid = "11111111-1111-4111-8111-111111111111";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-card-boundary",
+            markdown: [
+              `[clip.mp4](urn:video:${videoUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+              `[attachment.mp4](urn:file:${fileUuid}?name=attachment.mp4&content_type=video%2Fmp4)`,
+            ].join("\n\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const video = container.querySelector(`[data-workspace-file-uuid='${videoUuid}']`);
+    expect(video).toHaveAttribute("data-workspace-file-kind", "media");
+    expect(video?.querySelector("[role='presentation']")).toBeNull();
+    const attachment = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid='${fileUuid}']`,
+    );
+    expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
+    expect(attachment?.querySelector("[role='presentation']")).toHaveTextContent("attachment.mp4");
+    expect(attachment?.querySelector(".workspace-message-file-placeholder__label")).toHaveAttribute(
+      "hidden",
+    );
   });
 
   it("activates Workspace attachment placeholders with Enter and Space", () => {

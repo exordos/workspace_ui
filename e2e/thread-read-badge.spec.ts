@@ -134,10 +134,15 @@ async function installThread(
   page: Page,
   readUpToCalls: string[],
   gate: ReturnType<typeof createReadUpToGate>,
-): Promise<void> {
-  let readThroughIndex = REAL_CONVERSATION_SAMPLE.length - UNREAD_TAIL - 1;
+  unreadTail = UNREAD_TAIL,
+): Promise<{ markEarlierUnread: (index: number) => void }> {
+  let readThroughIndex = REAL_CONVERSATION_SAMPLE.length - unreadTail - 1;
+  const unreadOverrides = new Set<number>();
   const allMessages = () =>
-    REAL_CONVERSATION_SAMPLE.map((message, index) => messageDto(message, index > readThroughIndex));
+    REAL_CONVERSATION_SAMPLE.map((message, index) =>
+      messageDto(message, index > readThroughIndex || unreadOverrides.has(index)),
+    );
+  const unreadCount = () => allMessages().filter((message) => !message.read).length;
 
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
@@ -156,7 +161,7 @@ async function installThread(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([...topicsSuccess(), threadTopicDto(UNREAD_TAIL)]),
+        body: JSON.stringify([...topicsSuccess(), threadTopicDto(unreadCount())]),
       });
       return;
     }
@@ -164,7 +169,7 @@ async function installThread(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(threadTopicDto(UNREAD_TAIL)),
+        body: JSON.stringify(threadTopicDto(unreadCount())),
       });
       return;
     }
@@ -181,6 +186,9 @@ async function installThread(
         readThroughIndex,
         REAL_CONVERSATION_SAMPLE.findIndex((message) => message.uuid === boundaryUuid),
       );
+      for (const index of unreadOverrides) {
+        if (index <= readThroughIndex) unreadOverrides.delete(index);
+      }
       const boundary = allMessages().find((message) => message.uuid === boundaryUuid);
       await route.fulfill({
         status: 200,
@@ -212,6 +220,8 @@ async function installThread(
           items = sortDir === "desc" ? items.slice(0, markerIndex) : items.slice(markerIndex + 1);
         }
       }
+      const read = url.searchParams.get("read");
+      if (read != null) items = items.filter((item) => item.read === (read === "true"));
       if (sortDir === "desc") items = [...items].reverse();
       if (pageLimit > 0) items = items.slice(0, pageLimit);
       await route.fulfill({
@@ -224,9 +234,42 @@ async function installThread(
 
     await route.fallback();
   });
+  return { markEarlierUnread: (index) => unreadOverrides.add(index) };
 }
 
 test.describe("Thread unread badge after scroll read @mock", () => {
+  test("read_up_to uses an already read tail when an older message becomes unread", async ({
+    authenticatedMocked: page,
+  }) => {
+    const sockets: WebSocketRoute[] = [];
+    const readUpToCalls: string[] = [];
+    const gate = createReadUpToGate();
+    gate.release();
+    await installRealtime(page, sockets);
+    const thread = await installThread(page, readUpToCalls, gate, 0);
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
+    const scroller = page.locator("[data-workspace-scroll-controller='true']");
+    await expect(page.locator(`[data-message-uuid='${LAST_MESSAGE_UUID}']`)).toBeVisible();
+    await scroller.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect
+      .poll(() =>
+        scroller.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight),
+      )
+      .toBeLessThanOrEqual(80);
+
+    thread.markEarlierUnread(REAL_CONVERSATION_SAMPLE.length - 12);
+    await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(1_000);
+    const socket = sockets.at(-1);
+    if (socket == null) throw new Error("no realtime socket");
+    socket.send(JSON.stringify(topicUpdatedFrame(2, 1)));
+    await expect.poll(() => readUpToCalls).toContain(LAST_MESSAGE_UUID);
+    expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
+  });
+
   for (const switchChat of [false, true]) {
     test(
       switchChat

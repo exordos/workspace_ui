@@ -29,6 +29,15 @@ function synchronizeRuntime(): void {
   positions.clear();
 }
 
+/** Inspect a saved position without acquiring or refreshing a view lease. */
+export function readMessengerConversationPosition(
+  conversationId: MessengerConversationId,
+): MessengerConversationPosition | null {
+  return activeRuntimeKey != null && activeRuntimeKey === currentRuntimeKey()
+    ? (positions.get(conversationId)?.position ?? null)
+    : null;
+}
+
 /** A mounted view holds a lease: explicit read commands retire it before old cleanup can save. */
 export function openMessengerConversationPosition(conversationId: MessengerConversationId) {
   synchronizeRuntime();

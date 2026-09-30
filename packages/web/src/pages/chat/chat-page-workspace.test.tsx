@@ -50,6 +50,7 @@ import type {
 import {
   markConversationViewed,
   resetConversationViewMemory,
+  setConversationViewMemoryOwner,
 } from "./chat-page-conversation-view-memory.lib";
 import { ChatPage, FavoritesPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
@@ -859,7 +860,13 @@ describe("ChatPage Workspace route", () => {
     captured.realListFocusedMessageApplied.mockReset();
     captured.realListFocusedMessageMissing.mockReset();
     captured.fetchTargetConversationIds.length = 0;
-    captured.loadWorkspaceMessages.mockClear();
+    captured.loadWorkspaceMessages.mockReset();
+    captured.loadWorkspaceMessages.mockImplementation(
+      (options: { onServerWindowApplied?: () => void }) => {
+        options.onServerWindowApplied?.();
+        return Promise.resolve({ status: "applied" });
+      },
+    );
     captured.loadWorkspaceMessageWindowAroundMessage.mockReset();
     captured.loadWorkspaceMessageWindowAroundMessage.mockResolvedValue({
       status: "applied",
@@ -1336,6 +1343,65 @@ describe("ChatPage Workspace route", () => {
       await tailPromise;
       useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, false);
     });
+  });
+
+  it("keeps cached pagination unavailable until initial history completes", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const request = createDeferred<{ status: "applied" }>();
+    captured.loadWorkspaceMessages.mockReturnValueOnce(request.promise);
+    updateTestConversationWindow(conversationId, {
+      beforePageMarker: "cached-older",
+      afterPageMarker: "cached-newer",
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce());
+    expect(captured.messageListProps?.hasOlderMessages).toBe(false);
+    expect(captured.messageListProps?.hasNewerMessages).toBe(false);
+    act(() => {
+      captured.messageListProps?.onLoadOlder();
+      captured.messageListProps?.onLoadNewer();
+    });
+    expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce();
+    expect(captured.loadWorkspaceMessageWindowPage).not.toHaveBeenCalled();
+    await act(async () => {
+      captured.loadWorkspaceMessages.mock.calls[0]?.[0].onServerWindowApplied?.();
+      request.resolve({ status: "applied" });
+      await request.promise;
+    });
+    await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
+    expect(captured.messageListProps?.hasNewerMessages).toBe(true);
+  });
+
+  it("accepts an explicit latest window while the provisional opening request is still pending", async () => {
+    const initial = createDeferred<{
+      status: "skipped";
+      ownerKey: string;
+      reason: "stale-owner";
+    }>();
+    captured.loadWorkspaceMessages.mockReturnValueOnce(initial.promise);
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce());
+    const initialSignal = captured.loadWorkspaceMessages.mock.calls[0]?.[0].signal as AbortSignal;
+    expect(captured.messageListProps?.onUnreadMessagesVisible).toBeUndefined();
+    await act(async () => {
+      captured.messageListProps?.onTailNavigationRequested?.();
+      await captured.messageListProps?.onLoadLatestWindow(SECOND_MESSAGE_UUID);
+    });
+    expect(initialSignal.aborted).toBe(true);
+    expect(captured.messageListProps?.initialPositionCancelled).toBe(true);
+    expect(captured.messageListProps?.onUnreadMessagesVisible).toEqual(expect.any(Function));
+    await act(async () => {
+      initial.resolve({ status: "skipped", ownerKey, reason: "stale-owner" });
+      await initial.promise;
+    });
+    expect(captured.messageListProps?.onUnreadMessagesVisible).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.messagesLoading).toBe(false);
   });
 
   it("keeps ordinary older pagination classified for the full deferred request", async () => {
@@ -2697,6 +2763,145 @@ describe("ChatPage Workspace route", () => {
     expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
   });
 
+  it.each(["wait", "send"] as const)(
+    "keeps cached history provisional until the real loader applies delayed unread messages (%s)",
+    async (action) => {
+      const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+        HTMLElement.prototype,
+        "scrollIntoView",
+      );
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        captured.renderRealMessageList = true;
+        const actualLoader = await vi.importActual<
+          typeof import("~/entities/messenger/messenger-messages-loader.lib")
+        >("~/entities/messenger/messenger-messages-loader.lib");
+        const response =
+          createDeferred<
+            import("~/shared/api/messenger-client").MessengerCollectionPage<
+              import("~/shared/api/messenger.types").WorkspaceMessengerMessageDto
+            >
+          >();
+        const cachedMessage = { ...createMessage(), read: true };
+        useWorkspaceMessageStore.getState().clear();
+        const getMessagesPage = vi.fn(async (_options: unknown, query: { read?: boolean }) => {
+          const page = await response.promise;
+          return query.read === false
+            ? { ...page, items: page.items.filter((message) => !message.read).slice(0, 1) }
+            : page;
+        });
+        const emptyReactionSync = () =>
+          Promise.resolve({
+            status: "applied" as const,
+            ownerKey: workspaceRuntimeOwnerKey(createSession()),
+            messageUuids: [],
+            reactions: 0,
+          });
+        captured.loadWorkspaceMessages.mockImplementationOnce(
+          (options: Parameters<typeof actualLoader.loadMessengerConversationMessages>[0]) =>
+            actualLoader.loadMessengerConversationMessages({
+              ...options,
+              cache: {
+                readReadBoundaries: () => Promise.resolve([]),
+                readConversationMessageWindow: () =>
+                  Promise.resolve({
+                    messages: [cachedMessage],
+                    nextPageMarker: null,
+                    hasMore: false,
+                  }),
+                writeConversationMessagePage: vi.fn(),
+              },
+              client: { getMessagesPage },
+              ownReactionSync: {
+                hydrateFromCache: emptyReactionSync,
+                syncOwner: emptyReactionSync,
+              },
+            }),
+        );
+        const session = createSession();
+        useMessengerStore
+          .getState()
+          .setRealtimeInitialSyncReady(
+            workspaceRuntimeOwnerKey(session),
+            session.runtimeGeneration,
+            true,
+          );
+        renderWorkspaceChatPageWithShellContexts(
+          `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+        );
+        await waitFor(() => expect(getMessagesPage).toHaveBeenCalled());
+        expect(screen.getByText("workspace message")).toBeInTheDocument();
+        expect(captured.messageListProps?.initialPositionReady).toBe(false);
+        expect(captured.messageListProps?.messagesLoading).toBe(true);
+        expect(captured.messageListProps?.onUnreadMessagesVisible).toBeUndefined();
+        expect(captured.messageListProps?.onUnreadMessagesAtBottom).toBeUndefined();
+        expect(captured.markMessengerMessagesReadUpTo).not.toHaveBeenCalled();
+        const feed = screen.getByRole("feed");
+        Object.defineProperties(feed, {
+          clientHeight: { configurable: true, value: 200 },
+          scrollHeight: { configurable: true, value: 1000 },
+        });
+        if (action === "send") {
+          await act(async () => {
+            await captured.composerProps?.onSend("sent while cached history is visible", "");
+          });
+          await waitFor(() =>
+            expect(captured.messageListProps?.initialPositionCancelled).toBe(true),
+          );
+          expect(feed.scrollTop).toBe(1000);
+        }
+        scrollIntoView.mockClear();
+
+        await act(async () => {
+          response.resolve({
+            items: [cachedMessage, createSecondMessage()].map((message) => ({
+              uuid: message.uuid,
+              project_id: message.projectId,
+              stream_uuid: message.streamUuid,
+              topic_uuid: message.topicUuid,
+              author_uuid: message.authorUuid,
+              user_uuid: USER_UUID,
+              payload: message.payload,
+              read: message.read,
+              pinned: false,
+              starred: false,
+              is_own: false,
+              reactions: {},
+              reaction_users: {},
+              created_at: message.createdAt,
+              updated_at: message.updatedAt,
+            })),
+            nextPageMarker: null,
+            pageLimit: 50,
+          });
+          await response.promise;
+        });
+        await waitFor(() => expect(captured.messageListProps?.initialPositionReady).toBe(true));
+        if (action === "wait") {
+          expect(captured.messageListProps?.firstUnreadUuid).toBe(SECOND_MESSAGE_UUID);
+          expect(
+            scrollIntoView.mock.contexts.some(
+              (node) => (node as HTMLElement).dataset.messageUuid === SECOND_MESSAGE_UUID,
+            ),
+          ).toBe(true);
+        } else {
+          expect(captured.messageListProps?.initialPositionCancelled).toBe(true);
+          expect(screen.getByText("sent while cached history is visible")).toBeInTheDocument();
+          expect(feed.scrollTop).toBe(1000);
+          expect(scrollIntoView).not.toHaveBeenCalled();
+        }
+      } finally {
+        if (previousScrollIntoView == null)
+          Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+        else Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    },
+  );
+
   it("waits for both the message window and realtime catch-up before enabling initial position", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
@@ -2729,6 +2934,7 @@ describe("ChatPage Workspace route", () => {
     // this only holds because the record outlives the component. It is the whole
     // point of keeping it in a module.
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    setConversationViewMemoryOwner(workspaceRuntimeOwnerKey(createSession()));
     markConversationViewed(conversationId);
 
     renderWorkspaceChatPageWithShellContexts(
@@ -4177,7 +4383,7 @@ describe("ChatPage Workspace route", () => {
           streamUuid: STREAM_UUID,
           topicUuid: TOPIC_UUID,
           markdown:
-            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
+            "[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)\nhello",
         }),
       ),
     );
@@ -4190,7 +4396,7 @@ describe("ChatPage Workspace route", () => {
       expect(outgoing).toEqual(
         expect.objectContaining({
           markdown:
-            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
+            "[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)\nhello",
           status: "sending",
         }),
       );
@@ -4416,7 +4622,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         markdown:
-          "message\n[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)",
+          "[report.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report.pdf&content_type=application%2Fpdf&size=3)\nmessage",
         canonicalMessageUuid,
       }),
     );
@@ -6397,7 +6603,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.editMessengerMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         messageUuid: MESSAGE_UUID,
-        markdown: `Edited text\n${fileMarkdown}`,
+        markdown: `${fileMarkdown}\nEdited text`,
       }),
     );
   });
@@ -6442,9 +6648,9 @@ describe("ChatPage Workspace route", () => {
     expect(captured.editMessengerMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: [
-          "Edited",
           existingMarkdown,
           `[new.pdf](urn:file:${uploadedUuid}?name=new.pdf&content_type=application%2Fpdf&size=3)`,
+          "Edited",
         ].join("\n"),
       }),
     );

@@ -118,7 +118,7 @@ export function createMessengerReadQueue(initialContext: WorkspaceRuntimeContext
     updateContext(next: WorkspaceRuntimeContext) {
       context = next;
     },
-    enqueue(message: MessengerMessage) {
+    enqueue(message: MessengerMessage, options?: { allowReadAnchor?: boolean }) {
       if (disposed) return;
       const key = `${message.streamUuid}\u0000${message.topicUuid}`;
       const queue = queues.get(key) ?? {
@@ -141,7 +141,7 @@ export function createMessengerReadQueue(initialContext: WorkspaceRuntimeContext
         compareWorkspaceMessages(message, queue.lastApplied) <= 0
       )
         return;
-      if (message.read && queue.failed == null) return;
+      if (message.read && !options?.allowReadAnchor && queue.failed == null) return;
       queue.pending = later(queue.pending, { message, retryCount: 0 });
       if (queue.failed != null) {
         queue.pending = later(queue.pending, { ...queue.failed, retryCount: 0 });

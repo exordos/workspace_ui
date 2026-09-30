@@ -77,10 +77,11 @@ import {
   type WorkspaceComposerControlledProps,
 } from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
 import {
-  appendWorkspaceComposerExistingAttachmentMarkdown,
   extractWorkspaceComposerEditContent,
+  prependWorkspaceComposerExistingAttachmentMarkdown,
   type WorkspaceComposerExistingAttachment,
 } from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
+import { useWorkspaceConversationOpening } from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
 import {
   deriveWorkspaceDownloadFileName,
   startWorkspaceFileDownload,
@@ -1216,29 +1217,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [],
   );
 
-  useEffect(() => {
-    if (
-      routeSelection.status === "message" ||
-      messageAnchorUuid != null ||
-      selection.status !== "conversation" ||
-      runtimeContext == null
-    ) {
-      return;
-    }
-
-    // Message history loads from the Workspace API and applies only while the runtime owner is current.
-    const controller = new AbortController();
-    void loadMessengerConversationMessages({
-      runtimeContext,
-      conversationId: selection.conversationId,
-      getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      signal: controller.signal,
-    });
-
-    return () => {
-      controller.abort();
-    };
-  }, [messageAnchorUuid, retryNonce, routeSelection.status, runtimeContext, selection]);
+  const opening = useWorkspaceConversationOpening({
+    runtimeContext,
+    conversationId,
+    enabled:
+      selection.status === "conversation" &&
+      routeSelection.status !== "message" &&
+      messageAnchorUuid == null,
+    retryNonce,
+  });
+  const { takeControl: takeOpeningControl, acceptWindow: acceptOpeningWindow } = opening;
 
   useEffect(() => {
     if (selection.status !== "conversation" || runtimeContext == null || ownerKey == null) return;
@@ -1246,7 +1234,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const conversationId = selection.conversationId;
     let previousWindow =
       useWorkspaceMessageStore.getState().conversationWindowsById[conversationId] ?? null;
-    let reloadController: AbortController | null = null;
     const unsubscribe = useWorkspaceMessageStore.subscribe((state) => {
       const nextWindow =
         state.ownerKey === ownerKey
@@ -1262,24 +1249,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
 
-      reloadController?.abort();
-      reloadController = new AbortController();
-      void loadMessengerConversationMessages({
-        runtimeContext,
-        conversationId,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        signal: reloadController.signal,
-      });
+      retry();
     });
 
     return () => {
       unsubscribe();
-      reloadController?.abort();
     };
   }, [
     messageAnchorUuid,
     ownerKey,
     retryMessageNavigation,
+    retry,
     routeSelection.status,
     runtimeContext,
     selection,
@@ -1427,6 +1407,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     hasFocusTarget: activeMessageFocusTarget != null,
     realtimeReady,
     viewedBefore: hasConversationBeenViewed(conversationId),
+    historyReady: opening.ready,
   });
 
   useEffect(() => {
@@ -1629,6 +1610,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
       const sentDraftScopeKey = createWorkspaceComposerDraftKey(sendOwnerKey, conversationId);
       if (content.trim().length === 0) return;
+      takeOpeningControl();
       const draftAtSend = selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
         sendOwnerKey,
@@ -1724,6 +1706,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       runtimeContext,
       setComposerDraftShadow,
       workspaceReplyHandoffBlocksSend,
+      takeOpeningControl,
     ],
   );
 
@@ -1866,10 +1849,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleRetryOutgoingMessage = useCallback(
     (placementUuid: MessengerUuid) => {
+      takeOpeningControl();
       deliverOutgoingMessage(placementUuid).catch(() => undefined);
       setScrollToBottomAfterSendNonce((value) => value + 1);
     },
-    [deliverOutgoingMessage],
+    [deliverOutgoingMessage, takeOpeningControl],
   );
 
   const handleRemoveOutgoingMessage = useCallback((placementUuid: MessengerUuid) => {
@@ -1931,7 +1915,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (editSessionId: number, markdown: string) =>
       handleSubmitEditFinalMarkdown(
         editSessionId,
-        appendWorkspaceComposerExistingAttachmentMarkdown(markdown, composerEditAttachments),
+        prependWorkspaceComposerExistingAttachmentMarkdown(markdown, composerEditAttachments),
       ),
     [composerEditAttachments, handleSubmitEditFinalMarkdown],
   );
@@ -2522,10 +2506,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
   }, []);
 
-  const { scheduleReadBatch, readRequestBoundaryMessageUuids } = useWorkspaceVisibleMessageRead({
-    runtimeContext,
-    conversationId,
-  });
+  const { scheduleReadBatch, scheduleTopicReadAtBottom, readRequestBoundaryMessageUuids } =
+    useWorkspaceVisibleMessageRead({ runtimeContext, conversationId, topicUuid });
 
   const hasAnchorRoute = routeSelection.status === "message" || messageAnchorUuid != null;
   const focusedAnchorIntentId =
@@ -2643,6 +2625,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleLoadOlder = useCallback(() => {
     if (
+      opening.pending ||
       runtimeContext == null ||
       conversationId == null ||
       messagesStatus.loading ||
@@ -2650,9 +2633,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     )
       return;
 
-    if (hasAnchorRoute) {
-      if (focusedAnchorIntentId == null || beforePageMarker == null) return;
-      startAnchorPagination("before", beforePageMarker, focusedAnchorIntentId);
+    if (hasAnchorRoute || conversationWindow?.mode === "around-anchor") {
+      if (beforePageMarker == null || (hasAnchorRoute && focusedAnchorIntentId == null)) return;
+      startAnchorPagination("before", beforePageMarker, focusedAnchorIntentId ?? 0);
       return;
     }
 
@@ -2695,7 +2678,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       );
     });
   }, [
+    opening.pending,
     beforePageMarker,
+    conversationWindow?.mode,
     conversationId,
     focusedAnchorIntentId,
     hasAnchorRoute,
@@ -2744,17 +2729,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleLoadNewer = useCallback(() => {
     if (
+      opening.pending ||
       runtimeContext == null ||
       conversationId == null ||
       messagesStatus.loading ||
-      !hasAnchorRoute ||
-      focusedAnchorIntentId == null ||
-      afterPageMarker == null
+      afterPageMarker == null ||
+      (hasAnchorRoute && focusedAnchorIntentId == null)
     ) {
       return;
     }
-    startAnchorPagination("after", afterPageMarker, focusedAnchorIntentId);
+    startAnchorPagination("after", afterPageMarker, focusedAnchorIntentId ?? 0);
   }, [
+    opening.pending,
     afterPageMarker,
     conversationId,
     focusedAnchorIntentId,
@@ -2859,6 +2845,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             return;
           }
           if (result.status === "applied") {
+            acceptOpeningWindow();
             setActionError(null);
           } else {
             setActionError(t("chat.messagesLoadError"));
@@ -2884,6 +2871,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     },
     [
       conversationId,
+      acceptOpeningWindow,
+      ownerKey,
       runChatScopedAction,
       runtimeContext,
       settleTailWindowIntent,
@@ -2994,6 +2983,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [settleTailWindowIntent, tailRequestScopeKey]);
 
   const handleTailNavigationRequested = useCallback(() => {
+    takeOpeningControl();
     cancelMessageNavigationForTail();
     cancelActiveAnchorPagination();
     if (runtimeContext == null || conversationId == null) return;
@@ -3016,6 +3006,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       setActionError(t("chat.messagesLoadError"));
     });
   }, [
+    takeOpeningControl,
     cancelActiveAnchorPagination,
     cancelMessageNavigationForTail,
     conversationId,
@@ -3273,9 +3264,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         {selection.status === "conversation" &&
         (previewPresentation == null || anchorHandoffPending) ? (
           <ChatPageWorkspaceMessageListSection
-            messagesLoading={messagesStatus.loading}
+            messagesLoading={messagesStatus.loading || opening.pending}
             hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
             initialPositionReady={initialPositionReady}
+            initialPositionCancelled={opening.cancelled}
+            onUserScrollInput={takeOpeningControl}
             messages={routeMessages}
             outgoingMessages={outgoingMessages}
             currentUserUuid={currentUserUuid}
@@ -3300,15 +3293,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
               windowPaginationDirection === "after"
             }
             onLoadNewer={handleLoadNewer}
-            hasOlderMessages={
-              routeSelection.status === "message" || messageAnchorUuid != null
-                ? beforePageMarker != null
-                : messagesStatus.hasMore
-            }
-            hasNewerMessages={
-              (routeSelection.status === "message" || messageAnchorUuid != null) &&
-              afterPageMarker != null
-            }
+            hasOlderMessages={!opening.pending && beforePageMarker != null}
+            hasNewerMessages={!opening.pending && afterPageMarker != null}
             lastMessageUuid={lastMessageUuid}
             onLoadLatestWindow={handleLoadLatestWindow}
             onCancelLatestWindowLoad={handleCancelLatestWindowLoad}
@@ -3323,8 +3309,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             selectionMode={selectionMode}
             selectedMessageUuids={selectedMessageUuids}
             readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
-            onUnreadMessagesVisible={anchorHandoffPending ? undefined : scheduleReadBatch}
-            onUnreadMessagesAtBottom={anchorHandoffPending ? undefined : scheduleReadBatch}
+            onUnreadMessagesVisible={
+              anchorHandoffPending || !opening.ready ? undefined : scheduleReadBatch
+            }
+            onUnreadMessagesAtBottom={
+              anchorHandoffPending ||
+              !opening.ready ||
+              conversationWindow?.mode === "around-anchor" ||
+              selection.kind !== "topic"
+                ? undefined
+                : scheduleTopicReadAtBottom
+            }
             onReplyMessage={handleReplyMessage}
             onAddReplyMessage={
               selection.kind !== "topic" || workspaceReplySession.tabs.length === 0

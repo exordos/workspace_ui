@@ -15,14 +15,16 @@ describe("AttachmentCard", () => {
         <AttachmentCard
           status="file"
           fileName="a-very-long-document-name-that-does-not-fit.pdf"
-          metadata={{ formatLabel: "PDF", sizeLabel: "1.4 MB" }}
+          contentType="application/pdf"
+          sizeBytes={1.4 * 1024 * 1024}
           onRemove={onRemove}
         />
         <AttachmentCard
           status="image"
           fileName="workspace.png"
           previewUrl="blob:workspace-preview"
-          metadata={{ formatLabel: "PNG", sizeLabel: "820 KB" }}
+          contentType="image/png"
+          sizeBytes={820 * 1024}
         />
       </AttachmentCardList>,
     );

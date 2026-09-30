@@ -13,6 +13,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     messagesLoading,
     hasInitialPayload,
     initialPositionReady,
+    initialPositionCancelled,
+    onUserScrollInput,
     messages,
     outgoingMessages,
     currentUserUuid,
@@ -210,6 +212,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
             currentUserUuid={currentUserUuid}
             conversationId={conversationId}
             initialPositionReady={initialPositionReady}
+            initialPositionCancelled={initialPositionCancelled}
+            onUserScrollInput={onUserScrollInput}
             scrollToBottomKey={scrollToBottomKey}
             scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
             firstUnreadUuid={firstUnreadUuid}
