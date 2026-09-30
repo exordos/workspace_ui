@@ -1,7 +1,6 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
-import { resolveAttachmentMediaKind } from "~/shared/lib/attachment-card-meta.lib";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
@@ -297,9 +296,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
         }
         const fileUuid = host.dataset.workspaceFileUuid;
         const reference = fileUuid == null ? undefined : referencesByUuid.get(fileUuid);
-        const showCard =
-          reference != null &&
-          resolveAttachmentMediaKind(reference.name ?? "", reference.contentType) == null;
+        const showCard = reference != null;
         const fallback = host.querySelector<HTMLElement>(
           ".workspace-message-file-placeholder__label",
         );

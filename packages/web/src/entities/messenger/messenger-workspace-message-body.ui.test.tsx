@@ -180,6 +180,43 @@ describe("WorkspaceMessageBody", () => {
     expect(container.querySelector(".workspace-message-attachment-host")).toBeNull();
   });
 
+  it.each([
+    { name: "photo.png", contentType: "image/png", mediaKind: "image" },
+    { name: "clip.mp4", contentType: "video/mp4", mediaKind: "video" },
+  ])(
+    "renders $contentType sent as a file as an attachment card",
+    ({ name, contentType, mediaKind }) => {
+      const fileUuid = "11111111-1111-4111-8111-111111111111";
+      const mediaUuid = "22222222-2222-4222-8222-222222222222";
+      const metadata = `name=${name}&content_type=${encodeURIComponent(contentType)}&size=1024`;
+      const document = parseWorkspaceMessageBody(
+        `[${name}](urn:file:${fileUuid}?${metadata})\n\n![${name}](urn:${mediaKind}:${mediaUuid}?${metadata})`,
+      );
+      const rendered = renderWorkspaceMessageBody(document, {
+        ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+        enableAttachments: true,
+        enableProtectedMedia: true,
+      });
+      const { container } = render(
+        <WorkspaceMessageBody
+          html={rendered.html}
+          fileReferences={collectWorkspaceMessageFileReferences(document)}
+          metadata={rendered.metadata}
+          useInlineMeta={false}
+        />,
+      );
+
+      const attachment = container.querySelector(".workspace-message-attachment-host");
+      expect(attachment?.querySelector("[role='presentation']")).toHaveTextContent(name);
+      expect(
+        attachment?.querySelector(".workspace-message-file-placeholder__label"),
+      ).toHaveAttribute("hidden");
+      const media = container.querySelector("[data-workspace-file-kind='media']");
+      expect(media).toHaveClass("workspace-message-file-placeholder");
+      expect(media?.querySelector("[role='presentation']")).toBeNull();
+    },
+  );
+
   it("drops the injected DOM when an edit switches the body to quote segments", () => {
     const messageUuid = "44444444-4444-4444-8444-444444444444";
     const plain = renderWorkspaceMessageBody(parseWorkspaceMessageBody("Same tail"));
