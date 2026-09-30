@@ -193,6 +193,7 @@ function streamItemFromStream(input: {
   projectId: string;
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
+  topicsById: MessengerStoreState["topicsById"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
@@ -222,19 +223,15 @@ function streamItemFromStream(input: {
         isMessengerTopicListItemActive(topic, input.stream.notificationMode),
       )
     : input.topics;
-  const streamLastMessageTopicUuid =
-    input.stream.lastMessageUuid != null
-      ? input.messagesById[input.stream.lastMessageUuid]?.topicUuid
-      : undefined;
   const streamLastMessageTopic = input.topics.find(
-    (topic) => topic.topicUuid === streamLastMessageTopicUuid,
+    (topic) =>
+      input.stream.lastMessageUuid != null &&
+      input.topicsById[topic.topicUuid]?.lastMessageUuid === input.stream.lastMessageUuid,
   );
-  const streamLastMessageUuid =
+  const streamLastMessageIsInactive =
     isActiveStream &&
     streamLastMessageTopic != null &&
-    !isMessengerTopicListItemActive(streamLastMessageTopic, input.stream.notificationMode)
-      ? null
-      : input.stream.lastMessageUuid;
+    !isMessengerTopicListItemActive(streamLastMessageTopic, input.stream.notificationMode);
 
   return {
     id: `stream:${input.stream.uuid}`,
@@ -277,10 +274,13 @@ function streamItemFromStream(input: {
     statusEmoji: uiKind === "directPrivate" ? (directUser?.statusEmoji ?? null) : undefined,
     statusText: uiKind === "directPrivate" ? (directUser?.statusText ?? null) : undefined,
     updatedAt: input.stream.updatedAt,
-    lastMessageCreatedAt: latestMessageCreatedAt(
-      [streamLastMessageUuid, ...activeTopics.map((topic) => topic.preview?.messageUuid)],
-      input.messagesById,
-    ),
+    // Inactive topic activity does not lift an otherwise active stream.
+    lastMessageCreatedAt: streamLastMessageIsInactive
+      ? latestMessageCreatedAt(
+          activeTopics.map((topic) => topic.preview?.messageUuid),
+          input.messagesById,
+        )
+      : selectMessengerMessageCreatedAt(input.stream.lastMessageUuid, input.messagesById),
   };
 }
 
@@ -421,6 +421,7 @@ export function selectMessengerSidebarStreams(
               organizationId: options.organizationId,
               projectId: options.projectId,
               stream,
+              topicsById: state.topicsById,
               messagesById,
               usersById,
               currentUserUuid,
@@ -477,6 +478,7 @@ export function selectMessengerSidebarStreams(
             organizationId: options.organizationId,
             projectId: options.projectId,
             stream,
+            topicsById: state.topicsById,
             messagesById,
             usersById,
             currentUserUuid,

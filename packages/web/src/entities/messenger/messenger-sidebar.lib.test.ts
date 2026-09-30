@@ -716,6 +716,143 @@ describe("messenger sidebar selectors", () => {
     expect(rows[0]?.lastMessageCreatedAt).toBe(activeTopicMessageAt);
   });
 
+  it.each(["muted", "done"] as const)(
+    "keeps active-topic order while a %s last-message body is hydrated",
+    (inactiveKind) => {
+      const inactiveMessageAt = "2026-06-22T13:10:00Z";
+      const streamState = state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_C }),
+          [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_B }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            lastMessageUuid: MESSAGE_C,
+            notificationMode: inactiveKind === "muted" ? "mute" : "default",
+            isDone: inactiveKind === "done",
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_C],
+      });
+      const messagesById = {
+        [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+        [MESSAGE_B]: message({ uuid: MESSAGE_B, streamUuid: STREAM_B, createdAt: DATE_B }),
+      };
+      const options = {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+      };
+
+      const before = selectMessengerSidebarStreams(streamState, { ...options, messagesById });
+      const after = selectMessengerSidebarStreams(streamState, {
+        ...options,
+        messagesById: {
+          ...messagesById,
+          [MESSAGE_C]: message({
+            uuid: MESSAGE_C,
+            topicUuid: TOPIC_C,
+            createdAt: inactiveMessageAt,
+          }),
+        },
+      });
+
+      expect(before.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+      expect(after.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+      expect(before[1]?.lastMessageCreatedAt).toBe(DATE_A);
+      expect(after[1]?.lastMessageCreatedAt).toBe(DATE_A);
+      expect(after[1]?.preview?.messageUuid).toBe(MESSAGE_C);
+    },
+  );
+
+  it("keeps the stream row stable through cache, topic history, and last-message hydration", () => {
+    const topicMessageAt = "2026-06-22T14:10:00Z";
+    const streamMessageAt = "2026-06-22T13:10:00Z";
+    // Stream and topic catalogs can briefly represent different server snapshots.
+    const streamState = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_B }),
+      },
+      topicsById: {
+        [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+        [TOPIC_C]: topic({ uuid: TOPIC_C, lastMessageUuid: MESSAGE_C }),
+      },
+      topicIds: [TOPIC_A, TOPIC_C],
+    });
+    const messagesById = {
+      [MESSAGE_B]: message({
+        uuid: MESSAGE_B,
+        streamUuid: STREAM_B,
+        topicUuid: TOPIC_B,
+        createdAt: DATE_B,
+      }),
+    };
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById: createUsersById(),
+    };
+
+    const cached = selectMessengerSidebarStreams(streamState, { ...options, messagesById });
+    const afterTopicHistory = {
+      ...messagesById,
+      [MESSAGE_C]: message({
+        uuid: MESSAGE_C,
+        topicUuid: TOPIC_C,
+        createdAt: topicMessageAt,
+        markdown: "Newer topic message",
+      }),
+    };
+    const whileLoadingHistory = selectMessengerSidebarStreams(streamState, {
+      ...options,
+      messagesById: afterTopicHistory,
+    });
+
+    expect(cached.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(whileLoadingHistory.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(whileLoadingHistory[1]?.lastMessageCreatedAt).toBeNull();
+    expect(whileLoadingHistory[1]?.preview).toBeNull();
+
+    const afterLastMessage = {
+      ...afterTopicHistory,
+      [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: streamMessageAt }),
+    };
+    const hydrated = selectMessengerSidebarStreams(streamState, {
+      ...options,
+      messagesById: afterLastMessage,
+    });
+    expect(hydrated.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    expect(hydrated[0]?.lastMessageCreatedAt).toBe(streamMessageAt);
+    expect(hydrated[0]?.preview?.messageUuid).toBe(MESSAGE_A);
+    expect(hydrated[0]?.preview?.text).toBe("Latest workspace message");
+
+    const pointerFromCache = selectMessengerSidebarStreams(streamState, {
+      ...options,
+      messagesById: { ...messagesById, [MESSAGE_A]: afterLastMessage[MESSAGE_A] },
+    });
+    expect(pointerFromCache.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    expect(pointerFromCache[0]?.lastMessageCreatedAt).toBe(hydrated[0]?.lastMessageCreatedAt);
+    expect(pointerFromCache[0]?.preview?.text).toBe(hydrated[0]?.preview?.text);
+
+    const freshCatalog = selectMessengerSidebarStreams(
+      {
+        ...streamState,
+        streamsById: {
+          ...streamState.streamsById,
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_C, updatedAt: topicMessageAt }),
+        },
+      },
+      { ...options, messagesById: afterLastMessage },
+    );
+    expect(freshCatalog.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    expect(freshCatalog[0]?.lastMessageCreatedAt).toBe(topicMessageAt);
+    expect(freshCatalog[0]?.preview?.messageUuid).toBe(MESSAGE_C);
+    expect(freshCatalog[0]?.preview?.text).toBe("Newer topic message");
+  });
+
   it("builds previews from loaded last messages", () => {
     const rows = selectMessengerSidebarStreams(
       state({
