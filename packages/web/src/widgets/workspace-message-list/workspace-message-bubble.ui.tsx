@@ -657,7 +657,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           <WorkspaceMessageBody
             bodyRef={bodyRef}
             html={renderedBody.html}
-            fileReferences={fileReferences}
+            fileReferences={renderedBody.fileReferences}
             segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
             renderQuote={renderQuote}
             metadata={renderedBody.metadata}
