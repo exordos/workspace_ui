@@ -259,6 +259,56 @@ describe("messenger sidebar actions", () => {
     });
   });
 
+  it("applies confirmed unread buckets to the stream and its folders", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto());
+    seedFolderWithItem(ownerKey);
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) =>
+        Promise.resolve(
+          createStreamDto({
+            notification_mode: "muted",
+            active_unread_count: 0,
+            passive_unread_count: 3,
+          }),
+        ),
+    );
+
+    await updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        notificationMode: "muted",
+        unreadCount: 3,
+        activeUnreadCount: 0,
+        passiveUnreadCount: 3,
+      }),
+    );
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 0,
+        items: [
+          expect.objectContaining({
+            unreadCount: 3,
+            activeUnreadCount: 0,
+            passiveUnreadCount: 3,
+          }),
+        ],
+      }),
+    );
+  });
+
   it("rolls back optimistic stream notification mode when the request fails", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
