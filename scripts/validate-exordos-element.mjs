@@ -80,6 +80,21 @@ if (webAction?.kind !== "local_dir_download" || !webAction.url.endsWith("/worksp
   throw new Error("workspace_web must download the workspace-ui.tar.zst artifact");
 }
 
+const webModifiers = routes.workspace_web?.condition?.modifiers ?? [];
+const webAutomaticHeaders = webModifiers.find((modifier) => modifier.kind === "auto_header");
+const requiredWebHeaders = [
+  "Host",
+  "X-Forwarded-For",
+  "X-Forwarded-Port",
+  "X-Forwarded-Proto",
+  "X-Forwarded-Prefix",
+];
+for (const header of requiredWebHeaders) {
+  if (!webAutomaticHeaders?.headers?.includes(header)) {
+    throw new Error(`workspace_web must forward ${header}`);
+  }
+}
+
 const apiAction = routes.workspace_api?.condition?.actions?.[0];
 if (apiAction?.kind !== "backend") {
   throw new Error("workspace_api must proxy requests to the backend pool");
