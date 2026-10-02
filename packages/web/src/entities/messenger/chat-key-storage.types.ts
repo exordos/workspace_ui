@@ -36,6 +36,12 @@ export interface ChatKeyStorage<TPrivateKey> {
 
   readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey<TPrivateKey> | null>;
   // Public-key refreshes must preserve an existing private key.
-  writeChatKey(address: ChatKeyStorageAddress, key: StoredChatKey<TPrivateKey>): Promise<void>;
+  // Implementations must check isCurrent synchronously at the durable commit, after their awaits.
+  // A false guard skips the write; runtime generations do not become durable address fields.
+  writeChatKey(
+    address: ChatKeyStorageAddress,
+    key: StoredChatKey<TPrivateKey>,
+    options?: { readonly isCurrent: () => boolean },
+  ): Promise<void>;
   removeChatKey(address: ChatKeyStorageAddress): Promise<void>;
 }
