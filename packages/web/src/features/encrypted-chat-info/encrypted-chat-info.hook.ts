@@ -77,7 +77,7 @@ export function useEncryptedChatInfo(streamUuid: string) {
     )
       return;
     const keyUuid = stream.currentEncryptionKey.keyUuid;
-    void writeText(stream.currentEncryptionKey.publicKey).then((copied) => {
+    void writeText(stream.currentEncryptionKey.keyFingerprint).then((copied) => {
       const latest = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (
         latest == null ||

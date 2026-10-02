@@ -45,7 +45,7 @@ export type WorkspaceMessengerSourceDto =
 
 export interface WorkspaceMessengerEncryptionKeyDto {
   key_uuid: WorkspaceMessengerUuid;
-  public_key: string;
+  key_fingerprint: string;
 }
 
 export interface WorkspaceMessengerStreamDto {
@@ -143,7 +143,7 @@ export interface WorkspaceMessengerKeyGrantPayloadDto {
 export interface WorkspaceMessengerKeyAnnouncedPayloadDto {
   kind: "key_announced";
   key_uuid: WorkspaceMessengerUuid;
-  public_key: string;
+  key_fingerprint: string;
 }
 
 export interface WorkspaceMessengerKeyRejectPayloadDto {
@@ -1122,7 +1122,7 @@ export function isWorkspaceMessengerMessagePayloadDto(
         typeof value.public_key === "string"
       );
     case "key_announced":
-      return typeof value.public_key === "string";
+      return typeof value.key_fingerprint === "string";
     case "key_grant":
     case "key_reject":
       return (
@@ -1209,7 +1209,7 @@ export function isWorkspaceMessengerStreamDto(
       value.current_encryption_key === null ||
       (isRecord(value.current_encryption_key) &&
         isUuid(value.current_encryption_key.key_uuid) &&
-        typeof value.current_encryption_key.public_key === "string")) &&
+        typeof value.current_encryption_key.key_fingerprint === "string")) &&
     typeof value.is_archived === "boolean" &&
     (value.color === undefined ||
       value.color === null ||

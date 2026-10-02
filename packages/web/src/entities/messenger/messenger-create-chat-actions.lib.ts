@@ -21,10 +21,10 @@ import type {
 import { isWorkspaceMessengerMessagePayloadDto } from "~/shared/api/messenger.types";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import {
-  devChatInitialKeyBootstrap,
   isDevChatInitialKeyAllowed,
   MessengerChannelCreationError,
 } from "./chat-initial-key-bootstrap.lib";
+import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import {
   adaptMessengerStream,
   adaptMessengerStreamBinding,
@@ -222,17 +222,17 @@ function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
       : encodeChatE2eePayload({
           kind: "key_announced",
           keyUuid: metadata.keyUuid,
-          publicKey: metadata.publicKey,
+          keyFingerprint: metadata.keyFingerprint,
         });
   if (
     announcement !== null &&
     (!isWorkspaceMessengerMessagePayloadDto(announcement) ||
       announcement.kind !== "key_announced" ||
-      announcement.public_key.length === 0)
+      announcement.key_fingerprint.length === 0)
   )
     throw new MessengerChannelCreationError("encryption-unavailable");
   return announcement?.kind === "key_announced"
-    ? { key_uuid: announcement.key_uuid, public_key: announcement.public_key }
+    ? { key_uuid: announcement.key_uuid, key_fingerprint: announcement.key_fingerprint }
     : null;
 }
 
@@ -249,7 +249,7 @@ export async function createWorkspaceChannel({
   announce,
   memberUserUuids,
   encryption = false,
-  encryptionBootstrap = devChatInitialKeyBootstrap,
+  encryptionBootstrap = realChatInitialKeyBootstrap,
 }: CreateWorkspaceChannelOptions): Promise<MessengerCreateStreamResult> {
   const action = captureCreateChatAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null) return skippedMissingContext();
@@ -300,9 +300,20 @@ export async function createWorkspaceChannel({
     encryption &&
     (bundle.stream.encryption !== true ||
       bundle.stream.current_encryption_key?.key_uuid !== encryptionKey?.key_uuid ||
-      bundle.stream.current_encryption_key?.public_key !== encryptionKey?.public_key)
+      bundle.stream.current_encryption_key?.key_fingerprint !== encryptionKey?.key_fingerprint)
   )
     throw new MessengerChannelCreationError("encryption-mismatch");
+
+  if (initialKey !== null && encryptionBootstrap.finalize) {
+    await encryptionBootstrap.finalize({
+      runtimeContext,
+      metadata: initialKey,
+      streamUuid: bundle.stream.uuid,
+      isCurrent: () => !action.isStale(),
+    });
+    if (action.isStale())
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  }
 
   const stream = adaptMessengerStream(bundle.stream);
   const defaultTopic = adaptMessengerTopic(bundle.defaultTopic);

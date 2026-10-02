@@ -233,7 +233,7 @@ function seedWorkspaceUsers(): void {
 }
 
 describe("RightPanelWorkspaceInfo", () => {
-  it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", () => {
+  it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", async () => {
     seedWorkspaceAuth();
     act(() => {
       useMessengerStore.getState().startBootstrap(OWNER_KEY);
@@ -245,7 +245,7 @@ describe("RightPanelWorkspaceInfo", () => {
           encryption: true,
           currentEncryptionKey: {
             keyUuid: "actual-key-uuid",
-            publicKey: "opaque-current-public-key",
+            keyFingerprint: "opaque-current-public-key",
           },
         }),
       );
@@ -259,7 +259,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.getByText("Encrypted team")).toBeInTheDocument();
     expect(screen.getByText("actual-key-uuid")).toBeInTheDocument();
     expect(screen.getByText(t("e2ee.loadedRequestsTitle", { count: 0 }))).toBeInTheDocument();
-    expect(screen.getByText(t("e2ee.keyActionsUnavailable"))).toBeInTheDocument();
+    expect(await screen.findByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
     expect(container.innerHTML).not.toContain("opaque-current-public-key");
     expect(container.textContent).not.toContain(DATE);
     expect(screen.getAllByRole("heading", { name: t("chatInfo.channelInfo") })).toHaveLength(1);
@@ -293,7 +293,7 @@ describe("RightPanelWorkspaceInfo", () => {
         createStream({
           projectId: RUNTIME_CONTEXT.projectId,
           encryption: true,
-          currentEncryptionKey: { keyUuid: "actual-key", publicKey: "actual-public-key" },
+          currentEncryptionKey: { keyUuid: "actual-key", keyFingerprint: "actual-public-key" },
         }),
       );
     });
@@ -305,6 +305,7 @@ describe("RightPanelWorkspaceInfo", () => {
     );
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
     expect(writeTextMock).not.toHaveBeenCalled();
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
     fireEvent.click(screen.getByRole("button", { name: t("e2ee.copyKey") }));
     expect(writeTextMock).toHaveBeenCalledWith("actual-public-key");
     await act(async () => {
@@ -327,7 +328,7 @@ describe("RightPanelWorkspaceInfo", () => {
           name: "Encrypted direct",
           audience: "private",
           directUserUuid: ALICE_USER_UUID,
-          currentEncryptionKey: { keyUuid: "direct-key", publicKey: "opaque" },
+          currentEncryptionKey: { keyUuid: "direct-key", keyFingerprint: "opaque" },
         }),
       );
     });

@@ -23,7 +23,7 @@ export function canUseDevChatCrypto(
     stream.projectId === runtime.projectId &&
     stream.userUuid === runtime.userUuid &&
     stream.currentEncryptionKey != null &&
-    allowedTestPublicKeys.has(stream.currentEncryptionKey.publicKey) &&
+    allowedTestPublicKeys.has(stream.currentEncryptionKey.keyFingerprint) &&
     stream.currentEncryptionKey.keyUuid.length > 0
   );
 }
@@ -81,7 +81,7 @@ export function createDevChatCryptoProvider(
   stream: MessengerStream,
 ): ChatCryptoProvider | null {
   if (!canUseDevChatCrypto(runtime, stream)) return null;
-  const expectedPublicKey = atob(stream.currentEncryptionKey!.publicKey);
+  const expectedPublicKey = atob(stream.currentEncryptionKey!.keyFingerprint);
   const groupKey = { bytes: new TextEncoder().encode(expectedPublicKey) };
   const validContext = (context: ChatCryptoMessageContext) =>
     canUseDevChatCrypto(runtime, stream) &&

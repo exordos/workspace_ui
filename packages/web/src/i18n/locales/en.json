@@ -713,7 +713,7 @@
     "typeOpen": "Open",
     "typeClosed": "Closed, open history",
     "typeClosedProtected": "Closed, protected history",
-    "encryptionTestKeyNotice": "Local test mode uses a test key to create this chat. Encryption is not ready yet.",
+    "encryptionTestKeyNotice": "Messages are encrypted on your device. Access keys are shared only after an authorized grant.",
     "encryptionUnavailable": "Encrypted chat creation is not available yet.",
     "encryptionMismatch": "The server did not confirm encrypted chat creation.",
     "createEncryptedChat": "Create encrypted chat",
@@ -1454,14 +1454,17 @@
     "chatMenu": "Chat menu"
   },
   "e2ee": {
+    "encryptedTextOnly": "Encrypted chats currently support text messages only.",
+    "cryptoOperationFailed": "Could not complete the encrypted chat operation. Please try again.",
+    "requestRejected": "The key request was rejected. You can send another request.",
     "mockModeNotice": "Test mode: no real encryption",
     "mockTextOnly": "Only text messages are available in test mode.",
     "loadedRequestsTitle": "Requests in loaded history ({{count}})",
     "keyActionsUnavailable": "Key issuance and rotation are unavailable until the cryptographic provider and key storage are connected.",
     "keyCreatedAt": "Created: {{date}}",
-    "copyFailed": "Could not copy the public key.",
+    "copyFailed": "Could not copy the key fingerprint.",
 
-    "cryptoUnavailable": "Sending and decrypting encrypted messages require a cryptographic provider. It is not connected yet.",
+    "cryptoUnavailable": "Encryption is unavailable for this chat or local key storage could not be opened.",
     "protectedChat": "Protected chat",
     "keyTitle": "Encryption key",
     "currentKey": "Current key",
@@ -1503,7 +1506,7 @@
     "rejectAccess": "Reject",
     "statusWaiting": "Waiting for a response",
     "grantReceivedDescription": "Access is available after the grant is successfully decrypted and the key is stored.",
-    "copyKey": "Copy public key"
+    "copyKey": "Copy key fingerprint"
   },
   "e2eeSandbox": {
     "title": "E2EE integration sandbox",

@@ -1,4 +1,8 @@
-import type { ChatCryptoEnvelope, ChatCryptoPublicKey } from "./chat-crypto-provider.types";
+import type {
+  ChatCryptoEnvelope,
+  ChatCryptoKeyFingerprint,
+  ChatCryptoPublicKey,
+} from "./chat-crypto-provider.types";
 
 // Proposed domain payloads stay separate from the live API until backend support is available.
 export interface ChatEncryptedPayload {
@@ -27,7 +31,7 @@ export interface ChatKeyGrantPayload {
 export interface ChatKeyAnnouncedPayload {
   readonly kind: "key_announced";
   readonly keyUuid: string;
-  readonly publicKey: ChatCryptoPublicKey;
+  readonly keyFingerprint: ChatCryptoKeyFingerprint;
 }
 
 export interface ChatKeyRejectPayload {

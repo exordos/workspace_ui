@@ -20,8 +20,6 @@ import {
   selectWorkspaceMessageStatusForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
-import { canUseDevChatCrypto } from "~/entities/messenger/chat-dev-crypto.lib";
-import { sendDevEncryptedMessengerMessage } from "~/entities/messenger/chat-dev-message-actions.lib";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -69,6 +67,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
+import { useChatCryptoSession } from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
@@ -150,6 +149,7 @@ import {
   workspaceMessengerTopicRoute,
   type WorkspaceMessengerRouteMatch,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { Button } from "~/shared/ui/button";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
@@ -796,7 +796,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const stream = useMessengerStore((state) =>
     streamUuid != null && state.ownerKey === ownerKey ? state.streamsById[streamUuid] : undefined,
   );
-  const mockChatAvailable = canUseDevChatCrypto(runtimeContext, stream);
+  const encryptedChat = useChatCryptoSession(stream?.encryption === true ? streamUuid : null);
+  const encryptedChatAvailable =
+    encryptedChat.session !== null && encryptedChat.state.access === "ready";
   const workspaceReplyHandoffBlocksSend =
     runtimeContext != null &&
     ownerKey != null &&
@@ -1589,18 +1591,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [ownerKey, runtimeContext],
   );
 
-  const mockComposerCapabilities = useMemo<MessageComposerCapabilities>(
+  const encryptedComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       ...workspaceComposerCapabilities,
-      upload: { mode: "unsupported", unsupportedText: t("e2ee.mockTextOnly") },
-      mentions: { mode: "unsupported", unsupportedText: t("e2ee.mockTextOnly") },
+      upload: { mode: "unsupported", unsupportedText: t("e2ee.encryptedTextOnly") },
+      mentions: { mode: "unsupported", unsupportedText: t("e2ee.encryptedTextOnly") },
     }),
     [workspaceComposerCapabilities],
   );
 
-  const handleSendDevEncrypted = useCallback(
+  const handleSendEncrypted = useCallback(
     async (content: string): Promise<MessageComposerSendResult> => {
-      if (!mockChatAvailable || runtimeContext == null || content.trim().length === 0)
+      if (!encryptedChatAvailable || runtimeContext == null || content.trim().length === 0)
         return { shouldClearComposer: false };
       const target = resolveSendTarget();
       if (target.status === "blocked") {
@@ -1614,26 +1616,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       setSendError(null);
       const isCurrent = captureWorkspaceChatUiAction();
       takeOpeningControl();
-      return runMessengerRuntimeMutation(runtimeContext, async (signal) => {
-        try {
-          const result = await sendDevEncryptedMessengerMessage({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            signal,
-            streamUuid: target.streamUuid,
-            topicUuid: target.topicUuid,
-            markdown: content,
-            includeStreamConversation: target.includeStreamConversation,
-          });
-          return { shouldClearComposer: result.status === "applied" && isCurrent() };
-        } catch {
-          if (isCurrent()) setSendError(t("message.sendFailed"));
-          return { shouldClearComposer: false };
-        }
-      });
+      try {
+        const result = await encryptedChat.session!.send({
+          text: content,
+          topicUuid: target.topicUuid,
+          includeStreamConversation: target.includeStreamConversation,
+        });
+        return { shouldClearComposer: result.status === "applied" && isCurrent() };
+      } catch {
+        if (isCurrent()) setSendError(t("message.sendFailed"));
+        return { shouldClearComposer: false };
+      }
     },
     [
-      mockChatAvailable,
+      encryptedChatAvailable,
+      encryptedChat.session,
       runtimeContext,
       resolveSendTarget,
       captureWorkspaceChatUiAction,
@@ -3689,31 +3686,45 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             joinedBelow={!showStreamTopicPrompt}
           />
         ) : null}
-        {stream?.encryption === true && mockChatAvailable ? (
-          <>
-            <p
-              role="status"
-              className="border-t border-border-subtle px-4 py-2 text-xs text-text-muted"
-            >
-              {t("e2ee.mockModeNotice")}
-            </p>
-            <MessageComposer
-              key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}:${stream.currentEncryptionKey?.keyUuid}`}
-              onSend={handleSendDevEncrypted}
-              capabilities={mockComposerCapabilities}
-              disabled={isTopicClosed}
-              initialValue=""
-              aiMessagesContext={[]}
-              joinedTop
-            />
-          </>
+        {stream?.encryption === true && encryptedChatAvailable ? (
+          <MessageComposer
+            key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}:${stream.currentEncryptionKey?.keyUuid}`}
+            onSend={handleSendEncrypted}
+            capabilities={encryptedComposerCapabilities}
+            disabled={isTopicClosed || encryptedChat.state.pending}
+            initialValue=""
+            aiMessagesContext={[]}
+            joinedTop
+          />
         ) : stream?.encryption === true ? (
-          <p
-            role="status"
-            className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted"
-          >
-            {t("e2ee.cryptoUnavailable")}
-          </p>
+          <div className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted">
+            <p role="status">
+              {encryptedChat.loading
+                ? t("e2ee.loading")
+                : encryptedChat.state.requestStatus === "requested"
+                  ? t("e2ee.statusWaiting")
+                  : encryptedChat.state.requestStatus === "rejected"
+                    ? t("e2ee.requestRejected")
+                    : t("e2ee.lockedDescription")}
+            </p>
+            {encryptedChat.error ? (
+              <p role="alert" className="mt-2 text-danger">
+                {encryptedChat.error}
+              </p>
+            ) : null}
+            {encryptedChat.session?.getRights().canRequest ? (
+              <Button
+                className="mt-3"
+                variant="neutral"
+                disabled={encryptedChat.loading || encryptedChat.state.pending}
+                onClick={() => {
+                  void encryptedChat.requestKey();
+                }}
+              >
+                {t("e2ee.requestAccess")}
+              </Button>
+            ) : null}
+          </div>
         ) : showStreamTopicPrompt ? (
           <ChatPageStreamTopicPrompt
             topics={streamPromptTopics}

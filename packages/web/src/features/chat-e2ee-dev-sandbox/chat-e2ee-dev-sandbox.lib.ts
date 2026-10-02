@@ -318,7 +318,7 @@ export function createDevChatE2eeSandbox(input: {
       const announcement = encodeChatE2eePayload({
         kind: "key_announced",
         keyUuid,
-        publicKey: E2EE_SANDBOX_FINGERPRINT,
+        keyFingerprint: E2EE_SANDBOX_FINGERPRINT,
       });
       if (announcement.kind !== "key_announced") throw new Error("Invalid fixture");
       const created = await api.createStreamWithDefaultTopic(options(), {
@@ -328,7 +328,10 @@ export function createDevChatE2eeSandbox(input: {
         source: { kind: "native" },
         invite_only: true,
         encryption: true,
-        current_encryption_key: { key_uuid: keyUuid, public_key: announcement.public_key },
+        current_encryption_key: {
+          key_uuid: keyUuid,
+          key_fingerprint: announcement.key_fingerprint,
+        },
       });
       ensureCurrent();
       const stream = await api.getStream(options(), created.stream.uuid);
@@ -339,7 +342,7 @@ export function createDevChatE2eeSandbox(input: {
         stream.owner !== runtime.userUuid ||
         !stream.encryption ||
         stream.current_encryption_key?.key_uuid !== keyUuid ||
-        stream.current_encryption_key.public_key !== announcement.public_key ||
+        stream.current_encryption_key.key_fingerprint !== announcement.key_fingerprint ||
         created.defaultTopic.stream_uuid !== stream.uuid
       )
         throw new Error("Backend did not create the sandbox encrypted stream");
@@ -357,7 +360,10 @@ export function createDevChatE2eeSandbox(input: {
         );
       }
       await activate();
-      await post({ kind: "key_announced", keyUuid, publicKey: E2EE_SANDBOX_FINGERPRINT }, current);
+      await post(
+        { kind: "key_announced", keyUuid, keyFingerprint: E2EE_SANDBOX_FINGERPRINT },
+        current,
+      );
     } finally {
       // Only this initializer can reset its lock.
       // eslint-disable-next-line require-atomic-updates

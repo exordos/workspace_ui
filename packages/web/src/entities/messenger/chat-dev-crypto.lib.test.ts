@@ -103,14 +103,14 @@ const KEY_A = "99999999-9999-4999-8999-999999999999";
 function encryptedStream(overrides: Partial<WorkspaceMessengerStreamDto> = {}) {
   return createStreamDto({
     encryption: true,
-    current_encryption_key: { key_uuid: KEY_A, public_key: btoa(DEV_CHAT_PUBLIC_KEY_MARKER) },
+    current_encryption_key: { key_uuid: KEY_A, key_fingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER) },
     ...overrides,
   });
 }
 function prepare(publicKey = btoa(DEV_CHAT_PUBLIC_KEY_MARKER)) {
   const runtime = createRuntimeContext();
   const stream = adaptMessengerStream(
-    encryptedStream({ current_encryption_key: { key_uuid: KEY_A, public_key: publicKey } }),
+    encryptedStream({ current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey } }),
   );
   const owner = workspaceRuntimeOwnerKey(runtime);
   useMessengerStore.getState().startBootstrap(owner);
@@ -150,7 +150,7 @@ describe("local test crypto", () => {
           getStream: () =>
             Promise.resolve(
               encryptedStream({
-                current_encryption_key: { key_uuid: KEY_A, public_key: publicKey },
+                current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey },
               }),
             ),
           createMessage: create,
@@ -176,7 +176,9 @@ describe("local test crypto", () => {
         decodeDevChatMessageForPresentation(
           createRuntimeContext({ runtimeGeneration: 3 }),
           adaptMessengerStream(
-            encryptedStream({ current_encryption_key: { key_uuid: KEY_A, public_key: publicKey } }),
+            encryptedStream({
+              current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey },
+            }),
           ),
           message,
         ),
@@ -195,7 +197,7 @@ describe("local test crypto", () => {
             ...s.stream,
             currentEncryptionKey: {
               keyUuid: STREAM_A,
-              publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
+              keyFingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
             },
           },
           message,
@@ -255,7 +257,7 @@ describe("local test crypto", () => {
     expect(
       canUseDevChatCrypto(s.runtime, {
         ...s.stream,
-        currentEncryptionKey: { keyUuid: KEY_A, publicKey: btoa("OTHER") },
+        currentEncryptionKey: { keyUuid: KEY_A, keyFingerprint: btoa("OTHER") },
       }),
     ).toBe(false);
   });
@@ -328,13 +330,13 @@ describe("local test crypto", () => {
           ...s.stream,
           currentEncryptionKey: {
             keyUuid: STREAM_A,
-            publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
+            keyFingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
           },
         });
       else if (mode === "public-key")
         useMessengerStore.getState().upsertStream(s.owner, {
           ...s.stream,
-          currentEncryptionKey: { keyUuid: KEY_A, publicKey: btoa("FIX") },
+          currentEncryptionKey: { keyUuid: KEY_A, keyFingerprint: btoa("FIX") },
         });
       else useMessengerStore.setState({ streamsById: {} });
       finish(sent);

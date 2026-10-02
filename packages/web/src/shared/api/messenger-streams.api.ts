@@ -78,7 +78,8 @@ export async function createStream(
     body.encryption === true &&
     (stream.encryption !== true ||
       stream.current_encryption_key?.key_uuid !== body.current_encryption_key?.key_uuid ||
-      stream.current_encryption_key?.public_key !== body.current_encryption_key?.public_key)
+      stream.current_encryption_key?.key_fingerprint !==
+        body.current_encryption_key?.key_fingerprint)
   ) {
     throw new Error("Backend did not create the requested encrypted stream");
   }

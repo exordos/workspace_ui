@@ -1139,7 +1139,7 @@ it("blocks plaintext retries to a known encrypted stream before creating any mes
     adaptMessengerStream(
       createStreamDto({
         encryption: true,
-        current_encryption_key: { key_uuid: MESSAGE_A, public_key: "AA==" },
+        current_encryption_key: { key_uuid: MESSAGE_A, key_fingerprint: "AA==" },
       }),
     ),
   );

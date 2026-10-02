@@ -11,7 +11,7 @@ const bytes = new Uint8Array([0, 127, 128, 255]);
 const payloads: ChatE2eePayload[] = [
   { kind: "e2ee", keyUuid, content: { bytes } },
   { kind: "key_request", keyUuid, deviceId: "mac", deviceName: "MacBook", publicKey: { bytes } },
-  { kind: "key_announced", keyUuid, publicKey: { bytes } },
+  { kind: "key_announced", keyUuid, keyFingerprint: { bytes } },
   {
     kind: "key_grant",
     keyUuid,
@@ -38,6 +38,7 @@ describe("E2EE payload boundaries", () => {
     expect(stored.kind).toBe(payload.kind);
     if ("content" in dto) expect(dto.content).toBe("AH+A/w==");
     if ("public_key" in dto) expect(dto.public_key).toBe("AH+A/w==");
+    if ("key_fingerprint" in dto) expect(dto.key_fingerprint).toBe("AH+A/w==");
     expect(dto).not.toHaveProperty("bytes");
     expect(dto).not.toHaveProperty("version");
   });
@@ -58,8 +59,8 @@ describe("E2EE payload boundaries", () => {
 
   it("reports public-key errors separately and rejects incomplete service payloads", () => {
     expect(
-      decodeChatE2eePayload({ kind: "key_announced", key_uuid: keyUuid, public_key: "!" }),
-    ).toEqual({ ok: false, reason: "invalid-base64", field: "public_key" });
+      decodeChatE2eePayload({ kind: "key_announced", key_uuid: keyUuid, key_fingerprint: "!" }),
+    ).toEqual({ ok: false, reason: "invalid-base64", field: "key_fingerprint" });
     expect(
       isWorkspaceMessengerMessagePayloadDto({
         kind: "key_request",

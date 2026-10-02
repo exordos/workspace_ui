@@ -60,7 +60,7 @@ function snapshot(overrides: Partial<EncryptedChatInfoSnapshot> = {}): Encrypted
     streamsById: {
       stream: createStream({
         encryption: true,
-        currentEncryptionKey: { keyUuid: "current-key", publicKey: "opaque-public-key" },
+        currentEncryptionKey: { keyUuid: "current-key", keyFingerprint: "opaque-public-key" },
       }),
     },
     bindingsById: {},
@@ -91,7 +91,7 @@ describe("encrypted chat info projection", () => {
     const announcement = message("announcement", {
       kind: "key_announced",
       keyUuid: "current-key",
-      publicKey: "opaque-public-key",
+      keyFingerprint: "opaque-public-key",
     });
     const other = { ...current, uuid: "other", streamUuid: "other-stream" };
     const projection = selectEncryptedChatInfo(
@@ -119,7 +119,7 @@ describe("encrypted chat info projection", () => {
     const announcement = message("announcement", {
       kind: "key_announced",
       keyUuid: "current-key",
-      publicKey: "opaque",
+      keyFingerprint: "opaque",
     });
     const request = message("request", {
       kind: "key_request",

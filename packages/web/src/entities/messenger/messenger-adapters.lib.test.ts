@@ -519,10 +519,10 @@ it("preserves encrypted stream metadata and defaults pre-encryption snapshots sa
     adaptMessengerStream({
       ...streamDto,
       encryption: true,
-      current_encryption_key: { key_uuid: MESSAGE_UUID, public_key: "opaque-public-key" },
+      current_encryption_key: { key_uuid: MESSAGE_UUID, key_fingerprint: "opaque-public-key" },
     }),
   ).toMatchObject({
     encryption: true,
-    currentEncryptionKey: { keyUuid: MESSAGE_UUID, publicKey: "opaque-public-key" },
+    currentEncryptionKey: { keyUuid: MESSAGE_UUID, keyFingerprint: "opaque-public-key" },
   });
 });

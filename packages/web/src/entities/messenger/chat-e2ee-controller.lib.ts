@@ -168,7 +168,20 @@ export class ChatE2eeController {
   loadKey(): Promise<ChatE2eeControllerResult<void>> {
     return this.run(async () => {
       const result = await this.readKey();
-      return result.ok ? success(undefined) : result;
+      if (!result.ok) return result;
+      try {
+        const pending = await this.deps.storage.listPendingRequests(this.deps.scope);
+        if (!this.isCurrent()) return failure("stale");
+        if (
+          pending.length > 0 &&
+          this.requestStatus === "idle" &&
+          resolveChatGenerationAccess(this.key) !== "ready"
+        )
+          this.requestStatus = "requested";
+      } catch {
+        return failure("storage-failed");
+      }
+      return success(undefined);
     });
   }
 
@@ -380,10 +393,10 @@ export class ChatE2eeController {
     if (!allowed()) return failure("forbidden");
     const stored = await this.readKey();
     if (!stored.ok) return stored;
-    if (stored.value && !equalPublicKeys(stored.value.fingerprint, message.payload.publicKey))
+    if (stored.value && !equalPublicKeys(stored.value.fingerprint, message.payload.keyFingerprint))
       return failure("invalid-key");
     const result = await this.writeKey(
-      { fingerprint: message.payload.publicKey, groupKey: stored.value?.groupKey ?? null },
+      { fingerprint: message.payload.keyFingerprint, groupKey: stored.value?.groupKey ?? null },
       allowed,
     );
     if (!result.ok) return result;

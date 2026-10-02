@@ -30,7 +30,7 @@ import {
   createDevChatCryptoProvider,
   pinDevChatCryptoRequestOptions,
 } from "./chat-dev-crypto.lib";
-import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
@@ -56,6 +56,7 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatE2eePayload } from "./chat-e2ee.types";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -272,7 +273,7 @@ export async function sendMessengerMessage({
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   let expectedKeyUuid: string | null = null;
-  let expectedPublicKey: string | null = null;
+  let expectedKeyFingerprint: string | null = null;
   const initiallyKnown =
     useMessengerStore.getState().ownerKey === action.ownerKey &&
     useMessengerStore.getState().streamsById[streamUuid] !== undefined;
@@ -287,7 +288,7 @@ export async function sendMessengerMessage({
         (streamNow !== undefined &&
           (!canUseDevChatCrypto(runtimeContext, streamNow) ||
             streamNow.currentEncryptionKey?.keyUuid !== expectedKeyUuid ||
-            streamNow.currentEncryptionKey?.publicKey !== expectedPublicKey)))
+            streamNow.currentEncryptionKey?.keyFingerprint !== expectedKeyFingerprint)))
     );
   };
   if (cryptoMode === "development-fixture") {
@@ -324,7 +325,7 @@ export async function sendMessengerMessage({
     const provider = createDevChatCryptoProvider(runtimeContext, domainStream);
     const key = domainStream.currentEncryptionKey!;
     expectedKeyUuid = key.keyUuid;
-    expectedPublicKey = key.publicKey;
+    expectedKeyFingerprint = key.keyFingerprint;
     const fixtureKey = await provider!.createGroupKey();
     if (!fixtureKey.ok) throw new Error("Development chat crypto unavailable");
     const result = await provider!.encryptMessage({
@@ -366,6 +367,86 @@ export async function sendMessengerMessage({
   settleMessengerOutgoingMessage(action.ownerKey, message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   // Cache persistence must not delay the successful send transition in the UI.
+  void writeMessagePageCacheBestEffort(
+    cache,
+    action.ownerKey,
+    conversationIdsForMessageAction(message, includeStreamConversation),
+    message,
+  );
+  return { status: "applied", ownerKey: action.ownerKey, message };
+}
+
+export interface SendMessengerE2eePayloadOptions extends MessengerMessageActionBaseOptions {
+  readonly streamUuid: string;
+  readonly topicUuid: string;
+  readonly payload: ChatE2eePayload;
+  readonly keyFingerprint: string;
+  readonly isCurrent: () => boolean;
+  readonly canonicalMessageUuid?: string;
+  readonly includeStreamConversation?: boolean;
+}
+
+/** Dedicated encrypted transport: commits only opaque payloads through existing cache/store paths. */
+export async function sendMessengerE2eePayload({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  cache = messengerMessageActionCache,
+  signal,
+  store = useWorkspaceMessageStore,
+  streamUuid,
+  topicUuid,
+  payload,
+  keyFingerprint,
+  isCurrent,
+  canonicalMessageUuid = crypto.randomUUID(),
+  includeStreamConversation = true,
+}: SendMessengerE2eePayloadOptions): Promise<MessengerMessageActionResult> {
+  const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
+  const current = () => !action.isStale() && isCurrent();
+  if (action.ownerKey == null)
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const fetchImpl = requestOptions.fetchImpl ?? fetch;
+  requestOptions.fetchImpl = (request, init) =>
+    current() ? fetchImpl(request, init) : Promise.reject(new Error("stale"));
+  const stream = await (client.getStream ?? defaultGetStream)(requestOptions, streamUuid);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (
+    stream.uuid !== streamUuid ||
+    stream.project_id !== runtimeContext.projectId ||
+    stream.user_uuid !== runtimeContext.userUuid ||
+    !stream.encryption ||
+    stream.current_encryption_key?.key_uuid !== payload.keyUuid ||
+    stream.current_encryption_key.key_fingerprint !== keyFingerprint
+  )
+    throw new Error("invalid-key");
+  const wire = encodeChatE2eePayload(payload);
+  const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
+    uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
+    stream_uuid: streamUuid,
+    topic_uuid: topicUuid,
+    payload: wire,
+  });
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const decodedResponse =
+    dto.payload.kind === "markdown" ? null : decodeChatE2eePayload(dto.payload);
+  if (
+    dto.uuid !== canonicalMessageUuid ||
+    dto.project_id !== runtimeContext.projectId ||
+    dto.user_uuid !== runtimeContext.userUuid ||
+    dto.author_uuid !== runtimeContext.userUuid ||
+    dto.stream_uuid !== streamUuid ||
+    dto.topic_uuid !== topicUuid ||
+    !decodedResponse?.ok ||
+    JSON.stringify(encodeChatE2eePayload(decodedResponse.value)) !== JSON.stringify(wire)
+  )
+    throw new Error("invalid-message");
+  const message = adaptMessengerMessage(dto);
+  store.getState().applyLiveCreatedMessage(message);
+  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   void writeMessagePageCacheBestEffort(
     cache,
     action.ownerKey,

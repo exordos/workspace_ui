@@ -72,6 +72,25 @@ describe("durable chat key storage", () => {
     expect(await reopened.readChatKey(address)).toBeNull();
   });
 
+  it("preserves the first device identity when two connections initialize concurrently", async () => {
+    const { storage, name } = setup();
+    const other = new IndexedDbChatKeyStorage(name);
+    stores.push(other);
+    const first = { deviceId: "first-device", deviceName: "First" };
+    const second = { deviceId: "second-device", deviceName: "Second" };
+    const results = await Promise.allSettled([
+      storage.writeDeviceIdentity(address.owner, first),
+      other.writeDeviceIdentity(address.owner, second),
+    ]);
+    expect(results).toEqual([
+      { status: "fulfilled", value: true },
+      { status: "fulfilled", value: false },
+    ]);
+    expect(await other.readDeviceIdentity(address.owner)).toEqual(first);
+    await storage.writeDeviceIdentity(address.owner, { ...first, deviceName: "Changed" });
+    expect(await storage.readDeviceIdentity(address.owner)).toEqual(first);
+  });
+
   it("atomically saves the group key and terminal receipt while removing only the completed request secret", async () => {
     const { storage } = setup();
     await storage.writePendingRequest(address, pending);

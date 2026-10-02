@@ -10,7 +10,6 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { DEV_CHAT_PUBLIC_KEY_MARKER } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import {
   settleMessengerOutgoingMessage,
@@ -110,6 +109,7 @@ const captured = vi.hoisted(() => ({
   uploadWorkspaceFileWithProgress: vi.fn(),
   deleteWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
+  openRealChatSession: vi.fn(),
   editMessengerMessage: vi.fn(),
   deleteMessengerMessage: vi.fn(),
   toggleMessengerMessageReaction: vi.fn(),
@@ -118,6 +118,11 @@ const captured = vi.hoisted(() => ({
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
   deleteWorkspaceComposerDraftFromServer: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("~/entities/messenger/chat-crypto-runtime.lib", () => ({
+  openRealChatSession: captured.openRealChatSession,
+  decryptRealChatMessage: vi.fn().mockResolvedValue(null),
 }));
 
 function createTestWorkspaceFileResourceCache() {
@@ -910,6 +915,8 @@ describe("ChatPage Workspace route", () => {
     });
     captured.deleteWorkspaceFile.mockReset();
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
+    captured.openRealChatSession.mockReset();
+    captured.openRealChatSession.mockRejectedValue(new Error("unavailable"));
     captured.sendMessengerMessage.mockReset();
     captured.sendMessengerMessage.mockImplementation((request: TestSendMessengerMessageRequest) => {
       if (request.canonicalMessageUuid == null) {
@@ -997,7 +1004,7 @@ describe("ChatPage Workspace route", () => {
     await deleteWorkspaceMessengerCacheDatabase();
   });
 
-  it("uses the normal local mock editor without plaintext draft persistence or outbox and retains failed text", async () => {
+  it("uses the real crypto session editor without plaintext draft persistence or outbox and retains failed text", async () => {
     const session = { ...createSession(), organizationOrigin: "http://127.0.0.1:9100" };
     useWorkspaceAuthStore.getState().setSession(session);
     const owner = workspaceRuntimeOwnerKey(session);
@@ -1009,9 +1016,19 @@ describe("ChatPage Workspace route", () => {
         encryption: true,
         currentEncryptionKey: {
           keyUuid: "mock-key",
-          publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
+          keyFingerprint: btoa(String.fromCharCode(...new Uint8Array(32))),
         },
       })),
+    });
+    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    captured.openRealChatSession.mockResolvedValue({
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn().mockResolvedValue(undefined),
+      subscribe: () => () => undefined,
+      dispose: vi.fn(),
+      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+      send,
     });
     const hydrate = vi.fn();
     useWorkspaceComposerDraftStore.setState({ hydrateDraft: hydrate });
@@ -1019,15 +1036,13 @@ describe("ChatPage Workspace route", () => {
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
     const textbox = await screen.findByRole("textbox");
-    expect(screen.getByText("Test mode: no real encryption")).toBeInTheDocument();
+    expect(screen.queryByText("Test mode: no real encryption")).not.toBeInTheDocument();
     fireEvent.change(textbox, { target: { value: "Local test message" } });
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
     await waitFor(() => expect(textbox).toHaveValue(""));
-    expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+    expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: "Local test message",
-        cryptoMode: "development-fixture",
-        streamUuid: STREAM_UUID,
+        text: "Local test message",
         topicUuid: TOPIC_UUID,
       }),
     );
@@ -1042,7 +1057,7 @@ describe("ChatPage Workspace route", () => {
         `topic:${STREAM_UUID}:${TOPIC_UUID}`,
       ),
     ).toBeNull();
-    captured.sendMessengerMessage.mockRejectedValueOnce(new Error("mock failure"));
+    send.mockRejectedValueOnce(new Error("crypto operation failure"));
     fireEvent.change(textbox, { target: { value: "Keep this text" } });
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
     await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
@@ -1061,11 +1076,7 @@ describe("ChatPage Workspace route", () => {
     );
     expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
     expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Sending and decrypting encrypted messages require a cryptographic provider. It is not connected yet.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(t("e2ee.lockedDescription"))).toBeInTheDocument();
     expect(captured.channelHeaderProps).toMatchObject({ encrypted: true });
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });

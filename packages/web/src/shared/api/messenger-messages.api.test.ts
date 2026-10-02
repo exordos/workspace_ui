@@ -502,7 +502,7 @@ it.each<WorkspaceMessengerE2eePayloadDto>([
     device_name: "MacBook",
     public_key: "opaque-public-key",
   },
-  { kind: "key_announced", key_uuid: MESSAGE_UUID, public_key: "opaque-public-key" },
+  { kind: "key_announced", key_uuid: MESSAGE_UUID, key_fingerprint: "opaque-public-key" },
   {
     kind: "key_grant",
     key_uuid: MESSAGE_UUID,

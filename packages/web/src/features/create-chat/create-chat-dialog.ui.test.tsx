@@ -190,7 +190,7 @@ describe("CreateChatDialog", () => {
     renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
     const notice =
-      "Local test mode uses a test key to create this chat. Encryption is not ready yet.";
+      "Messages are encrypted on your device. Access keys are shared only after an authorized grant.";
     expect(screen.queryByText(notice)).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Create encrypted chat"));
     expect(screen.getByText(notice)).toBeInTheDocument();

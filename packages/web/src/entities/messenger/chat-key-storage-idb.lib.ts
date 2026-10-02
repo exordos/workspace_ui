@@ -233,12 +233,25 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
       return Promise.reject(new ChatKeyStorageError("invalid-record"));
     const id = ownerAddress(owner);
     const capturedIdentity = copyRecord(identity);
-    return this.mutate(["devices"], options, (tx, finish) =>
-      finish(() => {
-        tx.objectStore("devices").put({ id, address: id, value: capturedIdentity });
-      }),
-    );
+    return this.mutate(["devices"], options, (tx, finish, fail) => {
+      const store = tx.objectStore("devices");
+      const request = store.get(id) as IDBRequest<Row<ChatDeviceIdentity> | undefined>;
+      request.onsuccess = () => {
+        const previous = request.result?.value;
+        if (previous !== undefined && previous.deviceId !== capturedIdentity.deviceId) {
+          fail(new ChatKeyStorageError("conflict"));
+          return;
+        }
+        finish(() => {
+          store.put({ id, address: id, value: previous ?? capturedIdentity });
+        });
+      };
+    }).catch((error: unknown) => {
+      if (error instanceof ChatKeyStorageError && error.reason === "conflict") return false;
+      throw error;
+    });
   }
+
   readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null> {
     return this.read("keys", keyAddress(address));
   }

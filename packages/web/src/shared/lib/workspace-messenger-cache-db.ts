@@ -210,7 +210,7 @@ export interface WorkspaceMessengerCachedKeyGrantPayload {
 export interface WorkspaceMessengerCachedKeyAnnouncedPayload {
   kind: "key_announced";
   keyUuid: string;
-  publicKey: string;
+  keyFingerprint: string;
 }
 export interface WorkspaceMessengerCachedKeyRejectPayload {
   kind: "key_reject";
@@ -439,7 +439,7 @@ function isCachedMessageWithPayload(value: unknown): value is WorkspaceMessenger
         typeof fields.publicKey === "string"
       );
     case "key_announced":
-      return typeof fields.publicKey === "string";
+      return typeof fields.keyFingerprint === "string";
     case "key_grant":
     case "key_reject":
       return (

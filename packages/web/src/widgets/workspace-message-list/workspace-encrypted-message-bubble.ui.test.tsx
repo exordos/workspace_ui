@@ -1,9 +1,14 @@
+import "fake-indexeddb/auto";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { createDevChatCryptoProvider } from "~/entities/messenger/chat-dev-crypto.lib";
+import {
+  ensureChatDeviceIdentity,
+  realChatKeyStorage,
+} from "~/entities/messenger/chat-crypto-resources.lib";
+import * as cryptoRuntime from "~/entities/messenger/chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "~/entities/messenger/chat-e2ee-payload-adapters.lib";
-import { DEV_CHAT_PUBLIC_KEY_MARKER } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
+import { createRealChatCryptoProvider } from "~/entities/messenger/chat-real-crypto-provider.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -58,7 +63,7 @@ function message(uuid: string, payload: MessengerMessage["payload"]): MessengerM
   };
 }
 
-async function seedDevEncryptedMessage(text: string) {
+async function seedRealEncryptedMessage(text: string) {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
@@ -80,27 +85,37 @@ async function seedDevEncryptedMessage(text: string) {
   const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   if (runtime == null) throw new Error("Missing runtime");
   const owner = workspaceRuntimeOwnerKey(runtime);
+  const keyUuid = crypto.randomUUID();
+  const provider = createRealChatCryptoProvider();
+  const keys = await provider.createGroupKey();
+  if (!keys.ok) throw new Error("Missing group key");
+  const fingerprint = await provider.fingerprintGroupKey(keys.value, keyUuid);
+  if (!fingerprint.ok) throw new Error("Missing fingerprint");
   const stream = createStream({
     userUuid: runtime.userUuid,
     encryption: true,
-    currentEncryptionKey: { keyUuid: "current-key", publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER) },
+    currentEncryptionKey: {
+      keyUuid,
+      keyFingerprint: btoa(String.fromCharCode(...fingerprint.value.bytes)),
+    },
   });
   useMessengerStore.getState().startBootstrap(owner);
   useMessengerStore.getState().upsertStream(owner, stream);
   useWorkspaceMessageStore.getState().setOwner(owner, false);
-  const provider = createDevChatCryptoProvider(runtime, stream);
-  if (provider == null) throw new Error("Missing mock provider");
-  const keys = await provider.createGroupKey();
-  if (!keys.ok) throw new Error("Missing mock key");
+  const device = await ensureChatDeviceIdentity(runtime, () => true);
+  await realChatKeyStorage.writeChatKey(
+    { owner: runtime, deviceId: device.deviceId, streamUuid: stream.uuid, keyUuid },
+    { fingerprint: fingerprint.value, groupKey: keys.value },
+  );
   const encrypted = await provider.encryptMessage({
     groupKey: keys.value,
     plaintext: new TextEncoder().encode(text),
-    context: { streamUuid: stream.uuid, keyUuid: "current-key" },
+    context: { streamUuid: stream.uuid, keyUuid },
   });
-  if (!encrypted.ok) throw new Error("Mock encode failed");
+  if (!encrypted.ok) throw new Error("Encrypt failed");
   const wire = encodeChatE2eePayload({
     kind: "e2ee",
-    keyUuid: "current-key",
+    keyUuid,
     content: encrypted.value,
   });
   if (wire.kind !== "e2ee") throw new Error("Unexpected payload");
@@ -122,20 +137,21 @@ function view(stored: MessengerMessage) {
     />
   );
 }
-describe("local mock encrypted message presentation", () => {
+describe("real encrypted message presentation", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
   it("renders decoded Markdown safely and keeps the stored envelope across remount", async () => {
-    const { stored } = await seedDevEncryptedMessage(
+    const { stored } = await seedRealEncryptedMessage(
       "Привет **мир** <script>alert('unsafe')</script>",
     );
     const encoded = stored.payload.kind === "e2ee" ? stored.payload.content : "";
     const { container, unmount } = render(view(stored));
-    expect(screen.getByText("мир").tagName).toBe("STRONG");
+    expect((await screen.findByText("мир")).tagName).toBe("STRONG");
     expect(container.querySelector("script")).toBeNull();
     expect(container.innerHTML).not.toContain(encoded);
     expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
@@ -143,26 +159,26 @@ describe("local mock encrypted message presentation", () => {
     );
     unmount();
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
-    expect(screen.getByText("мир")).toBeInTheDocument();
+    expect(await screen.findByText("мир")).toBeInTheDocument();
   });
-  it("locks decoded text when the key changes or either store belongs to another owner", async () => {
-    const { stored, owner, stream } = await seedDevEncryptedMessage(
+  it("reads previous generations after rotation and locks text for another store owner", async () => {
+    const { stored, owner, stream } = await seedRealEncryptedMessage(
       "Only current owner can see this fixture",
     );
     const { rerender } = render(view(stored));
-    expect(screen.getByText("Only current owner can see this fixture")).toBeInTheDocument();
+    expect(await screen.findByText("Only current owner can see this fixture")).toBeInTheDocument();
     act(() =>
       useMessengerStore.getState().upsertStream(owner, {
         ...stream,
         currentEncryptionKey: {
           keyUuid: "other-key",
-          publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
+          keyFingerprint: stream.currentEncryptionKey!.keyFingerprint,
         },
       }),
     );
-    expect(screen.queryByText("Only current owner can see this fixture")).not.toBeInTheDocument();
+    expect(await screen.findByText("Only current owner can see this fixture")).toBeInTheDocument();
     act(() => useMessengerStore.getState().upsertStream(owner, stream));
-    expect(screen.getByText("Only current owner can see this fixture")).toBeInTheDocument();
+    expect(await screen.findByText("Only current owner can see this fixture")).toBeInTheDocument();
     act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
     rerender(view(stored));
     expect(screen.queryByText("Only current owner can see this fixture")).not.toBeInTheDocument();
@@ -171,5 +187,40 @@ describe("local mock encrypted message presentation", () => {
       useMessengerStore.setState({ ownerKey: "other-owner" });
     });
     expect(screen.queryByText("Only current owner can see this fixture")).not.toBeInTheDocument();
+  });
+  it("does not render a late decrypt result after owner invalidation", async () => {
+    const { stored } = await seedRealEncryptedMessage("secret");
+    let resolve: (text: string | null) => void = () => undefined;
+    const pending = new Promise<string | null>((done) => {
+      resolve = done;
+    });
+    vi.spyOn(cryptoRuntime, "decryptRealChatMessage").mockReturnValue(pending);
+    render(view(stored));
+    act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+    await act(async () => {
+      resolve("late secret");
+      await pending;
+    });
+    expect(screen.queryByText("late secret")).not.toBeInTheDocument();
+  });
+
+  it("keeps a legacy plaintext fixture locked instead of falling back to mock decoding", async () => {
+    const { stored } = await seedRealEncryptedMessage("real text");
+    const fixture = {
+      ...stored,
+      payload: {
+        kind: "e2ee" as const,
+        keyUuid: stored.payload.kind === "e2ee" ? stored.payload.keyUuid : "",
+        content: btoa(
+          JSON.stringify({
+            testOnly: "WORKSPACE_DEV_PLAINTEXT_TEST_V1",
+            text: "fixture plaintext",
+          }),
+        ),
+      },
+    };
+    render(view(fixture));
+    expect(screen.queryByText("fixture plaintext")).not.toBeInTheDocument();
+    expect(await screen.findByText("Key required")).toBeInTheDocument();
   });
 });

@@ -237,7 +237,7 @@ describe("ChatE2eeController", () => {
       uuid: "announcement",
       streamUuid: "chat",
       authorUuid: "issuer",
-      payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+      payload: { kind: "key_announced", keyUuid: "generation", keyFingerprint: chatFingerprint },
     });
     expect(f.readKey()?.groupKey).toEqual(groupKey);
   });
@@ -423,7 +423,7 @@ describe("ChatE2eeController", () => {
       uuid: "announcement",
       streamUuid: "chat",
       authorUuid: "issuer",
-      payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+      payload: { kind: "key_announced", keyUuid: "generation", keyFingerprint: chatFingerprint },
     });
     expect(f.readKey()?.groupKey).toEqual(groupKey);
     expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(2);
@@ -502,7 +502,7 @@ describe("ChatE2eeController", () => {
         uuid: "announcement",
         streamUuid: "chat",
         authorUuid: "issuer",
-        payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+        payload: { kind: "key_announced", keyUuid: "generation", keyFingerprint: chatFingerprint },
       }),
     ).toEqual({ ok: false, reason: "forbidden" });
     expect(f.storage.writeChatKey).not.toHaveBeenCalled();
@@ -597,7 +597,7 @@ describe("ChatE2eeController", () => {
         uuid: "announcement",
         streamUuid: "chat",
         authorUuid: "issuer",
-        payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+        payload: { kind: "key_announced", keyUuid: "generation", keyFingerprint: chatFingerprint },
       }),
     ).toEqual({ ok: false, reason: "storage-failed" });
     expect(f.controller.getState().access).toBe("missing");

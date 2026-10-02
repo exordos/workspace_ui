@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import { useDevMessagePresentation } from "~/features/encrypted-chat-message/dev-message-presentation.hook";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
+import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
@@ -44,7 +44,7 @@ function EncryptedMessageBody({
   );
 }
 
-/** Only scoped local mock plaintext enters the safe renderer; stored envelopes stay opaque. */
+/** Only scoped decrypted plaintext enters the safe renderer; stored envelopes stay opaque. */
 export function WorkspaceEncryptedMessageBubble({
   message,
   currentUserUuid,
@@ -54,7 +54,7 @@ export function WorkspaceEncryptedMessageBubble({
   readRequestPending,
   resolveAuthorLabel,
 }: WorkspaceEncryptedMessageBubbleProps) {
-  const plaintext = useDevMessagePresentation(message);
+  const plaintext = useRealMessagePresentation(message);
   const rendered = useMemo(
     () =>
       plaintext == null ? null : renderWorkspaceMessageBody(parseWorkspaceMessageBody(plaintext)),

@@ -1,6 +1,6 @@
 # E2EE-чаты — рабочий черновик
 
-Статус на 2026-10-02: выбраны симметричный `GroupKey` поколения, ChaCha20-Poly1305 для сообщений и HPKE для выдачи ключа отдельному запросу устройства. Подробные этапы и текущая готовность — в [плане реальной криптографии](E2EE_REAL_CRYPTO_PLAN.md). Семантика обязательного backend `public_key` чата ещё согласуется; нельзя передавать в нём секрет или фиктивный ключ. Связанная задача: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
+Статус на 2026-10-03: выбраны симметричный `GroupKey` поколения, ChaCha20-Poly1305 для сообщений и HPKE для выдачи ключа отдельному запросу устройства. Подробные этапы и текущая готовность — в [плане реальной криптографии](E2EE_REAL_CRYPTO_PLAN.md). Для локального backend согласовано `key_fingerprint` вместо публичного ключа чата; `GroupKey` в backend не передаётся. Связанная задача: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
 
 [Подготовка окончательного плана после компакта](E2EE_IMPLEMENTATION_PLANNING.md): макеты, принятые решения, открытые вопросы и работа оркестратора через субагентов.
 
@@ -35,15 +35,15 @@
   | `e2ee`          | `encryptMessage` / `decryptMessage`             | Получить `GroupKey` поколения; ciphertext в API, plaintext только в presentation            |
   | `key_request`   | `createRequestKeyPair` для нового запроса       | Сохранить pair до POST; retry того же pending request использует сохранённую pair           |
   | `key_grant`     | `encryptGroupKeyGrant` / `decryptGroupKeyGrant` | Проверить права, correlation и fingerprint; атомарно сохранить key и удалить request secret |
-  | `key_announced` | `createGroupKey` + `fingerprintGroupKey`        | Объявить публичные metadata после согласования legacy `public_key` mapping                  |
+  | `key_announced` | `createGroupKey` + `fingerprintGroupKey`        | Объявить fingerprint в `key_fingerprint`, без секрета                                       |
   | `key_reject`    | Не требуется                                    | Проверить автора/права/correlation; завершить только свой запрос                            |
 
 - Внутренние `{ bytes: Uint8Array }` не добавляют отдельное поле backend. [Payload adapter](../packages/web/src/entities/messenger/chat-e2ee-payload-adapters.lib.ts) использует обычный padded Base64 для `content` и request `public_key`, одинаково для REST/history/realtime. Формат бинарного envelope принадлежит клиенту; backend version/suite поля не добавляются.
-- Симметричный ключ не имеет публичной половины. PR180 требует `current_encryption_key.public_key` и `key_announced.public_key`; предложение использовать domain-separated fingerprint в этом поле меняет семантику API и требует явного решения пользователя. До него working create/announce не подключают real provider.
+- Симметричный ключ не имеет публичной половины. По решению пользователя локальный PR180 использует `current_encryption_key.key_fingerprint` и `key_announced.key_fingerprint`: domain-separated публичный fingerprint для проверки выдачи. `key_request.public_key` остаётся публичным ключом X25519. Внутренние secret bytes никогда не отправляются открыто.
 - [ChatKeyStorage](../packages/web/src/entities/messenger/chat-key-storage.types.ts) хранит устойчивые device labels, group keys/fingerprints, отдельные pending request pairs и terminal receipts. [IndexedDB storage](../packages/web/src/entities/messenger/chat-key-storage-idb.lib.ts) находится отдельно от message cache. Owner/device/stream/key образуют durable address; runtime generation используется только для проверки live callbacks.
 - Request UUID можно задать до POST через существующий optional `uuid` API. Pair и UUID сохраняются до dispatch; ответ проверяется на точное совпадение. Ambiguous timeout сохраняет secret; история помогает проверить доставку, а не создавать новые пары вслепую.
 - Однотипные повторные user actions возобновляют старейший pending request; все устойчивые запросы, включая появившиеся параллельно в разных вкладках, могут принять свой ответ. Atomic receipt не позволяет гонке grant/reject удалить другой secret или откатить доступ.
-- Provider/library и durable storage foundation реализуются по новому плану. До интеграционной проверки обычного UI это не означает, что рабочий чат уже использует настоящую криптографию. Legacy mock fixtures не превращаются в защищённые сообщения и не мигрируются автоматически.
+- Provider/library, durable storage и обычный UI подключены по новому плану; браузерный сценарий создания, запроса, выдачи и чтения после reload проверен на локальном стенде. Legacy mock fixtures не превращаются в защищённые сообщения и не мигрируются автоматически.
 
 ## Сообщения и поколения ключей
 
@@ -83,7 +83,7 @@
   {
     "kind": "key_announced",
     "key_uuid": "<uuid нового ключа>",
-    "public_key": "<legacy public_key: семантика metadata поколения согласуется>"
+    "key_fingerprint": "<публичный fingerprint GroupKey поколения, base64>"
   }
   ```
 
@@ -135,7 +135,7 @@
 - Права на выпуск уведомлений, достоверность объявления и защита от поддельных/повторных объявлений. Уведомление раскрывает факт смены ключа, его идентификатор и публичные metadata; один лишь `kind: "key_announced"` не доказывает полномочия отправителя.
 - Доступ нового участника к старой истории, отзыв устройства и восстановление. Строгий отзыв доступа к будущим сообщениям несовместим с неограниченной отправкой на старом ключе; если он потребуется, понадобится отдельное правило перехода.
 - Права администраторов, шифрование вложений и поведение поиска, редактирования, реакций и уведомлений; окончательный контракт режима стрима.
-- Локальный backend PR180 принимает все пять новых `kind`; его `encryption` metadata и обязательный `public_key` проверены. Финальный production контракт зависит от принятой серверной версии и решения о fingerprint.
+- Локальный backend PR180 принимает все пять новых `kind`; исходный контракт его `encryption` metadata проверен. Локальная правка меняет chat metadata на `key_fingerprint`; финальный production контракт зависит от принятой серверной версии.
 
 ## Исторические предложения backend, сверять с PR180
 
