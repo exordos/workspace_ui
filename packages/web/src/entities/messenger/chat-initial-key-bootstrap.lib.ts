@@ -2,6 +2,8 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { isAllowedDevWorkspaceProxyTargetOrigin } from "~/shared/config/dev-workspace-org-proxy";
 import type { ChatCryptoPublicKey } from "./chat-crypto-provider.types";
 
+export const DEV_CHAT_PUBLIC_KEY_MARKER = "DEV_ONLY_NO_CRYPTO_PUBLIC_KEY";
+
 export interface ChatInitialKeyMetadata {
   readonly keyUuid: string;
   readonly publicKey: ChatCryptoPublicKey;
@@ -38,7 +40,7 @@ export const devChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
       return Promise.reject(new MessengerChannelCreationError("encryption-unavailable"));
     return Promise.resolve({
       keyUuid: crypto.randomUUID(),
-      publicKey: { bytes: new TextEncoder().encode("DEV_ONLY_NO_CRYPTO_PUBLIC_KEY") },
+      publicKey: { bytes: new TextEncoder().encode(DEV_CHAT_PUBLIC_KEY_MARKER) },
       source: "development-fixture",
     });
   },

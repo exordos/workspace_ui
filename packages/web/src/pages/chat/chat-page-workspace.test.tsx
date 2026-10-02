@@ -10,6 +10,7 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { DEV_CHAT_PUBLIC_KEY_MARKER } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import {
   settleMessengerOutgoingMessage,
@@ -996,6 +997,57 @@ describe("ChatPage Workspace route", () => {
     await deleteWorkspaceMessengerCacheDatabase();
   });
 
+  it("uses the normal local mock editor without plaintext draft persistence or outbox and retains failed text", async () => {
+    const session = { ...createSession(), organizationOrigin: "http://127.0.0.1:9100" };
+    useWorkspaceAuthStore.getState().setSession(session);
+    const owner = workspaceRuntimeOwnerKey(session);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: {
+          keyUuid: "mock-key",
+          publicKey: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
+        },
+      })),
+    });
+    const hydrate = vi.fn();
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: hydrate });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    expect(screen.getByText("Test mode: no real encryption")).toBeInTheDocument();
+    fireEvent.change(textbox, { target: { value: "Local test message" } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(textbox).toHaveValue(""));
+    expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: "Local test message",
+        cryptoMode: "development-fixture",
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+      }),
+    );
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(
+      Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
+    ).toHaveLength(0);
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        owner,
+        `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      ),
+    ).toBeNull();
+    captured.sendMessengerMessage.mockRejectedValueOnce(new Error("mock failure"));
+    fireEvent.change(textbox, { target: { value: "Keep this text" } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
+    expect(textbox).toHaveValue("Keep this text");
+  });
   it("blocks the plaintext composer for an encrypted stream while retaining its history", async () => {
     const session = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     if (session == null) throw new Error("Expected runtime");

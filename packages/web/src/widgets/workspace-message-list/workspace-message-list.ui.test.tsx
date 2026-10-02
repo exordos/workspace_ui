@@ -184,8 +184,16 @@ describe("WorkspaceMessageList", () => {
     vi.useRealTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // Radix restores focus on a deferred task; run it before replacing the jsdom globals.
+    await act(async () => {
+      if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+      else
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+    });
     setLocale("en");
     useUsersStore.getState().clear();
     vi.useRealTimers();

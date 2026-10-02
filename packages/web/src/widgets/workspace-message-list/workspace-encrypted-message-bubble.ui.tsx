@@ -1,8 +1,13 @@
+import { useMemo } from "react";
+import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import { useDevMessagePresentation } from "~/features/encrypted-chat-message/dev-message-presentation.hook";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
 
 interface WorkspaceEncryptedMessageBubbleProps {
@@ -15,7 +20,31 @@ interface WorkspaceEncryptedMessageBubbleProps {
   readonly resolveAuthorLabel?: (authorUuid: string) => string | null | undefined;
 }
 
-/** Encoded key material never enters the Markdown renderer, menu, or file loaders. */
+function EncryptedMessageBody({
+  rendered,
+}: {
+  readonly rendered: ReturnType<typeof renderWorkspaceMessageBody> | null;
+}) {
+  if (rendered == null)
+    return (
+      <EncryptedMessagePlaceholder
+        state="locked"
+        title={t("e2ee.lockedTitle")}
+        description={t("e2ee.cryptoUnavailable")}
+      />
+    );
+  return (
+    <div className="max-w-md rounded-[18px] bg-bg-elevated px-3 py-2 text-sm text-text-primary shadow-sm">
+      <WorkspaceMessageBody
+        html={rendered.html}
+        metadata={rendered.metadata}
+        useInlineMeta={false}
+      />
+    </div>
+  );
+}
+
+/** Only scoped local mock plaintext enters the safe renderer; stored envelopes stay opaque. */
 export function WorkspaceEncryptedMessageBubble({
   message,
   currentUserUuid,
@@ -25,6 +54,12 @@ export function WorkspaceEncryptedMessageBubble({
   readRequestPending,
   resolveAuthorLabel,
 }: WorkspaceEncryptedMessageBubbleProps) {
+  const plaintext = useDevMessagePresentation(message);
+  const rendered = useMemo(
+    () =>
+      plaintext == null ? null : renderWorkspaceMessageBody(parseWorkspaceMessageBody(plaintext)),
+    [plaintext],
+  );
   const payload = message.payload;
   if (payload.kind === "markdown") return null;
   const date = new Date(message.createdAt);
@@ -55,11 +90,7 @@ export function WorkspaceEncryptedMessageBubble({
         </p>
       ) : null}
       {payload.kind === "e2ee" ? (
-        <EncryptedMessagePlaceholder
-          state="locked"
-          title={t("e2ee.lockedTitle")}
-          description={t("e2ee.cryptoUnavailable")}
-        />
+        <EncryptedMessageBody rendered={rendered} />
       ) : (
         <EncryptedChatServiceMessage
           kind={payload.kind}

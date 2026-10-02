@@ -25,7 +25,13 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import {
+  canUseDevChatCrypto,
+  createDevChatCryptoProvider,
+  pinDevChatCryptoRequestOptions,
+} from "./chat-dev-crypto.lib";
+import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
   type MessengerMessagePointerCacheTargets,
@@ -145,6 +151,8 @@ export type MessengerMessageActionResult =
   | { status: "skipped"; ownerKey: string | null; reason: "missing-context" | "stale-owner" };
 
 export interface SendMessengerMessageOptions extends MessengerMessageActionBaseOptions {
+  /** Explicit opt-in for local mock provider; never used by generic Markdown senders. */
+  cryptoMode?: "development-fixture";
   streamUuid: MessengerUuid;
   topicUuid: MessengerUuid;
   markdown: string;
@@ -253,6 +261,7 @@ export async function sendMessengerMessage({
   markdown,
   canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = false,
+  cryptoMode,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
   // Sending creates a markdown payload in the Workspace API and applies it to an active tail window.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
@@ -261,31 +270,94 @@ export async function sendMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  let expectedKeyUuid: string | null = null;
+  let expectedPublicKey: string | null = null;
+  const initiallyKnown =
+    useMessengerStore.getState().ownerKey === action.ownerKey &&
+    useMessengerStore.getState().streamsById[streamUuid] !== undefined;
+  const isCryptoScopeStale = () => {
+    if (action.isStale()) return true;
+    const catalogNow = useMessengerStore.getState();
+    const streamNow =
+      catalogNow.ownerKey === action.ownerKey ? catalogNow.streamsById[streamUuid] : undefined;
+    return (
+      expectedKeyUuid !== null &&
+      ((initiallyKnown && streamNow === undefined) ||
+        (streamNow !== undefined &&
+          (!canUseDevChatCrypto(runtimeContext, streamNow) ||
+            streamNow.currentEncryptionKey?.keyUuid !== expectedKeyUuid ||
+            streamNow.currentEncryptionKey?.publicKey !== expectedPublicKey)))
+    );
+  };
+  if (cryptoMode === "development-fixture") {
+    pinDevChatCryptoRequestOptions(runtimeContext, requestOptions);
+    const fetchImpl = requestOptions.fetchImpl ?? fetch;
+    requestOptions.fetchImpl = (request, init) =>
+      isCryptoScopeStale() ? Promise.reject(new Error("stale-owner")) : fetchImpl(request, init);
+  }
   const catalog = useMessengerStore.getState();
   const knownStream =
     catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
   const stream =
-    knownStream ??
-    (await (client.getStream ?? defaultGetStream)(
-      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-      streamUuid,
-    ));
+    (cryptoMode === "development-fixture" ? undefined : knownStream) ??
+    (await (client.getStream ?? defaultGetStream)(requestOptions, streamUuid));
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  if (stream.uuid !== streamUuid || stream.encryption === true) {
+  if (
+    stream.uuid !== streamUuid ||
+    (stream.encryption === true && cryptoMode !== "development-fixture")
+  ) {
     throw new Error("Encrypted chats require an available crypto provider");
   }
-  const dto = await (client.createMessage ?? defaultCreateMessage)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    {
-      uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
-      stream_uuid: streamUuid,
-      topic_uuid: topicUuid,
-      payload: { kind: "markdown", content: markdown },
-    },
-  );
-  if (action.isStale())
+  let payload: WorkspaceMessengerCreateMessageRequestBody["payload"] = {
+    kind: "markdown",
+    content: markdown,
+  };
+  if (cryptoMode === "development-fixture") {
+    const domainStream =
+      "currentEncryptionKey" in stream
+        ? stream
+        : adaptMessengerStream(stream as WorkspaceMessengerStreamDto);
+    if (!canUseDevChatCrypto(runtimeContext, domainStream))
+      throw new Error("Development chat crypto unavailable");
+    const provider = createDevChatCryptoProvider(runtimeContext, domainStream);
+    const key = domainStream.currentEncryptionKey!;
+    expectedKeyUuid = key.keyUuid;
+    expectedPublicKey = key.publicKey;
+    const result = await provider!.encryptMessage({
+      publicKey: { bytes: new TextEncoder().encode(atob(key.publicKey)) },
+      plaintext: new TextEncoder().encode(markdown),
+      context: { streamUuid, keyUuid: key.keyUuid },
+    });
+    if (isCryptoScopeStale())
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    if (!result.ok) throw new Error("Development chat crypto unavailable");
+    payload = encodeChatE2eePayload({ kind: "e2ee", keyUuid: key.keyUuid, content: result.value });
+  }
+  const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
+    uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
+    stream_uuid: streamUuid,
+    topic_uuid: topicUuid,
+    payload,
+  });
+  if (isCryptoScopeStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  if (
+    cryptoMode === "development-fixture" &&
+    (dto.uuid !== canonicalMessageUuid ||
+      dto.stream_uuid !== streamUuid ||
+      dto.topic_uuid !== topicUuid ||
+      dto.project_id !== runtimeContext.projectId ||
+      dto.user_uuid !== runtimeContext.userUuid ||
+      dto.author_uuid !== runtimeContext.userUuid ||
+      dto.payload.kind !== "e2ee" ||
+      payload.kind !== "e2ee" ||
+      dto.payload.key_uuid !== payload.key_uuid ||
+      dto.payload.content !== payload.content)
+  )
+    throw new Error("Encrypted message response mismatch");
 
   const message = adaptMessengerMessage(dto);
   store.getState().applyLiveCreatedMessage(message);

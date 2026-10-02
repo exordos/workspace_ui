@@ -20,6 +20,8 @@ import {
   selectWorkspaceMessageStatusForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { canUseDevChatCrypto } from "~/entities/messenger/chat-dev-crypto.lib";
+import { sendDevEncryptedMessengerMessage } from "~/entities/messenger/chat-dev-message-actions.lib";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -161,6 +163,7 @@ import type {
   MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
+import { MessageComposer } from "~/widgets/message-composer/message-composer.ui";
 import { WorkspaceMessageAnchorTransition } from "~/widgets/workspace-message-list/workspace-message-anchor-transition.ui";
 import type { WorkspaceMessageConversationReference } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
@@ -789,6 +792,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (state) => state.pendingDmCallPartnerUserUuid,
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
+  const stream = useMessengerStore((state) =>
+    streamUuid != null && state.ownerKey === ownerKey ? state.streamsById[streamUuid] : undefined,
+  );
+  const mockChatAvailable = canUseDevChatCrypto(runtimeContext, stream);
   const workspaceReplyHandoffBlocksSend =
     runtimeContext != null &&
     ownerKey != null &&
@@ -811,7 +819,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [conversationId, runtimeContext, workspaceReplyEditRestoreController],
   );
   const workspaceComposerDraftScopeKey =
-    ownerKey == null || conversationId == null
+    ownerKey == null || conversationId == null || stream?.encryption === true
       ? null
       : createWorkspaceComposerDraftKey(ownerKey, conversationId);
   const requestedWorkspaceDraftUuid = useMemo(
@@ -819,7 +827,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [location.search],
   );
   const workspaceComposerDraft = useWorkspaceComposerDraftStore((state) =>
-    selectWorkspaceComposerDraft(state, ownerKey, conversationId),
+    selectWorkspaceComposerDraft(
+      state,
+      ownerKey,
+      stream?.encryption === true ? null : conversationId,
+    ),
   );
   const composerDraftTopicsById = useMessengerStore((state) => state.topicsById);
   const composerDraftTarget = useMemo(() => {
@@ -994,14 +1006,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [updateWorkspaceComposerDraft],
   );
   const selectionMode = selectedMessageUuids.size > 0;
-  const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
   const topicUuid =
     selection.status === "conversation" && selection.kind === "topic" ? selection.topicUuid : null;
   const conversation = useMessengerStore((state) =>
     conversationId != null ? state.conversationsById[conversationId] : undefined,
-  );
-  const stream = useMessengerStore((state) =>
-    streamUuid != null ? state.streamsById[streamUuid] : undefined,
   );
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
@@ -1579,6 +1587,58 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       });
     },
     [ownerKey, runtimeContext],
+  );
+
+  const mockComposerCapabilities = useMemo<MessageComposerCapabilities>(
+    () => ({
+      ...workspaceComposerCapabilities,
+      upload: { mode: "unsupported", unsupportedText: t("e2ee.mockTextOnly") },
+      mentions: { mode: "unsupported", unsupportedText: t("e2ee.mockTextOnly") },
+    }),
+    [workspaceComposerCapabilities],
+  );
+
+  const handleSendDevEncrypted = useCallback(
+    async (content: string): Promise<MessageComposerSendResult> => {
+      if (!mockChatAvailable || runtimeContext == null || content.trim().length === 0)
+        return { shouldClearComposer: false };
+      const target = resolveSendTarget();
+      if (target.status === "blocked") {
+        setSendError(target.error);
+        return { shouldClearComposer: false };
+      }
+      if (!isWorkspaceMessageWithinLimit(content)) {
+        setSendError(t("composer.messageTooLong"));
+        return { shouldClearComposer: false };
+      }
+      setSendError(null);
+      const isCurrent = captureWorkspaceChatUiAction();
+      takeOpeningControl();
+      return runMessengerRuntimeMutation(runtimeContext, async (signal) => {
+        try {
+          const result = await sendDevEncryptedMessengerMessage({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+            streamUuid: target.streamUuid,
+            topicUuid: target.topicUuid,
+            markdown: content,
+            includeStreamConversation: target.includeStreamConversation,
+          });
+          return { shouldClearComposer: result.status === "applied" && isCurrent() };
+        } catch {
+          if (isCurrent()) setSendError(t("message.sendFailed"));
+          return { shouldClearComposer: false };
+        }
+      });
+    },
+    [
+      mockChatAvailable,
+      runtimeContext,
+      resolveSendTarget,
+      captureWorkspaceChatUiAction,
+      takeOpeningControl,
+    ],
   );
 
   const handleSend = useCallback(
@@ -3629,7 +3689,25 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             joinedBelow={!showStreamTopicPrompt}
           />
         ) : null}
-        {stream?.encryption === true ? (
+        {stream?.encryption === true && mockChatAvailable ? (
+          <>
+            <p
+              role="status"
+              className="border-t border-border-subtle px-4 py-2 text-xs text-text-muted"
+            >
+              {t("e2ee.mockModeNotice")}
+            </p>
+            <MessageComposer
+              key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}:${stream.currentEncryptionKey?.keyUuid}`}
+              onSend={handleSendDevEncrypted}
+              capabilities={mockComposerCapabilities}
+              disabled={isTopicClosed}
+              initialValue=""
+              aiMessagesContext={[]}
+              joinedTop
+            />
+          </>
+        ) : stream?.encryption === true ? (
           <p
             role="status"
             className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted"

@@ -1454,6 +1454,8 @@
     "chatMenu": "Chat menu"
   },
   "e2ee": {
+    "mockModeNotice": "Test mode: no real encryption",
+    "mockTextOnly": "Only text messages are available in test mode.",
     "loadedRequestsTitle": "Requests in loaded history ({{count}})",
     "keyActionsUnavailable": "Key issuance and rotation are unavailable until the cryptographic provider and key storage are connected.",
     "keyCreatedAt": "Created: {{date}}",
