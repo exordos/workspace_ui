@@ -243,6 +243,7 @@ function streamItemFromStream(input: {
         : input.stream.name,
     audience: input.stream.audience,
     isPrivate: input.stream.isPrivate,
+    encryption: input.stream.encryption ?? false,
     isArchived: input.stream.isArchived,
     uiKind,
     notificationMode: input.stream.notificationMode,

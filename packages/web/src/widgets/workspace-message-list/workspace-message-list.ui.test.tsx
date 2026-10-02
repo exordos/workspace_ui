@@ -192,6 +192,59 @@ describe("WorkspaceMessageList", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders encrypted and key-service history without exposing encoded content or loading files", () => {
+    const encoded =
+      "<img src=secret-key-material onerror=alert(1)> [asset](urn:file:11111111-1111-4111-8111-111111111111)";
+    const payloads: MessengerMessage["payload"][] = [
+      { kind: "e2ee", keyUuid: "generation", content: encoded },
+      {
+        kind: "key_request",
+        keyUuid: "generation",
+        deviceId: "device",
+        deviceName: "MacBook",
+        publicKey: encoded,
+      },
+      {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+        content: encoded,
+      },
+      { kind: "key_announced", keyUuid: "generation", publicKey: encoded },
+      {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+      },
+    ];
+    const loadPreview = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={payloads.map((payload, index) =>
+          createWorkspaceMessage({ uuid: `encrypted-${index}`, payload }),
+        )}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: loadPreview }}
+      />,
+    );
+    expect(screen.getByText("Key required")).toBeInTheDocument();
+    expect(screen.getByText("Key requested")).toBeInTheDocument();
+    expect(screen.getByText("Encrypted key grant received")).toBeInTheDocument();
+    expect(screen.getByText("New key announced")).toBeInTheDocument();
+    expect(screen.getByText("Key request rejected")).toBeInTheDocument();
+    expect(screen.getByText("MacBook")).toBeInTheDocument();
+    expect(container.querySelectorAll("article")).toHaveLength(5);
+    expect(container.innerHTML).not.toContain("secret-key-material");
+    expect(container.innerHTML).not.toContain("urn:file:");
+    expect(loadPreview).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea, [contenteditable=true]")).toBeNull();
+  });
+
   it("renders Workspace messages with uuid based DOM identity", () => {
     const message = createWorkspaceMessage({
       uuid: "workspace-message-uuid",

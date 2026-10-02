@@ -17,6 +17,7 @@ import CelebrationIcon from "../assets/icons/celebration.svg?react";
 import ChannelsIcon from "../assets/icons/channels.svg?react";
 import ChatBubbleIcon from "../assets/icons/chat_bubble.svg?react";
 import ChatBubbleOutlineIcon from "../assets/icons/chat_bubble_outline.svg?react";
+import ChatLockIcon from "../assets/icons/chat_lock.svg?react";
 import CheckIcon from "../assets/icons/check.svg?react";
 import ChevronDownIcon from "../assets/icons/chevron-down.svg?react";
 import ChevronRightIcon from "../assets/icons/chevron-right.svg?react";
@@ -170,6 +171,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   desktop_windows: DesktopWindowsIcon,
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
+  chatLock: ChatLockIcon,
   calendar: CalendarIcon,
   calendar_month: CalendarMonthIcon,
   celebration: CelebrationIcon,

@@ -199,6 +199,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [];
+    if (message.payload.kind !== "markdown") return items;
+    const markdown = message.payload.content;
 
     if (onToggleMessageReaction != null) {
       items.push({
@@ -316,7 +318,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
       label: t("message.copy"),
       onSelect: () => {
         const selectedText = getSelectedText();
-        const textToCopy = selectedText ?? message.payload.content;
+        const textToCopy = selectedText ?? markdown;
         if (onCopyMessageText != null) {
           void onCopyMessageText(message.uuid, textToCopy);
         } else {
@@ -376,7 +378,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     handleEmojiPick,
     handleReaction,
     isOwn,
-    message.payload.content,
+    message.payload,
     message.uuid,
     onAddReplyMessage,
     onCopyMessageText,

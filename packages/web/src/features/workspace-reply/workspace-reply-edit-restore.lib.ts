@@ -164,7 +164,7 @@ export function createWorkspaceReplyEditRestoreController(
         createIdentity,
         (messageUuid) => {
           const message = resolvedMessagesByUuid.get(messageUuid);
-          if (message == null) return null;
+          if (message?.payload.kind !== "markdown") return null;
           const author = dependencies.resolveAuthor(message);
           if (author == null) return null;
           return {

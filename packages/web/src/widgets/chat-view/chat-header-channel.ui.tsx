@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { ChatHeaderShell } from "./chat-header-shell.ui";
 import type { ChatChannelHeaderProps } from "./chat-header.types";
 
@@ -10,6 +11,7 @@ const TITLE_ACTION_BUTTON_CLASS =
 /** Channel or topic header with member counts and actions. */
 export const ChatChannelHeader: React.FC<ChatChannelHeaderProps> = ({
   channelName,
+  encrypted = false,
   topic = t("chat.generalChat"),
   systemTopic = false,
   participantsCount = 5,
@@ -44,6 +46,12 @@ export const ChatChannelHeader: React.FC<ChatChannelHeaderProps> = ({
       infoLabel={infoLabel}
     >
       <div className="relative flex min-w-0 flex-1 flex-col rounded-lg text-left">
+        {encrypted ? (
+          <span className="mb-1 flex items-center gap-1 text-xs text-accent">
+            <Icon name="chatLock" size={16} className="text-accent" />
+            {t("e2ee.protectedChat")}
+          </span>
+        ) : null}
         <h1 className="truncate text-sm text-text-primary">
           {!hideTopic && topic ? (
             <>

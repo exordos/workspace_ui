@@ -1449,6 +1449,7 @@
     "chatMenu": "Chat menu"
   },
   "e2ee": {
+    "cryptoUnavailable": "Sending and decrypting encrypted messages require a cryptographic provider. It is not connected yet.",
     "protectedChat": "Protected chat",
     "keyTitle": "Encryption key",
     "currentKey": "Current key",

@@ -26,6 +26,7 @@ import {
   uploadAttachmentUnsupported,
 } from "./messenger-messages.api";
 import type { UnsupportedMessengerApiAction } from "./messenger-messages.api";
+import type { WorkspaceMessengerE2eePayloadDto } from "./messenger.types";
 
 // Message tests cover markdown CRUD and explicit unsupported backend gaps.
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -490,4 +491,53 @@ describe("messenger messages API", () => {
       after: [afterMessage],
     });
   });
+});
+
+it.each<WorkspaceMessengerE2eePayloadDto>([
+  { kind: "e2ee", key_uuid: MESSAGE_UUID, content: "opaque-ciphertext" },
+  {
+    kind: "key_request",
+    key_uuid: MESSAGE_UUID,
+    device_id: "mac",
+    device_name: "MacBook",
+    public_key: "opaque-public-key",
+  },
+  { kind: "key_announced", key_uuid: MESSAGE_UUID, public_key: "opaque-public-key" },
+  {
+    kind: "key_grant",
+    key_uuid: MESSAGE_UUID,
+    request_message_uuid: MESSAGE_UUID,
+    sender_device_id: "admin",
+    recipient_device_id: "mac",
+    content: "opaque-key-grant",
+  },
+  {
+    kind: "key_reject",
+    key_uuid: MESSAGE_UUID,
+    request_message_uuid: MESSAGE_UUID,
+    sender_device_id: "admin",
+    recipient_device_id: "mac",
+  },
+])("preserves $kind through REST creation/history and realtime guards", async (payload) => {
+  const dto = { ...messageDto, payload };
+  const createFetch = createFetchMock(dto);
+  expect(
+    await createMessage(
+      { accessToken: "access-token", fetchImpl: createFetch },
+      { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload },
+    ),
+  ).toEqual(dto);
+  const [, init] = firstFetchCall(createFetch);
+  expect(init?.body).toBe(
+    JSON.stringify({ stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload }),
+  );
+  const historyFetch = createFetchMock([dto]);
+  expect(
+    await getMessages(
+      { accessToken: "access-token", fetchImpl: historyFetch },
+      { streamUuid: STREAM_UUID },
+    ),
+  ).toEqual([dto]);
+  const { isWorkspaceRealtimeEvent } = await import("./messenger.types");
+  expect(isWorkspaceRealtimeEvent({ epoch_version: 23, type: "message", message: dto })).toBe(true);
 });

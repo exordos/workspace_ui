@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerMessagePayload,
+  MessengerStream,
+  MessengerTopic,
+} from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -255,9 +259,9 @@ function prepareStores(options: { includeDirect?: boolean } = {}) {
 
 async function waitForForwardMessageInStore(): Promise<void> {
   await waitFor(() => {
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload.content).toBe(
-      "full message text",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload),
+    ).toBe("full message text");
   });
 }
 
@@ -679,3 +683,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     expect(useWorkspaceForwardMessageStore.getState().isOpen).toBe(true);
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}

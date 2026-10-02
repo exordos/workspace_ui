@@ -427,7 +427,7 @@ vi.mock("./chat-page-workspace-message-list-section.ui", async (importOriginal) 
         <div data-testid="workspace-message-list-section">
           {props.messages.map((message) => (
             <article key={message.uuid} data-message-uuid={message.uuid}>
-              {message.payload.content}
+              {message.payload.kind === "markdown" ? message.payload.content : message.payload.kind}
             </article>
           ))}
           {props.outgoingMessages?.map((message) => (
@@ -994,6 +994,28 @@ describe("ChatPage Workspace route", () => {
     }
     resetWorkspaceMessengerCacheDbSingletonForTests();
     await deleteWorkspaceMessengerCacheDatabase();
+  });
+
+  it("blocks the plaintext composer for an encrypted stream while retaining its history", async () => {
+    const session = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (session == null) throw new Error("Expected runtime");
+    const payload = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(session), {
+      ...payload,
+      streams: payload.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Sending and decrypting encrypted messages require a cryptographic provider. It is not connected yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(captured.channelHeaderProps).toMatchObject({ encrypted: true });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -2858,23 +2880,27 @@ describe("ChatPage Workspace route", () => {
 
         await act(async () => {
           response.resolve({
-            items: [cachedMessage, createSecondMessage()].map((message) => ({
-              uuid: message.uuid,
-              project_id: message.projectId,
-              stream_uuid: message.streamUuid,
-              topic_uuid: message.topicUuid,
-              author_uuid: message.authorUuid,
-              user_uuid: USER_UUID,
-              payload: message.payload,
-              read: message.read,
-              pinned: false,
-              starred: false,
-              is_own: false,
-              reactions: {},
-              reaction_users: {},
-              created_at: message.createdAt,
-              updated_at: message.updatedAt,
-            })),
+            items: [cachedMessage, createSecondMessage()].map((message) => {
+              if (message.payload.kind !== "markdown")
+                throw new Error("Expected Markdown test fixture");
+              return {
+                uuid: message.uuid,
+                project_id: message.projectId,
+                stream_uuid: message.streamUuid,
+                topic_uuid: message.topicUuid,
+                author_uuid: message.authorUuid,
+                user_uuid: USER_UUID,
+                payload: message.payload,
+                read: message.read,
+                pinned: false,
+                starred: false,
+                is_own: false,
+                reactions: {},
+                reaction_users: {},
+                created_at: message.createdAt,
+                updated_at: message.updatedAt,
+              };
+            }),
             nextPageMarker: null,
             pageLimit: 50,
           });

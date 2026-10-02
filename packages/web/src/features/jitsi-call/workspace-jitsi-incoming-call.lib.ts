@@ -50,6 +50,7 @@ export function buildWorkspaceIncomingDmCallInvite(
     return null;
   }
 
+  if (input.message.payload.kind !== "markdown") return null;
   const meetingUrl = getJitsiMeetingUrl(input.message.payload.content, {
     serverBaseUrl: input.meetUrl,
   });

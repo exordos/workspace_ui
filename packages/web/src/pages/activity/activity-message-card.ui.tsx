@@ -5,6 +5,7 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { t } from "~/i18n/i18n";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -57,10 +58,11 @@ export function ActivityMessageCard({
   const isPrivate = stream?.isPrivate ?? false;
   const privateContext =
     isPrivate && streamName.length > 0 ? `${t("dm.private")} · ${streamName}` : null;
-  const preview = summarizeWorkspaceMessageMarkdown(
-    message.payload.content,
-    ACTIVITY_MESSAGE_SUMMARY_OPTIONS,
-  ).text;
+  const preview =
+    message.payload.kind === "markdown"
+      ? summarizeWorkspaceMessageMarkdown(message.payload.content, ACTIVITY_MESSAGE_SUMMARY_OPTIONS)
+          .text
+      : encryptedMessageLabel(message.payload);
 
   return (
     <div
@@ -113,7 +115,10 @@ export function ActivityMessageCard({
         </button>
         <button
           type="button"
-          onClick={() => onForward(message.uuid)}
+          disabled={message.payload.kind !== "markdown"}
+          onClick={() => {
+            if (message.payload.kind === "markdown") onForward(message.uuid);
+          }}
           className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
           aria-label={t("message.forward")}
           title={t("message.forward")}

@@ -24,6 +24,7 @@ import {
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
+import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
@@ -356,8 +357,8 @@ function WorkspaceMessageBubbleFooter({
   );
 }
 
-export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = React.memo(
-  function WorkspaceMessageBubble({
+const WorkspaceMarkdownMessageBubble: React.FC<WorkspaceMessageBubbleProps> = React.memo(
+  function WorkspaceMarkdownMessageBubble({
     message,
     currentUserUuid,
     isFirstInGroup,
@@ -386,7 +387,10 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const displayMessage = serverMessage ?? outgoingMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
-    const markdown = serverMessage?.payload.content ?? outgoingMessage?.markdown ?? "";
+    const markdown =
+      serverMessage?.payload.kind === "markdown"
+        ? serverMessage.payload.content
+        : (outgoingMessage?.markdown ?? "");
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
       () => ({ serverBaseUrl: interactiveActions?.jitsiServerBaseUrl }),
       [interactiveActions?.jitsiServerBaseUrl],
@@ -681,3 +685,22 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     );
   },
 );
+
+export const WorkspaceMessageBubble = React.memo(function WorkspaceMessageBubble(
+  props: WorkspaceMessageBubbleProps,
+) {
+  if (props.message.kind === "server" && props.message.message.payload.kind !== "markdown") {
+    return (
+      <WorkspaceEncryptedMessageBubble
+        message={props.message.message}
+        resolveAuthorLabel={props.resolveAuthorLabel}
+        currentUserUuid={props.currentUserUuid}
+        isFirstInGroup={props.isFirstInGroup}
+        isLastInGroup={props.isLastInGroup}
+        isSelected={props.isSelected}
+        readRequestPending={props.readRequestPending}
+      />
+    );
+  }
+  return <WorkspaceMarkdownMessageBubble {...props} />;
+});

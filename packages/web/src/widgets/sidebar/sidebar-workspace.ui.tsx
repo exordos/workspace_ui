@@ -378,7 +378,13 @@ function WorkspaceSidebarStreamRow({
               style={avatarStyle}
               presence={isDirectPrivate ? (stream.presence ?? null) : null}
             >
-              {avatarLabel}
+              {stream.encryption ? (
+                <span role="img" aria-label={t("e2ee.protectedChat")}>
+                  <Icon name="chatLock" size={24} className="text-text-primary" />
+                </span>
+              ) : (
+                avatarLabel
+              )}
             </WorkspaceAvatar>
           </Link>
           <div className={sidebarChatRowBodyClass(compact)}>

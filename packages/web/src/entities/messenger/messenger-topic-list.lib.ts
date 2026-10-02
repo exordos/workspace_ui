@@ -93,7 +93,7 @@ export function createMessengerTopicMessagePreview(input: {
   if (input.messageUuid == null) return null;
 
   const message = input.messagesById[input.messageUuid];
-  if (message == null) return null;
+  if (message?.payload.kind !== "markdown") return null;
 
   const senderName =
     message.authorUuid === input.currentUserUuid

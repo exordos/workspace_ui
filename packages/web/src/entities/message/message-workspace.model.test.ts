@@ -4,6 +4,7 @@ import {
   conversationIdForTopic,
 } from "~/entities/messenger/messenger-ids.lib";
 import type {
+  MessengerMessagePayload,
   MessengerConversationId,
   MessengerMessage,
   MessengerUuid,
@@ -140,9 +141,9 @@ describe("workspace message store", () => {
         revision: 1,
       }),
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.payload.content).toBe(
-      "known body",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.payload),
+    ).toBe("known body");
     expect(
       useWorkspaceMessageStore.getState().messagesLoadingByConversationId[TOPIC_CONVERSATION_ID],
     ).toBe(false);
@@ -361,7 +362,9 @@ describe("workspace message store", () => {
         ),
     ).toBe(false);
     expect(
-      selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), MESSAGE_A)?.payload.content,
+      readMarkdownPayload(
+        selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), MESSAGE_A)?.payload,
+      ),
     ).toBe("live");
   });
 
@@ -566,7 +569,9 @@ describe("workspace message store", () => {
     useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation(update);
     expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([]);
     expect(
-      selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), MESSAGE_A)?.payload.content,
+      readMarkdownPayload(
+        selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), MESSAGE_A)?.payload,
+      ),
     ).toBe("update");
 
     useWorkspaceMessageStore.getState().applyLiveCreatedMessage(update);
@@ -694,3 +699,7 @@ describe("workspace message store", () => {
     ).not.toBeNull();
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}

@@ -33,7 +33,7 @@ import {
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerConversationId } from "./messenger.types";
+import type { MessengerMessagePayload, MessengerConversationId } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -146,6 +146,7 @@ function createTopicDto(
 function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   useMessengerStore.getState().startBootstrap(ownerKey);
+  useMessengerStore.getState().upsertStream(ownerKey, adaptMessengerStream(createStreamDto()));
   return ownerKey;
 }
 
@@ -409,9 +410,9 @@ describe("messenger message actions", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).not.toBe(
-      "Edited",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).not.toBe("Edited");
     expect(cache.patchCachedMessage).not.toHaveBeenCalled();
   });
 
@@ -443,9 +444,9 @@ describe("messenger message actions", () => {
     );
 
     await action;
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "New realtime body",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("New realtime body");
   });
 
   it("does not resurrect a realtime-deleted message from a late read response", async () => {
@@ -1124,4 +1125,73 @@ describe("messenger message actions", () => {
       expect.objectContaining({ uuid: MESSAGE_A }),
     );
   });
+});
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}
+
+it("blocks plaintext retries to a known encrypted stream before creating any message", async () => {
+  const runtimeContext = createRuntimeContext();
+  const ownerKey = prepareStoreOwner(runtimeContext);
+  useMessengerStore.getState().upsertStream(
+    ownerKey,
+    adaptMessengerStream(
+      createStreamDto({
+        encryption: true,
+        current_encryption_key: { key_uuid: MESSAGE_A, public_key: "AA==" },
+      }),
+    ),
+  );
+  const createMessage = vi.fn();
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage },
+    }),
+  ).rejects.toThrow("crypto provider");
+  expect(createMessage).not.toHaveBeenCalled();
+});
+
+it("resolves unknown stream encryption before sending and blocks encrypted results", async () => {
+  const runtimeContext = createRuntimeContext();
+  useMessengerStore.getState().clear();
+  const createMessage = vi.fn();
+  const getStream = vi.fn().mockResolvedValue(createStreamDto({ encryption: true }));
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage, getStream },
+    }),
+  ).rejects.toThrow("crypto provider");
+  expect(getStream).toHaveBeenCalledWith(expect.any(Object), STREAM_A);
+  expect(createMessage).not.toHaveBeenCalled();
+});
+
+it("does not send after the runtime owner changes during unknown stream preflight", async () => {
+  const runtimeContext = createRuntimeContext();
+  let current = runtimeContext;
+  useMessengerStore.getState().clear();
+  const createMessage = vi.fn();
+  const getStream = vi.fn(() => {
+    current = createRuntimeContext({ organizationId: ORGANIZATION_B, projectId: PROJECT_B });
+    return Promise.resolve(createStreamDto());
+  });
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => current,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage, getStream },
+    }),
+  ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+  expect(createMessage).not.toHaveBeenCalled();
 });

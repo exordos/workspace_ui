@@ -7,7 +7,6 @@ import { SelectableRow } from "~/shared/ui/selectable-row.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import cachedUrl from "./assets/cached.svg";
 import settingsUrl from "./assets/instant-mix.svg";
-import lockUrl from "./assets/lock.svg";
 import type {
   EncryptedChatInfoProps,
   EncryptedChatKeyRequestView,
@@ -17,7 +16,7 @@ const ICON_BUTTON_CLASS = "h-6 w-6 shrink-0 rounded p-0 text-accent";
 
 export const EncryptedChatAvatar = () => (
   <Avatar size="xl" className="border-0 bg-accent">
-    <img src={lockUrl} width={40} height={40} alt="" />
+    <Icon name="chatLock" size={40} className="text-on-accent" />
   </Avatar>
 );
 

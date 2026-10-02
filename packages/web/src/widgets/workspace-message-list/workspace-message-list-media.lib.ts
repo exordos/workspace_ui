@@ -42,6 +42,7 @@ export function collectWorkspaceMessageMediaGallery(
   const indexByFileUuid = new Map<string, number>();
 
   for (const message of messages) {
+    if (message.payload.kind !== "markdown") continue;
     const document = parseWorkspaceMessageBody(message.payload.content, {
       resolveMention: options.resolveMention,
     });

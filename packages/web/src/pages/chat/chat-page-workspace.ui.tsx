@@ -395,6 +395,7 @@ function shouldPresentWorkspaceFavorites({
 
 type WorkspaceConversationHeaderProps = Readonly<{
   isFavoritesConversation: boolean;
+  encrypted?: boolean;
   headerView: ReturnType<typeof selectWorkspaceChatHeaderView>;
   commonHeaderProps: ChatHeaderCommonProps;
   onOpenPartnerProfile?: () => void;
@@ -404,6 +405,7 @@ type WorkspaceConversationHeaderProps = Readonly<{
 
 function WorkspaceConversationHeader({
   isFavoritesConversation,
+  encrypted = false,
   headerView,
   commonHeaderProps,
   onOpenPartnerProfile,
@@ -427,6 +429,7 @@ function WorkspaceConversationHeader({
   return (
     <ChatChannelHeader
       {...commonHeaderProps}
+      encrypted={encrypted}
       channelName={headerView.channelName}
       topic={headerView.topic}
       hideTopic={headerView.hideTopic}
@@ -1580,6 +1583,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleSend = useCallback(
     (content: string) => {
+      if (stream?.encryption === true) {
+        setSendError(t("e2ee.cryptoUnavailable"));
+        return { shouldClearComposer: false } satisfies MessageComposerSendResult;
+      }
       if (workspaceReplyHandoffBlocksSend || workspaceReplyHandoffClaimRef.current != null) {
         return { shouldClearComposer: false } satisfies MessageComposerSendResult;
       }
@@ -1705,6 +1712,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       resolveSendTarget,
       runtimeContext,
       setComposerDraftShadow,
+      stream?.encryption,
       workspaceReplyHandoffBlocksSend,
       takeOpeningControl,
     ],
@@ -1877,6 +1885,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             );
       if (
         !message?.isOwn ||
+        message.payload.kind !== "markdown" ||
         message.conversationId !== conversationId ||
         message.projectId !== runtimeContext.projectId
       ) {
@@ -1935,6 +1944,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
       if (
         !message?.isOwn ||
+        message.payload.kind !== "markdown" ||
         hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))
       ) {
         setActionError(t("message.editUnavailable"));
@@ -2035,7 +2045,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-      if (message == null) {
+      if (message?.payload.kind !== "markdown") {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return null;
       }
@@ -2697,6 +2707,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const message = routeMessages[index];
       if (
         message?.isOwn === true &&
+        message.payload.kind === "markdown" &&
         !hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))
       ) {
         handleEditMessage(message.uuid);
@@ -3234,6 +3245,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const header = (
     <WorkspaceConversationHeader
       isFavoritesConversation={isFavoritesConversation}
+      encrypted={stream?.encryption === true}
       headerView={headerView}
       commonHeaderProps={commonHeaderProps}
       onOpenPartnerProfile={
@@ -3617,7 +3629,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             joinedBelow={!showStreamTopicPrompt}
           />
         ) : null}
-        {showStreamTopicPrompt ? (
+        {stream?.encryption === true ? (
+          <p
+            role="status"
+            className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted"
+          >
+            {t("e2ee.cryptoUnavailable")}
+          </p>
+        ) : showStreamTopicPrompt ? (
           <ChatPageStreamTopicPrompt
             topics={streamPromptTopics}
             onSelectTopic={handleSelectStreamPromptTopic}

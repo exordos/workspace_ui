@@ -15,6 +15,7 @@ import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-m
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -174,7 +175,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   );
   const sourceMarkdown =
     reference.snapshotMarkdown ??
-    (resolved.status === "ready" && resolved.message != null
+    (resolved.status === "ready" && resolved.message?.payload.kind === "markdown"
       ? resolved.message.payload.content
       : "");
   const sourceDocument = useMemo(() => {
@@ -342,7 +343,11 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
       onClick={onOpenMessage == null ? undefined : handleBlockClick}
       onKeyDown={onOpenMessage == null ? undefined : handleBlockKeyDown}
     >
-      {messageContent}
+      {resolved.status === "ready" &&
+      resolved.message?.payload.kind !== "markdown" &&
+      resolved.message != null
+        ? encryptedMessageLabel(resolved.message.payload)
+        : messageContent}
     </WorkspaceMessageQuoteFrame>
   );
 });

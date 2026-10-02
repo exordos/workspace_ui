@@ -14,6 +14,7 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -366,10 +367,13 @@ export const FeedPage: React.FC = () => {
                 const context = `#${streamName} · ${contextTopic}`;
                 // Feed uses the same Workspace summary path as the sidebar:
                 // previews stay textual and do not expose protected file URLs.
-                const summaryText = summarizeWorkspaceMessageMarkdown(
-                  m.payload.content,
-                  FEED_MESSAGE_SUMMARY_OPTIONS,
-                ).text;
+                const summaryText =
+                  m.payload.kind === "markdown"
+                    ? summarizeWorkspaceMessageMarkdown(
+                        m.payload.content,
+                        FEED_MESSAGE_SUMMARY_OPTIONS,
+                      ).text
+                    : encryptedMessageLabel(m.payload);
 
                 return (
                   <li key={m.uuid}>

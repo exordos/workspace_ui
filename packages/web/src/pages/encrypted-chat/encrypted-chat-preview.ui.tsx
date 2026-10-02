@@ -1,9 +1,9 @@
 import React, { useRef, useState } from "react";
+import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
+import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { EncryptedChatInfo } from "~/widgets/encrypted-chat-info/encrypted-chat-info.ui";
-import { EncryptedChatServiceMessage } from "~/widgets/encrypted-chat-messages/encrypted-chat-service-message.ui";
-import { EncryptedMessagePlaceholder } from "~/widgets/encrypted-chat-messages/encrypted-message-placeholder.ui";
 
 type PreviewState = "locked" | "loading" | "error";
 const DEVICE_NAMES = ["iPhone 15", "MacBook Air", "Chrome", "Firefox"] as const;

@@ -355,3 +355,39 @@ describe("messenger-streams api", () => {
     ).rejects.toThrow("Expected valid messenger stream bindings response item at index 0");
   });
 });
+
+it("rejects an encrypted create response that reuses a plaintext direct stream", async () => {
+  const fetchMock = createFetchMock(streamDto);
+  await expect(
+    createStream(
+      { accessToken: "access-token", fetchImpl: fetchMock },
+      {
+        name: "Protected",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+        encryption: true,
+        current_encryption_key: { key_uuid: STREAM_UUID, public_key: "AA==" },
+      },
+    ),
+  ).rejects.toThrow("requested encrypted stream");
+});
+
+it("accepts an encrypted create only with the requested initial generation", async () => {
+  const key = { key_uuid: STREAM_UUID, public_key: "AA==" };
+  const encrypted = { ...streamDto, encryption: true, current_encryption_key: key };
+  const fetchMock = createFetchMock(encrypted);
+  await expect(
+    createStream(
+      { accessToken: "access-token", fetchImpl: fetchMock },
+      {
+        name: "Protected",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+        encryption: true,
+        current_encryption_key: key,
+      },
+    ),
+  ).resolves.toEqual(encrypted);
+});

@@ -21,7 +21,7 @@ vi.mock("~/widgets/workspace-message-list/workspace-message-list.ui", () => ({
       <div data-testid="workspace-message-list">
         {props.messages.map((message) => (
           <article key={message.uuid} data-message-uuid={message.uuid}>
-            {message.payload.content}
+            {message.payload.kind === "markdown" ? message.payload.content : message.payload.kind}
           </article>
         ))}
       </div>

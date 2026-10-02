@@ -18,7 +18,9 @@ import {
   editMessage as defaultEditMessage,
   markMessagesReadUpTo as defaultMarkMessagesReadUpTo,
 } from "~/shared/api/messenger-messages.api";
+import { getStream as defaultGetStream } from "~/shared/api/messenger-streams.api";
 import type {
+  WorkspaceMessengerStreamDto,
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerUpdateMessageRequestBody,
@@ -56,6 +58,10 @@ import type {
 } from "./messenger.types";
 
 export interface MessengerMessageActionClientDeps {
+  getStream?: (
+    options: MessengerClientOptions,
+    streamUuid: string,
+  ) => Promise<WorkspaceMessengerStreamDto>;
   createMessage?: (
     options: MessengerClientOptions,
     body: WorkspaceMessengerCreateMessageRequestBody,
@@ -255,6 +261,20 @@ export async function sendMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const catalog = useMessengerStore.getState();
+  const knownStream =
+    catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
+  const stream =
+    knownStream ??
+    (await (client.getStream ?? defaultGetStream)(
+      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+      streamUuid,
+    ));
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (stream.uuid !== streamUuid || stream.encryption === true) {
+    throw new Error("Encrypted chats require an available crypto provider");
+  }
   const dto = await (client.createMessage ?? defaultCreateMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     {
@@ -300,6 +320,26 @@ export async function editMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const capturedMutationRevision = store.getState().messageMutationRevision;
+  const originalMessage = store.getState().messagesById[messageUuid];
+  if (originalMessage?.payload.kind !== "markdown") {
+    throw new Error("A loaded Markdown message is required for editing");
+  }
+  const catalog = useMessengerStore.getState();
+  const knownStream =
+    catalog.ownerKey === action.ownerKey
+      ? catalog.streamsById[originalMessage.streamUuid]
+      : undefined;
+  const stream =
+    knownStream ??
+    (await (client.getStream ?? defaultGetStream)(
+      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+      originalMessage.streamUuid,
+    ));
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (stream.uuid !== originalMessage.streamUuid || stream.encryption === true) {
+    throw new Error("Encrypted messages cannot be edited as Markdown");
+  }
 
   const dto = await (client.editMessage ?? defaultEditMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),

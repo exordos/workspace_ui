@@ -73,7 +73,16 @@ export async function createStream(
   body: WorkspaceMessengerCreateStreamRequestBody,
 ): Promise<WorkspaceMessengerStreamDto> {
   const { data } = await messengerRequestJsonResult("POST", "/streams/", options, {}, body);
-  return parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
+  const stream = parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
+  if (
+    body.encryption === true &&
+    (stream.encryption !== true ||
+      stream.current_encryption_key?.key_uuid !== body.current_encryption_key?.key_uuid ||
+      stream.current_encryption_key?.public_key !== body.current_encryption_key?.public_key)
+  ) {
+    throw new Error("Backend did not create the requested encrypted stream");
+  }
+  return stream;
 }
 
 export async function createStreamWithDefaultTopic(

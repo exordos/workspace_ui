@@ -16,6 +16,7 @@ import {
   advanceMessengerReadBoundary,
   clearMessengerReadBoundariesForOwner,
 } from "./messenger-read-boundary.lib";
+import type { MessengerMessagePayload } from "./messenger.types";
 
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const OTHER_MESSAGE_UUID = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
@@ -286,9 +287,9 @@ describe("loadMessengerQuoteMessage", () => {
       client: { getMessagesByUuids: () => serverResponse },
     });
 
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload.content).toBe(
-      "Realtime",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload),
+    ).toBe("Realtime");
   });
 
   it("refreshes an active-store hit without restoring an older cache value", async () => {
@@ -322,7 +323,9 @@ describe("loadMessengerQuoteMessage", () => {
       message: expect.objectContaining({ payload: freshDto.payload }),
       source: "server",
     });
-    expect(store.messagesById[MESSAGE_UUID]?.payload.content).toBe("Fresh server body");
+    expect(readMarkdownPayload(store.messagesById[MESSAGE_UUID]?.payload)).toBe(
+      "Fresh server body",
+    );
   });
 
   it("removes stale store and cache data after a successful authoritative miss", async () => {
@@ -496,3 +499,7 @@ describe("loadMessengerQuoteMessage", () => {
     expect(store.messagesById[MESSAGE_UUID]).toBeDefined();
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}
