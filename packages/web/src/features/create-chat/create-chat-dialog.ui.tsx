@@ -391,7 +391,21 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
                   <input
                     type="checkbox"
+                    checked={vm.channelEncryption}
+                    onChange={(event) => vm.setChannelEncryption(event.target.checked)}
+                    disabled={vm.creating}
+                    className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <span>{t("channel.createEncryptedChat")}</span>
+                </label>
+                {vm.channelEncryption && vm.channelEncryptionUsesTestKey && (
+                  <p className="text-xs text-text-muted">{t("channel.encryptionTestKeyNotice")}</p>
+                )}
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                  <input
+                    type="checkbox"
                     checked={vm.channelInviteOnly}
+                    disabled={vm.channelEncryption}
                     onChange={(e) => vm.setChannelInviteOnly(e.target.checked)}
                     className="h-4 w-4 rounded border-border-subtle"
                   />
@@ -401,6 +415,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   <input
                     type="checkbox"
                     checked={vm.channelAnnounce}
+                    disabled={vm.channelEncryption}
                     onChange={(e) => vm.setChannelAnnounce(e.target.checked)}
                     className="h-4 w-4 rounded border-border-subtle"
                   />
@@ -446,6 +461,11 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   )}
                 </div>
               </div>
+              {vm.channelCreateErrorKey != null && (
+                <p role="alert" className="text-sm text-danger">
+                  {t(vm.channelCreateErrorKey)}
+                </p>
+              )}
               {vm.channelCreateBlockedReasonKey != null && (
                 <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>
               )}

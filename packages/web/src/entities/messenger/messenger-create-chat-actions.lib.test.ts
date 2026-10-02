@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
@@ -9,6 +9,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
+import { MessengerChannelCreationError } from "./chat-initial-key-bootstrap.lib";
 import {
   createWorkspaceChannel,
   createWorkspaceDirectStream,
@@ -129,12 +130,210 @@ describe("messenger create chat actions", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     useMessengerStore.getState().startBootstrap(ownerKey);
     return ownerKey;
   }
+
+  it("creates encrypted local channels with explicit proxy routing and test metadata", async () => {
+    vi.stubEnv("DEV", true);
+    const runtimeContext = createRuntimeContext({ organizationOrigin: "http://127.0.0.1:23190" });
+    prepareStoreOwner(runtimeContext);
+    const create = vi.fn(
+      (options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) => {
+        expect(options.baseUrl).toBe("/api/workspace/v1/messenger");
+        expect(options.devTargetOrigin).toBe(runtimeContext.organizationOrigin);
+        expect(body.encryption).toBe(true);
+        expect(body.invite_only).toBe(false);
+        expect(body.announce).toBe(false);
+        expect(atob(body.current_encryption_key!.public_key)).toBe("DEV_ONLY_NO_CRYPTO_PUBLIC_KEY");
+        expect(body.current_encryption_key!.key_uuid).toMatch(/^[0-9a-f-]{36}$/);
+        return Promise.resolve({
+          stream: createStreamDto({
+            encryption: true,
+            current_encryption_key: body.current_encryption_key,
+          }),
+          defaultTopic: createTopicDto(),
+        });
+      },
+    );
+    const result = await createWorkspaceChannel({
+      runtimeContext,
+      name: "Encrypted",
+      encryption: true,
+      inviteOnly: true,
+      announce: true,
+      client: { createStreamWithDefaultTopic: create },
+    });
+    expect(result.status).toBe("applied");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.encryption).toBe(true);
+  });
+
+  it("accepts an injected provider in production and transports its public bytes", async () => {
+    vi.stubEnv("DEV", false);
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const create = vi.fn(
+      (_options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) => {
+        expect(body.current_encryption_key).toEqual({ key_uuid: STREAM_A, public_key: "AQID" });
+        return Promise.resolve({
+          stream: createStreamDto({
+            encryption: true,
+            current_encryption_key: body.current_encryption_key,
+          }),
+          defaultTopic: createTopicDto(),
+        });
+      },
+    );
+    const result = await createWorkspaceChannel({
+      runtimeContext,
+      name: "Encrypted",
+      encryption: true,
+      encryptionBootstrap: {
+        prepare: () =>
+          Promise.resolve({
+            keyUuid: STREAM_A,
+            publicKey: { bytes: new Uint8Array([1, 2, 3]) },
+            source: "provider",
+          }),
+      },
+      client: { createStreamWithDefaultTopic: create },
+    });
+    expect(result.status).toBe("applied");
+  });
+
+  it.each([
+    [false, "http://localhost:23190"],
+    [true, "https://remote.example.com"],
+    [true, "http://localhost:23190/api"],
+  ])(
+    "rejects unavailable fixture bootstrap DEV=%s origin=%s without posting",
+    async (dev, origin) => {
+      vi.stubEnv("DEV", dev);
+      const create = vi.fn();
+      await expect(
+        createWorkspaceChannel({
+          runtimeContext: createRuntimeContext({ organizationOrigin: origin }),
+          name: "Encrypted",
+          encryption: true,
+          client: { createStreamWithDefaultTopic: create },
+        }),
+      ).rejects.toBeInstanceOf(MessengerChannelCreationError);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { devTargetOrigin: "https://remote.example.com" },
+    { baseUrl: "https://remote.example.com/api/workspace/v1/messenger" },
+    { baseUrl: "http://user:password@localhost:23190/api/workspace/v1/messenger" },
+    { baseUrl: "//remote.example.com/api/workspace/v1/messenger" },
+    { baseUrl: "/api/other-service" },
+  ])("rejects unsafe fixture routing %j", async (clientOptions) => {
+    vi.stubEnv("DEV", true);
+    const create = vi.fn();
+    await expect(
+      createWorkspaceChannel({
+        runtimeContext: createRuntimeContext({ organizationOrigin: "http://localhost:23190" }),
+        name: "Encrypted",
+        encryption: true,
+        clientOptions,
+        client: { createStreamWithDefaultTopic: create },
+      }),
+    ).rejects.toBeInstanceOf(MessengerChannelCreationError);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "does not store a response with plaintext or mismatched key metadata (encrypted=%s)",
+    async (encrypted) => {
+      vi.stubEnv("DEV", true);
+      const runtimeContext = createRuntimeContext({ organizationOrigin: "http://localhost:23190" });
+      prepareStoreOwner(runtimeContext);
+      await expect(
+        createWorkspaceChannel({
+          runtimeContext,
+          name: "Encrypted",
+          encryption: true,
+          client: {
+            createStreamWithDefaultTopic: () =>
+              Promise.resolve({
+                stream: createStreamDto({
+                  encryption: encrypted,
+                  current_encryption_key: { key_uuid: STREAM_A, public_key: "other" },
+                }),
+                defaultTopic: createTopicDto(),
+              }),
+          },
+        }),
+      ).rejects.toMatchObject({ reason: "encryption-mismatch" });
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
+    },
+  );
+
+  it("skips late bootstrap completion after owner A-B-A", async () => {
+    const initial = createRuntimeContext();
+    let current = initial;
+    const pending = createDeferred<{
+      keyUuid: string;
+      publicKey: { bytes: Uint8Array };
+      source: "provider";
+    }>();
+    const create = vi.fn();
+    const operation = createWorkspaceChannel({
+      runtimeContext: initial,
+      getRuntimeContext: () => current,
+      name: "Encrypted",
+      encryption: true,
+      encryptionBootstrap: { prepare: () => pending.promise },
+      client: { createStreamWithDefaultTopic: create },
+    });
+    current = createRuntimeContext({ accountId: ACCOUNT_B, runtimeGeneration: 2 });
+    current = createRuntimeContext({ runtimeGeneration: 3 });
+    pending.resolve({
+      keyUuid: STREAM_A,
+      publicKey: { bytes: new Uint8Array([1]) },
+      source: "provider",
+    });
+    expect(await operation).toMatchObject({ status: "skipped", reason: "stale-owner" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("prevents late network dispatch after runtime invalidation", async () => {
+    vi.stubEnv("DEV", true);
+    const initial = createRuntimeContext({ organizationOrigin: "http://localhost:23190" });
+    let current = initial;
+    let requestOptions: MessengerClientOptions | undefined;
+    const pending = createDeferred<{
+      stream: WorkspaceMessengerStreamDto;
+      defaultTopic: WorkspaceMessengerTopicDto;
+    }>();
+    const transport = vi.fn<typeof fetch>();
+    const operation = createWorkspaceChannel({
+      runtimeContext: initial,
+      getRuntimeContext: () => current,
+      name: "Encrypted",
+      encryption: true,
+      clientOptions: { fetchImpl: transport },
+      client: {
+        createStreamWithDefaultTopic: (options) => {
+          requestOptions = options;
+          return pending.promise;
+        },
+      },
+    });
+    await vi.waitFor(() => expect(requestOptions).toBeDefined());
+    current = createRuntimeContext({ ...initial, runtimeGeneration: 3 });
+    await expect(requestOptions!.fetchImpl!("/api/workspace/v1/messenger/streams")).rejects.toThrow(
+      "stale-owner",
+    );
+    expect(transport).not.toHaveBeenCalled();
+    pending.resolve({ stream: createStreamDto(), defaultTopic: createTopicDto() });
+    expect(await operation).toMatchObject({ status: "skipped", reason: "stale-owner" });
+  });
 
   it("creates a native Workspace stream and stores the adapted stream", async () => {
     const runtimeContext = createRuntimeContext();

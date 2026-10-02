@@ -20,6 +20,7 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
 import { t } from "~/i18n/i18n";
+import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
 import {
@@ -48,6 +49,7 @@ import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { SidebarChatTitleWithStatus } from "./sidebar-chat-title-with-status.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
+import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
@@ -501,6 +503,8 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const rightDrawer = useRightDrawer();
+  const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
   const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
   const createChatOpen = useSidebarConfigStore((s) => s.createChatOpen);
@@ -565,9 +569,14 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     setCreateChatOpen(true);
   }, [setCreateChatOpen]);
   const handleWorkspaceStreamCreated = useCallback(
-    (streamUuid: string) => {
+    (streamUuid: string, encryption?: boolean) => {
       if (routeMatch == null) return;
       setCreateChatOpen(false);
+      if (encryption === true) {
+        setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
+        setSearchQuery("");
+        setActivityOpen(false);
+      }
       void navigate(
         workspaceMessengerStreamRoute({
           orgId: routeMatch.orgId,
@@ -575,8 +584,20 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           streamUuid,
         }),
       );
+      if (encryption === true) {
+        if (rightDrawer?.openInfo != null) rightDrawer.openInfo();
+        else rightDrawer?.setOpen(true);
+      }
     },
-    [navigate, routeMatch, setCreateChatOpen],
+    [
+      navigate,
+      routeMatch,
+      setCreateChatOpen,
+      setSelectedFolderId,
+      setSearchQuery,
+      setActivityOpen,
+      rightDrawer,
+    ],
   );
   const handleWorkspaceTopicCreated = useCallback(
     (streamUuid: string, topicUuid: string) => {

@@ -24,12 +24,12 @@ function createUser(overrides: Partial<User> & { uuid: string }): User {
   };
 }
 
-function seedWorkspaceSession(): void {
+function seedWorkspaceSession(organizationOrigin = "https://workspace.test"): void {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
     organizationId: "org",
-    organizationOrigin: "https://workspace.test",
+    organizationOrigin,
     projectId: "project",
     userUuid: "current-user",
     accessToken: "token",
@@ -162,6 +162,41 @@ describe("CreateChatDialog", () => {
     expect(screen.queryByRole("button", { name: /Unarchive/i })).not.toBeInTheDocument();
   });
 
+  it("clears and disables conflicting options when encrypted creation is selected", () => {
+    seedWorkspaceSession();
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
+    const invite = screen.getByLabelText("Invite only");
+    const announce = screen.getByLabelText("Announce channel creation");
+    fireEvent.click(invite);
+    fireEvent.click(announce);
+    expect(invite).toBeChecked();
+    expect(announce).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(invite).not.toBeChecked();
+    expect(invite).toBeDisabled();
+    expect(announce).not.toBeChecked();
+    expect(announce).toBeDisabled();
+    expect(screen.getByLabelText("Announcement-only channel")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(invite).toBeEnabled();
+    expect(announce).toBeEnabled();
+    expect(invite).not.toBeChecked();
+    expect(announce).not.toBeChecked();
+  });
+
+  it("shows the local test-key notice only when the encrypted option is selected", () => {
+    seedWorkspaceSession("http://127.0.0.1:9100");
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
+    const notice =
+      "Local test mode uses a test key to create this chat. Encryption is not ready yet.";
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(screen.getByText(notice)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+  });
   it("keeps announcement-only control visible but disabled for Workspace", () => {
     seedWorkspaceSession();
     renderDialog();

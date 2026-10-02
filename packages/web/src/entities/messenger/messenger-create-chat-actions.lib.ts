@@ -12,11 +12,19 @@ import {
   createStreamWithDefaultTopic as defaultCreateStreamWithDefaultTopic,
 } from "~/shared/api/messenger-streams.api";
 import type { WorkspaceMessengerCreateStreamWithDefaultTopicResult } from "~/shared/api/messenger-streams.api";
+import { DEFAULT_MESSENGER_API_BASE } from "~/shared/api/messenger-transport.internal";
 import type {
   WorkspaceMessengerAddStreamBindingsRequestBody,
   WorkspaceMessengerCreateStreamRequestBody,
   WorkspaceMessengerStreamBindingDto,
 } from "~/shared/api/messenger.types";
+import { isWorkspaceMessengerMessagePayloadDto } from "~/shared/api/messenger.types";
+import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import {
+  devChatInitialKeyBootstrap,
+  isDevChatInitialKeyAllowed,
+  MessengerChannelCreationError,
+} from "./chat-initial-key-bootstrap.lib";
 import {
   adaptMessengerStream,
   adaptMessengerStreamBinding,
@@ -27,6 +35,10 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
+import type {
+  ChatInitialKeyBootstrap,
+  ChatInitialKeyMetadata,
+} from "./chat-initial-key-bootstrap.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerStream,
@@ -80,6 +92,8 @@ export type MessengerCreateStreamResult =
   | MessengerCreateChatSkippedResult;
 
 export interface CreateWorkspaceChannelOptions extends MessengerCreateChatBaseOptions {
+  encryption?: boolean;
+  encryptionBootstrap?: ChatInitialKeyBootstrap;
   name: string;
   description?: string;
   inviteOnly?: boolean;
@@ -94,6 +108,8 @@ export interface CreateWorkspaceDirectStreamOptions extends MessengerCreateChatB
 }
 
 export interface RunWorkspaceChannelCreateOptions {
+  encryption?: boolean;
+  encryptionBootstrap?: ChatInitialKeyBootstrap;
   name?: string;
   description?: string;
   inviteOnly?: boolean;
@@ -178,6 +194,48 @@ function uniqueMemberUserUuids(userUuids: readonly MessengerUuid[] | undefined):
   return result;
 }
 
+function pinDevelopmentKeyRequestOptions(
+  initialKey: ChatInitialKeyMetadata | null,
+  requestOptions: MessengerClientOptions,
+  runtimeContext: WorkspaceRuntimeContext,
+): void {
+  if (initialKey?.source === "development-fixture") {
+    const effectiveTarget = requestOptions.devTargetOrigin ?? "";
+    const base = requestOptions.baseUrl;
+    const allowedTarget = isDevChatInitialKeyAllowed({
+      ...runtimeContext,
+      organizationOrigin: effectiveTarget,
+    });
+    const allowedBase = base == null || base === DEFAULT_MESSENGER_API_BASE;
+    if (!allowedTarget || !allowedBase)
+      throw new MessengerChannelCreationError("encryption-unavailable");
+    // Pin both routing values so environment fallbacks cannot send fixture keys remotely.
+    requestOptions.baseUrl = DEFAULT_MESSENGER_API_BASE;
+    requestOptions.devTargetOrigin = new URL(effectiveTarget).origin;
+  }
+}
+
+function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
+  const announcement =
+    metadata === null
+      ? null
+      : encodeChatE2eePayload({
+          kind: "key_announced",
+          keyUuid: metadata.keyUuid,
+          publicKey: metadata.publicKey,
+        });
+  if (
+    announcement !== null &&
+    (!isWorkspaceMessengerMessagePayloadDto(announcement) ||
+      announcement.kind !== "key_announced" ||
+      announcement.public_key.length === 0)
+  )
+    throw new MessengerChannelCreationError("encryption-unavailable");
+  return announcement?.kind === "key_announced"
+    ? { key_uuid: announcement.key_uuid, public_key: announcement.public_key }
+    : null;
+}
+
 export async function createWorkspaceChannel({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -190,24 +248,61 @@ export async function createWorkspaceChannel({
   inviteOnly,
   announce,
   memberUserUuids,
+  encryption = false,
+  encryptionBootstrap = devChatInitialKeyBootstrap,
 }: CreateWorkspaceChannelOptions): Promise<MessengerCreateStreamResult> {
   const action = captureCreateChatAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null) return skippedMissingContext();
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  let initialKey: ChatInitialKeyMetadata | null = null;
+  if (encryption) {
+    try {
+      initialKey = await encryptionBootstrap.prepare({
+        runtimeContext,
+        isCurrent: () => !action.isStale(),
+        signal,
+      });
+    } catch (error) {
+      if (action.isStale())
+        return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+      throw error;
+    }
+    if (action.isStale())
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  }
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  if (encryption) {
+    const fetchImpl = requestOptions.fetchImpl ?? fetch;
+    // Session refresh may yield before dispatch; do not send for an invalidated runtime.
+    requestOptions.fetchImpl = (request, init) =>
+      action.isStale() ? Promise.reject(new Error("stale-owner")) : fetchImpl(request, init);
+  }
+  pinDevelopmentKeyRequestOptions(initialKey, requestOptions, runtimeContext);
+  const encryptionKey = initialEncryptionKey(initialKey);
   const bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
     requestOptions,
-    nativeStreamBody({
-      name,
-      description,
-      inviteOnly,
-      announce,
-    }),
+    {
+      ...nativeStreamBody({
+        name,
+        description,
+        inviteOnly: encryption ? false : inviteOnly,
+        announce: encryption ? false : announce,
+      }),
+      ...(encryption ? { encryption: true, current_encryption_key: encryptionKey } : {}),
+    },
   );
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  if (
+    encryption &&
+    (bundle.stream.encryption !== true ||
+      bundle.stream.current_encryption_key?.key_uuid !== encryptionKey?.key_uuid ||
+      bundle.stream.current_encryption_key?.public_key !== encryptionKey?.public_key)
+  )
+    throw new MessengerChannelCreationError("encryption-mismatch");
 
   const stream = adaptMessengerStream(bundle.stream);
   const defaultTopic = adaptMessengerTopic(bundle.defaultTopic);
@@ -292,6 +387,8 @@ export async function runWorkspaceChannelCreate(
     inviteOnly: options.inviteOnly,
     announce: options.announce,
     memberUserUuids: options.memberUserUuids,
+    encryption: options.encryption,
+    encryptionBootstrap: options.encryptionBootstrap,
   });
 }
 

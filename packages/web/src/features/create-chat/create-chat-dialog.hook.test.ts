@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MessengerChannelCreationError } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
 import {
   runWorkspaceChannelCreate,
   runWorkspaceDirectStreamCreate,
@@ -263,6 +264,148 @@ describe("useCreateChatDialog", () => {
     });
   });
 
+  it("creates an encrypted channel through the normal success navigation and clears exclusive flags", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    const stream = createStream({
+      uuid: "encrypted-stream",
+      name: "Protected team",
+      encryption: true,
+    });
+    vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelInviteOnly(true);
+      result.current.setChannelAnnounce(true);
+      result.current.toggleChannelUser("alice-user");
+    });
+    act(() => result.current.setChannelEncryption(true));
+    expect(result.current.channelInviteOnly).toBe(false);
+    expect(result.current.channelAnnounce).toBe(false);
+    act(() => {
+      result.current.setChannelInviteOnly(true);
+      result.current.setChannelAnnounce(true);
+      result.current.createChannel();
+    });
+    await waitFor(() => expect(onChannelCreated).toHaveBeenCalledOnce());
+    expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
+      name: "Protected team",
+      description: "",
+      memberUserUuids: ["alice-user"],
+      inviteOnly: false,
+      announce: false,
+      encryption: true,
+    });
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("encrypted-stream", true);
+    expect(result.current.channelEncryption).toBe(false);
+    expect(result.current.channelName).toBe("");
+  });
+  it("keeps failed creation visible and does not navigate or close", async () => {
+    seedWorkspaceSession();
+    vi.mocked(runWorkspaceChannelCreate).mockRejectedValue(new Error("request failed"));
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => result.current.setChannelName("Protected team"));
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(result.current.channelCreateErrorKey).toBe("channel.createFailed"));
+    expect(result.current.channelName).toBe("Protected team");
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["encryption-unavailable", "channel.encryptionUnavailable"],
+    ["encryption-mismatch", "channel.encryptionMismatch"],
+  ] as const)("reports %s without navigating", async (reason, key) => {
+    seedWorkspaceSession();
+    vi.mocked(runWorkspaceChannelCreate).mockRejectedValue(
+      new MessengerChannelCreationError(reason),
+    );
+    const onNavigateWorkspaceStream = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream })),
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelEncryption(true);
+    });
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(result.current.channelCreateErrorKey).toBe(key));
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late old-runtime completion clear a new creation or navigate", async () => {
+    seedWorkspaceSession();
+    let completeOld:
+      | ((value: Awaited<ReturnType<typeof runWorkspaceChannelCreate>>) => void)
+      | undefined;
+    let completeNew:
+      | ((value: Awaited<ReturnType<typeof runWorkspaceChannelCreate>>) => void)
+      | undefined;
+    vi.mocked(runWorkspaceChannelCreate)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeNew = resolve;
+        }),
+      );
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => result.current.setChannelName("First channel"));
+    act(() => result.current.createChannel());
+    expect(result.current.creating).toBe(true);
+    act(() => useWorkspaceAuthStore.getState().clear());
+    expect(result.current.creating).toBe(false);
+    act(() => seedWorkspaceSession());
+    expect(result.current.creating).toBe(false);
+    act(() => result.current.setChannelName("Second channel"));
+    act(() => result.current.createChannel());
+    expect(result.current.creating).toBe(true);
+    const stream = createStream({ uuid: "old-stream", name: "First channel" });
+    const applied = {
+      status: "applied" as const,
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic", streamUuid: stream.uuid }),
+      streamBindings: [],
+    };
+    await act(async () => {
+      completeOld?.(applied);
+      await Promise.resolve();
+    });
+    expect(result.current.creating).toBe(true);
+    expect(result.current.channelName).toBe("Second channel");
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+    await act(async () => {
+      completeNew?.({ ...applied, stream: { ...stream, uuid: "new-stream" } });
+      await Promise.resolve();
+    });
+    expect(result.current.creating).toBe(false);
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("new-stream");
+    expect(onChannelCreated).toHaveBeenCalledOnce();
+  });
   it("keeps unsupported browse and archive actions inert", async () => {
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 

@@ -8,6 +8,7 @@ import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
 import {
   isWorkspaceStreamFullyMuted,
   resolveWorkspaceActiveUnreadCount,
@@ -499,6 +500,50 @@ export function selectMessengerSidebarStreams(
           }),
         )
         .sort((a, b) => compareSidebarStreams(a, b, sortMode));
+
+  // Newly created catalog entries can arrive before the All folder snapshot.
+  // Other folders retain their explicit membership and counters.
+  if (selectedFolder?.uuid === MESSENGER_ALL_CHATS_FOLDER_UUID) {
+    const listedUuids = new Set(selectedFolder.items.map((item) => item.streamUuid));
+    for (const streamUuid of state.streamIds) {
+      const stream = state.streamsById[streamUuid];
+      if (
+        stream == null ||
+        listedUuids.has(streamUuid) ||
+        stream.projectId !== options.projectId ||
+        (currentUserUuid != null && stream.userUuid !== currentUserUuid) ||
+        stream.isArchived ||
+        isWorkspaceSelfChat(stream, currentUserUuid)
+      )
+        continue;
+      listedUuids.add(streamUuid);
+      streams.push(
+        streamItemFromStream({
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          stream,
+          topicsById: state.topicsById,
+          messagesById,
+          usersById,
+          currentUserUuid,
+          unreadMentionIndex,
+          topics: selectMessengerSidebarTopicsForStream({
+            organizationId: options.organizationId,
+            projectId: options.projectId,
+            state,
+            streamUuid: stream.uuid,
+            streamNotificationMode: stream.notificationMode,
+            messagesById,
+            usersById,
+            currentUserUuid,
+            sortMode,
+            unreadMentionIndex,
+          }),
+        }),
+      );
+    }
+    streams.sort((a, b) => compareSidebarStreams(a, b, sortMode));
+  }
 
   const result = streams.length > 0 ? streams : EMPTY_SIDEBAR_STREAMS;
   sidebarStreamsCache.set(selectedFolderUuid, {

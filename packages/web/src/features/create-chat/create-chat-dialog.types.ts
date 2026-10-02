@@ -4,7 +4,7 @@ export interface CreateChatDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   visibleTabs?: readonly CreateChatTab[];
-  onNavigateWorkspaceStream?: (streamUuid: string) => void;
+  onNavigateWorkspaceStream?: (streamUuid: string, encryption?: boolean) => void;
   onNavigateWorkspaceTopic?: (streamUuid: string, topicUuid: string) => void;
   onChannelCreated: () => void;
 }
