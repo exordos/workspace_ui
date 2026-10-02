@@ -19,6 +19,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
   workspaceInfo,
+  onClose,
 }) => {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -88,7 +89,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
   if (mode === "about") return <RightPanelAbout />;
 
   if (workspaceInfo != null) {
-    return <RightPanelWorkspaceInfo info={workspaceInfo} />;
+    return <RightPanelWorkspaceInfo info={workspaceInfo} onClose={onClose} />;
   }
 
   return (

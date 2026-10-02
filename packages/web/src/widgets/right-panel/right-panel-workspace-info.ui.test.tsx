@@ -10,8 +10,14 @@ import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/work
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
+import { RightDrawer } from "./right-drawer.ui";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
+
+const writeTextMock = vi.hoisted(() => vi.fn());
+vi.mock("~/shared/lib/clipboard", () => ({
+  writeText: (...args: unknown[]) => writeTextMock(...args),
+}));
 
 const runWorkspaceStreamNotificationUpdateMock = vi.hoisted(() => vi.fn());
 const addWorkspaceStreamMembersMock = vi.hoisted(() => vi.fn());
@@ -227,7 +233,46 @@ function seedWorkspaceUsers(): void {
 }
 
 describe("RightPanelWorkspaceInfo", () => {
+  it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          name: "Encrypted team",
+          encryption: true,
+          currentEncryptionKey: {
+            keyUuid: "actual-key-uuid",
+            publicKey: "opaque-current-public-key",
+          },
+        }),
+      );
+    });
+    const onClose = vi.fn();
+    const { container } = renderWithProviders(
+      <RightDrawer title={t("chatInfo.channelInfo")} onClose={onClose}>
+        <RightPanelWorkspaceInfo info={createInfo()} onClose={onClose} />
+      </RightDrawer>,
+    );
+    expect(screen.getByText("Encrypted team")).toBeInTheDocument();
+    expect(screen.getByText("actual-key-uuid")).toBeInTheDocument();
+    expect(screen.getByText(t("e2ee.loadedRequestsTitle", { count: 0 }))).toBeInTheDocument();
+    expect(screen.getByText(t("e2ee.keyActionsUnavailable"))).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain("opaque-current-public-key");
+    expect(container.textContent).not.toContain(DATE);
+    expect(screen.getAllByRole("heading", { name: t("chatInfo.channelInfo") })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: t("common.close") })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: t("common.close") }));
+    expect(onClose).toHaveBeenCalledOnce();
+    act(() => useMessengerStore.setState({ ownerKey: "other-owner" }));
+    expect(screen.queryByText("actual-key-uuid")).not.toBeInTheDocument();
+    expect(screen.queryByText("Encrypted team")).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
+    writeTextMock.mockReset();
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     addWorkspaceStreamMembersMock.mockReset();
     removeWorkspaceStreamMemberMock.mockReset();
@@ -239,6 +284,84 @@ describe("RightPanelWorkspaceInfo", () => {
     useWorkspaceIamCapabilitiesStore.getState().clear();
   });
 
+  it("copies only explicitly and ignores a clipboard failure after runtime ownership changes", async () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "actual-key", publicKey: "actual-public-key" },
+        }),
+      );
+    });
+    let complete: ((copied: boolean) => void) | undefined;
+    writeTextMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        complete = resolve;
+      }),
+    );
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    expect(writeTextMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: t("e2ee.copyKey") }));
+    expect(writeTextMock).toHaveBeenCalledWith("actual-public-key");
+    await act(async () => {
+      useWorkspaceAuthStore.getState().clear();
+      complete?.(false);
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(t("e2ee.copyFailed"))).not.toBeInTheDocument();
+  });
+
+  it("uses the encrypted info for actual direct chat UUIDs and keeps explicitly opened user profiles", () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          encryption: true,
+          name: "Encrypted direct",
+          audience: "private",
+          directUserUuid: ALICE_USER_UUID,
+          currentEncryptionKey: { keyUuid: "direct-key", publicKey: "opaque" },
+        }),
+      );
+    });
+    const { rerender } = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "directPrivate",
+          streamUuid: STREAM_UUID,
+          directUserUuid: ALICE_USER_UUID,
+          title: "Alice",
+          avatarUrl: null,
+          status: null,
+          isOwnProfile: false,
+          details: [],
+        }}
+      />,
+    );
+    expect(screen.getByText("direct-key")).toBeInTheDocument();
+    rerender(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "userProfile",
+          userUuid: ALICE_USER_UUID,
+          title: "Alice profile",
+          avatarUrl: null,
+          status: null,
+          isOwnProfile: false,
+          details: [],
+        }}
+      />,
+    );
+    expect(screen.queryByText("direct-key")).not.toBeInTheDocument();
+    expect(screen.getByText("Alice profile")).toBeInTheDocument();
+  });
   it("shows the selected topic summary and its freshness state", () => {
     const { rerender } = renderWithProviders(
       <RightPanelWorkspaceInfo

@@ -627,6 +627,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
 
     expect(view).toEqual({
       kind: "directPrivate",
+      streamUuid: "99999999-9999-4999-8999-999999999999",
       directUserUuid: DIRECT_USER_UUID,
       title: "Cora Lane",
       avatarUrl: "/cora.png",

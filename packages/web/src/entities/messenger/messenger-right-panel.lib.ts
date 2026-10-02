@@ -94,6 +94,7 @@ export interface WorkspaceRightPanelChannelInfoView {
 
 export interface WorkspaceRightPanelDirectPrivateInfoView {
   kind: "directPrivate";
+  streamUuid?: MessengerUuid | null;
   directUserUuid: MessengerUuid;
   title: string;
   avatarUrl: string | null;
@@ -301,6 +302,7 @@ export function selectWorkspaceRightPanelInfoView(
 
     return {
       kind: "directPrivate",
+      streamUuid: selection.streamUuid,
       directUserUuid: routeDirectUserUuid,
       title: resolveWorkspaceRightPanelDirectUserName(user, directFallbackTitle),
       avatarUrl: user?.avatarUrl ?? null,

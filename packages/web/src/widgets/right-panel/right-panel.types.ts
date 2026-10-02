@@ -6,6 +6,7 @@ export type WorkspaceRightPanelInfoView = MessengerWorkspaceRightPanelInfoView;
 export type RightPanelAccountScreen = RightDrawerAccountScreen;
 
 export interface RightPanelProps {
+  onClose?: () => void;
   mode?: "info" | "settings" | "user-menu" | "about" | "personal-info";
   /** Serializable active screen for the account drawer flow. */
   accountScreen: RightPanelAccountScreen;

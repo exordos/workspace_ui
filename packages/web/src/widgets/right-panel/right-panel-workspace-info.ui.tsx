@@ -34,6 +34,7 @@ import {
 } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { EncryptedChatInfoConnected } from "~/features/encrypted-chat-info/encrypted-chat-info-connected.ui";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
@@ -56,6 +57,7 @@ import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 export interface RightPanelWorkspaceInfoProps {
   info: WorkspaceRightPanelInfoView;
+  onClose?: () => void;
 }
 
 type WorkspaceRightPanelChannelInfoView = Extract<WorkspaceRightPanelInfoView, { kind: "channel" }>;
@@ -861,7 +863,27 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   );
 };
 
-export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
+export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({
+  info,
+  onClose,
+}) => {
+  const streamUuid =
+    info.kind === "channel" || info.kind === "directPrivate" ? info.streamUuid : null;
+  const encrypted = useMessengerStore(
+    (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
+  );
+  if (encrypted && streamUuid != null)
+    return (
+      <EncryptedChatInfoConnected
+        streamUuid={streamUuid}
+        onClose={onClose}
+        renderAvatar={(person) => (
+          <WorkspaceAvatar size="sm" avatarUrn={person.avatarUrl}>
+            {person.name.slice(0, 1)}
+          </WorkspaceAvatar>
+        )}
+      />
+    );
   if (info.kind === "directPrivate" || info.kind === "userProfile") {
     return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
   }

@@ -23,16 +23,27 @@ export const EncryptedChatAvatar = () => (
 interface KeyRequestRowProps {
   readonly request: EncryptedChatKeyRequestView;
   readonly actionsPending: boolean;
+  readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
   readonly onGrant?: EncryptedChatInfoProps["onGrantRequest"];
   readonly onReject?: EncryptedChatInfoProps["onRejectRequest"];
 }
 
-const KeyRequestRow = ({ request, actionsPending, onGrant, onReject }: KeyRequestRowProps) => (
+const KeyRequestRow = ({
+  request,
+  actionsPending,
+  onGrant,
+  onReject,
+  renderAvatar,
+}: KeyRequestRowProps) => (
   <li>
     <SelectableRow className="min-h-14 gap-3">
-      <Avatar size="sm" src={request.avatarUrl}>
-        {request.name.slice(0, 1)}
-      </Avatar>
+      {renderAvatar ? (
+        renderAvatar(request)
+      ) : (
+        <Avatar size="sm" src={request.avatarUrl}>
+          {request.name.slice(0, 1)}
+        </Avatar>
+      )}
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-sm leading-5 text-text-primary">
           <Icon name="businessCenter" size={16} className="text-text-muted" />
@@ -84,10 +95,14 @@ export const EncryptedChatInfo = ({
   keyInfo,
   requests,
   members,
+  requestsLabel,
+  renderAvatar,
+  unavailableReason,
   loading = false,
   error,
   actionsPending = false,
   showKeyManagement = true,
+  showHeader = true,
   canRotateKey = false,
   canGrantAll = false,
   onClose,
@@ -107,19 +122,22 @@ export const EncryptedChatInfo = ({
   >
     <ScrollArea className="flex flex-col gap-5">
       <header className="flex flex-col gap-5 px-2">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-medium leading-5">{t("chatInfo.channelInfo")}</h2>
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            aria-label={t("common.close")}
-            onClick={onClose}
-            className={`${ICON_BUTTON_CLASS} text-text-muted`}
-          >
-            <Icon name="close" size={24} />
-          </Button>
-        </div>
+        {showHeader ? (
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-medium leading-5">{t("chatInfo.channelInfo")}</h2>
+            <Button
+              appearance="ghost"
+              variant="neutral"
+              type="button"
+              aria-label={t("common.close")}
+              onClick={onClose}
+              disabled={onClose == null}
+              className={`${ICON_BUTTON_CLASS} text-text-muted`}
+            >
+              <Icon name="close" size={24} />
+            </Button>
+          </div>
+        ) : null}
         <div className="flex items-center gap-4">
           <EncryptedChatAvatar />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -165,6 +183,11 @@ export const EncryptedChatInfo = ({
         </p>
       ) : null}
 
+      {unavailableReason ? (
+        <p role="status" className="px-2 text-sm text-text-muted">
+          {unavailableReason}
+        </p>
+      ) : null}
       {showKeyManagement ? (
         <>
           <section
@@ -192,7 +215,9 @@ export const EncryptedChatInfo = ({
                   <p className="truncate rounded-lg bg-bg-elevated px-2 py-1.5 text-sm leading-5">
                     {keyInfo.name}
                   </p>
-                  <p className="text-sm leading-4 text-text-muted">{keyInfo.createdLabel}</p>
+                  {keyInfo.createdLabel ? (
+                    <p className="text-sm leading-4 text-text-muted">{keyInfo.createdLabel}</p>
+                  ) : null}
                 </div>
               ) : (
                 <p className="text-sm text-text-muted">{t("e2ee.keyUnavailable")}</p>
@@ -210,10 +235,10 @@ export const EncryptedChatInfo = ({
 
           <section
             className="flex flex-col gap-3 border-t border-border-subtle pt-5"
-            aria-label={t("e2ee.requestsTitle", { count: requests.length })}
+            aria-label={requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
           >
             <h3 className="px-2 text-base font-medium leading-5">
-              {t("e2ee.requestsTitle", { count: requests.length })}
+              {requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
             </h3>
             <div className="flex justify-end px-2">
               <Button
@@ -239,6 +264,7 @@ export const EncryptedChatInfo = ({
                   <KeyRequestRow
                     key={request.requestMessageUuid}
                     request={request}
+                    renderAvatar={renderAvatar}
                     actionsPending={actionsPending || loading}
                     onGrant={onGrantRequest}
                     onReject={onRejectRequest}
@@ -272,9 +298,13 @@ export const EncryptedChatInfo = ({
             {members.map((member) => (
               <li key={member.id}>
                 <SelectableRow className="min-h-14 gap-3">
-                  <Avatar size="sm" src={member.avatarUrl}>
-                    {member.name.slice(0, 1)}
-                  </Avatar>
+                  {renderAvatar ? (
+                    renderAvatar(member)
+                  ) : (
+                    <Avatar size="sm" src={member.avatarUrl}>
+                      {member.name.slice(0, 1)}
+                    </Avatar>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm leading-5">
                       <Icon name="businessCenter" size={16} className="text-text-muted" />

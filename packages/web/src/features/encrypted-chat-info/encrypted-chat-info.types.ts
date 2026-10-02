@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
+
 export interface EncryptedChatKeyInfo {
   readonly name: string;
-  readonly createdLabel: string;
+  readonly createdLabel?: string;
 }
 
 export interface EncryptedChatKeyRequestView {
@@ -30,13 +32,19 @@ export interface EncryptedChatInfoProps {
   readonly keyInfo: EncryptedChatKeyInfo | null;
   readonly requests: readonly EncryptedChatKeyRequestView[];
   readonly members: readonly EncryptedChatMemberView[];
+  readonly renderAvatar?: (
+    person: Pick<EncryptedChatMemberView, "name" | "avatarUrl">,
+  ) => ReactNode;
+  readonly requestsLabel?: string;
+  readonly unavailableReason?: string;
   readonly loading?: boolean;
   readonly error?: string | null;
   readonly actionsPending?: boolean;
   readonly showKeyManagement?: boolean;
+  readonly showHeader?: boolean;
   readonly canRotateKey?: boolean;
   readonly canGrantAll?: boolean;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
   readonly onCopyKey?: () => void;
   readonly onRotateKey?: () => void;
   readonly onGrantAll?: () => void;

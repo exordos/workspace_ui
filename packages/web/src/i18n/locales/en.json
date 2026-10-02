@@ -1449,6 +1449,11 @@
     "chatMenu": "Chat menu"
   },
   "e2ee": {
+    "loadedRequestsTitle": "Requests in loaded history ({{count}})",
+    "keyActionsUnavailable": "Key issuance and rotation are unavailable until the cryptographic provider and key storage are connected.",
+    "keyCreatedAt": "Created: {{date}}",
+    "copyFailed": "Could not copy the public key.",
+
     "cryptoUnavailable": "Sending and decrypting encrypted messages require a cryptographic provider. It is not connected yet.",
     "protectedChat": "Protected chat",
     "keyTitle": "Encryption key",
@@ -1492,5 +1497,17 @@
     "statusWaiting": "Waiting for a response",
     "grantReceivedDescription": "Access is available after the grant is successfully decrypted and the key is stored.",
     "copyKey": "Copy public key"
+  },
+  "e2eeSandbox": {
+    "title": "E2EE integration sandbox",
+    "warning": "NOT REAL ENCRYPTION. Development fixtures only. Never send secrets. This test creates its own stream on a local backend.",
+    "unavailable": "Sign in to a local backend in development mode to use this sandbox.",
+    "description": "Two simulated devices use real API requests, ephemeral test keys, and a mock provider. The role capabilities are fixtures, not product policy. Reloading the page discards the fixture keys.",
+    "create": "Create test stream",
+    "switchDevice": "Switch test device",
+    "send": "Send fixed test message",
+    "reload": "Reload server history",
+    "state": "Device: {{device}} · Access: {{access}} · Messages: {{count}}",
+    "failed": "Test operation failed: {{reason}}"
   }
 }

@@ -184,6 +184,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
             contentFlush={showAccountMenuRows}
           >
             <RightPanel
+              onClose={onCloseRightDrawer}
               mode={rightDrawerMode}
               title={rightPanelTitle}
               participantsCount={participantsCount}
