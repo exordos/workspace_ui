@@ -84,7 +84,7 @@ function fixture() {
     ),
     createMessage: vi.fn<Api["createMessage"]>((_options, body) => {
       const message: WorkspaceMessengerMessageDto = {
-        uuid: crypto.randomUUID(),
+        uuid: body.uuid ?? crypto.randomUUID(),
         project_id: runtime.projectId,
         stream_uuid: body.stream_uuid,
         topic_uuid: body.topic_uuid,
@@ -162,7 +162,7 @@ describe("development E2EE integration sandbox", () => {
     });
     await f.sandbox.sendFixture();
     await f.sandbox.switchDevice("recipient");
-    expect(f.sandbox.getSnapshot().state?.access).toBe("public-only");
+    expect(f.sandbox.getSnapshot().state?.access).toBe("metadata-only");
     expect(
       f.sandbox.getSnapshot().messages.find((message) => message.kind === "e2ee")?.plaintext,
     ).toBeNull();
@@ -202,7 +202,7 @@ describe("development E2EE integration sandbox", () => {
     await f.sandbox.respondToRequest(true);
     await f.sandbox.switchDevice("recipient");
     expect(f.sandbox.getSnapshot().state).toMatchObject({
-      access: "public-only",
+      access: "metadata-only",
       requestStatus: "rejected",
     });
     expect(f.messages.at(-1)?.payload.kind).toBe("key_reject");
@@ -252,11 +252,11 @@ describe("development E2EE integration sandbox", () => {
 
   it("the mock accepts fixed fixture data only", async () => {
     const provider = createInsecureSandboxProvider();
-    const pair = await provider.createChatKeyPair();
+    const pair = await provider.createGroupKey();
     if (!pair.ok) throw new Error("fixture");
     const result = await provider.encryptMessage({
       plaintext: new TextEncoder().encode("arbitrary user data"),
-      publicKey: pair.value.publicKey,
+      groupKey: pair.value,
       context: { streamUuid: "test", keyUuid: "test" },
     });
     expect(result).toEqual({ ok: false, reason: "invalid-ciphertext" });

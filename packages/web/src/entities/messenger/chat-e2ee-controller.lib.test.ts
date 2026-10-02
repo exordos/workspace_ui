@@ -10,11 +10,18 @@ import type {
   ChatKeyGrantPayload,
   ChatKeyRequestPayload,
 } from "./chat-e2ee.types";
-import type { ChatKeyStorage, StoredChatKey } from "./chat-key-storage.types";
+import type {
+  ChatKeyStorage,
+  StoredChatKey,
+  PendingChatKeyRequest,
+  ChatKeyRequestCompletion,
+} from "./chat-key-storage.types";
 
 const ok = <T>(value: T): ChatCryptoResult<T> => ({ ok: true, value });
-const devicePair = { publicKey: { bytes: new Uint8Array([1]) }, privateKey: "device-private" };
-const chatPair = { publicKey: { bytes: new Uint8Array([2]) }, privateKey: "chat-private" };
+const devicePair = { publicKey: { bytes: new Uint8Array([1]) }, privateKey: new Uint8Array([1]) };
+const chatFingerprint = { bytes: new Uint8Array([2]) };
+const groupKey = { bytes: new Uint8Array(32).fill(2) };
+const chatPair = { fingerprint: chatFingerprint, groupKey };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,7 +31,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function fixture(initialKey: StoredChatKey<string> | null = { ...chatPair, privateKey: null }) {
+function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: null }) {
   const scope: ChatE2eeControllerScope = {
     owner: { accountId: "a", instanceId: "i", organizationId: "o", projectId: "p", userUuid: "u" },
     runtimeGeneration: 1,
@@ -43,33 +50,97 @@ function fixture(initialKey: StoredChatKey<string> | null = { ...chatPair, priva
     canRotate: true,
     canSend: true,
   };
-  const provider: ChatCryptoProvider<string> = {
-    createDeviceKeyPair: vi.fn(() => Promise.resolve(ok(devicePair))),
-    createChatKeyPair: vi.fn(() => Promise.resolve(ok(chatPair))),
+  const provider: ChatCryptoProvider = {
+    createRequestKeyPair: vi.fn(() => Promise.resolve(ok(devicePair))),
+    createGroupKey: vi.fn(() => Promise.resolve(ok(groupKey))),
+    fingerprintGroupKey: vi.fn(() => Promise.resolve(ok(chatFingerprint))),
     encryptMessage: vi.fn(() => Promise.resolve(ok({ bytes: new Uint8Array([3]) }))),
     decryptMessage: vi.fn(() => Promise.resolve(ok(new Uint8Array([4])))),
-    encryptChatKeyGrant: vi.fn(() => Promise.resolve(ok({ bytes: new Uint8Array([5]) }))),
-    decryptChatKeyGrant: vi.fn(() => Promise.resolve(ok(chatPair))),
+    encryptGroupKeyGrant: vi.fn(() => Promise.resolve(ok({ bytes: new Uint8Array([5]) }))),
+    decryptGroupKeyGrant: vi.fn(() => Promise.resolve(ok(groupKey))),
   };
-  const storage: ChatKeyStorage<string> = {
+  const pending = new Map<string, PendingChatKeyRequest>([
+    [
+      "request",
+      { localRequestId: "request", requestMessageUuid: "request", ...devicePair, createdAt: 1 },
+    ],
+  ]);
+  const completions = new Map<string, ChatKeyRequestCompletion>();
+  const storage: ChatKeyStorage = {
     readDeviceIdentity: vi.fn(() => Promise.resolve(null)),
-    writeDeviceIdentity: vi.fn(() => Promise.resolve()),
+    writeDeviceIdentity: vi.fn(() => Promise.resolve(true)),
     readChatKey: vi.fn(() => Promise.resolve(key)),
     writeChatKey: vi.fn((_address, next, options) => {
-      if (options?.isCurrent() === false) return Promise.resolve();
-      key = next;
-      return Promise.resolve();
+      if (options?.isCurrent?.() === false) return Promise.resolve(false);
+      key = { ...next, groupKey: next.groupKey ?? key?.groupKey ?? null };
+      return Promise.resolve(true);
     }),
     removeChatKey: vi.fn(() => {
       key = null;
-      return Promise.resolve();
+      return Promise.resolve(true);
     }),
+    readPendingRequest: vi.fn((_address, id) => Promise.resolve(pending.get(id) ?? null)),
+    listPendingRequests: vi.fn(() => Promise.resolve([...pending.values()])),
+    writePendingRequest: vi.fn((_address, request, options) => {
+      if (options?.isCurrent?.() === false) return Promise.resolve(false);
+      pending.set(request.localRequestId, request);
+      return Promise.resolve(true);
+    }),
+    bindPendingRequest: vi.fn((_address, id, uuid, options) => {
+      if (options?.isCurrent?.() === false) return Promise.resolve(false);
+      const request = pending.get(id);
+      if (!request) return Promise.resolve(false);
+      pending.set(id, { ...request, requestMessageUuid: uuid });
+      return Promise.resolve(true);
+    }),
+    readRequestCompletion: vi.fn((_address, id) => Promise.resolve(completions.get(id) ?? null)),
+    readRequestCompletionByMessageUuid: vi.fn((_address, uuid) =>
+      Promise.resolve(
+        [...completions.values()].find((receipt) => receipt.requestMessageUuid === uuid) ?? null,
+      ),
+    ),
+    completeGrant: vi.fn((_address, grant, options) => {
+      if (
+        options?.isCurrent?.() === false ||
+        !pending.has(grant.localRequestId) ||
+        completions.has(grant.localRequestId)
+      )
+        return Promise.resolve(false);
+      key = { fingerprint: grant.fingerprint, groupKey: grant.groupKey };
+      pending.delete(grant.localRequestId);
+      completions.set(grant.localRequestId, {
+        localRequestId: grant.localRequestId,
+        requestMessageUuid: grant.requestMessageUuid,
+        responseMessageUuid: grant.responseMessageUuid,
+        outcome: "granted",
+      });
+      return Promise.resolve(true);
+    }),
+    completeReject: vi.fn((_address, reject, options) => {
+      if (
+        options?.isCurrent?.() === false ||
+        !pending.has(reject.localRequestId) ||
+        completions.has(reject.localRequestId)
+      )
+        return Promise.resolve(false);
+      pending.delete(reject.localRequestId);
+      completions.set(reject.localRequestId, { ...reject, outcome: "rejected" });
+      return Promise.resolve(true);
+    }),
+    listStagedCreations: vi.fn(() => Promise.resolve([])),
+    readStagedCreation: vi.fn(() => Promise.resolve(null)),
+    writeStagedCreation: vi.fn(() => Promise.resolve(false)),
+    finalizeCreation: vi.fn(() => Promise.resolve(false)),
   };
   const sendPayload = vi.fn(
-    (payload: ChatE2eeMessage["payload"], isCurrent: () => boolean): Promise<ChatE2eeMessage> => {
+    (
+      payload: ChatE2eeMessage["payload"],
+      isCurrent: () => boolean,
+      canonicalMessageUuid?: string,
+    ): Promise<ChatE2eeMessage> => {
       if (!isCurrent()) throw new Error("stale");
       return Promise.resolve({
-        uuid: "sent",
+        uuid: canonicalMessageUuid ?? "sent",
         streamUuid: scope.streamUuid,
         authorUuid: scope.owner.userUuid,
         payload,
@@ -78,7 +149,7 @@ function fixture(initialKey: StoredChatKey<string> | null = { ...chatPair, priva
   );
   const controller = new ChatE2eeController({
     scope,
-    device: { deviceId: scope.deviceId, deviceName: "MacBook", keyPair: devicePair },
+    device: { deviceId: scope.deviceId, deviceName: "MacBook" },
     provider,
     storage,
     getCurrentScope: () => current,
@@ -121,6 +192,8 @@ function fixture(initialKey: StoredChatKey<string> | null = { ...chatPair, priva
     request,
     grant,
     readKey: () => key,
+    pending,
+    completions,
     setCurrent: (next: ChatE2eeControllerScope | null) => {
       current = next;
     },
@@ -140,15 +213,15 @@ describe("ChatE2eeController", () => {
   it("waits for an out-of-order request and stores a verified grant once across duplicates", async () => {
     const f = fixture();
     expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({ ok: true, value: undefined });
-    expect(f.provider.decryptChatKeyGrant).not.toHaveBeenCalled();
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(1);
     await f.controller.ingestKeyMessage(f.request);
     await Promise.all([
       f.controller.ingestKeyMessage(f.grant),
       f.controller.ingestKeyMessage(f.grant),
     ]);
-    expect(f.provider.decryptChatKeyGrant).toHaveBeenCalledTimes(1);
-    expect(f.storage.writeChatKey).toHaveBeenCalledTimes(1);
-    expect(f.readKey()?.privateKey).toBe("chat-private");
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(1);
+    expect(f.storage.completeGrant).toHaveBeenCalledTimes(1);
+    expect(f.readKey()?.groupKey).toEqual(groupKey);
     expect(f.controller.getState()).toMatchObject({
       access: "ready",
       requestStatus: "grant-received",
@@ -159,20 +232,20 @@ describe("ChatE2eeController", () => {
     const f = fixture(null);
     await f.controller.ingestKeyMessage(f.request);
     await f.controller.ingestKeyMessage(f.grant);
-    expect(f.provider.decryptChatKeyGrant).not.toHaveBeenCalled();
+    expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
     await f.controller.ingestKeyMessage({
       uuid: "announcement",
       streamUuid: "chat",
       authorUuid: "issuer",
-      payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatPair.publicKey },
+      payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
     });
-    expect(f.readKey()?.privateKey).toBe("chat-private");
+    expect(f.readKey()?.groupKey).toEqual(groupKey);
   });
 
   it("rejects a provider result with a different public key without storing its private key", async () => {
     const f = fixture();
-    vi.mocked(f.provider.decryptChatKeyGrant).mockResolvedValue(
-      ok({ publicKey: { bytes: new Uint8Array([99]) }, privateKey: "wrong-private" }),
+    vi.mocked(f.provider.fingerprintGroupKey).mockResolvedValue(
+      ok({ bytes: new Uint8Array([99]) }),
     );
     await f.controller.ingestKeyMessage(f.request);
     expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
@@ -180,14 +253,14 @@ describe("ChatE2eeController", () => {
       reason: "invalid-key",
     });
     expect(f.storage.writeChatKey).not.toHaveBeenCalled();
-    expect(f.readKey()?.privateKey).toBeNull();
+    expect(f.readKey()?.groupKey).toBeNull();
   });
 
   it("does not revive an old grant when owner A returns after B with a newer generation", async () => {
     const f = fixture();
-    const decrypted = deferred<ChatCryptoResult<typeof chatPair>>();
+    const decrypted = deferred<ChatCryptoResult<typeof groupKey>>();
     const started = deferred<void>();
-    vi.mocked(f.provider.decryptChatKeyGrant).mockImplementation(() => {
+    vi.mocked(f.provider.decryptGroupKeyGrant).mockImplementation(() => {
       started.resolve();
       return decrypted.promise;
     });
@@ -196,7 +269,7 @@ describe("ChatE2eeController", () => {
     await started.promise;
     f.setCurrent({ ...f.scope, owner: { ...f.scope.owner, accountId: "b" }, runtimeGeneration: 2 });
     f.setCurrent({ ...f.scope, runtimeGeneration: 3 });
-    decrypted.resolve(ok(chatPair));
+    decrypted.resolve(ok(groupKey));
     expect(await operation).toEqual({ ok: false, reason: "stale" });
     expect(f.storage.writeChatKey).not.toHaveBeenCalled();
     expect(f.controller.getState().access).toBe("missing");
@@ -231,10 +304,11 @@ describe("ChatE2eeController", () => {
     const commit = deferred<void>();
     const started = deferred<void>();
     let committed = false;
-    vi.mocked(f.storage.writeChatKey).mockImplementation(async (_address, _key, options) => {
+    vi.mocked(f.storage.completeGrant).mockImplementation(async (_address, _key, options) => {
       started.resolve();
       await commit.promise;
-      if (options?.isCurrent()) committed = true;
+      if (options?.isCurrent?.()) committed = true;
+      return committed;
     });
     await f.controller.ingestKeyMessage(f.request);
     const operation = f.controller.ingestKeyMessage(f.grant);
@@ -243,7 +317,7 @@ describe("ChatE2eeController", () => {
     commit.resolve();
     expect(await operation).toEqual({ ok: false, reason: "stale" });
     expect(committed).toBe(false);
-    expect(f.readKey()?.privateKey).toBeNull();
+    expect(f.readKey()?.groupKey).toBeNull();
   });
 
   it("rechecks issuer authorization at durable commit", async () => {
@@ -251,10 +325,11 @@ describe("ChatE2eeController", () => {
     const commit = deferred<void>();
     const started = deferred<void>();
     let committed = false;
-    vi.mocked(f.storage.writeChatKey).mockImplementation(async (_address, _key, options) => {
+    vi.mocked(f.storage.completeGrant).mockImplementation(async (_address, _key, options) => {
       started.resolve();
       await commit.promise;
-      committed = options?.isCurrent() ?? false;
+      committed = options?.isCurrent?.() ?? false;
+      return committed;
     });
     await f.controller.ingestKeyMessage(f.request);
     const operation = f.controller.ingestKeyMessage(f.grant);
@@ -269,7 +344,7 @@ describe("ChatE2eeController", () => {
     const f = fixture(chatPair);
     const encrypted = deferred<ChatCryptoResult<{ bytes: Uint8Array }>>();
     const started = deferred<void>();
-    vi.mocked(f.provider.encryptChatKeyGrant).mockImplementation(() => {
+    vi.mocked(f.provider.encryptGroupKeyGrant).mockImplementation(() => {
       started.resolve();
       return encrypted.promise;
     });
@@ -284,7 +359,7 @@ describe("ChatE2eeController", () => {
   it("keeps a failed provider retryable and never treats delivery as access", async () => {
     const f = fixture();
     await f.controller.ingestKeyMessage(f.request);
-    vi.mocked(f.provider.decryptChatKeyGrant).mockResolvedValueOnce({
+    vi.mocked(f.provider.decryptGroupKeyGrant).mockResolvedValueOnce({
       ok: false,
       reason: "unavailable",
     });
@@ -292,8 +367,8 @@ describe("ChatE2eeController", () => {
       ok: false,
       reason: "unavailable",
     });
-    expect(f.readKey()?.privateKey).toBeNull();
-    expect(f.controller.getState().access).toBe("public-only");
+    expect(f.readKey()?.groupKey).toBeNull();
+    expect(f.controller.getState().access).toBe("metadata-only");
     expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({ ok: true, value: undefined });
     expect(f.controller.getState().access).toBe("ready");
   });
@@ -305,7 +380,7 @@ describe("ChatE2eeController", () => {
       ok: false,
       reason: "invalid-message",
     });
-    expect(f.provider.decryptChatKeyGrant).not.toHaveBeenCalled();
+    expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
   });
 
   it("does not accept a colliding device ID with a different request public key", async () => {
@@ -318,7 +393,7 @@ describe("ChatE2eeController", () => {
       ok: false,
       reason: "invalid-message",
     });
-    expect(f.provider.decryptChatKeyGrant).not.toHaveBeenCalled();
+    expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
     expect(f.storage.writeChatKey).not.toHaveBeenCalled();
   });
 
@@ -330,26 +405,28 @@ describe("ChatE2eeController", () => {
       payload: { ...f.grant.payload, recipientDeviceId: "another-device" },
     });
     await f.controller.ingestKeyMessage(f.grant);
-    expect(await f.controller.ingestKeyMessage(f.request)).toEqual({
-      ok: false,
-      reason: "invalid-message",
-    });
-    expect(f.readKey()?.privateKey).toBe("chat-private");
-    expect(f.provider.decryptChatKeyGrant).toHaveBeenCalledTimes(1);
+    expect(await f.controller.ingestKeyMessage(f.request)).toEqual({ ok: true, value: undefined });
+    expect(f.readKey()?.groupKey).toEqual(groupKey);
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(1);
     expect(await f.controller.ingestKeyMessage(f.request)).toEqual({ ok: true, value: undefined });
   });
 
   it("continues a pending batch when one grant temporarily cannot be decrypted", async () => {
-    const f = fixture();
+    const f = fixture(null);
     await f.controller.ingestKeyMessage({ ...f.grant, uuid: "unavailable-grant" });
     await f.controller.ingestKeyMessage(f.grant);
-    vi.mocked(f.provider.decryptChatKeyGrant).mockResolvedValueOnce({
+    vi.mocked(f.provider.decryptGroupKeyGrant).mockResolvedValueOnce({
       ok: false,
       reason: "unavailable",
     });
-    await f.controller.ingestKeyMessage(f.request);
-    expect(f.readKey()?.privateKey).toBe("chat-private");
-    expect(f.provider.decryptChatKeyGrant).toHaveBeenCalledTimes(2);
+    await f.controller.ingestKeyMessage({
+      uuid: "announcement",
+      streamUuid: "chat",
+      authorUuid: "issuer",
+      payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+    });
+    expect(f.readKey()?.groupKey).toEqual(groupKey);
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(2);
   });
 
   it("a refusal does not remove an already stored private key", async () => {
@@ -366,19 +443,19 @@ describe("ChatE2eeController", () => {
         recipientDeviceId: f.grant.payload.recipientDeviceId,
       },
     });
-    expect(f.readKey()?.privateKey).toBe("chat-private");
+    expect(f.readKey()?.groupKey).toEqual(groupKey);
     expect(f.controller.getState()).toMatchObject({ access: "ready", requestStatus: "idle" });
     expect(f.storage.removeChatKey).not.toHaveBeenCalled();
   });
 
-  it("a late public-only read cannot downgrade a grant that has just been committed", async () => {
+  it("a late metadata-only read cannot downgrade a grant that has just been committed", async () => {
     const f = fixture();
-    const staleRead = deferred<StoredChatKey<string> | null>();
+    const staleRead = deferred<StoredChatKey | null>();
     vi.mocked(f.storage.readChatKey).mockImplementationOnce(() => staleRead.promise);
     const loading = f.controller.loadKey();
     await f.controller.ingestKeyMessage(f.request);
     await f.controller.ingestKeyMessage(f.grant);
-    staleRead.resolve({ publicKey: chatPair.publicKey, privateKey: null });
+    staleRead.resolve({ fingerprint: chatFingerprint, groupKey: null });
     await loading;
     expect(f.controller.getState().access).toBe("ready");
   });
@@ -394,15 +471,17 @@ describe("ChatE2eeController", () => {
       "key_request",
       "key_reject",
     ]);
-    expect(f.readKey()?.privateKey).toBeNull();
+    expect(f.readKey()?.groupKey).toBeNull();
   });
 
-  it("blocks grants without private keys and uses a public key for encrypted sends", async () => {
+  it("requires the symmetric group secret for grants and messages", async () => {
     const f = fixture();
     expect(await f.controller.grantKey(f.request)).toEqual({ ok: false, reason: "missing-key" });
-    const sent = await f.controller.encryptMessage(new Uint8Array([42]));
-    expect(sent.ok).toBe(true);
-    expect(f.sendPayload.mock.calls[0]?.[0].kind).toBe("e2ee");
+    expect(await f.controller.encryptMessage(new Uint8Array([42]))).toEqual({
+      ok: false,
+      reason: "missing-key",
+    });
+    expect(f.sendPayload).not.toHaveBeenCalled();
   });
 
   it("invalidation permanently closes an instance even if the same scope returns", async () => {
@@ -423,9 +502,199 @@ describe("ChatE2eeController", () => {
         uuid: "announcement",
         streamUuid: "chat",
         authorUuid: "issuer",
-        payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatPair.publicKey },
+        payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
       }),
     ).toEqual({ ok: false, reason: "forbidden" });
     expect(f.storage.writeChatKey).not.toHaveBeenCalled();
+  });
+  it("persists a fresh request pair before dispatch and reuses it after an ambiguous POST failure", async () => {
+    const f = fixture();
+    f.pending.clear();
+    f.sendPayload.mockImplementationOnce((_payload, _guard, uuid) => {
+      const pending = [...f.pending.values()][0];
+      expect(pending?.requestMessageUuid).toBe(uuid);
+      expect(pending?.privateKey).toEqual(devicePair.privateKey);
+      throw new Error("response lost");
+    });
+    expect(await f.controller.requestKey()).toEqual({ ok: false, reason: "send-failed" });
+    const first = [...f.pending.values()][0];
+    expect(first).toBeDefined();
+    expect((await f.controller.requestKey()).ok).toBe(true);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledTimes(1);
+    expect(f.sendPayload.mock.calls[0]?.[2]).toBe(f.sendPayload.mock.calls[1]?.[2]);
+    expect(f.pending.size).toBe(1);
+  });
+
+  it("deduplicates concurrent requests and creates a fresh pair only after terminal rejection", async () => {
+    const f = fixture();
+    f.pending.clear();
+    const requests = await Promise.all([f.controller.requestKey(), f.controller.requestKey()]);
+    expect(requests.every((result) => result.ok)).toBe(true);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledTimes(1);
+    const uuid = [...f.pending.values()][0]?.requestMessageUuid;
+    if (!uuid) throw new Error("missing pending");
+    await f.controller.ingestKeyMessage({
+      ...f.grant,
+      payload: {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: uuid,
+        senderDeviceId: "issuer-device",
+        recipientDeviceId: "device",
+      },
+    });
+    expect(f.pending.size).toBe(0);
+    expect((await f.controller.requestKey()).ok).toBe(true);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledTimes(2);
+    expect([...f.pending.values()][0]?.requestMessageUuid).not.toBe(uuid);
+  });
+
+  it("retains the private request key if durable grant completion fails", async () => {
+    const f = fixture();
+    vi.mocked(f.storage.completeGrant).mockRejectedValueOnce(new Error("disk failed"));
+    expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
+      ok: false,
+      reason: "storage-failed",
+    });
+    expect(f.pending.get("request")?.privateKey).toEqual(devicePair.privateKey);
+    expect(f.readKey()?.groupKey).toBeNull();
+    expect((await f.controller.ingestKeyMessage(f.grant)).ok).toBe(true);
+    expect(f.pending.size).toBe(0);
+    expect(f.completions.get("request")?.outcome).toBe("granted");
+  });
+
+  it("recovers an unbound request from exact own history and refuses a colliding public key", async () => {
+    const f = fixture();
+    f.pending.set("request", {
+      localRequestId: "request",
+      requestMessageUuid: null,
+      ...devicePair,
+      createdAt: 1,
+    });
+    await f.controller.ingestKeyMessage({
+      ...f.request,
+      payload: { ...f.request.payload, publicKey: { bytes: new Uint8Array([99]) } },
+    });
+    expect(f.pending.get("request")?.requestMessageUuid).toBeNull();
+    expect((await f.controller.ingestKeyMessage(f.request)).ok).toBe(true);
+    expect(f.pending.get("request")?.requestMessageUuid).toBe("request");
+    expect((await f.controller.ingestKeyMessage(f.grant)).ok).toBe(true);
+  });
+
+  it("does not dispatch a request if persisting its private key fails", async () => {
+    const f = fixture();
+    f.pending.clear();
+    vi.mocked(f.storage.writePendingRequest).mockRejectedValue(new Error("storage unavailable"));
+    expect(await f.controller.requestKey()).toEqual({ ok: false, reason: "storage-failed" });
+    expect(f.sendPayload).not.toHaveBeenCalled();
+  });
+
+  it("a guarded announcement skipped by storage does not manufacture access metadata", async () => {
+    const f = fixture(null);
+    vi.mocked(f.storage.writeChatKey).mockResolvedValue(false);
+    expect(
+      await f.controller.ingestKeyMessage({
+        uuid: "announcement",
+        streamUuid: "chat",
+        authorUuid: "issuer",
+        payload: { kind: "key_announced", keyUuid: "generation", publicKey: chatFingerprint },
+      }),
+    ).toEqual({ ok: false, reason: "storage-failed" });
+    expect(f.controller.getState().access).toBe("missing");
+  });
+
+  it("accepts several pending requests from different controllers and retries the oldest without losing other pairs", async () => {
+    const f = fixture();
+    f.pending.set("second", {
+      localRequestId: "second",
+      requestMessageUuid: "second",
+      publicKey: { bytes: new Uint8Array([9]) },
+      privateKey: new Uint8Array([9]),
+      createdAt: 2,
+    });
+    expect((await f.controller.requestKey()).ok).toBe(true);
+    expect(f.sendPayload.mock.calls[0]?.[2]).toBe("request");
+    expect(f.pending.size).toBe(2);
+    expect(
+      (
+        await f.controller.ingestKeyMessage({
+          ...f.grant,
+          payload: { ...f.grant.payload, requestMessageUuid: "second" },
+        })
+      ).ok,
+    ).toBe(true);
+    expect(f.pending.has("second")).toBe(false);
+    expect(f.pending.has("request")).toBe(true);
+  });
+
+  it("deduplicates a recovered grant across a new controller when local and server request IDs differ", async () => {
+    const f = fixture();
+    f.pending.clear();
+    f.pending.set("local", {
+      localRequestId: "local",
+      requestMessageUuid: null,
+      ...devicePair,
+      createdAt: 1,
+    });
+    await f.controller.ingestKeyMessage(f.request);
+    expect((await f.controller.ingestKeyMessage(f.grant)).ok).toBe(true);
+    f.controller.invalidate();
+    const restored = new ChatE2eeController({
+      scope: f.scope,
+      device: { deviceId: "device", deviceName: "MacBook" },
+      provider: f.provider,
+      storage: f.storage,
+      getCurrentScope: () => f.scope,
+      getRights: () => ({
+        canRequest: true,
+        canGrant: true,
+        canReject: true,
+        canRotate: false,
+        canSend: true,
+      }),
+      isIssuerAllowed: () => true,
+      isAnnouncerAllowed: () => true,
+      sendPayload: f.sendPayload,
+    });
+    await restored.loadKey();
+    expect((await restored.ingestKeyMessage(f.grant)).ok).toBe(true);
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledTimes(1);
+    expect(f.storage.completeGrant).toHaveBeenCalledTimes(1);
+    expect(restored.getState().access).toBe("ready");
+  });
+
+  it("does not claim a grant succeeded when a rejection won the durable completion race", async () => {
+    const f = fixture();
+    vi.mocked(f.storage.completeGrant).mockImplementationOnce((_address, grant) => {
+      f.pending.delete(grant.localRequestId);
+      f.completions.set(grant.localRequestId, {
+        localRequestId: grant.localRequestId,
+        requestMessageUuid: grant.requestMessageUuid,
+        responseMessageUuid: grant.responseMessageUuid,
+        outcome: "rejected",
+      });
+      return Promise.resolve(false);
+    });
+    expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
+      ok: false,
+      reason: "invalid-message",
+    });
+    expect(f.readKey()?.groupKey).toBeNull();
+    expect(f.controller.getState().requestStatus).not.toBe("grant-received");
+  });
+
+  it("rejects a transport response with modified request metadata while retaining the durable pair", async () => {
+    const f = fixture();
+    f.sendPayload.mockImplementationOnce((payload, _guard, uuid) => {
+      if (payload.kind !== "key_request") throw new Error("wrong fixture");
+      return Promise.resolve({
+        uuid: uuid ?? "request",
+        streamUuid: "chat",
+        authorUuid: "u",
+        payload: { ...payload, deviceName: "tampered" },
+      });
+    });
+    expect(await f.controller.requestKey()).toEqual({ ok: false, reason: "invalid-message" });
+    expect(f.pending.get("request")?.privateKey).toEqual(devicePair.privateKey);
   });
 });

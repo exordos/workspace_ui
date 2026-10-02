@@ -325,8 +325,10 @@ export async function sendMessengerMessage({
     const key = domainStream.currentEncryptionKey!;
     expectedKeyUuid = key.keyUuid;
     expectedPublicKey = key.publicKey;
+    const fixtureKey = await provider!.createGroupKey();
+    if (!fixtureKey.ok) throw new Error("Development chat crypto unavailable");
     const result = await provider!.encryptMessage({
-      publicKey: { bytes: new TextEncoder().encode(atob(key.publicKey)) },
+      groupKey: fixtureKey.value,
       plaintext: new TextEncoder().encode(markdown),
       context: { streamUuid, keyUuid: key.keyUuid },
     });

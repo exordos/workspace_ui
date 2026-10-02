@@ -47,8 +47,8 @@ describe("correlateChatKeyResponse", () => {
     // Duplicate delivery has no side effect and cannot manufacture a private key.
     expect(correlateChatKeyResponse(input)).toEqual(correlateChatKeyResponse(input));
     expect(
-      resolveChatGenerationAccess({ publicKey: request.payload.publicKey, privateKey: null }),
-    ).toBe("public-only");
+      resolveChatGenerationAccess({ fingerprint: request.payload.publicKey, groupKey: null }),
+    ).toBe("metadata-only");
   });
 
   it.each([
@@ -110,12 +110,12 @@ describe("resolveChatGenerationAccess", () => {
   it("keeps inaccessible old generations separate from a ready new generation", () => {
     expect(resolveChatGenerationAccess(null)).toBe("missing");
     expect(
-      resolveChatGenerationAccess({ publicKey: request.payload.publicKey, privateKey: null }),
-    ).toBe("public-only");
+      resolveChatGenerationAccess({ fingerprint: request.payload.publicKey, groupKey: null }),
+    ).toBe("metadata-only");
     expect(
       resolveChatGenerationAccess({
-        publicKey: request.payload.publicKey,
-        privateKey: { handle: "private-key" },
+        fingerprint: request.payload.publicKey,
+        groupKey: { bytes: new Uint8Array(32) },
       }),
     ).toBe("ready");
     expect(resolveChatGenerationAccess(null)).toBe("missing");

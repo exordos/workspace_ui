@@ -67,4 +67,4 @@ export type ChatKeyResponseCorrelation =
     }
   | { readonly status: "matched"; readonly outcome: "grant-received" | "rejected" };
 
-export type ChatGenerationAccess = "missing" | "public-only" | "ready";
+export type ChatGenerationAccess = "missing" | "metadata-only" | "ready";

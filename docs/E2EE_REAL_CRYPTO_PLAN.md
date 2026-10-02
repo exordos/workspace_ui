@@ -13,11 +13,11 @@
 - Авторство аккаунта доверяется backend. Право выдачи и отклонения проверяет клиент по актуальным правам чата. HPKE Base не удостоверяет отправителя сам по себе.
 - Обновление поколения не переписывает историю и не отзывает уже выданные старые ключи. Протоколы ratchet, MLS, recovery и шифрование вложений не входят в текущую задачу.
 
-## Подтверждённая исходная реализация до изменений
+## Исходная реализация до миграции
 
 Проверен локальный backend PR #180, revision `77f2ced5030271c075d6b09b35e7a267e954601b`, checkout `/private/tmp/workspace-e2ee-pr180`. Его `docs/en/workspace_api.md`, разделы Streams и Messages, требуют `current_encryption_key: { key_uuid, public_key }` при создании encrypted stream; `key_announced` меняет те же metadata. Backend хранит `public_key` как непустую opaque строку и не выполняет криптографическую проверку, но документация называет её публичным ключом чата. Новые wire-поля сейчас не добавляем.
 
-Текущий frontend контракт [ChatCryptoProvider](../packages/web/src/entities/messenger/chat-crypto-provider.types.ts) предполагает пару ключей поколения, а [ChatKeyStorage](../packages/web/src/entities/messenger/chat-key-storage.types.ts) — постоянную пару устройства. [Контроллер](../packages/web/src/entities/messenger/chat-e2ee-controller.lib.ts) держит requests/waiting/processed в памяти; запрос записывается после POST, устойчивых pending request записей нет. [Создание чата](../packages/web/src/entities/messenger/messenger-create-chat-actions.lib.ts) подключает DEV bootstrap, не сохраняющий настоящий секрет. [Mock](../packages/web/src/entities/messenger/chat-dev-crypto.lib.ts) кодирует plaintext, не защищает его. Эти предположения нужно заменить совместно, а не просто подставить библиотеку.
+На старте миграции frontend контракт [ChatCryptoProvider](../packages/web/src/entities/messenger/chat-crypto-provider.types.ts) предполагал пару ключей поколения, а [ChatKeyStorage](../packages/web/src/entities/messenger/chat-key-storage.types.ts) — постоянную пару устройства. [Контроллер](../packages/web/src/entities/messenger/chat-e2ee-controller.lib.ts) держал requests/waiting/processed в памяти; запрос записывался после POST, устойчивых pending request записей не было. [Создание чата](../packages/web/src/entities/messenger/messenger-create-chat-actions.lib.ts) подключает DEV bootstrap, не сохраняющий настоящий секрет. [Mock](../packages/web/src/entities/messenger/chat-dev-crypto.lib.ts) кодирует plaintext, не защищает его. Эти предположения потребовали совместного изменения типов, контроллера и хранения при подключении библиотек.
 
 Graphify использован для навигации; текущие E2EE решения проверены в исходниках, потому что граф не покрывает новые модули полностью. Старые замечания о подписях в архивных заметках не отменяют принятую сейчас модель доверия backend.
 
@@ -107,3 +107,11 @@ Production composition подключает только real provider. Legacy `
 - Известные дефекты PR180 фильтра `encryption=true` и повторного encrypted direct не маскировать crypto fallback. При необходимости только узкое stand исправление для QA, без изменения рабочего backend.
 
 План считается выполненным после реальных library операций, устойчивого request lifecycle и end-to-end ordinary chat проверки. Наличие только библиотечного roundtrip или тестовой страницы не означает готовый пользовательский сценарий.
+
+## Фактическое состояние foundation
+
+План зафиксирован отдельным commit `5e23c3fb` до реализации. Реализованы library provider, отдельный durable IndexedDB storage и request controller; DEV fixtures приведены к новым контрактам. Provider focused tests: 16, storage: 14, controller/sandbox: 69. Итоговые проверки: полный web suite 488 файлов / 5398 тестов, без unhandled errors; typecheck web и Electron; web production build; scoped ESLint без ошибок, с предупреждениями; docs check 98 документов / 360 ссылок / 3 import paths; diff check. Независимый review не обнаружил P1/P2 в проверенных foundation paths.
+
+**Обычный UI ещё не подключён к real provider.** Wire решение о fingerprint ожидает пользователя; real bootstrap/API create/announce и проверка двумя браузерами будут следующими этапами. Успешный build и unit tests не заявляют live UI или native Electron QA. Старый mock остаётся явно тестовым и не мигрирует данные автоматически.
+
+Повторный запрос в одной области возобновляет старейший pending request; несколько запросов, созданных параллельно разными вкладками, сохраняются и могут завершиться каждый своим ответом. Staged creation записи доступны по owner/device списком после reload, но их подключение к real bootstrap ждёт wire решения.

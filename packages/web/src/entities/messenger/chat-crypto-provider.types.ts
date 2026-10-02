@@ -1,4 +1,12 @@
-// This contract assumes a shared key pair per chat generation.
+// Each chat generation shares a symmetric key. Asymmetric pairs belong to access requests.
+export interface ChatCryptoGroupKey {
+  readonly bytes: Uint8Array;
+}
+
+export interface ChatCryptoKeyFingerprint {
+  readonly bytes: Uint8Array;
+}
+
 export interface ChatCryptoPublicKey {
   // The API adapter encodes these bytes as Base64 in payload.public_key.
   readonly bytes: Uint8Array;
@@ -11,7 +19,7 @@ export interface ChatCryptoEnvelope {
 }
 
 // Private keys may be bytes, platform handles, or library-owned objects.
-export interface ChatCryptoKeyPair<TPrivateKey> {
+export interface ChatCryptoKeyPair<TPrivateKey = Uint8Array> {
   readonly publicKey: ChatCryptoPublicKey;
   readonly privateKey: TPrivateKey;
 }
@@ -38,33 +46,37 @@ export type ChatCryptoResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly reason: ChatCryptoFailure };
 
-export interface ChatCryptoProvider<TPrivateKey> {
-  createDeviceKeyPair(): Promise<ChatCryptoResult<ChatCryptoKeyPair<TPrivateKey>>>;
-  createChatKeyPair(): Promise<ChatCryptoResult<ChatCryptoKeyPair<TPrivateKey>>>;
+export interface ChatCryptoProvider<TPrivateKey = Uint8Array> {
+  createRequestKeyPair(): Promise<ChatCryptoResult<ChatCryptoKeyPair<TPrivateKey>>>;
+  createGroupKey(): Promise<ChatCryptoResult<ChatCryptoGroupKey>>;
+  fingerprintGroupKey(
+    groupKey: ChatCryptoGroupKey,
+    keyUuid: string,
+  ): Promise<ChatCryptoResult<ChatCryptoKeyFingerprint>>;
 
   encryptMessage(input: {
-    readonly publicKey: ChatCryptoPublicKey;
+    readonly groupKey: ChatCryptoGroupKey;
     readonly plaintext: Uint8Array;
     readonly context: ChatCryptoMessageContext;
   }): Promise<ChatCryptoResult<ChatCryptoEnvelope>>;
 
   decryptMessage(input: {
-    readonly keyPair: ChatCryptoKeyPair<TPrivateKey>;
+    readonly groupKey: ChatCryptoGroupKey;
     readonly envelope: ChatCryptoEnvelope;
     readonly context: ChatCryptoMessageContext;
   }): Promise<ChatCryptoResult<Uint8Array>>;
 
   // Only the encrypted grant leaves the provider; no raw key export is required.
-  encryptChatKeyGrant(input: {
-    readonly chatKeyPair: ChatCryptoKeyPair<TPrivateKey>;
+  encryptGroupKeyGrant(input: {
+    readonly groupKey: ChatCryptoGroupKey;
     readonly recipientPublicKey: ChatCryptoPublicKey;
     readonly context: ChatCryptoGrantContext;
   }): Promise<ChatCryptoResult<ChatCryptoEnvelope>>;
 
-  decryptChatKeyGrant(input: {
-    readonly deviceKeyPair: ChatCryptoKeyPair<TPrivateKey>;
-    readonly expectedChatPublicKey: ChatCryptoPublicKey;
+  decryptGroupKeyGrant(input: {
+    readonly requestKeyPair: ChatCryptoKeyPair<TPrivateKey>;
+    readonly expectedFingerprint: ChatCryptoKeyFingerprint;
     readonly envelope: ChatCryptoEnvelope;
     readonly context: ChatCryptoGrantContext;
-  }): Promise<ChatCryptoResult<ChatCryptoKeyPair<TPrivateKey>>>;
+  }): Promise<ChatCryptoResult<ChatCryptoGroupKey>>;
 }

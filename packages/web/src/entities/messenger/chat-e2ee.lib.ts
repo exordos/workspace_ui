@@ -38,9 +38,7 @@ export function correlateChatKeyResponse(input: {
 }
 
 // Call with the stored key for the exact owner/device/stream/generation address.
-export function resolveChatGenerationAccess<TPrivateKey>(
-  key: StoredChatKey<TPrivateKey> | null,
-): ChatGenerationAccess {
+export function resolveChatGenerationAccess(key: StoredChatKey | null): ChatGenerationAccess {
   if (key === null) return "missing";
-  return key.privateKey === null ? "public-only" : "ready";
+  return key.groupKey === null ? "metadata-only" : "ready";
 }

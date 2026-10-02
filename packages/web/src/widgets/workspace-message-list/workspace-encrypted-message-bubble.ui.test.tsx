@@ -90,10 +90,10 @@ async function seedDevEncryptedMessage(text: string) {
   useWorkspaceMessageStore.getState().setOwner(owner, false);
   const provider = createDevChatCryptoProvider(runtime, stream);
   if (provider == null) throw new Error("Missing mock provider");
-  const keys = await provider.createChatKeyPair();
+  const keys = await provider.createGroupKey();
   if (!keys.ok) throw new Error("Missing mock key");
   const encrypted = await provider.encryptMessage({
-    publicKey: keys.value.publicKey,
+    groupKey: keys.value,
     plaintext: new TextEncoder().encode(text),
     context: { streamUuid: stream.uuid, keyUuid: "current-key" },
   });

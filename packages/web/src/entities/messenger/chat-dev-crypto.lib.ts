@@ -79,22 +79,23 @@ function decodeFixture(bytes: Uint8Array, context: ChatCryptoMessageContext): st
 export function createDevChatCryptoProvider(
   runtime: WorkspaceRuntimeContext,
   stream: MessengerStream,
-): ChatCryptoProvider<"development-fixture"> | null {
+): ChatCryptoProvider | null {
   if (!canUseDevChatCrypto(runtime, stream)) return null;
   const expectedPublicKey = atob(stream.currentEncryptionKey!.publicKey);
-  const keyPair = {
-    publicKey: { bytes: new TextEncoder().encode(expectedPublicKey) },
-    privateKey: "development-fixture" as const,
-  };
+  const groupKey = { bytes: new TextEncoder().encode(expectedPublicKey) };
   const validContext = (context: ChatCryptoMessageContext) =>
     canUseDevChatCrypto(runtime, stream) &&
     context.streamUuid === stream.uuid &&
     context.keyUuid === stream.currentEncryptionKey?.keyUuid;
   return {
-    createDeviceKeyPair: () => Promise.resolve({ ok: false, reason: "unavailable" }),
-    createChatKeyPair: () => Promise.resolve({ ok: true, value: keyPair }),
-    encryptMessage: ({ plaintext, context, publicKey }) => {
-      if (!validContext(context) || new TextDecoder().decode(publicKey.bytes) !== expectedPublicKey)
+    createRequestKeyPair: () => Promise.resolve({ ok: false, reason: "unavailable" }),
+    createGroupKey: () => Promise.resolve({ ok: true, value: groupKey }),
+    fingerprintGroupKey: () => Promise.resolve({ ok: true, value: groupKey }),
+    encryptMessage: ({ plaintext, context, groupKey: receivedKey }) => {
+      if (
+        !validContext(context) ||
+        new TextDecoder().decode(receivedKey.bytes) !== expectedPublicKey
+      )
         return Promise.resolve({ ok: false, reason: "context-mismatch" });
       try {
         return Promise.resolve({ ok: true, value: { bytes: encodeFixture(plaintext, context) } });
@@ -102,11 +103,10 @@ export function createDevChatCryptoProvider(
         return Promise.resolve({ ok: false, reason: "invalid-ciphertext" });
       }
     },
-    decryptMessage: ({ envelope, context, keyPair: receivedKey }) => {
+    decryptMessage: ({ envelope, context, groupKey: receivedKey }) => {
       if (
         !validContext(context) ||
-        receivedKey.privateKey !== "development-fixture" ||
-        new TextDecoder().decode(receivedKey.publicKey.bytes) !== expectedPublicKey
+        new TextDecoder().decode(receivedKey.bytes) !== expectedPublicKey
       )
         return Promise.resolve({ ok: false, reason: "context-mismatch" });
       const text = decodeFixture(envelope.bytes, context);
@@ -116,8 +116,8 @@ export function createDevChatCryptoProvider(
           : { ok: true, value: new TextEncoder().encode(text) },
       );
     },
-    encryptChatKeyGrant: () => Promise.resolve({ ok: false, reason: "unavailable" }),
-    decryptChatKeyGrant: () => Promise.resolve({ ok: false, reason: "unavailable" }),
+    encryptGroupKeyGrant: () => Promise.resolve({ ok: false, reason: "unavailable" }),
+    decryptGroupKeyGrant: () => Promise.resolve({ ok: false, reason: "unavailable" }),
   };
 }
 

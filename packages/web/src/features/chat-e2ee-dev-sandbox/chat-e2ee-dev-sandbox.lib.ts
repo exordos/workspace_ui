@@ -12,7 +12,12 @@ import type {
   ChatE2eePayload,
   ChatKeyRequestPayload,
 } from "~/entities/messenger/chat-e2ee.types";
-import type { ChatKeyStorage, StoredChatKey } from "~/entities/messenger/chat-key-storage.types";
+import type {
+  ChatKeyStorage,
+  StoredChatKey,
+  PendingChatKeyRequest,
+  ChatKeyRequestCompletion,
+} from "~/entities/messenger/chat-key-storage.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -22,8 +27,8 @@ import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types"
 import { isAllowedDevWorkspaceProxyTargetOrigin } from "~/shared/config/dev-workspace-org-proxy";
 import {
   createInsecureSandboxProvider,
-  E2EE_SANDBOX_CHAT_PAIR,
-  E2EE_SANDBOX_DEVICE_PAIRS,
+  E2EE_SANDBOX_FINGERPRINT,
+  E2EE_SANDBOX_GROUP_KEY,
   E2EE_SANDBOX_FIXTURE_TEXT,
 } from "./chat-e2ee-dev-provider.lib";
 
@@ -81,7 +86,9 @@ export function createDevChatE2eeSandbox(input: {
   };
   const abort = new AbortController();
   const provider = createInsecureSandboxProvider();
-  const keys = new Map<string, StoredChatKey<string>>();
+  const keys = new Map<string, StoredChatKey>();
+  const pendingRequests = new Map<string, PendingChatKeyRequest>();
+  const completions = new Map<string, ChatKeyRequestCompletion>();
   const messages = new Map<string, ChatE2eeMessage>();
   const plaintext = new Map<string, string>();
   const keyUuid = crypto.randomUUID();
@@ -89,7 +96,7 @@ export function createDevChatE2eeSandbox(input: {
   let streamUuid: string | null = null;
   let topicUuid: string | null = null;
   let device: SandboxDevice = "issuer";
-  let controller: ChatE2eeController<string> | null = null;
+  let controller: ChatE2eeController | null = null;
   let disposed = false;
   let initializing = false;
 
@@ -121,25 +128,91 @@ export function createDevChatE2eeSandbox(input: {
       abort.signal,
     );
   const addressKey = (
-    address: ChatE2eeControllerScope | Parameters<ChatKeyStorage<string>["readChatKey"]>[0],
+    address: ChatE2eeControllerScope | Parameters<ChatKeyStorage["readChatKey"]>[0],
   ) =>
     `${workspaceRuntimeOwnerKey(address.owner)}:${address.deviceId}:${address.streamUuid}:${address.keyUuid}`;
-  const storage: ChatKeyStorage<string> = {
+  const storage: ChatKeyStorage = {
     readDeviceIdentity: () => Promise.resolve(null),
     writeDeviceIdentity: () =>
       Promise.reject(new Error("Sandbox identities are ephemeral fixtures")),
     readChatKey: (address) => Promise.resolve(keys.get(addressKey(address)) ?? null),
     writeChatKey: (address, key, writeOptions) => {
-      if (current() && writeOptions?.isCurrent() !== false) {
-        const existing = keys.get(addressKey(address));
-        keys.set(addressKey(address), {
-          publicKey: key.publicKey,
-          privateKey: key.privateKey ?? existing?.privateKey ?? null,
-        });
-      }
-      return Promise.resolve();
+      if (!current() || writeOptions?.isCurrent?.() === false) return Promise.resolve(false);
+      const existing = keys.get(addressKey(address));
+      keys.set(addressKey(address), {
+        fingerprint: key.fingerprint,
+        groupKey: key.groupKey ?? existing?.groupKey ?? null,
+      });
+      return Promise.resolve(true);
     },
     removeChatKey: () => Promise.reject(new Error("Sandbox does not delete keys")),
+    readPendingRequest: (address, id) =>
+      Promise.resolve(pendingRequests.get(`${addressKey(address)}:${id}`) ?? null),
+    listPendingRequests: (address) =>
+      Promise.resolve(
+        [...pendingRequests.entries()]
+          .filter(([id]) => id.startsWith(`${addressKey(address)}:`))
+          .map(([, value]) => value),
+      ),
+    writePendingRequest: (address, request, writeOptions) => {
+      if (!current() || writeOptions?.isCurrent?.() === false) return Promise.resolve(false);
+      pendingRequests.set(`${addressKey(address)}:${request.localRequestId}`, request);
+      return Promise.resolve(true);
+    },
+    bindPendingRequest: (address, id, uuid, writeOptions) => {
+      if (!current() || writeOptions?.isCurrent?.() === false) return Promise.resolve(false);
+      const key = `${addressKey(address)}:${id}`;
+      const request = pendingRequests.get(key);
+      if (!request || (request.requestMessageUuid !== null && request.requestMessageUuid !== uuid))
+        return Promise.resolve(false);
+      pendingRequests.set(key, { ...request, requestMessageUuid: uuid });
+      return Promise.resolve(true);
+    },
+    readRequestCompletion: (address, id) =>
+      Promise.resolve(completions.get(`${addressKey(address)}:${id}`) ?? null),
+    readRequestCompletionByMessageUuid: (address, uuid) =>
+      Promise.resolve(
+        [...completions.entries()].find(
+          ([id, receipt]) =>
+            id.startsWith(`${addressKey(address)}:`) && receipt.requestMessageUuid === uuid,
+        )?.[1] ?? null,
+      ),
+    completeGrant: (address, grant, writeOptions) => {
+      const id = `${addressKey(address)}:${grant.localRequestId}`;
+      if (
+        !current() ||
+        writeOptions?.isCurrent?.() === false ||
+        !pendingRequests.has(id) ||
+        completions.has(id)
+      )
+        return Promise.resolve(false);
+      keys.set(addressKey(address), { fingerprint: grant.fingerprint, groupKey: grant.groupKey });
+      pendingRequests.delete(id);
+      completions.set(id, {
+        localRequestId: grant.localRequestId,
+        requestMessageUuid: grant.requestMessageUuid,
+        responseMessageUuid: grant.responseMessageUuid,
+        outcome: "granted",
+      });
+      return Promise.resolve(true);
+    },
+    completeReject: (address, reject, writeOptions) => {
+      const id = `${addressKey(address)}:${reject.localRequestId}`;
+      if (
+        !current() ||
+        writeOptions?.isCurrent?.() === false ||
+        !pendingRequests.has(id) ||
+        completions.has(id)
+      )
+        return Promise.resolve(false);
+      pendingRequests.delete(id);
+      completions.set(id, { ...reject, outcome: "rejected" });
+      return Promise.resolve(true);
+    },
+    listStagedCreations: () => Promise.resolve([]),
+    readStagedCreation: () => Promise.resolve(null),
+    writeStagedCreation: () => Promise.reject(new Error("Sandbox creation is ephemeral")),
+    finalizeCreation: () => Promise.reject(new Error("Sandbox creation is ephemeral")),
   };
   const scope = (): ChatE2eeControllerScope | null =>
     streamUuid === null
@@ -170,9 +243,14 @@ export function createDevChatE2eeSandbox(input: {
     };
   }
 
-  async function post(payload: ChatE2eePayload, guard: () => boolean): Promise<ChatE2eeMessage> {
+  async function post(
+    payload: ChatE2eePayload,
+    guard: () => boolean,
+    canonicalMessageUuid?: string,
+  ): Promise<ChatE2eeMessage> {
     if (!guard() || streamUuid === null || topicUuid === null) throw new Error("stale");
     const dto = await api.createMessage(options(guard), {
+      ...(canonicalMessageUuid ? { uuid: canonicalMessageUuid } : {}),
       stream_uuid: streamUuid,
       topic_uuid: topicUuid,
       payload: encodeChatE2eePayload(payload),
@@ -195,7 +273,6 @@ export function createDevChatE2eeSandbox(input: {
       device: {
         deviceId: selected.deviceId,
         deviceName: `Sandbox ${activeDevice}`,
-        keyPair: E2EE_SANDBOX_DEVICE_PAIRS[activeDevice],
       },
       provider,
       storage,
@@ -241,7 +318,7 @@ export function createDevChatE2eeSandbox(input: {
       const announcement = encodeChatE2eePayload({
         kind: "key_announced",
         keyUuid,
-        publicKey: E2EE_SANDBOX_CHAT_PAIR.publicKey,
+        publicKey: E2EE_SANDBOX_FINGERPRINT,
       });
       if (announcement.kind !== "key_announced") throw new Error("Invalid fixture");
       const created = await api.createStreamWithDefaultTopic(options(), {
@@ -274,16 +351,13 @@ export function createDevChatE2eeSandbox(input: {
         keys.set(
           addressKey({ owner: runtime, deviceId: `sandbox-${selected}`, streamUuid, keyUuid }),
           {
-            publicKey: E2EE_SANDBOX_CHAT_PAIR.publicKey,
-            privateKey: selected === "issuer" ? E2EE_SANDBOX_CHAT_PAIR.privateKey : null,
+            fingerprint: E2EE_SANDBOX_FINGERPRINT,
+            groupKey: selected === "issuer" ? E2EE_SANDBOX_GROUP_KEY : null,
           },
         );
       }
       await activate();
-      await post(
-        { kind: "key_announced", keyUuid, publicKey: E2EE_SANDBOX_CHAT_PAIR.publicKey },
-        current,
-      );
+      await post({ kind: "key_announced", keyUuid, publicKey: E2EE_SANDBOX_FINGERPRINT }, current);
     } finally {
       // Only this initializer can reset its lock.
       // eslint-disable-next-line require-atomic-updates
@@ -324,7 +398,7 @@ export function createDevChatE2eeSandbox(input: {
     await activate();
   }
 
-  function active(): ChatE2eeController<string> {
+  function active(): ChatE2eeController {
     ensureCurrent();
     if (controller === null) throw new Error("Create the sandbox stream first");
     return controller;
@@ -375,6 +449,8 @@ export function createDevChatE2eeSandbox(input: {
     abort.abort();
     controller?.invalidate();
     keys.clear();
+    pendingRequests.clear();
+    completions.clear();
     messages.clear();
     plaintext.clear();
   }

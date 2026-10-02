@@ -37,18 +37,19 @@ export interface ChatE2eeControllerState {
   readonly error: ChatE2eeControllerFailure | null;
 }
 
-export interface ChatE2eeControllerDependencies<TPrivateKey> {
+export interface ChatE2eeControllerDependencies {
   readonly scope: ChatE2eeControllerScope;
-  readonly device: ChatDeviceIdentity<TPrivateKey>;
-  readonly provider: ChatCryptoProvider<TPrivateKey>;
-  readonly storage: ChatKeyStorage<TPrivateKey>;
+  readonly device: ChatDeviceIdentity;
+  readonly provider: ChatCryptoProvider;
+  readonly storage: ChatKeyStorage;
   readonly getCurrentScope: () => ChatE2eeControllerScope | null;
   readonly getRights: () => ChatE2eeControllerRights;
   readonly isIssuerAllowed: (authorUuid: string) => boolean;
   readonly isAnnouncerAllowed: (authorUuid: string) => boolean;
-  // The adapter must check this guard immediately before network dispatch and store/cache commits.
+  // The adapter guards network dispatch and store/cache commits. Request retries reuse this UUID.
   readonly sendPayload: (
     payload: ChatE2eePayload,
     isCurrent: () => boolean,
+    canonicalMessageUuid?: string,
   ) => Promise<ChatE2eeMessage>;
 }
