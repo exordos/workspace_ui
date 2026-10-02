@@ -1,7 +1,53 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveInitialLoginOrganization } from "./login-initial-organization.lib";
 
 describe("resolveInitialLoginOrganization", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("uses an explicit local backend default in DEV before the Vite origin", () => {
+    vi.stubEnv("DEV", true);
+    expect(
+      resolveInitialLoginOrganization({
+        realmPrefill: null,
+        browserOrigin: "http://localhost:5176",
+        defaultOrganizationUrl: "http://127.0.0.1:23190",
+      }),
+    ).toEqual({ organizationUrl: "http://127.0.0.1:23190", autoAdvance: true });
+  });
+
+  it("uses an explicitly provided local realm in DEV", () => {
+    vi.stubEnv("DEV", true);
+    expect(
+      resolveInitialLoginOrganization({
+        realmPrefill: "http://localhost:23190",
+        browserOrigin: "http://localhost:5176",
+        defaultOrganizationUrl: "",
+      }),
+    ).toEqual({ organizationUrl: "http://localhost:23190", autoAdvance: true });
+  });
+
+  it("does not infer a backend from the local Vite origin in DEV", () => {
+    vi.stubEnv("DEV", true);
+    expect(
+      resolveInitialLoginOrganization({
+        realmPrefill: null,
+        browserOrigin: "http://localhost:5176",
+        defaultOrganizationUrl: "",
+      }),
+    ).toEqual({ organizationUrl: "", autoAdvance: false });
+  });
+
+  it("does not auto-advance a configured HTTP loopback backend in production", () => {
+    vi.stubEnv("DEV", false);
+    expect(
+      resolveInitialLoginOrganization({
+        realmPrefill: null,
+        browserOrigin: "http://localhost:5176",
+        defaultOrganizationUrl: "http://127.0.0.1:23190",
+      }),
+    ).toEqual({ organizationUrl: "", autoAdvance: false });
+  });
+
   it("uses the browser origin and advances when it is a valid organization URL", () => {
     expect(
       resolveInitialLoginOrganization({
