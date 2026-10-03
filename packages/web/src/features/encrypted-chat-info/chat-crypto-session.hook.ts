@@ -24,6 +24,7 @@ interface SessionView {
   state: ChatE2eeControllerState;
   loading: boolean;
   error: boolean;
+  errorMessage?: string;
 }
 
 interface SharedSession {
@@ -180,18 +181,28 @@ export function useChatCryptoSession(streamUuid: string | null) {
     });
   }, [current?.session, messages, scopeKey]);
 
-  const requestKey = useCallback(async () => {
-    if (current?.session === null || current?.session === undefined) return;
-    try {
-      await current.session.requestKey();
-    } catch {
-      setView((previous) =>
-        previous?.scopeKey === scopeKey && previous.session === current.session
-          ? { ...previous, error: true }
-          : previous,
-      );
-    }
-  }, [current?.session, scopeKey]);
+  const requestKey = useCallback(
+    async (keyUuid?: string) => {
+      if (current?.session === null || current?.session === undefined) return;
+      try {
+        await current.session.requestKey(keyUuid);
+      } catch (error) {
+        setView((previous) =>
+          previous?.scopeKey === scopeKey && previous.session === current.session
+            ? {
+                ...previous,
+                error: true,
+                errorMessage:
+                  error instanceof Error && error.message === "historical-key-unavailable"
+                    ? t("e2ee.historicalKeyUnavailable")
+                    : undefined,
+              }
+            : previous,
+        );
+      }
+    },
+    [current?.session, scopeKey],
+  );
   const grantKey = useCallback(
     async (requestUuid: string) => {
       if (current?.session === null || current?.session === undefined) return;
@@ -229,7 +240,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
     error:
       current?.error === true ||
       (current?.state.error !== null && current?.state.error !== undefined)
-        ? t("e2ee.cryptoOperationFailed")
+        ? (current?.errorMessage ?? t("e2ee.cryptoOperationFailed"))
         : null,
     requestKey,
     grantKey,

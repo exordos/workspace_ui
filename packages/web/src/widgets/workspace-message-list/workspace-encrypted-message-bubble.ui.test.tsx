@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
@@ -9,6 +9,7 @@ import {
 import * as cryptoRuntime from "~/entities/messenger/chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "~/entities/messenger/chat-e2ee-payload-adapters.lib";
 import { createRealChatCryptoProvider } from "~/entities/messenger/chat-real-crypto-provider.lib";
+import * as quoteResolver from "~/entities/messenger/messenger-quote-resolver.hook";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -145,6 +146,65 @@ describe("real encrypted message presentation", () => {
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
+  it("uses the ordinary owner shell and keeps the timestamp inside a compact locked body", () => {
+    const stored = message("locked-message", {
+      kind: "e2ee",
+      keyUuid: "old-generation",
+      content: "opaque-envelope",
+    });
+    const { container } = render(view(stored));
+    const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
+    expect(bubble).toHaveClass("bg-msg-own-bg", "rounded-br-[6px]");
+    expect(bubble?.querySelector('[data-message-meta-placement="inline"] time')).not.toBeNull();
+    expect(screen.getByText("Key required")).toHaveClass("sr-only");
+    expect(container.querySelector("[data-encrypted-message-placeholder] button")).toBeNull();
+    expect(container.innerHTML).not.toContain("opaque-envelope");
+  });
+
+  it("opens the existing keyboard context menu and requests exactly the locked message", async () => {
+    const stored = message("historical-message", {
+      kind: "e2ee",
+      keyUuid: "old-generation",
+      content: "opaque-envelope",
+    });
+    const request = vi.fn();
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onRequestMessageKey: request }}
+      />,
+    );
+    const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
+    if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
+    bubble.focus();
+    fireEvent.keyDown(bubble, { key: "F10", shiftKey: true });
+    fireEvent.click(await screen.findByText("Request key for this message"));
+    expect(request).toHaveBeenCalledWith("historical-message");
+  });
+
+  it("does not invoke a pending key request from the menu", async () => {
+    const request = vi.fn();
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble
+        message={message("locked", { kind: "e2ee", keyUuid: "old", content: "opaque" })}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
+      />,
+    );
+    const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
+    if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    const item = await screen.findByText("Request key for this message");
+    expect(item.closest('[role="menuitem"]')).toHaveAttribute("data-disabled");
+    fireEvent.click(item);
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("renders decoded Markdown safely and keeps the stored envelope across remount", async () => {
     const { stored } = await seedRealEncryptedMessage(
       "Привет **мир** <script>alert('unsafe')</script>",
@@ -152,6 +212,8 @@ describe("real encrypted message presentation", () => {
     const encoded = stored.payload.kind === "e2ee" ? stored.payload.content : "";
     const { container, unmount } = render(view(stored));
     expect((await screen.findByText("мир")).tagName).toBe("STRONG");
+    expect(container.querySelector("[data-workspace-message-bubble]")).toHaveClass("bg-msg-own-bg");
+    expect(container.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
     expect(container.querySelector("script")).toBeNull();
     expect(container.innerHTML).not.toContain(encoded);
     expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
@@ -161,6 +223,38 @@ describe("real encrypted message presentation", () => {
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
     expect(await screen.findByText("мир")).toBeInTheDocument();
   });
+  it("keeps decrypted text capabilities restricted and never loads quoted messages or files", async () => {
+    const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
+    const preview = vi.fn();
+    const { stored } = await seedRealEncryptedMessage(
+      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n![Image](urn:file:66666666-6666-4666-8666-666666666666)\n\n```js\nconst x = 1;\n```",
+    );
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{
+          onLoadWorkspaceFilePreview: preview,
+          onReplyMessage: vi.fn(),
+          onForwardMessage: vi.fn(),
+          onEditMessage: vi.fn(),
+        }}
+      />,
+    );
+    expect(await screen.findByText("Readable fixture")).toBeInTheDocument();
+    expect(quote).not.toHaveBeenCalled();
+    expect(preview).not.toHaveBeenCalled();
+    expect(
+      container.querySelector("[data-workspace-code-copy], [data-workspace-quote]"),
+    ).toBeNull();
+    const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
+    if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("reads previous generations after rotation and locks text for another store owner", async () => {
     const { stored, owner, stream } = await seedRealEncryptedMessage(
       "Only current owner can see this fixture",

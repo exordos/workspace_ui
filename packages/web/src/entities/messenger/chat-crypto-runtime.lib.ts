@@ -6,6 +6,7 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { getMessagesPage } from "~/shared/api/messenger-messages.api";
 import { getStream, getStreamBindingsPage } from "~/shared/api/messenger-streams.api";
 import {
   ensureChatDeviceIdentity,
@@ -15,7 +16,11 @@ import {
 } from "./chat-crypto-resources.lib";
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import { decodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
-import { adaptMessengerStream, adaptMessengerStreamBinding } from "./messenger-adapters.lib";
+import {
+  adaptMessengerMessage,
+  adaptMessengerStream,
+  adaptMessengerStreamBinding,
+} from "./messenger-adapters.lib";
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -254,46 +259,123 @@ export async function openRealChatSession({
   let sendTopic: string | null = null;
   let includeStream = true;
   const requests = new Map<string, ChatE2eeMessage<ChatKeyRequestPayload>>();
-  const controller = new ChatE2eeController({
-    scope,
-    device,
-    provider: realChatCryptoProvider,
-    storage: realChatKeyStorage,
-    getCurrentScope: () => (current() ? scope : null),
-    getRights: rights,
-    isIssuerAllowed: issuerAllowed,
-    isAnnouncerAllowed: issuerAllowed,
-    sendPayload: async (payload, guard, canonicalMessageUuid) => {
-      assertCurrent();
-      const topicUuid =
-        sendTopic ??
-        Object.values(useMessengerStore.getState().topicsById).find(
-          (topic) =>
-            topic.streamUuid === streamUuid &&
-            topic.projectId === runtimeContext.projectId &&
-            topic.isDefault,
-        )?.uuid;
-      if (!topicUuid) throw new Error("missing-topic");
-      const result = await sendMessengerE2eePayload({
-        runtimeContext,
-        getRuntimeContext,
-        signal,
-        streamUuid,
-        topicUuid,
-        payload,
-        keyFingerprint: metadata.keyFingerprint,
-        isCurrent: () => current() && guard(),
-        canonicalMessageUuid,
-        includeStreamConversation: includeStream,
-      });
-      assertCurrent();
-      if (result.status !== "applied" || !result.message) throw new Error("send-failed");
-      lastSent = result;
-      const mapped = domainMessage(result.message);
-      if (!mapped) throw new Error("invalid-message");
-      return mapped;
-    },
-  });
+  const createController = (generationScope: ChatE2eeControllerScope) =>
+    new ChatE2eeController({
+      scope: generationScope,
+      device,
+      provider: realChatCryptoProvider,
+      storage: realChatKeyStorage,
+      getCurrentScope: () => (current() ? generationScope : null),
+      getRights: () => ({
+        ...rights(),
+        canSend: rights().canSend && generationScope.keyUuid === metadata.keyUuid,
+      }),
+      isIssuerAllowed: issuerAllowed,
+      isAnnouncerAllowed: issuerAllowed,
+      sendPayload: async (payload, guard, canonicalMessageUuid) => {
+        assertCurrent();
+        const topicUuid =
+          sendTopic ??
+          Object.values(useMessengerStore.getState().topicsById).find(
+            (topic) =>
+              topic.streamUuid === streamUuid &&
+              topic.projectId === runtimeContext.projectId &&
+              topic.isDefault,
+          )?.uuid;
+        if (!topicUuid) throw new Error("missing-topic");
+        const result = await sendMessengerE2eePayload({
+          runtimeContext,
+          getRuntimeContext,
+          signal,
+          streamUuid,
+          topicUuid,
+          payload,
+          keyFingerprint: metadata.keyFingerprint,
+          expectedCurrentKey: metadata,
+          isCurrent: () => current() && guard(),
+          canonicalMessageUuid,
+          includeStreamConversation: includeStream,
+        });
+        assertCurrent();
+        if (result.status !== "applied" || !result.message) throw new Error("send-failed");
+        lastSent = result;
+        const mapped = domainMessage(result.message);
+        if (!mapped) throw new Error("invalid-message");
+        return mapped;
+      },
+    });
+  const controller = createController(scope);
+  const generationControllers = new Map([[scope.keyUuid, controller]]);
+  const announcedFingerprints = new Map<string, string>();
+  const rememberAnnouncement = (message: ChatE2eeMessage): void => {
+    if (message.payload.kind !== "key_announced" || !issuerAllowed(message.authorUuid)) return;
+    const encoded = btoa(String.fromCharCode(...message.payload.keyFingerprint.bytes));
+    if (!fingerprintBytes(encoded)) throw new Error("invalid-key");
+    const previous = announcedFingerprints.get(message.payload.keyUuid);
+    if (previous !== undefined && previous !== encoded) throw new Error("invalid-key");
+    announcedFingerprints.set(message.payload.keyUuid, encoded);
+  };
+  const generationController = async (keyUuid: string, scanHistory = false) => {
+    const existingController = generationControllers.get(keyUuid);
+    if (existingController) return existingController;
+    assertCurrent();
+    const historicalScope = { ...scope, keyUuid };
+    const stored = await realChatKeyStorage.readChatKey(historicalScope);
+    assertCurrent();
+    const storedFingerprint = stored
+      ? btoa(String.fromCharCode(...stored.fingerprint.bytes))
+      : undefined;
+    let fingerprint = announcedFingerprints.get(keyUuid) ?? storedFingerprint;
+    if (fingerprint && storedFingerprint && fingerprint !== storedFingerprint)
+      throw new Error("invalid-key");
+    // Only an explicit old-message request scans history. Never borrow the latest fingerprint.
+    if (!fingerprint && scanHistory) {
+      const markers = new Set<string>();
+      let pageMarker: string | undefined;
+      do {
+        const page = await getMessagesPage(options(), {
+          streamUuid,
+          pageLimit: 100,
+          pageMarker,
+          sortKey: "created_at",
+          sortDir: "desc",
+        });
+        assertCurrent();
+        for (const dto of page.items) {
+          if (
+            dto.project_id !== runtimeContext.projectId ||
+            dto.stream_uuid !== streamUuid ||
+            dto.payload.kind !== "key_announced" ||
+            dto.payload.key_uuid !== keyUuid
+          )
+            continue;
+          const announcement = domainMessage(adaptMessengerMessage(dto));
+          if (announcement) rememberAnnouncement(announcement);
+        }
+        fingerprint = announcedFingerprints.get(keyUuid);
+        if (fingerprint) break;
+        pageMarker = page.nextPageMarker ?? undefined;
+        if (pageMarker && markers.has(pageMarker)) throw new Error("invalid-message");
+        if (pageMarker) markers.add(pageMarker);
+      } while (pageMarker);
+    }
+    if (!fingerprint) return null;
+    const bytes = fingerprintBytes(fingerprint);
+    if (!bytes) throw new Error("invalid-key");
+    const persisted = await realChatKeyStorage.writeChatKey(
+      historicalScope,
+      { fingerprint: bytes, groupKey: stored?.groupKey ?? null },
+      { isCurrent: current },
+    );
+    assertCurrent();
+    if (!persisted) throw new Error("storage-failed");
+    const historicalController = createController(historicalScope);
+    const loaded = await historicalController.loadKey();
+    assertCurrent();
+    if (!loaded.ok) throw new Error(loaded.reason);
+    generationControllers.set(keyUuid, historicalController);
+    return historicalController;
+  };
   const emit = () => {
     if (current()) {
       for (const listener of listeners) listener();
@@ -348,6 +430,8 @@ export async function openRealChatSession({
       pending: sessionPending > 0 || controller.getState().pending,
     }),
     getRights: rights,
+    isIssuerAllowed: issuerAllowed,
+    getGenerationState: (keyUuid: string) => generationControllers.get(keyUuid)?.getState() ?? null,
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -377,27 +461,40 @@ export async function openRealChatSession({
         await refresh();
         for (const message of messages) {
           if (
+            message.projectId === runtimeContext.projectId &&
+            message.streamUuid === streamUuid &&
+            message.payload.kind === "key_announced"
+          ) {
+            const mapped = domainMessage(message);
+            if (mapped) rememberAnnouncement(mapped);
+          }
+        }
+        for (const message of messages) {
+          if (
             message.projectId !== runtimeContext.projectId ||
             message.streamUuid !== streamUuid ||
             message.payload.kind === "markdown" ||
-            message.payload.kind === "e2ee" ||
-            message.payload.keyUuid !== scope.keyUuid
+            message.payload.kind === "e2ee"
           )
             continue;
           const mapped = domainMessage(message);
           if (!mapped) continue;
           if (mapped.payload.kind === "key_request")
             requests.set(mapped.uuid, { ...mapped, payload: mapped.payload });
-          const result = await controller.ingestKeyMessage(mapped);
+          const activeController = await generationController(mapped.payload.keyUuid);
+          if (!activeController) continue;
+          const result = await activeController.ingestKeyMessage(mapped);
           assertCurrent();
           if (!result.ok && result.reason !== "invalid-message" && result.reason !== "forbidden")
             throw new Error(result.reason);
         }
       }),
-    requestKey: () =>
+    requestKey: (keyUuid = scope.keyUuid) =>
       run(async () => {
         await refresh();
-        const result = await controller.requestKey();
+        const activeController = await generationController(keyUuid, true);
+        if (!activeController) throw new Error("historical-key-unavailable");
+        const result = await activeController.requestKey();
         if (!result.ok) throw new Error(result.reason);
         return result;
       }),
@@ -406,7 +503,9 @@ export async function openRealChatSession({
         await refresh();
         const request = requests.get(uuid);
         if (!request) throw new Error("invalid-message");
-        const result = await controller.grantKey(request);
+        const activeController = await generationController(request.payload.keyUuid, true);
+        if (!activeController) throw new Error("historical-key-unavailable");
+        const result = await activeController.grantKey(request);
         if (!result.ok) throw new Error(result.reason);
         return result;
       }),
@@ -415,7 +514,12 @@ export async function openRealChatSession({
         await refresh();
         const request = requests.get(uuid);
         if (!request) throw new Error("invalid-message");
-        const result = await controller.rejectKey(request);
+        const knownController = await generationController(request.payload.keyUuid);
+        // Rejecting does not deliver a secret or need its fingerprint.
+        const activeController =
+          knownController ?? createController({ ...scope, keyUuid: request.payload.keyUuid });
+        const result = await activeController.rejectKey(request);
+        if (!knownController) activeController.invalidate();
         if (!result.ok) throw new Error(result.reason);
         return result;
       }),
@@ -443,7 +547,9 @@ export async function openRealChatSession({
       decryptRealChatMessage(runtimeContext, message, current),
     dispose() {
       disposed = true;
-      controller.invalidate();
+      for (const generation of generationControllers.values()) generation.invalidate();
+      generationControllers.clear();
+      announcedFingerprints.clear();
       listeners.clear();
       requests.clear();
     },

@@ -107,6 +107,14 @@ export function getWorkspaceMessageDateKey(message: WorkspaceMessageListItem): s
   return formatLocalDateKey(new Date(timestamp));
 }
 
+export function isWorkspaceServiceMessage(message: WorkspaceMessageListItem): boolean {
+  return (
+    message.kind === "server" &&
+    message.message.payload.kind !== "markdown" &&
+    message.message.payload.kind !== "e2ee"
+  );
+}
+
 export function groupWorkspaceMessagesByDayAndAuthor(
   messages: readonly WorkspaceMessageListItem[],
 ): WorkspaceMessageDayGroup[] {
@@ -130,7 +138,13 @@ export function groupWorkspaceMessagesByDayAndAuthor(
     const topicUuid = message.message.topicUuid;
     const startsTopicRun = previousTopicUuid != null && previousTopicUuid !== topicUuid;
 
-    if (authorGroup?.authorUuid !== message.authorUuid || authorGroup.topicUuid !== topicUuid) {
+    const previousMessage = authorGroup?.messages[authorGroup.messages.length - 1];
+    if (
+      authorGroup?.authorUuid !== message.authorUuid ||
+      authorGroup.topicUuid !== topicUuid ||
+      isWorkspaceServiceMessage(message) ||
+      (previousMessage != null && isWorkspaceServiceMessage(previousMessage))
+    ) {
       authorGroup = {
         authorUuid: message.authorUuid,
         topicUuid,

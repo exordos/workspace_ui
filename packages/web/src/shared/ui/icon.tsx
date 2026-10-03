@@ -98,6 +98,7 @@ import TopicUnmuteIcon from "../assets/icons/topic_unmute.svg?react";
 import VideosIcon from "../assets/icons/videos.svg?react";
 import VisibilityIcon from "../assets/icons/visibility.svg?react";
 import VolumeUpIcon from "../assets/icons/volume_up.svg?react";
+import WarningIcon from "../assets/icons/warning.svg?react";
 import WbSunnyIcon from "../assets/icons/wb_sunny.svg?react";
 import type { IconSvgComponent } from "./icon.types";
 
@@ -183,6 +184,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   mail_outline: MailOutlineIcon,
   magic_wand: MagicWandIcon,
   info: InfoIcon,
+  warning: WarningIcon,
   // Clipboard checklist — connection diagnostics (Figma lab_profile)
   lab_profile: LabProfileIcon,
   language: LanguageIcon,

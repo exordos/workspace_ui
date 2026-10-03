@@ -10,7 +10,7 @@ const WORKSPACE_COMPACT_SUMMARY_FILES = [
   resolve(SRC_ROOT, "pages/feed/feed-page.ui.tsx"),
 ] as const;
 const WORKSPACE_RICH_RENDER_SURFACE_FILES = [
-  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-bubble.ui.tsx"),
+  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-bubble-presentation.ui.tsx"),
   resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-quote.ui.tsx"),
   resolve(SRC_ROOT, "widgets/message-composer/message-composer-preview.hook.ts"),
 ] as const;

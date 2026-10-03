@@ -381,6 +381,8 @@ export interface SendMessengerE2eePayloadOptions extends MessengerMessageActionB
   readonly topicUuid: string;
   readonly payload: ChatE2eePayload;
   readonly keyFingerprint: string;
+  // Historical key service messages retain the current stream-generation dispatch guard.
+  readonly expectedCurrentKey?: { readonly keyUuid: string; readonly keyFingerprint: string };
   readonly isCurrent: () => boolean;
   readonly canonicalMessageUuid?: string;
   readonly includeStreamConversation?: boolean;
@@ -399,6 +401,7 @@ export async function sendMessengerE2eePayload({
   topicUuid,
   payload,
   keyFingerprint,
+  expectedCurrentKey,
   isCurrent,
   canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = true,
@@ -414,13 +417,16 @@ export async function sendMessengerE2eePayload({
     current() ? fetchImpl(request, init) : Promise.reject(new Error("stale"));
   const stream = await (client.getStream ?? defaultGetStream)(requestOptions, streamUuid);
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const dispatchKey = expectedCurrentKey ?? { keyUuid: payload.keyUuid, keyFingerprint };
   if (
     stream.uuid !== streamUuid ||
     stream.project_id !== runtimeContext.projectId ||
     stream.user_uuid !== runtimeContext.userUuid ||
     !stream.encryption ||
-    stream.current_encryption_key?.key_uuid !== payload.keyUuid ||
-    stream.current_encryption_key.key_fingerprint !== keyFingerprint
+    stream.current_encryption_key?.key_uuid !== dispatchKey.keyUuid ||
+    stream.current_encryption_key.key_fingerprint !== dispatchKey.keyFingerprint ||
+    ((payload.kind === "e2ee" || payload.kind === "key_announced") &&
+      (payload.keyUuid !== dispatchKey.keyUuid || keyFingerprint !== dispatchKey.keyFingerprint))
   )
     throw new Error("invalid-key");
   const wire = encodeChatE2eePayload(payload);

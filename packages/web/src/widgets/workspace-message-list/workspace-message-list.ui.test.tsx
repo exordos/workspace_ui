@@ -241,11 +241,19 @@ describe("WorkspaceMessageList", () => {
       />,
     );
     expect(screen.getByText("Key required")).toBeInTheDocument();
-    expect(screen.getByText("Key requested")).toBeInTheDocument();
-    expect(screen.getByText("Encrypted key grant received")).toBeInTheDocument();
-    expect(screen.getByText("New key announced")).toBeInTheDocument();
-    expect(screen.getByText("Key request rejected")).toBeInTheDocument();
-    expect(screen.getByText("MacBook")).toBeInTheDocument();
+    expect(screen.getByText(/requested a security key/)).toBeInTheDocument();
+    expect(screen.getByText(/sent an encrypted security key/)).toBeInTheDocument();
+    expect(screen.getByText("The security key was updated")).toBeInTheDocument();
+    expect(screen.getByText(/rejected the key request/)).toBeInTheDocument();
+    expect(screen.queryByText("MacBook")).not.toBeInTheDocument();
+    const events = container.querySelectorAll("[data-encrypted-service-message]");
+    expect(events).toHaveLength(4);
+    for (const event of events) {
+      expect(
+        event.closest("[data-author-group]")?.querySelector("[data-workspace-peer-avatar]"),
+      ).toBeNull();
+      expect(event.querySelector("time")).toBeNull();
+    }
     expect(container.querySelectorAll("article")).toHaveLength(5);
     expect(container.innerHTML).not.toContain("secret-key-material");
     expect(container.innerHTML).not.toContain("urn:file:");

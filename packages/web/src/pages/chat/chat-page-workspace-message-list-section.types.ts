@@ -10,6 +10,7 @@ import type {
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type {
+  WorkspaceMessageListActions,
   WorkspaceMessageConversationReference,
   WorkspaceMessageMediaGalleryOpenRequest,
   WorkspaceMessageListPresentation,
@@ -50,6 +51,9 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   readRequestBoundaryMessageUuids?: ReadonlySet<MessengerUuid>;
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
+  onRequestMessageKey?: WorkspaceMessageListActions["onRequestMessageKey"];
+  requestMessageKeyPending?: boolean;
+  getKeyRequestActions?: WorkspaceMessageListActions["getKeyRequestActions"];
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

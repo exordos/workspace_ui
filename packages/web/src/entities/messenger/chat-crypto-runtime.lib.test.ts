@@ -3,7 +3,7 @@ import { webcrypto } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { createMessage } from "~/shared/api/messenger-messages.api";
+import { createMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
 import { getStream, getStreamBindingsPage } from "~/shared/api/messenger-streams.api";
 import type {
   WorkspaceMessengerMessageDto,
@@ -13,6 +13,7 @@ import { realChatKeyStorage } from "./chat-crypto-resources.lib";
 import { openRealChatSession, decryptRealChatMessage } from "./chat-crypto-runtime.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
+import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
 
 vi.mock("~/shared/api/messenger-streams.api", async (load) => ({
@@ -23,6 +24,7 @@ vi.mock("~/shared/api/messenger-streams.api", async (load) => ({
 vi.mock("~/shared/api/messenger-messages.api", async (load) => ({
   ...(await load<typeof import("~/shared/api/messenger-messages.api")>()),
   createMessage: vi.fn(),
+  getMessagesPage: vi.fn(),
 }));
 
 const STREAM = "11111111-1111-4111-8111-111111111111";
@@ -84,6 +86,11 @@ async function setup() {
     nextPageMarker: null,
     pageLimit: 100,
   });
+  vi.mocked(getMessagesPage).mockResolvedValue({
+    items: [],
+    nextPageMarker: null,
+    pageLimit: 100,
+  });
   const wire: WorkspaceMessengerMessageDto[] = [];
   vi.mocked(createMessage).mockImplementation((options, body) => {
     const message: WorkspaceMessengerMessageDto = {
@@ -135,6 +142,327 @@ beforeEach(() => {
 });
 
 describe("real ordinary chat orchestration", () => {
+  it("requests and grants the selected historical generation after reload without unlocking the latest", async () => {
+    const f = await setup();
+    const creator = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await creator.load();
+    await creator.send({ text: "earlier generation text", topicUuid: TOPIC });
+    const earlierMessage = f.wire[0]!;
+    creator.dispose();
+    const latestUuid = crypto.randomUUID();
+    const latestFingerprint = btoa(
+      String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))),
+    );
+    vi.mocked(getStream).mockImplementation((options) =>
+      Promise.resolve({
+        ...f.stream(options.accessToken ?? ADMIN),
+        current_encryption_key: { key_uuid: latestUuid, key_fingerprint: latestFingerprint },
+      }),
+    );
+    const announcement: WorkspaceMessengerMessageDto = {
+      ...earlierMessage,
+      uuid: crypto.randomUUID(),
+      payload: {
+        kind: "key_announced",
+        key_uuid: f.metadata.keyUuid,
+        key_fingerprint: f.stream(ADMIN).current_encryption_key!.key_fingerprint,
+      },
+    };
+    vi.mocked(getMessagesPage).mockResolvedValue({
+      items: [announcement],
+      nextPageMarker: null,
+      pageLimit: 100,
+    });
+    let recipient = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await recipient.load();
+    await recipient.requestKey(f.metadata.keyUuid);
+    const request = f.wire.at(-1)!;
+    expect(request.payload.kind).toBe("key_request");
+    expect(request.payload).toMatchObject({ key_uuid: f.metadata.keyUuid });
+    const historicalScope = { ...recipient.scope, keyUuid: f.metadata.keyUuid };
+    const pendingBefore = await realChatKeyStorage.listPendingRequests(historicalScope);
+    expect(pendingBefore).toHaveLength(1);
+    recipient.dispose();
+    recipient = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await recipient.load();
+    const issuer = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await issuer.load();
+    await issuer.ingest([adaptMessengerMessage(request)]);
+    await issuer.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    expect(grant.payload).toMatchObject({ key_uuid: f.metadata.keyUuid });
+    const spoofedGrant = adaptMessengerMessage({ ...grant, author_uuid: MEMBER });
+    await recipient.ingest([adaptMessengerMessage(request), spoofedGrant]);
+    expect(await realChatKeyStorage.listPendingRequests(historicalScope)).toHaveLength(1);
+    expect(await recipient.decrypt(adaptMessengerMessage(earlierMessage))).toBeNull();
+    await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+    expect(recipient.getGenerationState(f.metadata.keyUuid)?.access).toBe("ready");
+    expect(recipient.getState().access).toBe("metadata-only");
+    expect(await realChatKeyStorage.listPendingRequests(historicalScope)).toEqual([]);
+    expect(await recipient.decrypt(adaptMessengerMessage(earlierMessage))).toBe(
+      "earlier generation text",
+    );
+    expect(getMessagesPage).toHaveBeenCalledTimes(1);
+    recipient.dispose();
+    const restored = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await restored.load();
+    expect(await restored.decrypt(adaptMessengerMessage(earlierMessage))).toBe(
+      "earlier generation text",
+    );
+    restored.dispose();
+    issuer.dispose();
+  });
+
+  it("keeps an unknown old generation explicit and never borrows the current fingerprint", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await session.load();
+    const unknownUuid = crypto.randomUUID();
+    await expect(session.requestKey(unknownUuid)).rejects.toThrow("historical-key-unavailable");
+    expect(createMessage).not.toHaveBeenCalled();
+    expect(
+      await realChatKeyStorage.listPendingRequests({ ...session.scope, keyUuid: unknownUuid }),
+    ).toEqual([]);
+    expect(
+      await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: unknownUuid }),
+    ).toBeNull();
+    session.dispose();
+  });
+
+  it("does not trust a historical fingerprint announced by a regular member", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await session.load();
+    const unknownUuid = crypto.randomUUID();
+    const spoofed: WorkspaceMessengerMessageDto = {
+      uuid: crypto.randomUUID(),
+      project_id: PROJECT,
+      stream_uuid: STREAM,
+      topic_uuid: TOPIC,
+      user_uuid: MEMBER,
+      author_uuid: MEMBER,
+      read: false,
+      pinned: false,
+      starred: false,
+      is_own: true,
+      reactions: {},
+      reaction_users: {},
+      created_at: DATE,
+      updated_at: DATE,
+      payload: {
+        kind: "key_announced",
+        key_uuid: unknownUuid,
+        key_fingerprint: f.stream(MEMBER).current_encryption_key!.key_fingerprint,
+      },
+    };
+    await session.ingest([adaptMessengerMessage(spoofed)]);
+    vi.mocked(getMessagesPage).mockResolvedValue({
+      items: [spoofed],
+      nextPageMarker: null,
+      pageLimit: 100,
+    });
+    await expect(session.requestKey(unknownUuid)).rejects.toThrow("historical-key-unavailable");
+    expect(session.isIssuerAllowed(MEMBER)).toBe(false);
+    expect(createMessage).not.toHaveBeenCalled();
+    expect(
+      await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: unknownUuid }),
+    ).toBeNull();
+    session.dispose();
+  });
+
+  it("does not replace stored historical metadata with a conflicting announcement", async () => {
+    const f = await setup();
+    const creator = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await creator.load();
+    const oldScope = creator.scope;
+    const original = await realChatKeyStorage.readChatKey(oldScope);
+    creator.dispose();
+    // Every read in one session observes the same current generation.
+    const latest = {
+      ...f.stream(ADMIN),
+      current_encryption_key: {
+        key_uuid: crypto.randomUUID(),
+        key_fingerprint: f.stream(ADMIN).current_encryption_key!.key_fingerprint,
+      },
+    };
+    vi.mocked(getStream).mockResolvedValue(latest);
+    const issuer = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await issuer.load();
+    const badAnnouncement: WorkspaceMessengerMessageDto = {
+      uuid: crypto.randomUUID(),
+      project_id: PROJECT,
+      stream_uuid: STREAM,
+      topic_uuid: TOPIC,
+      user_uuid: ADMIN,
+      author_uuid: ADMIN,
+      read: false,
+      pinned: false,
+      starred: false,
+      is_own: true,
+      reactions: {},
+      reaction_users: {},
+      created_at: DATE,
+      updated_at: DATE,
+      payload: {
+        kind: "key_announced",
+        key_uuid: f.metadata.keyUuid,
+        key_fingerprint: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))),
+      },
+    };
+    await expect(issuer.ingest([adaptMessengerMessage(badAnnouncement)])).rejects.toThrow(
+      "invalid-key",
+    );
+    expect(await realChatKeyStorage.readChatKey(oldScope)).toEqual(original);
+    expect(createMessage).not.toHaveBeenCalled();
+    issuer.dispose();
+  });
+
+  it("lets an issuer reject an unknown historical request without requiring its secret metadata", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    const unknownUuid = crypto.randomUUID();
+    const request: WorkspaceMessengerMessageDto = {
+      uuid: crypto.randomUUID(),
+      project_id: PROJECT,
+      stream_uuid: STREAM,
+      topic_uuid: TOPIC,
+      user_uuid: MEMBER,
+      author_uuid: MEMBER,
+      read: false,
+      pinned: false,
+      starred: false,
+      is_own: false,
+      reactions: {},
+      reaction_users: {},
+      created_at: DATE,
+      updated_at: DATE,
+      payload: {
+        kind: "key_request",
+        key_uuid: unknownUuid,
+        device_id: "other-device",
+        device_name: "Other device",
+        public_key: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))),
+      },
+    };
+    await session.ingest([adaptMessengerMessage(request)]);
+    expect(session.getGenerationState(unknownUuid)).toBeNull();
+    await session.rejectKey(request.uuid);
+    expect(f.wire.at(-1)?.payload).toMatchObject({
+      kind: "key_reject",
+      key_uuid: unknownUuid,
+      request_message_uuid: request.uuid,
+    });
+    expect(getMessagesPage).not.toHaveBeenCalled();
+    session.dispose();
+  });
+
+  it("rejects historical text and announcements even when a caller supplies the current guard", async () => {
+    const f = await setup();
+    const key = f.stream(ADMIN).current_encryption_key!;
+    const shared = {
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      keyFingerprint: key.key_fingerprint,
+      expectedCurrentKey: { keyUuid: key.key_uuid, keyFingerprint: key.key_fingerprint },
+      isCurrent: () => true,
+    };
+    await expect(
+      sendMessengerE2eePayload({
+        ...shared,
+        payload: {
+          kind: "e2ee",
+          keyUuid: crypto.randomUUID(),
+          content: { bytes: new Uint8Array([1]) },
+        },
+      }),
+    ).rejects.toThrow("invalid-key");
+    await expect(
+      sendMessengerE2eePayload({
+        ...shared,
+        payload: {
+          kind: "key_announced",
+          keyUuid: crypto.randomUUID(),
+          keyFingerprint: { bytes: new Uint8Array(32) },
+        },
+      }),
+    ).rejects.toThrow("invalid-key");
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("discards an old-generation history lookup after runtime invalidation", async () => {
+    const f = await setup();
+    let current = f.member;
+    const session = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => current,
+    });
+    await session.load();
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const opened = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.mocked(getMessagesPage).mockImplementationOnce(async () => {
+      started();
+      await gate;
+      return { items: [], nextPageMarker: null, pageLimit: 100 };
+    });
+    const request = session.requestKey(crypto.randomUUID());
+    const rejected = expect(request).rejects.toThrow("stale");
+    await opened;
+    current = { ...current, runtimeGeneration: 2 };
+    release();
+    await rejected;
+    expect(createMessage).not.toHaveBeenCalled();
+    session.dispose();
+  });
+
   it("restores a staged creator key after a lost create response and serializes concurrent sends to distinct topics", async () => {
     const f = await setup();
     const session = await openRealChatSession({

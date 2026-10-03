@@ -37,11 +37,16 @@ describe("EncryptedChatPreview", () => {
     render(<EncryptedChatPreview />);
     fireEvent.click(screen.getByRole("button", { name: t("e2ee.grantAccess") }));
     expect(screen.getByText(t("e2ee.previewUnavailable"))).toBeInTheDocument();
-    expect(screen.getByText(t("e2ee.lockedDescription"))).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByText(t("e2ee.lockedTitle"))
+        .some((element) => element.classList.contains("sr-only")),
+    ).toBe(true);
+    expect(screen.queryByText(t("e2ee.lockedDescription"))).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: t("e2ee.previewState") }), {
       target: { value: "loading" },
     });
-    expect(screen.getByRole("button", { name: t("e2ee.requestAccess") })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: t("e2ee.requestAccess") })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: t("e2ee.grantAccess") })).toBeDisabled();
   });
 });

@@ -5,6 +5,8 @@ import { Icon } from "~/shared/ui/icon";
 export interface EncryptedChatServiceMessageProps {
   kind: "key_request" | "key_grant" | "key_announced" | "key_reject";
   title: string;
+  actorName?: string;
+  actionPlacement?: "title" | "description";
   description?: string;
   deviceName?: string;
   statusText?: string;
@@ -17,49 +19,56 @@ export interface EncryptedChatServiceMessageProps {
 }
 
 const SERVICE_ICONS = {
-  key_request: "desktop_windows",
+  key_request: null,
   key_grant: "check",
-  key_announced: "info",
-  key_reject: "block",
+  key_announced: "warning",
+  key_reject: "close",
 } as const;
 
 /** The caller supplies labels and permitted actions; this view never handles keys. */
 export function EncryptedChatServiceMessage({
   kind,
   title,
+  actorName,
+  actionPlacement = "title",
   description,
-  deviceName,
   statusText,
   actions,
 }: Readonly<EncryptedChatServiceMessageProps>): React.ReactElement {
+  const actionButtons = actions?.map((action) => (
+    <Button
+      key={action.label}
+      type="button"
+      size="sm"
+      appearance="ghost"
+      variant="neutral"
+      className="!h-auto !rounded-sm !bg-transparent !p-0 !text-sm !font-normal !text-text-primary underline underline-offset-2"
+      disabled={action.disabled}
+      onClick={action.onClick}
+    >
+      {action.label}
+    </Button>
+  ));
   return (
-    <div className="flex max-w-lg items-start gap-3 rounded-lg border border-border-subtle bg-bg-elevated p-3">
-      <Icon name={SERVICE_ICONS[kind]} size={20} className="mt-0.5 shrink-0 text-text-muted" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-text-primary">{title}</p>
-        {deviceName ? (
-          <p className="mt-1 break-words text-xs text-text-secondary">{deviceName}</p>
+    <div
+      className="flex w-full flex-col items-center gap-1 py-1 text-center text-sm text-accent"
+      data-encrypted-service-message={kind}
+    >
+      <div className="flex max-w-full flex-wrap items-center justify-center gap-1">
+        {SERVICE_ICONS[kind] != null ? (
+          <Icon name={SERVICE_ICONS[kind]} size={24} className="shrink-0 text-current" />
         ) : null}
-        {description ? <p className="mt-1 text-xs text-text-muted">{description}</p> : null}
-        {statusText ? <p className="mt-2 text-xs text-text-muted">{statusText}</p> : null}
-        {actions?.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {actions.map((action) => (
-              <Button
-                key={action.label}
-                type="button"
-                size="sm"
-                appearance="outline"
-                variant={action.variant ?? "neutral"}
-                disabled={action.disabled}
-                onClick={action.onClick}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+        {actorName ? <span className="text-text-primary">{actorName}</span> : null}
+        <span>{title}</span>
+        {actionPlacement === "title" ? actionButtons : null}
       </div>
+      {description ? (
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          <span>{description}</span>
+          {actionPlacement === "description" ? actionButtons : null}
+        </div>
+      ) : null}
+      {statusText ? <p role="status">{statusText}</p> : null}
     </div>
   );
 }

@@ -78,6 +78,21 @@ afterEach(() => {
   open.mockReset();
 });
 describe("real chat session ownership", () => {
+  it("forwards the requested historical generation and exposes a missing-metadata error", async () => {
+    seed();
+    const active = session();
+    active.requestKey.mockRejectedValue(new Error("historical-key-unavailable"));
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      await view.result.current.requestKey("historical-key");
+    });
+    expect(active.requestKey).toHaveBeenCalledWith("historical-key");
+    expect(view.result.current.error).toBe(
+      "Key information for this message is unavailable. Load the chat history and try again.",
+    );
+  });
   it("shares one controller between page and panel until the final consumer leaves", async () => {
     seed();
     const active = session();
