@@ -25,6 +25,7 @@ interface SessionView {
   loading: boolean;
   error: boolean;
   errorMessage?: string;
+  requestErrors?: Readonly<Record<string, string>>;
 }
 
 interface SharedSession {
@@ -139,13 +140,17 @@ export function useChatCryptoSession(streamUuid: string | null) {
         if (!isCurrent()) return;
         const publish = () => {
           if (isCurrent())
-            setView({
+            setView((previous) => ({
+              ...(previous?.scopeKey === scopeKey && previous.session === opened ? previous : {}),
               scopeKey,
               session: opened,
               state: opened.getState(),
               loading: false,
-              error: false,
-            });
+              error:
+                previous?.scopeKey === scopeKey && previous.session === opened
+                  ? previous.error
+                  : false,
+            }));
         };
         unsubscribe = opened.subscribe(publish);
         publish();
@@ -203,35 +208,102 @@ export function useChatCryptoSession(streamUuid: string | null) {
     },
     [current?.session, scopeKey],
   );
+  const requestOutcome = useCallback(
+    (requestUuid: string, failed: boolean) => {
+      const active = current?.session;
+      setView((previous) => {
+        if (previous?.scopeKey !== scopeKey || previous.session !== active) return previous;
+        const requestErrors = { ...previous.requestErrors };
+        if (failed) requestErrors[requestUuid] = t("e2ee.cryptoOperationFailed");
+        else delete requestErrors[requestUuid];
+        const count = Object.keys(requestErrors).length;
+        return {
+          ...previous,
+          requestErrors,
+          error: count > 0,
+          errorMessage: count > 0 ? t("e2ee.grantAllFailed", { count }) : undefined,
+        };
+      });
+    },
+    [current?.session, scopeKey],
+  );
   const grantKey = useCallback(
     async (requestUuid: string) => {
-      if (current?.session === null || current?.session === undefined) return;
+      if (current?.session == null) return;
       try {
         await current.session.grantKey(requestUuid);
+        requestOutcome(requestUuid, false);
+      } catch {
+        requestOutcome(requestUuid, true);
+      }
+    },
+    [current?.session, requestOutcome],
+  );
+  const rejectKey = useCallback(
+    async (requestUuid: string) => {
+      if (current?.session == null) return;
+      try {
+        await current.session.rejectKey(requestUuid);
+        requestOutcome(requestUuid, false);
+      } catch {
+        requestOutcome(requestUuid, true);
+      }
+    },
+    [current?.session, requestOutcome],
+  );
+  const perform = useCallback(
+    async (operation: (session: RealChatSession) => Promise<unknown>) => {
+      const active = current?.session;
+      if (active == null) return false;
+      setView((previous) =>
+        previous?.scopeKey === scopeKey && previous.session === active
+          ? {
+              ...previous,
+              error: Object.keys(previous.requestErrors ?? {}).length > 0,
+              errorMessage:
+                Object.keys(previous.requestErrors ?? {}).length > 0
+                  ? previous.errorMessage
+                  : undefined,
+            }
+          : previous,
+      );
+      try {
+        await operation(active);
+        return true;
       } catch {
         setView((previous) =>
-          previous?.scopeKey === scopeKey && previous.session === current.session
+          previous?.scopeKey === scopeKey && previous.session === active
             ? { ...previous, error: true }
             : previous,
         );
+        return false;
       }
     },
     [current?.session, scopeKey],
   );
-  const rejectKey = useCallback(
-    async (requestUuid: string) => {
-      if (current?.session === null || current?.session === undefined) return;
-      try {
-        await current.session.rejectKey(requestUuid);
-      } catch {
-        setView((previous) =>
-          previous?.scopeKey === scopeKey && previous.session === current.session
-            ? { ...previous, error: true }
-            : previous,
-        );
-      }
-    },
-    [current?.session, scopeKey],
+  const reissueKey = useCallback(() => perform((active) => active.reissueKey()), [perform]);
+  const grantAllKeys = useCallback(
+    () =>
+      perform(async (active) => {
+        const results = await active.grantAllKeys();
+        setView((previous) => {
+          if (previous?.scopeKey !== scopeKey || previous.session !== active) return previous;
+          const requestErrors = { ...previous.requestErrors };
+          for (const result of results) {
+            if (result.status === "failed")
+              requestErrors[result.requestMessageUuid] = t("e2ee.cryptoOperationFailed");
+            else delete requestErrors[result.requestMessageUuid];
+          }
+          const count = Object.keys(requestErrors).length;
+          return {
+            ...previous,
+            requestErrors,
+            error: count > 0,
+            errorMessage: count > 0 ? t("e2ee.grantAllFailed", { count }) : undefined,
+          };
+        });
+      }),
+    [perform, scopeKey],
   );
   return {
     session: current?.session ?? null,
@@ -242,6 +314,9 @@ export function useChatCryptoSession(streamUuid: string | null) {
       (current?.state.error !== null && current?.state.error !== undefined)
         ? (current?.errorMessage ?? t("e2ee.cryptoOperationFailed"))
         : null,
+    requestErrors: current?.requestErrors ?? {},
+    reissueKey,
+    grantAllKeys,
     requestKey,
     grantKey,
     rejectKey,

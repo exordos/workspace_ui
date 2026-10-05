@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   ensureChatDeviceIdentity,
+  notifyRealChatKeyChanges,
   realChatKeyStorage,
 } from "~/entities/messenger/chat-crypto-resources.lib";
 import * as cryptoRuntime from "~/entities/messenger/chat-crypto-runtime.lib";
@@ -284,21 +285,21 @@ describe("real encrypted message presentation", () => {
   });
   it("does not render a late decrypt result after owner invalidation", async () => {
     const { stored } = await seedRealEncryptedMessage("secret");
-    let resolve: (text: string | null) => void = () => undefined;
-    const pending = new Promise<string | null>((done) => {
+    let resolve!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
+    const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((done) => {
       resolve = done;
     });
-    vi.spyOn(cryptoRuntime, "decryptRealChatMessage").mockReturnValue(pending);
+    vi.spyOn(cryptoRuntime, "decryptRealChatMessageResult").mockReturnValue(pending);
     render(view(stored));
     act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
     await act(async () => {
-      resolve("late secret");
+      resolve({ status: "ready", plaintext: "late secret" });
       await pending;
     });
     expect(screen.queryByText("late secret")).not.toBeInTheDocument();
   });
 
-  it("keeps a legacy plaintext fixture locked instead of falling back to mock decoding", async () => {
+  it("rejects a legacy plaintext fixture instead of falling back to mock decoding", async () => {
     const { stored } = await seedRealEncryptedMessage("real text");
     const fixture = {
       ...stored,
@@ -315,6 +316,108 @@ describe("real encrypted message presentation", () => {
     };
     render(view(fixture));
     expect(screen.queryByText("fixture plaintext")).not.toBeInTheDocument();
-    expect(await screen.findByText("Key required")).toBeInTheDocument();
+    expect(await screen.findByText("Could not decrypt message")).toBeInTheDocument();
+  });
+
+  it("shows accessible loading without exposing the envelope while decryption is pending", async () => {
+    const { stored } = await seedRealEncryptedMessage("loading fixture");
+    let resolve!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
+    const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((done) => {
+      resolve = done;
+    });
+    vi.spyOn(cryptoRuntime, "decryptRealChatMessageResult").mockReturnValue(pending);
+    const { container } = render(view(stored));
+    expect(screen.getByText("Decrypting message…")).toHaveClass("sr-only");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector("[data-encrypted-message-placeholder] button")).toBeNull();
+    expect(container.innerHTML).not.toContain(
+      stored.payload.kind === "e2ee" ? stored.payload.content : "opaque",
+    );
+    await act(async () => {
+      resolve({ status: "ready", plaintext: "loading fixture" });
+      await pending;
+    });
+    expect(await screen.findByText("loading fixture")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("keeps absent keys compact and retries automatically when key material changes", async () => {
+    const { stored } = await seedRealEncryptedMessage("newly available fixture");
+    vi.spyOn(realChatKeyStorage, "readChatKey").mockResolvedValueOnce(null);
+    const { container } = render(view(stored));
+    expect(await screen.findByText("Key required")).toHaveClass("sr-only");
+    expect(container.querySelector("[data-encrypted-message-placeholder]")).toHaveAttribute(
+      "data-encrypted-message-state",
+      "locked",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-encrypted-message-placeholder] button")).toBeNull();
+    act(() => notifyRealChatKeyChanges());
+    expect(await screen.findByText("newly available fixture")).toBeInTheDocument();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+  });
+
+  it("keeps verified text visible during an unrelated key notification without carrying it to changed ciphertext", async () => {
+    const { stored } = await seedRealEncryptedMessage("stable readable fixture");
+    const { container, rerender } = render(view(stored));
+    expect(await screen.findByText("stable readable fixture")).toBeInTheDocument();
+    let resolve!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
+    const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((done) => {
+      resolve = done;
+    });
+    vi.spyOn(cryptoRuntime, "decryptRealChatMessageResult").mockReturnValue(pending);
+    act(() => notifyRealChatKeyChanges());
+    expect(screen.getByText("stable readable fixture")).toBeInTheDocument();
+    expect(container.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    rerender(view({ ...stored, payload: { ...stored.payload, content: "changed-envelope" } }));
+    expect(screen.queryByText("stable readable fixture")).not.toBeInTheDocument();
+    expect(screen.getByText("Decrypting message…")).toBeInTheDocument();
+    await act(async () => {
+      resolve({ status: "error" });
+      await pending;
+    });
+    expect(await screen.findByText("Could not decrypt message")).toBeInTheDocument();
+    expect(screen.queryByText("stable readable fixture")).not.toBeInTheDocument();
+  });
+
+  it("retries a transient storage failure for the same message without replacing the stored ciphertext", async () => {
+    const { stored } = await seedRealEncryptedMessage("retry fixture");
+    const readKey = vi
+      .spyOn(realChatKeyStorage, "readChatKey")
+      .mockRejectedValueOnce(new Error("storage-failed"));
+    render(view(stored));
+    expect(await screen.findByText("Could not decrypt message")).not.toHaveClass("sr-only");
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-busy", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("retry fixture")).toBeInTheDocument();
+    expect(readKey).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+  });
+
+  it("shows damaged ciphertext as an error, without presenting it as an absent key", async () => {
+    const { stored } = await seedRealEncryptedMessage("tampered fixture");
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    const bytes = new Uint8Array(
+      Uint8Array.from(atob(stored.payload.content), (char) => char.charCodeAt(0)),
+    );
+    bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 1;
+    const tampered = {
+      ...stored,
+      payload: { ...stored.payload, content: btoa(String.fromCharCode(...bytes)) },
+    };
+    render(view(tampered));
+    expect(await screen.findByText("Could not decrypt message")).toBeInTheDocument();
+    expect(screen.queryByText("Key required")).not.toBeInTheDocument();
+    expect(screen.queryByText("tampered fixture")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

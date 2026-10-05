@@ -54,6 +54,7 @@ async function setup() {
     isCurrent: () => true,
   });
   const fingerprint = btoa(String.fromCharCode(...metadata.keyFingerprint.bytes));
+  let currentKey = { key_uuid: metadata.keyUuid, key_fingerprint: fingerprint };
   const stream = (user: string): WorkspaceMessengerStreamDto => ({
     uuid: STREAM,
     project_id: PROJECT,
@@ -74,7 +75,7 @@ async function setup() {
     is_archived: false,
     direct_user_uuid: null,
     encryption: true,
-    current_encryption_key: { key_uuid: metadata.keyUuid, key_fingerprint: fingerprint },
+    current_encryption_key: currentKey,
     created_at: DATE,
     updated_at: DATE,
   });
@@ -111,6 +112,11 @@ async function setup() {
       updated_at: DATE,
     };
     wire.push(message);
+    if (body.payload.kind === "key_announced")
+      currentKey = {
+        key_uuid: body.payload.key_uuid,
+        key_fingerprint: body.payload.key_fingerprint,
+      };
     return Promise.resolve(message);
   });
   useMessengerStore.setState({
@@ -142,6 +148,245 @@ beforeEach(() => {
 });
 
 describe("real ordinary chat orchestration", () => {
+  it("reissues a durable generation, preserves old secrets and sends only with the new key", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    await session.send({ text: "before rotation", topicUuid: TOPIC });
+    const oldScope = session.scope;
+    const oldKey = await realChatKeyStorage.readChatKey(oldScope);
+    const response = await session.reissueKey();
+    expect(response.status).toBe("applied");
+    expect(session.scope.keyUuid).not.toBe(oldScope.keyUuid);
+    expect(session.getState().access).toBe("ready");
+    expect(await realChatKeyStorage.readChatKey(oldScope)).toEqual(oldKey);
+    const announcements = f.wire.filter((message) => message.payload.kind === "key_announced");
+    expect(announcements).toHaveLength(2);
+    expect(announcements[0]!.payload).toMatchObject({ key_uuid: oldScope.keyUuid });
+    expect(announcements[1]!.payload).toMatchObject({ key_uuid: session.scope.keyUuid });
+    const newKey = await realChatKeyStorage.readChatKey(session.scope);
+    expect(newKey?.groupKey).toBeTruthy();
+    expect(newKey?.groupKey).not.toEqual(oldKey?.groupKey);
+    await session.send({ text: "after rotation", topicUuid: TOPIC });
+    expect(f.wire.at(-1)?.payload).toMatchObject({ kind: "e2ee", key_uuid: session.scope.keyUuid });
+    expect(await session.decrypt(adaptMessengerMessage(f.wire[0]!))).toBe("before rotation");
+    expect(await session.decrypt(adaptMessengerMessage(f.wire.at(-1)!))).toBe("after rotation");
+    session.dispose();
+  });
+
+  it("lets a fresh device request the initial generation from real rotation history without unlocking the newest", async () => {
+    const f = await setup();
+    const admin = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await admin.load();
+    await admin.send({ text: "initial generation", topicUuid: TOPIC });
+    const oldMessage = f.wire[0]!;
+    await admin.reissueKey();
+    vi.mocked(getMessagesPage).mockImplementation(() =>
+      Promise.resolve({ items: [...f.wire], nextPageMarker: null, pageLimit: 100 }),
+    );
+    const member = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await member.load();
+    await member.requestKey(f.metadata.keyUuid);
+    const request = f.wire.at(-1)!;
+    await admin.ingest([adaptMessengerMessage(request)]);
+    await admin.grantKey(request.uuid);
+    await member.ingest(f.wire.map(adaptMessengerMessage));
+    expect(await member.decrypt(adaptMessengerMessage(oldMessage))).toBe("initial generation");
+    expect(member.getState().access).toBe("metadata-only");
+    expect(member.getGenerationState(f.metadata.keyUuid)?.access).toBe("ready");
+    member.dispose();
+    admin.dispose();
+  });
+
+  it("restores a committed rotation after its POST response is lost without announcing the old key again", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    let announced = 0;
+    vi.mocked(createMessage).mockImplementation(async (options, body) => {
+      const response = await create(options, body);
+      if (body.payload.kind === "key_announced" && ++announced === 2)
+        throw new Error("response lost");
+      return response;
+    });
+    await expect(session.reissueKey()).rejects.toThrow("response lost");
+    const lastKey = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    expect(
+      await realChatKeyStorage.listStagedCreations({
+        owner: f.admin,
+        deviceId: session.device.deviceId,
+      }),
+    ).toHaveLength(1);
+    session.dispose();
+    const restored = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await restored.load();
+    expect(restored.scope.keyUuid).toBe(lastKey);
+    expect(restored.getState().access).toBe("ready");
+    expect(
+      await realChatKeyStorage.listStagedCreations({
+        owner: f.admin,
+        deviceId: restored.device.deviceId,
+      }),
+    ).toHaveLength(0);
+    expect(f.wire).toHaveLength(2);
+    await restored.send({ text: "new epoch after reload", topicUuid: TOPIC });
+    expect(f.wire.at(-1)?.payload).toMatchObject({ key_uuid: lastKey });
+    restored.dispose();
+  });
+
+  it("reconciles a committed rotation on same-session retry instead of generating a second epoch", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    let announcements = 0;
+    vi.mocked(createMessage).mockImplementation(async (options, body) => {
+      const response = await create(options, body);
+      if (body.payload.kind === "key_announced" && ++announcements === 2)
+        throw new Error("response lost");
+      return response;
+    });
+    await expect(session.reissueKey()).rejects.toThrow("response lost");
+    const committedKey = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    expect((await session.reissueKey()).status).toBe("applied");
+    expect(session.scope.keyUuid).toBe(committedKey);
+    expect(session.getState().access).toBe("ready");
+    expect(f.wire).toHaveLength(2);
+    session.dispose();
+  });
+
+  it("retries a failed rotation with its persisted secret and canonical announcement UUID", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    let announced = 0;
+    vi.mocked(createMessage).mockImplementation(async (options, body) => {
+      if (body.payload.kind === "key_announced" && ++announced === 2) throw new Error("offline");
+      return create(options, body);
+    });
+    await expect(session.reissueKey()).rejects.toThrow("offline");
+    const stage = (
+      await realChatKeyStorage.listStagedCreations({
+        owner: f.admin,
+        deviceId: session.device.deviceId,
+      })
+    )[0]!;
+    expect(session.scope.keyUuid).toBe(f.metadata.keyUuid);
+    vi.mocked(createMessage).mockImplementation(create);
+    await session.reissueKey();
+    expect(f.wire.at(-1)?.uuid).toBe(stage.creationId);
+    expect(session.scope.keyUuid).toBe(stage.keyUuid);
+    expect((await realChatKeyStorage.readChatKey(session.scope))?.groupKey).toEqual(stage.groupKey);
+    session.dispose();
+  });
+
+  it("does not publish a rotation when durable staging fails or the user is not the owner", async () => {
+    const f = await setup();
+    const member = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await member.load();
+    expect(member.getRights().canRotate).toBe(false);
+    await expect(member.reissueKey()).rejects.toThrow("forbidden");
+    const admin = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await admin.load();
+    const write = vi.spyOn(realChatKeyStorage, "writeStagedCreation").mockResolvedValueOnce(false);
+    await expect(admin.reissueKey()).rejects.toThrow("storage-failed");
+    expect(createMessage).not.toHaveBeenCalled();
+    expect(admin.scope.keyUuid).toBe(f.metadata.keyUuid);
+    write.mockRestore();
+    member.dispose();
+    admin.dispose();
+  });
+
+  it("filters correlated terminal responses across historical generations and batches independent failures", async () => {
+    const f = await setup();
+    const admin = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await admin.load();
+    const member = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await member.load();
+    await member.requestKey();
+    const request = f.wire.at(-1)!;
+    await admin.ingest([adaptMessengerMessage(request)]);
+    expect(admin.canGrantKey(request.uuid)).toBe(true);
+    await admin.reissueKey();
+    expect(admin.canGrantKey(request.uuid)).toBe(true);
+    expect(admin.getKeyRequests().map((item) => item.uuid)).toEqual([request.uuid]);
+    const another = {
+      ...request,
+      uuid: crypto.randomUUID(),
+      payload:
+        request.payload.kind === "key_request"
+          ? { ...request.payload, device_id: "another-device" }
+          : request.payload,
+    };
+    await admin.ingest([adaptMessengerMessage(another)]);
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementation(async (options, body) => {
+      if (body.payload.kind === "key_grant" && body.payload.request_message_uuid === request.uuid)
+        throw new Error("offline");
+      return create(options, body);
+    });
+    const outcomes = await admin.grantAllKeys();
+    expect(outcomes).toEqual([
+      { requestMessageUuid: request.uuid, status: "failed", reason: "send-failed" },
+      { requestMessageUuid: another.uuid, status: "granted" },
+    ]);
+    expect(admin.getKeyRequests().map((item) => item.uuid)).toEqual([request.uuid]);
+    expect(admin.canGrantKey(another.uuid)).toBe(false);
+    await expect(admin.grantKey(another.uuid)).rejects.toThrow("invalid-message");
+    await admin.rejectKey(request.uuid);
+    expect(admin.getKeyRequests()).toEqual([]);
+    await admin.ingest([adaptMessengerMessage(request), adaptMessengerMessage(another)]);
+    expect(admin.getKeyRequests()).toEqual([]);
+    member.dispose();
+    admin.dispose();
+  });
+
   it("requests and grants the selected historical generation after reload without unlocking the latest", async () => {
     const f = await setup();
     const creator = await openRealChatSession({

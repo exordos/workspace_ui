@@ -72,7 +72,7 @@ export function selectEncryptedChatInfo(
     (message) => message.payload.kind === "key_announced" && message.payload.keyUuid === keyUuid,
   );
   const requests = messages.flatMap((message) => {
-    if (message.payload.kind !== "key_request" || message.payload.keyUuid !== keyUuid) return [];
+    if (message.payload.kind !== "key_request") return [];
     const user = users[message.authorUuid];
     return [
       {

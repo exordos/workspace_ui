@@ -73,7 +73,7 @@ describe("encrypted chat info projection", () => {
   it("does not substitute stream creation time for a missing key announcement", () => {
     expect(selectEncryptedChatInfo(snapshot())?.keyCreatedAt).toBeUndefined();
   });
-  it("scopes requests and the announcement date to current key and stream in loaded history", () => {
+  it("includes historical requests while scoping announcement date to the current key", () => {
     const current = message("request", {
       kind: "key_request",
       keyUuid: "current-key",
@@ -103,6 +103,14 @@ describe("encrypted chat info projection", () => {
         requestMessageUuid: "request",
         name: "author",
         deviceName: "MacBook",
+        avatarUrl: null,
+        canGrant: false,
+        canReject: false,
+      },
+      {
+        requestMessageUuid: "old",
+        name: "author",
+        deviceName: "Old device",
         avatarUrl: null,
         canGrant: false,
         canReject: false,

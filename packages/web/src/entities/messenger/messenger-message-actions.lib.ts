@@ -383,6 +383,8 @@ export interface SendMessengerE2eePayloadOptions extends MessengerMessageActionB
   readonly keyFingerprint: string;
   // Historical key service messages retain the current stream-generation dispatch guard.
   readonly expectedCurrentKey?: { readonly keyUuid: string; readonly keyFingerprint: string };
+  // Only rotation may announce a new generation under the captured previous-key guard.
+  readonly rotateKey?: boolean;
   readonly isCurrent: () => boolean;
   readonly canonicalMessageUuid?: string;
   readonly includeStreamConversation?: boolean;
@@ -402,6 +404,7 @@ export async function sendMessengerE2eePayload({
   payload,
   keyFingerprint,
   expectedCurrentKey,
+  rotateKey = false,
   isCurrent,
   canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = true,
@@ -425,7 +428,8 @@ export async function sendMessengerE2eePayload({
     !stream.encryption ||
     stream.current_encryption_key?.key_uuid !== dispatchKey.keyUuid ||
     stream.current_encryption_key.key_fingerprint !== dispatchKey.keyFingerprint ||
-    ((payload.kind === "e2ee" || payload.kind === "key_announced") &&
+    (rotateKey && (payload.kind !== "key_announced" || stream.owner !== runtimeContext.userUuid)) ||
+    ((payload.kind === "e2ee" || (payload.kind === "key_announced" && !rotateKey)) &&
       (payload.keyUuid !== dispatchKey.keyUuid || keyFingerprint !== dispatchKey.keyFingerprint))
   )
     throw new Error("invalid-key");

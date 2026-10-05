@@ -1463,7 +1463,6 @@
     "keyActionsUnavailable": "Key issuance and rotation are unavailable until the cryptographic provider and key storage are connected.",
     "keyCreatedAt": "Created: {{date}}",
     "copyFailed": "Could not copy the key fingerprint.",
-
     "cryptoUnavailable": "Encryption is unavailable for this chat or local key storage could not be opened.",
     "protectedChat": "Protected chat",
     "keyTitle": "Encryption key",
@@ -1518,7 +1517,16 @@
     "rejectAccess": "Reject",
     "statusWaiting": "Waiting for a response",
     "grantReceivedDescription": "Access is available after the grant is successfully decrypted and the key is stored.",
-    "copyKey": "Copy key fingerprint"
+    "copyKey": "Copy key fingerprint",
+    "messageDecrypting": "Decrypting message…",
+    "messageDecryptError": "Could not decrypt message",
+    "messageDecryptRetry": "Retry",
+    "rotateConfirmTitle": "Reissue encryption key?",
+    "rotateConfirmDescription": "New messages will use the new key. Previous keys remain available for reading earlier messages. Other participants will need to request the new key.",
+    "loadedGrantedTitle": "Granted keys in loaded history ({{count}})",
+    "loadedRejectedTitle": "Rejected requests in loaded history ({{count}})",
+    "grantAllFailed": "Could not complete {{count}} requests. The remaining requests can be retried.",
+    "keyFingerprint": "Current key fingerprint"
   },
   "e2eeSandbox": {
     "title": "E2EE integration sandbox",

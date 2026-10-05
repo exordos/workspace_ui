@@ -15,12 +15,25 @@ interface WorkspaceEncryptedMessageBubbleProps extends Omit<
   readonly usersById?: WorkspaceMessageBubbleProps["usersById"];
 }
 const EMPTY_USERS = {};
+const PLACEHOLDER_STATES = {
+  ready: "locked",
+  "missing-key": "locked",
+  loading: "loading",
+  error: "error",
+} as const;
+const PLACEHOLDER_TITLES = {
+  ready: "e2ee.lockedTitle",
+  "missing-key": "e2ee.lockedTitle",
+  loading: "e2ee.messageDecrypting",
+  error: "e2ee.messageDecryptError",
+} as const;
 function EncryptedTextBubble({
   message,
   usersById = EMPTY_USERS,
   ...props
 }: Readonly<WorkspaceEncryptedMessageBubbleProps>) {
-  const plaintext = useRealMessagePresentation(message);
+  const presentation = useRealMessagePresentation(message);
+  const plaintext = presentation.status === "ready" ? presentation.plaintext : null;
   return (
     <WorkspaceMessageBubblePresentation
       {...props}
@@ -32,7 +45,15 @@ function EncryptedTextBubble({
       locked={plaintext == null}
       bodyOverride={
         plaintext == null ? (
-          <EncryptedMessagePlaceholder state="locked" title={t("e2ee.lockedTitle")} />
+          <EncryptedMessagePlaceholder
+            state={PLACEHOLDER_STATES[presentation.status]}
+            title={t(PLACEHOLDER_TITLES[presentation.status])}
+            action={
+              presentation.status === "error"
+                ? { label: t("e2ee.messageDecryptRetry"), onClick: presentation.retry }
+                : undefined
+            }
+          />
         ) : undefined
       }
     />

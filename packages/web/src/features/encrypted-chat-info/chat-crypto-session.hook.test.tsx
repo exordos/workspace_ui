@@ -61,13 +61,31 @@ function seed() {
   useWorkspaceMessageStore.getState().setOwner(owner, false);
 }
 function session() {
+  const listeners = new Set<() => void>();
+  let pending = false;
   return {
+    emit: () => {
+      for (const listener of listeners) listener();
+    },
+    setPending: (value: boolean) => {
+      pending = value;
+      for (const listener of listeners) listener();
+    },
     load: vi.fn().mockResolvedValue(undefined),
     ingest: vi.fn().mockResolvedValue(undefined),
-    subscribe: vi.fn(() => () => undefined),
+    subscribe: vi.fn((listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }),
     dispose: vi.fn(),
-    getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+    getState: () => ({ access: "ready", pending, requestStatus: "idle", error: null }),
     requestKey: vi.fn().mockResolvedValue(undefined),
+    reissueKey: vi.fn().mockResolvedValue(undefined),
+    grantAllKeys: vi.fn().mockResolvedValue([]),
+    grantKey: vi.fn().mockResolvedValue(undefined),
+    rejectKey: vi.fn().mockResolvedValue(undefined),
   };
 }
 afterEach(() => {
@@ -151,5 +169,146 @@ describe("real chat session ownership", () => {
       await request;
     });
     expect(second.result.current.error).toBeNull();
+  });
+  it("keeps a rotation pending until completion and opens the replacement generation", async () => {
+    seed();
+    const active = session();
+    let complete: (() => void) | undefined;
+    active.reissueKey.mockImplementation(() => {
+      active.setPending(true);
+      return new Promise<void>((resolve) => {
+        complete = () => {
+          active.setPending(false);
+          resolve();
+        };
+      });
+    });
+    const next = session();
+    open.mockResolvedValueOnce(active).mockResolvedValueOnce(next);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    let rotation: Promise<boolean> | undefined;
+    act(() => {
+      rotation = view.result.current.reissueKey();
+    });
+    expect(active.reissueKey).toHaveBeenCalledOnce();
+    expect(view.result.current.state.pending).toBe(true);
+    expect(view.result.current.session).toBe(active);
+    await act(async () => {
+      const catalog = useMessengerStore.getState();
+      const existing = catalog.streamsById[streamUuid];
+      if (!existing || !catalog.ownerKey) throw new Error("Missing stream");
+      catalog.upsertStream(catalog.ownerKey, {
+        ...existing,
+        currentEncryptionKey: { keyUuid: "key-v2", keyFingerprint: "fingerprint-v2" },
+      });
+      complete?.();
+      expect(await rotation).toBe(true);
+    });
+    await waitFor(() => expect(view.result.current.session).toBe(next));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(view.result.current.error).toBeNull();
+  });
+  it("keeps a failed rotation retryable", async () => {
+    seed();
+    const active = session();
+    active.reissueKey.mockRejectedValueOnce(new Error("network"));
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      expect(await view.result.current.reissueKey()).toBe(false);
+    });
+    expect(view.result.current.error).not.toBeNull();
+    await act(async () => {
+      expect(await view.result.current.reissueKey()).toBe(true);
+    });
+    expect(view.result.current.error).toBeNull();
+  });
+  it("reports only failed batch requests and clears their error after a successful retry", async () => {
+    seed();
+    const active = session();
+    active.grantAllKeys.mockResolvedValue([
+      { requestMessageUuid: "granted", status: "granted" },
+      { requestMessageUuid: "failed", status: "failed" },
+    ]);
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      await view.result.current.grantAllKeys();
+    });
+    expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed"]);
+    expect(view.result.current.error).toContain("1 requests");
+    await act(async () => {
+      await view.result.current.grantKey("failed");
+    });
+    expect(view.result.current.requestErrors).toEqual({});
+    expect(view.result.current.error).toBeNull();
+  });
+  it("discards a late batch failure after switching generations", async () => {
+    seed();
+    const active = session();
+    let complete: ((value: { requestMessageUuid: string; status: string }[]) => void) | undefined;
+    active.grantAllKeys.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const next = session();
+    open.mockResolvedValueOnce(active).mockResolvedValueOnce(next);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    const batch = view.result.current.grantAllKeys();
+    act(() => {
+      const catalog = useMessengerStore.getState();
+      const existing = catalog.streamsById[streamUuid];
+      if (!existing || !catalog.ownerKey) throw new Error("Missing stream");
+      catalog.upsertStream(catalog.ownerKey, {
+        ...existing,
+        currentEncryptionKey: { keyUuid: "key-v2", keyFingerprint: "fingerprint-v2" },
+      });
+    });
+    await waitFor(() => expect(view.result.current.session).toBe(next));
+    await act(async () => {
+      complete?.([{ requestMessageUuid: "old", status: "failed" }]);
+      await batch;
+    });
+    expect(view.result.current.requestErrors).toEqual({});
+    expect(view.result.current.error).toBeNull();
+  });
+  it("preserves failed rows across domain emissions, unrelated actions, and a later partial batch", async () => {
+    seed();
+    const active = session();
+    active.grantAllKeys
+      .mockResolvedValueOnce([
+        { requestMessageUuid: "failed-a", status: "failed" },
+        { requestMessageUuid: "failed-b", status: "failed" },
+      ])
+      .mockResolvedValueOnce([{ requestMessageUuid: "failed-a", status: "granted" }]);
+    active.grantKey.mockImplementation(() => {
+      active.setPending(true);
+      active.setPending(false);
+      return Promise.resolve();
+    });
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      await view.result.current.grantAllKeys();
+    });
+    act(() => active.emit());
+    expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-a", "failed-b"]);
+    await act(async () => {
+      await view.result.current.grantKey("unrelated");
+    });
+    expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-a", "failed-b"]);
+    expect(view.result.current.error).toContain("2 requests");
+    await act(async () => {
+      await view.result.current.grantAllKeys();
+    });
+    expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-b"]);
+    expect(view.result.current.error).toContain("1 requests");
   });
 });

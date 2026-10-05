@@ -26,6 +26,7 @@ interface KeyRequestRowProps {
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
   readonly onGrant?: EncryptedChatInfoProps["onGrantRequest"];
   readonly onReject?: EncryptedChatInfoProps["onRejectRequest"];
+  readonly completed?: boolean;
 }
 
 const KeyRequestRow = ({
@@ -34,6 +35,7 @@ const KeyRequestRow = ({
   onGrant,
   onReject,
   renderAvatar,
+  completed = false,
 }: KeyRequestRowProps) => (
   <li>
     <SelectableRow className="min-h-14 gap-3">
@@ -51,33 +53,37 @@ const KeyRequestRow = ({
         </p>
         <p className="truncate text-xs leading-5 text-text-secondary">{request.deviceName}</p>
       </div>
-      <Button
-        appearance="ghost"
-        variant="neutral"
-        type="button"
-        className={ICON_BUTTON_CLASS}
-        aria-label={t("e2ee.grantRequest", { name: request.name })}
-        disabled={
-          !request.canGrant || onGrant == null || (request.pending ?? false) || actionsPending
-        }
-        aria-busy={request.pending}
-        onClick={() => onGrant?.(request.requestMessageUuid)}
-      >
-        {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
-      </Button>
-      <Button
-        appearance="ghost"
-        variant="neutral"
-        type="button"
-        className={ICON_BUTTON_CLASS}
-        aria-label={t("e2ee.rejectRequest", { name: request.name })}
-        disabled={
-          !request.canReject || onReject == null || (request.pending ?? false) || actionsPending
-        }
-        onClick={() => onReject?.(request.requestMessageUuid)}
-      >
-        <Icon name="close" size={24} />
-      </Button>
+      {!completed ? (
+        <>
+          <Button
+            appearance="ghost"
+            variant="neutral"
+            type="button"
+            className={ICON_BUTTON_CLASS}
+            aria-label={t("e2ee.grantRequest", { name: request.name })}
+            disabled={
+              !request.canGrant || onGrant == null || (request.pending ?? false) || actionsPending
+            }
+            aria-busy={request.pending}
+            onClick={() => onGrant?.(request.requestMessageUuid)}
+          >
+            {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
+          </Button>
+          <Button
+            appearance="ghost"
+            variant="neutral"
+            type="button"
+            className={ICON_BUTTON_CLASS}
+            aria-label={t("e2ee.rejectRequest", { name: request.name })}
+            disabled={
+              !request.canReject || onReject == null || (request.pending ?? false) || actionsPending
+            }
+            onClick={() => onReject?.(request.requestMessageUuid)}
+          >
+            <Icon name="close" size={24} />
+          </Button>
+        </>
+      ) : null}
     </SelectableRow>
     {request.error ? (
       <p role="alert" className="px-3 text-xs text-danger">
@@ -103,6 +109,10 @@ export const EncryptedChatInfo = ({
   actionsPending = false,
   showKeyManagement = true,
   showHeader = true,
+  keyView = false,
+  grantedRequests = [],
+  rejectedRequests = [],
+  onBack,
   canRotateKey = false,
   canGrantAll = false,
   onClose,
@@ -121,55 +131,83 @@ export const EncryptedChatInfo = ({
     className="flex h-full min-h-0 w-[299px] max-w-full shrink-0 flex-col rounded-md bg-card-bg px-2 py-5 text-text-primary"
   >
     <ScrollArea className="flex flex-col gap-5">
-      <header className="flex flex-col gap-5 px-2">
-        {showHeader ? (
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-medium leading-5">{t("chatInfo.channelInfo")}</h2>
+      {keyView ? (
+        <div className="flex items-center gap-2 px-2">
+          <Button
+            appearance="ghost"
+            variant="neutral"
+            aria-label={t("common.back")}
+            onClick={onBack}
+            className={ICON_BUTTON_CLASS}
+          >
+            <Icon name="chevron-right" size={20} className="rotate-180" />
+          </Button>
+          <h2 className="flex-1 text-base font-medium">{t("e2ee.keyTitle")}</h2>
+          <Button
+            appearance="ghost"
+            variant="neutral"
+            aria-label={t("common.close")}
+            onClick={onClose}
+            disabled={onClose == null}
+            className={ICON_BUTTON_CLASS}
+          >
+            <Icon name="close" size={24} />
+          </Button>
+        </div>
+      ) : null}
+      {!keyView ? (
+        <>
+          <header className="flex flex-col gap-5 px-2">
+            {showHeader ? (
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-medium leading-5">{t("chatInfo.channelInfo")}</h2>
+                <Button
+                  appearance="ghost"
+                  variant="neutral"
+                  type="button"
+                  aria-label={t("common.close")}
+                  onClick={onClose}
+                  disabled={onClose == null}
+                  className={`${ICON_BUTTON_CLASS} text-text-muted`}
+                >
+                  <Icon name="close" size={24} />
+                </Button>
+              </div>
+            ) : null}
+            <div className="flex items-center gap-4">
+              <EncryptedChatAvatar />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <p className="truncate text-xl font-medium leading-5">{title}</p>
+                <p className="text-base leading-4 text-accent">{t("e2ee.protectedChat")}</p>
+                <p className="text-sm leading-4 text-text-muted">
+                  {t("channel.participants", { count: participantsCount })},{" "}
+                  {t("channel.online", { count: onlineCount })}
+                </p>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex gap-2">
             <Button
-              appearance="ghost"
               variant="neutral"
-              type="button"
-              aria-label={t("common.close")}
-              onClick={onClose}
-              disabled={onClose == null}
-              className={`${ICON_BUTTON_CLASS} text-text-muted`}
+              aria-label={t("call.call")}
+              disabled={onCall == null || loading}
+              onClick={onCall}
+              className="h-12 flex-1"
             >
-              <Icon name="close" size={24} />
+              <Icon name="phone" size={32} />
+            </Button>
+            <Button
+              aria-label={t("settings.settings")}
+              disabled={onOpenSettings == null || loading}
+              onClick={onOpenSettings}
+              className="h-12 flex-1 bg-accent-soft"
+            >
+              <img src={settingsUrl} width={32} height={32} alt="" />
             </Button>
           </div>
-        ) : null}
-        <div className="flex items-center gap-4">
-          <EncryptedChatAvatar />
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="truncate text-xl font-medium leading-5">{title}</p>
-            <p className="text-base leading-4 text-accent">{t("e2ee.protectedChat")}</p>
-            <p className="text-sm leading-4 text-text-muted">
-              {t("channel.participants", { count: participantsCount })},{" "}
-              {t("channel.online", { count: onlineCount })}
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex gap-2">
-        <Button
-          variant="neutral"
-          aria-label={t("call.call")}
-          disabled={onCall == null || loading}
-          onClick={onCall}
-          className="h-12 flex-1"
-        >
-          <Icon name="phone" size={32} />
-        </Button>
-        <Button
-          aria-label={t("settings.settings")}
-          disabled={onOpenSettings == null || loading}
-          onClick={onOpenSettings}
-          className="h-12 flex-1 bg-accent-soft"
-        >
-          <img src={settingsUrl} width={32} height={32} alt="" />
-        </Button>
-      </div>
+        </>
+      ) : null}
 
       {loading ? (
         <p role="status" className="flex items-center justify-center gap-2 text-sm text-text-muted">
@@ -191,15 +229,17 @@ export const EncryptedChatInfo = ({
       {showKeyManagement ? (
         <>
           <section
-            className="flex flex-col gap-3 border-t border-border-subtle pt-5"
+            className={`flex flex-col gap-3 ${keyView ? "" : "border-t border-border-subtle pt-5"}`}
             aria-label={t("e2ee.keyTitle")}
           >
             <div className="flex flex-col gap-5 px-2">
-              <h3 className="text-base font-medium leading-5">{t("e2ee.keyTitle")}</h3>
+              {!keyView ? (
+                <h3 className="text-base font-medium leading-5">{t("e2ee.keyTitle")}</h3>
+              ) : null}
               {keyInfo ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex h-6 items-center justify-between text-sm text-text-muted">
-                    {t("e2ee.currentKey")}
+                    {t("e2ee.keyFingerprint")}
                     <Button
                       appearance="ghost"
                       variant="neutral"
@@ -233,100 +273,196 @@ export const EncryptedChatInfo = ({
             </Button>
           </section>
 
-          <section
-            className="flex flex-col gap-3 border-t border-border-subtle pt-5"
-            aria-label={requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
-          >
-            <h3 className="px-2 text-base font-medium leading-5">
-              {requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
-            </h3>
-            <div className="flex justify-end px-2">
+          {keyView ? (
+            <details className="group px-2">
+              <summary className="cursor-pointer text-sm leading-5">
+                {requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
+              </summary>
+              <KeyRequestList
+                requests={requests}
+                {...{ renderAvatar, actionsPending, loading, onGrantRequest, onRejectRequest }}
+              />
               <Button
                 appearance="ghost"
                 variant="neutral"
-                type="button"
-                className="h-auto p-0 text-base leading-4 text-accent underline underline-offset-4"
-                disabled={
-                  !canGrantAll ||
-                  onGrantAll == null ||
-                  loading ||
-                  actionsPending ||
-                  requests.length === 0
-                }
+                fullWidth
+                disabled={!canGrantAll || onGrantAll == null || loading || actionsPending}
                 onClick={onGrantAll}
               >
                 {t("e2ee.grantAll")}
               </Button>
-            </div>
-            {requests.length > 0 ? (
-              <ul className="space-y-3">
-                {requests.map((request) => (
-                  <KeyRequestRow
-                    key={request.requestMessageUuid}
-                    request={request}
-                    renderAvatar={renderAvatar}
-                    actionsPending={actionsPending || loading}
-                    onGrant={onGrantRequest}
-                    onReject={onRejectRequest}
-                  />
-                ))}
-              </ul>
-            ) : (
-              <p className="px-2 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
-            )}
-          </section>
+            </details>
+          ) : (
+            <section
+              className="flex flex-col gap-3 border-t border-border-subtle pt-5"
+              aria-label={requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
+            >
+              <h3 className="px-2 text-base font-medium leading-5">
+                {requestsLabel ?? t("e2ee.requestsTitle", { count: requests.length })}
+              </h3>
+              <div className="flex justify-end px-2">
+                <Button
+                  appearance="ghost"
+                  variant="neutral"
+                  type="button"
+                  className="h-auto p-0 text-base leading-4 text-accent underline underline-offset-4"
+                  disabled={
+                    !canGrantAll ||
+                    onGrantAll == null ||
+                    loading ||
+                    actionsPending ||
+                    requests.length === 0
+                  }
+                  onClick={onGrantAll}
+                >
+                  {t("e2ee.grantAll")}
+                </Button>
+              </div>
+              {requests.length > 0 ? (
+                <ul className="space-y-3">
+                  {requests.map((request) => (
+                    <KeyRequestRow
+                      key={request.requestMessageUuid}
+                      request={request}
+                      renderAvatar={renderAvatar}
+                      actionsPending={actionsPending || loading}
+                      onGrant={onGrantRequest}
+                      onReject={onRejectRequest}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-2 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
+              )}
+            </section>
+          )}
+          {keyView ? (
+            <>
+              <CompletedRequests
+                title={t("e2ee.loadedGrantedTitle", { count: grantedRequests.length })}
+                requests={grantedRequests}
+                renderAvatar={renderAvatar}
+              />
+              <CompletedRequests
+                title={t("e2ee.loadedRejectedTitle", { count: rejectedRequests.length })}
+                requests={rejectedRequests}
+                renderAvatar={renderAvatar}
+              />
+            </>
+          ) : null}
         </>
       ) : null}
 
-      <section className="border-t border-border-subtle pt-5" aria-label={t("channel.members")}>
-        <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-base font-medium">
-          {t("channel.members")}
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            aria-label={t("channel.addMembers")}
-            className={`${ICON_BUTTON_CLASS} h-8 w-8 text-text-muted`}
-            disabled={onAddMember == null || loading}
-            onClick={onAddMember}
-          >
-            <Icon name="person_add" size={24} />
-          </Button>
-        </h3>
-        {members.length > 0 ? (
-          <ul className="space-y-1">
-            {members.map((member) => (
-              <li key={member.id}>
-                <SelectableRow className="min-h-14 gap-3">
-                  {renderAvatar ? (
-                    renderAvatar(member)
-                  ) : (
-                    <Avatar size="sm" src={member.avatarUrl}>
-                      {member.name.slice(0, 1)}
-                    </Avatar>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 text-sm leading-5">
-                      <Icon name="businessCenter" size={16} className="text-text-muted" />
-                      <span className="truncate">{member.name}</span>
-                    </p>
-                    {member.statusLabel ? (
-                      <p className="truncate text-xs leading-5 text-text-secondary">
-                        {member.statusLabel}
+      {!keyView ? (
+        <section className="border-t border-border-subtle pt-5" aria-label={t("channel.members")}>
+          <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-base font-medium">
+            {t("channel.members")}
+            <Button
+              appearance="ghost"
+              variant="neutral"
+              type="button"
+              aria-label={t("channel.addMembers")}
+              className={`${ICON_BUTTON_CLASS} h-8 w-8 text-text-muted`}
+              disabled={onAddMember == null || loading}
+              onClick={onAddMember}
+            >
+              <Icon name="person_add" size={24} />
+            </Button>
+          </h3>
+          {members.length > 0 ? (
+            <ul className="space-y-1">
+              {members.map((member) => (
+                <li key={member.id}>
+                  <SelectableRow className="min-h-14 gap-3">
+                    {renderAvatar ? (
+                      renderAvatar(member)
+                    ) : (
+                      <Avatar size="sm" src={member.avatarUrl}>
+                        {member.name.slice(0, 1)}
+                      </Avatar>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 text-sm leading-5">
+                        <Icon name="businessCenter" size={16} className="text-text-muted" />
+                        <span className="truncate">{member.name}</span>
                       </p>
+                      {member.statusLabel ? (
+                        <p className="truncate text-xs leading-5 text-text-secondary">
+                          {member.statusLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                    {member.roleLabel ? (
+                      <span className="text-xs text-text-secondary">{member.roleLabel}</span>
                     ) : null}
-                  </div>
-                  {member.roleLabel ? (
-                    <span className="text-xs text-text-secondary">{member.roleLabel}</span>
-                  ) : null}
-                </SelectableRow>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-2 text-sm text-text-muted">{t("channel.noMembers")}</p>
-        )}
-      </section>
+                  </SelectableRow>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-2 text-sm text-text-muted">{t("channel.noMembers")}</p>
+          )}
+        </section>
+      ) : null}
     </ScrollArea>
   </aside>
 );
+
+function KeyRequestList({
+  requests,
+  renderAvatar,
+  actionsPending,
+  loading,
+  onGrantRequest,
+  onRejectRequest,
+}: Pick<
+  EncryptedChatInfoProps,
+  "requests" | "renderAvatar" | "actionsPending" | "loading" | "onGrantRequest" | "onRejectRequest"
+>) {
+  return requests.length > 0 ? (
+    <ul className="mt-3 space-y-3">
+      {requests.map((request) => (
+        <KeyRequestRow
+          key={request.requestMessageUuid}
+          request={request}
+          renderAvatar={renderAvatar}
+          actionsPending={actionsPending === true || loading === true}
+          onGrant={onGrantRequest}
+          onReject={onRejectRequest}
+        />
+      ))}
+    </ul>
+  ) : (
+    <p className="mt-3 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
+  );
+}
+function CompletedRequests({
+  title,
+  requests,
+  renderAvatar,
+}: {
+  readonly title: string;
+  readonly requests: readonly EncryptedChatKeyRequestView[];
+  readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
+}) {
+  return (
+    <details className="px-2">
+      <summary className="cursor-pointer text-sm leading-5">{title}</summary>
+      {requests.length > 0 ? (
+        <ul className="mt-3 space-y-3">
+          {requests.map((request) => (
+            <KeyRequestRow
+              key={request.requestMessageUuid}
+              request={request}
+              renderAvatar={renderAvatar}
+              actionsPending={false}
+              completed
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
+      )}
+    </details>
+  );
+}

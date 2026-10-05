@@ -245,7 +245,7 @@ describe("RightPanelWorkspaceInfo", () => {
           encryption: true,
           currentEncryptionKey: {
             keyUuid: "actual-key-uuid",
-            keyFingerprint: "opaque-current-public-key",
+            keyFingerprint: "opaque-current-fingerprint",
           },
         }),
       );
@@ -257,17 +257,17 @@ describe("RightPanelWorkspaceInfo", () => {
       </RightDrawer>,
     );
     expect(screen.getByText("Encrypted team")).toBeInTheDocument();
-    expect(screen.getByText("actual-key-uuid")).toBeInTheDocument();
+    expect(screen.getByText("opaque-current-fingerprint")).toBeInTheDocument();
     expect(screen.getByText(t("e2ee.loadedRequestsTitle", { count: 0 }))).toBeInTheDocument();
     expect(await screen.findByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
-    expect(container.innerHTML).not.toContain("opaque-current-public-key");
+    expect(container.innerHTML).not.toContain("actual-key-uuid");
     expect(container.textContent).not.toContain(DATE);
     expect(screen.getAllByRole("heading", { name: t("chatInfo.channelInfo") })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: t("common.close") })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: t("common.close") }));
     expect(onClose).toHaveBeenCalledOnce();
     act(() => useMessengerStore.setState({ ownerKey: "other-owner" }));
-    expect(screen.queryByText("actual-key-uuid")).not.toBeInTheDocument();
+    expect(screen.queryByText("opaque-current-fingerprint")).not.toBeInTheDocument();
     expect(screen.queryByText("Encrypted team")).not.toBeInTheDocument();
   });
 
@@ -293,7 +293,7 @@ describe("RightPanelWorkspaceInfo", () => {
         createStream({
           projectId: RUNTIME_CONTEXT.projectId,
           encryption: true,
-          currentEncryptionKey: { keyUuid: "actual-key", keyFingerprint: "actual-public-key" },
+          currentEncryptionKey: { keyUuid: "actual-key", keyFingerprint: "actual-fingerprint" },
         }),
       );
     });
@@ -307,7 +307,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(writeTextMock).not.toHaveBeenCalled();
     await screen.findByText(t("e2ee.cryptoUnavailable"));
     fireEvent.click(screen.getByRole("button", { name: t("e2ee.copyKey") }));
-    expect(writeTextMock).toHaveBeenCalledWith("actual-public-key");
+    expect(writeTextMock).toHaveBeenCalledWith("actual-fingerprint");
     await act(async () => {
       useWorkspaceAuthStore.getState().clear();
       complete?.(false);
@@ -316,7 +316,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.queryByText(t("e2ee.copyFailed"))).not.toBeInTheDocument();
   });
 
-  it("uses the encrypted info for actual direct chat UUIDs and keeps explicitly opened user profiles", () => {
+  it("uses the encrypted info for actual direct chat UUIDs and keeps explicitly opened user profiles", async () => {
     seedWorkspaceAuth();
     act(() => {
       useMessengerStore.getState().startBootstrap(OWNER_KEY);
@@ -346,7 +346,8 @@ describe("RightPanelWorkspaceInfo", () => {
         }}
       />,
     );
-    expect(screen.getByText("direct-key")).toBeInTheDocument();
+    expect(screen.getByText("opaque")).toBeInTheDocument();
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
     rerender(
       <RightPanelWorkspaceInfo
         info={{
@@ -360,7 +361,7 @@ describe("RightPanelWorkspaceInfo", () => {
         }}
       />,
     );
-    expect(screen.queryByText("direct-key")).not.toBeInTheDocument();
+    expect(screen.queryByText("opaque")).not.toBeInTheDocument();
     expect(screen.getByText("Alice profile")).toBeInTheDocument();
   });
   it("shows the selected topic summary and its freshness state", () => {

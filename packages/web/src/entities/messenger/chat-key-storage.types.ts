@@ -44,6 +44,14 @@ export interface StagedChatCreation extends StoredChatKey {
   readonly creationId: string;
   readonly keyUuid: string;
   readonly groupKey: ChatCryptoGroupKey;
+  // Rotation retries reuse both announcement UUIDs and never overwrite an old secret.
+  readonly rotation?: {
+    readonly streamUuid: string;
+    readonly previousKeyUuid: string;
+    readonly previousFingerprint: string;
+    readonly previousAnnouncementUuid: string;
+    readonly topicUuid: string;
+  };
 }
 
 export interface ChatKeyStorageWriteOptions {

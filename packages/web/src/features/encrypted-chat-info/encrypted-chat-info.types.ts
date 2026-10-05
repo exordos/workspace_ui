@@ -42,6 +42,10 @@ export interface EncryptedChatInfoProps {
   readonly actionsPending?: boolean;
   readonly showKeyManagement?: boolean;
   readonly showHeader?: boolean;
+  readonly keyView?: boolean;
+  readonly grantedRequests?: readonly EncryptedChatKeyRequestView[];
+  readonly rejectedRequests?: readonly EncryptedChatKeyRequestView[];
+  readonly onBack?: () => void;
   readonly canRotateKey?: boolean;
   readonly canGrantAll?: boolean;
   readonly onClose?: () => void;
