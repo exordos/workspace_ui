@@ -3,6 +3,7 @@ import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SelectableRow } from "~/shared/ui/selectable-row.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
@@ -36,7 +37,7 @@ const KeyRequestRow = ({
   completed = false,
 }: KeyRequestRowProps) => (
   <li>
-    <SelectableRow className="min-h-14 gap-3 px-2">
+    <SelectableRow className="min-h-14 gap-3 px-4">
       {renderAvatar ? (
         renderAvatar(request)
       ) : (
@@ -84,7 +85,7 @@ const KeyRequestRow = ({
       ) : null}
     </SelectableRow>
     {request.error ? (
-      <p role="alert" className="px-2 text-xs text-danger">
+      <p role="alert" className="px-4 text-xs text-danger">
         {request.error}
       </p>
     ) : null}
@@ -93,9 +94,9 @@ const KeyRequestRow = ({
 function KeySummary(props: EncryptedChatInfoProps) {
   const { keyInfo, onCopyKey, loading, canRotateKey, onRotateKey, actionsPending } = props;
   return (
-    <section className="space-y-3" aria-label={t("e2ee.keyTitle")}>
+    <section className="space-y-3 px-4" aria-label={t("e2ee.keyTitle")}>
       {keyInfo ? (
-        <div className="space-y-2 px-2">
+        <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 text-sm text-text-muted">
             <span>{t("e2ee.keyFingerprint")}</span>
             <Button
@@ -118,7 +119,7 @@ function KeySummary(props: EncryptedChatInfoProps) {
           ) : null}
         </div>
       ) : (
-        <p className="px-2 text-sm text-text-muted">{t("e2ee.keyUnavailable")}</p>
+        <p className="text-sm text-text-muted">{t("e2ee.keyUnavailable")}</p>
       )}
       <Button
         fullWidth
@@ -153,12 +154,12 @@ function RequestList({
       ))}
     </ul>
   ) : (
-    <p className="px-2 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
+    <p className="px-4 text-sm text-text-muted">{t("e2ee.noRequests")}</p>
   );
 }
 function GrantAllButton(props: EncryptedChatInfoProps) {
   return (
-    <div className="flex justify-end px-2">
+    <div className="flex justify-end px-4">
       <Button
         appearance="ghost"
         variant="neutral"
@@ -187,21 +188,18 @@ function RequestSection({
   const label = props.sectionTitle ?? title;
   return (
     <section className="space-y-3">
-      <Button
-        appearance="ghost"
-        variant="neutral"
-        fullWidth
-        className="justify-between px-2 text-left font-normal"
+      <PanelMenuRow
+        label={label}
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="min-w-0 flex-1">{label}</span>
-        <Icon
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={20}
-          className="text-text-muted"
-        />
-      </Button>
+        right={
+          <Icon
+            name={expanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            className="text-text-muted"
+          />
+        }
+      />
       {expanded ? (
         <>
           {!completed ? <GrantAllButton {...props} title={title} /> : null}
@@ -215,7 +213,7 @@ function ChannelSettings(props: EncryptedChatInfoProps) {
   const description = props.description?.trim();
   return (
     <div className="space-y-5">
-      <dl className="space-y-3 px-2">
+      <dl className="space-y-3 px-4">
         <div>
           <dt className="text-sm text-text-muted">{t("channel.channelName")}</dt>
           <dd className="mt-1 text-sm text-text-primary">{props.title}</dd>
@@ -229,22 +227,19 @@ function ChannelSettings(props: EncryptedChatInfoProps) {
           </dd>
         </div>
       </dl>
-      <p className="px-2 text-xs text-text-muted">{t("e2ee.channelSettingsReadOnly")}</p>
-      <SelectableRow
-        as="button"
-        className="px-2"
+      <p className="px-4 text-xs text-text-muted">{t("e2ee.channelSettingsReadOnly")}</p>
+      <PanelMenuRow
+        label={t("e2ee.keyTitle")}
+        icon="chatLock"
+        iconSize={24}
         onClick={() => props.onScreenChange?.("key")}
-        aria-label={t("e2ee.keyTitle")}
-      >
-        <Icon name="key" size={24} className="text-text-muted" />
-        <span className="flex-1 text-sm">{t("e2ee.keyTitle")}</span>
-        <Icon name="chevron-right" size={20} className="text-text-muted" />
-      </SelectableRow>
-      <div className="flex items-center justify-between gap-2 px-2 text-sm">
+        right={<Icon name="chevron-right" size={20} className="text-text-muted" />}
+      />
+      <div className="flex items-center justify-between gap-2 px-4 text-sm">
         <span>{t("channel.type")}</span>
         <span className="text-text-muted">{props.channelTypeLabel}</span>
       </div>
-      <div className="flex items-center justify-between gap-2 px-2 text-sm">
+      <div className="flex items-center justify-between gap-2 px-4 text-sm">
         <span>{t("channel.members")}</span>
         <span className="text-text-muted">{props.participantsCount}</span>
       </div>
@@ -254,7 +249,7 @@ function ChannelSettings(props: EncryptedChatInfoProps) {
 function MemberList(props: EncryptedChatInfoProps) {
   return (
     <section className="border-t border-border-subtle pt-5" aria-label={t("channel.members")}>
-      <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-base font-medium">
+      <h3 className="mb-3 flex h-8 items-center justify-between px-4 text-base font-medium">
         {t("channel.members")}
         <Button
           appearance="ghost"
@@ -272,7 +267,7 @@ function MemberList(props: EncryptedChatInfoProps) {
         <ul className="space-y-1">
           {props.members.map((member) => (
             <li key={member.id}>
-              <SelectableRow className="min-h-14 gap-3 px-2">
+              <SelectableRow className="min-h-14 gap-3 px-4">
                 {props.renderAvatar ? (
                   props.renderAvatar(member)
                 ) : (
@@ -299,7 +294,7 @@ function MemberList(props: EncryptedChatInfoProps) {
           ))}
         </ul>
       ) : (
-        <p className="px-2 text-sm text-text-muted">{t("channel.noMembers")}</p>
+        <p className="px-4 text-sm text-text-muted">{t("channel.noMembers")}</p>
       )}
     </section>
   );
@@ -333,12 +328,12 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
           </p>
         ) : null}
         {error ? (
-          <p role="alert" className="px-2 text-sm text-danger">
+          <p role="alert" className="px-4 text-sm text-danger">
             {error}
           </p>
         ) : null}
         {unavailableReason ? (
-          <p role="status" className="px-2 text-sm text-text-muted">
+          <p role="status" className="px-4 text-sm text-text-muted">
             {unavailableReason}
           </p>
         ) : null}
@@ -346,7 +341,7 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
         {screen === "key" ? (
           <>
             <KeySummary {...props} />
-            <p className="px-2 text-xs text-text-muted">{t("e2ee.loadedHistoryHint")}</p>
+            <p className="px-4 text-xs text-text-muted">{t("e2ee.loadedHistoryHint")}</p>
             <RequestSection
               {...props}
               sectionTitle={t("e2ee.incomingTitle", { count: props.requests.length })}
@@ -367,7 +362,7 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
         ) : null}
         {screen === "info" ? (
           <>
-            <div className="flex items-center gap-4 px-2">
+            <div className="flex items-center gap-4 px-4">
               <EncryptedChatAvatar />
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <p className="truncate text-xl font-medium leading-5">{title}</p>
@@ -378,7 +373,7 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 px-4">
               <Button
                 variant="neutral"
                 aria-label={t("call.call")}
@@ -400,7 +395,7 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
             {showKeyManagement ? (
               <>
                 <div className="space-y-5 border-t border-border-subtle pt-5">
-                  <h3 className="px-2 text-base font-medium">{t("e2ee.keyTitle")}</h3>
+                  <h3 className="px-4 text-base font-medium">{t("e2ee.keyTitle")}</h3>
                   <KeySummary {...props} />
                 </div>
                 <section
@@ -409,11 +404,11 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
                     props.requestsLabel ?? t("e2ee.requestsTitle", { count: props.requests.length })
                   }
                 >
-                  <h3 className="px-2 text-base font-medium">
+                  <h3 className="px-4 text-base font-medium">
                     {props.requestsLabel ??
                       t("e2ee.requestsTitle", { count: props.requests.length })}
                   </h3>
-                  <p className="px-2 text-xs text-text-muted">{t("e2ee.loadedHistoryHint")}</p>
+                  <p className="px-4 text-xs text-text-muted">{t("e2ee.loadedHistoryHint")}</p>
                   <GrantAllButton {...props} />
                   <RequestList {...props} />
                 </section>
