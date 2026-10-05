@@ -56,6 +56,8 @@ import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 export interface RightPanelWorkspaceInfoProps {
+  chatScreen?: "info" | "settings" | "key";
+  onChatScreenChange?: (screen: "info" | "settings" | "key") => void;
   info: WorkspaceRightPanelInfoView;
   onClose?: () => void;
 }
@@ -866,6 +868,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({
   info,
   onClose,
+  chatScreen,
+  onChatScreenChange,
 }) => {
   const streamUuid =
     info.kind === "channel" || info.kind === "directPrivate" ? info.streamUuid : null;
@@ -876,6 +880,8 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
     return (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
+        screen={chatScreen}
+        onScreenChange={onChatScreenChange}
         onClose={onClose}
         renderAvatar={(person) => (
           <WorkspaceAvatar size="sm" avatarUrn={person.avatarUrl}>

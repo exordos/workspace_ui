@@ -1537,7 +1537,12 @@
     "loadedGrantedTitle": "Выданные ключи в загруженной истории ({{count}})",
     "loadedRejectedTitle": "Отклонённые запросы в загруженной истории ({{count}})",
     "grantAllFailed": "Не удалось обработать {{count}} запросов. Оставшиеся запросы можно повторить.",
-    "keyFingerprint": "Отпечаток текущего ключа"
+    "keyFingerprint": "Отпечаток текущего ключа",
+    "channelSettingsReadOnly": "Параметры канала пока доступны только для просмотра.",
+    "loadedHistoryHint": "Показаны данные из загруженной истории.",
+    "incomingTitle": "Входящие запросы ({{count}})",
+    "grantedTitle": "Выданные ключи ({{count}})",
+    "rejectedTitle": "Отклонённые запросы ({{count}})"
   },
   "e2eeSandbox": {
     "title": "Стенд интеграции E2EE",

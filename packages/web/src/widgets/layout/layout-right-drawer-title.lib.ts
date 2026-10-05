@@ -37,3 +37,12 @@ export function resolveLayoutRightPanelTitle(
   }
   return translate("info.channelInfo");
 }
+
+export function resolveLayoutChatScreenTitle(
+  screen: "info" | "settings" | "key" | undefined,
+  translate: (key: string) => string,
+): string | null {
+  if (screen === "settings") return translate("channel.editChannel");
+  if (screen === "key") return translate("e2ee.keyTitle");
+  return null;
+}

@@ -206,4 +206,43 @@ describe("useRightDrawerStore navigation", () => {
 
     expect(useRightDrawerStore.getState().layers[0]?.screens).toHaveLength(2);
   });
+  it("preserves encrypted chat screens across collapse and account layers; Back walks the three screens", () => {
+    const store = useRightDrawerStore.getState();
+    const scope = { ownerKey: "owner", runtimeGeneration: 1, streamUuid: "stream" };
+    store.openInfo();
+    store.openChatScreen({ ...scope, screen: "settings" });
+    store.openChatScreen({ ...scope, screen: "key" });
+    store.toggleVisibility();
+    store.toggleVisibility();
+    expect(useRightDrawerStore.getState().chatScreen?.screen).toBe("key");
+    store.openAccountScreen("settings");
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState().chatScreen?.screen).toBe("key");
+    store.back();
+    expect(useRightDrawerStore.getState().chatScreen?.screen).toBe("settings");
+    store.back();
+    expect(useRightDrawerStore.getState().chatScreen).toBeNull();
+    expect(useRightDrawerStore.getState().layers.at(-1)?.screens).toHaveLength(1);
+  });
+  it("retains navigation for the same stream and resets hidden chat screens on a stream/runtime change", () => {
+    const store = useRightDrawerStore.getState();
+    const scope = { ownerKey: "owner", runtimeGeneration: 1, streamUuid: "stream" };
+    store.openInfo();
+    store.openChatScreen({ ...scope, screen: "settings" });
+    store.openChatScreen({ ...scope, screen: "key" });
+    store.resetChatScreens({ ...scope });
+    expect(useRightDrawerStore.getState().chatScreen?.screen).toBe("key");
+    store.openAccountScreen("appearance");
+    store.resetChatScreens({ ...scope, streamUuid: "other-stream" });
+    expect(useRightDrawerStore.getState().accountScreen).toBe("appearance");
+    store.closeCurrent();
+    expect(useRightDrawerStore.getState().chatScreen).toBeNull();
+    expect(useRightDrawerStore.getState().layers.at(-1)?.screens).toHaveLength(1);
+    store.openChatScreen({ ...scope, screen: "key" });
+    store.resetChatScreens({ ...scope, runtimeGeneration: 2 });
+    expect(useRightDrawerStore.getState().chatScreen).toBeNull();
+    store.openChatScreen({ ...scope, screen: "key" });
+    store.resetChatScreens({ ...scope, ownerKey: "other-owner" });
+    expect(useRightDrawerStore.getState().chatScreen).toBeNull();
+  });
 });

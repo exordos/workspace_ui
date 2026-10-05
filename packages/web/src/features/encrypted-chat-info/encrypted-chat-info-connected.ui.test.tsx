@@ -74,17 +74,39 @@ describe("encrypted chat sidebar actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Grant all" }));
     expect(crypto.grantAllKeys).toHaveBeenCalledOnce();
   });
-  it("opens the key screen with paired device names and no actions on completed requests", () => {
+  it("reports settings/key navigation to its drawer owner and renders only the active body", () => {
     fixture();
-    render(<EncryptedChatInfoConnected streamUuid="stream" />);
+    const navigate = vi.fn();
+    const view = render(
+      <EncryptedChatInfoConnected streamUuid="stream" onScreenChange={navigate} />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByText("Granted keys in loaded history (1)")).toBeInTheDocument();
-    expect(screen.getByText("Rejected requests in loaded history (1)")).toBeInTheDocument();
+    expect(navigate).toHaveBeenCalledWith("settings");
+    view.rerender(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="settings"
+        onScreenChange={navigate}
+      />,
+    );
+    expect(screen.getByText("Channel details are currently read-only.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Encryption key" }));
+    expect(navigate).toHaveBeenLastCalledWith("key");
+    view.rerender(
+      <EncryptedChatInfoConnected streamUuid="stream" screen="key" onScreenChange={navigate} />,
+    );
+    expect(view.container.querySelector("aside")).toBeNull();
+    expect(view.container.querySelector("details")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    expect(screen.queryByText("Granted device")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Granted keys (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rejected requests (1)" }));
     expect(screen.getByText("Granted device")).toBeInTheDocument();
     expect(screen.getByText("Rejected device")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Grant access to Granted" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByText("Protected")).toBeInTheDocument();
+    expect(screen.getByText("Showing loaded history.")).toBeInTheDocument();
   });
   it("requires confirmation and leaves a failed reissue open for retry", async () => {
     const { crypto } = fixture();
@@ -130,5 +152,39 @@ describe("encrypted chat sidebar actions", () => {
     view.rerender(<EncryptedChatInfoConnected streamUuid="stream" />);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("next fingerprint")).toBeInTheDocument();
+  });
+  it("keeps the owner-selected key screen after rotation and does not let an old success dismiss a new confirmation", async () => {
+    const { crypto, info } = fixture();
+    let finishOld: ((success: boolean) => void) | undefined;
+    crypto.reissueKey.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        finishOld = resolve;
+      }),
+    );
+    const view = render(<EncryptedChatInfoConnected streamUuid="stream" screen="key" />);
+    fireEvent.click(screen.getByRole("button", { name: "Reissue key" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Reissue key" }),
+    );
+    mocks.crypto.mockReturnValue({ ...crypto, session: { ...crypto.session } });
+    mocks.info.mockReturnValue({
+      ...info,
+      projection: {
+        ...info.projection,
+        stream: {
+          ...info.projection.stream,
+          currentEncryptionKey: { keyUuid: "next", keyFingerprint: "new fingerprint" },
+        },
+      },
+    });
+    view.rerender(<EncryptedChatInfoConnected streamUuid="next-stream" screen="key" />);
+    expect(screen.getByText("new fingerprint")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Incoming requests (1)" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reissue key" }));
+    await act(async () => {
+      finishOld?.(true);
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

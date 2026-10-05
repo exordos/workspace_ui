@@ -10,6 +10,8 @@ export interface RightPanelProps {
   mode?: "info" | "settings" | "user-menu" | "about" | "personal-info";
   /** Serializable active screen for the account drawer flow. */
   accountScreen: RightPanelAccountScreen;
+  chatScreen?: "info" | "settings" | "key";
+  onChatScreenChange?: (screen: "info" | "settings" | "key") => void;
   /** Reports account screen navigation to the owner of the drawer stack. */
   onAccountScreenChange: (screen: RightPanelAccountScreen) => void;
   /** For channels: name and counters */

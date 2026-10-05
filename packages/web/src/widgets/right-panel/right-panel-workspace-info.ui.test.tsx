@@ -258,7 +258,7 @@ describe("RightPanelWorkspaceInfo", () => {
     );
     expect(screen.getByText("Encrypted team")).toBeInTheDocument();
     expect(screen.getByText("opaque-current-fingerprint")).toBeInTheDocument();
-    expect(screen.getByText(t("e2ee.loadedRequestsTitle", { count: 0 }))).toBeInTheDocument();
+    expect(screen.getByText(t("e2ee.requestsTitle", { count: 0 }))).toBeInTheDocument();
     expect(await screen.findByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
     expect(container.innerHTML).not.toContain("actual-key-uuid");
     expect(container.textContent).not.toContain(DATE);

@@ -1526,7 +1526,12 @@
     "loadedGrantedTitle": "Granted keys in loaded history ({{count}})",
     "loadedRejectedTitle": "Rejected requests in loaded history ({{count}})",
     "grantAllFailed": "Could not complete {{count}} requests. The remaining requests can be retried.",
-    "keyFingerprint": "Current key fingerprint"
+    "keyFingerprint": "Current key fingerprint",
+    "channelSettingsReadOnly": "Channel details are currently read-only.",
+    "loadedHistoryHint": "Showing loaded history.",
+    "incomingTitle": "Incoming requests ({{count}})",
+    "grantedTitle": "Granted keys ({{count}})",
+    "rejectedTitle": "Rejected requests ({{count}})"
   },
   "e2eeSandbox": {
     "title": "E2EE integration sandbox",

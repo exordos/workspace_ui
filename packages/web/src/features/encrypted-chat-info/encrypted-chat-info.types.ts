@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+export type EncryptedChatInfoScreen = "info" | "settings" | "key";
+
 export interface EncryptedChatKeyInfo {
   readonly name: string;
   readonly createdLabel?: string;
@@ -41,11 +43,13 @@ export interface EncryptedChatInfoProps {
   readonly error?: string | null;
   readonly actionsPending?: boolean;
   readonly showKeyManagement?: boolean;
-  readonly showHeader?: boolean;
-  readonly keyView?: boolean;
+  readonly screen?: EncryptedChatInfoScreen;
+  readonly description?: string;
+  readonly channelTypeLabel?: string;
+  readonly onScreenChange?: (screen: EncryptedChatInfoScreen) => void;
   readonly grantedRequests?: readonly EncryptedChatKeyRequestView[];
   readonly rejectedRequests?: readonly EncryptedChatKeyRequestView[];
-  readonly onBack?: () => void;
+
   readonly canRotateKey?: boolean;
   readonly canGrantAll?: boolean;
   readonly onClose?: () => void;

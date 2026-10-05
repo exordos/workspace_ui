@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { t } from "~/i18n/i18n";
+import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
 import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";
@@ -10,15 +11,18 @@ export function EncryptedChatInfoConnected({
   streamUuid,
   onClose,
   renderAvatar,
+  screen = "info",
+  onScreenChange,
 }: {
   readonly streamUuid: string;
+  readonly screen?: EncryptedChatInfoProps["screen"];
+  readonly onScreenChange?: EncryptedChatInfoProps["onScreenChange"];
   readonly onClose?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
   const { projection, onCopyKey, copyError } = useEncryptedChatInfo(streamUuid);
   const crypto = useChatCryptoSession(streamUuid);
   // Scope transient presentation to the exact session so navigation cannot carry a confirmation.
-  const [keyViewSession, setKeyViewSession] = useState<typeof crypto.session>(null);
   const [confirmation, setConfirmation] = useState<{
     session: typeof crypto.session;
     keyUuid: string;
@@ -55,12 +59,11 @@ export function EncryptedChatInfoConnected({
     <>
       <EncryptedChatInfo
         title={stream.name}
-        showHeader={false}
-        keyView={crypto.session != null && keyViewSession === crypto.session}
-        onBack={() => setKeyViewSession(null)}
-        onOpenSettings={
-          crypto.session == null ? undefined : () => setKeyViewSession(crypto.session)
-        }
+        screen={screen}
+        description={stream.description}
+        channelTypeLabel={t(stream.isPrivate ? "channel.typeClosedProtected" : "channel.typeOpen")}
+        onScreenChange={onScreenChange}
+        onOpenSettings={onScreenChange == null ? undefined : () => onScreenChange("settings")}
         participantsCount={members.length}
         onlineCount={onlineCount}
         keyInfo={
@@ -69,13 +72,15 @@ export function EncryptedChatInfoConnected({
             : {
                 name: currentKey.keyFingerprint,
                 createdLabel:
-                  keyCreatedAt == null ? undefined : t("e2ee.keyCreatedAt", { date: keyCreatedAt }),
+                  keyCreatedAt == null
+                    ? undefined
+                    : t("e2ee.keyCreatedAt", { date: formatDateJoined(keyCreatedAt) }),
               }
         }
         requests={requests}
         grantedRequests={requestsFor("granted")}
         rejectedRequests={requestsFor("rejected")}
-        requestsLabel={t("e2ee.loadedRequestsTitle", { count: requests.length })}
+        requestsLabel={t("e2ee.requestsTitle", { count: requests.length })}
         unavailableReason={
           crypto.session === null && !crypto.loading ? t("e2ee.cryptoUnavailable") : undefined
         }
@@ -116,8 +121,9 @@ export function EncryptedChatInfoConnected({
             submitLabel={t("e2ee.rotateKey")}
             onCancel={() => setConfirmation(null)}
             onSubmit={() => {
+              const submitted = confirmation;
               void crypto.reissueKey().then((success) => {
-                if (success) setConfirmation(null);
+                if (success) setConfirmation((latest) => (latest === submitted ? null : latest));
               });
             }}
             submitDisabled={crypto.session?.getRights().canRotate !== true}

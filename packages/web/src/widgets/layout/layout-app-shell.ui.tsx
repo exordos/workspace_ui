@@ -6,6 +6,7 @@ import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
 import type {
   RightDrawerAccountScreen,
+  RightDrawerChatScreen,
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
@@ -27,6 +28,8 @@ export interface LayoutAppShellProps {
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   rightDrawerAccountScreen: RightDrawerAccountScreen | null;
+  rightDrawerChatScreen?: RightDrawerChatScreen | null;
+  onChatScreenChange?: (screen: "info" | "settings" | "key") => void;
   rightDrawerCanGoBack: boolean;
   onCloseRightDrawer: () => void;
   /** Shell back control for the active layer's internal screen history. */
@@ -58,6 +61,8 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   sidebarOpen,
   rightDrawerMode,
   rightDrawerAccountScreen,
+  rightDrawerChatScreen,
+  onChatScreenChange,
   rightDrawerCanGoBack,
   onCloseRightDrawer,
   onBackRightDrawer,
@@ -100,6 +105,8 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerMode={rightDrawerMode}
             rightDrawerAccountScreen={rightDrawerAccountScreen}
+            rightDrawerChatScreen={rightDrawerChatScreen}
+            onChatScreenChange={onChatScreenChange}
             rightDrawerCanGoBack={rightDrawerCanGoBack}
             onCloseRightDrawer={onCloseRightDrawer}
             onBackRightDrawer={onBackRightDrawer}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveLayoutAccountScreenTitle,
+  resolveLayoutChatScreenTitle,
   resolveLayoutRightPanelTitle,
 } from "./layout-right-drawer-title.lib";
 
@@ -43,5 +44,14 @@ describe("resolveLayoutAccountScreenTitle", () => {
     expect(resolveLayoutAccountScreenTitle("appearance", tr)).toBe("t:settings.appearance");
     expect(resolveLayoutAccountScreenTitle("about", tr)).toBe("t:settings.appVersion");
     expect(resolveLayoutAccountScreenTitle("personal-info", tr)).toBe("t:settings.personalInfo");
+  });
+});
+
+describe("resolveLayoutChatScreenTitle", () => {
+  const tr = (key: string) => `t:${key}`;
+  it("uses one shell title for each encrypted chat detail screen", () => {
+    expect(resolveLayoutChatScreenTitle("settings", tr)).toBe("t:channel.editChannel");
+    expect(resolveLayoutChatScreenTitle("key", tr)).toBe("t:e2ee.keyTitle");
+    expect(resolveLayoutChatScreenTitle("info", tr)).toBeNull();
   });
 });

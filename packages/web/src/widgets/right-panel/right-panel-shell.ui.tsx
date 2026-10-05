@@ -15,6 +15,8 @@ import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.typ
 export const RightPanelShell: React.FC<RightPanelProps> = ({
   mode = "info",
   accountScreen,
+  chatScreen,
+  onChatScreenChange,
   onAccountScreenChange,
   onOpenAboutDrawer,
   onOpenPersonalInfoDrawer,
@@ -89,7 +91,14 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
   if (mode === "about") return <RightPanelAbout />;
 
   if (workspaceInfo != null) {
-    return <RightPanelWorkspaceInfo info={workspaceInfo} onClose={onClose} />;
+    return (
+      <RightPanelWorkspaceInfo
+        info={workspaceInfo}
+        onClose={onClose}
+        chatScreen={chatScreen}
+        onChatScreenChange={onChatScreenChange}
+      />
+    );
   }
 
   return (

@@ -4,7 +4,10 @@ import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
-import { resolveLayoutAccountScreenTitle } from "./layout-right-drawer-title.lib";
+import {
+  resolveLayoutChatScreenTitle,
+  resolveLayoutAccountScreenTitle,
+} from "./layout-right-drawer-title.lib";
 import {
   clampLayoutSidebarWidth,
   getLayoutSidebarWidthBounds,
@@ -20,6 +23,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   rightDrawerOpen,
   rightDrawerMode,
   rightDrawerAccountScreen,
+  rightDrawerChatScreen,
+  onChatScreenChange,
   rightDrawerCanGoBack,
   onCloseRightDrawer,
   onBackRightDrawer,
@@ -45,7 +50,9 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
     loadLayoutSidebarWidth(),
   );
   const accountDrawerTitle =
-    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ?? rightDrawerTitle;
+    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ??
+    resolveLayoutChatScreenTitle(rightDrawerChatScreen?.screen, t) ??
+    rightDrawerTitle;
   const showAccountMenuRows =
     (rightDrawerMode === "user-menu" || rightDrawerMode === "settings") &&
     rightDrawerAccountScreen !== "about" &&
@@ -191,6 +198,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               onlineCount={onlineCount}
               workspaceInfo={workspaceRightPanelInfo}
               accountScreen={rightDrawerAccountScreen ?? "root"}
+              chatScreen={rightDrawerChatScreen?.screen}
+              onChatScreenChange={onChatScreenChange}
               onAccountScreenChange={onAccountScreenChange}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
