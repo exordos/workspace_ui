@@ -1,9 +1,12 @@
 import React, { useRef, useState } from "react";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { EncryptedChatInfo } from "~/features/encrypted-chat-info/encrypted-chat-info.ui";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
+import { resolveLayoutChatScreenTitle } from "~/widgets/layout/layout-right-drawer-title.lib";
+import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 
 type PreviewState = "locked" | "loading" | "error";
 const DEVICE_NAMES = ["iPhone 15", "MacBook Air", "Chrome", "Firefox"] as const;
@@ -27,9 +30,18 @@ export function EncryptedChatPreview(): React.ReactElement {
   const [administrator, setAdministrator] = useState(true);
   const [hasKey, setHasKey] = useState(true);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelScreens, setPanelScreens] = useState<readonly EncryptedChatInfoScreen[]>(["info"]);
   const [notice, setNotice] = useState<string | null>(null);
   const openPanelRef = useRef<HTMLButtonElement>(null);
   const unsupported = () => setNotice(t("e2ee.previewUnavailable"));
+  const panelScreen = panelScreens.at(-1) ?? "info";
+  const openPanelScreen = (screen: EncryptedChatInfoScreen) =>
+    setPanelScreens((screens) => (screens.at(-1) === screen ? screens : [...screens, screen]));
+  const closePanel = () => {
+    setPanelOpen(false);
+    setPanelScreens(["info"]);
+    openPanelRef.current?.focus();
+  };
   const actionsEnabled = administrator && hasKey && state !== "loading";
   const requests = DEVICE_NAMES.map((deviceName, index) => ({
     requestMessageUuid: `preview-request-${index}`,
@@ -153,34 +165,42 @@ export function EncryptedChatPreview(): React.ReactElement {
             ))}
           </section>
           {panelOpen ? (
-            <div className="h-[984px] w-[299px] max-w-full shrink-0">
-              <EncryptedChatInfo
-                title={t("e2ee.previewChatName")}
-                participantsCount={5}
-                onlineCount={2}
-                keyInfo={
-                  hasKey
-                    ? { name: t("e2ee.previewKeyName"), createdLabel: t("e2ee.previewCreated") }
-                    : null
+            <div className="flex h-[984px] w-[299px] max-w-full shrink-0">
+              <RightDrawer
+                title={resolveLayoutChatScreenTitle(panelScreen, t) ?? t("info.channelInfo")}
+                onClose={closePanel}
+                onBack={
+                  panelScreens.length > 1
+                    ? () => setPanelScreens((screens) => screens.slice(0, -1))
+                    : undefined
                 }
-                requests={requests}
-                members={members}
-                showKeyManagement={administrator}
-                loading={state === "loading"}
-                error={state === "error" ? t("e2ee.decryptErrorDescription") : null}
-                canRotateKey={actionsEnabled}
-                canGrantAll={actionsEnabled}
-                onClose={() => {
-                  setPanelOpen(false);
-                  openPanelRef.current?.focus();
-                }}
-                onCopyKey={unsupported}
-                onRotateKey={unsupported}
-                onGrantAll={unsupported}
-                onGrantRequest={unsupported}
-                onRejectRequest={unsupported}
-                onOpenSettings={unsupported}
-              />
+              >
+                <EncryptedChatInfo
+                  title={t("e2ee.previewChatName")}
+                  participantsCount={5}
+                  onlineCount={2}
+                  keyInfo={
+                    hasKey
+                      ? { name: t("e2ee.previewKeyName"), createdLabel: t("e2ee.previewCreated") }
+                      : null
+                  }
+                  requests={requests}
+                  members={members}
+                  showKeyManagement={administrator}
+                  loading={state === "loading"}
+                  error={state === "error" ? t("e2ee.decryptErrorDescription") : null}
+                  canRotateKey={actionsEnabled}
+                  canGrantAll={actionsEnabled}
+                  screen={panelScreen}
+                  onScreenChange={openPanelScreen}
+                  onCopyKey={unsupported}
+                  onRotateKey={unsupported}
+                  onGrantAll={unsupported}
+                  onGrantRequest={unsupported}
+                  onRejectRequest={unsupported}
+                  onOpenSettings={() => openPanelScreen("settings")}
+                />
+              </RightDrawer>
             </div>
           ) : null}
         </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiIncomingInviteHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
@@ -29,7 +30,7 @@ export interface LayoutAppShellProps {
   rightDrawerMode: RightDrawerMode;
   rightDrawerAccountScreen: RightDrawerAccountScreen | null;
   rightDrawerChatScreen?: RightDrawerChatScreen | null;
-  onChatScreenChange?: (screen: "info" | "settings" | "key") => void;
+  onChatScreenChange?: (screen: EncryptedChatInfoScreen, keyUuid?: string) => void;
   rightDrawerCanGoBack: boolean;
   onCloseRightDrawer: () => void;
   /** Shell back control for the active layer's internal screen history. */

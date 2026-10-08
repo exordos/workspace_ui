@@ -22,6 +22,7 @@ export interface RightDrawerChatScope {
 }
 export interface RightDrawerChatScreen extends RightDrawerChatScope {
   readonly screen: EncryptedChatInfoScreen;
+  readonly keyUuid?: string;
 }
 export function sameRightDrawerChatScope(
   left: RightDrawerChatScope | null | undefined,
@@ -131,7 +132,8 @@ function sameScreen(left: RightDrawerScreen | undefined, right: RightDrawerScree
     left.accountScreen === right.accountScreen &&
     (left.chatScreen === right.chatScreen ||
       (sameRightDrawerChatScope(left.chatScreen, right.chatScreen) &&
-        left.chatScreen?.screen === right.chatScreen?.screen)) &&
+        left.chatScreen?.screen === right.chatScreen?.screen &&
+        left.chatScreen?.keyUuid === right.chatScreen?.keyUuid)) &&
     sameProfileOverride(left.profileOverride, right.profileOverride)
   );
 }
@@ -215,11 +217,26 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
     state.openScreen(accountScreen(screen));
   },
   openChatScreen(chatScreen) {
+    if (chatScreen.screen === "local-key" && !chatScreen.keyUuid) return;
     const state = get();
     if (state.layers.at(-1)?.kind !== "chat-info") {
       state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN] });
     }
-    get().openScreen({ mode: "info", chatScreen });
+    const requested: RightDrawerScreen = { mode: "info", chatScreen };
+    const active = get().layers.at(-1);
+    const existingIndex = active?.screens.findIndex((screen) => sameScreen(screen, requested));
+    // Returning from key details reuses the list screen instead of adding a loop to Back.
+    if (active && existingIndex !== undefined && existingIndex >= 0) {
+      const layers = get().layers.slice(0, -1);
+      set(
+        project(true, [
+          ...layers,
+          { ...active, screens: active.screens.slice(0, existingIndex + 1) },
+        ]),
+      );
+      return;
+    }
+    get().openScreen(requested);
   },
   resetChatScreens(scope) {
     set((state) => {

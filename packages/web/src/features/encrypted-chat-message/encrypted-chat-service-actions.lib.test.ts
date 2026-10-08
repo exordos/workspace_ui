@@ -146,10 +146,7 @@ describe("encrypted service actions", () => {
     const actions = getEncryptedChatServiceActions({
       ...opts,
       session,
-      message: message(
-        { kind: "key_announced", keyUuid: "historical", keyFingerprint: "fp" },
-        "admin",
-      ),
+      message: message({ kind: "key_announced", keyUuid: "historical" }, "admin"),
     });
     actions[0]?.onClick();
     expect(opts.onRequestKey).toHaveBeenCalledWith("historical");
@@ -157,10 +154,7 @@ describe("encrypted service actions", () => {
       ...opts,
       pending: true,
       session,
-      message: message(
-        { kind: "key_announced", keyUuid: "historical", keyFingerprint: "fp" },
-        "admin",
-      ),
+      message: message({ kind: "key_announced", keyUuid: "historical" }, "admin"),
     });
     expect(pending[0]?.disabled).toBe(true);
   });

@@ -1,10 +1,18 @@
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 import type { ReactNode } from "react";
 
-export type EncryptedChatInfoScreen = "info" | "settings" | "key";
+export type EncryptedChatInfoScreen = "info" | "settings" | "key" | "local-key";
 
 export interface EncryptedChatKeyInfo {
   readonly name: string;
   readonly createdLabel?: string;
+}
+
+export interface EncryptedChatLocalKeyView {
+  readonly keyUuid: string;
+  readonly isCurrent: boolean;
+  readonly addedLabel: string;
+  readonly announcedLabel: string;
 }
 
 export interface EncryptedChatKeyRequestView {
@@ -22,6 +30,8 @@ export interface EncryptedChatMemberView {
   readonly id: string;
   readonly name: string;
   readonly avatarUrl?: string | null;
+  readonly email?: string | null;
+  readonly presence?: PresenceVisual;
   readonly statusLabel?: string | null;
   readonly roleLabel?: string | null;
 }
@@ -35,7 +45,7 @@ export interface EncryptedChatInfoProps {
   readonly requests: readonly EncryptedChatKeyRequestView[];
   readonly members: readonly EncryptedChatMemberView[];
   readonly renderAvatar?: (
-    person: Pick<EncryptedChatMemberView, "name" | "avatarUrl">,
+    person: Pick<EncryptedChatMemberView, "name" | "avatarUrl" | "presence">,
   ) => ReactNode;
   readonly requestsLabel?: string;
   readonly unavailableReason?: string;
@@ -49,6 +59,18 @@ export interface EncryptedChatInfoProps {
   readonly onScreenChange?: (screen: EncryptedChatInfoScreen) => void;
   readonly grantedRequests?: readonly EncryptedChatKeyRequestView[];
   readonly rejectedRequests?: readonly EncryptedChatKeyRequestView[];
+
+  readonly localKeys?: readonly EncryptedChatLocalKeyView[];
+  readonly localKeysLoading?: boolean;
+  readonly localKeysError?: string | null;
+  readonly selectedLocalKeyUuid?: string;
+  readonly currentKeyMissing?: boolean;
+  readonly canRequestKey?: boolean;
+  readonly requestedKeyUuid?: string;
+  readonly onOpenLocalKey?: (keyUuid: string) => void;
+  readonly onRequestKey?: (keyUuid: string) => void;
+  readonly onDeleteLocalKey?: (keyUuid: string) => void;
+  readonly onRetryLocalKeys?: () => void;
 
   readonly canRotateKey?: boolean;
   readonly canGrantAll?: boolean;

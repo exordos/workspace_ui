@@ -9,6 +9,7 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
@@ -292,9 +293,9 @@ export const Layout: React.FC = () => {
     resetRightDrawerChatScreens(rightDrawerChatScope);
   }, [resetRightDrawerChatScreens, rightDrawerChatScope]);
   const handleChatScreenChange = useCallback(
-    (screen: "info" | "settings" | "key") => {
+    (screen: EncryptedChatInfoScreen, keyUuid?: string) => {
       if (rightDrawerChatScope != null)
-        openRightDrawerChatScreen({ ...rightDrawerChatScope, screen });
+        openRightDrawerChatScreen({ ...rightDrawerChatScope, screen, keyUuid });
     },
     [rightDrawerChatScope, openRightDrawerChatScreen],
   );

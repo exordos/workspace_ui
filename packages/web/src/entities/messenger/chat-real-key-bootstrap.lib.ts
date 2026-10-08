@@ -7,7 +7,7 @@ import {
 import { MessengerChannelCreationError } from "./chat-initial-key-bootstrap.lib";
 import type { ChatInitialKeyBootstrap } from "./chat-initial-key-bootstrap.lib";
 
-/** Persist before POST; an interrupted creation is reconciled by its generation fingerprint. */
+/** Persist before POST; an interrupted creation is reconciled by its generation UUID. */
 export const realChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
   async prepare({ runtimeContext, isCurrent, signal }) {
     const current = () => isCurrent() && signal?.aborted !== true;
@@ -16,19 +16,15 @@ export const realChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
     if (!current() || !groupKey.ok)
       throw new MessengerChannelCreationError("encryption-unavailable");
     const keyUuid = crypto.randomUUID();
-    const fingerprint = await realChatCryptoProvider.fingerprintGroupKey(groupKey.value, keyUuid);
-    if (!current() || !fingerprint.ok)
-      throw new MessengerChannelCreationError("encryption-unavailable");
     const creationId = crypto.randomUUID();
     const persisted = await realChatKeyStorage.writeStagedCreation(
       { owner: runtimeContext, deviceId: device.deviceId },
-      { creationId, keyUuid, fingerprint: fingerprint.value, groupKey: groupKey.value },
+      { creationId, keyUuid, groupKey: groupKey.value },
       { isCurrent: current },
     );
     if (!current() || !persisted) throw new MessengerChannelCreationError("encryption-unavailable");
     return {
       keyUuid,
-      keyFingerprint: fingerprint.value,
       creationId,
       deviceId: device.deviceId,
       source: "provider",

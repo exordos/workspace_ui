@@ -19,6 +19,7 @@ export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
   disabled = false,
   tone = "default",
   variant = "root",
+  density = "regular",
   id,
   testId,
   ariaLabel,
@@ -36,7 +37,9 @@ export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
       aria-label={ariaLabel}
       aria-controls={ariaControls}
       aria-expanded={ariaExpanded}
-      className={`flex items-center justify-between gap-2 py-1.5 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
+      className={`flex items-center justify-between gap-2 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
+        density === "compact" ? "h-10 py-0" : "py-1.5"
+      } ${
         variant === "nested" ? "-mx-2 w-[calc(100%+1rem)] px-2" : "w-full px-4"
       } ${isDanger ? "text-danger" : "text-text-primary"}`}
     >
@@ -53,7 +56,9 @@ export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
         <span className="min-w-0">
           <span
             className={`block text-sm ${
-              variant === "nested" ? "font-normal leading-4" : "font-medium leading-5"
+              variant === "nested" || density === "compact"
+                ? "font-normal leading-5"
+                : "font-medium leading-5"
             } ${isDanger ? "text-danger" : "text-text-primary"}`}
           >
             {label}

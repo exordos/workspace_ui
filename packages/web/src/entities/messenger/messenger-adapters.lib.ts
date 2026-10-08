@@ -53,7 +53,6 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
         ? null
         : {
             keyUuid: dto.current_encryption_key.key_uuid,
-            keyFingerprint: dto.current_encryption_key.key_fingerprint,
           },
     inviteOnly: dto.invite_only,
     announce: dto.announce,
@@ -209,7 +208,7 @@ export function adaptMessengerMessagePayload(
         publicKey: dto.public_key,
       };
     case "key_announced":
-      return { kind: dto.kind, keyUuid: dto.key_uuid, keyFingerprint: dto.key_fingerprint };
+      return { kind: dto.kind, keyUuid: dto.key_uuid };
     case "key_grant":
       return {
         kind: dto.kind,

@@ -210,6 +210,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               workspaceInfo={workspaceRightPanelInfo}
               accountScreen={rightDrawerAccountScreen ?? "root"}
               chatScreen={rightDrawerChatScreen?.screen}
+              selectedLocalKeyUuid={rightDrawerChatScreen?.keyUuid}
               onChatScreenChange={onChatScreenChange}
               onAccountScreenChange={onAccountScreenChange}
               onOpenSettingsDrawer={onOpenSettingsDrawer}

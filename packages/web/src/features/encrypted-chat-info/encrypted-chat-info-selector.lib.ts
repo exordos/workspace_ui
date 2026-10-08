@@ -7,7 +7,8 @@ import {
   selectUserDisplayName,
   resolveUserPresenceVisual,
 } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
+import type { User, UsersById } from "~/entities/user/user.types";
+import { t } from "~/i18n/i18n";
 import type {
   EncryptedChatKeyRequestView,
   EncryptedChatMemberView,
@@ -29,9 +30,22 @@ export interface EncryptedChatInfoSnapshot {
 export interface EncryptedChatInfoProjection {
   readonly stream: MessengerStream;
   readonly keyCreatedAt?: string;
+  readonly keyAnnouncementDates: Readonly<Record<string, string>>;
   readonly requests: readonly EncryptedChatKeyRequestView[];
   readonly members: readonly EncryptedChatMemberView[];
   readonly onlineCount: number;
+}
+
+function resolveMemberStatusLabel(status: User["status"] | undefined): string | null {
+  if (status == null) return null;
+  if (status === "active") return t("presence.online");
+  if (status === "idle") return t("presence.away");
+  if (status === "offline") return t("presence.offline");
+  return t("presence.doNotDisturb");
+}
+
+function resolveMemberRoleLabel(role: MessengerStreamBinding["role"]): string {
+  return role === "administrator" ? t("roles.admin") : t(`roles.${role}`);
 }
 
 /** Missing or stale owners yield no metadata, even if another project reused the UUID. */
@@ -52,6 +66,10 @@ export function selectEncryptedChatInfo(
         id: binding.uuid,
         name: selectUserDisplayName(user, binding.userUuid),
         avatarUrl: user?.avatarUrl ?? null,
+        email: user?.email?.trim() || null,
+        presence: resolveUserPresenceVisual(user?.status),
+        statusLabel: resolveMemberStatusLabel(user?.status),
+        roleLabel: resolveMemberRoleLabel(binding.role),
       };
     });
   const onlineCount = Object.values(snapshot.bindingsById).filter(
@@ -68,9 +86,14 @@ export function selectEncryptedChatInfo(
         )
       : [];
   const keyUuid = stream.currentEncryptionKey?.keyUuid;
-  const matchingAnnouncement = messages.find(
-    (message) => message.payload.kind === "key_announced" && message.payload.keyUuid === keyUuid,
-  );
+  const keyAnnouncementDates: Record<string, string> = {};
+  for (const message of messages) {
+    if (message.payload.kind !== "key_announced") continue;
+    const announcedKeyUuid = message.payload.keyUuid;
+    const previous = keyAnnouncementDates[announcedKeyUuid];
+    if (previous == null || Date.parse(message.createdAt) < Date.parse(previous))
+      keyAnnouncementDates[announcedKeyUuid] = message.createdAt;
+  }
   const requests = messages.flatMap((message) => {
     if (message.payload.kind !== "key_request") return [];
     const user = users[message.authorUuid];
@@ -85,5 +108,12 @@ export function selectEncryptedChatInfo(
       },
     ];
   });
-  return { stream, keyCreatedAt: matchingAnnouncement?.createdAt, requests, members, onlineCount };
+  return {
+    stream,
+    keyCreatedAt: keyUuid == null ? undefined : keyAnnouncementDates[keyUuid],
+    keyAnnouncementDates,
+    requests,
+    members,
+    onlineCount,
+  };
 }

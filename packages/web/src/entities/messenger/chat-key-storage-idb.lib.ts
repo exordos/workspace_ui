@@ -12,6 +12,7 @@ import type {
   PendingChatKeyRequest,
   StagedChatCreation,
   StoredChatKey,
+  StoredChatKeyMetadata,
 } from "./chat-key-storage.types";
 
 export const CHAT_KEY_STORAGE_DB_NAME = "workspace-chat-secrets-v1";
@@ -28,6 +29,10 @@ interface Row<T> {
   id: string;
   address: string;
   value: T;
+  // Historical grants retain this order; only selecting a sending key advances it.
+  sendOrder?: number;
+  receivedAt?: number;
+  deletionRevision?: number;
 }
 
 export class ChatKeyStorageError extends Error {
@@ -50,12 +55,17 @@ function keyAddress(address: ChatKeyStorageAddress): string {
   if (!address.streamUuid || !address.keyUuid) throw new ChatKeyStorageError("invalid-record");
   return JSON.stringify([scopeAddress(address), address.streamUuid, address.keyUuid]);
 }
+function chatKeyRange(address: Omit<ChatKeyStorageAddress, "keyUuid">): IDBKeyRange {
+  if (!address.streamUuid) throw new ChatKeyStorageError("invalid-record");
+  const prefix = JSON.stringify([scopeAddress(address), address.streamUuid]).slice(0, -1) + ",";
+  return IDBKeyRange.bound(prefix, prefix + "\uffff");
+}
 function recordId(address: string, suffix: string): string {
   if (!suffix) throw new ChatKeyStorageError("invalid-record");
   return JSON.stringify([address, suffix]);
 }
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.length === right.length && left.every((byte, i) => byte === right[i]);
+  return left.length === right.length && left.every((byte, index) => byte === right[index]);
 }
 function isBytes(value: unknown): value is Uint8Array {
   return (
@@ -74,29 +84,29 @@ function copyRecord<T>(value: T): T {
   return copy(value) as T;
 }
 function validKey(key: StoredChatKey): void {
-  if (
-    !isBytes(key.fingerprint.bytes) ||
-    key.fingerprint.bytes.length !== 32 ||
-    (key.groupKey !== null && (!isBytes(key.groupKey.bytes) || key.groupKey.bytes.length !== 32))
-  )
+  if (key.groupKey !== null && (!isBytes(key.groupKey.bytes) || key.groupKey.bytes.length !== 32))
     throw new ChatKeyStorageError("invalid-record");
+}
+
+function firstReceivedAt(previous: Row<StoredChatKey> | undefined): number | undefined {
+  // Keep missing legacy dates unknown; refreshing a secret does not add it again.
+  return previous?.value.groupKey ? previous.receivedAt : Date.now();
 }
 function compatibleKey(
   previous: StoredChatKey | undefined,
   incoming: StoredChatKey,
 ): StoredChatKey {
   validKey(incoming);
-  if (previous === undefined)
-    return { fingerprint: incoming.fingerprint, groupKey: incoming.groupKey };
+  if (previous === undefined) return { groupKey: incoming.groupKey };
   validKey(previous);
   if (
-    !equalBytes(previous.fingerprint.bytes, incoming.fingerprint.bytes) ||
-    (previous.groupKey !== null &&
-      incoming.groupKey !== null &&
-      !equalBytes(previous.groupKey.bytes, incoming.groupKey.bytes))
+    previous.groupKey !== null &&
+    incoming.groupKey !== null &&
+    (previous.groupKey.bytes.length !== incoming.groupKey.bytes.length ||
+      !previous.groupKey.bytes.every((byte, index) => byte === incoming.groupKey?.bytes[index]))
   )
     throw new ChatKeyStorageError("conflict");
-  return { fingerprint: incoming.fingerprint, groupKey: incoming.groupKey ?? previous.groupKey };
+  return { groupKey: incoming.groupKey ?? previous.groupKey };
 }
 
 /** A separate database prevents message-cache cleanup from destroying pending request secrets. */
@@ -156,16 +166,21 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     return pending;
   }
 
-  private async read<T>(storeName: StoreName, id: string): Promise<T | null> {
+  private async readRow<T>(storeName: StoreName, id: string): Promise<Row<T> | null> {
     const db = await this.open();
-    return new Promise<T | null>((resolve, reject) => {
+    return new Promise<Row<T> | null>((resolve, reject) => {
       const tx = db.transaction(storeName, "readonly");
       const request = tx.objectStore(storeName).get(id) as IDBRequest<Row<T> | undefined>;
       tx.oncomplete = () =>
-        resolve(request.result === undefined ? null : copyRecord(request.result.value));
+        resolve(request.result === undefined ? null : copyRecord(request.result));
       tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
       tx.onerror = () => undefined;
     });
+  }
+
+  private async read<T>(storeName: StoreName, id: string): Promise<T | null> {
+    const row = await this.readRow<T>(storeName, id);
+    return row?.value ?? null;
   }
 
   private async mutate(
@@ -175,6 +190,7 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
       tx: IDBTransaction,
       finish: (write: () => void) => void,
       fail: (error: unknown) => void,
+      skip: () => void,
     ) => void,
   ): Promise<boolean> {
     const capturedOptions = options === undefined ? undefined : { isCurrent: options.isCurrent };
@@ -186,6 +202,10 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
       let failure: unknown;
       const fail = (error: unknown) => {
         failure = error;
+        tx.abort();
+      };
+      const skip = () => {
+        skipped = true;
         tx.abort();
       };
       const finish = (write: () => void) => {
@@ -214,7 +234,7 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
           : reject(failure instanceof Error ? failure : new ChatKeyStorageError("unavailable"));
       tx.onerror = () => undefined;
       try {
-        operation(tx, finish, fail);
+        operation(tx, finish, fail, skip);
       } catch (error) {
         fail(error);
       }
@@ -252,24 +272,126 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     });
   }
 
-  readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null> {
-    return this.read("keys", keyAddress(address));
+  async readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null> {
+    const row = await this.readRow<StoredChatKey>("keys", keyAddress(address));
+    if (row?.value.groupKey === null && row.deletionRevision !== undefined) return null;
+    return row?.value ?? null;
+  }
+  async readChatKeyDeletionRevision(address: ChatKeyStorageAddress): Promise<number> {
+    const row = await this.readRow<StoredChatKey>("keys", keyAddress(address));
+    return row?.deletionRevision ?? 0;
+  }
+  async listChatKeys(
+    address: Omit<ChatKeyStorageAddress, "keyUuid">,
+  ): Promise<readonly StoredChatKeyMetadata[]> {
+    const range = chatKeyRange(address);
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("keys", "readonly");
+      const request = tx.objectStore("keys").getAll(range) as IDBRequest<Row<StoredChatKey>[]>;
+      tx.oncomplete = () => {
+        try {
+          const keys = request.result
+            .filter((row) => row.value.groupKey !== null)
+            .map((row): StoredChatKeyMetadata => {
+              validKey(row.value);
+              const parts: unknown = JSON.parse(row.id);
+              if (!Array.isArray(parts) || typeof parts[2] !== "string")
+                throw new ChatKeyStorageError("invalid-record");
+              return {
+                keyUuid: parts[2],
+                receivedAt:
+                  row.receivedAt !== undefined && Number.isFinite(row.receivedAt)
+                    ? row.receivedAt
+                    : null,
+              };
+            })
+            .sort(
+              (left, right) =>
+                (right.receivedAt ?? -Infinity) - (left.receivedAt ?? -Infinity) ||
+                left.keyUuid.localeCompare(right.keyUuid),
+            );
+          resolve(keys);
+        } catch (error) {
+          reject(error instanceof Error ? error : new ChatKeyStorageError("invalid-record"));
+        }
+      };
+      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
+      tx.onerror = () => undefined;
+    });
+  }
+  async readLastAvailableChatKey(address: Omit<ChatKeyStorageAddress, "keyUuid">) {
+    const range = chatKeyRange(address);
+    const db = await this.open();
+    return new Promise<{
+      keyUuid: string;
+      groupKey: NonNullable<StoredChatKey["groupKey"]>;
+    } | null>((resolve, reject) => {
+      const tx = db.transaction("keys", "readonly");
+      const request = tx.objectStore("keys").getAll(range) as IDBRequest<Row<StoredChatKey>[]>;
+      tx.oncomplete = () => {
+        try {
+          const row = request.result
+            .filter((row) => row.value.groupKey !== null)
+            .sort(
+              (left, right) =>
+                (right.sendOrder ?? 0) - (left.sendOrder ?? 0) ||
+                (right.receivedAt ?? 0) - (left.receivedAt ?? 0),
+            )[0];
+          if (!row) return resolve(null);
+          validKey(row.value);
+          const parts: unknown = JSON.parse(row.id);
+          if (!Array.isArray(parts) || typeof parts[2] !== "string")
+            throw new ChatKeyStorageError("invalid-record");
+          resolve({ keyUuid: parts[2], groupKey: copyRecord(row.value.groupKey!) });
+        } catch (error) {
+          reject(error instanceof Error ? error : new ChatKeyStorageError("invalid-record"));
+        }
+      };
+      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
+      tx.onerror = () => undefined;
+    });
   }
   writeChatKey(
     address: ChatKeyStorageAddress,
     key: StoredChatKey,
-    options?: ChatKeyStorageWriteOptions,
+    options?: ChatKeyStorageWriteOptions & {
+      readonly forSending?: boolean;
+      readonly onlyIfPresent?: boolean;
+    },
   ): Promise<boolean> {
     const id = keyAddress(address);
     const capturedKey = copyRecord(key);
-    return this.mutate(["keys"], options, (tx, finish, fail) => {
+    const forSending = options?.forSending === true;
+    const onlyIfPresent = options?.onlyIfPresent === true;
+    return this.mutate(["keys"], options, (tx, finish, fail, skip) => {
       const store = tx.objectStore("keys");
       const request = store.get(id) as IDBRequest<Row<StoredChatKey> | undefined>;
-      request.onsuccess = () => {
+      const rows = forSending
+        ? (store.getAll(chatKeyRange(address)) as IDBRequest<Row<StoredChatKey>[]>)
+        : null;
+      const lastRead = rows ?? request;
+      lastRead.onsuccess = () => {
         try {
+          if (onlyIfPresent && request.result?.value.groupKey == null) {
+            skip();
+            return;
+          }
           const value = compatibleKey(request.result?.value, capturedKey);
+          const sendOrder =
+            forSending && value.groupKey !== null
+              ? (rows?.result.reduce((maximum, row) => Math.max(maximum, row.sendOrder ?? 0), 0) ??
+                  0) + 1
+              : request.result?.sendOrder;
           finish(() => {
-            store.put({ id, address: id, value });
+            store.put({
+              id,
+              address: id,
+              value,
+              sendOrder,
+              receivedAt: value.groupKey ? firstReceivedAt(request.result) : undefined,
+              deletionRevision: request.result?.deletionRevision,
+            });
           });
         } catch (error) {
           fail(error);
@@ -281,11 +403,25 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     address: ChatKeyStorageAddress,
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean> {
-    return this.mutate(["keys"], options, (tx, finish) =>
-      finish(() => {
-        tx.objectStore("keys").delete(keyAddress(address));
-      }),
-    );
+    const id = keyAddress(address);
+    return this.mutate(["keys", "requests"], options, (tx, finish) => {
+      const keys = tx.objectStore("keys");
+      const previous = keys.get(id) as IDBRequest<Row<StoredChatKey> | undefined>;
+      const requests = tx.objectStore("requests");
+      const pending = requests.index("address").getAllKeys(id);
+      pending.onsuccess = () =>
+        finish(() => {
+          // The secret-free revision fences prepared requests even before cross-tab notification.
+          keys.put({
+            id,
+            address: id,
+            value: { groupKey: null },
+            deletionRevision: (previous.result?.deletionRevision ?? 0) + 1,
+          });
+          // Recovery requests contain another copy of this secret and must disappear with it.
+          for (const requestId of pending.result) requests.delete(requestId);
+        });
+    });
   }
   readPendingRequest(
     address: ChatKeyStorageAddress,
@@ -323,12 +459,21 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     const scope = keyAddress(address);
     const capturedPending = copyRecord(pending);
     const id = recordId(scope, capturedPending.localRequestId);
-    return this.mutate(["requests", "completions"], options, (tx, finish, fail) => {
+    const expectedDeletionRevision = options?.expectedDeletionRevision;
+    return this.mutate(["requests", "completions", "keys"], options, (tx, finish, fail, skip) => {
       const previous = tx.objectStore("requests").get(id) as IDBRequest<
         Row<PendingChatKeyRequest> | undefined
       >;
+      const key = tx.objectStore("keys").get(scope) as IDBRequest<Row<StoredChatKey> | undefined>;
       const terminal = tx.objectStore("completions").get(id);
       terminal.onsuccess = () => {
+        if (
+          expectedDeletionRevision !== undefined &&
+          expectedDeletionRevision !== (key.result?.deletionRevision ?? 0)
+        ) {
+          skip();
+          return;
+        }
         const old = previous.result?.value;
         if (
           terminal.result !== undefined ||
@@ -455,13 +600,29 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
             !capturedCompletion.responseMessageUuid
           )
             throw new ChatKeyStorageError("conflict");
-          const groupKey =
-            outcome === "granted" && "groupKey" in capturedCompletion
-              ? compatibleKey(key.result?.value, {
-                  fingerprint: capturedCompletion.fingerprint,
-                  groupKey: capturedCompletion.groupKey,
-                })
-              : null;
+          const recovery = pending.result.value.recovery;
+          const replacing =
+            outcome === "granted" &&
+            "replaceExistingKey" in capturedCompletion &&
+            capturedCompletion.replaceExistingKey === true;
+          if (replacing) {
+            if (!recovery || !("groupKey" in capturedCompletion))
+              throw new ChatKeyStorageError("conflict");
+            validKey({ groupKey: capturedCompletion.groupKey });
+            const currentKey = key.result?.value.groupKey;
+            // A different tab may have repaired this generation while validation was running.
+            if (
+              currentKey == null ||
+              (!equalBytes(currentKey.bytes, recovery.previousGroupKey.bytes) &&
+                !equalBytes(currentKey.bytes, capturedCompletion.groupKey.bytes))
+            )
+              throw new ChatKeyStorageError("conflict");
+          }
+          let groupKey: StoredChatKey | null = null;
+          if (outcome === "granted" && "groupKey" in capturedCompletion)
+            groupKey = replacing
+              ? { groupKey: capturedCompletion.groupKey }
+              : compatibleKey(key.result?.value, { groupKey: capturedCompletion.groupKey });
           const receipt: ChatKeyRequestCompletion = {
             localRequestId: capturedCompletion.localRequestId,
             requestMessageUuid: capturedCompletion.requestMessageUuid,
@@ -470,7 +631,13 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
           };
           finish(() => {
             if (groupKey !== null)
-              tx.objectStore("keys").put({ id: scope, address: scope, value: groupKey });
+              tx.objectStore("keys").put({
+                ...key.result,
+                id: scope,
+                address: scope,
+                value: groupKey,
+                receivedAt: firstReceivedAt(key.result),
+              });
             tx.objectStore("completions").put({ id, address: scope, value: receipt });
             tx.objectStore("requests").delete(id);
           });
@@ -571,7 +738,13 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
           try {
             const value = compatibleKey(old.result?.value, creation);
             finish(() => {
-              tx.objectStore("keys").put({ id: target, address: target, value });
+              tx.objectStore("keys").put({
+                ...old.result,
+                id: target,
+                address: target,
+                value,
+                receivedAt: firstReceivedAt(old.result),
+              });
               tx.objectStore("creations").delete(id);
               tx.objectStore("creationReceipts").put({
                 id,

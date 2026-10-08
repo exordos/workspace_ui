@@ -3,10 +3,6 @@ export interface ChatCryptoGroupKey {
   readonly bytes: Uint8Array;
 }
 
-export interface ChatCryptoKeyFingerprint {
-  readonly bytes: Uint8Array;
-}
-
 export interface ChatCryptoPublicKey {
   // The API adapter encodes these bytes as Base64 in payload.public_key.
   readonly bytes: Uint8Array;
@@ -49,11 +45,6 @@ export type ChatCryptoResult<T> =
 export interface ChatCryptoProvider<TPrivateKey = Uint8Array> {
   createRequestKeyPair(): Promise<ChatCryptoResult<ChatCryptoKeyPair<TPrivateKey>>>;
   createGroupKey(): Promise<ChatCryptoResult<ChatCryptoGroupKey>>;
-  fingerprintGroupKey(
-    groupKey: ChatCryptoGroupKey,
-    keyUuid: string,
-  ): Promise<ChatCryptoResult<ChatCryptoKeyFingerprint>>;
-
   encryptMessage(input: {
     readonly groupKey: ChatCryptoGroupKey;
     readonly plaintext: Uint8Array;
@@ -75,7 +66,6 @@ export interface ChatCryptoProvider<TPrivateKey = Uint8Array> {
 
   decryptGroupKeyGrant(input: {
     readonly requestKeyPair: ChatCryptoKeyPair<TPrivateKey>;
-    readonly expectedFingerprint: ChatCryptoKeyFingerprint;
     readonly envelope: ChatCryptoEnvelope;
     readonly context: ChatCryptoGrantContext;
   }): Promise<ChatCryptoResult<ChatCryptoGroupKey>>;

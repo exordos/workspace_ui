@@ -220,7 +220,7 @@ describe("WorkspaceMessageList", () => {
         recipientDeviceId: "device",
         content: encoded,
       },
-      { kind: "key_announced", keyUuid: "generation", keyFingerprint: encoded },
+      { kind: "key_announced", keyUuid: "generation" },
       {
         kind: "key_reject",
         keyUuid: "generation",

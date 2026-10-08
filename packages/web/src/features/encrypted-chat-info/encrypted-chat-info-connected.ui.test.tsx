@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EncryptedChatInfoConnected } from "./encrypted-chat-info-connected.ui";
 
@@ -19,7 +19,11 @@ function fixture() {
     request("rejected", "Rejected"),
   ];
   const session = {
-    getRights: () => ({ canRotate: true }),
+    getRights: () => ({ canRotate: true, canRequest: true }),
+    subscribe: vi.fn((_listener: () => void) => () => undefined),
+    listLocalKeys: vi
+      .fn<() => Promise<{ keyUuid: string; receivedAt: number | null }[]>>()
+      .mockResolvedValue([]),
     getKeyRequestOutcomes: () => [
       { request: { uuid: "old" }, status: "pending" },
       { request: { uuid: "done" }, status: "granted" },
@@ -34,6 +38,8 @@ function fixture() {
     loading: false,
     error: null,
     requestErrors: {},
+    requestKey: vi.fn().mockResolvedValue(true),
+    removeLocalKey: vi.fn().mockResolvedValue(true),
     reissueKey: vi.fn().mockResolvedValue(true),
     grantAllKeys: vi.fn().mockResolvedValue(true),
     grantKey: vi.fn().mockResolvedValue(undefined),
@@ -43,8 +49,9 @@ function fixture() {
     projection: {
       stream: {
         name: "Protected",
-        currentEncryptionKey: { keyUuid: "current", keyFingerprint: "fingerprint" },
+        currentEncryptionKey: { keyUuid: "current" },
       },
+      keyAnnouncementDates: {} as Record<string, string>,
       requests,
       members: [],
       onlineCount: 0,
@@ -74,7 +81,7 @@ describe("encrypted chat sidebar actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Grant all" }));
     expect(crypto.grantAllKeys).toHaveBeenCalledOnce();
   });
-  it("reports settings/key navigation to its drawer owner and renders only the active body", () => {
+  it("reports settings/key navigation to its drawer owner and renders only the active body", async () => {
     fixture();
     const navigate = vi.fn();
     const view = render(
@@ -91,7 +98,7 @@ describe("encrypted chat sidebar actions", () => {
     );
     expect(screen.getByText("Channel details are currently read-only.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Encryption key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Encryption keys" }));
     expect(navigate).toHaveBeenLastCalledWith("key");
     view.rerender(
       <EncryptedChatInfoConnected streamUuid="stream" screen="key" onScreenChange={navigate} />,
@@ -107,6 +114,9 @@ describe("encrypted chat sidebar actions", () => {
     expect(screen.getByText("Rejected device")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Grant access to Granted" })).toBeNull();
     expect(screen.getByText("Showing loaded history.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Request current key" })).toBeEnabled(),
+    );
   });
   it("requires confirmation and leaves a failed reissue open for retry", async () => {
     const { crypto } = fixture();
@@ -145,13 +155,13 @@ describe("encrypted chat sidebar actions", () => {
         ...info.projection,
         stream: {
           ...info.projection.stream,
-          currentEncryptionKey: { keyUuid: "next", keyFingerprint: "next fingerprint" },
+          currentEncryptionKey: { keyUuid: "next" },
         },
       },
     });
     view.rerender(<EncryptedChatInfoConnected streamUuid="stream" />);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText("next fingerprint")).toBeInTheDocument();
+    expect(screen.getByText("next")).toBeInTheDocument();
   });
   it("keeps the owner-selected key screen after rotation and does not let an old success dismiss a new confirmation", async () => {
     const { crypto, info } = fixture();
@@ -173,12 +183,11 @@ describe("encrypted chat sidebar actions", () => {
         ...info.projection,
         stream: {
           ...info.projection.stream,
-          currentEncryptionKey: { keyUuid: "next", keyFingerprint: "new fingerprint" },
+          currentEncryptionKey: { keyUuid: "next" },
         },
       },
     });
     view.rerender(<EncryptedChatInfoConnected streamUuid="next-stream" screen="key" />);
-    expect(screen.getByText("new fingerprint")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Incoming requests (1)" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reissue key" }));
     await act(async () => {
@@ -186,5 +195,227 @@ describe("encrypted chat sidebar actions", () => {
       await Promise.resolve();
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("local encrypted chat keys", () => {
+  const oldKey = "aabbccdd-1111-2222-3333-444455556666";
+  it("requests an absent current UUID while historical keys remain saved, with a collapsed compact inventory", async () => {
+    const { crypto } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([
+      { keyUuid: oldKey, receivedAt: Date.parse("2026-10-08T08:00:00Z") },
+    ]);
+    crypto.session.getRights = () => ({ canRotate: false, canRequest: true });
+    const openKey = vi.fn();
+    render(
+      <EncryptedChatInfoConnected streamUuid="stream" screen="key" onOpenLocalKey={openKey} />,
+    );
+    const requestCurrent = await screen.findByRole("button", { name: "Request current key" });
+    expect(requestCurrent).toBeEnabled();
+    const accordion = screen.getByRole("button", { name: "Keys on this device (1)" });
+    expect(accordion).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Saved key: " + oldKey })).toBeNull();
+    await act(async () => {
+      fireEvent.click(requestCurrent);
+      await Promise.resolve();
+    });
+    expect(crypto.requestKey).toHaveBeenCalledWith("current");
+    expect(screen.getByText("Request sent. Waiting for the key.")).toBeInTheDocument();
+    fireEvent.click(accordion);
+    expect(screen.getByText("Historical")).toBeInTheDocument();
+    expect(screen.getByText(/Added:/)).toBeInTheDocument();
+    expect(screen.queryByText("Announced in chat")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Saved key: " + oldKey }));
+    expect(openKey).toHaveBeenCalledWith(oldKey);
+    expect(screen.getByRole("button", { name: "Reissue key" })).toBeDisabled();
+  });
+  it("shows both dates on key details and repeats its exact UUID without rotation", async () => {
+    const { crypto, info } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([
+      { keyUuid: oldKey, receivedAt: Date.parse("2026-10-08T08:00:00Z") },
+    ]);
+    info.projection.keyAnnouncementDates[oldKey] = "2026-10-07T08:00:00Z";
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+      />,
+    );
+    await screen.findByText(oldKey);
+    expect(screen.getByText("Announced in chat")).toBeInTheDocument();
+    expect(screen.getByText("Added to this device")).toBeInTheDocument();
+    expect(screen.getByText("Oct 7, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Oct 8, 2026")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reissue key" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Request this key again" }));
+      await Promise.resolve();
+    });
+    expect(crypto.requestKey).toHaveBeenCalledWith(oldKey);
+    expect(screen.getByText("Request sent. The saved key remains available.")).toBeInTheDocument();
+    expect(crypto.removeLocalKey).not.toHaveBeenCalled();
+  });
+  it("requires confirmation for device deletion and returns to the inventory after success", async () => {
+    const { crypto } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([{ keyUuid: oldKey, receivedAt: null }]);
+    const navigate = vi.fn();
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+        onScreenChange={navigate}
+      />,
+    );
+    await screen.findByText(oldKey);
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Not found in loaded history")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete from this device" }));
+    expect(crypto.removeLocalKey).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Delete from this device" }),
+      );
+      await Promise.resolve();
+    });
+    expect(crypto.removeLocalKey).toHaveBeenCalledWith(oldKey);
+    expect(navigate).toHaveBeenCalledWith("key");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+  it("hides stale inventory and confirmation on session/stream changes and ignores their delayed completion", async () => {
+    const { crypto } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([{ keyUuid: oldKey, receivedAt: null }]);
+    let finishRemoval: ((success: boolean) => void) | undefined;
+    crypto.removeLocalKey.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        finishRemoval = resolve;
+      }),
+    );
+    const navigate = vi.fn();
+    const view = render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+        onScreenChange={navigate}
+      />,
+    );
+    await screen.findByText(oldKey);
+    fireEvent.click(screen.getByRole("button", { name: "Delete from this device" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete from this device" }),
+    );
+    mocks.crypto.mockReturnValue({
+      ...crypto,
+      session: { ...crypto.session, listLocalKeys: vi.fn().mockResolvedValue([]) },
+    });
+    view.rerender(
+      <EncryptedChatInfoConnected
+        streamUuid="another-stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+        onScreenChange={navigate}
+      />,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(oldKey)).toBeNull();
+    await act(async () => {
+      finishRemoval?.(true);
+      await Promise.resolve();
+    });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByText("This key is no longer saved on this device.")).toBeInTheDocument();
+  });
+  it("ignores a delayed inventory read from a previous session and supports retry after storage failure", async () => {
+    const { crypto } = fixture();
+    let finishRead: ((keys: { keyUuid: string; receivedAt: number | null }[]) => void) | undefined;
+    crypto.session.listLocalKeys.mockReturnValue(
+      new Promise((resolve) => {
+        finishRead = resolve;
+      }),
+    );
+    const view = render(<EncryptedChatInfoConnected streamUuid="stream" screen="key" />);
+    const nextList = vi.fn().mockRejectedValue(new Error("storage-failed"));
+    mocks.crypto.mockReturnValue({
+      ...crypto,
+      session: { ...crypto.session, listLocalKeys: nextList },
+    });
+    view.rerender(<EncryptedChatInfoConnected streamUuid="next" screen="key" />);
+    await act(async () => {
+      finishRead?.([{ keyUuid: oldKey, receivedAt: null }]);
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Keys on this device (0)" }));
+    expect(screen.getByText("Could not load keys from this device.")).toBeInTheDocument();
+    expect(screen.queryByText("Historical")).toBeNull();
+    nextList.mockResolvedValue([{ keyUuid: "current", receivedAt: null }]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Current")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request current key" })).toBeNull();
+  });
+  it("retains selected details during a subscription refresh and handles an invalid legacy timestamp", async () => {
+    const { crypto } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([
+      { keyUuid: oldKey, receivedAt: Number.MAX_VALUE },
+    ]);
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+      />,
+    );
+    await screen.findByText(oldKey);
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    let finishRead: ((keys: { keyUuid: string; receivedAt: number | null }[]) => void) | undefined;
+    crypto.session.listLocalKeys.mockReturnValue(
+      new Promise((resolve) => {
+        finishRead = resolve;
+      }),
+    );
+    act(() => {
+      crypto.session.subscribe.mock.calls[0]?.[0]();
+    });
+    expect(screen.getByText(oldKey)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request this key again" })).toBeEnabled();
+    await act(async () => {
+      finishRead?.([]);
+      await Promise.resolve();
+    });
+    expect(screen.getByText("This key is no longer saved on this device.")).toBeInTheDocument();
+  });
+  it("does not claim a failed request was sent and retains failed deletion confirmation for retry", async () => {
+    const { crypto } = fixture();
+    crypto.session.listLocalKeys.mockResolvedValue([{ keyUuid: oldKey, receivedAt: null }]);
+    crypto.requestKey.mockResolvedValue(false);
+    crypto.removeLocalKey.mockResolvedValue(false);
+    const navigate = vi.fn();
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        screen="local-key"
+        selectedLocalKeyUuid={oldKey}
+        onScreenChange={navigate}
+      />,
+    );
+    await screen.findByText(oldKey);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Request this key again" }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Request sent. The saved key remains available.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Delete from this device" }));
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Delete from this device" }),
+      );
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

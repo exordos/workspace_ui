@@ -337,6 +337,7 @@ export function useCreateChatDialog(options: {
       setChannelInviteOnly(false);
       setChannelAnnounce(false);
       setChannelAnnouncementOnly(false);
+      setChannelEncryptionState(false);
       setCreating(false);
       setChannelsSearch("");
       setChannelsSubscriptionFilter("unsubscribed");

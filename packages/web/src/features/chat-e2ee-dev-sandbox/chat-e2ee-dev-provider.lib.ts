@@ -6,7 +6,6 @@ import type {
 } from "~/entities/messenger/chat-crypto-provider.types";
 
 export const E2EE_SANDBOX_FIXTURE_TEXT = "INSECURE E2EE sandbox fixture";
-export const E2EE_SANDBOX_FINGERPRINT = { bytes: new Uint8Array([70, 73, 88]) };
 export const E2EE_SANDBOX_GROUP_KEY = { bytes: new Uint8Array(32).fill(42) };
 const ok = <T>(value: T): ChatCryptoResult<T> => ({ ok: true, value });
 const invalid = (): ChatCryptoResult<never> => ({ ok: false, reason: "invalid-ciphertext" });
@@ -27,7 +26,6 @@ export function createInsecureSandboxProvider(): ChatCryptoProvider {
       return Promise.resolve(ok({ publicKey: { bytes }, privateKey: bytes }));
     },
     createGroupKey: () => Promise.resolve(ok(E2EE_SANDBOX_GROUP_KEY)),
-    fingerprintGroupKey: () => Promise.resolve(ok(E2EE_SANDBOX_FINGERPRINT)),
     encryptMessage: ({ plaintext, groupKey }) =>
       Promise.resolve(
         same(plaintext, encoder.encode(E2EE_SANDBOX_FIXTURE_TEXT)) &&
@@ -48,14 +46,13 @@ export function createInsecureSandboxProvider(): ChatCryptoProvider {
       grants.set(token, { context, recipient: recipientPublicKey.bytes, groupKey });
       return Promise.resolve(ok({ bytes: encoder.encode(token) }));
     },
-    decryptGroupKeyGrant: ({ envelope, context, requestKeyPair, expectedFingerprint }) => {
+    decryptGroupKeyGrant: ({ envelope, context, requestKeyPair }) => {
       const grant = grants.get(new TextDecoder().decode(envelope.bytes));
       return Promise.resolve(
         grant &&
           JSON.stringify(grant.context) === JSON.stringify(context) &&
           same(grant.recipient, requestKeyPair.publicKey.bytes) &&
-          same(grant.recipient, requestKeyPair.privateKey) &&
-          same(expectedFingerprint.bytes, E2EE_SANDBOX_FINGERPRINT.bytes)
+          same(grant.recipient, requestKeyPair.privateKey)
           ? ok(grant.groupKey)
           : invalid(),
       );

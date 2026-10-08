@@ -229,6 +229,7 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
   const folderA = folder();
 
   return {
+    streamBindingRevisionByStreamId: {},
     ownerKey: "owner",
     isLoading: false,
     error: null,

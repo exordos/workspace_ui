@@ -152,10 +152,9 @@ describe("messenger create chat actions", () => {
         expect(body.encryption).toBe(true);
         expect(body.invite_only).toBe(false);
         expect(body.announce).toBe(false);
-        expect(atob(body.current_encryption_key!.key_fingerprint)).toBe(
-          "DEV_ONLY_NO_CRYPTO_PUBLIC_KEY",
-        );
-        expect(body.current_encryption_key!.key_uuid).toMatch(/^[0-9a-f-]{36}$/);
+        expect(body.current_encryption_key).toEqual({
+          key_uuid: "00000000-0000-4000-8000-000000000001",
+        });
         return Promise.resolve({
           stream: createStreamDto({
             encryption: true,
@@ -186,7 +185,6 @@ describe("messenger create chat actions", () => {
       (_options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) => {
         expect(body.current_encryption_key).toEqual({
           key_uuid: STREAM_A,
-          key_fingerprint: "AQID",
         });
         return Promise.resolve({
           stream: createStreamDto({
@@ -205,7 +203,6 @@ describe("messenger create chat actions", () => {
         prepare: () =>
           Promise.resolve({
             keyUuid: STREAM_A,
-            keyFingerprint: { bytes: new Uint8Array([1, 2, 3]) },
             source: "provider",
           }),
       },
@@ -259,7 +256,7 @@ describe("messenger create chat actions", () => {
   });
 
   it.each([false, true])(
-    "does not store a response with plaintext or mismatched key metadata (encrypted=%s)",
+    "does not store a response with plaintext or mismatched generation UUID (encrypted=%s)",
     async (encrypted) => {
       vi.stubEnv("DEV", true);
       const runtimeContext = createRuntimeContext({ organizationOrigin: "http://localhost:23190" });
@@ -275,7 +272,7 @@ describe("messenger create chat actions", () => {
               Promise.resolve({
                 stream: createStreamDto({
                   encryption: encrypted,
-                  current_encryption_key: { key_uuid: STREAM_A, key_fingerprint: "other" },
+                  current_encryption_key: { key_uuid: STREAM_A },
                 }),
                 defaultTopic: createTopicDto(),
               }),
@@ -291,7 +288,6 @@ describe("messenger create chat actions", () => {
     let current = initial;
     const pending = createDeferred<{
       keyUuid: string;
-      keyFingerprint: { bytes: Uint8Array };
       source: "provider";
     }>();
     const create = vi.fn();
@@ -307,7 +303,6 @@ describe("messenger create chat actions", () => {
     current = createRuntimeContext({ runtimeGeneration: 3 });
     pending.resolve({
       keyUuid: STREAM_A,
-      keyFingerprint: { bytes: new Uint8Array([1]) },
       source: "provider",
     });
     expect(await operation).toMatchObject({ status: "skipped", reason: "stale-owner" });

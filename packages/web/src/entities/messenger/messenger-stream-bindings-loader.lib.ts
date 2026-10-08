@@ -24,7 +24,7 @@ import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
-import { useMessengerStore } from "./messenger.model";
+import { isMessengerStreamRemoved, useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerStreamBinding, MessengerUuid } from "./messenger.types";
 
@@ -49,7 +49,11 @@ export interface MessengerStreamBindingsCacheDeps {
 export interface MessengerStreamBindingsStoreApi {
   getState: () => Pick<
     MessengerStoreState,
-    "ownerKey" | "streamBindingsLoadedByStreamId" | "replaceStreamBindingsForStream"
+    | "ownerKey"
+    | "bootstrapRequestVersion"
+    | "streamBindingRevisionByStreamId"
+    | "streamBindingsLoadedByStreamId"
+    | "replaceStreamBindingsForStream"
   >;
 }
 
@@ -98,13 +102,15 @@ interface MessengerStreamBindingsLoadEntry {
 
 const inflightStreamBindingLoads = new Map<string, MessengerStreamBindingsLoadEntry>();
 const DEFAULT_STREAM_BINDINGS_PAGE_LIMIT = 100;
+const MAX_STREAM_BINDINGS_SNAPSHOT_ATTEMPTS = 3;
 
 function streamBindingsLoadKey(input: {
   ownerKey: string;
   runtimeGeneration: number;
+  bootstrapRequestVersion: number;
   streamUuid: MessengerUuid;
 }): string {
-  return `${input.ownerKey}:generation:${input.runtimeGeneration}:stream:${input.streamUuid}`;
+  return `${input.ownerKey}:generation:${input.runtimeGeneration}:bootstrap:${input.bootstrapRequestVersion}:stream:${input.streamUuid}`;
 }
 
 function normalizeStreamBindingsError(error: unknown): string {
@@ -167,13 +173,19 @@ export async function loadMessengerStreamBindings({
   }
 
   const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  const bootstrapRequestVersion = store.getState().bootstrapRequestVersion;
   const loadKey = streamBindingsLoadKey({
     ownerKey,
     runtimeGeneration: requestContext.runtimeGeneration,
+    bootstrapRequestVersion,
     streamUuid,
   });
 
-  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+  if (
+    isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal) ||
+    store.getState().ownerKey !== ownerKey ||
+    isMessengerStreamRemoved(ownerKey, streamUuid)
+  ) {
     return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
   }
 
@@ -187,80 +199,98 @@ export async function loadMessengerStreamBindings({
   }
 
   const controller = new AbortController();
-  let entry: MessengerStreamBindingsLoadEntry;
+  const isLoadCurrent = () => {
+    const state = store.getState();
+    return (
+      !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal) &&
+      state.ownerKey === ownerKey &&
+      state.bootstrapRequestVersion === bootstrapRequestVersion &&
+      !isMessengerStreamRemoved(ownerKey, streamUuid)
+    );
+  };
+  const skipped = (): MessengerStreamBindingsLoadResult => ({
+    status: "skipped",
+    ownerKey,
+    streamUuid,
+    reason: "stale-owner",
+  });
   const load = (async (): Promise<MessengerStreamBindingsLoadResult> => {
     const requestOptions = buildMessengerRequestOptions(
       runtimeContext,
       clientOptions,
       controller.signal,
     );
-
+    const fetchImpl = requestOptions.fetchImpl ?? fetch;
+    requestOptions.fetchImpl = (request, init) =>
+      isLoadCurrent() ? fetchImpl(request, init) : Promise.reject(new Error("stale-owner"));
     try {
-      const bindingDtos: WorkspaceMessengerStreamBindingDto[] = [];
-      let pageMarker: string | number | undefined;
-
-      do {
-        const page = await (client.getStreamBindingsPage ?? defaultGetStreamBindingsPage)(
-          requestOptions,
-          {
-            streamUuid,
-            pageLimit: DEFAULT_STREAM_BINDINGS_PAGE_LIMIT,
-            pageMarker,
-          },
-        );
-
-        if (
-          isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
-        ) {
-          return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
-        }
-
-        bindingDtos.push(...page.items);
-        pageMarker = page.nextPageMarker ?? undefined;
-      } while (pageMarker != null);
-
-      if (
-        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
-      ) {
-        return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
+      for (let attempt = 0; attempt < MAX_STREAM_BINDINGS_SNAPSHOT_ATTEMPTS; attempt++) {
+        if (!isLoadCurrent()) return skipped();
+        if (hasStreamBindingsLoaded(store, ownerKey, streamUuid))
+          return { status: "skipped", ownerKey, streamUuid, reason: "already-loaded" };
+        const revision = store.getState().streamBindingRevisionByStreamId[streamUuid] ?? 0;
+        const bindingDtos: WorkspaceMessengerStreamBindingDto[] = [];
+        const markers = new Set<string>();
+        let pageMarker: string | number | undefined;
+        let changed = false;
+        do {
+          const page = await (client.getStreamBindingsPage ?? defaultGetStreamBindingsPage)(
+            requestOptions,
+            { streamUuid, pageLimit: DEFAULT_STREAM_BINDINGS_PAGE_LIMIT, pageMarker },
+          );
+          if (!isLoadCurrent()) return skipped();
+          if ((store.getState().streamBindingRevisionByStreamId[streamUuid] ?? 0) !== revision) {
+            changed = true;
+            break;
+          }
+          bindingDtos.push(...page.items);
+          pageMarker = page.nextPageMarker ?? undefined;
+          if (pageMarker != null) {
+            const marker = String(pageMarker);
+            if (markers.has(marker))
+              throw new Error("Repeated messenger stream bindings page marker");
+            markers.add(marker);
+          }
+        } while (pageMarker != null);
+        // Restart the entire snapshot; pages captured before realtime changes cannot be merged safely.
+        if (changed) continue;
+        if (!isLoadCurrent()) return skipped();
+        const bindings = bindingDtos
+          .filter(
+            (dto) => dto.stream_uuid === streamUuid && dto.project_id === requestContext.projectId,
+          )
+          .map(adaptMessengerStreamBinding);
+        store.getState().replaceStreamBindingsForStream(ownerKey, streamUuid, bindings);
+        if (!isLoadCurrent()) return skipped();
+        // Replacement increments once; a synchronous listener can mutate permissions immediately after it.
+        const committedRevision = revision + 1;
+        writeStreamBindingsCacheBestEffort(() => {
+          if (
+            !isLoadCurrent() ||
+            (store.getState().streamBindingRevisionByStreamId[streamUuid] ?? 0) !==
+              committedRevision
+          )
+            return;
+          return (cache.upsertStreamBindings ?? defaultUpsertMessengerStreamBindingsCache)(
+            ownerKey,
+            bindings,
+          );
+        });
+        return { status: "loaded", ownerKey, streamUuid, bindings: bindings.length };
       }
-
-      const bindings = bindingDtos.map(adaptMessengerStreamBinding);
-      const currentStore = store.getState();
-      // Это полный снимок участников конкретного stream с backend-а. Поэтому
-      // заменяем список целиком, а не upsert-им: иначе удаленный участник может
-      // остаться в памяти или вернуться из старого кеша до следующего reload.
-      currentStore.replaceStreamBindingsForStream(ownerKey, streamUuid, bindings);
-      writeStreamBindingsCacheBestEffort(() =>
-        (cache.upsertStreamBindings ?? defaultUpsertMessengerStreamBindingsCache)(
-          ownerKey,
-          bindings,
-        ),
-      );
-
-      return {
-        status: "loaded",
-        ownerKey,
-        streamUuid,
-        bindings: bindings.length,
-      };
-    } catch (error) {
-      if (
-        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
-      ) {
-        return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
-      }
-
       return {
         status: "failed",
         ownerKey,
         streamUuid,
-        error: normalizeStreamBindingsError(error),
+        error: "Messenger stream bindings changed during loading",
       };
+    } catch (error) {
+      if (!isLoadCurrent()) return skipped();
+      return { status: "failed", ownerKey, streamUuid, error: normalizeStreamBindingsError(error) };
     }
   })();
 
-  entry = { promise: load, controller };
+  const entry: MessengerStreamBindingsLoadEntry = { promise: load, controller };
   inflightStreamBindingLoads.set(loadKey, entry);
   try {
     return await load;

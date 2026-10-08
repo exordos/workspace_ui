@@ -1085,7 +1085,7 @@ it("restores every encrypted payload without plaintext projection and isolates o
       deviceName: "MacBook",
       publicKey: "opaque-public-key",
     },
-    { kind: "key_announced", keyUuid: "generation", keyFingerprint: "opaque-public-key" },
+    { kind: "key_announced", keyUuid: "generation" },
     {
       kind: "key_grant",
       keyUuid: "generation",

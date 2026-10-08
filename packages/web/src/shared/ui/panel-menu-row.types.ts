@@ -13,6 +13,7 @@ export interface PanelMenuRowProps {
   /** Danger styling for destructive actions (logout). */
   tone?: "default" | "danger";
   variant?: "root" | "nested";
+  density?: "regular" | "compact";
   id?: string;
   testId?: string;
   ariaLabel?: string;

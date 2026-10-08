@@ -198,13 +198,10 @@ describe("real chat cryptography", () => {
     ).toBe(false);
   });
 
-  it("delivers a group key to a persisted request pair and checks the announced fingerprint", async () => {
+  it("delivers a group key to a persisted request pair", async () => {
     const provider = createRealChatCryptoProvider();
     const groupKey = unwrap(await provider.createGroupKey());
     const requestKeyPair = unwrap(await provider.createRequestKeyPair());
-    const expectedFingerprint = unwrap(
-      await provider.fingerprintGroupKey(groupKey, context.keyUuid),
-    );
     const envelope = unwrap(
       await provider.encryptGroupKeyGrant({
         groupKey,
@@ -218,23 +215,11 @@ describe("real chat cryptography", () => {
       unwrap(
         await reloaded.decryptGroupKeyGrant({
           requestKeyPair: structuredClone(requestKeyPair),
-          expectedFingerprint,
           envelope,
           context: grantContext,
         }),
       ),
     ).toEqual(groupKey);
-    const wrongFingerprint = unwrap(
-      await provider.fingerprintGroupKey(groupKey, "other-generation"),
-    );
-    expect(
-      await reloaded.decryptGroupKeyGrant({
-        requestKeyPair,
-        expectedFingerprint: wrongFingerprint,
-        envelope,
-        context: grantContext,
-      }),
-    ).toEqual({ ok: false, reason: "context-mismatch" });
   });
 
   it.each([
@@ -247,9 +232,6 @@ describe("real chat cryptography", () => {
     const provider = createRealChatCryptoProvider();
     const groupKey = unwrap(await provider.createGroupKey());
     const requestKeyPair = unwrap(await provider.createRequestKeyPair());
-    const expectedFingerprint = unwrap(
-      await provider.fingerprintGroupKey(groupKey, context.keyUuid),
-    );
     const envelope = unwrap(
       await provider.encryptGroupKeyGrant({
         groupKey,
@@ -261,7 +243,6 @@ describe("real chat cryptography", () => {
       (
         await provider.decryptGroupKeyGrant({
           requestKeyPair,
-          expectedFingerprint,
           envelope,
           context: { ...grantContext, [field]: "other" },
         })
@@ -274,9 +255,6 @@ describe("real chat cryptography", () => {
     const groupKey = unwrap(await provider.createGroupKey());
     const requestKeyPair = unwrap(await provider.createRequestKeyPair());
     const otherPair = unwrap(await provider.createRequestKeyPair());
-    const expectedFingerprint = unwrap(
-      await provider.fingerprintGroupKey(groupKey, context.keyUuid),
-    );
     const envelope = unwrap(
       await provider.encryptGroupKeyGrant({
         groupKey,
@@ -288,7 +266,6 @@ describe("real chat cryptography", () => {
       (
         await provider.decryptGroupKeyGrant({
           requestKeyPair: otherPair,
-          expectedFingerprint,
           envelope,
           context: grantContext,
         })

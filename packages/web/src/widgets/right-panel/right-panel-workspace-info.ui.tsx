@@ -35,6 +35,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { EncryptedChatInfoConnected } from "~/features/encrypted-chat-info/encrypted-chat-info-connected.ui";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
@@ -50,14 +51,16 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
 import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 export interface RightPanelWorkspaceInfoProps {
-  chatScreen?: "info" | "settings" | "key";
-  onChatScreenChange?: (screen: "info" | "settings" | "key") => void;
+  chatScreen?: EncryptedChatInfoScreen;
+  selectedLocalKeyUuid?: string;
+  onChatScreenChange?: (screen: EncryptedChatInfoScreen, keyUuid?: string) => void;
   info: WorkspaceRightPanelInfoView;
   onClose?: () => void;
 }
@@ -797,8 +800,11 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 <li key={member.bindingUuid} className="group/member">
                   {/* The member row is intentionally not a button: Workspace profile
                       flow is not wired here yet, so this surface creates no false action. */}
-                  <div className="flex items-center gap-3 rounded-lg bg-card-bg px-3 py-2 transition-colors hover:bg-card-bg-active">
-                    <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <WorkspaceMemberCard
+                    name={member.name}
+                    roleLabel={resolveWorkspaceRoleLabel(member.role)}
+                    secondaryText={resolveWorkspaceStatusLabel(member.status) ?? member.email}
+                    avatar={
                       <WorkspaceAvatar
                         size="sm"
                         avatarUrn={member.avatarUrl}
@@ -807,36 +813,25 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                       >
                         {member.name.slice(0, 1)}
                       </WorkspaceAvatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
-                          {member.name}
-                          <span className="text-[10px] font-normal text-text-secondary">
-                            {resolveWorkspaceRoleLabel(member.role)}
-                          </span>
-                        </p>
-                        {(member.status != null || member.email != null) && (
-                          <p className="truncate text-[11px] text-text-secondary">
-                            {resolveWorkspaceStatusLabel(member.status) ?? member.email}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {member.canRemove && runtimeContext != null && (
-                      <button
-                        type="button"
-                        aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
-                        disabled={memberActionCurrent.removingUserUuids.includes(member.userUuid)}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void handleRemoveMember(member);
-                        }}
-                        className={removeMemberActionClassName}
-                      >
-                        <Icon name="close" size={14} className="text-current" />
-                      </button>
-                    )}
-                  </div>
+                    }
+                    action={
+                      member.canRemove && runtimeContext != null ? (
+                        <button
+                          type="button"
+                          aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
+                          disabled={memberActionCurrent.removingUserUuids.includes(member.userUuid)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void handleRemoveMember(member);
+                          }}
+                          className={removeMemberActionClassName}
+                        >
+                          <Icon name="close" size={14} className="text-current" />
+                        </button>
+                      ) : null
+                    }
+                  />
                 </li>
               ))}
             </ul>
@@ -869,6 +864,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   info,
   onClose,
   chatScreen,
+  selectedLocalKeyUuid,
   onChatScreenChange,
 }) => {
   const streamUuid =
@@ -881,10 +877,21 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
         screen={chatScreen}
+        selectedLocalKeyUuid={selectedLocalKeyUuid}
+        onOpenLocalKey={
+          onChatScreenChange == null
+            ? undefined
+            : (keyUuid) => onChatScreenChange("local-key", keyUuid)
+        }
         onScreenChange={onChatScreenChange}
         onClose={onClose}
         renderAvatar={(person) => (
-          <WorkspaceAvatar size="sm" avatarUrn={person.avatarUrl}>
+          <WorkspaceAvatar
+            size="sm"
+            avatarUrn={person.avatarUrl}
+            className="bg-bg-elevated text-text-primary"
+            presence={person.presence}
+          >
             {person.name.slice(0, 1)}
           </WorkspaceAvatar>
         )}

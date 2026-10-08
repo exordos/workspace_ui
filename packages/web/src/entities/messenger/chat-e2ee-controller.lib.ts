@@ -1,7 +1,7 @@
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse, resolveChatGenerationAccess } from "./chat-e2ee.lib";
-import type { ChatCryptoPublicKey } from "./chat-crypto-provider.types";
+import type { ChatCryptoEnvelope } from "./chat-crypto-provider.types";
 import type {
   ChatE2eeControllerDependencies,
   ChatE2eeControllerFailure,
@@ -17,11 +17,8 @@ import type {
 } from "./chat-e2ee.types";
 import type { PendingChatKeyRequest, StoredChatKey } from "./chat-key-storage.types";
 
-function equalPublicKeys(left: ChatCryptoPublicKey, right: ChatCryptoPublicKey): boolean {
-  return (
-    left.bytes.length === right.bytes.length &&
-    left.bytes.every((byte, index) => byte === right.bytes[index])
-  );
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && left.every((byte, index) => byte === right[index]);
 }
 
 const failure = (reason: ChatE2eeControllerFailure): ChatE2eeControllerResult<never> => ({
@@ -119,24 +116,24 @@ export class ChatE2eeController {
     }
   }
 
-  private async writeKey(
-    key: StoredChatKey,
-    allowed: () => boolean,
-  ): Promise<ChatE2eeControllerResult<void>> {
-    const guard = () => this.isCurrent() && allowed();
-    if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
+  private async readDeletionRevision(): Promise<ChatE2eeControllerResult<number>> {
     try {
-      const committed = await this.deps.storage.writeChatKey(this.deps.scope, key, {
-        isCurrent: guard,
-      });
-      if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
-      if (!committed) return failure("storage-failed");
-      this.keyRevision++;
-      this.key = key;
-      return success(undefined);
+      const revision = await this.deps.storage.readChatKeyDeletionRevision(this.deps.scope);
+      return this.isCurrent() ? success(revision) : failure("stale");
     } catch {
       return failure("storage-failed");
     }
+  }
+
+  private async checkDeletionRevision(revision: number): Promise<ChatE2eeControllerResult<void>> {
+    const latest = await this.readDeletionRevision();
+    if (!latest.ok) return latest;
+    if (latest.value !== revision) {
+      this.key = null;
+      this.keyRevision++;
+      return failure("missing-key");
+    }
+    return success(undefined);
   }
 
   private async send(
@@ -185,21 +182,65 @@ export class ChatE2eeController {
     });
   }
 
-  requestKey(): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
+  requestKey(
+    recoveryEnvelope?: ChatCryptoEnvelope,
+    allowUsableKey = false,
+  ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     const next = this.requestQueue.then(() =>
       this.run(async () => {
         const allowed = () => this.deps.getRights().canRequest;
         if (!allowed()) return failure("forbidden");
+        let deletionRevision: number;
+        try {
+          // A deletion in another tab cancels preparation even before its broadcast arrives.
+          deletionRevision = await this.deps.storage.readChatKeyDeletionRevision(this.deps.scope);
+          if (!this.isCurrent()) return failure("stale");
+        } catch {
+          return failure("storage-failed");
+        }
+        let recovery: PendingChatKeyRequest["recovery"];
+        if (recoveryEnvelope) {
+          const stored = await this.readKey();
+          if (!stored.ok) return stored;
+          if (stored.value?.groupKey) {
+            const checked = await this.deps.provider.decryptMessage({
+              groupKey: stored.value.groupKey,
+              envelope: recoveryEnvelope,
+              context: this.deps.scope,
+            });
+            if (!this.isCurrent()) return failure("stale");
+            if (checked.ok) {
+              checked.value.fill(0);
+              if (!allowUsableKey) return failure("invalid-message");
+            } else if (checked.reason !== "invalid-ciphertext") return checked;
+            if (!checked.ok)
+              recovery = {
+                envelope: { bytes: recoveryEnvelope.bytes.slice() },
+                previousGroupKey: { bytes: stored.value.groupKey.bytes.slice() },
+              };
+          }
+        }
         let pending: PendingChatKeyRequest;
         try {
           const existing = await this.deps.storage.listPendingRequests(this.deps.scope);
           if (!this.isCurrent()) return failure("stale");
           // Several tabs may have created requests; retry deterministically without losing their secrets.
-          const oldest = [...existing].sort(
-            (left, right) =>
-              left.createdAt - right.createdAt ||
-              left.localRequestId.localeCompare(right.localRequestId),
-          )[0];
+          const oldest = existing
+            .filter(
+              (item) =>
+                !recovery ||
+                (item.recovery !== undefined &&
+                  equalBytes(item.recovery.envelope.bytes, recovery.envelope.bytes) &&
+                  equalBytes(
+                    item.recovery.previousGroupKey.bytes,
+                    recovery.previousGroupKey.bytes,
+                  )),
+            )
+            .sort(
+              (left, right) =>
+                left.createdAt - right.createdAt ||
+                left.localRequestId.localeCompare(right.localRequestId),
+            )[0];
           if (oldest) pending = oldest;
           else {
             const pair = await this.deps.provider.createRequestKeyPair();
@@ -213,11 +254,15 @@ export class ChatE2eeController {
               publicKey: pair.value.publicKey,
               privateKey: pair.value.privateKey,
               createdAt: Date.now(),
+              ...(recovery ? { recovery } : {}),
             };
             const committed = await this.deps.storage.writePendingRequest(
               this.deps.scope,
               pending,
-              { isCurrent: () => this.isCurrent() && allowed() },
+              {
+                isCurrent: () => this.isCurrent() && allowed(),
+                expectedDeletionRevision: deletionRevision,
+              },
             );
             if (!this.isCurrent()) return failure("stale");
             if (!allowed()) return failure("forbidden");
@@ -241,7 +286,7 @@ export class ChatE2eeController {
         );
         if (!result.ok || result.value.payload.kind !== "key_request") return result;
         if (
-          !equalPublicKeys(result.value.payload.publicKey, pending.publicKey) ||
+          !equalBytes(result.value.payload.publicKey.bytes, pending.publicKey.bytes) ||
           result.value.payload.deviceId !== this.deps.device.deviceId
         )
           return failure("invalid-message");
@@ -281,6 +326,8 @@ export class ChatE2eeController {
     return this.run(async () => {
       if (!this.validRequest(request)) return failure("invalid-message");
       if (!this.deps.getRights().canGrant) return failure("forbidden");
+      const deletionRevision = await this.readDeletionRevision();
+      if (!deletionRevision.ok) return deletionRevision;
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
@@ -299,6 +346,8 @@ export class ChatE2eeController {
       });
       if (!this.isCurrent()) return failure("stale");
       if (!envelope.ok) return envelope;
+      const retained = await this.checkDeletionRevision(deletionRevision.value);
+      if (!retained.ok) return retained;
       return this.send(
         {
           kind: "key_grant",
@@ -334,6 +383,8 @@ export class ChatE2eeController {
   encryptMessage(plaintext: Uint8Array): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     return this.run(async () => {
       if (!this.deps.getRights().canSend) return failure("forbidden");
+      const deletionRevision = await this.readDeletionRevision();
+      if (!deletionRevision.ok) return deletionRevision;
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
@@ -344,6 +395,8 @@ export class ChatE2eeController {
       });
       if (!this.isCurrent()) return failure("stale");
       if (!encrypted.ok) return encrypted;
+      const retained = await this.checkDeletionRevision(deletionRevision.value);
+      if (!retained.ok) return retained;
       return this.send(
         { kind: "e2ee", keyUuid: this.deps.scope.keyUuid, content: encrypted.value },
         () => this.deps.getRights().canSend,
@@ -360,14 +413,22 @@ export class ChatE2eeController {
         message.payload.keyUuid !== this.deps.scope.keyUuid
       )
         return failure("invalid-message");
+      const deletionRevision = await this.readDeletionRevision();
+      if (!deletionRevision.ok) return deletionRevision;
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
-      return this.deps.provider.decryptMessage({
+      const decrypted = await this.deps.provider.decryptMessage({
         groupKey: stored.value.groupKey,
         envelope: message.payload.content,
         context: this.deps.scope,
       });
+      const retained = await this.checkDeletionRevision(deletionRevision.value);
+      if (!retained.ok) {
+        if (decrypted.ok) decrypted.value.fill(0);
+        return retained;
+      }
+      return decrypted;
     });
   }
 
@@ -391,15 +452,6 @@ export class ChatE2eeController {
     if (message.payload.kind !== "key_announced") return failure("invalid-message");
     const allowed = () => this.deps.isAnnouncerAllowed(message.authorUuid);
     if (!allowed()) return failure("forbidden");
-    const stored = await this.readKey();
-    if (!stored.ok) return stored;
-    if (stored.value && !equalPublicKeys(stored.value.fingerprint, message.payload.keyFingerprint))
-      return failure("invalid-key");
-    const result = await this.writeKey(
-      { fingerprint: message.payload.keyFingerprint, groupKey: stored.value?.groupKey ?? null },
-      allowed,
-    );
-    if (!result.ok) return result;
     return this.drainWaiting();
   }
 
@@ -416,7 +468,7 @@ export class ChatE2eeController {
         if (!this.isCurrent()) return failure("stale");
         const candidates = pending.filter(
           (item) =>
-            equalPublicKeys(item.publicKey, request.payload.publicKey) &&
+            equalBytes(item.publicKey.bytes, request.payload.publicKey.bytes) &&
             (item.requestMessageUuid === null || item.requestMessageUuid === request.uuid),
         );
         if (candidates.length > 1) return failure("invalid-message");
@@ -495,7 +547,7 @@ export class ChatE2eeController {
       if (
         correlation.status !== "matched" ||
         request.authorUuid !== this.deps.scope.owner.userUuid ||
-        !equalPublicKeys(request.payload.publicKey, pending.publicKey)
+        !equalBytes(request.payload.publicKey.bytes, pending.publicKey.bytes)
       ) {
         this.waiting.delete(response.uuid);
         return failure("invalid-message");
@@ -535,16 +587,9 @@ export class ChatE2eeController {
       this.waiting.delete(response.uuid);
       return success(undefined);
     }
-    const stored = await this.readKey();
-    if (!stored.ok) return stored;
-    if (stored.value === null) {
-      this.waiting.set(response.uuid, response);
-      return success(undefined);
-    }
     const payload = response.payload;
     const decrypted = await this.deps.provider.decryptGroupKeyGrant({
       requestKeyPair: { publicKey: pending.publicKey, privateKey: pending.privateKey },
-      expectedFingerprint: stored.value.fingerprint,
       envelope: payload.content,
       context: {
         streamUuid: response.streamUuid,
@@ -556,22 +601,40 @@ export class ChatE2eeController {
     });
     if (!this.isCurrent()) return failure("stale");
     if (!decrypted.ok) return decrypted;
-    const fingerprint = await this.deps.provider.fingerprintGroupKey(
-      decrypted.value,
-      this.deps.scope.keyUuid,
-    );
-    if (!this.isCurrent()) return failure("stale");
-    if (!fingerprint.ok) return fingerprint;
-    if (!equalPublicKeys(fingerprint.value, stored.value.fingerprint))
-      return failure("invalid-key");
     if (!allowed()) return failure("forbidden");
     try {
+      if (
+        pending.recovery &&
+        !equalBytes(decrypted.value.bytes, pending.recovery.previousGroupKey.bytes)
+      ) {
+        const checked = await this.deps.provider.decryptMessage({
+          groupKey: decrypted.value,
+          envelope: pending.recovery.envelope,
+          context: this.deps.scope,
+        });
+        if (!this.isCurrent()) return failure("stale");
+        if (!allowed()) return failure("forbidden");
+        if (!checked.ok) {
+          // Finish this attempt locally so a manual retry sends a new request to the issuer.
+          const committed = await this.deps.storage.completeReject(this.deps.scope, completion, {
+            isCurrent: guard,
+          });
+          if (!this.isCurrent()) return failure("stale");
+          if (!allowed()) return failure("forbidden");
+          if (!committed) return failure("storage-failed");
+          this.processed.add(response.uuid);
+          this.waiting.delete(response.uuid);
+          this.requestStatus = "rejected";
+          return checked;
+        }
+        checked.value.fill(0);
+      }
       const committed = await this.deps.storage.completeGrant(
         this.deps.scope,
         {
           ...completion,
           groupKey: decrypted.value,
-          fingerprint: fingerprint.value,
+          ...(pending.recovery ? { replaceExistingKey: true } : {}),
         },
         { isCurrent: guard },
       );
@@ -591,17 +654,16 @@ export class ChatE2eeController {
           return failure("invalid-message");
         const key = await this.readKey();
         if (!key.ok) return key;
-        if (
-          key.value?.groupKey == null ||
-          !equalPublicKeys(key.value.fingerprint, fingerprint.value)
-        )
-          return failure("missing-key");
+        if (key.value?.groupKey == null) return failure("missing-key");
       }
     } catch {
       return failure("storage-failed");
     }
     this.keyRevision++;
-    this.key = { fingerprint: fingerprint.value, groupKey: decrypted.value };
+    const stored = await this.readKey();
+    if (!stored.ok) return stored;
+    if (!allowed()) return failure("forbidden");
+    if (stored.value?.groupKey == null) return failure("missing-key");
     this.requestStatus = "grant-received";
     this.processed.add(response.uuid);
     this.waiting.delete(response.uuid);

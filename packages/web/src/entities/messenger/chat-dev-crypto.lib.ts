@@ -2,15 +2,12 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import { DEFAULT_MESSENGER_API_BASE } from "~/shared/api/messenger-transport.internal";
 import { decodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
-import {
-  DEV_CHAT_PUBLIC_KEY_MARKER,
-  isDevChatInitialKeyAllowed,
-} from "./chat-initial-key-bootstrap.lib";
+import { DEV_CHAT_KEY_UUID, isDevChatInitialKeyAllowed } from "./chat-initial-key-bootstrap.lib";
 import type { ChatCryptoMessageContext, ChatCryptoProvider } from "./chat-crypto-provider.types";
 import type { MessengerMessage, MessengerStream } from "./messenger.types";
 
 const TEST_ENVELOPE_TAG = "WORKSPACE_DEV_PLAINTEXT_TEST_V1";
-const allowedTestPublicKeys = new Set([btoa(DEV_CHAT_PUBLIC_KEY_MARKER), btoa("FIX")]);
+const DEV_CHAT_TEST_GROUP_KEY = "DEV_ONLY_INSECURE_FIXTURE_KEY";
 
 export function canUseDevChatCrypto(
   runtime: WorkspaceRuntimeContext | null,
@@ -22,9 +19,7 @@ export function canUseDevChatCrypto(
     stream?.encryption === true &&
     stream.projectId === runtime.projectId &&
     stream.userUuid === runtime.userUuid &&
-    stream.currentEncryptionKey != null &&
-    allowedTestPublicKeys.has(stream.currentEncryptionKey.keyFingerprint) &&
-    stream.currentEncryptionKey.keyUuid.length > 0
+    stream.currentEncryptionKey?.keyUuid === DEV_CHAT_KEY_UUID
   );
 }
 
@@ -81,8 +76,8 @@ export function createDevChatCryptoProvider(
   stream: MessengerStream,
 ): ChatCryptoProvider | null {
   if (!canUseDevChatCrypto(runtime, stream)) return null;
-  const expectedPublicKey = atob(stream.currentEncryptionKey!.keyFingerprint);
-  const groupKey = { bytes: new TextEncoder().encode(expectedPublicKey) };
+  const expectedGroupKey = DEV_CHAT_TEST_GROUP_KEY;
+  const groupKey = { bytes: new TextEncoder().encode(expectedGroupKey) };
   const validContext = (context: ChatCryptoMessageContext) =>
     canUseDevChatCrypto(runtime, stream) &&
     context.streamUuid === stream.uuid &&
@@ -90,11 +85,10 @@ export function createDevChatCryptoProvider(
   return {
     createRequestKeyPair: () => Promise.resolve({ ok: false, reason: "unavailable" }),
     createGroupKey: () => Promise.resolve({ ok: true, value: groupKey }),
-    fingerprintGroupKey: () => Promise.resolve({ ok: true, value: groupKey }),
     encryptMessage: ({ plaintext, context, groupKey: receivedKey }) => {
       if (
         !validContext(context) ||
-        new TextDecoder().decode(receivedKey.bytes) !== expectedPublicKey
+        new TextDecoder().decode(receivedKey.bytes) !== expectedGroupKey
       )
         return Promise.resolve({ ok: false, reason: "context-mismatch" });
       try {
@@ -106,7 +100,7 @@ export function createDevChatCryptoProvider(
     decryptMessage: ({ envelope, context, groupKey: receivedKey }) => {
       if (
         !validContext(context) ||
-        new TextDecoder().decode(receivedKey.bytes) !== expectedPublicKey
+        new TextDecoder().decode(receivedKey.bytes) !== expectedGroupKey
       )
         return Promise.resolve({ ok: false, reason: "context-mismatch" });
       const text = decodeFixture(envelope.bytes, context);

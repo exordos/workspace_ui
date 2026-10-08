@@ -151,6 +151,7 @@ import {
   type WorkspaceMessengerRouteMatch,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Button } from "~/shared/ui/button";
+import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
@@ -799,7 +800,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const encryptedChat = useChatCryptoSession(stream?.encryption === true ? streamUuid : null);
   const encryptedChatAvailable =
-    encryptedChat.session !== null && encryptedChat.state.access === "ready";
+    encryptedChat.session !== null && encryptedChat.sendKeyUuid !== null;
+  const [dismissedKeyNotice, setDismissedKeyNotice] = useState<string | null>(null);
+  const keyNoticeId = `${ownerKey}:${streamUuid}:${stream?.currentEncryptionKey?.keyUuid}`;
+  const hasOutdatedSendingKey =
+    encryptedChatAvailable && encryptedChat.sendKeyUuid !== stream?.currentEncryptionKey?.keyUuid;
   const workspaceReplyHandoffBlocksSend =
     runtimeContext != null &&
     ownerKey != null &&
@@ -1079,7 +1084,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (messageUuid: string) => {
       const message = allWorkspaceMessagesById[messageUuid];
       if (message?.streamUuid !== streamUuid || message.payload.kind === "markdown") return;
-      void encryptedChat.requestKey(message.payload.keyUuid);
+      void encryptedChat.requestKey(
+        message.payload.keyUuid,
+        message.payload.kind === "e2ee" ? message : undefined,
+      );
     },
     [allWorkspaceMessagesById, streamUuid, encryptedChat.requestKey],
   );
@@ -3731,12 +3739,57 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             joinedBelow={!showStreamTopicPrompt}
           />
         ) : null}
+        {stream?.encryption === true &&
+        hasOutdatedSendingKey &&
+        dismissedKeyNotice !== keyNoticeId ? (
+          <div className="bg-accent/10 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 pb-2.5 pt-3 text-accent">
+            <p role="status" className="text-sm">
+              {t("e2ee.keyUpdatedNotice")}
+            </p>
+            <div className="flex items-center gap-2">
+              {encryptedChat.session?.getRights().canRequest ? (
+                <Button
+                  size="sm"
+                  className="font-normal!"
+                  disabled={
+                    encryptedChat.loading ||
+                    encryptedChat.state.pending ||
+                    encryptedChat.state.requestStatus === "requested"
+                  }
+                  onClick={() => {
+                    void encryptedChat.requestKey();
+                  }}
+                >
+                  {t(
+                    encryptedChat.state.requestStatus === "requested"
+                      ? "e2ee.statusWaiting"
+                      : "e2ee.requestUpdatedKey",
+                  )}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                appearance="ghost"
+                className="h-6 w-6 p-0"
+                aria-label={t("common.close")}
+                onClick={() => setDismissedKeyNotice(keyNoticeId)}
+              >
+                <Icon name="close" size={16} />
+              </Button>
+            </div>
+            {encryptedChat.error ? (
+              <p role="alert" className="w-full text-sm text-danger">
+                {encryptedChat.error}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {stream?.encryption === true && encryptedChatAvailable ? (
           <MessageComposer
-            key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}:${stream.currentEncryptionKey?.keyUuid}`}
+            key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}`}
             onSend={handleSendEncrypted}
             capabilities={encryptedComposerCapabilities}
-            disabled={isTopicClosed || encryptedChat.state.pending}
+            disabled={isTopicClosed}
             initialValue=""
             aiMessagesContext={[]}
             joinedTop

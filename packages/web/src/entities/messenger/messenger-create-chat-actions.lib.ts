@@ -222,18 +222,13 @@ function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
       : encodeChatE2eePayload({
           kind: "key_announced",
           keyUuid: metadata.keyUuid,
-          keyFingerprint: metadata.keyFingerprint,
         });
   if (
     announcement !== null &&
-    (!isWorkspaceMessengerMessagePayloadDto(announcement) ||
-      announcement.kind !== "key_announced" ||
-      announcement.key_fingerprint.length === 0)
+    (!isWorkspaceMessengerMessagePayloadDto(announcement) || announcement.kind !== "key_announced")
   )
     throw new MessengerChannelCreationError("encryption-unavailable");
-  return announcement?.kind === "key_announced"
-    ? { key_uuid: announcement.key_uuid, key_fingerprint: announcement.key_fingerprint }
-    : null;
+  return announcement?.kind === "key_announced" ? { key_uuid: announcement.key_uuid } : null;
 }
 
 export async function createWorkspaceChannel({
@@ -299,8 +294,7 @@ export async function createWorkspaceChannel({
   if (
     encryption &&
     (bundle.stream.encryption !== true ||
-      bundle.stream.current_encryption_key?.key_uuid !== encryptionKey?.key_uuid ||
-      bundle.stream.current_encryption_key?.key_fingerprint !== encryptionKey?.key_fingerprint)
+      bundle.stream.current_encryption_key?.key_uuid !== encryptionKey?.key_uuid)
   )
     throw new MessengerChannelCreationError("encryption-mismatch");
 

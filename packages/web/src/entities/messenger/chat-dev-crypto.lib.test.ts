@@ -15,7 +15,7 @@ import {
   pinDevChatCryptoRequestOptions,
 } from "./chat-dev-crypto.lib";
 import { sendDevEncryptedMessengerMessage } from "./chat-dev-message-actions.lib";
-import { DEV_CHAT_PUBLIC_KEY_MARKER } from "./chat-initial-key-bootstrap.lib";
+import { DEV_CHAT_KEY_UUID } from "./chat-initial-key-bootstrap.lib";
 import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
 import { useMessengerStore } from "./messenger.model";
 const ACCOUNT_A = "account-a";
@@ -99,18 +99,18 @@ function createStreamDto(
   };
 }
 
-const KEY_A = "99999999-9999-4999-8999-999999999999";
+const KEY_A = DEV_CHAT_KEY_UUID;
 function encryptedStream(overrides: Partial<WorkspaceMessengerStreamDto> = {}) {
   return createStreamDto({
     encryption: true,
-    current_encryption_key: { key_uuid: KEY_A, key_fingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER) },
+    current_encryption_key: { key_uuid: KEY_A },
     ...overrides,
   });
 }
-function prepare(publicKey = btoa(DEV_CHAT_PUBLIC_KEY_MARKER)) {
+function prepare() {
   const runtime = createRuntimeContext();
   const stream = adaptMessengerStream(
-    encryptedStream({ current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey } }),
+    encryptedStream({ current_encryption_key: { key_uuid: KEY_A } }),
   );
   const owner = workspaceRuntimeOwnerKey(runtime);
   useMessengerStore.getState().startBootstrap(owner);
@@ -129,82 +129,78 @@ describe("local test crypto", () => {
     useMessengerStore.getState().clear();
   });
   afterEach(() => vi.unstubAllEnvs());
-  it.each([btoa(DEV_CHAT_PUBLIC_KEY_MARKER), btoa("FIX")])(
-    "sends only encoded e2ee payload and restores local presentation with fixture %s",
-    async (publicKey) => {
-      const s = prepare(publicKey);
-      const text = "Привет **мир** <script>local</script>";
-      const create = vi.fn(
-        (_options: MessengerClientOptions, body: WorkspaceMessengerCreateMessageRequestBody) =>
-          Promise.resolve(createMessageDto({ uuid: body.uuid, payload: body.payload })),
-      );
-      const result = await sendDevEncryptedMessengerMessage({
-        runtimeContext: s.runtime,
-        streamUuid: STREAM_A,
-        topicUuid: TOPIC_A,
-        markdown: text,
-        canonicalMessageUuid: MESSAGE_A,
-        store: s.store,
-        cache: { writeConversationMessagePage: s.cache },
-        client: {
-          getStream: () =>
-            Promise.resolve(
-              encryptedStream({
-                current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey },
-              }),
-            ),
-          createMessage: create,
-        },
-      });
-      expect(result.status).toBe("applied");
-      expect(create.mock.calls[0]?.[0]).toMatchObject({
-        baseUrl: "/api/workspace/v1/messenger",
-        devTargetOrigin: s.runtime.organizationOrigin,
-      });
-      const message = s.apply.mock.calls[0]?.[0];
-      expect(message.payload.kind).toBe("e2ee");
-      expect(
-        decodeDevChatMessageForPresentation(s.runtime, s.stream, {
-          ...message,
-          projectId: STREAM_A,
-        }),
-      ).toBeNull();
-      expect(message.payload.content).not.toContain(text);
-      expect(s.cache.mock.calls[0]?.[2].messages[0]).toEqual(message);
-      expect(decodeDevChatMessageForPresentation(s.runtime, s.stream, message)).toBe(text);
-      expect(
-        decodeDevChatMessageForPresentation(
-          createRuntimeContext({ runtimeGeneration: 3 }),
-          adaptMessengerStream(
+  it("sends only encoded e2ee payload and restores local presentation", async () => {
+    const s = prepare();
+    const text = "Привет **мир** <script>local</script>";
+    const create = vi.fn(
+      (_options: MessengerClientOptions, body: WorkspaceMessengerCreateMessageRequestBody) =>
+        Promise.resolve(createMessageDto({ uuid: body.uuid, payload: body.payload })),
+    );
+    const result = await sendDevEncryptedMessengerMessage({
+      runtimeContext: s.runtime,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: text,
+      canonicalMessageUuid: MESSAGE_A,
+      store: s.store,
+      cache: { writeConversationMessagePage: s.cache },
+      client: {
+        getStream: () =>
+          Promise.resolve(
             encryptedStream({
-              current_encryption_key: { key_uuid: KEY_A, key_fingerprint: publicKey },
+              current_encryption_key: { key_uuid: KEY_A },
             }),
           ),
-          message,
+        createMessage: create,
+      },
+    });
+    expect(result.status).toBe("applied");
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      baseUrl: "/api/workspace/v1/messenger",
+      devTargetOrigin: s.runtime.organizationOrigin,
+    });
+    const message = s.apply.mock.calls[0]?.[0];
+    expect(message.payload.kind).toBe("e2ee");
+    expect(
+      decodeDevChatMessageForPresentation(s.runtime, s.stream, {
+        ...message,
+        projectId: STREAM_A,
+      }),
+    ).toBeNull();
+    expect(message.payload.content).not.toContain(text);
+    expect(s.cache.mock.calls[0]?.[2].messages[0]).toEqual(message);
+    expect(decodeDevChatMessageForPresentation(s.runtime, s.stream, message)).toBe(text);
+    expect(
+      decodeDevChatMessageForPresentation(
+        createRuntimeContext({ runtimeGeneration: 3 }),
+        adaptMessengerStream(
+          encryptedStream({
+            current_encryption_key: { key_uuid: KEY_A },
+          }),
         ),
-      ).toBe(text);
-      expect(
-        decodeDevChatMessageForPresentation(
-          s.runtime,
-          { ...s.stream, uuid: STREAM_A + "other" },
-          message,
-        ),
-      ).toBeNull();
-      expect(
-        decodeDevChatMessageForPresentation(
-          s.runtime,
-          {
-            ...s.stream,
-            currentEncryptionKey: {
-              keyUuid: STREAM_A,
-              keyFingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
-            },
+        message,
+      ),
+    ).toBe(text);
+    expect(
+      decodeDevChatMessageForPresentation(
+        s.runtime,
+        { ...s.stream, uuid: STREAM_A + "other" },
+        message,
+      ),
+    ).toBeNull();
+    expect(
+      decodeDevChatMessageForPresentation(
+        s.runtime,
+        {
+          ...s.stream,
+          currentEncryptionKey: {
+            keyUuid: STREAM_A,
           },
-          message,
-        ),
-      ).toBeNull();
-    },
-  );
+        },
+        message,
+      ),
+    ).toBeNull();
+  });
   it.each([false, true])("refuses production or remote runtime dev=%s", async (dev) => {
     vi.stubEnv("DEV", dev);
     const s = prepare();
@@ -257,7 +253,7 @@ describe("local test crypto", () => {
     expect(
       canUseDevChatCrypto(s.runtime, {
         ...s.stream,
-        currentEncryptionKey: { keyUuid: KEY_A, keyFingerprint: btoa("OTHER") },
+        currentEncryptionKey: { keyUuid: STREAM_A },
       }),
     ).toBe(false);
   });
@@ -296,7 +292,7 @@ describe("local test crypto", () => {
       expect(s.cache).not.toHaveBeenCalled();
     },
   );
-  it.each(["owner", "key", "remove", "public-key"])(
+  it.each(["owner", "key", "remove"])(
     "skips late API result after invalidation %s",
     async (mode) => {
       const s = prepare();
@@ -328,15 +324,7 @@ describe("local test crypto", () => {
       else if (mode === "key")
         useMessengerStore.getState().upsertStream(s.owner, {
           ...s.stream,
-          currentEncryptionKey: {
-            keyUuid: STREAM_A,
-            keyFingerprint: btoa(DEV_CHAT_PUBLIC_KEY_MARKER),
-          },
-        });
-      else if (mode === "public-key")
-        useMessengerStore.getState().upsertStream(s.owner, {
-          ...s.stream,
-          currentEncryptionKey: { keyUuid: KEY_A, keyFingerprint: btoa("FIX") },
+          currentEncryptionKey: { keyUuid: STREAM_A },
         });
       else useMessengerStore.setState({ streamsById: {} });
       finish(sent);

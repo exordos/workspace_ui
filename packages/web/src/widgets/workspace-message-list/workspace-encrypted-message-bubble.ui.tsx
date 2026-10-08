@@ -53,6 +53,19 @@ function EncryptedTextBubble({
                 ? { label: t("e2ee.messageDecryptRetry"), onClick: presentation.retry }
                 : undefined
             }
+            secondaryAction={
+              presentation.status === "error" &&
+              presentation.canRequestKey === true &&
+              props.actions?.onRequestMessageKey
+                ? {
+                    label: t("e2ee.requestMessageKey"),
+                    onClick: () => {
+                      void props.actions?.onRequestMessageKey?.(message.uuid);
+                    },
+                    disabled: props.actions.requestMessageKeyPending,
+                  }
+                : undefined
+            }
           />
         ) : undefined
       }

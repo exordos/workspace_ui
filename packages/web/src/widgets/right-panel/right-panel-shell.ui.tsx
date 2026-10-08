@@ -16,6 +16,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
   mode = "info",
   accountScreen,
   chatScreen,
+  selectedLocalKeyUuid,
   onChatScreenChange,
   onAccountScreenChange,
   onOpenAboutDrawer,
@@ -96,6 +97,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
         info={workspaceInfo}
         onClose={onClose}
         chatScreen={chatScreen}
+        selectedLocalKeyUuid={selectedLocalKeyUuid}
         onChatScreenChange={onChatScreenChange}
       />
     );

@@ -1,14 +1,12 @@
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { isAllowedDevWorkspaceProxyTargetOrigin } from "~/shared/config/dev-workspace-org-proxy";
-import type { ChatCryptoKeyFingerprint } from "./chat-crypto-provider.types";
 
-export const DEV_CHAT_PUBLIC_KEY_MARKER = "DEV_ONLY_NO_CRYPTO_PUBLIC_KEY";
+export const DEV_CHAT_KEY_UUID = "00000000-0000-4000-8000-000000000001";
 
 export interface ChatInitialKeyMetadata {
   readonly keyUuid: string;
   readonly creationId?: string;
   readonly deviceId?: string;
-  readonly keyFingerprint: ChatCryptoKeyFingerprint;
   readonly source: "provider" | "development-fixture";
 }
 
@@ -47,8 +45,7 @@ export const devChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
     if (!isDevChatInitialKeyAllowed(runtimeContext) || !isCurrent() || signal?.aborted)
       return Promise.reject(new MessengerChannelCreationError("encryption-unavailable"));
     return Promise.resolve({
-      keyUuid: crypto.randomUUID(),
-      keyFingerprint: { bytes: new TextEncoder().encode(DEV_CHAT_PUBLIC_KEY_MARKER) },
+      keyUuid: DEV_CHAT_KEY_UUID,
       source: "development-fixture",
     });
   },

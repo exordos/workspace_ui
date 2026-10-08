@@ -24,13 +24,52 @@ export async function ensureChatDeviceIdentity(
   return persisted;
 }
 
-const keyListeners = new Set<() => void>();
-export function subscribeRealChatKeyChanges(listener: () => void): () => void {
+export interface RealChatKeyChange {
+  readonly kind: "removed" | "updated";
+  readonly ownerKey: string;
+  readonly deviceId: string;
+  readonly streamUuid: string;
+  readonly keyUuid: string;
+}
+
+const keyListeners = new Set<(change?: RealChatKeyChange) => void>();
+let keyChannel: BroadcastChannel | null = null;
+function isKeyChange(value: unknown): value is RealChatKeyChange {
+  if (value === null || typeof value !== "object") return false;
+  const change = value as Partial<RealChatKeyChange>;
+  return (
+    (change.kind === "removed" || change.kind === "updated") &&
+    typeof change.ownerKey === "string" &&
+    typeof change.deviceId === "string" &&
+    typeof change.streamUuid === "string" &&
+    typeof change.keyUuid === "string"
+  );
+}
+export function subscribeRealChatKeyChanges(
+  listener: (change?: RealChatKeyChange) => void,
+): () => void {
   keyListeners.add(listener);
+  if (
+    keyChannel === null &&
+    typeof window !== "undefined" &&
+    typeof BroadcastChannel !== "undefined"
+  ) {
+    keyChannel = new BroadcastChannel("workspace-chat-key-changes");
+    keyChannel.onmessage = ({ data }: MessageEvent<unknown>) => {
+      if (!isKeyChange(data)) return;
+      for (const subscriber of keyListeners) subscriber(data);
+    };
+  }
   return () => {
     keyListeners.delete(listener);
+    if (keyListeners.size === 0) {
+      keyChannel?.close();
+      keyChannel = null;
+    }
   };
 }
-export function notifyRealChatKeyChanges(): void {
-  for (const listener of keyListeners) listener();
+export function notifyRealChatKeyChanges(change?: RealChatKeyChange): void {
+  for (const listener of keyListeners) listener(change);
+  // Only public addressing metadata crosses tabs; legacy retries stay within this tab.
+  if (change) keyChannel?.postMessage(change);
 }

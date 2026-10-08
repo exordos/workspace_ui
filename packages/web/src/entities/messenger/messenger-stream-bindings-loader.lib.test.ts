@@ -11,8 +11,8 @@ import {
   loadMessengerStreamBindings,
   streamUuidFromWorkspaceMessengerRoute,
 } from "./messenger-stream-bindings-loader.lib";
-import { useMessengerStore } from "./messenger.model";
-import type { MessengerStreamBinding } from "./messenger.types";
+import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
+import type { MessengerStream, MessengerStreamBinding } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -78,6 +78,33 @@ function createStreamBinding(
     createdAt: DATE,
     updatedAt: DATE,
     ...overrides,
+  };
+}
+
+function createStream(role: MessengerStream["role"] = "member"): MessengerStream {
+  return {
+    uuid: STREAM_A,
+    projectId: PROJECT_A,
+    ownerUuid: USER_B,
+    userUuid: USER_A,
+    role,
+    notificationMode: "all_messages",
+    name: "Channel",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    encryption: false,
+    currentEncryptionKey: null,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
   };
 }
 
@@ -609,6 +636,346 @@ describe("messenger stream bindings loader", () => {
     });
     expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([BINDING_A]);
     expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBe(true);
+  });
+
+  it("restarts all pages when realtime demotes a participant during a pending snapshot", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useMessengerStore
+      .getState()
+      .upsertStreamBindings(ownerKey, [createStreamBinding({ role: "administrator" })]);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(createStreamBindingsPage([createStreamBindingDto()], "fresh-page"))
+      .mockResolvedValueOnce(
+        createStreamBindingsPage([createStreamBindingDto({ uuid: BINDING_B, user_uuid: USER_B })]),
+      );
+    const upsertStreamBindings = vi.fn();
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    });
+    useMessengerStore
+      .getState()
+      .upsertStreamBindings(ownerKey, [createStreamBinding({ role: "member" })]);
+    request.resolve(
+      createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })], "stale-page"),
+    );
+    expect(await loading).toMatchObject({ status: "loaded", bindings: 2 });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(3);
+    expect(getStreamBindingsPage.mock.calls.map((call) => call[1].pageMarker)).toEqual([
+      undefined,
+      undefined,
+      "fresh-page",
+    ]);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+    expect(upsertStreamBindings).toHaveBeenCalledTimes(1);
+    expect(upsertStreamBindings.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ uuid: BINDING_A, role: "member" })]),
+    );
+  });
+
+  it("fences an unknown binding deletion before an older participant page arrives", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(createStreamBindingsPage([]));
+    const upsertStreamBindings = vi.fn();
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    });
+    useMessengerStore
+      .getState()
+      .removeStreamBinding(ownerKey, { uuid: BINDING_B, streamUuid: STREAM_A });
+    request.resolve(
+      createStreamBindingsPage([
+        createStreamBindingDto({ uuid: BINDING_B, role: "administrator", user_uuid: USER_B }),
+      ]),
+    );
+    expect(await loading).toMatchObject({ status: "loaded", bindings: 0 });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_B]).toBeUndefined();
+    expect(upsertStreamBindings).toHaveBeenCalledExactlyOnceWith(ownerKey, []);
+  });
+
+  it("does not restart the snapshot when another stream's participants change", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValue(request.promise);
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings: vi.fn() },
+    });
+    useMessengerStore
+      .getState()
+      .upsertStreamBindings(ownerKey, [
+        createStreamBinding({ uuid: BINDING_C, streamUuid: STREAM_B, role: "administrator" }),
+      ]);
+    request.resolve(createStreamBindingsPage([createStreamBindingDto()]));
+    expect(await loading).toMatchObject({ status: "loaded" });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(1);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_C]?.role).toBe("administrator");
+  });
+
+  it("stops after three changing snapshots and preserves the latest live role without caching stale pages", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockImplementation(() => {
+        useMessengerStore
+          .getState()
+          .upsertStreamBindings(ownerKey, [createStreamBinding({ role: "member" })]);
+        return Promise.resolve(
+          createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]),
+        );
+      });
+    const upsertStreamBindings = vi.fn();
+    const result = await loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    });
+    expect(result).toMatchObject({
+      status: "failed",
+      error: "Messenger stream bindings changed during loading",
+    });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(3);
+    expect(upsertStreamBindings).not.toHaveBeenCalled();
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBeUndefined();
+  });
+
+  it("does not deduplicate a new same-owner bootstrap into an older pending load", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const older = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const newer = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
+    const upsertStreamBindings = vi.fn();
+    const options = {
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    };
+    const first = loadMessengerStreamBindings(options);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().finishBootstrapSilently(ownerKey);
+    const second = loadMessengerStreamBindings(options);
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    older.resolve(createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]));
+    expect(await first).toMatchObject({ status: "skipped", reason: "stale-owner" });
+    newer.resolve(createStreamBindingsPage([createStreamBindingDto()]));
+    expect(await second).toMatchObject({ status: "loaded" });
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+    expect(upsertStreamBindings).toHaveBeenCalledTimes(1);
+  });
+
+  it("restarts when a bootstrap replacement changes participants without changing its request version", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(createStreamBindingsPage([createStreamBindingDto()]));
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings: vi.fn() },
+    });
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [],
+      streamBindings: [createStreamBinding()],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+    request.resolve(createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]));
+    expect(await loading).toMatchObject({ status: "loaded" });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+  });
+
+  it("does not restore a deleted stream's participants or cache after the pending response arrives", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValue(request.promise);
+    const upsertStreamBindings = vi.fn();
+    const options = {
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    };
+    const loading = loadMessengerStreamBindings(options);
+    useMessengerStore.getState().removeStream(ownerKey, { uuid: STREAM_A });
+    request.resolve(createStreamBindingsPage([createStreamBindingDto()]));
+    expect(await loading).toMatchObject({ status: "skipped", reason: "stale-owner" });
+    expect(await loadMessengerStreamBindings(options)).toMatchObject({
+      status: "skipped",
+      reason: "stale-owner",
+    });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(1);
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBeUndefined();
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]).toBeUndefined();
+    expect(upsertStreamBindings).not.toHaveBeenCalled();
+  });
+
+  it("restarts a pending snapshot when the same stream UUID is removed and restored", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useMessengerStore.getState().upsertStream(ownerKey, createStream());
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(createStreamBindingsPage([createStreamBindingDto()]));
+    const upsertStreamBindings = vi.fn();
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings },
+    });
+    useMessengerStore.getState().removeStream(ownerKey, { uuid: STREAM_A });
+    restoreMessengerStream(ownerKey, STREAM_A);
+    useMessengerStore.getState().upsertStream(ownerKey, createStream());
+    request.resolve(createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]));
+    expect(await loading).toMatchObject({ status: "loaded" });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+    expect(upsertStreamBindings).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restore an older own binding role after the stream's own role changes", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useMessengerStore.getState().upsertStream(ownerKey, createStream("administrator"));
+    useMessengerStore
+      .getState()
+      .upsertStreamBindings(ownerKey, [createStreamBinding({ role: "administrator" })]);
+    const request = createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(createStreamBindingsPage([createStreamBindingDto()]));
+    const loading = loadMessengerStreamBindings({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { getStreamBindingsPage },
+      cache: { upsertStreamBindings: vi.fn() },
+    });
+    useMessengerStore.getState().upsertStream(ownerKey, createStream("member"));
+    request.resolve(createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]));
+    expect(await loading).toMatchObject({ status: "loaded" });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_A]?.role).toBe("member");
+  });
+
+  it("does not cache an older snapshot when a synchronous subscriber revokes a binding during replacement", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const upsertStreamBindings = vi.fn();
+    const unsubscribe = useMessengerStore.subscribe((state, previous) => {
+      if (
+        state.streamBindingsLoadedByStreamId[STREAM_A] === true &&
+        previous.streamBindingsLoadedByStreamId[STREAM_A] !== true
+      )
+        state.removeStreamBinding(ownerKey, { uuid: BINDING_A, streamUuid: STREAM_A });
+    });
+    try {
+      expect(
+        await loadMessengerStreamBindings({
+          runtimeContext,
+          streamUuid: STREAM_A,
+          client: {
+            getStreamBindingsPage: () =>
+              Promise.resolve(
+                createStreamBindingsPage([createStreamBindingDto({ role: "administrator" })]),
+              ),
+          },
+          cache: { upsertStreamBindings },
+        }),
+      ).toMatchObject({ status: "loaded" });
+      expect(useMessengerStore.getState().streamBindingsById[BINDING_A]).toBeUndefined();
+      expect(upsertStreamBindings).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("reports a skipped load when replacement synchronously invalidates the bootstrap lifecycle", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const upsertStreamBindings = vi.fn();
+    const unsubscribe = useMessengerStore.subscribe((state, previous) => {
+      if (
+        state.streamBindingsLoadedByStreamId[STREAM_A] === true &&
+        previous.streamBindingsLoadedByStreamId[STREAM_A] !== true
+      )
+        state.startBootstrap(ownerKey);
+    });
+    try {
+      expect(
+        await loadMessengerStreamBindings({
+          runtimeContext,
+          streamUuid: STREAM_A,
+          client: {
+            getStreamBindingsPage: () =>
+              Promise.resolve(createStreamBindingsPage([createStreamBindingDto()])),
+          },
+          cache: { upsertStreamBindings },
+        }),
+      ).toMatchObject({ status: "skipped", reason: "stale-owner" });
+      expect(upsertStreamBindings).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("rejects a repeated pagination marker without applying partial participant pages", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockResolvedValue(createStreamBindingsPage([createStreamBindingDto()], "repeat"));
+    const upsertStreamBindings = vi.fn();
+    expect(
+      await loadMessengerStreamBindings({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        client: { getStreamBindingsPage },
+        cache: { upsertStreamBindings },
+      }),
+    ).toMatchObject({ status: "failed", error: "Repeated messenger stream bindings page marker" });
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
+    expect(upsertStreamBindings).not.toHaveBeenCalled();
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBeUndefined();
   });
 
   it("extracts stream uuid only from stream and topic routes", () => {

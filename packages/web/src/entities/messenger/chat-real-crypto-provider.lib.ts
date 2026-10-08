@@ -6,7 +6,6 @@ import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import type {
   ChatCryptoEnvelope,
-  ChatCryptoKeyFingerprint,
   ChatCryptoGrantContext,
   ChatCryptoGroupKey,
   ChatCryptoMessageContext,
@@ -105,13 +104,6 @@ function randomKey(): Uint8Array {
   return globalThis.crypto.getRandomValues(new Uint8Array(KEY_BYTES));
 }
 
-function fingerprint(groupKey: ChatCryptoGroupKey, keyUuid: string): Uint8Array {
-  const domain = encoder.encode(
-    JSON.stringify(["workspace-chat-crypto-v1", "fingerprint", keyUuid]),
-  );
-  return sha256(join(domain, groupKey.bytes));
-}
-
 // Backend adapters transport opaque envelopes; their framing is owned by this provider.
 export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
   const suite = new CipherSuite({
@@ -143,13 +135,6 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
         } catch {
           return { ok: false, reason: "unavailable" };
         }
-      });
-    },
-    fingerprintGroupKey(groupKey, keyUuid) {
-      return promisedResult<ChatCryptoKeyFingerprint>(() => {
-        if (!validKey(groupKey.bytes)) return { ok: false, reason: "invalid-key" };
-        if (keyUuid.length === 0) return { ok: false, reason: "context-mismatch" };
-        return success({ bytes: fingerprint(groupKey, keyUuid) });
       });
     },
     encryptMessage({ groupKey, plaintext, context }) {
@@ -238,11 +223,11 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
         secret.fill(0);
       }
     },
-    async decryptGroupKeyGrant({ requestKeyPair, expectedFingerprint, envelope, context }) {
+    async decryptGroupKeyGrant({ requestKeyPair, envelope, context }) {
       if (
         !validKey(requestKeyPair.privateKey) ||
         !validKey(requestKeyPair.publicKey.bytes) ||
-        !validKey(expectedFingerprint.bytes)
+        !validGrantContext(context)
       )
         return { ok: false, reason: "invalid-key" };
       if (!validGrantContext(context)) return { ok: false, reason: "context-mismatch" };
@@ -253,9 +238,7 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
       }
       const privateBytes = requestKeyPair.privateKey.slice();
       const publicBytes = requestKeyPair.publicKey.bytes.slice();
-      const expected = expectedFingerprint.bytes.slice();
       const info = grantInfo(context);
-      const keyUuid = context.keyUuid;
       try {
         const recipientPrivate = await suite.kem.deserializePrivateKey(privateBytes);
         const opened = new Uint8Array(
@@ -265,7 +248,7 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
             join(info, GRANT_MAGIC, publicBytes),
           ),
         );
-        if (!validKey(opened) || !sameBytes(fingerprint({ bytes: opened }, keyUuid), expected)) {
+        if (!validKey(opened)) {
           opened.fill(0);
           return { ok: false, reason: "context-mismatch" };
         }

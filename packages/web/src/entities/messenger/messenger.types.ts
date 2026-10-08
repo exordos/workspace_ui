@@ -71,7 +71,6 @@ export interface MessengerKeyGrantPayload {
 export interface MessengerKeyAnnouncedPayload {
   kind: "key_announced";
   keyUuid: string;
-  keyFingerprint: string;
 }
 export interface MessengerKeyRejectPayload {
   kind: "key_reject";
@@ -114,7 +113,7 @@ export interface MessengerStream {
   audience: MessengerAudience;
   isPrivate: boolean;
   encryption?: boolean;
-  currentEncryptionKey?: { keyUuid: string; keyFingerprint: string } | null;
+  currentEncryptionKey?: { keyUuid: string } | null;
   inviteOnly: boolean;
   announce: boolean;
   isArchived: boolean;

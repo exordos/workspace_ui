@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
+import { t } from "~/i18n/i18n";
 import { selectEncryptedChatInfo } from "./encrypted-chat-info-selector.lib";
 import type { EncryptedChatInfoSnapshot } from "./encrypted-chat-info-selector.lib";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
@@ -60,7 +61,7 @@ function snapshot(overrides: Partial<EncryptedChatInfoSnapshot> = {}): Encrypted
     streamsById: {
       stream: createStream({
         encryption: true,
-        currentEncryptionKey: { keyUuid: "current-key", keyFingerprint: "opaque-public-key" },
+        currentEncryptionKey: { keyUuid: "current-key" },
       }),
     },
     bindingsById: {},
@@ -91,7 +92,6 @@ describe("encrypted chat info projection", () => {
     const announcement = message("announcement", {
       kind: "key_announced",
       keyUuid: "current-key",
-      keyFingerprint: "opaque-public-key",
     });
     const other = { ...current, uuid: "other", streamUuid: "other-stream" };
     const projection = selectEncryptedChatInfo(
@@ -127,7 +127,6 @@ describe("encrypted chat info projection", () => {
     const announcement = message("announcement", {
       kind: "key_announced",
       keyUuid: "current-key",
-      keyFingerprint: "opaque",
     });
     const request = message("request", {
       kind: "key_request",
@@ -141,6 +140,7 @@ describe("encrypted chat info projection", () => {
     );
     expect(projection?.requests).toEqual([]);
     expect(projection?.keyCreatedAt).toBeUndefined();
+    expect(projection?.keyAnnouncementDates).toEqual({});
   });
   it("does not leak names, avatar URNs, or online status from another users owner", () => {
     const binding = {
@@ -176,7 +176,84 @@ describe("encrypted chat info projection", () => {
         usersById: { author: user },
       }),
     );
-    expect(projection?.members).toEqual([{ id: "binding", name: "author", avatarUrl: null }]);
+    expect(projection?.members).toEqual([
+      {
+        id: "binding",
+        name: "author",
+        avatarUrl: null,
+        email: null,
+        presence: null,
+        statusLabel: null,
+        roleLabel: t("roles.member"),
+      },
+    ]);
     expect(projection?.onlineCount).toBe(0);
   });
+  it("projects member contact, role, and presence from the current users owner", () => {
+    const binding = {
+      uuid: "binding",
+      projectId: "project-a",
+      streamUuid: "stream",
+      userUuid: "author",
+      whoUuid: "author",
+      role: "administrator" as const,
+      notificationMode: "all_messages" as const,
+      createdAt: "date",
+      updatedAt: "date",
+    };
+    const user = {
+      uuid: "author",
+      username: "author",
+      firstName: "Ava",
+      lastName: "Example",
+      displayName: "Ava Example",
+      email: " ava@example.com ",
+      avatarUrl: "urn:url:https://example.com/avatar.png",
+      status: "active" as const,
+      statusEmoji: null,
+      statusText: null,
+      lastPingAt: "date",
+      createdAt: "date",
+      updatedAt: "date",
+    };
+    const projection = selectEncryptedChatInfo(
+      snapshot({ bindingsById: { binding }, usersById: { author: user } }),
+    );
+
+    expect(projection?.members).toEqual([
+      {
+        id: "binding",
+        name: "Ava Example",
+        avatarUrl: user.avatarUrl,
+        email: "ava@example.com",
+        presence: "active",
+        statusLabel: t("presence.online"),
+        roleLabel: t("roles.admin"),
+      },
+    ]);
+    expect(projection?.onlineCount).toBe(1);
+  });
+});
+
+it("keeps independent announcement dates for every loaded generation and excludes other chats", () => {
+  const historical = {
+    ...message("historical", { kind: "key_announced", keyUuid: "old-key" }),
+    createdAt: "2026-09-01T00:00:00Z",
+  };
+  const current = message("current", { kind: "key_announced", keyUuid: "current-key" });
+  const duplicate = { ...historical, uuid: "duplicate", createdAt: "2026-09-02T00:00:00Z" };
+  const other = {
+    ...historical,
+    uuid: "other",
+    streamUuid: "another",
+    payload: { kind: "key_announced" as const, keyUuid: "other-key" },
+  };
+  const projection = selectEncryptedChatInfo(
+    snapshot({ messagesById: { historical, current, duplicate, other } }),
+  );
+  expect(projection?.keyAnnouncementDates).toEqual({
+    "old-key": historical.createdAt,
+    "current-key": current.createdAt,
+  });
+  expect(projection?.keyCreatedAt).toBe(current.createdAt);
 });

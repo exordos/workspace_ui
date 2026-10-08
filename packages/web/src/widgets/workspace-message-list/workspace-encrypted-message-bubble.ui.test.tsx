@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
@@ -91,14 +91,11 @@ async function seedRealEncryptedMessage(text: string) {
   const provider = createRealChatCryptoProvider();
   const keys = await provider.createGroupKey();
   if (!keys.ok) throw new Error("Missing group key");
-  const fingerprint = await provider.fingerprintGroupKey(keys.value, keyUuid);
-  if (!fingerprint.ok) throw new Error("Missing fingerprint");
   const stream = createStream({
     userUuid: runtime.userUuid,
     encryption: true,
     currentEncryptionKey: {
       keyUuid,
-      keyFingerprint: btoa(String.fromCharCode(...fingerprint.value.bytes)),
     },
   });
   useMessengerStore.getState().startBootstrap(owner);
@@ -107,7 +104,7 @@ async function seedRealEncryptedMessage(text: string) {
   const device = await ensureChatDeviceIdentity(runtime, () => true);
   await realChatKeyStorage.writeChatKey(
     { owner: runtime, deviceId: device.deviceId, streamUuid: stream.uuid, keyUuid },
-    { fingerprint: fingerprint.value, groupKey: keys.value },
+    { groupKey: keys.value },
   );
   const encrypted = await provider.encryptMessage({
     groupKey: keys.value,
@@ -127,7 +124,7 @@ async function seedRealEncryptedMessage(text: string) {
     content: wire.content,
   });
   useWorkspaceMessageStore.getState().applyLiveCreatedMessage(stored);
-  return { stored, owner, stream };
+  return { stored, owner, stream, runtime, device };
 }
 function view(stored: MessengerMessage) {
   return (
@@ -146,6 +143,115 @@ describe("real encrypted message presentation", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
+  });
+  it("clears visible plaintext after its local key is removed and ignores unrelated removals", async () => {
+    const { stored, owner, stream, runtime, device } =
+      await seedRealEncryptedMessage("local secret text");
+    if (owner == null) throw new Error("Missing owner");
+    render(view(stored));
+    expect(await screen.findByText("local secret text")).toBeInTheDocument();
+    if (stored.payload.kind !== "e2ee") throw new Error("Unexpected payload");
+    act(() => {
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: "unrelated-key",
+      });
+    });
+    expect(screen.getByText("local secret text")).toBeInTheDocument();
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    act(() => {
+      if (stored.payload.kind !== "e2ee") return;
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+    });
+    expect(screen.queryByText("local secret text")).not.toBeInTheDocument();
+  });
+  it("does not restore plaintext from a decrypt that finishes after key removal", async () => {
+    const { stored, owner, stream, runtime, device } =
+      await seedRealEncryptedMessage("late secret text");
+    if (owner == null || stored.payload.kind !== "e2ee") throw new Error("Missing context");
+    let completeDecrypt: ((value: cryptoRuntime.RealChatMessageDecryption) => void) | undefined;
+    const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((resolve) => {
+      completeDecrypt = resolve;
+    });
+    const decrypt = vi
+      .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
+      .mockReturnValueOnce(pending);
+    render(view(stored));
+    await waitFor(() => expect(decrypt).toHaveBeenCalled());
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    act(() => {
+      if (stored.payload.kind !== "e2ee") return;
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+    });
+    await act(async () => {
+      completeDecrypt?.({ status: "ready", plaintext: "late secret text" });
+      await pending;
+    });
+    expect(screen.queryByText("late secret text")).not.toBeInTheDocument();
+  });
+  it("offers a manual key request only for the failed bubble and disables it while requesting", async () => {
+    const { stored } = await seedRealEncryptedMessage("readable text");
+    vi.spyOn(cryptoRuntime, "decryptRealChatMessageResult").mockResolvedValue({
+      status: "error",
+      canRequestKey: true,
+    });
+    const request = vi.fn();
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+    };
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} actions={{ onRequestMessageKey: request }} />,
+    );
+    const button = await screen.findByRole("button", { name: "Request key for this message" });
+    fireEvent.click(button);
+    expect(request).toHaveBeenCalledWith(stored.uuid);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    rerender(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Request key for this message" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Request key for this message" }));
+    expect(request).toHaveBeenCalledTimes(1);
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockResolvedValue({
+      status: "ready",
+      plaintext: "readable text",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("readable text")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
   });
   it("uses the ordinary owner shell and keeps the timestamp inside a compact locked body", () => {
     const stored = message("locked-message", {
@@ -267,7 +373,6 @@ describe("real encrypted message presentation", () => {
         ...stream,
         currentEncryptionKey: {
           keyUuid: "other-key",
-          keyFingerprint: stream.currentEncryptionKey!.keyFingerprint,
         },
       }),
     );
@@ -391,8 +496,19 @@ describe("real encrypted message presentation", () => {
     const readKey = vi
       .spyOn(realChatKeyStorage, "readChatKey")
       .mockRejectedValueOnce(new Error("storage-failed"));
-    render(view(stored));
+    render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onRequestMessageKey: vi.fn() }}
+      />,
+    );
     expect(await screen.findByText("Could not decrypt message")).not.toHaveClass("sr-only");
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveAttribute("aria-busy", "false");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("retry fixture")).toBeInTheDocument();

@@ -52,6 +52,7 @@ describe("resolveLayoutChatScreenTitle", () => {
   it("uses one shell title for each encrypted chat detail screen", () => {
     expect(resolveLayoutChatScreenTitle("settings", tr)).toBe("t:channel.editChannel");
     expect(resolveLayoutChatScreenTitle("key", tr)).toBe("t:e2ee.keyTitle");
+    expect(resolveLayoutChatScreenTitle("local-key", tr)).toBe("t:e2ee.localKeyTitle");
     expect(resolveLayoutChatScreenTitle("info", tr)).toBeNull();
   });
 });

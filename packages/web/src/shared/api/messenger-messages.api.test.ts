@@ -502,7 +502,7 @@ it.each<WorkspaceMessengerE2eePayloadDto>([
     device_name: "MacBook",
     public_key: "opaque-public-key",
   },
-  { kind: "key_announced", key_uuid: MESSAGE_UUID, key_fingerprint: "opaque-public-key" },
+  { kind: "key_announced", key_uuid: MESSAGE_UUID },
   {
     kind: "key_grant",
     key_uuid: MESSAGE_UUID,
@@ -540,4 +540,73 @@ it.each<WorkspaceMessengerE2eePayloadDto>([
   ).toEqual([dto]);
   const { isWorkspaceRealtimeEvent } = await import("./messenger.types");
   expect(isWorkspaceRealtimeEvent({ epoch_version: 23, type: "message", message: dto })).toBe(true);
+});
+
+describe("opaque payload wire limits", () => {
+  function payload(kind: "e2ee" | "key_grant", content: string): WorkspaceMessengerE2eePayloadDto {
+    return kind === "e2ee"
+      ? { kind, key_uuid: MESSAGE_UUID, content }
+      : {
+          kind,
+          key_uuid: MESSAGE_UUID,
+          request_message_uuid: MESSAGE_UUID,
+          sender_device_id: "sender-device",
+          recipient_device_id: "recipient-device",
+          content,
+        };
+  }
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "posts %s content containing exactly 40,000 encoded characters",
+    async (kind) => {
+      const wire = payload(kind, "A".repeat(40_000));
+      const fetchImpl = createFetchMock({ ...messageDto, payload: wire });
+      await expect(
+        createMessage(
+          { accessToken: "access-token", fetchImpl },
+          { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload: wire },
+        ),
+      ).resolves.toMatchObject({ payload: wire });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(firstFetchCall(fetchImpl)[1]?.body).toBe(
+        JSON.stringify({
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          payload: wire,
+        }),
+      );
+    },
+  );
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "rejects %s content of 40,004 encoded characters before tokens or HTTP are requested",
+    async (kind) => {
+      const fetchImpl = vi.fn<typeof fetch>();
+      const getAccessToken = vi.fn(() => Promise.resolve("access-token"));
+      await expect(
+        createMessage(
+          { accessToken: null, fetchImpl, getAccessToken },
+          {
+            stream_uuid: STREAM_UUID,
+            topic_uuid: TOPIC_UUID,
+            payload: payload(kind, "A".repeat(40_000) + "AA=="),
+          },
+        ),
+      ).rejects.toThrow("message-too-long");
+      expect(getAccessToken).not.toHaveBeenCalled();
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves the existing Markdown transport policy", async () => {
+    const wire = { kind: "markdown" as const, content: "x".repeat(40_001) };
+    const fetchImpl = createFetchMock({ ...messageDto, payload: wire });
+    await expect(
+      createMessage(
+        { accessToken: "access-token", fetchImpl },
+        { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload: wire },
+      ),
+    ).resolves.toMatchObject({ payload: wire });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
 });

@@ -6,7 +6,7 @@ export type ChatE2eePayloadDecodeResult =
   | {
       readonly ok: false;
       readonly reason: "invalid-base64";
-      readonly field: "content" | "public_key" | "key_fingerprint";
+      readonly field: "content" | "public_key";
     };
 
 function encodeBytes(bytes: Uint8Array): string {
@@ -48,11 +48,7 @@ export function encodeChatE2eePayload(payload: ChatE2eePayload): WorkspaceMessen
         public_key: encodeBytes(payload.publicKey.bytes),
       };
     case "key_announced":
-      return {
-        kind: payload.kind,
-        key_uuid: payload.keyUuid,
-        key_fingerprint: encodeBytes(payload.keyFingerprint.bytes),
-      };
+      return { kind: payload.kind, key_uuid: payload.keyUuid };
     case "key_grant":
       return {
         kind: payload.kind,
@@ -88,19 +84,10 @@ export function decodeChatE2eePayload(
         recipientDeviceId: dto.recipient_device_id,
       },
     };
-  const field =
-    dto.kind === "e2ee" || dto.kind === "key_grant"
-      ? "content"
-      : dto.kind === "key_request"
-        ? "public_key"
-        : "key_fingerprint";
-  const bytes = decodeBytes(
-    "content" in dto
-      ? dto.content
-      : dto.kind === "key_request"
-        ? dto.public_key
-        : dto.key_fingerprint,
-  );
+  if (dto.kind === "key_announced")
+    return { ok: true, value: { kind: dto.kind, keyUuid: dto.key_uuid } };
+  const field = dto.kind === "key_request" ? "public_key" : "content";
+  const bytes = decodeBytes(dto.kind === "key_request" ? dto.public_key : dto.content);
   if (bytes === null) return { ok: false, reason: "invalid-base64", field };
   switch (dto.kind) {
     case "e2ee":
@@ -115,11 +102,6 @@ export function decodeChatE2eePayload(
           deviceName: dto.device_name,
           publicKey: { bytes },
         },
-      };
-    case "key_announced":
-      return {
-        ok: true,
-        value: { kind: dto.kind, keyUuid: dto.key_uuid, keyFingerprint: { bytes } },
       };
     case "key_grant":
       return {

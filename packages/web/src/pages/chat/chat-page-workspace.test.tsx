@@ -1016,7 +1016,6 @@ describe("ChatPage Workspace route", () => {
         encryption: true,
         currentEncryptionKey: {
           keyUuid: "mock-key",
-          keyFingerprint: btoa(String.fromCharCode(...new Uint8Array(32))),
         },
       })),
     });
@@ -1063,6 +1062,94 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
     expect(textbox).toHaveValue("Keep this text");
   });
+  it("preserves the editor during rotation and a pending current-key request", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (!runtime) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "old-key" },
+      })),
+    });
+    let currentKey = "old-key";
+    let pending = false;
+    const listeners = new Set<() => void>();
+    const emit = () => {
+      for (const listener of listeners) listener();
+    };
+    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    const requestKey = vi.fn(() => {
+      pending = true;
+      emit();
+      return Promise.resolve();
+    });
+    const active = {
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn(() => {
+        emit();
+        return Promise.resolve();
+      }),
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      dispose: vi.fn(),
+      getState: () => ({
+        access: currentKey === "old-key" ? "ready" : "missing",
+        sendKeyUuid: "old-key",
+        pending,
+        requestStatus: pending ? "requested" : "idle",
+        error: null,
+      }),
+      getRights: () => ({ canRequest: true }),
+      send,
+      requestKey,
+    };
+    captured.openRealChatSession.mockResolvedValue(active);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Keep this draft through rotation" } });
+    await act(() => {
+      currentKey = "new-key";
+      const stream = useMessengerStore.getState().streamsById[STREAM_UUID]!;
+      useMessengerStore
+        .getState()
+        .upsertStream(owner, { ...stream, currentEncryptionKey: { keyUuid: currentKey } });
+      emit();
+      return Promise.resolve();
+    });
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(textbox).toHaveValue("Keep this draft through rotation");
+    expect(screen.getByText(t("e2ee.keyUpdatedNotice"))).toBeInTheDocument();
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: t("e2ee.requestUpdatedKey") }));
+      return Promise.resolve();
+    });
+    expect(requestKey).toHaveBeenCalledOnce();
+    expect(textbox).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: t("chat.sendPlaceholder") })).not.toBeDisabled();
+    const notice = screen.getByText(t("e2ee.keyUpdatedNotice")).parentElement!;
+    fireEvent.click(within(notice).getByRole("button", { name: t("common.close") }));
+    expect(screen.queryByText(t("e2ee.keyUpdatedNotice"))).not.toBeInTheDocument();
+    expect(textbox).toHaveValue("Keep this draft through rotation");
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Keep this draft through rotation" }),
+      ),
+    );
+    expect(captured.openRealChatSession).toHaveBeenCalledOnce();
+    expect(active.dispose).not.toHaveBeenCalled();
+  });
+
   it("blocks the plaintext composer for an encrypted stream while retaining its history", async () => {
     const session = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     if (session == null) throw new Error("Expected runtime");

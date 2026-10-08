@@ -1,7 +1,7 @@
 import type { WorkspaceRuntimeOwner } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
+  ChatCryptoEnvelope,
   ChatCryptoGroupKey,
-  ChatCryptoKeyFingerprint,
   ChatCryptoPublicKey,
 } from "./chat-crypto-provider.types";
 
@@ -21,8 +21,13 @@ export interface ChatKeyStorageAddress extends ChatKeyStorageScope {
 }
 
 export interface StoredChatKey {
-  readonly fingerprint: ChatCryptoKeyFingerprint;
   readonly groupKey: ChatCryptoGroupKey | null;
+}
+
+export interface StoredChatKeyMetadata {
+  readonly keyUuid: string;
+  // Legacy entries may have no recorded local save date.
+  readonly receivedAt: number | null;
 }
 
 export interface PendingChatKeyRequest {
@@ -31,6 +36,11 @@ export interface PendingChatKeyRequest {
   readonly publicKey: ChatCryptoPublicKey;
   readonly privateKey: Uint8Array;
   readonly createdAt: number;
+  // An explicit repair retains its ciphertext probe and original key across reloads.
+  readonly recovery?: {
+    readonly envelope: ChatCryptoEnvelope;
+    readonly previousGroupKey: ChatCryptoGroupKey;
+  };
 }
 
 export interface ChatKeyRequestCompletion {
@@ -48,14 +58,13 @@ export interface StagedChatCreation extends StoredChatKey {
   readonly rotation?: {
     readonly streamUuid: string;
     readonly previousKeyUuid: string;
-    readonly previousFingerprint: string;
-    readonly previousAnnouncementUuid: string;
     readonly topicUuid: string;
   };
 }
 
 export interface ChatKeyStorageWriteOptions {
   readonly isCurrent?: () => boolean;
+  readonly expectedDeletionRevision?: number;
 }
 
 export interface CompleteChatKeyGrant {
@@ -63,10 +72,10 @@ export interface CompleteChatKeyGrant {
   readonly requestMessageUuid: string;
   readonly responseMessageUuid: string;
   readonly groupKey: ChatCryptoGroupKey;
-  readonly fingerprint: ChatCryptoKeyFingerprint;
+  readonly replaceExistingKey?: boolean;
 }
 
-export type CompleteChatKeyReject = Omit<CompleteChatKeyGrant, "groupKey" | "fingerprint">;
+export type CompleteChatKeyReject = Omit<CompleteChatKeyGrant, "groupKey" | "replaceExistingKey">;
 
 // Secrets have a dedicated durable store. False means a guarded write was skipped.
 export interface ChatKeyStorage {
@@ -77,10 +86,21 @@ export interface ChatKeyStorage {
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean>;
   readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null>;
+  readChatKeyDeletionRevision(address: ChatKeyStorageAddress): Promise<number>;
+  listChatKeys(
+    address: Omit<ChatKeyStorageAddress, "keyUuid">,
+  ): Promise<readonly StoredChatKeyMetadata[]>;
+  readLastAvailableChatKey(
+    address: Omit<ChatKeyStorageAddress, "keyUuid">,
+  ): Promise<{ readonly keyUuid: string; readonly groupKey: ChatCryptoGroupKey } | null>;
   writeChatKey(
     address: ChatKeyStorageAddress,
     key: StoredChatKey,
-    options?: ChatKeyStorageWriteOptions,
+    options?: ChatKeyStorageWriteOptions & {
+      readonly forSending?: boolean;
+      // Sending metadata updates must not restore a deleted secret.
+      readonly onlyIfPresent?: boolean;
+    },
   ): Promise<boolean>;
   removeChatKey(
     address: ChatKeyStorageAddress,

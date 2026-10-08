@@ -2,7 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
@@ -54,7 +54,7 @@ function seed() {
     createdAt: "2026-10-02T00:00:00Z",
     updatedAt: "2026-10-02T00:00:00Z",
     encryption: true,
-    currentEncryptionKey: { keyUuid: "key", keyFingerprint: "fingerprint" },
+    currentEncryptionKey: { keyUuid: "key" },
   };
   useMessengerStore.getState().startBootstrap(owner);
   useMessengerStore.getState().upsertStream(owner, stream);
@@ -63,6 +63,7 @@ function seed() {
 function session() {
   const listeners = new Set<() => void>();
   let pending = false;
+  let sendKeyUuid = "key";
   return {
     emit: () => {
       for (const listener of listeners) listener();
@@ -71,6 +72,12 @@ function session() {
       pending = value;
       for (const listener of listeners) listener();
     },
+    setSendKeyUuid: (value: string) => {
+      sendKeyUuid = value;
+      for (const listener of listeners) listener();
+    },
+    listLocalKeys: vi.fn().mockResolvedValue([]),
+    removeLocalKey: vi.fn().mockResolvedValue(undefined),
     load: vi.fn().mockResolvedValue(undefined),
     ingest: vi.fn().mockResolvedValue(undefined),
     subscribe: vi.fn((listener: () => void) => {
@@ -80,7 +87,7 @@ function session() {
       };
     }),
     dispose: vi.fn(),
-    getState: () => ({ access: "ready", pending, requestStatus: "idle", error: null }),
+    getState: () => ({ access: "ready", pending, requestStatus: "idle", error: null, sendKeyUuid }),
     requestKey: vi.fn().mockResolvedValue(undefined),
     reissueKey: vi.fn().mockResolvedValue(undefined),
     grantAllKeys: vi.fn().mockResolvedValue([]),
@@ -96,6 +103,28 @@ afterEach(() => {
   open.mockReset();
 });
 describe("real chat session ownership", () => {
+  it("reports local deletion success and a failed repeated request", async () => {
+    seed();
+    const active = session();
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      expect(await view.result.current.removeLocalKey("historical-key")).toBe(true);
+    });
+    expect(active.removeLocalKey).toHaveBeenCalledWith("historical-key");
+    active.requestKey.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      expect(await view.result.current.requestKey("historical-key")).toBe(false);
+    });
+    expect(view.result.current.error).not.toBeNull();
+    active.requestKey.mockResolvedValue(undefined);
+    await act(async () => {
+      expect(await view.result.current.requestKey("historical-key")).toBe(true);
+    });
+    expect(view.result.current.error).toBeNull();
+  });
+
   it("forwards the requested historical generation and exposes a missing-metadata error", async () => {
     seed();
     const active = session();
@@ -170,7 +199,7 @@ describe("real chat session ownership", () => {
     });
     expect(second.result.current.error).toBeNull();
   });
-  it("keeps a rotation pending until completion and opens the replacement generation", async () => {
+  it("keeps the shared session and receives state without ingesting again on generation changes", async () => {
     seed();
     const active = session();
     let complete: (() => void) | undefined;
@@ -200,14 +229,40 @@ describe("real chat session ownership", () => {
       if (!existing || !catalog.ownerKey) throw new Error("Missing stream");
       catalog.upsertStream(catalog.ownerKey, {
         ...existing,
-        currentEncryptionKey: { keyUuid: "key-v2", keyFingerprint: "fingerprint-v2" },
+        currentEncryptionKey: { keyUuid: "key-v2" },
       });
+      active.setSendKeyUuid("key-v2");
       complete?.();
       expect(await rotation).toBe(true);
     });
-    await waitFor(() => expect(view.result.current.session).toBe(next));
-    expect(open).toHaveBeenCalledTimes(2);
+    expect(active.ingest).toHaveBeenCalledOnce();
+    expect(view.result.current.sendKeyUuid).toBe("key-v2");
+    expect(view.result.current.session).toBe(active);
+    expect(active.dispose).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledOnce();
     expect(view.result.current.error).toBeNull();
+    const announcement: MessengerMessage = {
+      uuid: "22222222-2222-4222-8222-222222222222",
+      conversationId: `stream:${streamUuid}`,
+      projectId: "project-a",
+      streamUuid,
+      topicUuid: "33333333-3333-4333-8333-333333333333",
+      authorUuid: "author",
+      userUuid: "author",
+      payload: { kind: "key_announced", keyUuid: "key-v2" },
+      read: false,
+      pinned: false,
+      starred: false,
+      isOwn: true,
+      reactions: {},
+      reactionUserUuidsByEmojiName: {},
+      ownReactionUuidsByEmojiName: {},
+      createdAt: "2026-10-08T00:00:00Z",
+      updatedAt: "2026-10-08T00:00:00Z",
+    };
+    act(() => useWorkspaceMessageStore.getState().applyLiveCreatedMessage(announcement));
+    await waitFor(() => expect(active.ingest).toHaveBeenCalledTimes(2));
+    expect(active.ingest).toHaveBeenLastCalledWith([announcement]);
   });
   it("keeps a failed rotation retryable", async () => {
     seed();
@@ -246,7 +301,7 @@ describe("real chat session ownership", () => {
     expect(view.result.current.requestErrors).toEqual({});
     expect(view.result.current.error).toBeNull();
   });
-  it("discards a late batch failure after switching generations", async () => {
+  it("discards a late batch failure after switching runtime owners", async () => {
     seed();
     const active = session();
     let complete: ((value: { requestMessageUuid: string; status: string }[]) => void) | undefined;
@@ -262,13 +317,8 @@ describe("real chat session ownership", () => {
     await waitFor(() => expect(view.result.current.session).toBe(active));
     const batch = view.result.current.grantAllKeys();
     act(() => {
-      const catalog = useMessengerStore.getState();
-      const existing = catalog.streamsById[streamUuid];
-      if (!existing || !catalog.ownerKey) throw new Error("Missing stream");
-      catalog.upsertStream(catalog.ownerKey, {
-        ...existing,
-        currentEncryptionKey: { keyUuid: "key-v2", keyFingerprint: "fingerprint-v2" },
-      });
+      useWorkspaceAuthStore.getState().clear();
+      seed();
     });
     await waitFor(() => expect(view.result.current.session).toBe(next));
     await act(async () => {

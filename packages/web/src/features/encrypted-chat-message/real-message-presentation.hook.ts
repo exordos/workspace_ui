@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
+import type { RealChatKeyChange } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
   decryptRealChatMessageResult,
   type RealChatMessageDecryption,
@@ -29,12 +30,16 @@ export function useRealMessagePresentation(message: MessengerMessage): RealMessa
   const messageOwner = useWorkspaceMessageStore((state) => state.ownerKey);
   const stream = useMessengerStore((state) => state.streamsById[message.streamUuid]);
   const [revision, setRevision] = useState(0);
+  const revisionRef = useRef(0);
   const [result, setResult] = useState<{
     scopeKey: string;
     revision: number;
     value: RealChatMessageDecryption;
   } | null>(null);
-  const retry = useCallback(() => setRevision((value) => value + 1), []);
+  const retry = useCallback(() => {
+    revisionRef.current++;
+    setRevision(revisionRef.current);
+  }, []);
   const owner = runtime === null ? null : workspaceRuntimeOwnerKey(runtime);
   const allowed =
     runtime !== null &&
@@ -46,7 +51,23 @@ export function useRealMessagePresentation(message: MessengerMessage): RealMessa
   const scopeKey = allowed
     ? JSON.stringify([owner, runtime.runtimeGeneration, message.uuid, message.payload])
     : "";
-  useEffect(() => subscribeRealChatKeyChanges(retry), [retry]);
+  const keyUuid = message.payload.kind === "e2ee" ? message.payload.keyUuid : null;
+  useEffect(
+    () =>
+      subscribeRealChatKeyChanges((change?: RealChatKeyChange) => {
+        if (
+          change &&
+          (change.ownerKey !== owner ||
+            change.streamUuid !== message.streamUuid ||
+            change.keyUuid !== keyUuid)
+        )
+          return;
+        // A removed secret must also remove its plaintext from mounted presentation memory.
+        if (change?.kind === "removed") setResult(null);
+        retry();
+      }),
+    [owner, message.streamUuid, keyUuid, retry],
+  );
   useEffect(() => {
     if (!allowed) return;
     let disposed = false;
@@ -55,6 +76,7 @@ export function useRealMessagePresentation(message: MessengerMessage): RealMessa
       const catalog = useMessengerStore.getState();
       return (
         !disposed &&
+        revisionRef.current === revision &&
         current !== null &&
         workspaceRuntimeOwnerKey(current) === owner &&
         current.runtimeGeneration === runtime.runtimeGeneration &&

@@ -27,7 +27,6 @@ import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types"
 import { isAllowedDevWorkspaceProxyTargetOrigin } from "~/shared/config/dev-workspace-org-proxy";
 import {
   createInsecureSandboxProvider,
-  E2EE_SANDBOX_FINGERPRINT,
   E2EE_SANDBOX_GROUP_KEY,
   E2EE_SANDBOX_FIXTURE_TEXT,
 } from "./chat-e2ee-dev-provider.lib";
@@ -136,11 +135,22 @@ export function createDevChatE2eeSandbox(input: {
     writeDeviceIdentity: () =>
       Promise.reject(new Error("Sandbox identities are ephemeral fixtures")),
     readChatKey: (address) => Promise.resolve(keys.get(addressKey(address)) ?? null),
+    readChatKeyDeletionRevision: () => Promise.resolve(0),
+    listChatKeys: (address) => {
+      const prefix = `${workspaceRuntimeOwnerKey(address.owner)}:${address.deviceId}:${address.streamUuid}:`;
+      return Promise.resolve(
+        [...keys.entries()]
+          .filter(([id, key]) => id.startsWith(prefix) && key.groupKey !== null)
+          .map(([id]) => ({ keyUuid: id.slice(prefix.length), receivedAt: null }))
+          .sort((left, right) => left.keyUuid.localeCompare(right.keyUuid)),
+      );
+    },
+    readLastAvailableChatKey: () =>
+      Promise.reject(new Error("Sandbox does not select historical sending keys")),
     writeChatKey: (address, key, writeOptions) => {
       if (!current() || writeOptions?.isCurrent?.() === false) return Promise.resolve(false);
       const existing = keys.get(addressKey(address));
       keys.set(addressKey(address), {
-        fingerprint: key.fingerprint,
         groupKey: key.groupKey ?? existing?.groupKey ?? null,
       });
       return Promise.resolve(true);
@@ -186,7 +196,7 @@ export function createDevChatE2eeSandbox(input: {
         completions.has(id)
       )
         return Promise.resolve(false);
-      keys.set(addressKey(address), { fingerprint: grant.fingerprint, groupKey: grant.groupKey });
+      keys.set(addressKey(address), { groupKey: grant.groupKey });
       pendingRequests.delete(id);
       completions.set(id, {
         localRequestId: grant.localRequestId,
@@ -318,7 +328,6 @@ export function createDevChatE2eeSandbox(input: {
       const announcement = encodeChatE2eePayload({
         kind: "key_announced",
         keyUuid,
-        keyFingerprint: E2EE_SANDBOX_FINGERPRINT,
       });
       if (announcement.kind !== "key_announced") throw new Error("Invalid fixture");
       const created = await api.createStreamWithDefaultTopic(options(), {
@@ -328,10 +337,7 @@ export function createDevChatE2eeSandbox(input: {
         source: { kind: "native" },
         invite_only: true,
         encryption: true,
-        current_encryption_key: {
-          key_uuid: keyUuid,
-          key_fingerprint: announcement.key_fingerprint,
-        },
+        current_encryption_key: { key_uuid: keyUuid },
       });
       ensureCurrent();
       const stream = await api.getStream(options(), created.stream.uuid);
@@ -342,7 +348,6 @@ export function createDevChatE2eeSandbox(input: {
         stream.owner !== runtime.userUuid ||
         !stream.encryption ||
         stream.current_encryption_key?.key_uuid !== keyUuid ||
-        stream.current_encryption_key.key_fingerprint !== announcement.key_fingerprint ||
         created.defaultTopic.stream_uuid !== stream.uuid
       )
         throw new Error("Backend did not create the sandbox encrypted stream");
@@ -353,17 +358,11 @@ export function createDevChatE2eeSandbox(input: {
       for (const selected of ["issuer", "recipient"] as const) {
         keys.set(
           addressKey({ owner: runtime, deviceId: `sandbox-${selected}`, streamUuid, keyUuid }),
-          {
-            fingerprint: E2EE_SANDBOX_FINGERPRINT,
-            groupKey: selected === "issuer" ? E2EE_SANDBOX_GROUP_KEY : null,
-          },
+          { groupKey: selected === "issuer" ? E2EE_SANDBOX_GROUP_KEY : null },
         );
       }
       await activate();
-      await post(
-        { kind: "key_announced", keyUuid, keyFingerprint: E2EE_SANDBOX_FINGERPRINT },
-        current,
-      );
+      await post({ kind: "key_announced", keyUuid }, current);
     } finally {
       // Only this initializer can reset its lock.
       // eslint-disable-next-line require-atomic-updates

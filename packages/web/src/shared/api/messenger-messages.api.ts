@@ -1,3 +1,4 @@
+import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
 import {
   messengerDeleteJson,
   messengerGetJson,
@@ -22,6 +23,7 @@ import type {
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerCreateMessageReactionRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerMessagePayloadDto,
   WorkspaceMessengerMessageReactionDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "./messenger.types";
@@ -167,10 +169,22 @@ export async function getMessagePagesAroundResolvedMessage(
   };
 }
 
+/** The backend limits opaque wire content, including Base64 and encryption overhead. */
+export function assertMessengerOpaquePayloadWithinLimit(
+  payload: WorkspaceMessengerMessagePayloadDto,
+): void {
+  if (
+    (payload.kind === "e2ee" || payload.kind === "key_grant") &&
+    !isWorkspaceMessageWithinLimit(payload.content)
+  )
+    throw new Error("message-too-long");
+}
+
 export async function createMessage(
   options: MessengerClientOptions,
   body: WorkspaceMessengerCreateMessageRequestBody,
 ): Promise<WorkspaceMessengerMessageDto> {
+  assertMessengerOpaquePayloadWithinLimit(body.payload);
   const data = await messengerPostJson("/messages/", options, body);
   return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
 }

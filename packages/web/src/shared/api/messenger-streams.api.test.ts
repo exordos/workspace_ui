@@ -367,14 +367,14 @@ it("rejects an encrypted create response that reuses a plaintext direct stream",
         source_name: "native",
         source: { kind: "native" },
         encryption: true,
-        current_encryption_key: { key_uuid: STREAM_UUID, key_fingerprint: "AA==" },
+        current_encryption_key: { key_uuid: STREAM_UUID },
       },
     ),
   ).rejects.toThrow("requested encrypted stream");
 });
 
 it("accepts an encrypted create only with the requested initial generation", async () => {
-  const key = { key_uuid: STREAM_UUID, key_fingerprint: "AA==" };
+  const key = { key_uuid: STREAM_UUID };
   const encrypted = { ...streamDto, encryption: true, current_encryption_key: key };
   const fetchMock = createFetchMock(encrypted);
   await expect(

@@ -7,6 +7,7 @@ export interface EncryptedMessagePlaceholderProps {
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void; disabled?: boolean };
+  secondaryAction?: EncryptedMessagePlaceholderProps["action"];
 }
 
 /** Only decorative geometry enters the DOM; unavailable plaintext is never blurred in place. */
@@ -14,6 +15,7 @@ export function EncryptedMessagePlaceholder({
   state,
   title,
   action,
+  secondaryAction,
 }: Readonly<EncryptedMessagePlaceholderProps>): React.ReactElement {
   return (
     <div
@@ -27,19 +29,22 @@ export function EncryptedMessagePlaceholder({
         <div className="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
           <Icon name="warning" size={16} className="shrink-0 text-current" />
           <span>{title}</span>
-          {action ? (
-            <Button
-              type="button"
-              appearance="ghost"
-              variant="neutral"
-              size="sm"
-              className="!h-auto !rounded-sm !p-0 underline underline-offset-2"
-              disabled={action.disabled}
-              onClick={action.onClick}
-            >
-              {action.label}
-            </Button>
-          ) : null}
+          {[action, secondaryAction].map((item) =>
+            item ? (
+              <Button
+                key={item.label}
+                type="button"
+                appearance="ghost"
+                variant="neutral"
+                size="sm"
+                className="!h-auto !rounded-sm !p-0 underline underline-offset-2"
+                disabled={item.disabled}
+                onClick={item.onClick}
+              >
+                {item.label}
+              </Button>
+            ) : null,
+          )}
         </div>
       ) : (
         <>

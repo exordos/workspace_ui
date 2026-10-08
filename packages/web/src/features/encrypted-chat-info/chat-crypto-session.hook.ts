@@ -4,6 +4,7 @@ import { openRealChatSession } from "~/entities/messenger/chat-crypto-runtime.li
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { ChatE2eeControllerState } from "~/entities/messenger/chat-e2ee-controller.types";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -22,6 +23,7 @@ interface SessionView {
   scopeKey: string;
   session: RealChatSession | null;
   state: ChatE2eeControllerState;
+  sendKeyUuid?: string | null;
   loading: boolean;
   error: boolean;
   errorMessage?: string;
@@ -88,11 +90,8 @@ export function useChatCryptoSession(streamUuid: string | null) {
     state.ownerKey === ownerKey && streamUuid !== null ? state.streamsById[streamUuid] : undefined,
   );
   const enabled = stream?.encryption === true && runtime !== null;
-  const scopeKey = enabled
-    ? `${ownerKey}:${runtime.runtimeGeneration}:${streamUuid}:${stream.currentEncryptionKey?.keyUuid}:${stream.currentEncryptionKey?.keyFingerprint}`
-    : "";
+  const scopeKey = enabled ? `${ownerKey}:${runtime.runtimeGeneration}:${streamUuid}` : "";
   const keyUuid = stream?.currentEncryptionKey?.keyUuid;
-  const keyFingerprint = stream?.currentEncryptionKey?.keyFingerprint;
   const runtimeRef = useRef(runtime);
   useEffect(() => {
     runtimeRef.current = runtime;
@@ -130,8 +129,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
         workspaceRuntimeOwnerKey(live) === ownerKey &&
         live.runtimeGeneration === runtime.runtimeGeneration &&
         catalog.ownerKey === ownerKey &&
-        catalog.streamsById[streamUuid]?.currentEncryptionKey?.keyUuid === keyUuid &&
-        catalog.streamsById[streamUuid]?.currentEncryptionKey?.keyFingerprint === keyFingerprint
+        catalog.streamsById[streamUuid]?.encryption === true
       );
     };
     setView({ scopeKey, session: null, state: emptyState, loading: true, error: false });
@@ -145,6 +143,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
               scopeKey,
               session: opened,
               state: opened.getState(),
+              sendKeyUuid: opened.getState().sendKeyUuid,
               loading: false,
               error:
                 previous?.scopeKey === scopeKey && previous.session === opened
@@ -164,7 +163,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
       unsubscribe?.();
       releaseSession(scopeKey, shared);
     };
-  }, [enabled, ownerKey, keyUuid, keyFingerprint, scopeKey, streamUuid]);
+  }, [enabled, ownerKey, scopeKey, streamUuid]);
 
   useEffect(() => {
     const active = current?.session;
@@ -186,14 +185,47 @@ export function useChatCryptoSession(streamUuid: string | null) {
     });
   }, [current?.session, messages, scopeKey]);
 
+  const clearActionError = useCallback(
+    (active: RealChatSession) => {
+      setView((previous) =>
+        previous?.scopeKey === scopeKey && previous.session === active
+          ? {
+              ...previous,
+              error: Object.keys(previous.requestErrors ?? {}).length > 0,
+              errorMessage:
+                Object.keys(previous.requestErrors ?? {}).length > 0
+                  ? previous.errorMessage
+                  : undefined,
+            }
+          : previous,
+      );
+    },
+    [scopeKey],
+  );
   const requestKey = useCallback(
-    async (keyUuid?: string) => {
-      if (current?.session === null || current?.session === undefined) return;
+    async (keyUuid?: string, recoveryMessage?: MessengerMessage): Promise<boolean> => {
+      const active = current?.session;
+      if (active == null) return false;
+      clearActionError(active);
       try {
-        await current.session.requestKey(keyUuid);
+        const catalog = useWorkspaceMessageStore.getState();
+        const probe =
+          !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
+            ? Object.values(catalog.messagesById).find(
+                (message) =>
+                  message.streamUuid === streamUuid &&
+                  message.projectId === runtime?.projectId &&
+                  message.payload.kind === "e2ee" &&
+                  message.payload.keyUuid === keyUuid,
+              )
+            : undefined;
+        if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
+        else if (probe) await active.requestKey(keyUuid, probe, true);
+        else await active.requestKey(keyUuid);
+        return true;
       } catch (error) {
         setView((previous) =>
-          previous?.scopeKey === scopeKey && previous.session === current.session
+          previous?.scopeKey === scopeKey && previous.session === active
             ? {
                 ...previous,
                 error: true,
@@ -204,9 +236,10 @@ export function useChatCryptoSession(streamUuid: string | null) {
               }
             : previous,
         );
+        return false;
       }
     },
-    [current?.session, scopeKey],
+    [current?.session, scopeKey, ownerKey, streamUuid, runtime?.projectId, clearActionError],
   );
   const requestOutcome = useCallback(
     (requestUuid: string, failed: boolean) => {
@@ -255,18 +288,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
     async (operation: (session: RealChatSession) => Promise<unknown>) => {
       const active = current?.session;
       if (active == null) return false;
-      setView((previous) =>
-        previous?.scopeKey === scopeKey && previous.session === active
-          ? {
-              ...previous,
-              error: Object.keys(previous.requestErrors ?? {}).length > 0,
-              errorMessage:
-                Object.keys(previous.requestErrors ?? {}).length > 0
-                  ? previous.errorMessage
-                  : undefined,
-            }
-          : previous,
-      );
+      clearActionError(active);
       try {
         await operation(active);
         return true;
@@ -279,7 +301,11 @@ export function useChatCryptoSession(streamUuid: string | null) {
         return false;
       }
     },
-    [current?.session, scopeKey],
+    [current?.session, scopeKey, clearActionError],
+  );
+  const removeLocalKey = useCallback(
+    (keyUuid: string) => perform((active) => active.removeLocalKey(keyUuid)),
+    [perform],
   );
   const reissueKey = useCallback(() => perform((active) => active.reissueKey()), [perform]);
   const grantAllKeys = useCallback(
@@ -308,6 +334,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
   return {
     session: current?.session ?? null,
     state: current?.state ?? emptyState,
+    sendKeyUuid: current?.sendKeyUuid ?? (current?.state.access === "ready" ? keyUuid : null),
     loading: enabled && (current === null || current.loading),
     error:
       current?.error === true ||
@@ -316,6 +343,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
         : null,
     requestErrors: current?.requestErrors ?? {},
     reissueKey,
+    removeLocalKey,
     grantAllKeys,
     requestKey,
     grantKey,

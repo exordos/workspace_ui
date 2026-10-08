@@ -54,11 +54,18 @@ const ChatHeaderActions: React.FC<ChatHeaderActionsProps> = ({
 interface ChatHeaderShellProps extends ChatHeaderActionsProps {
   /** Channel title or direct partner content. */
   children: React.ReactNode;
+  headerClassName?: string;
 }
 
 /** Shared header shell with content and actions. */
-export const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({ children, ...actions }) => (
-  <header className="flex flex-shrink-0 items-center justify-between rounded-lg bg-bg-elevated px-5 py-2">
+export const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
+  children,
+  headerClassName = "py-2",
+  ...actions
+}) => (
+  <header
+    className={`flex flex-shrink-0 items-center justify-between rounded-lg bg-bg-elevated px-5 ${headerClassName}`}
+  >
     <div className="flex min-w-0 flex-1 flex-col">{children}</div>
     <ChatHeaderActions {...actions} />
   </header>

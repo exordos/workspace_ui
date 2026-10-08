@@ -245,4 +245,23 @@ describe("useRightDrawerStore navigation", () => {
     store.resetChatScreens({ ...scope, ownerKey: "other-owner" });
     expect(useRightDrawerStore.getState().chatScreen).toBeNull();
   });
+  it("keeps local-key UUIDs distinct and returns to the existing list without a Back loop", () => {
+    const store = useRightDrawerStore.getState();
+    const scope = { ownerKey: "owner", runtimeGeneration: 1, streamUuid: "stream" };
+    store.openInfo();
+    store.openChatScreen({ ...scope, screen: "settings" });
+    store.openChatScreen({ ...scope, screen: "key" });
+    store.openChatScreen({ ...scope, screen: "local-key", keyUuid: "historical-a" });
+    store.openChatScreen({ ...scope, screen: "local-key", keyUuid: "historical-b" });
+    expect(useRightDrawerStore.getState().chatScreen?.keyUuid).toBe("historical-b");
+    store.back();
+    expect(useRightDrawerStore.getState().chatScreen?.keyUuid).toBe("historical-a");
+    store.openChatScreen({ ...scope, screen: "key" });
+    expect(useRightDrawerStore.getState().layers.at(-1)?.screens).toHaveLength(3);
+    store.back();
+    expect(useRightDrawerStore.getState().chatScreen?.screen).toBe("settings");
+    store.openChatScreen({ ...scope, screen: "local-key", keyUuid: "historical-a" });
+    store.resetChatScreens({ ...scope, runtimeGeneration: 2 });
+    expect(useRightDrawerStore.getState().chatScreen).toBeNull();
+  });
 });

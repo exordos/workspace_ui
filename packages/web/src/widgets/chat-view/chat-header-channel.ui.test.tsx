@@ -20,6 +20,27 @@ describe("ChatChannelHeader", () => {
     expect(heading.closest("button")).toBeNull();
   });
 
+  it("places the protected-chat label after the channel name in the heading", () => {
+    renderWithProviders(
+      <ChatChannelHeader
+        channelName="#engineering"
+        topic="sprint-planning"
+        encrypted
+        hideTopic={false}
+        hideParticipants
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    const protectedLabel = screen.getByText(/protected chat|защищ[её]нный чат/i);
+    const headingText = heading.textContent ?? "";
+
+    expect(protectedLabel.closest("h1")).toBe(heading);
+    expect(headingText.indexOf(protectedLabel.textContent ?? "")).toBeGreaterThan(
+      headingText.indexOf("#engineering"),
+    );
+  });
+
   it("renders the system general-chat topic in italic", () => {
     renderWithProviders(
       <ChatChannelHeader
