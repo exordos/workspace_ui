@@ -9,15 +9,13 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
-import {
-  devChatInitialKeyBootstrap,
-  MessengerChannelCreationError,
-} from "./chat-initial-key-bootstrap.lib";
+import { MessengerChannelCreationError } from "./chat-initial-key-bootstrap.lib";
 import {
   createWorkspaceChannel,
   createWorkspaceDirectStream,
 } from "./messenger-create-chat-actions.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatInitialKeyBootstrap } from "./chat-initial-key-bootstrap.lib";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -34,6 +32,10 @@ const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_A = "afc81ef6-9871-4cb0-b5e5-95765a73be80";
 const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
 const DATE = "2026-06-22T10:10:00Z";
+
+const testKeyBootstrap: ChatInitialKeyBootstrap = {
+  prepare: () => Promise.resolve({ keyUuid: "00000000-0000-4000-8000-000000000001" }),
+};
 
 function createRuntimeContext(
   overrides: Partial<WorkspaceRuntimeContext> = {},
@@ -141,13 +143,12 @@ describe("messenger create chat actions", () => {
     return ownerKey;
   }
 
-  it("creates encrypted local channels with explicit proxy routing and test metadata", async () => {
+  it("creates encrypted channels with provider metadata and disabled conflicting flags", async () => {
     vi.stubEnv("DEV", true);
     const runtimeContext = createRuntimeContext({ organizationOrigin: "http://127.0.0.1:23190" });
     prepareStoreOwner(runtimeContext);
     const create = vi.fn(
       (options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) => {
-        expect(options.baseUrl).toBe("/api/workspace/v1/messenger");
         expect(options.devTargetOrigin).toBe(runtimeContext.organizationOrigin);
         expect(body.encryption).toBe(true);
         expect(body.invite_only).toBe(false);
@@ -168,7 +169,7 @@ describe("messenger create chat actions", () => {
       runtimeContext,
       name: "Encrypted",
       encryption: true,
-      encryptionBootstrap: devChatInitialKeyBootstrap,
+      encryptionBootstrap: testKeyBootstrap,
       inviteOnly: true,
       announce: true,
       client: { createStreamWithDefaultTopic: create },
@@ -177,7 +178,7 @@ describe("messenger create chat actions", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.encryption).toBe(true);
   });
 
-  it("accepts an injected provider in production and transports its public bytes", async () => {
+  it("accepts an injected provider in production and transports its key UUID", async () => {
     vi.stubEnv("DEV", false);
     const runtimeContext = createRuntimeContext();
     prepareStoreOwner(runtimeContext);
@@ -203,7 +204,6 @@ describe("messenger create chat actions", () => {
         prepare: () =>
           Promise.resolve({
             keyUuid: STREAM_A,
-            source: "provider",
           }),
       },
       client: { createStreamWithDefaultTopic: create },
@@ -211,47 +211,20 @@ describe("messenger create chat actions", () => {
     expect(result.status).toBe("applied");
   });
 
-  it.each([
-    [false, "http://localhost:23190"],
-    [true, "https://remote.example.com"],
-    [true, "http://localhost:23190/api"],
-  ])(
-    "rejects unavailable fixture bootstrap DEV=%s origin=%s without posting",
-    async (dev, origin) => {
-      vi.stubEnv("DEV", dev);
-      const create = vi.fn();
-      await expect(
-        createWorkspaceChannel({
-          runtimeContext: createRuntimeContext({ organizationOrigin: origin }),
-          name: "Encrypted",
-          encryption: true,
-          encryptionBootstrap: devChatInitialKeyBootstrap,
-          client: { createStreamWithDefaultTopic: create },
-        }),
-      ).rejects.toBeInstanceOf(MessengerChannelCreationError);
-      expect(create).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    { devTargetOrigin: "https://remote.example.com" },
-    { baseUrl: "https://remote.example.com/api/workspace/v1/messenger" },
-    { baseUrl: "http://user:password@localhost:23190/api/workspace/v1/messenger" },
-    { baseUrl: "//remote.example.com/api/workspace/v1/messenger" },
-    { baseUrl: "/api/other-service" },
-  ])("rejects unsafe fixture routing %j", async (clientOptions) => {
-    vi.stubEnv("DEV", true);
+  it("does not post when key preparation is unavailable", async () => {
     const create = vi.fn();
     await expect(
       createWorkspaceChannel({
-        runtimeContext: createRuntimeContext({ organizationOrigin: "http://localhost:23190" }),
+        runtimeContext: createRuntimeContext(),
         name: "Encrypted",
         encryption: true,
-        encryptionBootstrap: devChatInitialKeyBootstrap,
-        clientOptions,
+        encryptionBootstrap: {
+          prepare: () =>
+            Promise.reject(new MessengerChannelCreationError("encryption-unavailable")),
+        },
         client: { createStreamWithDefaultTopic: create },
       }),
-    ).rejects.toBeInstanceOf(MessengerChannelCreationError);
+    ).rejects.toMatchObject({ reason: "encryption-unavailable" });
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -266,7 +239,7 @@ describe("messenger create chat actions", () => {
           runtimeContext,
           name: "Encrypted",
           encryption: true,
-          encryptionBootstrap: devChatInitialKeyBootstrap,
+          encryptionBootstrap: testKeyBootstrap,
           client: {
             createStreamWithDefaultTopic: () =>
               Promise.resolve({
@@ -288,7 +261,6 @@ describe("messenger create chat actions", () => {
     let current = initial;
     const pending = createDeferred<{
       keyUuid: string;
-      source: "provider";
     }>();
     const create = vi.fn();
     const operation = createWorkspaceChannel({
@@ -303,7 +275,6 @@ describe("messenger create chat actions", () => {
     current = createRuntimeContext({ runtimeGeneration: 3 });
     pending.resolve({
       keyUuid: STREAM_A,
-      source: "provider",
     });
     expect(await operation).toMatchObject({ status: "skipped", reason: "stale-owner" });
     expect(create).not.toHaveBeenCalled();
@@ -324,7 +295,7 @@ describe("messenger create chat actions", () => {
       getRuntimeContext: () => current,
       name: "Encrypted",
       encryption: true,
-      encryptionBootstrap: devChatInitialKeyBootstrap,
+      encryptionBootstrap: testKeyBootstrap,
       clientOptions: { fetchImpl: transport },
       client: {
         createStreamWithDefaultTopic: (options) => {

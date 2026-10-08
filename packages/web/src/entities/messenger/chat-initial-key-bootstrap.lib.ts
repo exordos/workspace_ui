@@ -1,13 +1,9 @@
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { isAllowedDevWorkspaceProxyTargetOrigin } from "~/shared/config/dev-workspace-org-proxy";
-
-export const DEV_CHAT_KEY_UUID = "00000000-0000-4000-8000-000000000001";
 
 export interface ChatInitialKeyMetadata {
   readonly keyUuid: string;
   readonly creationId?: string;
   readonly deviceId?: string;
-  readonly source: "provider" | "development-fixture";
 }
 
 /** A real implementation owns key generation/storage; creation only transports public metadata. */
@@ -31,22 +27,3 @@ export class MessengerChannelCreationError extends Error {
     this.name = "MessengerChannelCreationError";
   }
 }
-
-export function isDevChatInitialKeyAllowed(runtime: WorkspaceRuntimeContext): boolean {
-  if (!import.meta.env.DEV || !isAllowedDevWorkspaceProxyTargetOrigin(runtime.organizationOrigin))
-    return false;
-  const url = new URL(runtime.organizationOrigin);
-  return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-}
-
-/** Only satisfies the local API's required initial-key field. It provides no encryption or access. */
-export const devChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
-  prepare: ({ runtimeContext, isCurrent, signal }) => {
-    if (!isDevChatInitialKeyAllowed(runtimeContext) || !isCurrent() || signal?.aborted)
-      return Promise.reject(new MessengerChannelCreationError("encryption-unavailable"));
-    return Promise.resolve({
-      keyUuid: DEV_CHAT_KEY_UUID,
-      source: "development-fixture",
-    });
-  },
-};

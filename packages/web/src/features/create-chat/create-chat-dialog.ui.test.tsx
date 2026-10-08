@@ -185,18 +185,6 @@ describe("CreateChatDialog", () => {
     expect(announce).not.toBeChecked();
   });
 
-  it("shows the local test-key notice only when the encrypted option is selected", () => {
-    seedWorkspaceSession("http://127.0.0.1:9100");
-    renderDialog();
-    fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
-    const notice =
-      "Messages are encrypted on your device. Access keys are shared only after an authorized grant.";
-    expect(screen.queryByText(notice)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
-    expect(screen.getByText(notice)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
-    expect(screen.queryByText(notice)).not.toBeInTheDocument();
-  });
   it("keeps announcement-only control visible but disabled for Workspace", () => {
     seedWorkspaceSession();
     renderDialog();

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { openRealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
+import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
 import type { ChatE2eeControllerState } from "~/entities/messenger/chat-e2ee-controller.types";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -10,8 +10,9 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+
+const emptyMessages: Record<string, MessengerMessage> = {};
 
 const emptyState: ChatE2eeControllerState = {
   access: "missing",
@@ -22,59 +23,13 @@ const emptyState: ChatE2eeControllerState = {
 interface SessionView {
   scopeKey: string;
   session: RealChatSession | null;
+  lease?: ReturnType<typeof acquireChatCryptoSession>;
   state: ChatE2eeControllerState;
   sendKeyUuid?: string | null;
   loading: boolean;
   error: boolean;
   errorMessage?: string;
   requestErrors?: Readonly<Record<string, string>>;
-}
-
-interface SharedSession {
-  users: number;
-  abort: AbortController;
-  promise: Promise<RealChatSession>;
-  lastIngest: string | null;
-}
-const activeSessions = new Map<string, SharedSession>();
-function acquireSession(
-  key: string,
-  runtime: WorkspaceRuntimeContext,
-  streamUuid: string,
-): SharedSession {
-  const existing = activeSessions.get(key);
-  if (existing) {
-    existing.users++;
-    return existing;
-  }
-  const abort = new AbortController();
-  const promise = openRealChatSession({
-    runtimeContext: runtime,
-    streamUuid,
-    getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-    signal: abort.signal,
-  }).then(async (session) => {
-    try {
-      await session.load();
-      return session;
-    } catch (error) {
-      session.dispose();
-      throw error;
-    }
-  });
-  const shared: SharedSession = { users: 1, abort, promise, lastIngest: null };
-  activeSessions.set(key, shared);
-  return shared;
-}
-function releaseSession(key: string, shared: SharedSession): void {
-  shared.users--;
-  if (shared.users > 0) return;
-  shared.abort.abort();
-  if (activeSessions.get(key) === shared) activeSessions.delete(key);
-  void shared.promise.then(
-    (session) => session.dispose(),
-    () => undefined,
-  );
 }
 
 /** Coordinates existing domain operations; presentation components receive only state and callbacks. */
@@ -98,27 +53,26 @@ export function useChatCryptoSession(streamUuid: string | null) {
   }, [runtime]);
   const [view, setView] = useState<SessionView | null>(null);
   const current = view?.scopeKey === scopeKey ? view : null;
-  const messagesOwnerKey = useWorkspaceMessageStore((state) => state.ownerKey);
-  const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
+  const messagesById = useWorkspaceMessageStore((state) =>
+    enabled && state.ownerKey === ownerKey ? state.messagesById : emptyMessages,
+  );
   const messages = useMemo(
     () =>
-      messagesOwnerKey === ownerKey
-        ? Object.values(messagesById).filter(
-            (message) =>
-              message.streamUuid === streamUuid &&
-              message.projectId === runtime?.projectId &&
-              message.payload.kind !== "e2ee" &&
-              message.payload.kind !== "markdown",
-          )
-        : [],
-    [messagesById, messagesOwnerKey, ownerKey, runtime?.projectId, streamUuid],
+      Object.values(messagesById).filter(
+        (message) =>
+          message.streamUuid === streamUuid &&
+          message.projectId === runtime?.projectId &&
+          message.payload.kind !== "e2ee" &&
+          message.payload.kind !== "markdown",
+      ),
+    [messagesById, runtime?.projectId, streamUuid],
   );
 
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!enabled || runtime === null || streamUuid === null) return;
     let disposed = false;
-    const shared = acquireSession(scopeKey, runtime, streamUuid);
+    const shared = acquireChatCryptoSession(runtime, streamUuid);
     let unsubscribe: (() => void) | undefined;
     const isCurrent = () => {
       const live = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -142,6 +96,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
               ...(previous?.scopeKey === scopeKey && previous.session === opened ? previous : {}),
               scopeKey,
               session: opened,
+              lease: shared,
               state: opened.getState(),
               sendKeyUuid: opened.getState().sendKeyUuid,
               loading: false,
@@ -161,29 +116,21 @@ export function useChatCryptoSession(streamUuid: string | null) {
     return () => {
       disposed = true;
       unsubscribe?.();
-      releaseSession(scopeKey, shared);
+      shared.release();
     };
   }, [enabled, ownerKey, scopeKey, streamUuid]);
 
   useEffect(() => {
     const active = current?.session;
     if (active === null || active === undefined) return;
-    const shared = activeSessions.get(scopeKey);
-    const signature = JSON.stringify(
-      messages.map((message) => [message.uuid, message.authorUuid, message.payload]),
-    );
-    if (!shared || shared.lastIngest === signature) return;
-    shared.lastIngest = signature;
-    void active.ingest(messages).catch(() => {
-      if (activeSessions.get(scopeKey) !== shared) return;
-      if (shared.lastIngest === signature) shared.lastIngest = null;
+    void current?.lease?.ingest(messages).catch(() => {
       setView((previous) =>
         previous?.scopeKey === scopeKey && previous.session === active
           ? { ...previous, error: true }
           : previous,
       );
     });
-  }, [current?.session, messages, scopeKey]);
+  }, [current?.session, current?.lease, messages, scopeKey]);
 
   const clearActionError = useCallback(
     (active: RealChatSession) => {
@@ -202,26 +149,13 @@ export function useChatCryptoSession(streamUuid: string | null) {
     },
     [scopeKey],
   );
-  const requestKey = useCallback(
-    async (keyUuid?: string, recoveryMessage?: MessengerMessage): Promise<boolean> => {
+  const perform = useCallback(
+    async (operation: (session: RealChatSession) => Promise<unknown>) => {
       const active = current?.session;
       if (active == null) return false;
       clearActionError(active);
       try {
-        const catalog = useWorkspaceMessageStore.getState();
-        const probe =
-          !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
-            ? Object.values(catalog.messagesById).find(
-                (message) =>
-                  message.streamUuid === streamUuid &&
-                  message.projectId === runtime?.projectId &&
-                  message.payload.kind === "e2ee" &&
-                  message.payload.keyUuid === keyUuid,
-              )
-            : undefined;
-        if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
-        else if (probe) await active.requestKey(keyUuid, probe, true);
-        else await active.requestKey(keyUuid);
+        await operation(active);
         return true;
       } catch (error) {
         setView((previous) =>
@@ -239,16 +173,38 @@ export function useChatCryptoSession(streamUuid: string | null) {
         return false;
       }
     },
-    [current?.session, scopeKey, ownerKey, streamUuid, runtime?.projectId, clearActionError],
+    [current?.session, scopeKey, clearActionError],
   );
-  const requestOutcome = useCallback(
-    (requestUuid: string, failed: boolean) => {
-      const active = current?.session;
+  const requestKey = useCallback(
+    (keyUuid?: string, recoveryMessage?: MessengerMessage) =>
+      perform(async (active) => {
+        const catalog = useWorkspaceMessageStore.getState();
+        const probe =
+          !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
+            ? Object.values(catalog.messagesById).find(
+                (message) =>
+                  message.streamUuid === streamUuid &&
+                  message.projectId === runtime?.projectId &&
+                  message.payload.kind === "e2ee" &&
+                  message.payload.keyUuid === keyUuid,
+              )
+            : undefined;
+        if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
+        else if (probe) await active.requestKey(keyUuid, probe, true);
+        else await active.requestKey(keyUuid);
+      }),
+    [perform, ownerKey, streamUuid, runtime?.projectId],
+  );
+  const requestOutcomes = useCallback(
+    (active: RealChatSession, results: Awaited<ReturnType<RealChatSession["grantAllKeys"]>>) => {
       setView((previous) => {
         if (previous?.scopeKey !== scopeKey || previous.session !== active) return previous;
         const requestErrors = { ...previous.requestErrors };
-        if (failed) requestErrors[requestUuid] = t("e2ee.cryptoOperationFailed");
-        else delete requestErrors[requestUuid];
+        for (const result of results) {
+          if (result.status === "failed")
+            requestErrors[result.requestMessageUuid] = t("e2ee.cryptoOperationFailed");
+          else delete requestErrors[result.requestMessageUuid];
+        }
         const count = Object.keys(requestErrors).length;
         return {
           ...previous,
@@ -258,50 +214,29 @@ export function useChatCryptoSession(streamUuid: string | null) {
         };
       });
     },
-    [current?.session, scopeKey],
+    [scopeKey],
+  );
+  const respondToRequest = useCallback(
+    async (requestUuid: string, action: "grantKey" | "rejectKey") => {
+      const active = current?.session;
+      if (active == null) return;
+      let status: "granted" | "failed" = "granted";
+      try {
+        await active[action](requestUuid);
+      } catch {
+        status = "failed";
+      }
+      requestOutcomes(active, [{ requestMessageUuid: requestUuid, status }]);
+    },
+    [current?.session, requestOutcomes],
   );
   const grantKey = useCallback(
-    async (requestUuid: string) => {
-      if (current?.session == null) return;
-      try {
-        await current.session.grantKey(requestUuid);
-        requestOutcome(requestUuid, false);
-      } catch {
-        requestOutcome(requestUuid, true);
-      }
-    },
-    [current?.session, requestOutcome],
+    (requestUuid: string) => respondToRequest(requestUuid, "grantKey"),
+    [respondToRequest],
   );
   const rejectKey = useCallback(
-    async (requestUuid: string) => {
-      if (current?.session == null) return;
-      try {
-        await current.session.rejectKey(requestUuid);
-        requestOutcome(requestUuid, false);
-      } catch {
-        requestOutcome(requestUuid, true);
-      }
-    },
-    [current?.session, requestOutcome],
-  );
-  const perform = useCallback(
-    async (operation: (session: RealChatSession) => Promise<unknown>) => {
-      const active = current?.session;
-      if (active == null) return false;
-      clearActionError(active);
-      try {
-        await operation(active);
-        return true;
-      } catch {
-        setView((previous) =>
-          previous?.scopeKey === scopeKey && previous.session === active
-            ? { ...previous, error: true }
-            : previous,
-        );
-        return false;
-      }
-    },
-    [current?.session, scopeKey, clearActionError],
+    (requestUuid: string) => respondToRequest(requestUuid, "rejectKey"),
+    [respondToRequest],
   );
   const removeLocalKey = useCallback(
     (keyUuid: string) => perform((active) => active.removeLocalKey(keyUuid)),
@@ -312,24 +247,9 @@ export function useChatCryptoSession(streamUuid: string | null) {
     () =>
       perform(async (active) => {
         const results = await active.grantAllKeys();
-        setView((previous) => {
-          if (previous?.scopeKey !== scopeKey || previous.session !== active) return previous;
-          const requestErrors = { ...previous.requestErrors };
-          for (const result of results) {
-            if (result.status === "failed")
-              requestErrors[result.requestMessageUuid] = t("e2ee.cryptoOperationFailed");
-            else delete requestErrors[result.requestMessageUuid];
-          }
-          const count = Object.keys(requestErrors).length;
-          return {
-            ...previous,
-            requestErrors,
-            error: count > 0,
-            errorMessage: count > 0 ? t("e2ee.grantAllFailed", { count }) : undefined,
-          };
-        });
+        requestOutcomes(active, results);
       }),
-    [perform, scopeKey],
+    [perform, requestOutcomes],
   );
   return {
     session: current?.session ?? null,

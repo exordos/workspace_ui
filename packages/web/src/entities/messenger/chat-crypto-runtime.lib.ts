@@ -28,6 +28,7 @@ import type {
   ChatKeyRequestPayload,
   ChatKeyResponsePayload,
 } from "./chat-e2ee.types";
+import type { StoredChatKey } from "./chat-key-storage.types";
 import type { MessengerMessageActionResult } from "./messenger-message-actions.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerMessage } from "./messenger.types";
@@ -73,6 +74,14 @@ function domainMessage(message: MessengerMessage): ChatE2eeMessage | null {
         payload: decoded.value,
       }
     : null;
+}
+
+function keyMaterialChanged(before: StoredChatKey | null, after: StoredChatKey | null): boolean {
+  const previous = before?.groupKey?.bytes;
+  const next = after?.groupKey?.bytes;
+  return (
+    !!next && (previous?.length !== next.length || previous.some((byte, i) => byte !== next[i]))
+  );
 }
 
 export interface OpenRealChatSessionOptions {
@@ -202,6 +211,19 @@ export async function openRealChatSession({
   let includeStream = true;
   const requests = new Map<string, ChatE2eeMessage<ChatKeyRequestPayload>>();
   const responses = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
+  interface KeyRequestOutcome {
+    request: ChatE2eeMessage<ChatKeyRequestPayload>;
+    status: "pending" | "granted" | "rejected";
+  }
+  let requestOutcomes: Map<string, KeyRequestOutcome> | null = null;
+  const recordKeyMessage = (message: ChatE2eeMessage) => {
+    if (message.payload.kind === "key_request")
+      requests.set(message.uuid, { ...message, payload: message.payload });
+    if (message.payload.kind === "key_grant" || message.payload.kind === "key_reject")
+      responses.set(message.uuid, { ...message, payload: message.payload });
+    requestOutcomes = null;
+  };
+  let bootstrapPending = true;
   let publishingUpdate = false;
   const publishKeyUpdate = (keyUuid: string) => {
     publishingUpdate = true;
@@ -298,6 +320,19 @@ export async function openRealChatSession({
     generationControllers.set(keyUuid, controller);
     return controller;
   };
+  const ingestKeyMessage = async (message: ChatE2eeMessage) => {
+    const controller = await generationController(message.payload.keyUuid);
+    const address = scopeFor(message.payload.keyUuid);
+    const before = await realChatKeyStorage.readChatKey(address);
+    assertCurrent();
+    const result = await controller.ingestKeyMessage(message);
+    assertCurrent();
+    const after = await realChatKeyStorage.readChatKey(address);
+    assertCurrent();
+    if (keyMaterialChanged(before, after)) publishKeyUpdate(message.payload.keyUuid);
+    if (!result.ok && result.reason !== "forbidden" && result.reason !== "invalid-message")
+      throw new Error(result.reason);
+  };
   const selectSendingKey = async (scope = currentScope()): Promise<boolean> => {
     const key = await realChatKeyStorage.readChatKey(scope);
     assertCurrent();
@@ -345,8 +380,7 @@ export async function openRealChatSession({
     sendingKeyUuid = previous?.keyUuid ?? null;
     return true;
   };
-  const reconcileLocal = async (): Promise<boolean> => {
-    let recoveredRotation = false;
+  const reconcileLocal = async (): Promise<void> => {
     for (;;) {
       const scope = currentScope();
       if (
@@ -375,9 +409,10 @@ export async function openRealChatSession({
           assertCurrent();
           if (!generationCurrent(scope)) continue;
           if (!committed) throw new Error("storage-failed");
-          recoveredRotation = stage.rotation !== undefined;
-          if (recoveredRotation && rotatingKeyUuid === scope.keyUuid)
+          if (stage.rotation && rotatingKeyUuid === scope.keyUuid)
             recoveredRotationKeyUuid = scope.keyUuid;
+          bootstrapPending = false;
+          publishKeyUpdate(scope.keyUuid);
         }
         const controller = await generationController(scope.keyUuid, reconciledKeyUuid === null);
         assertCurrent();
@@ -394,24 +429,22 @@ export async function openRealChatSession({
       const permissions = permissionSnapshot();
       if (permissions !== reconciledPermissions) {
         // A grant rejected before issuer roles arrived remains retryable without reloading history.
-        for (const message of [...requests.values(), ...responses.values()]) {
-          const controller = await generationController(message.payload.keyUuid);
-          const result = await controller.ingestKeyMessage(message);
-          assertCurrent();
-          if (!result.ok && result.reason !== "forbidden" && result.reason !== "invalid-message")
-            throw new Error(result.reason);
-        }
+        for (const message of [...requests.values(), ...responses.values()])
+          await ingestKeyMessage(message);
         if (permissionSnapshot() !== permissions || !generationCurrent(scope)) continue;
         reconciledPermissions = permissions;
       }
       if (!(await selectSendingKey(scope))) continue;
       reconciliationError = null;
-      return recoveredRotation;
+      if (bootstrapPending) {
+        bootstrapPending = false;
+        if (sendingKeyUuid) publishKeyUpdate(sendingKeyUuid);
+      }
+      return;
     }
   };
   const emit = () => {
     for (const listener of listeners) listener();
-    if (current()) notifyRealChatKeyChanges();
   };
   // Both user actions and subscription reconciliation share this queue and cannot rebind each other.
   let operationQueue: Promise<unknown> = Promise.resolve();
@@ -421,9 +454,8 @@ export async function openRealChatSession({
       sessionPending++;
       emit();
       try {
-        const recovered = await reconcileLocal();
+        await reconcileLocal();
         operationDispatchKeyUuid = currentScope().keyUuid;
-        if (recovered) publishKeyUpdate(currentScope().keyUuid);
         return await operation();
       } finally {
         operationDispatchKeyUuid = null;
@@ -434,34 +466,37 @@ export async function openRealChatSession({
     operationQueue = next.catch(() => undefined);
     return next;
   };
-  const getKeyRequestOutcomes = () =>
-    [...requests.values()].map((request) => {
-      let status: "pending" | "granted" | "rejected" = "pending";
-      for (const response of responses.values()) {
-        if (
-          correlateChatKeyResponse({
-            request,
-            response,
-            issuerCanGrantKey: issuerAllowed(response.authorUuid),
-          }).status === "matched"
-        ) {
-          status = response.payload.kind === "key_grant" ? "granted" : "rejected";
-          break;
-        }
-      }
-      return { request, status };
-    });
-  const pendingRequest = (uuid: string) =>
-    getKeyRequestOutcomes().find((item) => item.request.uuid === uuid && item.status === "pending")
-      ?.request;
+  const indexedRequestOutcomes = () => {
+    if (requestOutcomes) return requestOutcomes;
+    requestOutcomes = new Map(
+      [...requests.values()].map((request) => [request.uuid, { request, status: "pending" }]),
+    );
+    for (const response of responses.values()) {
+      const outcome = requestOutcomes.get(response.payload.requestMessageUuid);
+      if (
+        outcome?.status === "pending" &&
+        correlateChatKeyResponse({
+          request: outcome.request,
+          response,
+          issuerCanGrantKey: issuerAllowed(response.authorUuid),
+        }).status === "matched"
+      )
+        outcome.status = response.payload.kind === "key_grant" ? "granted" : "rejected";
+    }
+    return requestOutcomes;
+  };
+  const getKeyRequestOutcomes = () => [...indexedRequestOutcomes().values()];
+  const pendingRequest = (uuid: string) => {
+    const outcome = indexedRequestOutcomes().get(uuid);
+    return outcome?.status === "pending" ? outcome.request : undefined;
+  };
   const grantRequest = async (uuid: string) => {
     const request = pendingRequest(uuid);
     if (!request) throw new Error("invalid-message");
     const controller = await generationController(request.payload.keyUuid);
     const result = await controller.grantKey(request);
     if (!result.ok) throw new Error(result.reason);
-    if (result.value.payload.kind === "key_grant")
-      responses.set(result.value.uuid, { ...result.value, payload: result.value.payload });
+    recordKeyMessage(result.value);
     return result;
   };
   let unsubscribeCatalog: (() => void) | undefined;
@@ -478,6 +513,7 @@ export async function openRealChatSession({
     generationControllers.clear();
     requests.clear();
     responses.clear();
+    requestOutcomes = null;
     emit();
     listeners.clear();
   };
@@ -563,32 +599,8 @@ export async function openRealChatSession({
             continue;
           const mapped = domainMessage(message);
           if (!mapped) continue;
-          if (mapped.payload.kind === "key_request")
-            requests.set(mapped.uuid, { ...mapped, payload: mapped.payload });
-          if (mapped.payload.kind === "key_grant" || mapped.payload.kind === "key_reject")
-            responses.set(mapped.uuid, { ...mapped, payload: mapped.payload });
-          const controller = await generationController(mapped.payload.keyUuid);
-          const beforeKey =
-            mapped.payload.kind === "key_grant"
-              ? await realChatKeyStorage.readChatKey(scopeFor(mapped.payload.keyUuid))
-              : null;
-          const before = beforeKey?.groupKey;
-          assertCurrent();
-          const result = await controller.ingestKeyMessage(mapped);
-          assertCurrent();
-          if (mapped.payload.kind === "key_grant") {
-            const afterKey = await realChatKeyStorage.readChatKey(scopeFor(mapped.payload.keyUuid));
-            const after = afterKey?.groupKey;
-            assertCurrent();
-            if (
-              after &&
-              (before?.bytes.length !== after.bytes.length ||
-                before?.bytes.some((byte, index) => byte !== after.bytes[index]))
-            )
-              publishKeyUpdate(mapped.payload.keyUuid);
-          }
-          if (!result.ok && result.reason !== "invalid-message" && result.reason !== "forbidden")
-            throw new Error(result.reason);
+          recordKeyMessage(mapped);
+          await ingestKeyMessage(mapped);
         }
         await reconcileLocal();
       }),
@@ -614,14 +626,7 @@ export async function openRealChatSession({
         assertCurrent();
         const afterKey = await realChatKeyStorage.readChatKey(scopeFor(requestedKeyUuid));
         assertCurrent();
-        if (
-          afterKey?.groupKey &&
-          (beforeKey?.groupKey?.bytes.length !== afterKey.groupKey.bytes.length ||
-            beforeKey?.groupKey?.bytes.some(
-              (byte, index) => byte !== afterKey.groupKey?.bytes[index],
-            ))
-        )
-          publishKeyUpdate(requestedKeyUuid);
+        if (keyMaterialChanged(beforeKey, afterKey)) publishKeyUpdate(requestedKeyUuid);
         if (!result.ok) throw new Error(result.reason);
         return result;
       }),
@@ -633,8 +638,7 @@ export async function openRealChatSession({
         const controller = await generationController(request.payload.keyUuid);
         const result = await controller.rejectKey(request);
         if (!result.ok) throw new Error(result.reason);
-        if (result.value.payload.kind === "key_reject")
-          responses.set(result.value.uuid, { ...result.value, payload: result.value.payload });
+        recordKeyMessage(result.value);
         return result;
       }),
     grantAllKeys: () =>
@@ -819,6 +823,7 @@ export async function openRealChatSession({
     lastObservedStream = stream;
     if (signature === lastCatalogSignature && !retryFailed) return;
     lastCatalogSignature = signature;
+    requestOutcomes = null;
     reconciliationVersion++;
     emit();
     scheduleReconciliation();

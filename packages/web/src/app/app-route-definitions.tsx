@@ -56,11 +56,6 @@ const EncryptedChatPreview = React.lazy(() =>
     default: m.EncryptedChatPreview,
   })),
 );
-const EncryptedChatSandbox = React.lazy(() =>
-  import("~/pages/encrypted-chat/encrypted-chat-sandbox.ui").then((m) => ({
-    default: m.EncryptedChatSandbox,
-  })),
-);
 function resolveWorkspaceMessengerRootFromSessions(params: {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
@@ -132,9 +127,6 @@ export const LoginAppRoutes: React.FC = () => (
     {import.meta.env.DEV ? (
       <Route path="/login/e2ee-preview" element={<EncryptedChatPreview />} />
     ) : null}
-    {import.meta.env.DEV ? (
-      <Route path="/login/e2ee-sandbox" element={<EncryptedChatSandbox />} />
-    ) : null}
     <Route path="*" element={<LoginPage />} />
   </Routes>
 );
@@ -157,9 +149,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
     <Routes>
       {import.meta.env.DEV ? (
         <Route path="/login/e2ee-preview" element={<EncryptedChatPreview />} />
-      ) : null}
-      {import.meta.env.DEV ? (
-        <Route path="/login/e2ee-sandbox" element={<EncryptedChatSandbox />} />
       ) : null}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<WorkspaceShareEntryRedirect fallback={defaultMessengerRoute} />} />

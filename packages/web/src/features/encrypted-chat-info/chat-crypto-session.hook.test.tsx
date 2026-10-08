@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -360,5 +361,93 @@ describe("real chat session ownership", () => {
     });
     expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-b"]);
     expect(view.result.current.error).toContain("1 requests");
+  });
+});
+
+describe("shared domain session leases", () => {
+  function acquire() {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (!runtime) throw new Error("Missing runtime");
+    return acquireChatCryptoSession(runtime, streamUuid);
+  }
+
+  it("keeps accepted ingestion when its caller leaves but another consumer remains", async () => {
+    seed();
+    const active = session();
+    let complete: (() => void) | undefined;
+    active.load.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    open.mockResolvedValue(active);
+    const first = acquire();
+    const second = acquire();
+    const ingestion = first.ingest([]);
+    await second.ingest([]);
+    first.release();
+    first.release();
+    await waitFor(() => expect(complete).toBeDefined());
+    complete?.();
+    await ingestion;
+    expect(active.ingest).toHaveBeenCalledOnce();
+    expect(active.dispose).not.toHaveBeenCalled();
+    second.release();
+    await waitFor(() => expect(active.dispose).toHaveBeenCalledOnce());
+  });
+
+  it("skips pending ingestion after the final consumer leaves", async () => {
+    seed();
+    const active = session();
+    open.mockResolvedValue(active);
+    const lease = acquire();
+    const ingestion = lease.ingest([]);
+    lease.release();
+    await ingestion;
+    expect(active.ingest).not.toHaveBeenCalled();
+    await waitFor(() => expect(active.dispose).toHaveBeenCalledOnce());
+  });
+
+  it("allows another consumer to retry a failed ingestion", async () => {
+    seed();
+    const active = session();
+    active.ingest.mockRejectedValueOnce(new Error("offline"));
+    open.mockResolvedValue(active);
+    const first = acquire();
+    const second = acquire();
+    await expect(first.ingest([])).rejects.toThrow("offline");
+    await second.ingest([]);
+    expect(active.ingest).toHaveBeenCalledTimes(2);
+    first.release();
+    second.release();
+  });
+
+  it("disposes a failed load once and opens a fresh session after release", async () => {
+    seed();
+    const active = session();
+    active.load.mockRejectedValue(new Error("offline"));
+    const next = session();
+    open.mockResolvedValueOnce(active).mockResolvedValueOnce(next);
+    const failed = acquire();
+    await expect(failed.promise).rejects.toThrow("offline");
+    failed.release();
+    const fresh = acquire();
+    await expect(fresh.promise).resolves.toBe(next);
+    expect(active.dispose).toHaveBeenCalledOnce();
+    fresh.release();
+  });
+
+  it("does not render an inactive hook when the message store changes", () => {
+    seed();
+    const render = vi.fn();
+    renderHook(() => {
+      render();
+      return useChatCryptoSession(null);
+    });
+    const count = render.mock.calls.length;
+    act(() => useWorkspaceMessageStore.setState({ messagesById: {} }));
+    expect(render).toHaveBeenCalledTimes(count);
+    expect(open).not.toHaveBeenCalled();
   });
 });

@@ -442,9 +442,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 </span>
                 <span aria-hidden="true">{t("channel.protectedChannelE2ee")}</span>
               </label>
-              {vm.channelEncryption && vm.channelEncryptionUsesTestKey && (
-                <p className="text-xs text-text-muted">{t("channel.encryptionTestKeyNotice")}</p>
-              )}
               <div className="flex min-h-0 flex-col gap-3 overflow-x-auto">
                 <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
                 <input

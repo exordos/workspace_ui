@@ -12,7 +12,6 @@ import {
   createStreamWithDefaultTopic as defaultCreateStreamWithDefaultTopic,
 } from "~/shared/api/messenger-streams.api";
 import type { WorkspaceMessengerCreateStreamWithDefaultTopicResult } from "~/shared/api/messenger-streams.api";
-import { DEFAULT_MESSENGER_API_BASE } from "~/shared/api/messenger-transport.internal";
 import type {
   WorkspaceMessengerAddStreamBindingsRequestBody,
   WorkspaceMessengerCreateStreamRequestBody,
@@ -20,10 +19,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import { isWorkspaceMessengerMessagePayloadDto } from "~/shared/api/messenger.types";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
-import {
-  isDevChatInitialKeyAllowed,
-  MessengerChannelCreationError,
-} from "./chat-initial-key-bootstrap.lib";
+import { MessengerChannelCreationError } from "./chat-initial-key-bootstrap.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import {
   adaptMessengerStream,
@@ -194,27 +190,6 @@ function uniqueMemberUserUuids(userUuids: readonly MessengerUuid[] | undefined):
   return result;
 }
 
-function pinDevelopmentKeyRequestOptions(
-  initialKey: ChatInitialKeyMetadata | null,
-  requestOptions: MessengerClientOptions,
-  runtimeContext: WorkspaceRuntimeContext,
-): void {
-  if (initialKey?.source === "development-fixture") {
-    const effectiveTarget = requestOptions.devTargetOrigin ?? "";
-    const base = requestOptions.baseUrl;
-    const allowedTarget = isDevChatInitialKeyAllowed({
-      ...runtimeContext,
-      organizationOrigin: effectiveTarget,
-    });
-    const allowedBase = base == null || base === DEFAULT_MESSENGER_API_BASE;
-    if (!allowedTarget || !allowedBase)
-      throw new MessengerChannelCreationError("encryption-unavailable");
-    // Pin both routing values so environment fallbacks cannot send fixture keys remotely.
-    requestOptions.baseUrl = DEFAULT_MESSENGER_API_BASE;
-    requestOptions.devTargetOrigin = new URL(effectiveTarget).origin;
-  }
-}
-
 function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
   const announcement =
     metadata === null
@@ -274,7 +249,6 @@ export async function createWorkspaceChannel({
     requestOptions.fetchImpl = (request, init) =>
       action.isStale() ? Promise.reject(new Error("stale-owner")) : fetchImpl(request, init);
   }
-  pinDevelopmentKeyRequestOptions(initialKey, requestOptions, runtimeContext);
   const encryptionKey = initialEncryptionKey(initialKey);
   const bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
     requestOptions,

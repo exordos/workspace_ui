@@ -27,7 +27,6 @@ export const realChatInitialKeyBootstrap: ChatInitialKeyBootstrap = {
       keyUuid,
       creationId,
       deviceId: device.deviceId,
-      source: "provider",
     };
   },
   async finalize({ runtimeContext, metadata, streamUuid, isCurrent }) {

@@ -10,7 +10,11 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
 } from "~/shared/api/messenger.types";
-import { realChatCryptoProvider, realChatKeyStorage } from "./chat-crypto-resources.lib";
+import {
+  realChatCryptoProvider,
+  realChatKeyStorage,
+  subscribeRealChatKeyChanges,
+} from "./chat-crypto-resources.lib";
 import {
   openRealChatSession as openChatSession,
   decryptRealChatMessage,
@@ -319,6 +323,43 @@ describe("real ordinary chat orchestration", () => {
     await session.ingest([]);
     expect(session.getState()).toMatchObject({ access: "ready", sendKeyUuid: f.metadata.keyUuid });
     expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("publishes scoped bootstrap keys once and keeps state-only operations local", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    const keyChanged = vi.fn();
+    const stateChanged = vi.fn();
+    const unsubscribeKeys = subscribeRealChatKeyChanges(keyChanged);
+    const unsubscribeState = session.subscribe(stateChanged);
+    try {
+      await session.load();
+      expect(keyChanged.mock.calls).toEqual([
+        [
+          {
+            kind: "updated",
+            ownerKey: workspaceRuntimeOwnerKey(f.admin),
+            deviceId: session.device.deviceId,
+            streamUuid: STREAM,
+            keyUuid: f.metadata.keyUuid,
+          },
+        ],
+      ]);
+      keyChanged.mockClear();
+      stateChanged.mockClear();
+      await session.load();
+      await session.send({ text: "state-only operation", topicUuid: TOPIC });
+      await session.ingest([]);
+      expect(stateChanged).toHaveBeenCalledTimes(6);
+      expect(keyChanged).not.toHaveBeenCalled();
+    } finally {
+      unsubscribeKeys();
+      unsubscribeState();
+    }
   });
 
   it("rejects real ciphertext over the wire limit even when multibyte plaintext is below the character limit", async () => {
@@ -997,6 +1038,8 @@ describe("real ordinary chat orchestration", () => {
     const committedUuid = f.stream(ADMIN).current_encryption_key!.key_uuid;
     vi.mocked(getStream).mockClear();
     vi.mocked(getStreamBindingsPage).mockClear();
+    const keyChanged = vi.fn();
+    const unsubscribeKeys = subscribeRealChatKeyChanges(keyChanged);
     f.catalog(f.admin)
       .getState()
       .upsertStream(workspaceRuntimeOwnerKey(f.admin), adaptMessengerStream(f.stream(ADMIN)));
@@ -1007,6 +1050,18 @@ describe("real ordinary chat orchestration", () => {
         pending: false,
       }),
     );
+    unsubscribeKeys();
+    expect(keyChanged.mock.calls).toEqual([
+      [
+        {
+          kind: "updated",
+          ownerKey: workspaceRuntimeOwnerKey(f.admin),
+          deviceId: session.device.deviceId,
+          streamUuid: STREAM,
+          keyUuid: committedUuid,
+        },
+      ],
+    ]);
     expect(
       await realChatKeyStorage.listStagedCreations({
         owner: f.admin,
@@ -1265,6 +1320,7 @@ describe("real ordinary chat orchestration", () => {
     const request = f.wire.at(-1)!;
     await admin.ingest([adaptMessengerMessage(request)]);
     expect(admin.canGrantKey(request.uuid)).toBe(true);
+    expect(admin.getKeyRequestOutcomes()[0]).toBe(admin.getKeyRequestOutcomes()[0]);
     await admin.reissueKey();
     expect(admin.canGrantKey(request.uuid)).toBe(true);
     expect(admin.getKeyRequests().map((item) => item.uuid)).toEqual([request.uuid]);
@@ -1294,6 +1350,20 @@ describe("real ordinary chat orchestration", () => {
     await admin.rejectKey(request.uuid);
     expect(admin.getKeyRequests()).toEqual([]);
     await admin.ingest([adaptMessengerMessage(request), adaptMessengerMessage(another)]);
+    expect(admin.getKeyRequests()).toEqual([]);
+    const catalog = f.catalog(f.admin);
+    const owner = workspaceRuntimeOwnerKey(f.admin);
+    catalog
+      .getState()
+      .upsertStream(
+        owner,
+        adaptMessengerStream({ ...f.stream(ADMIN), owner: MEMBER, role: "member" }),
+      );
+    catalog.getState().upsertStreamBindings(owner, [{ ...adminBinding(), role: "member" }]);
+    expect(admin.getKeyRequests().map((item) => item.uuid)).toEqual([request.uuid, another.uuid]);
+    expect(admin.canRejectKey(request.uuid)).toBe(false);
+    catalog.getState().upsertStream(owner, adaptMessengerStream(f.stream(ADMIN)));
+    catalog.getState().upsertStreamBindings(owner, [adminBinding()]);
     expect(admin.getKeyRequests()).toEqual([]);
     member.dispose();
     admin.dispose();
@@ -1614,7 +1684,7 @@ describe("real ordinary chat orchestration", () => {
     session.dispose();
   });
 
-  it("completes a real HPKE grant after a recipient session reload and keeps plaintext outside wire messages", async () => {
+  it("completes a grant received before request history for a legacy unbound pending request after reload", async () => {
     const f = await setup();
     const admin = await openRealChatSession({
       runtimeContext: f.admin,
@@ -1631,10 +1701,20 @@ describe("real ordinary chat orchestration", () => {
     await member.load();
     expect(await member.decrypt(adaptMessengerMessage(f.wire[0]!))).toBeNull();
     expect(member.getRights().canGrant).toBe(false);
-    await member.requestKey();
+    // Older pending records can await request-history correlation after a lost receipt.
+    const writePending = realChatKeyStorage.writePendingRequest.bind(realChatKeyStorage);
+    vi.spyOn(realChatKeyStorage, "writePendingRequest").mockImplementationOnce(
+      (address, pending, options) =>
+        writePending(address, { ...pending, requestMessageUuid: null }, options),
+    );
+    vi.spyOn(realChatKeyStorage, "bindPendingRequest").mockRejectedValueOnce(
+      new Error("local binding lost"),
+    );
+    await expect(member.requestKey()).rejects.toThrow("storage-failed");
     const request = f.wire.at(-1)!;
     const pending = await realChatKeyStorage.listPendingRequests(member.scope);
     expect(pending).toHaveLength(1);
+    expect(pending[0]?.requestMessageUuid).toBeNull();
     member.dispose();
     member = await openRealChatSession({
       runtimeContext: f.member,
@@ -1645,7 +1725,27 @@ describe("real ordinary chat orchestration", () => {
     expect(member.getState().requestStatus).toBe("requested");
     await admin.ingest(f.wire.map(adaptMessengerMessage));
     await admin.grantKey(request.uuid);
-    await member.ingest(f.wire.map(adaptMessengerMessage));
+    const keyChanged = vi.fn();
+    const unsubscribeKeys = subscribeRealChatKeyChanges(keyChanged);
+    try {
+      await member.ingest([adaptMessengerMessage(f.wire.at(-1)!)]);
+      expect(member.getState().access).not.toBe("ready");
+      expect(keyChanged).not.toHaveBeenCalled();
+      await member.ingest([adaptMessengerMessage(request)]);
+      expect(keyChanged.mock.calls).toEqual([
+        [
+          {
+            kind: "updated",
+            ownerKey: workspaceRuntimeOwnerKey(f.member),
+            deviceId: member.device.deviceId,
+            streamUuid: STREAM,
+            keyUuid: f.metadata.keyUuid,
+          },
+        ],
+      ]);
+    } finally {
+      unsubscribeKeys();
+    }
     expect(member.getState().access).toBe("ready");
     expect(await realChatKeyStorage.listPendingRequests(member.scope)).toEqual([]);
     expect(await member.decrypt(adaptMessengerMessage(f.wire[0]!))).toBe("protected history");

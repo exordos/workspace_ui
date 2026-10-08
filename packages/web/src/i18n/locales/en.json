@@ -713,7 +713,6 @@
     "typeOpen": "Open",
     "typeClosed": "Closed, open history",
     "typeClosedProtected": "Closed, protected history",
-    "encryptionTestKeyNotice": "Messages are encrypted on your device. Access keys are shared only after an authorized grant.",
     "encryptionUnavailable": "Encrypted chat creation is not available yet.",
     "encryptionMismatch": "The server did not confirm encrypted chat creation.",
     "createEncryptedChat": "Create encrypted chat",
@@ -1557,17 +1556,5 @@
     "incomingTitle": "Incoming requests ({{count}})",
     "grantedTitle": "Granted keys ({{count}})",
     "rejectedTitle": "Rejected requests ({{count}})"
-  },
-  "e2eeSandbox": {
-    "title": "E2EE integration sandbox",
-    "warning": "NOT REAL ENCRYPTION. Development fixtures only. Never send secrets. This test creates its own stream on a local backend.",
-    "unavailable": "Sign in to a local backend in development mode to use this sandbox.",
-    "description": "Two simulated devices use real API requests, ephemeral test keys, and a mock provider. The role capabilities are fixtures, not product policy. Reloading the page discards the fixture keys.",
-    "create": "Create test stream",
-    "switchDevice": "Switch test device",
-    "send": "Send fixed test message",
-    "reload": "Reload server history",
-    "state": "Device: {{device}} · Access: {{access}} · Messages: {{count}}",
-    "failed": "Test operation failed: {{reason}}"
   }
 }

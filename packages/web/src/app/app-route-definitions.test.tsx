@@ -32,9 +32,6 @@ vi.mock("~/pages/login/login-page.ui", () => ({ LoginPage: () => <div>Login</div
 vi.mock("~/pages/encrypted-chat/encrypted-chat-preview.ui", () => ({
   EncryptedChatPreview: () => <div>E2EE preview</div>,
 }));
-vi.mock("~/pages/encrypted-chat/encrypted-chat-sandbox.ui", () => ({
-  EncryptedChatSandbox: () => <div>E2EE sandbox</div>,
-}));
 
 const { AuthenticatedAppRoutes, LoginAppRoutes } = await import("./app-route-definitions");
 
@@ -91,7 +88,7 @@ describe("AuthenticatedAppRoutes", () => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
   });
 
-  it.each([true, false])("gates authenticated E2EE sandbox behind DEV=%s", async (dev) => {
+  it.each([true, false])("removes the insecure sandbox route in DEV=%s", async (dev) => {
     vi.stubEnv("DEV", dev);
     render(
       <MemoryRouter initialEntries={["/login/e2ee-sandbox"]}>
@@ -100,19 +97,7 @@ describe("AuthenticatedAppRoutes", () => {
         </React.Suspense>
       </MemoryRouter>,
     );
-    expect(await screen.findByText(dev ? "E2EE sandbox" : "Inbox")).toBeInTheDocument();
-  });
-
-  it.each([true, false])("gates unauthenticated E2EE sandbox behind DEV=%s", async (dev) => {
-    vi.stubEnv("DEV", dev);
-    render(
-      <MemoryRouter initialEntries={["/login/e2ee-sandbox"]}>
-        <React.Suspense fallback={null}>
-          <LoginAppRoutes />
-        </React.Suspense>
-      </MemoryRouter>,
-    );
-    expect(await screen.findByText(dev ? "E2EE sandbox" : "Login")).toBeInTheDocument();
+    expect(await screen.findByText("Inbox")).toBeInTheDocument();
   });
 
   it.each(["/", "/org/org-1", "/org/org-1/project/project-1/messenger"])(

@@ -14,7 +14,6 @@ import type {
   WorkspaceMessengerTopicDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
-import { DEV_CHAT_KEY_UUID } from "./chat-initial-key-bootstrap.lib";
 import {
   adaptMessengerMessage,
   adaptMessengerStream,
@@ -1283,40 +1282,6 @@ describe("encrypted payload local dispatch guards", () => {
       expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();
     },
   );
-
-  it("rejects oversized encoded development fixtures even when the Unicode plaintext count fits", async () => {
-    vi.stubEnv("DEV", true);
-    try {
-      const runtimeContext = createRuntimeContext({ organizationOrigin: "http://127.0.0.1:23190" });
-      const ownerKey = prepareStoreOwner(runtimeContext);
-      useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
-      const stream = createStreamDto({
-        encryption: true,
-        current_encryption_key: { key_uuid: DEV_CHAT_KEY_UUID },
-      });
-      useMessengerStore.getState().upsertStream(ownerKey, adaptMessengerStream(stream));
-      const createMessage = vi.fn();
-      const cache = { writeConversationMessagePage: vi.fn() };
-      const markdown = "😀".repeat(10_000);
-      await expect(
-        sendMessengerMessage({
-          runtimeContext,
-          streamUuid: STREAM_A,
-          topicUuid: TOPIC_A,
-          markdown,
-          cryptoMode: "development-fixture",
-          canonicalMessageUuid: MESSAGE_B,
-          client: { getStream: () => Promise.resolve(stream), createMessage },
-          cache,
-        }),
-      ).rejects.toThrow("message-too-long");
-      expect(createMessage).not.toHaveBeenCalled();
-      expect(cache.writeConversationMessagePage).not.toHaveBeenCalled();
-      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
 
   it("posts opaque payloads directly from the owned catalog without a stream GET", async () => {
     const f = prepareEncryptedSend();

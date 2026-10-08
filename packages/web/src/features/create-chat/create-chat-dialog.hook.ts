@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  isDevChatInitialKeyAllowed,
-  MessengerChannelCreationError,
-} from "~/entities/messenger/chat-initial-key-bootstrap.lib";
+import { MessengerChannelCreationError } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
 import {
   runWorkspaceChannelCreate,
   runWorkspaceDirectStreamCreate,
@@ -99,7 +96,6 @@ export interface UseCreateChatDialogResult {
   channelEncryption: boolean;
   setChannelEncryption: (v: boolean) => void;
   channelCreateErrorKey: string | null;
-  channelEncryptionUsesTestKey: boolean;
   channelInviteOnly: boolean;
   setChannelInviteOnly: (v: boolean) => void;
   channelAnnounce: boolean;
@@ -534,8 +530,6 @@ export function useCreateChatDialog(options: {
     channelEncryption,
     setChannelEncryption,
     channelCreateErrorKey,
-    channelEncryptionUsesTestKey:
-      workspaceRuntimeContext != null && isDevChatInitialKeyAllowed(workspaceRuntimeContext),
     channelInviteOnly,
     setChannelInviteOnly: (value) => setChannelInviteOnly(value && !channelEncryption),
     channelAnnounce,
