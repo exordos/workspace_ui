@@ -6,6 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-10-11
+
+### Changed
+
+- GitHub release builds now receive the configured default login organization
+  URL, so the sign-in flow can preselect the intended organization without
+  hardcoding it in the application source.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.2`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.3`.
+- No manual migration is required.
+
 ## [0.8.2] — 2026-10-01
 
 ### Changed
