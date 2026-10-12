@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
@@ -360,8 +360,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     render(<WorkspaceForwardMessageDialog />);
 
     await waitForForwardMessageInStore();
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => {
@@ -410,8 +414,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     render(<WorkspaceForwardMessageDialog />);
 
     await waitForForwardMessageInStore();
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => expect(mocks.sendMessengerMessage).toHaveBeenCalledTimes(1));
@@ -442,8 +450,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     await waitFor(() => {
       expect(useWorkspaceMessageStore.getState().messagesById[SECOND_MESSAGE_UUID]).toBeDefined();
     });
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => expect(mocks.sendMessengerMessage).toHaveBeenCalledTimes(1));
@@ -482,8 +494,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     render(<WorkspaceForwardMessageDialog />);
 
     await waitForForwardMessageInStore();
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => {
@@ -514,8 +530,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     render(<WorkspaceForwardMessageDialog />);
 
     await waitForForwardMessageInStore();
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     await waitFor(() => {
@@ -647,8 +667,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     render(<WorkspaceForwardMessageDialog />);
 
     await waitForForwardMessageInStore();
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(await screen.findByText("Send failed")).toBeInTheDocument();
@@ -668,8 +692,12 @@ describe("WorkspaceForwardMessageDialog contract", () => {
     await waitFor(() => {
       expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeDefined();
     });
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(

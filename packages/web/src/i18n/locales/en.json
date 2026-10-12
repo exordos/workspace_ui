@@ -1447,5 +1447,10 @@
     "stickers": "Stickers",
     "mediaViewer": "Media viewer",
     "chatMenu": "Chat menu"
+  },
+  "selector": {
+    "placeholder": "Select an option",
+    "noOptions": "No options available",
+    "showOptions": "Show options"
   }
 }

@@ -1,5 +1,6 @@
 import { useTranslation } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
+import { Select } from "~/shared/ui/select.ui";
 import {
   ERROR_NOTICE_CLASS,
   INPUT_CLASS,
@@ -103,25 +104,25 @@ export function TopicSettingsSection({ vm }: Readonly<{ vm: UseTopicSummarySetti
               {t("topicSummarySettings.topic.reasoningHint")}
             </p>
           </div>
-          <select
+          <Select
             id="topic-summary-reasoning"
             value={draft.summaryReasoningEffort ?? ""}
             disabled={pending || denied}
-            onChange={(event) => {
-              const value = event.target.value;
+            onValueChange={(value) => {
               vm.setTopicReasoningEffort(
                 value === "" ? null : (value as NonNullable<typeof draft.summaryReasoningEffort>),
               );
             }}
-            className={`${INPUT_CLASS} w-full sm:w-[21rem]`}
-          >
-            <option value="">{t("topicSummarySettings.topic.reasoningDefault")}</option>
-            <option value="off">{t("topicSummarySettings.topic.reasoningOff")}</option>
-            <option value="minimal">{t("topicSummarySettings.topic.reasoningMinimal")}</option>
-            <option value="low">{t("topicSummarySettings.topic.reasoningLow")}</option>
-            <option value="medium">{t("topicSummarySettings.topic.reasoningMedium")}</option>
-            <option value="high">{t("topicSummarySettings.topic.reasoningHigh")}</option>
-          </select>
+            className="w-full sm:w-[21rem]"
+            options={[
+              { value: "", label: t("topicSummarySettings.topic.reasoningDefault") },
+              { value: "off", label: t("topicSummarySettings.topic.reasoningOff") },
+              { value: "minimal", label: t("topicSummarySettings.topic.reasoningMinimal") },
+              { value: "low", label: t("topicSummarySettings.topic.reasoningLow") },
+              { value: "medium", label: t("topicSummarySettings.topic.reasoningMedium") },
+              { value: "high", label: t("topicSummarySettings.topic.reasoningHigh") },
+            ]}
+          />
         </div>
 
         {error != null ? (

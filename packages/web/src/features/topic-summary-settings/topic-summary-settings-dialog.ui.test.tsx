@@ -249,9 +249,8 @@ describe("TopicSummarySettingsDialog", () => {
     expect(vm.setTopicSystemPrompt).toHaveBeenCalledWith("Only decisions");
     fireEvent.click(screen.getByRole("button", { name: "Use default prompt" }));
     expect(vm.setTopicSystemPrompt).toHaveBeenCalledWith(null);
-    fireEvent.change(screen.getByLabelText(/^Reasoning effort/), {
-      target: { value: "off" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Reasoning effort/ }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Off" }));
     expect(vm.setTopicReasoningEffort).toHaveBeenCalledWith("off");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

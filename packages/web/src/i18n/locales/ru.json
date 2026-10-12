@@ -1458,5 +1458,10 @@
     "stickers": "Стикеры",
     "mediaViewer": "Просмотр медиа",
     "chatMenu": "Меню чата"
+  },
+  "selector": {
+    "placeholder": "Выберите значение",
+    "noOptions": "Нет доступных вариантов",
+    "showOptions": "Показать варианты"
   }
 }

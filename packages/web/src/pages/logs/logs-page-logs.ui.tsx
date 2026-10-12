@@ -3,6 +3,7 @@ import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import type { LogEntry } from "~/shared/lib/logger";
 import { Icon } from "~/shared/ui/icon";
+import { Select } from "~/shared/ui/select.ui";
 import { matchesLogSourceFilter, type LogSourceFilter } from "./logs-source-filter.lib";
 
 export interface LogsPageLogsSectionProps {
@@ -118,68 +119,66 @@ export const LogsPageLogsSection: React.FC<LogsPageLogsSectionProps> = ({
         </label>
         <label className="min-w-0">
           <span className="sr-only">{t("settings.logsSourceFilter")}</span>
-          <select
+          <Select
             aria-label={t("settings.logsSourceFilter")}
             value={sourceFilter}
-            onChange={(event) => onSourceFilterChange(event.target.value as LogSourceFilter)}
-            className="h-8 min-w-[110px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary"
-          >
-            <option value="all">{t("settings.logsSourceAll")}</option>
-            <option value="api">{t("settings.logsSourceApi")}</option>
-            <option value="actions">{t("settings.logsSourceActions")}</option>
-            <option value="console">{t("settings.logsSourceConsole")}</option>
-            <option value="trace">{t("settings.logsSourceTrace")}</option>
-            <option value="app">{t("settings.logsSourceApp")}</option>
-          </select>
+            onValueChange={(value) => onSourceFilterChange(value as LogSourceFilter)}
+            size="compact"
+            className="min-w-[110px]"
+            options={[
+              { value: "all", label: t("settings.logsSourceAll") },
+              { value: "api", label: t("settings.logsSourceApi") },
+              { value: "actions", label: t("settings.logsSourceActions") },
+              { value: "console", label: t("settings.logsSourceConsole") },
+              { value: "trace", label: t("settings.logsSourceTrace") },
+              { value: "app", label: t("settings.logsSourceApp") },
+            ]}
+          />
         </label>
         <label className="min-w-0">
           <span className="sr-only">{t("settings.logsLevelFilter")}</span>
-          <select
+          <Select
             aria-label={t("settings.logsLevelFilter")}
             value={levelFilter}
-            onChange={(event) =>
-              onLevelFilterChange(event.target.value as LogEntry["level"] | "all")
-            }
-            className="h-8 min-w-[110px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary"
-          >
-            <option value="all">{t("settings.logsLevelAll")}</option>
-            <option value="debug">{t("settings.logsLevelDebug")}</option>
-            <option value="info">{t("settings.logsLevelInfo")}</option>
-            <option value="warn">{t("settings.logsLevelWarn")}</option>
-            <option value="error">{t("settings.logsLevelError")}</option>
-          </select>
+            onValueChange={(value) => onLevelFilterChange(value as LogEntry["level"] | "all")}
+            size="compact"
+            className="min-w-[110px]"
+            options={[
+              { value: "all", label: t("settings.logsLevelAll") },
+              { value: "debug", label: t("settings.logsLevelDebug") },
+              { value: "info", label: t("settings.logsLevelInfo") },
+              { value: "warn", label: t("settings.logsLevelWarn") },
+              { value: "error", label: t("settings.logsLevelError") },
+            ]}
+          />
         </label>
         <label className="min-w-0">
           <span className="sr-only">{t("settings.logsScopeFilter")}</span>
-          <select
+          <Select
             aria-label={t("settings.logsScopeFilter")}
             value={scopeFilter}
-            onChange={(event) => onScopeFilterChange(event.target.value)}
-            className="h-8 min-w-[110px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary"
-          >
-            <option value="all">{t("settings.logsScopeAll")}</option>
-            {scopeOptions.map((scope) => (
-              <option key={scope} value={scope}>
-                {scope}
-              </option>
-            ))}
-          </select>
+            onValueChange={onScopeFilterChange}
+            size="compact"
+            className="min-w-[110px]"
+            options={[
+              { value: "all", label: t("settings.logsScopeAll") },
+              ...scopeOptions.map((scope) => ({ value: scope, label: scope })),
+            ]}
+          />
         </label>
         <label className="min-w-0">
           <span className="sr-only">{t("settings.logsRuntimeFilter")}</span>
-          <select
+          <Select
             aria-label={t("settings.logsRuntimeFilter")}
             value={runtimeFilter}
-            onChange={(event) => onRuntimeFilterChange(event.target.value)}
-            className="h-8 min-w-[110px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary"
-          >
-            <option value="all">{t("settings.logsRuntimeAll")}</option>
-            {runtimeOptions.map((runtime) => (
-              <option key={runtime} value={runtime}>
-                {runtime}
-              </option>
-            ))}
-          </select>
+            onValueChange={onRuntimeFilterChange}
+            size="compact"
+            className="min-w-[110px]"
+            options={[
+              { value: "all", label: t("settings.logsRuntimeAll") },
+              ...runtimeOptions.map((runtime) => ({ value: runtime, label: runtime })),
+            ]}
+          />
         </label>
         <button
           type="button"
