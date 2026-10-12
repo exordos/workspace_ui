@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -36,6 +36,7 @@ function RightPanelShell(
 }
 
 const updateOwnProfileMock = vi.hoisted(() => vi.fn());
+const loadOwnProfileMock = vi.hoisted(() => vi.fn());
 const writeTextMock = vi.hoisted(() => vi.fn());
 const avatarCapabilitiesMock = vi.hoisted(() => vi.fn());
 const removeOwnAvatarMock = vi.hoisted(() => vi.fn());
@@ -59,6 +60,7 @@ vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
 }));
 
 vi.mock("~/features/user-profile/user-profile.api", () => ({
+  loadOwnProfile: (...args: unknown[]) => loadOwnProfileMock(...args),
   updateOwnProfile: (...args: unknown[]) => updateOwnProfileMock(...args),
   getOwnAvatarCapabilities: () => avatarCapabilitiesMock(),
   fetchUserProfile: vi.fn(),
@@ -116,6 +118,16 @@ describe("RightPanelShell personal-info subview", () => {
   }
 
   beforeEach(() => {
+    loadOwnProfileMock.mockReset();
+    loadOwnProfileMock.mockResolvedValue({
+      uuid: workspaceUserUuid,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Workspace",
+      email: "alice@example.com",
+      phone: null,
+      description: "",
+    });
     updateOwnProfileMock.mockReset();
     updateOwnProfileMock.mockResolvedValue({
       ok: false,
@@ -201,7 +213,7 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.getByRole("button", { name: t("settings.personalInfo") })).toBeInTheDocument();
   });
 
-  it("opens edit chrome without a writable name field (IAM name is read-only)", () => {
+  it("edits username and name parts separately with a derived display name", async () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
@@ -216,6 +228,31 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.queryByTestId("right-panel-profile-name-input")).not.toBeInTheDocument();
     expect(screen.queryByTestId("right-panel-profile-edit")).not.toBeInTheDocument();
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
+    expect(screen.getByLabelText(t("settings.profileLastName"))).toHaveValue("Workspace");
+    expect(screen.getByLabelText(t("info.username"))).toHaveValue("alice");
+    const detailList = screen.getByTestId("right-panel-user-profile-details");
+    expect(detailList).toBeInTheDocument();
+    const emailRow = screen.getByTestId("right-panel-profile-detail-email");
+    expect(emailRow).toHaveTextContent("alice@example.com");
+    expect(emailRow.querySelector("input")).toBeNull();
+    expect(within(emailRow).getByRole("button", { name: t("message.copy") })).toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-detail-userId")).toHaveTextContent(
+      workspaceUserUuid,
+    );
+    expect(
+      screen.getByTestId("right-panel-profile-detail-phone").querySelector("input"),
+    ).toHaveValue("");
+    expect(screen.getByTestId("right-panel-profile-detail-joined")).toBeInTheDocument();
+    expect(screen.getAllByTestId("profile-display-name-preview")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText(t("settings.profileFirstName")), {
+      target: { value: "Alicia" },
+    });
+    expect(
+      within(screen.getByTestId("right-panel-profile-name-readonly")).getByTestId(
+        "profile-display-name-preview",
+      ),
+    ).toHaveTextContent("Alicia Workspace");
 
     // Figma 12697:37529 — label stays on one line (NO_WRAP); cancel is fixed 110px.
     const saveButton = screen.getByTestId("right-panel-profile-save");
@@ -223,6 +260,218 @@ describe("RightPanelShell personal-info subview", () => {
     expect(saveButton).toHaveClass("whitespace-nowrap");
     const cancelButton = screen.getByTestId("right-panel-profile-cancel");
     expect(cancelButton).toHaveClass("w-[110px]", "bg-card-bg-active", "hover:opacity-90");
+  });
+
+  it("saves only changed fields and retains the draft when IAM rejects the request", async () => {
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    const firstName = await screen.findByLabelText(t("settings.profileFirstName"));
+    fireEvent.change(firstName, { target: { value: "Alicia" } });
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+    await waitFor(() =>
+      expect(updateOwnProfileMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuid: workspaceUserUuid }),
+        { firstName: "Alicia" },
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      t("settings.profileUpdateUnsupported"),
+    );
+    expect(firstName).toHaveValue("Alicia");
+    expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute("data-editing", "true");
+  });
+
+  it("updates the top name from draft parts and username, then resets it on cancel", async () => {
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    expect(screen.queryByLabelText(t("settings.profileFirstName"))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(t("settings.profileLastName"))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(t("info.username"))).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    const firstName = await screen.findByLabelText(t("settings.profileFirstName"));
+    const lastName = screen.getByLabelText(t("settings.profileLastName"));
+    const username = screen.getByLabelText(t("info.username"));
+    const topName = screen.getByTestId("right-panel-profile-name-readonly");
+    expect(firstName).not.toBeRequired();
+    expect(lastName).not.toBeRequired();
+    expect(username).toBeRequired();
+    fireEvent.change(lastName, { target: { value: "" } });
+    expect(topName).toHaveTextContent("Alice");
+    fireEvent.change(firstName, { target: { value: "   " } });
+    expect(topName).toHaveTextContent("alice");
+    fireEvent.change(username, { target: { value: "draft-username" } });
+    expect(topName).toHaveTextContent("draft-username");
+    fireEvent.change(lastName, { target: { value: "  ТолькоФамилия  " } });
+    expect(topName).toHaveTextContent("ТолькоФамилия");
+    fireEvent.change(firstName, { target: { value: "  НовоеИмя  " } });
+    expect(topName).toHaveTextContent("НовоеИмя ТолькоФамилия");
+    fireEvent.change(lastName, { target: { value: "  " } });
+    expect(topName).toHaveTextContent("НовоеИмя");
+    expect(screen.getAllByTestId("profile-display-name-preview")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("right-panel-profile-cancel"));
+    expect(screen.getByText("Alice Workspace")).toBeInTheDocument();
+    expect(screen.queryByLabelText(t("settings.profileFirstName"))).not.toBeInTheDocument();
+    expect(useUsersStore.getState().usersById[workspaceUserUuid]?.displayName).toBe(
+      "Alice Workspace",
+    );
+    expect(useWorkspaceAuthStore.getState().sessions[0]?.profile?.username).toBe("alice");
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    expect(await screen.findByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
+    expect(screen.getByLabelText(t("settings.profileLastName"))).toHaveValue("Workspace");
+    expect(screen.getByLabelText(t("info.username"))).toHaveValue("alice");
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps unsupported fields readonly and edits supported detail rows in place", async () => {
+    loadOwnProfileMock.mockResolvedValueOnce({
+      uuid: workspaceUserUuid,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Workspace",
+      email: "alice@example.com",
+      phone: "+123",
+      description: "Existing description",
+    });
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    const detailIds = Array.from(
+      screen.getByTestId("right-panel-user-profile-details").children,
+    ).map((row) => row.getAttribute("data-testid"));
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    const phone = await screen.findByLabelText(t("info.phone"));
+    expect(phone).toHaveValue("+123");
+    expect(screen.getByLabelText(t("settings.profileDescription"))).toHaveValue(
+      "Existing description",
+    );
+    for (const testId of detailIds) {
+      if (testId != null) expect(screen.getByTestId(testId)).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    const emailRow = screen.getByTestId("right-panel-profile-detail-email");
+    expect(emailRow.querySelector("input")).toBeNull();
+    fireEvent.click(within(emailRow).getByRole("button", { name: t("message.copy") }));
+    await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("alice@example.com"));
+    fireEvent.change(phone, { target: { value: "+456" } });
+    fireEvent.change(screen.getByLabelText(t("settings.profileDescription")), {
+      target: { value: "Updated description" },
+    });
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+    await waitFor(() =>
+      expect(updateOwnProfileMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuid: workspaceUserUuid }),
+        { phone: "+456", description: "Updated description" },
+        expect.any(AbortSignal),
+      ),
+    );
+  });
+
+  it("does not show or copy the old phone after a successful clear", async () => {
+    const ownProfile = {
+      uuid: workspaceUserUuid,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Workspace",
+      email: "alice@example.com",
+      phone: "+123",
+      description: "",
+    };
+    loadOwnProfileMock.mockResolvedValueOnce(ownProfile);
+    updateOwnProfileMock.mockResolvedValueOnce({
+      ok: true,
+      refreshPending: false,
+      profile: { ...ownProfile, phone: "" },
+    });
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("right-panel-profile-detail-phone")).toHaveTextContent("+123"),
+    );
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    fireEvent.change(screen.getByLabelText(t("info.phone")), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+    await waitFor(() =>
+      expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute(
+        "data-editing",
+        "false",
+      ),
+    );
+    expect(updateOwnProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userUuid: workspaceUserUuid }),
+      { phone: "" },
+      expect.any(AbortSignal),
+    );
+    const phoneRow = screen.getByTestId("right-panel-profile-detail-phone");
+    expect(phoneRow).not.toHaveTextContent("+123");
+    expect(within(phoneRow).getByText("-")).toBeInTheDocument();
+    expect(phoneRow.querySelector("button")).toBeNull();
+    expect(phoneRow.querySelector("input")).toBeNull();
+  });
+
+  it("requires a valid IAM username while keeping both names optional", async () => {
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    const firstName = await screen.findByLabelText(t("settings.profileFirstName"));
+    const lastName = screen.getByLabelText(t("settings.profileLastName"));
+    const username = screen.getByLabelText(t("info.username"));
+    const save = screen.getByTestId("right-panel-profile-save");
+    fireEvent.change(firstName, { target: { value: "" } });
+    fireEvent.change(lastName, { target: { value: "" } });
+    expect(save).not.toBeDisabled();
+    for (const value of ["", "   ", "invalid@name", "😀", "x".repeat(129)]) {
+      fireEvent.change(username, { target: { value } });
+      expect(save).toBeDisabled();
+      expect(screen.getByRole("alert")).toHaveTextContent(t("settings.profileInvalidFields"));
+    }
+    expect(username).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(t("settings.profileUsernameInvalid"))).toBeInTheDocument();
+    fireEvent.change(username, { target: { value: "  Имя_１２3.name-!+  " } });
+    expect(save).not.toBeDisabled();
+    expect(username).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(t("settings.profileUsernameHint"))).toBeInTheDocument();
+    fireEvent.change(firstName, { target: { value: "x".repeat(129) } });
+    expect(save).toBeDisabled();
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("retries only the avatar after profile fields were saved successfully", async () => {
+    updateOwnProfileMock.mockResolvedValue({
+      ok: true,
+      refreshPending: false,
+      profile: {
+        uuid: workspaceUserUuid,
+        username: "alice",
+        firstName: "Alicia",
+        lastName: "Workspace",
+        email: "alice@example.com",
+        phone: null,
+        description: "",
+      },
+    });
+    uploadOwnAvatarMock.mockResolvedValueOnce({
+      ok: false,
+      kind: "transient",
+      message: "Unavailable",
+    });
+    renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
+    fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
+    fireEvent.change(await screen.findByLabelText(t("settings.profileFirstName")), {
+      target: { value: "Alicia" },
+    });
+    fireEvent.change(screen.getByTestId("right-panel-edit-avatar-gallery-input"), {
+      target: { files: [new File(["avatar"], "avatar.png", { type: "image/png" })] },
+    });
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+    expect(await screen.findByTestId("right-panel-edit-avatar-error")).toHaveTextContent(
+      t("settings.avatarUpdateError"),
+    );
+    fireEvent.click(screen.getByTestId("right-panel-edit-avatar-cancel"));
+    fireEvent.click(screen.getByTestId("right-panel-profile-save"));
+    await waitFor(() =>
+      expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute(
+        "data-editing",
+        "false",
+      ),
+    );
+    expect(updateOwnProfileMock).toHaveBeenCalledTimes(1);
+    expect(uploadOwnAvatarMock).toHaveBeenCalledTimes(2);
   });
 
   it("opens edit-avatar modal from the clickable avatar in edit mode", () => {

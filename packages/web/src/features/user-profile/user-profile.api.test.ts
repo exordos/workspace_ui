@@ -8,13 +8,16 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
-import { removeOwnAvatar, uploadOwnAvatar } from "./user-profile.api";
+import type { OwnProfile, OwnProfileApi } from "~/shared/api/own-profile.types";
+import { removeOwnAvatar, updateOwnProfile, uploadOwnAvatar } from "./user-profile.api";
 
 const uploadUserAvatarMock = vi.hoisted(() => vi.fn());
 const resetUserAvatarMock = vi.hoisted(() => vi.fn());
+const getUserMock = vi.hoisted(() => vi.fn());
 const writeUsersToCacheForOwnerMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/workspace-client", () => ({
+  getUser: (...args: unknown[]) => getUserMock(...args),
   uploadUserAvatar: (...args: unknown[]) => uploadUserAvatarMock(...args),
   resetUserAvatar: (...args: unknown[]) => resetUserAvatarMock(...args),
 }));
@@ -96,6 +99,7 @@ describe("Workspace own avatar API", () => {
     uploadUserAvatarMock.mockReset();
     resetUserAvatarMock.mockReset();
     writeUsersToCacheForOwnerMock.mockReset();
+    getUserMock.mockReset();
   });
 
   afterEach(() => {
@@ -105,6 +109,80 @@ describe("Workspace own avatar API", () => {
       sessions: [],
     });
     useUsersStore.getState().clear();
+  });
+
+  const profile: OwnProfile = {
+    uuid: USER_UUID,
+    username: "alice",
+    firstName: "Alicia",
+    lastName: null,
+    email: "alice@example.com",
+    phone: "+123",
+    description: "About",
+  };
+  function profileApi(): OwnProfileApi {
+    return { load: vi.fn().mockResolvedValue(profile), update: vi.fn().mockResolvedValue(profile) };
+  }
+
+  it("saves IAM identity and refreshes Workspace store/cache without changing generation", async () => {
+    const api = profileApi();
+    getUserMock.mockResolvedValue({
+      ...createUserDto("urn:gravatar:" + "a".repeat(32)),
+      first_name: "Alicia",
+    });
+    await expect(
+      updateOwnProfile(runtime, { firstName: "Alicia" }, undefined, api),
+    ).resolves.toEqual({
+      ok: true,
+      profile,
+      refreshPending: false,
+    });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()?.profile.firstName).toBe("Alicia");
+    expect(useWorkspaceAuthStore.getState().getCurrentRuntimeContext()?.runtimeGeneration).toBe(
+      runtime.runtimeGeneration,
+    );
+    expect(useUsersStore.getState().usersById[USER_UUID]?.displayName).toBe("Alicia");
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtime), [
+      expect.objectContaining({ firstName: "Alicia" }),
+    ]);
+  });
+
+  it("reports saved-but-not-refreshed when Workspace is unavailable or returns old identity", async () => {
+    getUserMock.mockRejectedValueOnce(new Error("Unavailable"));
+    await expect(
+      updateOwnProfile(runtime, { firstName: "Alicia" }, undefined, profileApi()),
+    ).resolves.toMatchObject({
+      ok: true,
+      refreshPending: true,
+    });
+    getUserMock.mockResolvedValueOnce(createUserDto("urn:gravatar:" + "a".repeat(32)));
+    await expect(
+      updateOwnProfile(runtime, { firstName: "Alicia" }, undefined, profileApi()),
+    ).resolves.toMatchObject({
+      ok: true,
+      refreshPending: true,
+    });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()?.profile.firstName).toBe("Alicia");
+    expect(writeUsersToCacheForOwnerMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a profile save response after leaving and returning to the same account", async () => {
+    let resolve: (value: OwnProfile) => void = (_value: OwnProfile) => {
+      throw new Error("Missing resolver");
+    };
+    const api = profileApi();
+    api.update = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
+    const pending = updateOwnProfile(runtime, { firstName: "Alicia" }, undefined, api);
+    useWorkspaceAuthStore.getState().setCurrentAccountId(null);
+    useWorkspaceAuthStore.getState().setCurrentAccountId(runtime.accountId);
+    resolve(profile);
+    await expect(pending).resolves.toEqual({ ok: false, kind: "stale" });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()?.profile.firstName).toBe("Alice");
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(writeUsersToCacheForOwnerMock).not.toHaveBeenCalled();
   });
 
   it("uploads an avatar and immediately updates the owner-scoped user store", async () => {

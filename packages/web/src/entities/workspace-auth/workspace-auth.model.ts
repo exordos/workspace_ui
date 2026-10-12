@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
@@ -33,6 +34,10 @@ export interface WorkspaceAuthState {
   currentAccountId: string | null;
   runtimeGeneration: number;
   setSession: (session: Omit<WorkspaceAuthSession, "runtimeGeneration">) => void;
+  updateProfileForRuntime: (
+    runtime: WorkspaceRuntimeContext,
+    profile: WorkspaceAuthProfile,
+  ) => boolean;
   setCurrentAccountId: (accountId: string | null) => void;
   updateTokens: (
     accountId: string,
@@ -228,6 +233,34 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       persist(sessions, accountId);
       return { currentAccountId: accountId, runtimeGeneration, sessions };
     });
+  },
+
+  updateProfileForRuntime: (runtime, profile) => {
+    let applied = false;
+    set((state) => {
+      if (
+        profile.uuid !== runtime.userUuid ||
+        !isWorkspaceRuntimeRequestContextCurrent(runtime, () =>
+          selectCurrentWorkspaceRuntimeContext(state),
+        )
+      ) {
+        return state;
+      }
+      const sessions = state.sessions.map((session) =>
+        session.accountId === runtime.accountId
+          ? {
+              ...session,
+              profile,
+              login: session.login === session.profile.username ? profile.username : session.login,
+            }
+          : session,
+      );
+      persist(sessions, state.currentAccountId);
+      applied = true;
+      // Identity edits do not replace tokens or restart the messenger runtime.
+      return { sessions };
+    });
+    return applied;
   },
 
   updateTokens: (accountId, tokens) => {
