@@ -5,7 +5,7 @@ import { test, expect } from "./fixtures";
 import { E2E_USER_UUID, usersSuccess } from "./mocks/workspace-default-responses";
 
 test.describe("Profile & Settings", () => {
-  test("edits IAM fields inline with a live top name and refreshes the Workspace profile", async ({
+  test("keeps username and email readonly while editing IAM profile fields", async ({
     authenticated,
   }) => {
     let user = usersSuccess()[0];
@@ -49,6 +49,12 @@ test.describe("Profile & Settings", () => {
     await expect(emailRow).toContainText(user.email);
     await expect(emailRow.locator("input")).toHaveCount(0);
     await expect(emailRow.getByRole("button", { name: /копировать|copy/i })).toBeVisible();
+    const usernameRow = authenticated.getByTestId("right-panel-profile-detail-username");
+    await expect(usernameRow).toContainText(user.username);
+    await expect(usernameRow.locator("input,select,textarea")).toHaveCount(0);
+    await expect(usernameRow.getByRole("button", { name: /копировать|copy/i })).toBeVisible();
+    await expect(authenticated.locator('input[name="username"]')).toHaveCount(0);
+    await expect(authenticated.locator('input[name="email"]')).toHaveCount(0);
     await expect(
       authenticated.getByTestId("right-panel-profile-detail-phone").locator("input"),
     ).toHaveValue("+123");
@@ -59,8 +65,6 @@ test.describe("Profile & Settings", () => {
     await expect(preview).toHaveText("E2E");
     await authenticated.locator('input[name="firstName"]').fill("  ");
     await expect(preview).toHaveText(user.username);
-    await authenticated.locator('input[name="username"]').fill("new-username");
-    await expect(preview).toHaveText("new-username");
     await authenticated.locator('input[name="lastName"]').fill("OnlyLast");
     await expect(preview).toHaveText("OnlyLast");
     await authenticated.getByTestId("right-panel-profile-cancel").click();
@@ -68,11 +72,11 @@ test.describe("Profile & Settings", () => {
     await expect(panel.locator("header p").first()).toHaveText("E2E User");
     expect(savedBody).toBeUndefined();
     await authenticated.getByTestId("right-panel-profile-edit").click();
-    await expect(authenticated.locator('input[name="username"]')).toHaveValue(user.username);
+    await expect(usernameRow).toContainText(user.username);
     await expect(authenticated.locator('input[name="firstName"]')).toHaveValue("E2E");
     await authenticated.locator('input[name="firstName"]').fill("Edited");
     await authenticated.locator('input[name="lastName"]').fill("Person");
-    await expect(authenticated.locator('input[name="username"]')).toHaveValue(user.username);
+    await expect(authenticated.locator('input[name="username"]')).toHaveCount(0);
     await expect(authenticated.getByTestId("profile-display-name-preview")).toHaveText(
       "Edited Person",
     );

@@ -14,8 +14,15 @@ const dto = {
 };
 
 describe("IAM profile adapter", () => {
-  it("uses the actor's IAM endpoint and serializes only changed fields", async () => {
+  it("serializes editable fields and never sends username or email", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(dto)));
+    const patch = {
+      firstName: "Alice",
+      lastName: null,
+      phone: "",
+      username: "changed-username",
+      email: "changed@example.com",
+    };
     const profile = await workspaceIamProfileApi.update(
       {
         organizationOrigin: "https://org.example",
@@ -23,7 +30,7 @@ describe("IAM profile adapter", () => {
         accessToken: "token",
         fetchImpl,
       },
-      { firstName: "Alice", lastName: null, phone: "" },
+      patch,
     );
     expect(profile).toMatchObject({ username: "alice", firstName: "Alice", lastName: null });
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -51,7 +58,7 @@ describe("IAM profile adapter", () => {
           accessToken: "token",
           fetchImpl,
         },
-        { username: "new" },
+        { firstName: "New" },
       ),
     ).rejects.toBeInstanceOf(MessengerApiError);
     expect(fetchImpl).toHaveBeenCalledTimes(1);

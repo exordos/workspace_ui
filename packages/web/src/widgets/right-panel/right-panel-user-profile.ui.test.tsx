@@ -213,7 +213,7 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.getByRole("button", { name: t("settings.personalInfo") })).toBeInTheDocument();
   });
 
-  it("edits username and name parts separately with a derived display name", async () => {
+  it("edits name parts with a derived display name and readonly username and email", async () => {
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: t("settings.personalInfo") }));
@@ -230,7 +230,12 @@ describe("RightPanelShell personal-info subview", () => {
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
     expect(await screen.findByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
     expect(screen.getByLabelText(t("settings.profileLastName"))).toHaveValue("Workspace");
-    expect(screen.getByLabelText(t("info.username"))).toHaveValue("alice");
+    expect(screen.queryByLabelText(t("info.username"))).not.toBeInTheDocument();
+    const usernameRow = screen.getByTestId("right-panel-profile-detail-username");
+    expect(usernameRow).toHaveTextContent("alice");
+    expect(usernameRow.querySelector("input,select,textarea")).toBeNull();
+    fireEvent.click(within(usernameRow).getByRole("button", { name: t("message.copy") }));
+    await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("alice"));
     const detailList = screen.getByTestId("right-panel-user-profile-details");
     expect(detailList).toBeInTheDocument();
     const emailRow = screen.getByTestId("right-panel-profile-detail-email");
@@ -282,7 +287,7 @@ describe("RightPanelShell personal-info subview", () => {
     expect(screen.getByTestId("right-panel-user-profile")).toHaveAttribute("data-editing", "true");
   });
 
-  it("updates the top name from draft parts and username, then resets it on cancel", async () => {
+  it("previews name parts with the saved username fallback and resets on cancel", async () => {
     renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
     expect(screen.queryByLabelText(t("settings.profileFirstName"))).not.toBeInTheDocument();
     expect(screen.queryByLabelText(t("settings.profileLastName"))).not.toBeInTheDocument();
@@ -290,17 +295,14 @@ describe("RightPanelShell personal-info subview", () => {
     fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
     const firstName = await screen.findByLabelText(t("settings.profileFirstName"));
     const lastName = screen.getByLabelText(t("settings.profileLastName"));
-    const username = screen.getByLabelText(t("info.username"));
     const topName = screen.getByTestId("right-panel-profile-name-readonly");
     expect(firstName).not.toBeRequired();
     expect(lastName).not.toBeRequired();
-    expect(username).toBeRequired();
+    expect(screen.queryByLabelText(t("info.username"))).not.toBeInTheDocument();
     fireEvent.change(lastName, { target: { value: "" } });
     expect(topName).toHaveTextContent("Alice");
     fireEvent.change(firstName, { target: { value: "   " } });
     expect(topName).toHaveTextContent("alice");
-    fireEvent.change(username, { target: { value: "draft-username" } });
-    expect(topName).toHaveTextContent("draft-username");
     fireEvent.change(lastName, { target: { value: "  ТолькоФамилия  " } });
     expect(topName).toHaveTextContent("ТолькоФамилия");
     fireEvent.change(firstName, { target: { value: "  НовоеИмя  " } });
@@ -318,7 +320,7 @@ describe("RightPanelShell personal-info subview", () => {
     fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
     expect(await screen.findByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
     expect(screen.getByLabelText(t("settings.profileLastName"))).toHaveValue("Workspace");
-    expect(screen.getByLabelText(t("info.username"))).toHaveValue("alice");
+    expect(screen.getByTestId("right-panel-profile-detail-username")).toHaveTextContent("alice");
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
   });
 
@@ -405,29 +407,19 @@ describe("RightPanelShell personal-info subview", () => {
     expect(phoneRow.querySelector("input")).toBeNull();
   });
 
-  it("requires a valid IAM username while keeping both names optional", async () => {
+  it("validates editable field lengths while keeping both names optional", async () => {
     renderWithProviders(<RightPanelShell mode="personal-info" title="Profile" />);
     fireEvent.click(screen.getByTestId("right-panel-profile-edit"));
     const firstName = await screen.findByLabelText(t("settings.profileFirstName"));
     const lastName = screen.getByLabelText(t("settings.profileLastName"));
-    const username = screen.getByLabelText(t("info.username"));
     const save = screen.getByTestId("right-panel-profile-save");
     fireEvent.change(firstName, { target: { value: "" } });
     fireEvent.change(lastName, { target: { value: "" } });
     expect(save).not.toBeDisabled();
-    for (const value of ["", "   ", "invalid@name", "😀", "x".repeat(129)]) {
-      fireEvent.change(username, { target: { value } });
-      expect(save).toBeDisabled();
-      expect(screen.getByRole("alert")).toHaveTextContent(t("settings.profileInvalidFields"));
-    }
-    expect(username).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText(t("settings.profileUsernameInvalid"))).toBeInTheDocument();
-    fireEvent.change(username, { target: { value: "  Имя_１２3.name-!+  " } });
-    expect(save).not.toBeDisabled();
-    expect(username).not.toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText(t("settings.profileUsernameHint"))).toBeInTheDocument();
+    expect(screen.queryByLabelText(t("info.username"))).not.toBeInTheDocument();
     fireEvent.change(firstName, { target: { value: "x".repeat(129) } });
     expect(save).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(t("settings.profileInvalidFields"));
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
   });
 

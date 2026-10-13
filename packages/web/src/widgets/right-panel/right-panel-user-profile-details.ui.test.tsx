@@ -70,11 +70,12 @@ describe("RightPanelUserProfileDetails", () => {
     expect(within(list).getByLabelText(t("info.phone"))).toHaveValue("+123");
     expect(within(list).getByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
     expect(within(list).getByLabelText(t("settings.profileLastName"))).toHaveValue("");
-    expect(within(list).getByLabelText(t("info.username"))).toHaveValue("alice");
+    expect(within(list).queryByLabelText(t("info.username"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-detail-username")).toHaveTextContent("alice");
     expect(within(list).getByLabelText(t("settings.profileDescription"))).toHaveValue(
       "About Alice",
     );
-    for (const id of ["userId", "email", "timezone"]) {
+    for (const id of ["userId", "username", "email", "timezone"]) {
       const row = screen.getByTestId(`right-panel-profile-detail-${id}`);
       expect(row.querySelector("input,select,textarea")).toBeNull();
       expect(within(row).getByRole("button", { name: t("message.copy") })).toBeInTheDocument();

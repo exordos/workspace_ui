@@ -11,7 +11,7 @@ export interface OwnProfile {
 }
 
 export type OwnProfilePatch = Partial<
-  Pick<OwnProfile, "username" | "firstName" | "lastName" | "phone" | "description">
+  Pick<OwnProfile, "firstName" | "lastName" | "phone" | "description">
 >;
 
 export interface OwnProfileRequestOptions extends WorkspaceApiClientOptions {

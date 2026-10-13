@@ -49,7 +49,6 @@ export const workspaceIamProfileApi: OwnProfileApi = {
       requestOptions(options),
       {},
       {
-        ...(patch.username === undefined ? {} : { username: patch.username }),
         ...(patch.firstName === undefined ? {} : { first_name: patch.firstName }),
         ...(patch.lastName === undefined ? {} : { last_name: patch.lastName }),
         ...(patch.phone === undefined ? {} : { phone: patch.phone }),

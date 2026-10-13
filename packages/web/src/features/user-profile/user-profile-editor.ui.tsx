@@ -1,15 +1,13 @@
-import { useId } from "react";
 import { t } from "~/i18n/i18n";
-import { isProfileUsernameValid } from "./user-profile-editor.lib";
 import type { useOwnProfileEditor } from "./user-profile-editor.hook";
-import type { ProfileDraft } from "./user-profile-editor.lib";
+import type { ProfileEditableField } from "./user-profile-editor.lib";
 
 interface ProfileEditorFieldProps {
-  field: keyof ProfileDraft;
+  field: ProfileEditableField;
   value: string;
   label: string;
   disabled: boolean;
-  onChange: (field: keyof ProfileDraft, value: string) => void;
+  onChange: (field: ProfileEditableField, value: string) => void;
 }
 
 export function ProfileEditorField({
@@ -19,42 +17,28 @@ export function ProfileEditorField({
   disabled,
   onChange,
 }: Readonly<ProfileEditorFieldProps>) {
-  const hintId = useId();
-  const usernameInvalid = field === "username" && !isProfileUsernameValid(value);
   const inputClass =
     "w-full rounded-lg border border-border-subtle bg-card-bg px-3 text-sm leading-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60";
-  return (
-    <>
-      {field === "description" ? (
-        <textarea
-          name={field}
-          aria-label={label}
-          value={value}
-          disabled={disabled}
-          rows={3}
-          className={`${inputClass} py-2`}
-          onChange={(event) => onChange(field, event.target.value)}
-        />
-      ) : (
-        <input
-          name={field}
-          aria-label={label}
-          aria-invalid={usernameInvalid || undefined}
-          aria-describedby={field === "username" ? hintId : undefined}
-          type={field === "phone" ? "tel" : "text"}
-          required={field === "username"}
-          value={value}
-          disabled={disabled}
-          className={`${inputClass} h-8`}
-          onChange={(event) => onChange(field, event.target.value)}
-        />
-      )}
-      {field === "username" && (
-        <p id={hintId} className="text-xs leading-4 text-text-muted">
-          {t(usernameInvalid ? "settings.profileUsernameInvalid" : "settings.profileUsernameHint")}
-        </p>
-      )}
-    </>
+  return field === "description" ? (
+    <textarea
+      name={field}
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      rows={3}
+      className={`${inputClass} py-2`}
+      onChange={(event) => onChange(field, event.target.value)}
+    />
+  ) : (
+    <input
+      name={field}
+      aria-label={label}
+      type={field === "phone" ? "tel" : "text"}
+      value={value}
+      disabled={disabled}
+      className={`${inputClass} h-8`}
+      onChange={(event) => onChange(field, event.target.value)}
+    />
   );
 }
 

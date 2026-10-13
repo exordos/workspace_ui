@@ -1,6 +1,6 @@
 import React from "react";
 import type { WorkspaceRightPanelDirectPrivateDetailId } from "~/entities/messenger/messenger-right-panel.lib";
-import type { ProfileDraft } from "~/features/user-profile/user-profile-editor.lib";
+import type { ProfileEditableField } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorField } from "~/features/user-profile/user-profile-editor.ui";
 import { t } from "~/i18n/i18n";
 import { Copyable } from "~/shared/ui/copyable";
@@ -138,10 +138,9 @@ export const RightPanelUserProfileDetails: React.FC<RightPanelUserProfileDetails
   description,
   editing,
 }) => {
-  const identityFields: { field: keyof ProfileDraft; label: string; icon: IconName }[] = [
+  const identityFields: { field: ProfileEditableField; label: string; icon: IconName }[] = [
     { field: "firstName", label: t("settings.profileFirstName"), icon: "accountCircle" },
     { field: "lastName", label: t("settings.profileLastName"), icon: "accountCircle" },
-    { field: "username", label: t("info.username"), icon: "alternate_email" },
   ];
   return (
     <ul className="space-y-3" data-testid="right-panel-user-profile-details">
@@ -164,6 +163,14 @@ export const RightPanelUserProfileDetails: React.FC<RightPanelUserProfileDetails
             }
           />
         ))}
+      {editing != null && (
+        <ProfileDetailRow
+          id="username"
+          label={t("info.username")}
+          icon="alternate_email"
+          value={editing.draft.username}
+        />
+      )}
       {details.map((detail) => {
         const config = DETAIL_CONFIG[detail.id];
         const label = config.label();

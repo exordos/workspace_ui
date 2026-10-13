@@ -10,7 +10,7 @@ import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { OwnProfile } from "~/shared/api/own-profile.types";
 import { isProfileDraftValid, profileDraft, profilePatch } from "./user-profile-editor.lib";
 import { loadOwnProfile, updateOwnProfile } from "./user-profile.api";
-import type { ProfileDraft } from "./user-profile-editor.lib";
+import type { ProfileDraft, ProfileEditableField } from "./user-profile-editor.lib";
 
 type EditorError = "forbidden" | "invalid" | "unsupported" | "transient";
 interface EditorState {
@@ -101,7 +101,7 @@ export function useOwnProfileEditor(runtime: WorkspaceRuntimeContext | null, ena
   const valid = draft != null && isProfileDraftValid(draft);
 
   const change = useCallback(
-    (field: keyof ProfileDraft, value: string) => {
+    (field: ProfileEditableField, value: string) => {
       setState((previous) =>
         previous.key === key && previous.draft != null && !previous.saving
           ? { ...previous, draft: { ...previous.draft, [field]: value }, error: null }
