@@ -13,6 +13,9 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
+import { useOwnProfileEditor } from "~/features/user-profile/user-profile-editor.hook";
+import { profileDraftDisplayName } from "~/features/user-profile/user-profile-editor.lib";
+import { ProfileEditorFeedback } from "~/features/user-profile/user-profile-editor.ui";
 import {
   getOwnAvatarCapabilities,
   removeOwnAvatar,
@@ -154,6 +157,11 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     [currentAccountId, sessions],
   );
   const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const editor = useOwnProfileEditor(
+    runtimeContext,
+    profile.isOwnProfile && runtimeContext?.userUuid === profile.userUuid,
+  );
+  const profileBusy = avatarBusy || editor.saving;
   // Custom status (emoji + text) — same signal as top-bar / chat header, live from users store.
   const profileUser = useUsersStore((state) => state.usersById[profile.userUuid]);
   const customStatusLabel = useMemo(() => selectUserStatusLabel(profileUser), [profileUser]);
@@ -215,6 +223,8 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   const showActions = !(profile.isOwnProfile && isEditing);
   const actionVariant = profile.isOwnProfile ? "self" : "other";
   const showEditChrome = profile.isOwnProfile && isEditing;
+  const displayedName =
+    showEditChrome && editor.draft != null ? profileDraftDisplayName(editor.draft) : profile.title;
 
   const handleFavorites = useCallback(() => {
     if (runtimeContext == null) return;
@@ -239,12 +249,13 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [shareLink]);
 
   const handleCancelEdit = useCallback(() => {
-    if (avatarBusy) return;
+    if (profileBusy) return;
+    editor.cancel();
     setAvatarDialogOpen(false);
     setAvatarError(null);
     setPendingAvatarChange(null);
     setIsEditing(false);
-  }, [avatarBusy]);
+  }, [editor, profileBusy]);
 
   const resolveAvatarMutationError = useCallback(
     (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallback: string): string => {
@@ -322,7 +333,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     setAvatarDialogOpen(false);
   }, [avatarBusy, runtimeContext]);
 
-  const handleSaveEdit = useCallback(() => {
+  const handleSaveAvatar = useCallback(() => {
     if (avatarBusy) return;
     if (pendingAvatarChange == null) {
       setAvatarDialogOpen(false);
@@ -380,6 +391,17 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
         setAvatarBusy(false);
       });
   }, [avatarBusy, pendingAvatarChange, resolveAvatarMutationError, runtimeContext]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (profileBusy || (editor.draft != null && !editor.valid)) return;
+    if (!editor.dirty) {
+      handleSaveAvatar();
+      return;
+    }
+    void editor.save().then((saved) => {
+      if (saved) handleSaveAvatar();
+    });
+  }, [editor, handleSaveAvatar, profileBusy]);
 
   const navigateToDefaultTopic = useCallback(
     (streamUuid: string, topicUuid: string) => {
@@ -536,8 +558,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
           {/*
             View: avatar 64 + name / custom status / presence.
-            Edit (Figma 12697:37361): avatar + stylus badge, "Имя" label + read-only name field.
-            Display name stays read-only — Workspace API keeps IAM username/name fields read-only.
+            Display name is derived from the separately editable identity fields.
           */}
           <header className="flex items-center gap-4 px-2">
             {showEditChrome ? (
@@ -545,7 +566,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleOpenAvatarDialog}
-                disabled={avatarBusy}
+                disabled={profileBusy}
                 className="group relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 aria-label={t("settings.editAvatarAria")}
                 data-testid="right-panel-profile-edit-avatar"
@@ -581,19 +602,22 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
             {showEditChrome ? (
               <div className="flex min-w-0 flex-1 flex-col gap-0">
                 <p className="text-xs font-normal leading-4 text-text-secondary">
-                  {t("settings.fullName")}
+                  {t("settings.profileDisplayName")}
                 </p>
                 {/*
                   Figma name field: h-32, radius 8, fill white 5%, pad 8/12.
-                  Read-only: IAM-owned name cannot be patched from Workspace UI yet.
+                  The name follows the draft without changing the saved identity.
                 */}
                 <div
                   className="mt-0 flex h-8 items-center rounded-lg bg-card-bg px-2"
                   data-testid="right-panel-profile-name-readonly"
                 >
-                  <span className="truncate text-xs leading-4 text-text-primary">
-                    {profile.title}
-                  </span>
+                  <output
+                    className="truncate text-xs leading-4 text-text-primary"
+                    data-testid="profile-display-name-preview"
+                  >
+                    {displayedName}
+                  </output>
                 </div>
               </div>
             ) : (
@@ -621,6 +645,13 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
             )}
           </header>
 
+          {showEditChrome && <ProfileEditorFeedback editor={editor} />}
+          {editor.refreshPending && (
+            <p role="status" className="px-2 text-sm text-text-secondary">
+              {t("settings.profileRefreshPending")}
+            </p>
+          )}
+
           {showActions && (
             <RightPanelUserProfileActions
               variant={actionVariant}
@@ -639,7 +670,35 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
           {/* Figma Line 37: hairline separator before detail list in edit mode */}
           {showEditChrome && <div className="mx-0 border-t border-border-subtle" aria-hidden />}
 
-          <RightPanelUserProfileDetails details={profile.details} />
+          <RightPanelUserProfileDetails
+            details={profile.details.map((detail) => {
+              if (editor.profile == null) return detail;
+              if (detail.id === "phone") {
+                const phone = editor.profile.phone?.trim();
+                return phone
+                  ? { ...detail, value: phone, isTemporarilyUnavailable: false }
+                  : {
+                      ...detail,
+                      value: "-",
+                      isTemporarilyUnavailable: true,
+                    };
+              }
+              if (detail.id === "email" && editor.profile.email != null) {
+                return {
+                  ...detail,
+                  value: editor.profile.email,
+                  isTemporarilyUnavailable: false,
+                };
+              }
+              return detail;
+            })}
+            description={editor.profile?.description}
+            editing={
+              showEditChrome && editor.draft != null
+                ? { draft: editor.draft, disabled: profileBusy, onChange: editor.change }
+                : undefined
+            }
+          />
 
           {/*
             Figma footer (12697:37527 / 12697:37529): h-40, gap 8.
@@ -652,7 +711,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                disabled={avatarBusy}
+                disabled={profileBusy}
                 className="inline-flex h-10 w-[110px] shrink-0 items-center justify-center rounded-lg bg-card-bg-active px-4 text-sm font-medium leading-5 text-accent transition-colors hover:opacity-90"
                 data-testid="right-panel-profile-cancel"
               >
@@ -661,8 +720,8 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                disabled={avatarBusy}
-                aria-busy={avatarBusy}
+                disabled={profileBusy || (editor.draft != null && !editor.valid)}
+                aria-busy={profileBusy}
                 className="inline-flex h-10 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-lg bg-accent px-4 text-sm font-medium leading-5 text-on-accent transition-colors hover:opacity-90"
                 data-testid="right-panel-profile-save"
               >

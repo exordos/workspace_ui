@@ -21,25 +21,25 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+import type { OwnProfile, OwnProfileApi, OwnProfilePatch } from "~/shared/api/own-profile.types";
 import {
+  getUser,
   resetUserAvatar as resetWorkspaceUserAvatar,
   uploadUserAvatar as uploadWorkspaceUserAvatar,
 } from "~/shared/api/workspace-client";
+import { workspaceIamProfileApi } from "~/shared/api/workspace-iam-profile.api";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 import type {
   OwnAvatarCapabilities,
   OwnAvatarMutationResult,
-  OwnProfileUpdateResult,
   OwnStatusData,
   OwnStatusMutationResult,
   UserProfileData,
 } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
-const UNSUPPORTED_PROFILE_MESSAGE =
-  "Profile updates are read-only until Workspace profile write API is available";
 const WORKSPACE_MAX_AVATAR_FILE_SIZE_MIB = 25;
 const STALE_AVATAR_MUTATION_MESSAGE = "Avatar response belongs to an inactive Workspace session";
 
@@ -73,22 +73,90 @@ export function fetchOwnStatus(): Promise<OwnStatusData | null> {
   return Promise.resolve(null);
 }
 
-export interface UpdateOwnProfileParams {
-  fullName: string;
-  timezone: string;
+function ownProfileOptions(runtime: WorkspaceRuntimeContext, signal?: AbortSignal) {
+  return {
+    ...buildWorkspaceRequestOptions(runtime, undefined, signal),
+    organizationOrigin: runtime.organizationOrigin,
+    userUuid: runtime.userUuid,
+  };
 }
 
-export function updateOwnProfile(params: UpdateOwnProfileParams): Promise<OwnProfileUpdateResult> {
-  const fullName = params.fullName.trim();
-  const timezone = params.timezone.trim();
-  guard.nonEmpty(fullName, "updateOwnProfile.fullName");
-  guard.nonEmpty(timezone, "updateOwnProfile.timezone");
+function normalizedName(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
 
-  return Promise.resolve({
-    ok: false,
-    kind: "unsupported",
-    message: UNSUPPORTED_PROFILE_MESSAGE,
+export async function loadOwnProfile(
+  runtime: WorkspaceRuntimeContext,
+  signal?: AbortSignal,
+  api: OwnProfileApi = workspaceIamProfileApi,
+): Promise<OwnProfile> {
+  const profile = await api.load(ownProfileOptions(runtime, signal));
+  if (profile.uuid !== runtime.userUuid) throw new TypeError("Invalid profile identity");
+  return profile;
+}
+
+export type SaveOwnProfileResult =
+  | { ok: true; profile: OwnProfile; refreshPending: boolean }
+  | { ok: false; kind: "forbidden" | "invalid" | "unsupported" | "transient" | "stale" };
+
+export async function updateOwnProfile(
+  runtime: WorkspaceRuntimeContext,
+  patch: OwnProfilePatch,
+  signal?: AbortSignal,
+  api: OwnProfileApi = workspaceIamProfileApi,
+): Promise<SaveOwnProfileResult> {
+  const request = captureWorkspaceRuntimeRequestContext(() => runtime);
+  const invalidated = () =>
+    isWorkspaceRuntimeRequestInvalidated(request, getCurrentRuntimeContext, signal);
+  let profile: OwnProfile;
+  try {
+    if (invalidated()) return { ok: false, kind: "stale" };
+    profile = await api.update(ownProfileOptions(runtime, signal), patch);
+    if (invalidated()) return { ok: false, kind: "stale" };
+    if (profile.uuid !== runtime.userUuid) return { ok: false, kind: "transient" };
+  } catch (error) {
+    if (invalidated()) return { ok: false, kind: "stale" };
+    const classified = classifyAvatarMutationError(error);
+    return { ok: false, kind: classified.ok ? "transient" : classified.kind };
+  }
+
+  const session = useWorkspaceAuthStore.getState().getCurrentSession();
+  useWorkspaceAuthStore.getState().updateProfileForRuntime(runtime, {
+    uuid: profile.uuid,
+    username: profile.username,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    email: profile.email,
+    ...(session?.profile.status == null ? {} : { status: session.profile.status }),
   });
+  try {
+    const dto = await getUser(
+      buildWorkspaceRequestOptions(runtime, undefined, signal),
+      runtime.userUuid,
+    );
+    if (invalidated()) return { ok: false, kind: "stale" };
+    if (
+      dto.uuid !== runtime.userUuid ||
+      dto.username !== profile.username ||
+      normalizedName(dto.first_name) !== normalizedName(profile.firstName) ||
+      normalizedName(dto.last_name) !== normalizedName(profile.lastName)
+    ) {
+      return { ok: true, profile, refreshPending: true };
+    }
+    const user = adaptWorkspaceMessengerUserDto(dto);
+    const store = useUsersStore.getState();
+    const ownerKey = workspaceRuntimeOwnerKey(runtime);
+    if (store.ownerKey == null) store.upsertUser(user);
+    else if (!store.upsertUserForOwner(ownerKey, user))
+      return { ok: true, profile, refreshPending: true };
+    writeUsersToCacheForOwner(ownerKey, [user]);
+    return { ok: true, profile, refreshPending: false };
+  } catch {
+    if (invalidated()) return { ok: false, kind: "stale" };
+    // IAM has already saved the edit. A failed projection read must not report a failed save.
+    return { ok: true, profile, refreshPending: true };
+  }
 }
 
 export interface UpdateOwnStatusParams {
@@ -120,7 +188,7 @@ function classifyAvatarMutationError(error: unknown): OwnAvatarMutationResult {
     if (error.status === 401 || error.status === 403) {
       return { ok: false, kind: "forbidden", message: error.message };
     }
-    if ([400, 413, 415, 422].includes(error.status)) {
+    if ([400, 409, 413, 415, 422].includes(error.status)) {
       return { ok: false, kind: "invalid", message: error.message };
     }
     if ([404, 405, 501].includes(error.status)) {

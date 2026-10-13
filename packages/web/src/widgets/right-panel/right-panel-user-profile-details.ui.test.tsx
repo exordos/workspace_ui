@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelUserProfileDetails } from "./right-panel-user-profile-details.ui";
@@ -40,6 +40,64 @@ describe("RightPanelUserProfileDetails", () => {
     expect(
       screen.queryByTestId("right-panel-profile-detail-phone")?.querySelector("button"),
     ).toBeNull();
+  });
+
+  it("keeps readonly rows and turns supported fields into inline controls", () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <RightPanelUserProfileDetails
+        details={[
+          { id: "userId", value: "workspace-user-uuid", isTemporarilyUnavailable: false },
+          { id: "email", value: "alice@example.com", isTemporarilyUnavailable: false },
+          { id: "phone", value: "+123", isTemporarilyUnavailable: false },
+          { id: "timezone", value: "Europe / Moscow", isTemporarilyUnavailable: false },
+        ]}
+        description="About Alice"
+        editing={{
+          draft: {
+            username: "alice",
+            firstName: "Alice",
+            lastName: "",
+            phone: "+123",
+            description: "About Alice",
+          },
+          disabled: false,
+          onChange,
+        }}
+      />,
+    );
+    const list = screen.getByTestId("right-panel-user-profile-details");
+    expect(within(list).getByLabelText(t("info.phone"))).toHaveValue("+123");
+    expect(within(list).getByLabelText(t("settings.profileFirstName"))).toHaveValue("Alice");
+    expect(within(list).getByLabelText(t("settings.profileLastName"))).toHaveValue("");
+    expect(within(list).queryByLabelText(t("info.username"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-detail-username")).toHaveTextContent("alice");
+    expect(within(list).getByLabelText(t("settings.profileDescription"))).toHaveValue(
+      "About Alice",
+    );
+    for (const id of ["userId", "username", "email", "timezone"]) {
+      const row = screen.getByTestId(`right-panel-profile-detail-${id}`);
+      expect(row.querySelector("input,select,textarea")).toBeNull();
+      expect(within(row).getByRole("button", { name: t("message.copy") })).toBeInTheDocument();
+    }
+    fireEvent.change(within(list).getByLabelText(t("info.phone")), { target: { value: "+456" } });
+    expect(onChange).toHaveBeenCalledWith("phone", "+456");
+    expect(screen.queryByTestId("profile-display-name-preview")).not.toBeInTheDocument();
+  });
+
+  it("omits identity input rows when viewing a profile", () => {
+    renderWithProviders(
+      <RightPanelUserProfileDetails
+        details={[{ id: "email", value: "alice@example.com", isTemporarilyUnavailable: false }]}
+      />,
+    );
+    for (const id of ["username", "firstName", "lastName"]) {
+      expect(screen.queryByTestId(`right-panel-profile-detail-${id}`)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByTestId("right-panel-profile-detail-email")).toHaveTextContent(
+      "alice@example.com",
+    );
   });
 
   it("uses Figma icon names for timezone, local time, joined, and birthday", () => {

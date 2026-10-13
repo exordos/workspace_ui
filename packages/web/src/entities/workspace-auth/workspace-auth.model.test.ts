@@ -49,6 +49,25 @@ describe("workspace-auth store", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
+  it("persists profile edits without restarting runtime and rejects an old runtime", () => {
+    const store = useWorkspaceAuthStore.getState();
+    store.setSession(createSession());
+    const runtime = store.getCurrentRuntimeContext();
+    expect(runtime).not.toBeNull();
+    if (runtime == null) throw new Error("Expected runtime");
+    const profile = { ...createSession().profile, username: "new-user", firstName: "New" };
+    expect(store.updateProfileForRuntime(runtime, profile)).toBe(true);
+    expect(store.getCurrentRuntimeContext()?.runtimeGeneration).toBe(runtime.runtimeGeneration);
+    expect(store.getCurrentSession()?.profile.username).toBe("new-user");
+    expect(
+      JSON.parse(localStorage.getItem("workspace-auth-sessions") ?? "[]")[0].profile.username,
+    ).toBe("new-user");
+    store.setCurrentAccountId(null);
+    store.setCurrentAccountId(runtime.accountId);
+    expect(store.updateProfileForRuntime(runtime, { ...profile, username: "stale" })).toBe(false);
+    expect(store.getCurrentSession()?.profile.username).toBe("new-user");
+  });
+
   it("stores a session and exposes current runtime context", () => {
     useWorkspaceAuthStore.getState().setSession(createSession());
 
