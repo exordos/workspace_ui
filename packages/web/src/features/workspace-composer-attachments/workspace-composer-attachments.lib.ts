@@ -1,5 +1,9 @@
 import type { WorkspaceFileMetadata } from "~/shared/api/messenger-files.api";
 import { sanitizeFilename } from "~/shared/lib/validation";
+import {
+  createWorkspaceMarkdownLexer,
+  getStandaloneWorkspaceQuoteReference,
+} from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import type { WorkspaceComposerAttachmentServerMetadata } from "./workspace-composer-attachments.types";
 
 type WorkspaceComposerAttachmentUrnType = "file" | "image" | "video";
@@ -172,5 +176,14 @@ export function prependWorkspaceComposerAttachmentMarkdown(
   const uniqueLinks = [...new Set(links)].filter((link) => !trimmed.includes(link));
   if (uniqueLinks.length === 0) return trimmed;
   if (trimmed.length === 0) return uniqueLinks.join("\n");
+  const firstBlock = createWorkspaceMarkdownLexer().lexer(trimmed)[0];
+  const quote = firstBlock == null ? null : getStandaloneWorkspaceQuoteReference(firstBlock);
+  if (firstBlock != null && quote != null && quote.snapshotMarkdown == null) {
+    // Keep the quote in its own block before newly uploaded attachments.
+    const answer = trimmed.slice(firstBlock.raw.length).replace(/^\n+/, "");
+    const blocks = [firstBlock.raw.trimEnd(), uniqueLinks.join("\n")];
+    if (answer.length > 0) blocks.push(answer);
+    return blocks.join("\n\n");
+  }
   return `${uniqueLinks.join("\n")}\n${trimmed}`;
 }
