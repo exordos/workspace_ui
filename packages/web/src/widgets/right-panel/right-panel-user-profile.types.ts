@@ -5,6 +5,10 @@ import type {
 } from "~/entities/messenger/messenger-right-panel.lib";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import type { User } from "~/entities/user/user.types";
+import type {
+  ProfileDraft,
+  ProfileEditableField,
+} from "~/features/user-profile/user-profile-editor.lib";
 import type { IconName } from "~/shared/ui/icon";
 
 export type RightPanelUserProfileInfo =
@@ -21,6 +25,12 @@ export interface RightPanelUserProfileProps {
 
 export interface RightPanelUserProfileDetailsProps {
   details: WorkspaceRightPanelDirectPrivateDetailView[];
+  description?: string | null;
+  editing?: {
+    draft: ProfileDraft;
+    disabled: boolean;
+    onChange: (field: ProfileEditableField, value: string) => void;
+  };
 }
 
 export type RightPanelUserProfileActionVariant = "self" | "other";
