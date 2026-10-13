@@ -6,6 +6,43 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-10-13
+
+### Changed
+
+- Successful organization logins now add the normalized organization origin to
+  a local, deduplicated history. The login screen offers those organizations as
+  searchable suggestions after logout without retaining credentials, paths,
+  query parameters, or URL fragments.
+- Login, forwarding, chat creation, topic movement, topic-summary settings,
+  external-account setup, and log filters now use shared selectors with
+  consistent styling, keyboard navigation, typeahead, validation, and
+  accessible listbox behavior.
+
+### Fixed
+
+- Reply quotes remain before newly uploaded attachments, so adding a file to a
+  reply no longer moves the quote below the attachment block.
+- A login request that finishes after the active account or login attempt has
+  changed is discarded instead of replacing the newer session.
+- Selector popovers are rendered outside clipped dialog content while retaining
+  focus and keyboard behavior, including the message-forwarding flow.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.3`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.4`.
+- No manual migration is required.
+
 ## [0.8.3] — 2026-10-11
 
 ### Changed
