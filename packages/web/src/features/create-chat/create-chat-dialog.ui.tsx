@@ -4,6 +4,7 @@ import { t } from "~/i18n/i18n";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { Select } from "~/shared/ui/select.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
   useCreateChatDialog,
@@ -484,18 +485,18 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               aria-labelledby={vm.tabIds.topic}
               className="flex flex-col gap-3"
             >
-              <label className="text-sm text-text-muted">{t("channel.selectChannel")}</label>
-              <select
+              <label htmlFor="create-topic-channel" className="text-sm text-text-muted">
+                {t("channel.selectChannel")}
+              </label>
+              <Select
+                id="create-topic-channel"
                 value={vm.workspaceTopicStreamUuid}
-                onChange={(event) => vm.setWorkspaceTopicStreamUuid(event.target.value)}
-                className={CREATE_CHAT_TEXT_INPUT_CLASS}
-              >
-                {vm.workspaceTopicStreams.map((stream) => (
-                  <option key={stream.streamUuid} value={stream.streamUuid}>
-                    {stream.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={vm.setWorkspaceTopicStreamUuid}
+                options={vm.workspaceTopicStreams.map((stream) => ({
+                  value: stream.streamUuid,
+                  label: stream.name,
+                }))}
+              />
               <label className="text-sm text-text-muted">{t("channel.topicName")}</label>
               <input
                 type="text"

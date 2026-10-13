@@ -75,7 +75,7 @@ describe("projectWorkspaceSidebarSearch", () => {
     expect(result.globalStreams.map((item) => item.streamUuid)).toEqual(["stream-b"]);
   });
 
-  it("projects only matching topics and keeps their parent stream", () => {
+  it("keeps every topic on a stream that matches by topic so search can reveal the rest", () => {
     const local = stream("stream-a", "Engineering", [
       topic("Release plan", "topic-a"),
       topic("Unrelated", "topic-b"),
@@ -88,10 +88,23 @@ describe("projectWorkspaceSidebarSearch", () => {
       selectedFolderSystemType: null,
     });
 
-    expect(result.localStreams[0]).toMatchObject({
-      streamUuid: "stream-a",
-      topics: [expect.objectContaining({ title: "Release plan" })],
+    expect(result.localStreams[0]).toBe(local);
+  });
+
+  it("keeps every topic when only the stream title matches", () => {
+    const local = stream("stream-a", "Engineering", [
+      topic("General", "topic-a"),
+      topic("Support", "topic-b"),
+    ]);
+
+    const result = projectWorkspaceSidebarSearch({
+      localStreams: [local],
+      allStreams: [local],
+      normalizedQuery: "engineering",
+      selectedFolderSystemType: null,
     });
+
+    expect(result.localStreams[0]).toBe(local);
   });
 
   it("returns an explicit local miss shape when only global results match", () => {

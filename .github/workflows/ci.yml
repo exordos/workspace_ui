@@ -12,6 +12,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VITE_DEFAULT_LOGIN_ORGANIZATION_URL: ${{ vars.DEFAULT_LOGIN_ORGANIZATION_URL }}
+
 jobs:
   check:
     name: Lint, Typecheck, Test

@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { adaptMessengerFolder } from "~/entities/messenger/messenger-adapters.lib";
 import {
@@ -161,11 +161,42 @@ describe("WorkspaceSidebar search mode", () => {
     expect(screen.getAllByText("#Engineering")).toHaveLength(1);
     expect(screen.getByText("#Release plan")).toBeInTheDocument();
     expect(screen.queryByText("#Unrelated")).not.toBeInTheDocument();
+    const showMoreTopics = screen.getByRole("button", {
+      name: t("channel.showMoreTopicsWithCount", { count: 1 }),
+    });
+    fireEvent.click(showMoreTopics);
+    expect(screen.getByText("#Unrelated")).toBeInTheDocument();
+    const hideExtraTopics = screen.getByRole("button", {
+      name: t("channel.hideExtraTopics"),
+    });
+    fireEvent.click(hideExtraTopics);
+    expect(screen.queryByText("#Unrelated")).not.toBeInTheDocument();
     expect(
       screen.getByRole("separator", { name: t("sidebar.allFoldersResults") }),
     ).toBeInTheDocument();
     expect(screen.getByText("#Product")).toBeInTheDocument();
     expect(screen.getByText("#Release operations")).toBeInTheDocument();
+  });
+
+  it("reveals all topics when only the stream title matches", () => {
+    const engineering = stream("stream-a", "Engineering", [
+      topic("stream-a", "topic-general", "General"),
+      topic("stream-a", "topic-support", "Support"),
+    ]);
+    useSidebarConfigStore.getState().setSearchQuery("engineering");
+
+    renderSidebar({ streams: [engineering], allStreams: [engineering] });
+
+    expect(screen.queryByText("#General")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Support")).not.toBeInTheDocument();
+    const showMoreTopics = screen.getByRole("button", {
+      name: t("channel.showMoreTopicsWithCount", { count: 2 }),
+    });
+
+    fireEvent.click(showMoreTopics);
+
+    expect(screen.getByText("#General")).toBeInTheDocument();
+    expect(screen.getByText("#Support")).toBeInTheDocument();
   });
 
   it.each(LOCAL_SEARCH_FOLDER_CASES)(

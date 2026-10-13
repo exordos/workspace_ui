@@ -3,6 +3,7 @@ import type { WorkspaceAuthProject } from "~/entities/workspace-auth/workspace-a
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
+import { Select } from "~/shared/ui/select.ui";
 
 interface LoginPageProjectFormProps {
   projects: readonly WorkspaceAuthProject[];
@@ -40,23 +41,20 @@ export const LoginPageProjectForm = React.memo<LoginPageProjectFormProps>(
     return (
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <FormField label={t("auth.selectProject")} htmlFor="projectId">
-          <select
+          <Select
             id="projectId"
             value={projectId}
-            onChange={(event) => onProjectChange(event.target.value)}
+            onValueChange={onProjectChange}
             disabled={loading}
-            className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="" disabled>
-              {t("auth.selectProjectPlaceholder")}
-            </option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-                {project.organizationName != null ? ` — ${project.organizationName}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder={t("auth.selectProjectPlaceholder")}
+            options={projects.map((project) => ({
+              value: project.id,
+              label:
+                project.organizationName != null
+                  ? `${project.name} — ${project.organizationName}`
+                  : project.name,
+            }))}
+          />
         </FormField>
 
         {error != null && error.length > 0 && (

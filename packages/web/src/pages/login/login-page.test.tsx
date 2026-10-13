@@ -3,6 +3,10 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as WorkspaceAuthLibModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  readWorkspaceOrganizationHistory,
+  recordSuccessfulWorkspaceOrganization,
+} from "~/entities/workspace-auth/workspace-organization-history.lib";
 import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
@@ -138,6 +142,7 @@ describe("LoginPage", () => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     localStorage.removeItem("workspace-auth-sessions");
     localStorage.removeItem("workspace-auth-current-account");
+    localStorage.removeItem("workspace-organization-history-v1");
     navigateSpy.mockReset();
     fetchWorkspaceServerSettingsForOrganization.mockReset();
     prepareWorkspaceProjectLogin.mockReset();
@@ -150,6 +155,80 @@ describe("LoginPage", () => {
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("email@example.com or login")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+  });
+
+  it("suggests persisted organizations after a login page remount", () => {
+    recordSuccessfulWorkspaceOrganization("https://chat.example.com");
+    const first = renderWithProviders(<LoginPage />, { route: "/login" });
+    fireEvent.focus(screen.getByRole("combobox", { name: /^server address$/i }));
+    expect(screen.getByRole("option", { name: "https://chat.example.com" })).toBeInTheDocument();
+    first.unmount();
+
+    recordSuccessfulWorkspaceOrganization("https://other.example.com");
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    fireEvent.focus(screen.getByRole("combobox", { name: /^server address$/i }));
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "https://other.example.com",
+      "https://chat.example.com",
+    ]);
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalled();
+  });
+
+  it("fills the organization URL from history without submitting the form", () => {
+    recordSuccessfulWorkspaceOrganization("https://chat.example.com");
+    useWorkspaceAuthStore.setState({
+      sessions: [COMPLETED_SESSION],
+      currentAccountId: COMPLETED_SESSION.accountId,
+    });
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    const organization = screen.getByRole("combobox", { name: /^server address$/i });
+    fireEvent.focus(organization);
+    fireEvent.click(screen.getByRole("option", { name: "https://chat.example.com" }));
+
+    expect(organization).toHaveValue("https://chat.example.com");
+    expect(organization).toHaveAttribute("type", "url");
+    expect(organization).toHaveAttribute("inputmode", "url");
+    expect(organization).toHaveAttribute("autocomplete", "url");
+    expect(organization).toBeRequired();
+    expect(screen.getByRole("heading", { name: /add server/i })).toBeInTheDocument();
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalled();
+    expect(prepareWorkspaceProjectLogin).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/email or login/i)).not.toBeInTheDocument();
+  });
+
+  it("accepts an arbitrary URL without adding history during organization discovery", async () => {
+    recordSuccessfulWorkspaceOrganization("https://previous.example.com");
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    const organization = screen.getByRole("combobox", { name: /^server address$/i });
+    fireEvent.change(organization, { target: { value: "https://new.example.com" } });
+
+    expect(organization).toHaveValue("https://new.example.com");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://previous.example.com"]);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email or login/i);
+
+    expect(fetchWorkspaceServerSettingsForOrganization).toHaveBeenCalledWith(
+      "https://new.example.com",
+    );
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://previous.example.com"]);
+    expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
+  });
+
+  it("keeps the configured organization button independent from history suggestions", () => {
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://default.example.com");
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_NAME", "Default organization");
+    recordSuccessfulWorkspaceOrganization("https://previous.example.com");
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    fireEvent.click(screen.getByRole("button", { name: "Default organization" }));
+
+    expect(screen.getByRole("combobox", { name: /^server address$/i })).toHaveValue(
+      "https://default.example.com",
+    );
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalled();
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://previous.example.com"]);
+    expect(screen.queryByLabelText(/email or login/i)).not.toBeInTheDocument();
   });
 
   it("always shows login and password after organization discovery", async () => {
@@ -339,8 +418,9 @@ describe("LoginPage", () => {
       login: "user@example.com",
       password: "secret",
     });
-    expect(await screen.findByRole("option", { name: /customer support/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/^project$/i)).toHaveValue("project-a");
+    expect(screen.getByRole("combobox", { name: /^project$/i })).toHaveTextContent(
+      "Customer support — Example organization",
+    );
     expect(screen.queryByText("Support team conversations")).not.toBeInTheDocument();
     expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
 
@@ -385,7 +465,9 @@ describe("LoginPage", () => {
 
     await moveToProjectStep();
 
-    expect(screen.getByLabelText(/^project$/i)).toHaveValue("project-a");
+    expect(screen.getByRole("combobox", { name: /^project$/i })).toHaveTextContent(
+      "Customer support — Example organization",
+    );
     expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
   });
 

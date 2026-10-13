@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   isWorkspaceStreamFullyMuted,
@@ -221,6 +221,76 @@ function WorkspaceSidebarTopicRow({
   );
 }
 
+function WorkspaceSidebarTopicRows({
+  stream,
+  topics,
+  activeTopicUuid,
+  compact,
+}: Readonly<{
+  stream: MessengerSidebarStreamItem;
+  topics: MessengerTopicListItem[];
+  activeTopicUuid: string | null;
+  compact: boolean;
+}>): React.ReactElement | null {
+  if (topics.length === 0) return null;
+
+  return (
+    <div className={SIDEBAR_TOPIC_LIST_CLASS}>
+      {topics.map((topic) => {
+        const barColor = resolveSidebarTopicBarColor({ color: topic.color });
+        return (
+          <WorkspaceSidebarTopicRow
+            key={topic.id}
+            topic={topic}
+            streamNotificationMode={stream.notificationMode}
+            streamTitle={stream.title}
+            isDirectPrivate={stream.uiKind === "directPrivate"}
+            activeTopicUuid={activeTopicUuid}
+            compact={compact}
+            barColor={barColor}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+const WorkspaceSidebarSearchTopics = React.memo(function WorkspaceSidebarSearchTopics({
+  stream,
+  matchingTopics,
+  activeTopicUuid,
+  compact,
+}: {
+  stream: MessengerSidebarStreamItem;
+  matchingTopics: MessengerTopicListItem[];
+  activeTopicUuid: string | null;
+  compact: boolean;
+}): React.ReactElement {
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = stream.topics.length - matchingTopics.length;
+  const visibleTopics = expanded ? stream.topics : matchingTopics;
+
+  return (
+    <>
+      <WorkspaceSidebarTopicRows
+        stream={stream}
+        topics={visibleTopics}
+        activeTopicUuid={activeTopicUuid}
+        compact={compact}
+      />
+      {hiddenCount > 0 && (
+        <SidebarTopicShowMoreButton
+          action={expanded ? "collapse" : "showMore"}
+          expanded={expanded}
+          hiddenCount={expanded ? 0 : hiddenCount}
+          onToggle={() => setExpanded((current) => !current)}
+          compact={compact}
+        />
+      )}
+    </>
+  );
+});
+
 const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   stream,
   activeTopicUuid,
@@ -234,7 +304,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   searchMode: boolean;
   compact: boolean;
 }): React.ReactElement | null {
-  const topics = useMemo(
+  const matchingTopics = useMemo(
     () =>
       searchMode
         ? stream.topics.filter((topic) => topic.title.toLowerCase().includes(normalizedQuery))
@@ -242,31 +312,31 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
     [normalizedQuery, searchMode, stream.topics],
   );
   const { expanded, hiddenCount, toggleAction, visibleCount, toggleTopics } =
-    useSidebarTopicCollapse(topics);
-  const visibleTopics = searchMode ? topics : topics.slice(0, visibleCount);
+    useSidebarTopicCollapse(stream.topics);
+
+  if (searchMode) {
+    return (
+      <WorkspaceSidebarSearchTopics
+        key={normalizedQuery}
+        stream={stream}
+        matchingTopics={matchingTopics}
+        activeTopicUuid={activeTopicUuid}
+        compact={compact}
+      />
+    );
+  }
+
+  const visibleTopics = stream.topics.slice(0, visibleCount);
 
   return (
     <>
-      {visibleTopics.length > 0 ? (
-        <div className={SIDEBAR_TOPIC_LIST_CLASS}>
-          {visibleTopics.map((topic) => {
-            const barColor = resolveSidebarTopicBarColor({ color: topic.color });
-            return (
-              <WorkspaceSidebarTopicRow
-                key={topic.id}
-                topic={topic}
-                streamNotificationMode={stream.notificationMode}
-                streamTitle={stream.title}
-                isDirectPrivate={stream.uiKind === "directPrivate"}
-                activeTopicUuid={activeTopicUuid}
-                compact={compact}
-                barColor={barColor}
-              />
-            );
-          })}
-        </div>
-      ) : null}
-      {!searchMode && toggleAction != null && (
+      <WorkspaceSidebarTopicRows
+        stream={stream}
+        topics={visibleTopics}
+        activeTopicUuid={activeTopicUuid}
+        compact={compact}
+      />
+      {toggleAction != null && (
         <SidebarTopicShowMoreButton
           action={toggleAction}
           expanded={expanded}

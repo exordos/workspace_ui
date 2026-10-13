@@ -31,9 +31,10 @@ test.describe("Feed forward live smoke @live", () => {
 
     await expect(page).toHaveURL(/forward=\d+/, { timeout: 20_000 });
 
-    const streamSelect = page.locator("select").first();
+    const streamSelect = page.getByRole("combobox", { name: /Channel|Канал/i }).first();
     await expect(streamSelect).toBeVisible({ timeout: 10_000 });
-    await streamSelect.selectOption({ index: 1 });
+    await streamSelect.click();
+    await page.getByRole("listbox").getByRole("option").nth(1).click();
 
     const forwardToButton = page.getByRole("button", {
       name: /Forward to|Forward|Переслать в|Переслать/i,

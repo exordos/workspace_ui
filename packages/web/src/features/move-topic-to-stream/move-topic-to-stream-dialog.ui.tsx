@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
+import { Select } from "~/shared/ui/select.ui";
 
 export interface MoveTopicToStreamDialogProps {
   open: boolean;
@@ -55,20 +56,19 @@ export const MoveTopicToStreamDialog = React.memo(function MoveTopicToStreamDial
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-text-muted">{t("channel.selectTargetChannel")}</span>
-          <select
+          <Select
             value={targetStreamId}
             disabled={pending}
-            onChange={(e) => onTargetStreamIdChange(e.target.value)}
+            onValueChange={onTargetStreamIdChange}
             aria-label={t("channel.selectTargetChannel")}
-            className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none disabled:opacity-60"
-          >
-            <option value="">{t("channel.selectChannel")}</option>
-            {targetStreamOptions.map((stream) => (
-              <option key={stream.streamId} value={String(stream.streamId)}>
-                #{stream.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: t("channel.selectChannel") },
+              ...targetStreamOptions.map((stream) => ({
+                value: String(stream.streamId),
+                label: `#${stream.name}`,
+              })),
+            ]}
+          />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-text-muted">{t("channel.topicName")}</span>

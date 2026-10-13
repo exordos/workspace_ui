@@ -1567,5 +1567,10 @@
     "incomingTitle": "Входящие запросы ({{count}})",
     "grantedTitle": "Выданные ключи ({{count}})",
     "rejectedTitle": "Отклонённые запросы ({{count}})"
+  },
+  "selector": {
+    "placeholder": "Выберите значение",
+    "noOptions": "Нет доступных вариантов",
+    "showOptions": "Показать варианты"
   }
 }

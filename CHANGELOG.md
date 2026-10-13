@@ -6,6 +6,106 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-10-13
+
+### Changed
+
+- Successful organization logins now add the normalized organization origin to
+  a local, deduplicated history. The login screen offers those organizations as
+  searchable suggestions after logout without retaining credentials, paths,
+  query parameters, or URL fragments.
+- Login, forwarding, chat creation, topic movement, topic-summary settings,
+  external-account setup, and log filters now use shared selectors with
+  consistent styling, keyboard navigation, typeahead, validation, and
+  accessible listbox behavior.
+
+### Fixed
+
+- Reply quotes remain before newly uploaded attachments, so adding a file to a
+  reply no longer moves the quote below the attachment block.
+- A login request that finishes after the active account or login attempt has
+  changed is discarded instead of replacing the newer session.
+- Selector popovers are rendered outside clipped dialog content while retaining
+  focus and keyboard behavior, including the message-forwarding flow.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.3`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.4`.
+- No manual migration is required.
+
+## [0.8.3] — 2026-10-11
+
+### Changed
+
+- GitHub release builds now receive the configured default login organization
+  URL, so the sign-in flow can preselect the intended organization without
+  hardcoding it in the application source.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.2`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.3`.
+- No manual migration is required.
+
+## [0.8.2] — 2026-10-01
+
+### Changed
+
+- Workspace messages now reuse the shared attachment cards, while the composer
+  places attachments before message text and preserves existing attachments
+  when a message is edited.
+- Conversation opening now keeps cached history provisional until fresh data
+  selects the authoritative unread or saved position. Out-of-window positions
+  are resolved with bounded requests without taking control away from a user
+  who has already scrolled.
+- Active documentation and contributor guidance now point to the current
+  Workspace-native implementation, with a local checker for documentation
+  links and concrete source imports.
+
+### Fixed
+
+- Reaching the bottom of a topic now clears older unread messages even when
+  the newest message was already marked as read.
+- Attachment cards survive anchor-based history handoffs, and ordinary video
+  files are no longer confused with inline video media.
+- Topic hydration no longer changes the established stream sidebar order.
+- Conversation opening exposes a retry after conflicting or stale message
+  windows instead of leaving the view stuck.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.1`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.2`.
+- No manual migration is required.
+
 ## [0.8.1] — 2026-09-28
 
 ### Changed

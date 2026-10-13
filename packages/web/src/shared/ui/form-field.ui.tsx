@@ -15,13 +15,15 @@ export const FormField: React.FC<FormFieldProps> = ({
   error,
   className = "",
 }) => (
-  <label htmlFor={htmlFor} className={`mb-1.5 block ${className}`.trim()}>
-    <span className="mb-1.5 block text-sm font-medium text-text-primary">{label}</span>
+  <div className={`mb-1.5 block min-w-0 ${className}`.trim()}>
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-text-primary">
+      {label}
+    </label>
     {children}
     {error != null && error.length > 0 ? (
       <span className="mt-1 block text-xs text-text-muted" role="alert">
         {error}
       </span>
     ) : null}
-  </label>
+  </div>
 );

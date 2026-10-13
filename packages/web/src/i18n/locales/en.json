@@ -1556,5 +1556,10 @@
     "incomingTitle": "Incoming requests ({{count}})",
     "grantedTitle": "Granted keys ({{count}})",
     "rejectedTitle": "Rejected requests ({{count}})"
+  },
+  "selector": {
+    "placeholder": "Select an option",
+    "noOptions": "No options available",
+    "showOptions": "Show options"
   }
 }

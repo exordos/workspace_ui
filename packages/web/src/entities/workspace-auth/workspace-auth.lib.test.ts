@@ -11,6 +11,7 @@ import {
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import { readWorkspaceOrganizationHistory } from "./workspace-organization-history.lib";
 import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
 const getServerSettings = vi.hoisted(() => vi.fn());
@@ -76,6 +77,7 @@ function tokenWithClaims(claims: Record<string, unknown>): string {
 function resetStore(): void {
   localStorage.removeItem("workspace-auth-sessions");
   localStorage.removeItem("workspace-auth-current-account");
+  localStorage.removeItem("workspace-organization-history-v1");
   useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
 }
 
@@ -244,6 +246,7 @@ describe("workspace-auth flow", () => {
         email: "user@example.com",
       },
     });
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
   });
 
   it("keeps the temporary IAM token out of the session store while loading projects", async () => {
@@ -279,6 +282,7 @@ describe("workspace-auth flow", () => {
     ]);
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
     expect(localStorage.getItem("workspace-auth-sessions")).toBeNull();
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
   });
 
   it("exchanges the temporary token for the chosen project before persisting a session", async () => {
@@ -319,6 +323,7 @@ describe("workspace-auth flow", () => {
       accessToken: expect.not.stringContaining("temporary"),
       refreshToken: "project-refresh-token",
     });
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
   });
 
   it("keeps the temporary refresh token when a scoped refresh omits a replacement", async () => {
@@ -367,6 +372,170 @@ describe("workspace-auth flow", () => {
     ).rejects.toMatchObject({ code: "project-mismatch" });
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  it("records an OTP organization only after the final project login completes", async () => {
+    const params = {
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    };
+    requestWorkspaceIamLoginPasswordToken
+      .mockRejectedValueOnce(new WorkspaceIamAuthError("OTP required", 401, {}))
+      .mockRejectedValueOnce(new WorkspaceIamAuthError("Invalid OTP", 401, {}));
+
+    await expect(prepareWorkspaceProjectLogin(params)).rejects.toMatchObject({ status: 401 });
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+    await expect(
+      prepareWorkspaceProjectLogin({ ...params, otpCode: "111111" }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+
+    const preparedLogin = await prepareWorkspaceProjectLogin({ ...params, otpCode: "123456" });
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+    expect(requestWorkspaceIamLoginPasswordToken).toHaveBeenLastCalledWith(
+      { login: params.login, password: params.password, otpCode: "123456" },
+      expect.any(Object),
+    );
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+      refreshToken: "project-refresh-token",
+    });
+    await completeWorkspaceProjectLogin({ preparedLogin, projectId: PROJECT_ID });
+
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
+  });
+
+  it("does not record an organization when final project login fails", async () => {
+    const preparedLogin = await prepareWorkspaceProjectLogin({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    });
+    refreshWorkspaceIamToken.mockRejectedValueOnce(new WorkspaceIamAuthError("Invalid", 403, {}));
+
+    await expect(
+      completeWorkspaceProjectLogin({ preparedLogin, projectId: PROJECT_ID }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("does not record a project login when final server settings fail", async () => {
+    const preparedLogin = await prepareWorkspaceProjectLogin({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+    });
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+    });
+    getServerSettings.mockRejectedValueOnce(new TypeError("Server unavailable"));
+
+    await expect(
+      completeWorkspaceProjectLogin({ preparedLogin, projectId: PROJECT_ID }),
+    ).rejects.toThrow("Server unavailable");
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("does not record mere organization validation or failed passwords", async () => {
+    requestWorkspaceIamLoginPasswordToken.mockRejectedValueOnce(
+      new WorkspaceIamAuthError("Invalid password", 403, {}),
+    );
+    await expect(loginAndGetCurrentSession()).rejects.toMatchObject({ status: 403 });
+    expect(getServerSettings).toHaveBeenCalled();
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  it("keeps history after logout and deduplicates repeated logins", async () => {
+    const first = await loginAndGetCurrentSession();
+    await loginAndGetCurrentSession();
+    await removeWorkspaceSession(first.accountId);
+
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
+  });
+
+  it("does not seed history through session restoration, switching, or refresh", async () => {
+    const first = storeWorkspaceSession(createWorkspaceSession());
+    const second = storeWorkspaceSession(createWorkspaceSession({ accountId: "second" }));
+    useWorkspaceAuthStore.getState().setCurrentAccountId(first.accountId);
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+      refreshToken: "refreshed",
+    });
+    await ensureFreshWorkspaceSession(first.accountId, { force: true });
+    useWorkspaceAuthStore.getState().setCurrentAccountId(second.accountId);
+
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  it("does not commit or record an aborted login when its response still resolves", async () => {
+    const controller = new AbortController();
+    const profile = createDeferredValue<unknown>();
+    getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+    const pending = loginWorkspaceWithPassword({
+      organizationUrl: "https://workspace.example.com",
+      login: "user@example.com",
+      password: "secret",
+      projectId: PROJECT_ID,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+    controller.abort();
+    profile.resolve({ uuid: USER_UUID });
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  it("does not commit a pending login after the active account changes", async () => {
+    const profile = createDeferredValue<unknown>();
+    getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+    const pending = loginAndGetCurrentSession();
+    await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+    const other = storeWorkspaceSession(createWorkspaceSession({ accountId: "other" }));
+    profile.resolve({ uuid: USER_UUID });
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(other);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  it("allows pending add-account login when active account tokens refresh", async () => {
+    const initial = storeWorkspaceSession(createWorkspaceSession({ accountId: "existing" }));
+    const profile = createDeferredValue<unknown>();
+    getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+    const pending = loginAndGetCurrentSession();
+    await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+    useWorkspaceAuthStore.getState().updateTokens(initial.accountId, { accessToken: "fresh" });
+    profile.resolve({ uuid: USER_UUID });
+
+    await expect(pending).resolves.toMatchObject({
+      organizationOrigin: "https://workspace.example.com",
+    });
+    expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
+  });
+
+  it("allows a successful login when organization history cannot be persisted", async () => {
+    const originalSetItem = Storage.prototype.setItem;
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === "workspace-organization-history-v1") throw new Error("History storage blocked");
+      originalSetItem.call(this, key, value);
+    });
+    try {
+      await expect(loginAndGetCurrentSession()).resolves.toMatchObject({ userUuid: USER_UUID });
+      expect(readWorkspaceOrganizationHistory()).toEqual([]);
+    } finally {
+      write.mockRestore();
+    }
   });
 
   it("uses JWT sub as user uuid and submitted project when project claim is absent", async () => {
@@ -468,6 +637,7 @@ describe("workspace-auth flow", () => {
     ).rejects.toMatchObject({ code: "profile-load-failed" });
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
   });
 
   it("keeps a Workspace session when refresh fails transiently", async () => {

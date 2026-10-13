@@ -33,6 +33,7 @@ import {
   DialogPrimaryButton,
 } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
+import { Select } from "~/shared/ui/select.ui";
 import {
   buildWorkspaceForwardMarkdown,
   buildWorkspaceForwardStreamOptions,
@@ -185,41 +186,36 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
           {tab === "channel" ? (
             <>
               <label className="text-sm text-text-muted">{t("channel.name")}</label>
-              <select
+              <Select
                 value={selectedStream}
-                onChange={(event) => {
-                  setSelectedStream(event.target.value);
+                onValueChange={(value) => {
+                  setSelectedStream(value);
                   setSelectedTopic("");
                 }}
                 aria-label={t("channel.name")}
-                className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none"
                 disabled={isSubmitting}
-              >
-                <option value="">{t("channel.selectChannel")}</option>
-                {streamOptions.map((streamOption) => (
-                  <option key={streamOption.streamUuid} value={streamOption.streamUuid}>
-                    #{streamOption.label}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: t("channel.selectChannel") },
+                  ...streamOptions.map((streamOption) => ({
+                    value: streamOption.streamUuid,
+                    label: `#${streamOption.label}`,
+                  })),
+                ]}
+              />
               <label className="text-sm text-text-muted">{t("channel.topicName")}</label>
-              <select
+              <Select
                 value={selectedTopic}
-                onChange={(event) => setSelectedTopic(event.target.value)}
+                onValueChange={setSelectedTopic}
                 aria-label={t("channel.topicName")}
-                className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
                 disabled={selectedStream.length === 0 || isSubmitting}
-              >
-                <option value="">{t("chat.selectTopic")}</option>
-                {topicOptions.map((topicOption) => {
-                  const topicDisplay = resolveTopicDisplayInfo(topicOption.label);
-                  return (
-                    <option key={topicOption.topicUuid} value={topicOption.topicUuid}>
-                      {topicDisplay.label}
-                    </option>
-                  );
-                })}
-              </select>
+                options={[
+                  { value: "", label: t("chat.selectTopic") },
+                  ...topicOptions.map((topicOption) => ({
+                    value: topicOption.topicUuid,
+                    label: resolveTopicDisplayInfo(topicOption.label).label,
+                  })),
+                ]}
+              />
             </>
           ) : (
             <>
