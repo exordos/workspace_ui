@@ -18,8 +18,7 @@ function projectMatchingStream(
   );
 
   if (!streamMatches && matchingTopics.length === 0) return null;
-  if (matchingTopics.length === stream.topics.length) return stream;
-  return { ...stream, topics: matchingTopics };
+  return stream;
 }
 
 function projectMatchingStreams(
