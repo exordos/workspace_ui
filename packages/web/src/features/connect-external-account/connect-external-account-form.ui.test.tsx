@@ -61,7 +61,7 @@ describe("ConnectExternalAccountForm", () => {
   it("renders the universal three-field Zulip connection form", () => {
     const props = renderForm();
 
-    expect(screen.getByRole("combobox")).toHaveValue("zulip");
+    expect(screen.getByRole("combobox")).toHaveTextContent("Zulip");
     expect(screen.getByLabelText("Server URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
@@ -86,7 +86,7 @@ describe("ConnectExternalAccountForm", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(/Zulip account is already connected/i);
     expect(screen.getByRole("alert")).toHaveTextContent(/only one Zulip account/i);
-    expect(screen.getByLabelText(/provider/i)).toHaveValue("zulip");
+    expect(screen.getByRole("combobox", { name: /provider/i })).toHaveTextContent("Zulip");
     expect(screen.queryByLabelText(/server URL/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();

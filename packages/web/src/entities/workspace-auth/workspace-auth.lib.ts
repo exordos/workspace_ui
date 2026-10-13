@@ -24,6 +24,7 @@ import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messe
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import { recordSuccessfulWorkspaceOrganization } from "./workspace-organization-history.lib";
 import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-auth.model";
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
@@ -322,6 +323,20 @@ function abortSignalError(): Error {
   const error = new Error("Workspace auth refresh aborted");
   error.name = "AbortError";
   return error;
+}
+
+function assertWorkspaceLoginCurrent(
+  signal: AbortSignal | undefined,
+  initialSession: WorkspaceAuthSession | null,
+): void {
+  const currentSession = useWorkspaceAuthStore.getState().getCurrentSession();
+  if (
+    signal?.aborted === true ||
+    currentSession?.accountId !== initialSession?.accountId ||
+    currentSession?.instanceId !== initialSession?.instanceId
+  ) {
+    throw new DOMException("Workspace login is no longer current", "AbortError");
+  }
 }
 
 function promiseRejectionError(error: unknown): Error {
@@ -757,6 +772,8 @@ export async function completeWorkspaceProjectLogin({
   fetchImpl,
   signal,
 }: CompleteWorkspaceProjectLoginParams): Promise<LoginWorkspaceWithPasswordResult> {
+  const initialSession = useWorkspaceAuthStore.getState().getCurrentSession();
+  assertWorkspaceLoginCurrent(signal, initialSession);
   const trimmedProjectId = projectId.trim();
   if (!preparedLogin.projects.some((project) => project.id === trimmedProjectId)) {
     throw new WorkspaceAuthFlowError(
@@ -827,8 +844,10 @@ export async function completeWorkspaceProjectLogin({
     runtimeGeneration: existing?.runtimeGeneration ?? 0,
   };
 
+  assertWorkspaceLoginCurrent(signal, initialSession);
   resetTerminalRefreshFailureAttempts(accountId);
   useWorkspaceAuthStore.getState().setSession(session);
+  recordSuccessfulWorkspaceOrganization(session.organizationOrigin);
   return {
     session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
     serverSettings,
@@ -843,6 +862,8 @@ export async function loginWorkspaceWithPassword({
   fetchImpl,
   signal,
 }: LoginWorkspaceWithPasswordParams): Promise<LoginWorkspaceWithPasswordResult> {
+  const initialSession = useWorkspaceAuthStore.getState().getCurrentSession();
+  assertWorkspaceLoginCurrent(signal, initialSession);
   const organizationOrigin = workspaceOrgOriginFromLoginServerUrlInput(organizationUrl);
   const trimmedProjectId = projectId.trim();
   if (trimmedProjectId.length === 0) {
@@ -910,8 +931,10 @@ export async function loginWorkspaceWithPassword({
     runtimeGeneration: existing?.runtimeGeneration ?? 0,
   };
 
+  assertWorkspaceLoginCurrent(signal, initialSession);
   resetTerminalRefreshFailureAttempts(accountId);
   useWorkspaceAuthStore.getState().setSession(session);
+  recordSuccessfulWorkspaceOrganization(session.organizationOrigin);
   return {
     session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
     serverSettings,

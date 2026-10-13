@@ -80,9 +80,8 @@ describe("LogsPage", () => {
     renderWithProviders(<LogsPage />);
     openLogsModal();
 
-    fireEvent.change(screen.getByRole("combobox", { name: /log level/i }), {
-      target: { value: "error" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: /log level/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Error" }));
 
     const logList = within(screen.getByRole("list", { name: /session log entries/i }));
     expect(logList.getByText(/error entry/i)).toBeInTheDocument();
@@ -98,9 +97,10 @@ describe("LogsPage", () => {
     renderWithProviders(<LogsPage />);
     openLogsModal();
 
-    fireEvent.change(screen.getByRole("combobox", { name: /log scope/i }), {
-      target: { value: "beta-scope" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: /log scope/i }));
+    fireEvent.click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "beta-scope" }),
+    );
 
     const logList = within(screen.getByRole("list", { name: /session log entries/i }));
     expect(logList.getByText(/beta critical failure/i)).toBeInTheDocument();
@@ -157,9 +157,8 @@ describe("LogsPage", () => {
     renderWithProviders(<LogsPage />);
     openLogsModal();
 
-    fireEvent.change(screen.getByRole("combobox", { name: /log source/i }), {
-      target: { value: "actions" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: /log source/i }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Actions" }));
 
     expect(screen.getByText(/user switched org/i)).toBeInTheDocument();
     expect(screen.queryByText(/api trace/i)).not.toBeInTheDocument();

@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildWorkspaceQuoteReference } from "~/shared/lib/workspace-message-quote.lib";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
+import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import {
   buildWorkspaceComposerAttachmentMarkdown,
   buildWorkspaceComposerAttachmentMetadata,
@@ -45,6 +49,59 @@ afterEach(() => {
 });
 
 describe("workspace composer attachment metadata", () => {
+  it.each(["", "Answer"])("keeps a quote card before uploaded images and %j", (answer) => {
+    const quote = buildWorkspaceQuoteReference({
+      senderName: "Отец [author]",
+      messageUuid: "11111111-1111-4111-8111-111111111111",
+      selectedText: "Selected quote",
+    });
+    const image = "![screen.png](urn:image:22222222-2222-4222-8222-222222222222)";
+    const body = prependWorkspaceComposerAttachmentMarkdown(`${quote}\n\n${answer}`, [
+      image,
+      image,
+    ]);
+
+    expect(body).toBe(
+      answer.length === 0 ? `${quote}\n\n${image}` : `${quote}\n\n${image}\n\n${answer}`,
+    );
+    const rendered = renderWorkspaceMessageBodySegments(parseWorkspaceMessageBody(body), {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      enableProtectedMedia: true,
+    });
+    expect(rendered.segments.map((segment) => segment.kind)).toEqual(["quote", "html"]);
+    expect(rendered.segments[0]).toMatchObject({
+      reference: { fallbackAuthorLabel: "Отец [author]", selectedText: "Selected quote" },
+    });
+    expect(rendered.segments[1]).toMatchObject({
+      html: expect.stringContaining("data-workspace-file"),
+    });
+  });
+
+  it("preserves later quote and answer pairs when inserting attachments", () => {
+    const quote = "[First](urn:quote:11111111-1111-4111-8111-111111111111)";
+    const secondQuote = "[Second](urn:quote:22222222-2222-4222-8222-222222222222)";
+    const image = "![screen.png](urn:image:33333333-3333-4333-8333-333333333333)";
+    const tail = `First answer\n\n${secondQuote}\n\nSecond answer`;
+    const body = prependWorkspaceComposerAttachmentMarkdown(`${quote}\n\n${tail}`, [image]);
+
+    expect(body).toBe(`${quote}\n\n${image}\n\n${tail}`);
+    const rendered = renderWorkspaceMessageBodySegments(parseWorkspaceMessageBody(body));
+    expect(rendered.segments.map((segment) => segment.kind)).toEqual([
+      "quote",
+      "html",
+      "quote",
+      "html",
+    ]);
+  });
+
+  it("keeps already serialized reply images in place without duplicates", () => {
+    const quote = "[First](urn:quote:11111111-1111-4111-8111-111111111111)";
+    const image = "![screen.png](urn:image:22222222-2222-4222-8222-222222222222)";
+    const body = `${quote}\n\n${image}\n\nAnswer`;
+
+    expect(prependWorkspaceComposerAttachmentMarkdown(body, [image])).toBe(body);
+  });
+
   it("prepends new links while keeping existing inline links in place", () => {
     const image = "![screen.png](urn:image:image-uuid)";
     expect(

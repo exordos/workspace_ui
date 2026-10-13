@@ -8,6 +8,7 @@ import {
   WorkspaceAuthFlowError,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { readWorkspaceOrganizationHistory } from "~/entities/workspace-auth/workspace-organization-history.lib";
 import { t } from "~/i18n/i18n";
 import { isWorkspaceIamOtpRequiredError } from "~/shared/api/workspace-iam-auth";
 import { isElectron } from "~/shared/lib/electron";
@@ -20,6 +21,7 @@ import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-l
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
+import { InputSelector } from "~/shared/ui/input-selector.ui";
 import { resolveInitialLoginOrganization } from "./login-initial-organization.lib";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
@@ -78,6 +80,9 @@ export const LoginPage: React.FC = () => {
   );
 
   const [realm, setRealm] = useState(() => initialOrganization.organizationUrl);
+  const [organizationOptions] = useState(() =>
+    readWorkspaceOrganizationHistory().map((origin) => ({ value: origin, label: origin })),
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -433,7 +438,7 @@ export const LoginPage: React.FC = () => {
         {step === "organization" && (
           <form onSubmit={handleContinueToAuthStep} className="flex flex-col gap-4">
             <FormField label={t("auth.serverUrl")} htmlFor="realm">
-              <input
+              <InputSelector
                 id="realm"
                 type="url"
                 inputMode="url"
@@ -441,9 +446,10 @@ export const LoginPage: React.FC = () => {
                 required
                 placeholder={t("auth.zulipServerUrlHint")}
                 value={realm}
-                onChange={(e) => handleRealmChange(e.target.value)}
+                onValueChange={handleRealmChange}
+                options={organizationOptions}
+                searchable
                 onBlur={handleRealmBlur}
-                className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </FormField>
 

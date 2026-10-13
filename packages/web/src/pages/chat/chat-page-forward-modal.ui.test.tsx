@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { createUser } from "~/test/factories";
@@ -86,8 +86,10 @@ describe("ForwardMessageModalBody", () => {
   it("forwards to a Workspace topic by uuid", () => {
     const { onForward } = renderForwardModal();
 
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#general" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Roadmap" }));
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(onForward).toHaveBeenCalledWith({
