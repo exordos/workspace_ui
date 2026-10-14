@@ -31,7 +31,9 @@ export interface StoredChatKeyMetadata {
 }
 
 export interface PendingChatKeyRequest {
+  // Stable canonical message UUID for idempotent POST retries.
   readonly localRequestId: string;
+  // Public placement UUID used by grants; null until a response or own history binds it.
   readonly requestMessageUuid: string | null;
   readonly publicKey: ChatCryptoPublicKey;
   readonly privateKey: Uint8Array;

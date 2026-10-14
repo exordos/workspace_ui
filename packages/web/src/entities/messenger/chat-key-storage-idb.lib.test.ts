@@ -594,6 +594,22 @@ describe("durable chat key storage", () => {
     expect((await storage.listPendingRequests(address))[0]?.privateKey).toEqual(pending.privateKey);
   });
 
+  it("repairs a legacy canonical binding once without replacing its private key", async () => {
+    const { storage } = setup();
+    await storage.writePendingRequest(address, { ...pending, requestMessageUuid: "local" });
+    await storage.bindPendingRequest(address, "local", "public-request");
+    expect((await storage.listPendingRequests(address))[0]).toEqual({
+      ...pending,
+      requestMessageUuid: "public-request",
+    });
+    await expect(
+      storage.bindPendingRequest(address, "local", "other-public-request"),
+    ).rejects.toMatchObject({ reason: "conflict" });
+    expect((await storage.listPendingRequests(address))[0]?.requestMessageUuid).toBe(
+      "public-request",
+    );
+  });
+
   it("moves a staged creation secret to the returned stream atomically", async () => {
     const { storage } = setup();
     const creation = {

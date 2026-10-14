@@ -24,6 +24,7 @@ import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
+import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerStreamBinding } from "./messenger.types";
@@ -250,7 +251,10 @@ async function setup({ publishRotationUpdates = true } = {}) {
   };
   vi.mocked(createMessage).mockImplementation((options, body) => {
     const message: WorkspaceMessengerMessageDto = {
-      uuid: body.uuid ?? crypto.randomUUID(),
+      uuid: createMessengerPlacementUuid(
+        body.topic_uuid ?? TOPIC,
+        body.uuid ?? crypto.randomUUID(),
+      ),
       stream_uuid: body.stream_uuid,
       topic_uuid: body.topic_uuid,
       project_id: PROJECT,
@@ -377,7 +381,8 @@ describe("real ordinary chat orchestration", () => {
     expect(createMessage).toHaveBeenCalledOnce();
     const payload = vi.mocked(createMessage).mock.calls[0]?.[1].payload;
     if (payload?.kind !== "e2ee") throw new Error("Expected encrypted payload");
-    expect(payload.content).toHaveLength(53_404);
+    // Base64 contains the plaintext bytes, a 32-byte salt, and a 16-byte tag.
+    expect(payload.content).toHaveLength(53_400);
   });
 
   it("preserves keys and session state when the backend rejects real ciphertext", async () => {
@@ -412,7 +417,7 @@ describe("real ordinary chat orchestration", () => {
       });
     await expect(session.send({ text, topicUuid: TOPIC })).rejects.toThrow("send-failed");
     expect(encryption).toHaveBeenCalledOnce();
-    expect(encodedLength).toBe(213_404);
+    expect(encodedLength).toBe(213_400);
     expect(createMessage).toHaveBeenCalledOnce();
     expect(f.wire).toEqual([]);
     expect(await realChatKeyStorage.readChatKey(session.scope)).toEqual(originalKey);
@@ -986,7 +991,9 @@ describe("real ordinary chat orchestration", () => {
         throw new Error("response lost");
       }
       const response = await receipt.promise;
-      expect(body.uuid).toBe(response.uuid);
+      expect(createMessengerPlacementUuid(body.topic_uuid ?? TOPIC, body.uuid!)).toBe(
+        response.uuid,
+      );
       expect(body.payload).toEqual(response.payload);
       return response;
     });
@@ -1289,7 +1296,7 @@ describe("real ordinary chat orchestration", () => {
     expect(session.scope.keyUuid).toBe(f.metadata.keyUuid);
     vi.mocked(createMessage).mockImplementation(create);
     await session.reissueKey();
-    expect(f.wire.at(-1)?.uuid).toBe(stage.creationId);
+    expect(f.wire.at(-1)?.uuid).toBe(createMessengerPlacementUuid(TOPIC, stage.creationId));
     expect(session.scope.keyUuid).toBe(stage.keyUuid);
     expect((await realChatKeyStorage.readChatKey(session.scope))?.groupKey).toEqual(stage.groupKey);
     session.dispose();

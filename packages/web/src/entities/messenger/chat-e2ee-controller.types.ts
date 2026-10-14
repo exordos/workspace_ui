@@ -46,7 +46,8 @@ export interface ChatE2eeControllerDependencies {
   readonly getRights: () => ChatE2eeControllerRights;
   readonly isIssuerAllowed: (authorUuid: string) => boolean;
   readonly isAnnouncerAllowed: (authorUuid: string) => boolean;
-  // The adapter guards network dispatch and store/cache commits. Request retries reuse this UUID.
+  // The adapter validates public placement identity and guards network/store commits.
+  // Request retries reuse the canonical UUID; returned messages carry a different public UUID.
   readonly sendPayload: (
     payload: ChatE2eePayload,
     isCurrent: () => boolean,

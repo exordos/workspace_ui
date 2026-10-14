@@ -36,7 +36,10 @@ import {
   repairDeletedMessagePointers,
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
-import { normalizeMessengerMessageUuid } from "./messenger-message-identity.lib";
+import {
+  createMessengerPlacementUuid,
+  normalizeMessengerMessageUuid,
+} from "./messenger-message-identity.lib";
 import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import {
   beginWorkspaceTopicReadCounters,
@@ -404,7 +407,7 @@ export async function sendMessengerE2eePayload({
   const decodedResponse =
     dto.payload.kind === "markdown" ? null : decodeChatE2eePayload(dto.payload);
   if (
-    dto.uuid !== canonicalMessageUuid ||
+    dto.uuid !== createMessengerPlacementUuid(topicUuid, canonicalMessageUuid) ||
     dto.project_id !== runtimeContext.projectId ||
     dto.user_uuid !== runtimeContext.userUuid ||
     dto.author_uuid !== runtimeContext.userUuid ||

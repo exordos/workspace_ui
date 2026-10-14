@@ -31,6 +31,7 @@ import {
   type MessengerMessageActionClientDeps,
   type MessengerMessageActionResult,
 } from "./messenger-message-actions.lib";
+import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import * as messengerRequestOptions from "./messenger-request-options.lib";
@@ -1222,7 +1223,12 @@ describe("encrypted payload local dispatch guards", () => {
     const getStream = vi.fn().mockRejectedValue(new Error("Catalog GET must not run"));
     const createMessage = vi.fn(
       (_options: MessengerClientOptions, body: WorkspaceMessengerCreateMessageRequestBody) =>
-        Promise.resolve(createMessageDto({ uuid: body.uuid ?? MESSAGE_B, payload: body.payload })),
+        Promise.resolve(
+          createMessageDto({
+            uuid: createMessengerPlacementUuid(TOPIC_A, body.uuid ?? MESSAGE_B),
+            payload: body.payload,
+          }),
+        ),
     );
     const cache = { writeConversationMessagePage: vi.fn(() => Promise.resolve()) };
     const input = {
@@ -1280,7 +1286,11 @@ describe("encrypted payload local dispatch guards", () => {
       expect(f.getStream).not.toHaveBeenCalled();
       expect(f.createMessage).toHaveBeenCalledOnce();
       expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
-      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[
+          createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+        ],
+      ).toBeUndefined();
       expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();
     },
   );
@@ -1296,8 +1306,22 @@ describe("encrypted payload local dispatch guards", () => {
         payload: { kind: "e2ee", key_uuid: MESSAGE_A, content: "AQID" },
       }),
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload.kind).toBe("e2ee");
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ]?.payload.kind,
+    ).toBe("e2ee");
     expect(f.cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([MESSAGE_B, MESSAGE_C])("rejects an unexpected public message UUID %s", async (uuid) => {
+    const f = prepareEncryptedSend();
+    f.createMessage.mockImplementation((_options, body) =>
+      Promise.resolve(createMessageDto({ uuid, payload: body.payload })),
+    );
+    await expect(sendMessengerE2eePayload(f.input)).rejects.toThrow("invalid-message");
+    expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[uuid]).toBeUndefined();
   });
 
   it("uses the injected browser catalog for authorization and message pointers", async () => {
@@ -1313,7 +1337,7 @@ describe("encrypted payload local dispatch guards", () => {
     ).resolves.toMatchObject({ status: "applied" });
     expect(applyMessagePointer).toHaveBeenCalledWith(
       f.ownerKey,
-      expect.objectContaining({ uuid: MESSAGE_B }),
+      expect.objectContaining({ uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B) }),
     );
     expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
     expect(f.getStream).not.toHaveBeenCalled();
@@ -1380,9 +1404,18 @@ describe("encrypted payload local dispatch guards", () => {
       if (invalidation === "runtime-aba") live = { ...f.runtimeContext, runtimeGeneration: 3 };
       const body = f.createMessage.mock.calls[0]?.[1];
       if (!body) throw new Error("Missing POST fixture");
-      deferred.resolve(createMessageDto({ uuid: MESSAGE_B, payload: body.payload }));
+      deferred.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
       await expect(sending).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
-      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[
+          createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+        ],
+      ).toBeUndefined();
       expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
       expect(f.getStream).not.toHaveBeenCalled();
     },
@@ -1394,7 +1427,12 @@ describe("encrypted payload local dispatch guards", () => {
       useMessengerStore
         .getState()
         .upsertStream(f.ownerKey, { ...f.stream, currentEncryptionKey: { keyUuid: MESSAGE_C } });
-      return Promise.resolve(createMessageDto({ uuid: MESSAGE_B, payload: body.payload }));
+      return Promise.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
     });
     await expect(
       sendMessengerE2eePayload({
@@ -1434,7 +1472,11 @@ describe("encrypted payload local dispatch guards", () => {
     token.resolve("fixture-access-token");
     await rejected;
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ],
+    ).toBeUndefined();
     expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
     expect(f.getStream).not.toHaveBeenCalled();
   });
@@ -1466,7 +1508,7 @@ describe("encrypted payload local dispatch guards", () => {
     response.resolve(
       Response.json(
         createMessageDto({
-          uuid: MESSAGE_B,
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
           payload: { kind: "key_announced", key_uuid: MESSAGE_C },
         }),
       ),
@@ -1482,7 +1524,12 @@ describe("encrypted payload local dispatch guards", () => {
         ...f.stream,
         currentEncryptionKey: { keyUuid: crypto.randomUUID() },
       });
-      return Promise.resolve(createMessageDto({ uuid: MESSAGE_B, payload: body.payload }));
+      return Promise.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
     });
     await expect(
       sendMessengerE2eePayload({
@@ -1491,7 +1538,11 @@ describe("encrypted payload local dispatch guards", () => {
         payload: { kind: "key_announced", keyUuid: MESSAGE_C },
       }),
     ).resolves.toMatchObject({ status: "skipped" });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ],
+    ).toBeUndefined();
     expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
   });
 

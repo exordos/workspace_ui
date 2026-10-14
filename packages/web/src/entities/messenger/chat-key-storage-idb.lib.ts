@@ -510,7 +510,10 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
         }
         if (
           !requestMessageUuid ||
-          (old.requestMessageUuid !== null && old.requestMessageUuid !== requestMessageUuid)
+          (old.requestMessageUuid !== null &&
+            // Older clients bound the canonical ID before receiving the public placement ID.
+            old.requestMessageUuid !== old.localRequestId &&
+            old.requestMessageUuid !== requestMessageUuid)
         ) {
           fail(new ChatKeyStorageError("conflict"));
           return;

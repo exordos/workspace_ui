@@ -667,7 +667,8 @@ describe("ChatE2eeController", () => {
     f.pending.clear();
     f.sendPayload.mockImplementationOnce((_payload, _guard, uuid) => {
       const pending = [...f.pending.values()][0];
-      expect(pending?.requestMessageUuid).toBe(uuid);
+      expect(pending?.localRequestId).toBe(uuid);
+      expect(pending?.requestMessageUuid).toBeNull();
       expect(pending?.privateKey).toEqual(devicePair.privateKey);
       throw new Error("response lost");
     });
@@ -735,6 +736,83 @@ describe("ChatE2eeController", () => {
     expect(f.pending.get("request")?.requestMessageUuid).toBe("request");
     expect((await f.controller.ingestKeyMessage(f.grant)).ok).toBe(true);
   });
+
+  it("keeps canonical retries separate from the public request UUID", async () => {
+    const f = fixture();
+    f.pending.clear();
+    f.sendPayload.mockImplementation((payload) =>
+      Promise.resolve({ uuid: "public-request", streamUuid: "chat", authorUuid: "u", payload }),
+    );
+    const first = await f.controller.requestKey();
+    expect(first).toMatchObject({ ok: true, value: { uuid: "public-request" } });
+    const prepared = [...f.pending.values()][0];
+    expect(prepared?.requestMessageUuid).toBe("public-request");
+    expect(prepared?.localRequestId).not.toBe("public-request");
+    expect((await f.controller.requestKey()).ok).toBe(true);
+    expect(f.sendPayload.mock.calls.map((call) => call[2])).toEqual([
+      prepared?.localRequestId,
+      prepared?.localRequestId,
+    ]);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledOnce();
+    expect(
+      (
+        await f.controller.ingestKeyMessage({
+          ...f.grant,
+          payload: { ...f.grant.payload, requestMessageUuid: "public-request" },
+        })
+      ).ok,
+    ).toBe(true);
+    expect(f.controller.getState().access).toBe("ready");
+    expect(f.pending.size).toBe(0);
+  });
+
+  it("recovers a legacy canonical binding from own history and drains an earlier grant", async () => {
+    const f = fixture();
+    const response = {
+      ...f.grant,
+      payload: { ...f.grant.payload, requestMessageUuid: "public-request" },
+    };
+    expect((await f.controller.ingestKeyMessage(response)).ok).toBe(true);
+    expect(f.controller.getState().access).toBe("missing");
+    await f.controller.ingestKeyMessage({
+      ...f.request,
+      uuid: "public-request",
+      payload: { ...f.request.payload, publicKey: { bytes: new Uint8Array([99]) } },
+    });
+    expect(f.pending.get("request")?.requestMessageUuid).toBe("request");
+    expect((await f.controller.ingestKeyMessage({ ...f.request, uuid: "public-request" })).ok).toBe(
+      true,
+    );
+    expect(f.controller.getState().access).toBe("ready");
+    expect(f.provider.decryptGroupKeyGrant).toHaveBeenCalledOnce();
+    expect(f.sendPayload).not.toHaveBeenCalled();
+  });
+
+  it.each(["author", "device", "public-key", "already-bound"])(
+    "does not repair a legacy binding from a mismatched %s request",
+    async (mismatch) => {
+      const f = fixture();
+      const expected = mismatch === "already-bound" ? "other-public" : "request";
+      if (mismatch === "already-bound") {
+        const pending = f.pending.get("request")!;
+        f.pending.set("request", { ...pending, requestMessageUuid: expected });
+      }
+      await f.controller.ingestKeyMessage({
+        ...f.request,
+        uuid: "public-request",
+        authorUuid: mismatch === "author" ? "other-user" : f.request.authorUuid,
+        payload: {
+          ...f.request.payload,
+          deviceId: mismatch === "device" ? "other-device" : f.request.payload.deviceId,
+          publicKey:
+            mismatch === "public-key" ? { bytes: new Uint8Array([99]) } : devicePair.publicKey,
+        },
+      });
+      expect(f.pending.get("request")?.requestMessageUuid).toBe(expected);
+      expect(f.storage.bindPendingRequest).not.toHaveBeenCalled();
+      expect(f.readKey()?.groupKey).toBeNull();
+    },
+  );
 
   it("does not dispatch a request if persisting its private key fails", async () => {
     const f = fixture();

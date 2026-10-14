@@ -147,7 +147,6 @@ export class ChatE2eeController {
       const message = await this.deps.sendPayload(payload, guard, canonicalMessageUuid);
       if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
       if (
-        (canonicalMessageUuid !== undefined && message.uuid !== canonicalMessageUuid) ||
         message.streamUuid !== this.deps.scope.streamUuid ||
         message.authorUuid !== this.deps.scope.owner.userUuid ||
         message.payload.kind !== payload.kind ||
@@ -250,7 +249,7 @@ export class ChatE2eeController {
             const uuid = crypto.randomUUID();
             pending = {
               localRequestId: uuid,
-              requestMessageUuid: uuid,
+              requestMessageUuid: null,
               publicKey: pair.value.publicKey,
               privateKey: pair.value.privateKey,
               createdAt: Date.now(),
@@ -272,7 +271,7 @@ export class ChatE2eeController {
           return failure("storage-failed");
         }
         // A lost POST response retains the same durable secret and canonical message UUID.
-        const uuid = pending.requestMessageUuid ?? pending.localRequestId;
+        const uuid = pending.localRequestId;
         const result = await this.send(
           {
             kind: "key_request",
@@ -466,14 +465,19 @@ export class ChatE2eeController {
       try {
         const pending = await this.deps.storage.listPendingRequests(this.deps.scope);
         if (!this.isCurrent()) return failure("stale");
-        const candidates = pending.filter(
-          (item) =>
-            equalBytes(item.publicKey.bytes, request.payload.publicKey.bytes) &&
-            (item.requestMessageUuid === null || item.requestMessageUuid === request.uuid),
+        const matchingKeys = pending.filter((item) =>
+          equalBytes(item.publicKey.bytes, request.payload.publicKey.bytes),
         );
+        const bound = matchingKeys.filter((item) => item.requestMessageUuid === request.uuid);
+        const candidates = bound.length
+          ? bound
+          : matchingKeys.filter(
+              (item) =>
+                item.requestMessageUuid === null || item.requestMessageUuid === item.localRequestId,
+            );
         if (candidates.length > 1) return failure("invalid-message");
         const candidate = candidates[0];
-        if (candidate?.requestMessageUuid === null) {
+        if (candidate && candidate.requestMessageUuid !== request.uuid) {
           const bound = await this.deps.storage.bindPendingRequest(
             this.deps.scope,
             candidate.localRequestId,

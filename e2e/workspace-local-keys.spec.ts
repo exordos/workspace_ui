@@ -1,3 +1,4 @@
+import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 import {
@@ -260,7 +261,10 @@ test("local key manager separates current metadata from saved keys and deletes o
       if (!body.payload.key_uuid) throw new Error("Missing requested generation");
       requestedKeyUuids.push(body.payload.key_uuid);
     }
-    const created = { ...messageSuccess("", body.uuid), payload: body.payload };
+    const created = {
+      ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+      payload: body.payload,
+    };
     history.push(created);
     await route.fulfill({ status: 201, json: created });
   });
