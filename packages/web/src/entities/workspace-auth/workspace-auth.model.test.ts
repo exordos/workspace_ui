@@ -16,6 +16,7 @@ function resetStore(): void {
     sessions: [],
     currentAccountId: null,
     runtimeGeneration: 0,
+    sessionSelectionGeneration: 0,
   });
 }
 
@@ -123,6 +124,7 @@ describe("workspace-auth store", () => {
   it("updates active account tokens and invalidates active runtime", () => {
     useWorkspaceAuthStore.getState().setSession(createSession());
     const before = useWorkspaceAuthStore.getState().runtimeGeneration;
+    const selectionBefore = useWorkspaceAuthStore.getState().sessionSelectionGeneration;
 
     useWorkspaceAuthStore.getState().updateTokens("account-a", {
       accessToken: "access-token-b",
@@ -135,6 +137,7 @@ describe("workspace-auth store", () => {
       refreshToken: "refresh-token-b",
       runtimeGeneration: before + 1,
     });
+    expect(useWorkspaceAuthStore.getState().sessionSelectionGeneration).toBe(selectionBefore);
   });
 
   it("updates duplicate account while preserving the original instance id", () => {
@@ -168,11 +171,13 @@ describe("workspace-auth store", () => {
   it("ignores switching to an unknown account", () => {
     useWorkspaceAuthStore.getState().setSession(createSession({ accountId: "account-a" }));
     const before = useWorkspaceAuthStore.getState().runtimeGeneration;
+    const selectionBefore = useWorkspaceAuthStore.getState().sessionSelectionGeneration;
 
     useWorkspaceAuthStore.getState().setCurrentAccountId("missing");
 
     expect(useWorkspaceAuthStore.getState().currentAccountId).toBe("account-a");
     expect(useWorkspaceAuthStore.getState().runtimeGeneration).toBe(before);
+    expect(useWorkspaceAuthStore.getState().sessionSelectionGeneration).toBe(selectionBefore);
   });
 
   it("hydrates valid stored sessions and drops malformed rows", async () => {
