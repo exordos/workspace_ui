@@ -6,6 +6,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.5] — 2026-10-14
+
+### Added
+
+- Users can edit their own first name, last name, phone number, and description
+  from the profile panel. Changes are saved through IAM and reflected in the
+  active Workspace session; username and email remain read-only.
+- Search results in the stream sidebar can reveal all topics in a matching
+  stream, while keeping the initially matched topics visible.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.8.4`: Exordos Core `0.2.3` or newer and
+  Workspace backend `0.1.42` or newer.
+- Workspace backend `0.1.45` or newer remains required when disabled
+  topic-summary reasoning is used.
+- The local messenger cache remains at schema version 7. Existing cached data
+  remains compatible, and no client or server data migration is required.
+- There are no breaking changes in this release.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.8.5`.
+- No manual migration is required.
+
 ## [0.8.4] — 2026-10-13
 
 ### Changed
