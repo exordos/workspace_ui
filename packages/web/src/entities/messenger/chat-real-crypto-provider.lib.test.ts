@@ -131,7 +131,7 @@ describe("real chat cryptography", () => {
       ),
     );
     expect(
-      new Set(envelopes.map((envelope) => Array.from(envelope.bytes.slice(5, 37)).join(","))).size,
+      new Set(envelopes.map((envelope) => Array.from(envelope.bytes.slice(0, 32)).join(","))).size,
     ).toBe(24);
     expect(
       Array.from(
@@ -165,13 +165,13 @@ describe("real chat cryptography", () => {
     },
   );
 
-  it("rejects tampering of magic, salt, ciphertext, tag and truncation", async () => {
+  it("rejects tampering of salt, ciphertext, tag and truncation", async () => {
     const provider = createRealChatCryptoProvider();
     const groupKey = unwrap(await provider.createGroupKey());
     const envelope = unwrap(
       await provider.encryptMessage({ groupKey, plaintext: encoder.encode("hello"), context }),
     );
-    for (const offset of [0, 4, 5, 37, envelope.bytes.length - 1]) {
+    for (const offset of [0, 4, 31, 32, envelope.bytes.length - 1]) {
       const bytes = envelope.bytes.slice();
       bytes[offset] = bytes[offset]! ^ 1;
       expect((await provider.decryptMessage({ groupKey, envelope: { bytes }, context })).ok).toBe(

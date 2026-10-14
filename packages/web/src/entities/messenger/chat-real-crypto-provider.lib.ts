@@ -15,10 +15,8 @@ import type {
 
 const KEY_BYTES = 32;
 const TAG_BYTES = 16;
-// The fifth byte identifies this provider-owned binary format; it adds no API field.
-const MESSAGE_MAGIC = new Uint8Array([87, 83, 67, 77, 1]);
 const GRANT_MAGIC = new Uint8Array([87, 83, 67, 71, 1]);
-const HEADER_BYTES = MESSAGE_MAGIC.length + KEY_BYTES;
+const GRANT_HEADER_BYTES = GRANT_MAGIC.length + KEY_BYTES;
 const MAX_MESSAGE_BYTES = (2 ** 32 - 1) * 64;
 const encoder = new TextEncoder();
 
@@ -90,14 +88,14 @@ function validGrantContext(context: ChatCryptoGrantContext): boolean {
   );
 }
 
-function readHeader(bytes: Uint8Array, magic: Uint8Array): Uint8Array | null {
+function readHeader(bytes: Uint8Array, magic: Uint8Array, headerBytes: number): Uint8Array | null {
   if (
-    bytes.length < HEADER_BYTES + TAG_BYTES ||
+    bytes.length < headerBytes + TAG_BYTES ||
     !sameBytes(bytes.subarray(0, magic.length), magic)
   ) {
     return null;
   }
-  return bytes.subarray(0, HEADER_BYTES);
+  return bytes.subarray(0, headerBytes);
 }
 
 function randomKey(): Uint8Array {
@@ -150,7 +148,6 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
           return { ok: false, reason: "unavailable" };
         }
         const info = messageInfo(context);
-        const header = join(MESSAGE_MAGIC, salt);
         const messageKey = hkdf(sha256, groupKey.bytes, salt, info, KEY_BYTES);
         try {
           // A fresh 256-bit salt gives each encryption its own key across devices and reloads.
@@ -158,9 +155,9 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
           const ciphertext = chacha20poly1305(
             messageKey,
             new Uint8Array(12),
-            join(info, header),
+            join(info, salt),
           ).encrypt(plaintext);
-          return success({ bytes: join(header, ciphertext) });
+          return success({ bytes: join(salt, ciphertext) });
         } catch {
           return { ok: false, reason: "invalid-ciphertext" };
         } finally {
@@ -172,25 +169,19 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
       return promisedResult<Uint8Array>(() => {
         if (!validKey(groupKey.bytes)) return { ok: false, reason: "invalid-key" };
         if (!validContext(context)) return { ok: false, reason: "context-mismatch" };
-        const header = readHeader(envelope.bytes, MESSAGE_MAGIC);
-        if (!header) return { ok: false, reason: "invalid-ciphertext" };
-        const ciphertext = envelope.bytes.subarray(HEADER_BYTES);
+        if (envelope.bytes.length < KEY_BYTES + TAG_BYTES) {
+          return { ok: false, reason: "invalid-ciphertext" };
+        }
+        const salt = envelope.bytes.subarray(0, KEY_BYTES);
+        const ciphertext = envelope.bytes.subarray(KEY_BYTES);
         if (ciphertext.length - TAG_BYTES > MAX_MESSAGE_BYTES) {
           return { ok: false, reason: "invalid-ciphertext" };
         }
         const info = messageInfo(context);
-        const messageKey = hkdf(
-          sha256,
-          groupKey.bytes,
-          header.subarray(MESSAGE_MAGIC.length),
-          info,
-          KEY_BYTES,
-        );
+        const messageKey = hkdf(sha256, groupKey.bytes, salt, info, KEY_BYTES);
         try {
           return success(
-            chacha20poly1305(messageKey, new Uint8Array(12), join(info, header)).decrypt(
-              ciphertext,
-            ),
+            chacha20poly1305(messageKey, new Uint8Array(12), join(info, salt)).decrypt(ciphertext),
           );
         } catch {
           return { ok: false, reason: "invalid-ciphertext" };
@@ -232,8 +223,8 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
         return { ok: false, reason: "invalid-key" };
       if (!validGrantContext(context)) return { ok: false, reason: "context-mismatch" };
       const bytes = envelope.bytes.slice();
-      const header = readHeader(bytes, GRANT_MAGIC);
-      if (!header || bytes.length !== HEADER_BYTES + KEY_BYTES + TAG_BYTES) {
+      const header = readHeader(bytes, GRANT_MAGIC, GRANT_HEADER_BYTES);
+      if (!header || bytes.length !== GRANT_HEADER_BYTES + KEY_BYTES + TAG_BYTES) {
         return { ok: false, reason: "invalid-ciphertext" };
       }
       const privateBytes = requestKeyPair.privateKey.slice();
@@ -244,7 +235,7 @@ export function createRealChatCryptoProvider(): ChatCryptoProvider<Uint8Array> {
         const opened = new Uint8Array(
           await suite.open(
             { recipientKey: recipientPrivate, enc: header.subarray(GRANT_MAGIC.length), info },
-            bytes.subarray(HEADER_BYTES),
+            bytes.subarray(GRANT_HEADER_BYTES),
             join(info, GRANT_MAGIC, publicBytes),
           ),
         );

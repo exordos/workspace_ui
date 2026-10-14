@@ -36,7 +36,7 @@ Exact DTOs and validation are in [messenger.types.ts](../packages/web/src/shared
 
 The provider defines the format; library versions belong to [package.json](../packages/web/package.json) and the lockfile.
 
-- Message: `WSCM` + version byte `1` + random salt32 + ChaCha20-Poly1305 ciphertext/tag16. HKDF-SHA256 derives a separate key32 from `GroupKey`, the salt, and the UTF-8 JSON array `["workspace-chat-crypto-v1", "message", streamUuid, keyUuid]`. The nonce is 12 zero bytes; each operation uses a fresh salt and derived key. AAD consists of the array's bytes followed by the header, including the salt.
+- Message envelopes are random salt32 + ChaCha20-Poly1305 ciphertext/tag16, without a magic prefix or framing-version byte. The reader supports only this format; previous test messages are not migrated. HKDF-SHA256 derives a separate key32 from `GroupKey`, the salt, and the UTF-8 JSON array `["workspace-chat-crypto-v1", "message", streamUuid, keyUuid]`. The nonce is 12 zero bytes; each operation uses a fresh salt and derived key. AAD consists of the array's bytes followed by the salt.
 - Grant: `WSCG` + version byte `1` + HPKE `enc32` + ciphertext48 containing `GroupKey` and the tag. HPKE Base uses DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, and ChaCha20-Poly1305. `info` is UTF-8 JSON `["workspace-chat-crypto-v1", "grant", streamUuid, keyUuid, requestMessageUuid, senderDeviceId, recipientDeviceId]`; AAD consists of `info` followed by magic/version and the request's public key bytes.
 
 This is a client format built on library primitives. Topic, author, local owner, and runtime generation are not part of the message's cryptographic context. Format changes require an explicit compatibility decision for persisted history.
