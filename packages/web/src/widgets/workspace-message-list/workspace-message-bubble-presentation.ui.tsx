@@ -65,6 +65,11 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
   enableAttachments: false,
   enableGallery: false,
 } as const;
+const WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS = {
+  ...WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS,
+  enableProtectedMedia: true,
+  enableAttachments: true,
+} as const;
 const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
 
 const BASE_BUBBLE_CLASS_NAME =
@@ -395,6 +400,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const serverMessage = message.kind === "server" ? message.message : null;
     const encryptedPayload = serverMessage?.payload.kind === "e2ee";
     const passiveContentEnabled = !isPreview && !encryptedPayload && passiveLoadersEnabled;
+    const fileContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
     const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
     const effectiveReadRequestPending =
@@ -448,7 +454,12 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const renderedBody = useMemo(() => {
       const document = parseWorkspaceMessageBody(markdown, { resolveMention });
       const encryptedBody = encryptedPayload
-        ? renderWorkspaceMessageBody(document, WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS)
+        ? renderWorkspaceMessageBody(
+            document,
+            isPreview
+              ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
+              : WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS,
+          )
         : null;
       const segmented = encryptedBody
         ? {
@@ -479,9 +490,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             segment.kind === "html" ? `h:${segment.html}` : `q:${segment.reference.messageUuid}`,
           )
           .join("\u0000"),
-        fileReferences: encryptedPayload
-          ? EMPTY_FILE_REFERENCES
-          : collectWorkspaceMessageFileReferences(document),
+        fileReferences: collectWorkspaceMessageFileReferences(document),
       };
     }, [
       encryptedPayload,
@@ -490,9 +499,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       markdown,
       resolveMention,
     ]);
-    const fileReferences = passiveContentEnabled
-      ? renderedBody.fileReferences
-      : EMPTY_FILE_REFERENCES;
+    const fileReferences = fileContentEnabled ? renderedBody.fileReferences : EMPTY_FILE_REFERENCES;
     const {
       menuOpen,
       contextMenuAnchor,
@@ -520,7 +527,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       bodyRef,
       renderedHtml: renderedBody.html,
       fileReferences,
-      onLoadWorkspaceFilePreview: passiveContentEnabled
+      onLoadWorkspaceFilePreview: fileContentEnabled
         ? interactiveActions?.onLoadWorkspaceFilePreview
         : undefined,
     });
@@ -677,7 +684,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             onCopyMessageText={interactiveActions?.onCopyMessageText}
             onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
             onLoadWorkspaceFilePreview={
-              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+              fileContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
             getSelectedText={getSelectedText}
           />

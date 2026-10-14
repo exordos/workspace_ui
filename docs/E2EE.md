@@ -11,7 +11,9 @@ Current for the client implementation on this branch as of 2026-10-08. This is a
 - View local keys and delete a selected key with confirmation. Deletion removes available plaintext from mounted messages and notifies other tabs.
 - Until the current key is received, sending can use the last available local key and its UUID. Receiving the current key automatically switches subsequent sends; sending is unavailable when no keys are available.
 
-Ordinary Markdown send/edit/forward operations and saving ordinary server drafts are blocked for encrypted chats. The current implementation supports text; attachment encryption, converting an existing chat to encrypted mode, and automatically granting keys to a new device are not implemented by this flow.
+Ordinary Markdown send/edit/forward operations and saving ordinary server drafts are blocked for encrypted chats. Text and attachment references are encrypted together in the message. Attachments use the existing Workspace file upload flow; their bytes and file metadata are not E2EE-encrypted. Failed encrypted sends retain the editor text and uploaded attachments for retry. Converting an existing chat to encrypted mode and automatically granting keys to a new device are not implemented by this flow.
+
+Decrypted attachment references use the existing inline image/video previews and file download actions. Locking a message after local key deletion or an owner change removes inline previews, aborts their pending loads, and releases their display URLs. Plaintext references remain in scoped presentation memory; the message store retains the encrypted payload. Deleting a chat key does not revoke access to unencrypted media already opened in the viewer, downloaded files, or previously learned file references.
 
 ## Ownership and source map
 
@@ -51,6 +53,7 @@ Creation and rotation use durable staging; retrying after a lost response retain
 
 ## Security boundaries
 
+- Attachment bytes and file metadata are stored without E2EE. Only their Markdown references inside the message are encrypted. The existing file API checks stream membership; E2EE does not protect the stored file from the server or storage access. The protected-chat label in the header includes a small information icon and explains this boundary and the need for a local chat key on hover or keyboard focus.
 - Account authorship and roles are trusted as backend data. HPKE Base does not independently authenticate the sender; device ID is an addressing label, not proof of identity. A UUID does not independently verify the expected `GroupKey`.
 - A shared key does not provide forward secrecy, cryptographic proof of an individual participant's authorship, or revocation of previously granted secrets. Rotation does not revoke access to old history or messages sent with an old key.
 - The client does not serialize rotation across devices; live scope checks do not guarantee resolution of conflicts between devices. If an intermediate generation stops being current before the operation completes, its staged secret does not automatically become an available historical key.

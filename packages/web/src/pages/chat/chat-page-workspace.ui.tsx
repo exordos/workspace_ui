@@ -77,6 +77,7 @@ import {
   WorkspaceComposerAttachments,
   type WorkspaceComposerAttachmentTarget,
   type WorkspaceComposerControlledProps,
+  type WorkspaceComposerSendResult,
 } from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
 import {
   extractWorkspaceComposerEditContent,
@@ -1644,14 +1645,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const encryptedComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       ...workspaceComposerCapabilities,
-      upload: { mode: "unsupported", unsupportedText: t("e2ee.encryptedTextOnly") },
-      mentions: { mode: "unsupported", unsupportedText: t("e2ee.encryptedTextOnly") },
+      mentions: { mode: "unsupported", unsupportedText: t("e2ee.mentionsUnsupported") },
     }),
     [workspaceComposerCapabilities],
   );
 
   const handleSendEncrypted = useCallback(
-    async (content: string): Promise<MessageComposerSendResult> => {
+    async (content: string): Promise<WorkspaceComposerSendResult> => {
       if (!encryptedChatAvailable || runtimeContext == null || content.trim().length === 0)
         return { shouldClearComposer: false };
       const target = resolveSendTarget();
@@ -1672,7 +1672,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           topicUuid: target.topicUuid,
           includeStreamConversation: target.includeStreamConversation,
         });
-        return { shouldClearComposer: result.status === "applied" && isCurrent() };
+        return {
+          messageAccepted: result.status === "applied",
+          shouldClearComposer: result.status === "applied" && isCurrent(),
+        };
       } catch {
         if (isCurrent()) setSendError(t("message.sendFailed"));
         return { shouldClearComposer: false };
@@ -3600,6 +3603,29 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const composerJoinedTop =
     !showStreamTopicPrompt &&
     (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice);
+  const renderEncryptedComposer = useCallback(
+    (controlledProps?: WorkspaceComposerControlledProps) => (
+      <MessageComposer
+        {...controlledProps}
+        key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}`}
+        onSend={controlledProps?.onSend ?? handleSendEncrypted}
+        capabilities={encryptedComposerCapabilities}
+        disabled={isTopicClosed}
+        initialValue=""
+        aiMessagesContext={[]}
+        joinedTop={composerJoinedTop}
+      />
+    ),
+    [
+      ownerKey,
+      runtimeContext?.runtimeGeneration,
+      conversationId,
+      handleSendEncrypted,
+      encryptedComposerCapabilities,
+      isTopicClosed,
+      composerJoinedTop,
+    ],
+  );
   const renderWorkspaceAttachmentComposer = useCallback(
     (controlledProps: WorkspaceComposerControlledProps) => {
       const restoredAttachments = composerEditAttachments.map((attachment) => ({
@@ -3785,15 +3811,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           </div>
         ) : null}
         {stream?.encryption === true && encryptedChatAvailable ? (
-          <MessageComposer
-            key={`${ownerKey}:${runtimeContext?.runtimeGeneration}:${conversationId}`}
-            onSend={handleSendEncrypted}
-            capabilities={encryptedComposerCapabilities}
-            disabled={isTopicClosed}
-            initialValue=""
-            aiMessagesContext={[]}
-            joinedTop={composerJoinedTop}
-          />
+          workspaceAttachmentTarget != null && runtimeContext != null && ownerKey != null ? (
+            <WorkspaceComposerAttachments
+              key={`${ownerKey}:${runtimeContext.runtimeGeneration}:${conversationId}`}
+              runtimeContext={runtimeContext}
+              ownerKey={ownerKey}
+              target={workspaceAttachmentTarget}
+              waitForSend
+              onSendFinalMarkdown={handleSendEncrypted}
+              renderComposer={renderEncryptedComposer}
+            />
+          ) : (
+            renderEncryptedComposer()
+          )
         ) : stream?.encryption === true ? (
           <div className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted">
             <p role="status">

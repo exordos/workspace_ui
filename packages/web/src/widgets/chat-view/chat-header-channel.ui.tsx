@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
+import { AppTooltip } from "~/shared/ui/app-tooltip.ui";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeaderShell } from "./chat-header-shell.ui";
 import type { ChatChannelHeaderProps } from "./chat-header.types";
@@ -80,9 +81,31 @@ export const ChatChannelHeader: React.FC<ChatChannelHeaderProps> = ({
               )}
             </span>
             {encrypted ? (
-              <span className="shrink-0 whitespace-nowrap font-normal text-accent">
-                {t("e2ee.protectedChat")}
-              </span>
+              <AppTooltip
+                align="start"
+                wrapperClassName="relative z-10"
+                content={
+                  <div className="space-y-2">
+                    <p className="font-medium text-text-primary">{t("e2ee.chatFeatures")}</p>
+                    <ul className="list-disc space-y-2 pl-4">
+                      <li>{t("e2ee.chatFeaturesMessages")}</li>
+                      <li>{t("e2ee.chatFeaturesKeys")}</li>
+                      <li>{t("e2ee.chatFeaturesMissingKey")}</li>
+                      <li>{t("e2ee.chatFeaturesMedia")}</li>
+                      <li>{t("e2ee.chatFeaturesMediaAccess")}</li>
+                    </ul>
+                  </div>
+                }
+              >
+                <button
+                  type="button"
+                  aria-label={t("e2ee.chatFeatures")}
+                  className="inline-flex shrink-0 cursor-help items-center gap-1.5 whitespace-nowrap rounded bg-transparent p-0 text-left font-normal text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+                >
+                  <Icon name="info" size={14} className="text-current" />
+                  <span>{t("e2ee.protectedChat")}</span>
+                </button>
+              </AppTooltip>
             ) : null}
           </h1>
           {!hideParticipants && (

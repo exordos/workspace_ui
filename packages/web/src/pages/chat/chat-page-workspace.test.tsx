@@ -1070,6 +1070,154 @@ describe("ChatPage Workspace route", () => {
     expect(send).not.toHaveBeenCalled();
     expect(textbox).toHaveValue(overPlaintextLimit);
   });
+  it.each([
+    { name: "screen.png", contentType: "image/png", urnType: "image" },
+    { name: "clip.mp4", contentType: "video/mp4", urnType: "video" },
+    { name: "report.pdf", contentType: "application/pdf", urnType: "file" },
+  ])(
+    "sends $urnType references through crypto and retains failed attachments",
+    async ({ name, contentType, urnType }) => {
+      const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (runtime == null) throw new Error("Expected runtime");
+      const owner = workspaceRuntimeOwnerKey(runtime);
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(owner, {
+        ...bootstrap,
+        streams: bootstrap.streams.map((stream) => ({
+          ...stream,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "mock-key" },
+        })),
+      });
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ status: "stale" })
+        .mockResolvedValue({ status: "applied" });
+      captured.openRealChatSession.mockResolvedValue({
+        load: vi.fn().mockResolvedValue(undefined),
+        ingest: vi.fn().mockResolvedValue(undefined),
+        subscribe: () => () => undefined,
+        dispose: vi.fn(),
+        getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+        getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+        send,
+      });
+      const file = new File(
+        [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+        name,
+        { type: contentType },
+      );
+      const upload = createDeferred<{
+        uuid: string;
+        name: string;
+        content_type: string;
+        size_bytes: number;
+      }>();
+      captured.uploadWorkspaceFileWithProgress.mockReturnValueOnce(upload.promise);
+      const { container } = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      const textbox = await screen.findByRole("textbox");
+      const input = container.querySelector('input[type="file"]');
+      if (input == null) throw new Error("Expected file picker");
+      fireEvent.change(input, { target: { files: [file] } });
+      await waitFor(() => expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce());
+      expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ file, streamUuid: STREAM_UUID }),
+      );
+      const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+      expect(sendButton).toBeDisabled();
+      expect(send).not.toHaveBeenCalled();
+      await act(async () => {
+        upload.resolve({
+          uuid: "99999999-9999-4999-8999-999999999999",
+          name,
+          content_type: contentType,
+          size_bytes: file.size,
+        });
+        await upload.promise;
+      });
+      await waitFor(() => expect(sendButton).not.toBeDisabled());
+      fireEvent.change(textbox, { target: { value: "Keep with attachment" } });
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
+      expect(textbox).toHaveValue("Keep with attachment");
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining(`urn:${urnType}:99999999-9999-4999-8999-999999999999`),
+          topicUuid: TOPIC_UUID,
+        }),
+      );
+      expect(send.mock.calls[0]?.[0].text).toContain("\nKeep with attachment");
+      send.mockRejectedValueOnce(new Error("send failed"));
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
+      expect(textbox).toHaveValue("Keep with attachment");
+      expect(screen.getByText(name)).toBeInTheDocument();
+      fireEvent.change(textbox, { target: { value: "" } });
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.queryByText(name)).not.toBeInTheDocument());
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(send.mock.calls[2]?.[0].text).not.toContain("Keep with attachment");
+      expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce();
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+      expect(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid).toEqual({});
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          owner,
+          `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        ),
+      ).toBeNull();
+      expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an accepted encrypted attachment when its chat unmounts before send completes", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "mock-key" },
+      })),
+    });
+    const pendingSend = createDeferred<{ status: "applied" }>();
+    const send = vi.fn().mockReturnValue(pendingSend.promise);
+    captured.openRealChatSession.mockResolvedValue({
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn().mockResolvedValue(undefined),
+      subscribe: () => () => undefined,
+      dispose: vi.fn(),
+      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+      send,
+    });
+    const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByRole("textbox");
+    const input = container.querySelector('input[type="file"]');
+    if (input == null) throw new Error("Missing file picker");
+    fireEvent.change(input, {
+      target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
+    });
+    const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.click(sendButton);
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    unmount();
+    await act(async () => {
+      pendingSend.resolve({ status: "applied" });
+      await pendingSend.promise;
+    });
+    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+  });
+
   it("preserves the editor during rotation and a pending current-key request", async () => {
     const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     if (!runtime) throw new Error("Expected runtime");

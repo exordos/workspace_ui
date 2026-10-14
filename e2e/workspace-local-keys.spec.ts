@@ -9,6 +9,64 @@ import {
   usersSuccess,
 } from "./mocks/workspace-default-responses";
 
+test("encrypted chat header explains message and media protection on hover and keyboard focus", async ({
+  authenticated,
+}, testInfo) => {
+  const page = authenticated;
+  const stream = {
+    ...streamsSuccess()[0],
+    encryption: true,
+    current_encryption_key_uuid: crypto.randomUUID(),
+  };
+  await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+    await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+  });
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  const information = page.getByRole("button", {
+    name: /protected chat information|особенности защищ[её]нного чата/i,
+  });
+  await expect(information).toBeVisible();
+  await information.locator("span").hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText(
+    /stored without end-to-end encryption|хранятся без сквозного шифрования/i,
+  );
+  await expect(tooltip.getByRole("listitem")).toHaveCount(5);
+  await page.screenshot({ path: testInfo.outputPath("encrypted-chat-tooltip.png") });
+  await tooltip.hover();
+  await expect(tooltip).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
+  await information.focus();
+  await expect(tooltip).toBeVisible();
+  await information.press("Escape");
+  await expect(tooltip).toBeHidden();
+  await page.setViewportSize({ width: 960, height: 720 });
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  await information.hover();
+  await expect(tooltip).toBeVisible();
+  const bounds = await tooltip.boundingBox();
+  if (bounds == null) throw new Error("Missing tooltip bounds");
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(960);
+  await page.screenshot({ path: testInfo.outputPath("encrypted-chat-tooltip-narrow.png") });
+  await page.setViewportSize({ width: 960, height: 320 });
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  await information.focus();
+  await expect(tooltip).toBeVisible();
+  expect(await tooltip.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+    true,
+  );
+  await information.press("End");
+  expect(await tooltip.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(information).toBeFocused();
+  await information.press("Home");
+  expect(await tooltip.evaluate((element) => element.scrollTop)).toBe(0);
+});
+
 test("encrypted channel owner adds and removes a participant through the shared membership actions", async ({
   authenticated,
 }) => {

@@ -14,7 +14,7 @@ const ChatHeaderActions: React.FC<ChatHeaderActionsProps> = ({
   rightPanelOpen = true,
   infoLabel,
 }) => (
-  <div className="flex items-center gap-1">
+  <div className="flex shrink-0 items-center gap-1">
     {onCallClick != null && (
       <button
         type="button"

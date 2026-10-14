@@ -1,9 +1,41 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { ChatChannelHeader } from "./chat-header-channel.ui";
 
 describe("ChatChannelHeader", () => {
+  it("shows encrypted chat information on the protected label without a separate header action", async () => {
+    const togglePanel = vi.fn();
+    renderWithProviders(
+      <ChatChannelHeader channelName="#engineering" encrypted onToggleRightPanel={togglePanel} />,
+    );
+    const information = screen.getByRole("button", { name: t("e2ee.chatFeatures") });
+    expect(information.closest("h1")).not.toBeNull();
+    expect(information).toHaveTextContent(t("e2ee.protectedChat"));
+    expect(information.querySelector("svg")).toHaveAttribute("width", "14");
+    expect(information).toHaveClass("bg-transparent", "p-0");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.focus(information);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(t("e2ee.chatFeaturesMessages"));
+    expect(tooltip).toHaveTextContent(t("e2ee.chatFeaturesMedia"));
+    expect(tooltip).toHaveTextContent(t("e2ee.chatFeaturesKeys"));
+    expect(tooltip).toHaveTextContent(t("e2ee.chatFeaturesMissingKey"));
+    expect(tooltip).toHaveTextContent(t("e2ee.chatFeaturesMediaAccess"));
+    expect(within(tooltip).getAllByRole("listitem")).toHaveLength(5);
+    expect(information).toHaveAttribute("aria-describedby", tooltip.id);
+    fireEvent.keyDown(information, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.click(information);
+    expect(togglePanel).not.toHaveBeenCalled();
+  });
+
+  it("keeps the encryption information action absent from ordinary chats", () => {
+    renderWithProviders(<ChatChannelHeader channelName="#engineering" />);
+    expect(screen.queryByRole("button", { name: t("e2ee.chatFeatures") })).not.toBeInTheDocument();
+  });
+
   it("shows stream topic as primary heading with channel muted when topic is visible", () => {
     renderWithProviders(
       <ChatChannelHeader

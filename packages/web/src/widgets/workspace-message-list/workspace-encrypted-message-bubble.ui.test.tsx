@@ -330,11 +330,11 @@ describe("real encrypted message presentation", () => {
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
     expect(await screen.findByText("мир")).toBeInTheDocument();
   });
-  it("keeps decrypted text capabilities restricted and never loads quoted messages or files", async () => {
+  it("keeps decrypted text capabilities restricted and never loads quoted messages", async () => {
     const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
     const preview = vi.fn();
     const { stored } = await seedRealEncryptedMessage(
-      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n![Image](urn:file:66666666-6666-4666-8666-666666666666)\n\n```js\nconst x = 1;\n```",
+      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```",
     );
     const { container } = render(
       <WorkspaceEncryptedMessageBubble
@@ -360,6 +360,140 @@ describe("real encrypted message presentation", () => {
     if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { kind: "image", tag: "img", name: "photo.png", contentType: "image/png", prefix: "!" },
+    { kind: "video", tag: "video", name: "clip.mp4", contentType: "video/mp4", prefix: "" },
+  ])(
+    "renders decrypted $kind media and removes it when its key is deleted",
+    async ({ kind, tag, name, contentType, prefix }) => {
+      const objectUrl = `blob:encrypted-${kind}`;
+      vi.spyOn(URL, "createObjectURL").mockReturnValue(objectUrl);
+      const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+      const fileUuid = "66666666-6666-4666-8666-666666666666";
+      const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
+        `${prefix}[${name}](urn:${kind}:${fileUuid}?name=${name}&content_type=${encodeURIComponent(contentType)})\nCaption`,
+      );
+      const preview = vi.fn().mockResolvedValue(new Blob(["media"], { type: contentType }));
+      const open = vi.fn();
+      const { container } = render(
+        <WorkspaceEncryptedMessageBubble
+          message={stored}
+          currentUserUuid="author"
+          isFirstInGroup
+          isLastInGroup
+          actions={{ onLoadWorkspaceFilePreview: preview, onOpenWorkspaceMedia: open }}
+        />,
+      );
+      expect(await screen.findByText("Caption")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(container.querySelector(`${tag}[data-workspace-file-preview]`)).toHaveAttribute(
+          "src",
+          objectUrl,
+        ),
+      );
+      expect(preview).toHaveBeenCalledWith(
+        expect.objectContaining({ fileUuid, kind: "media", mediaKind: kind }),
+        expect.any(AbortSignal),
+      );
+      const media = container.querySelector(`${tag}[data-workspace-file-preview]`);
+      if (media == null) throw new Error("Missing media preview");
+      if (kind === "video") {
+        expect(media).toHaveAttribute("controls");
+        const expand = container.querySelector("[data-workspace-video-expand]");
+        if (expand == null) throw new Error("Missing video expand control");
+        fireEvent.click(expand);
+      } else {
+        fireEvent.click(media);
+      }
+      expect(open).toHaveBeenCalledWith(expect.objectContaining({ fileUuid, mediaKind: kind }));
+      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+        stored.payload,
+      );
+      if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      await realChatKeyStorage.removeChatKey({
+        owner: runtime,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+      act(() =>
+        notifyRealChatKeyChanges({
+          kind: "removed",
+          ownerKey: owner,
+          deviceId: device.deviceId,
+          streamUuid: stream.uuid,
+          keyUuid: stored.payload.kind === "e2ee" ? stored.payload.keyUuid : "",
+        }),
+      );
+      expect(screen.queryByText("Caption")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-workspace-file-preview]")).toBeNull();
+      expect(preview.mock.calls[0]?.[1].aborted).toBe(true);
+      expect(revoke).toHaveBeenCalledWith(objectUrl);
+    },
+  );
+
+  it("renders a decrypted attachment as a downloadable file card", async () => {
+    const fileUuid = "66666666-6666-4666-8666-666666666666";
+    const { stored } = await seedRealEncryptedMessage(
+      `[report.pdf](urn:file:${fileUuid}?name=report.pdf&content_type=application%2Fpdf&size=10)`,
+    );
+    const download = vi.fn();
+    const preview = vi.fn();
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onDownloadFile: download, onLoadWorkspaceFilePreview: preview }}
+      />,
+    );
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    const card = container.querySelector('[data-workspace-file-kind="attachment"]');
+    if (card == null) throw new Error("Missing file card");
+    fireEvent.click(card);
+    expect(download).toHaveBeenCalledWith(
+      expect.objectContaining({ fileUuid, kind: "attachment" }),
+    );
+    expect(preview).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+  });
+
+  it("aborts a pending media load and ignores its result after owner invalidation", async () => {
+    const { stored } = await seedRealEncryptedMessage(
+      "![photo.png](urn:image:66666666-6666-4666-8666-666666666666?name=photo.png&content_type=image%2Fpng)",
+    );
+    let resolvePreview!: (blob: Blob) => void;
+    const pendingPreview = new Promise<Blob>((resolve) => {
+      resolvePreview = resolve;
+    });
+    const preview = vi.fn().mockReturnValue(pendingPreview);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onLoadWorkspaceFilePreview: preview }}
+      />,
+    );
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+    expect(preview.mock.calls[0]?.[1].aborted).toBe(true);
+    await act(async () => {
+      resolvePreview(new Blob(["late image"], { type: "image/png" }));
+      await pendingPreview;
+    });
+    expect(container.querySelector("[data-workspace-file-preview]")).toBeNull();
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
   });
 
   it("reads previous generations after rotation and locks text for another store owner", async () => {
