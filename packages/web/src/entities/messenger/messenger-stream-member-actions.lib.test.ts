@@ -10,6 +10,7 @@ import {
   removeWorkspaceStreamMember,
 } from "./messenger-stream-member-actions.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerStream } from "./messenger.types";
 
 const OWNER_KEY =
   "account:account-a:instance:instance-a:organization:org-a:project:project-a:user:11111111-1111-4111-8111-111111111111";
@@ -51,10 +52,37 @@ function createStreamBindingDto(
   };
 }
 
+function seedStream(overrides: Partial<MessengerStream> = {}): void {
+  useMessengerStore.getState().upsertStream(OWNER_KEY, {
+    uuid: STREAM_UUID,
+    projectId: "project-a",
+    ownerUuid: CURRENT_USER_UUID,
+    userUuid: CURRENT_USER_UUID,
+    role: "owner",
+    notificationMode: "all_messages",
+    name: "General",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  });
+}
+
 describe("messenger stream member actions", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    seedStream();
   });
 
   it("adds users through Workspace add_users with the member role body", async () => {
@@ -129,6 +157,43 @@ describe("messenger stream member actions", () => {
       expect.objectContaining({ streamUuid: STREAM_UUID, userUuid: USER_B_UUID }),
     );
   });
+
+  it.each(["member", "administrator", "owner"] as const)(
+    "rejects member addition by a non-owner even with the %s binding role",
+    async (role) => {
+      seedStream({ ownerUuid: USER_B_UUID, role });
+      const addStreamUsers = vi.fn(() => Promise.resolve([]));
+
+      await expect(
+        addWorkspaceStreamMembers({
+          runtimeContext,
+          streamUuid: STREAM_UUID,
+          userUuids: [USER_C_UUID],
+          client: { addStreamUsers },
+        }),
+      ).rejects.toMatchObject({ code: "not-stream-owner" });
+      expect(addStreamUsers).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["missing-stream", "other-catalog"] as const)(
+    "rejects member addition with %s ownership data before making a request",
+    async (condition) => {
+      if (condition === "missing-stream") useMessengerStore.setState({ streamsById: {} });
+      else useMessengerStore.setState({ ownerKey: "other-owner" });
+      const addStreamUsers = vi.fn(() => Promise.resolve([]));
+
+      await expect(
+        addWorkspaceStreamMembers({
+          runtimeContext,
+          streamUuid: STREAM_UUID,
+          userUuids: [USER_C_UUID],
+          client: { addStreamUsers },
+        }),
+      ).rejects.toMatchObject({ code: "not-stream-owner" });
+      expect(addStreamUsers).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects invalid member UUIDs before the add request", async () => {
     const addStreamUsers = vi.fn(() => Promise.resolve([]));

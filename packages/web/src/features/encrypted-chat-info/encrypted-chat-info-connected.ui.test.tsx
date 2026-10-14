@@ -69,6 +69,71 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("encrypted chat sidebar actions", () => {
+  it.each(["info", "key"] as const)(
+    "hides key rotation for a participant on the %s screen while keeping the current key",
+    async (activeScreen) => {
+      const { crypto, info } = fixture();
+      crypto.session.getRights = () => ({ canRotate: false, canRequest: true });
+      await act(async () => {
+        render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      expect(screen.getByText("current")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reissue key" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Copy key ID" }));
+      expect(info.onCopyKey).toHaveBeenCalledOnce();
+      expect(crypto.reissueKey).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["info", "key"] as const)(
+    "allows the owner to confirm key rotation on the %s screen",
+    async (activeScreen) => {
+      const { crypto } = fixture();
+      await act(async () => {
+        render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      const button = screen.getByRole("button", { name: "Reissue key" });
+      expect(button).toBeEnabled();
+      fireEvent.click(button);
+      expect(crypto.reissueKey).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(
+          within(screen.getByRole("dialog")).getByRole("button", { name: "Reissue key" }),
+        );
+        await Promise.resolve();
+      });
+      expect(crypto.reissueKey).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    { activeScreen: "info", loading: true, pending: false },
+    { activeScreen: "key", loading: true, pending: false },
+    { activeScreen: "info", loading: false, pending: true },
+    { activeScreen: "key", loading: false, pending: true },
+  ] as const)(
+    "keeps owner rotation visible but disabled on $activeScreen when loading=$loading and pending=$pending",
+    async ({ activeScreen, loading, pending }) => {
+      const { crypto } = fixture();
+      mocks.crypto.mockReturnValue({
+        ...crypto,
+        loading,
+        state: { ...crypto.state, pending },
+      });
+      await act(async () => {
+        render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      const button = screen.getByRole("button", { name: "Reissue key" });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(crypto.reissueKey).not.toHaveBeenCalled();
+    },
+  );
+
   it("connects the add-member button to the owning panel action", () => {
     fixture();
     const onAddMember = vi.fn();
@@ -80,7 +145,98 @@ describe("encrypted chat sidebar actions", () => {
     fireEvent.click(button);
     expect(onAddMember).toHaveBeenCalledOnce();
     view.rerender(<EncryptedChatInfoConnected streamUuid="stream" />);
-    expect(screen.getByRole("button", { name: "Add members" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Add members" })).toBeNull();
+  });
+
+  it("connects owner removal capabilities to binding IDs and hides actions without a controller", () => {
+    const { info } = fixture();
+    mocks.info.mockReturnValue({
+      ...info,
+      projection: {
+        ...info.projection,
+        members: [
+          { id: "binding-owner", name: "Owner" },
+          { id: "binding-member", name: "Member" },
+        ],
+      },
+    });
+    const onRemoveMember = vi.fn();
+    const view = render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        onRemoveMember={onRemoveMember}
+        removableMemberIds={["binding-owner", "binding-member"]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove from channel: Member" }));
+    expect(onRemoveMember).toHaveBeenCalledWith("binding-member");
+    expect(screen.getByRole("button", { name: "Remove from channel: Owner" })).toBeEnabled();
+    view.rerender(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        removableMemberIds={["binding-owner", "binding-member"]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Remove from channel:/ })).toBeNull();
+  });
+
+  it("allows only the member's own removal when the owning panel grants self-removal", () => {
+    const { info } = fixture();
+    mocks.info.mockReturnValue({
+      ...info,
+      projection: {
+        ...info.projection,
+        members: [
+          { id: "binding-self", name: "Self" },
+          { id: "binding-other", name: "Other member" },
+        ],
+      },
+    });
+    const onRemoveMember = vi.fn();
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        onRemoveMember={onRemoveMember}
+        removableMemberIds={["binding-self"]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Remove from channel: Other member" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove from channel: Self" }));
+    expect(onRemoveMember).toHaveBeenCalledWith("binding-self");
+    expect(screen.queryByRole("button", { name: "Add members" })).toBeNull();
+  });
+
+  it("disables only the pending removal and keeps its error in the member section", () => {
+    const { info } = fixture();
+    mocks.info.mockReturnValue({
+      ...info,
+      projection: {
+        ...info.projection,
+        members: [
+          { id: "binding-pending", name: "Pending member" },
+          { id: "binding-ready", name: "Ready member" },
+        ],
+      },
+    });
+    const onRemoveMember = vi.fn();
+    render(
+      <EncryptedChatInfoConnected
+        streamUuid="stream"
+        onRemoveMember={onRemoveMember}
+        removableMemberIds={["binding-pending", "binding-ready"]}
+        removingMemberIds={["binding-pending"]}
+        removeMemberError="Member removal failed"
+      />,
+    );
+    const pendingButton = screen.getByRole("button", {
+      name: "Remove from channel: Pending member",
+    });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect(onRemoveMember).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remove from channel: Ready member" })).toBeEnabled();
+    const memberSection = screen.getByRole("region", { name: "Members" });
+    expect(within(memberSection).getByRole("alert")).toHaveTextContent("Member removal failed");
   });
 
   it("uses generation-specific grant capability and removes terminal outcomes from incoming requests", () => {
@@ -241,7 +397,7 @@ describe("local encrypted chat keys", () => {
     expect(screen.queryByText("Announced in chat")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Saved key: " + oldKey }));
     expect(openKey).toHaveBeenCalledWith(oldKey);
-    expect(screen.getByRole("button", { name: "Reissue key" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reissue key" })).toBeNull();
   });
   it("shows both dates on key details and repeats its exact UUID without rotation", async () => {
     const { crypto, info } = fixture();

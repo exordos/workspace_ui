@@ -9,7 +9,7 @@ import {
   usersSuccess,
 } from "./mocks/workspace-default-responses";
 
-test("encrypted channel owner adds a participant through the shared picker", async ({
+test("encrypted channel owner adds and removes a participant through the shared membership actions", async ({
   authenticated,
 }) => {
   const page = authenticated;
@@ -31,6 +31,8 @@ test("encrypted channel owner adds a participant through the shared picker", asy
     },
   ];
   const submittedBodies: unknown[] = [];
+  const addedBindingUuid = crypto.randomUUID();
+  const deletedBindingUuids: string[] = [];
   await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
@@ -45,7 +47,7 @@ test("encrypted channel owner adds a participant through the shared picker", asy
     await route.fulfill({
       json: [
         {
-          uuid: crypto.randomUUID(),
+          uuid: addedBindingUuid,
           project_id: stream.project_id,
           stream_uuid: E2E_STREAM_UUID,
           user_uuid: newUserUuid,
@@ -57,6 +59,11 @@ test("encrypted channel owner adds a participant through the shared picker", asy
         },
       ],
     });
+  });
+  await page.route(/\/stream_bindings\/[^/?]+(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletedBindingUuids.push(new URL(route.request().url()).pathname.split("/").at(-1) ?? "");
+    await route.fulfill({ status: 204 });
   });
   await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
   await page
@@ -72,8 +79,55 @@ test("encrypted channel owner adds a participant through the shared picker", asy
   await dialog.getByRole("button", { name: /^(add|добавить)$/i }).click();
   await expect.poll(() => submittedBodies).toEqual([{ member: [newUserUuid] }]);
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole("complementary").getByText(/^New Participant/)).toBeVisible();
+  const membersPanel = page.getByRole("complementary");
+  await expect(membersPanel.getByText(/^New Participant/)).toBeVisible();
+  await membersPanel
+    .getByRole("button", {
+      name: /Remove from channel: New Participant|Удалить из канала: New Participant/i,
+    })
+    .click();
+  await expect.poll(() => deletedBindingUuids).toEqual([addedBindingUuid]);
+  await expect(membersPanel.getByText(/^New Participant/)).toHaveCount(0);
 });
+
+for (const encryption of [false, true]) {
+  test(`${encryption ? "encrypted" : "ordinary"} channel member cannot open the add-members picker`, async ({
+    authenticated,
+  }) => {
+    const page = authenticated;
+    const stream = {
+      ...streamsSuccess()[0],
+      owner: crypto.randomUUID(),
+      role: "member",
+      encryption,
+      current_encryption_key_uuid: encryption ? crypto.randomUUID() : null,
+    };
+    await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+      await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+    });
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+    await page
+      .getByRole("button", { name: /^(channel info|информация о канале)$/i })
+      .first()
+      .click();
+    const panel = page.getByRole("complementary");
+    await expect(panel.getByRole("heading", { name: /members|участники/i })).toBeVisible();
+    await expect(
+      panel.getByRole("button", { name: /^(add members|добавить участников)$/i }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    if (encryption && stream.current_encryption_key_uuid != null) {
+      await expect(
+        panel.getByText(stream.current_encryption_key_uuid, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        panel.getByRole("button", { name: /^(reissue key|перевыпустить ключ)$/i }),
+      ).toHaveCount(0);
+    }
+  });
+}
 
 test("local key manager separates current metadata from saved keys and deletes only the selected key", async ({
   authenticated,

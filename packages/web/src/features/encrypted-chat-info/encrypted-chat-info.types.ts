@@ -83,4 +83,8 @@ export interface EncryptedChatInfoProps {
   readonly onOpenSettings?: () => void;
   readonly onCall?: () => void;
   readonly onAddMember?: () => void;
+  readonly onRemoveMember?: (memberId: string) => void;
+  readonly removableMemberIds?: readonly string[];
+  readonly removingMemberIds?: readonly string[];
+  readonly removeMemberError?: string | null;
 }

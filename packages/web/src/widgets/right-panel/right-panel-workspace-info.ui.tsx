@@ -395,9 +395,34 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
   return <RightPanelUserProfile info={info} />;
 };
 
+interface WorkspaceChannelMemberActions {
+  onAddMember?: () => void;
+  onRemoveMember?: (memberId: string) => void;
+  removableMemberIds: readonly string[];
+  removingMemberIds: readonly string[];
+  removeMemberError: string | null;
+}
+
+function isCurrentWorkspaceStreamOwner(
+  streamUuid: string | null,
+  runtimeContext: WorkspaceRuntimeContext | null,
+): boolean {
+  if (streamUuid == null || runtimeContext == null) return false;
+  const currentRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  const state = useMessengerStore.getState();
+  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  return (
+    currentRuntime != null &&
+    workspaceRuntimeOwnerKey(currentRuntime) === ownerKey &&
+    currentRuntime.runtimeGeneration === runtimeContext.runtimeGeneration &&
+    state.ownerKey === ownerKey &&
+    state.streamsById[streamUuid]?.ownerUuid === runtimeContext.userUuid
+  );
+}
+
 const RightPanelWorkspaceChannelInfo: React.FC<{
   info: WorkspaceRightPanelChannelInfoView;
-  renderContent?: (onAddMember: (() => void) | undefined) => React.ReactNode;
+  renderContent?: (actions: WorkspaceChannelMemberActions) => React.ReactNode;
 }> = ({ info, renderContent }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
@@ -431,6 +456,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [currentAccountId, sessions],
   );
   const summaryOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const canAddMembers = useMessengerStore(
+    (state) =>
+      runtimeContext != null &&
+      info.streamUuid != null &&
+      state.ownerKey === summaryOwnerKey &&
+      state.streamsById[info.streamUuid]?.ownerUuid === runtimeContext.userUuid,
+  );
   const summaryCapabilities = useWorkspaceIamCapabilitiesStore((state) =>
     selectWorkspaceIamPermissionsForOwner(state, summaryOwnerKey),
   );
@@ -470,7 +502,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     () =>
       // Build candidates only for the open dialog: the user list can be large,
       // and the panel does not need this data outside the add flow.
-      memberActionCurrent.addDialogOpen
+      canAddMembers && memberActionCurrent.addDialogOpen
         ? filterWorkspaceUserOptions(
             workspaceUsersById,
             existingMemberUuids,
@@ -479,6 +511,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           )
         : EMPTY_WORKSPACE_USER_OPTIONS,
     [
+      canAddMembers,
       existingMemberUuids,
       memberActionCurrent.addDialogOpen,
       memberActionCurrent.query,
@@ -539,12 +572,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   );
 
   const handleOpenAddMembers = useCallback(() => {
+    if (!isCurrentWorkspaceStreamOwner(info.streamUuid, runtimeContext)) return;
     setMemberActionState({
       ...createWorkspaceMemberActionState(info.streamUuid),
       streamUuid: info.streamUuid,
       addDialogOpen: true,
     });
-  }, [info.streamUuid]);
+  }, [info.streamUuid, runtimeContext]);
 
   const handleAddDialogOpenChange = useCallback((open: boolean) => {
     setMemberActionState((prev) => ({
@@ -571,6 +605,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     if (
       info.streamUuid == null ||
       runtimeContext == null ||
+      !isCurrentWorkspaceStreamOwner(info.streamUuid, runtimeContext) ||
       memberActionCurrent.adding ||
       memberActionCurrent.selectedUserUuids.length === 0
     ) {
@@ -696,7 +731,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
   const addMembersDialog = (
     <WorkspaceAddStreamMembersDialog
-      open={memberActionCurrent.addDialogOpen}
+      open={canAddMembers && memberActionCurrent.addDialogOpen}
       streamName={info.title}
       query={memberActionCurrent.query}
       options={addMemberOptions}
@@ -715,9 +750,26 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   if (renderContent != null)
     return (
       <>
-        {renderContent(
-          info.streamUuid != null && runtimeContext != null ? handleOpenAddMembers : undefined,
-        )}
+        {renderContent({
+          onAddMember: canAddMembers ? handleOpenAddMembers : undefined,
+          onRemoveMember:
+            runtimeContext == null
+              ? undefined
+              : (memberId) => {
+                  const member = info.members.find((item) => item.bindingUuid === memberId);
+                  if (member != null) void handleRemoveMember(member);
+                },
+          removableMemberIds:
+            runtimeContext == null
+              ? []
+              : info.members
+                  .filter((member) => member.canRemove)
+                  .map((member) => member.bindingUuid),
+          removingMemberIds: info.members
+            .filter((member) => memberActionCurrent.removingUserUuids.includes(member.userUuid))
+            .map((member) => member.bindingUuid),
+          removeMemberError: memberActionCurrent.removeError,
+        })}
         {addMembersDialog}
       </>
     );
@@ -808,7 +860,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           {/* Members block: title + person_add only (no leading profile icon). Hit area 32×32. */}
           <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.members")}
-            {info.streamUuid != null && runtimeContext != null && (
+            {canAddMembers && (
               <button
                 type="button"
                 aria-label={t("channel.addMembers")}
@@ -888,7 +940,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
   if (encrypted && streamUuid != null) {
-    const renderEncryptedInfo = (onAddMember?: () => void) => (
+    const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
         screen={chatScreen}
@@ -900,7 +952,11 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
         }
         onScreenChange={onChatScreenChange}
         onClose={onClose}
-        onAddMember={onAddMember}
+        onAddMember={actions?.onAddMember}
+        onRemoveMember={actions?.onRemoveMember}
+        removableMemberIds={actions?.removableMemberIds}
+        removingMemberIds={actions?.removingMemberIds}
+        removeMemberError={actions?.removeMemberError}
         renderAvatar={(person) => (
           <WorkspaceAvatar
             size="sm"

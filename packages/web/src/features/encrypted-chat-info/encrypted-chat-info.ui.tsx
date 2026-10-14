@@ -122,16 +122,16 @@ function KeySummary(props: EncryptedChatInfoProps) {
       ) : (
         <p className="text-sm text-text-muted">{t("e2ee.keyUnavailable")}</p>
       )}
-      <Button
-        fullWidth
-        leadingIcon={<img src={cachedUrl} width={20} height={20} alt="" />}
-        disabled={
-          !canRotateKey || onRotateKey == null || loading === true || actionsPending === true
-        }
-        onClick={onRotateKey}
-      >
-        {t("e2ee.rotateKey")}
-      </Button>
+      {canRotateKey === true ? (
+        <Button
+          fullWidth
+          leadingIcon={<img src={cachedUrl} width={20} height={20} alt="" />}
+          disabled={onRotateKey == null || loading === true || actionsPending === true}
+          onClick={onRotateKey}
+        >
+          {t("e2ee.rotateKey")}
+        </Button>
+      ) : null}
     </section>
   );
 }
@@ -426,22 +426,24 @@ function MemberList(props: EncryptedChatInfoProps) {
     <section className="border-t border-border-subtle pt-5" aria-label={t("channel.members")}>
       <h3 className="mb-3 flex h-8 items-center justify-between px-4 text-base font-medium">
         {t("channel.members")}
-        <Button
-          appearance="ghost"
-          variant="neutral"
-          type="button"
-          aria-label={t("channel.addMembers")}
-          className={`${ICON_BUTTON_CLASS} h-8 w-8 text-text-muted`}
-          disabled={props.onAddMember == null || props.loading}
-          onClick={props.onAddMember}
-        >
-          <Icon name="person_add" size={24} />
-        </Button>
+        {props.onAddMember != null ? (
+          <Button
+            appearance="ghost"
+            variant="neutral"
+            type="button"
+            aria-label={t("channel.addMembers")}
+            className={`${ICON_BUTTON_CLASS} h-8 w-8 text-text-muted`}
+            disabled={props.loading}
+            onClick={props.onAddMember}
+          >
+            <Icon name="person_add" size={24} />
+          </Button>
+        ) : null}
       </h3>
       {props.members.length > 0 ? (
         <ul className="space-y-1">
           {props.members.map((member) => (
-            <li key={member.id}>
+            <li key={member.id} className="group/member">
               <WorkspaceMemberCard
                 name={member.name}
                 roleLabel={member.roleLabel}
@@ -455,6 +457,23 @@ function MemberList(props: EncryptedChatInfoProps) {
                     </Avatar>
                   )
                 }
+                action={
+                  props.onRemoveMember != null && props.removableMemberIds?.includes(member.id) ? (
+                    <button
+                      type="button"
+                      aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
+                      disabled={props.removingMemberIds?.includes(member.id)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        props.onRemoveMember?.(member.id);
+                      }}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted opacity-100 transition-colors hover:bg-bg hover:text-notice-base focus-visible:opacity-100 disabled:opacity-40 sm:opacity-0 sm:group-hover/member:opacity-100"
+                    >
+                      <Icon name="close" size={14} className="text-current" />
+                    </button>
+                  ) : null
+                }
               />
             </li>
           ))}
@@ -462,6 +481,11 @@ function MemberList(props: EncryptedChatInfoProps) {
       ) : (
         <p className="px-4 text-sm text-text-muted">{t("channel.noMembers")}</p>
       )}
+      {props.removeMemberError ? (
+        <p role="alert" className="mt-2 px-4 text-xs text-notice-base">
+          {props.removeMemberError}
+        </p>
+      ) : null}
     </section>
   );
 }

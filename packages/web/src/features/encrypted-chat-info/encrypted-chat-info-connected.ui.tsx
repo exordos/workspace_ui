@@ -206,6 +206,10 @@ export function EncryptedChatInfoConnected({
   selectedLocalKeyUuid,
   onOpenLocalKey,
   onAddMember,
+  onRemoveMember,
+  removableMemberIds,
+  removingMemberIds,
+  removeMemberError,
 }: {
   readonly streamUuid: string;
   readonly screen?: EncryptedChatInfoProps["screen"];
@@ -213,6 +217,10 @@ export function EncryptedChatInfoConnected({
   readonly selectedLocalKeyUuid?: string;
   readonly onOpenLocalKey?: EncryptedChatInfoProps["onOpenLocalKey"];
   readonly onAddMember?: EncryptedChatInfoProps["onAddMember"];
+  readonly onRemoveMember?: EncryptedChatInfoProps["onRemoveMember"];
+  readonly removableMemberIds?: EncryptedChatInfoProps["removableMemberIds"];
+  readonly removingMemberIds?: EncryptedChatInfoProps["removingMemberIds"];
+  readonly removeMemberError?: EncryptedChatInfoProps["removeMemberError"];
   readonly onClose?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
@@ -327,6 +335,10 @@ export function EncryptedChatInfoConnected({
         }}
         members={members}
         onAddMember={onAddMember}
+        onRemoveMember={onRemoveMember}
+        removableMemberIds={removableMemberIds}
+        removingMemberIds={removingMemberIds}
+        removeMemberError={removeMemberError}
         renderAvatar={renderAvatar}
         error={copyError ?? crypto.error}
         onClose={onClose}
