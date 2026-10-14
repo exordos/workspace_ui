@@ -1526,6 +1526,9 @@ describe("real ordinary chat orchestration", () => {
       },
     };
     await session.ingest([adaptMessengerMessage(spoofed)]);
+    expect(
+      await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: unknownUuid }),
+    ).toBeNull();
     vi.mocked(getMessagesPage).mockResolvedValue({
       items: [spoofed],
       nextPageMarker: null,
@@ -1536,6 +1539,55 @@ describe("real ordinary chat orchestration", () => {
     expect(createMessage).toHaveBeenCalledOnce();
     expect(
       await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: unknownUuid }),
+    ).toMatchObject({ groupKey: null });
+    session.dispose();
+  });
+
+  it("does not persist metadata for a batch of untrusted unknown generations", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await session.load();
+    const writes = vi.spyOn(realChatKeyStorage, "writeChatKey");
+    const unknown = Array.from({ length: 24 }, () => crypto.randomUUID());
+    const messages: WorkspaceMessengerMessageDto[] = unknown.map((keyUuid, index) => ({
+      uuid: crypto.randomUUID(),
+      project_id: PROJECT,
+      stream_uuid: STREAM,
+      topic_uuid: TOPIC,
+      user_uuid: MEMBER,
+      author_uuid: MEMBER,
+      read: false,
+      pinned: false,
+      starred: false,
+      is_own: false,
+      reactions: {},
+      reaction_users: {},
+      created_at: DATE,
+      updated_at: DATE,
+      payload:
+        index % 2 === 0
+          ? { kind: "key_announced", key_uuid: keyUuid }
+          : {
+              kind: "key_request",
+              key_uuid: keyUuid,
+              device_id: "other-device",
+              device_name: "Other",
+              public_key: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))),
+            },
+    }));
+    await session.ingest(messages.map(adaptMessengerMessage));
+    expect(writes).not.toHaveBeenCalled();
+    for (const keyUuid of unknown)
+      expect(await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid })).toBeNull();
+    // An explicit historical request may now persist metadata for its selected UUID.
+    const selected = unknown[0]!;
+    await session.requestKey(selected);
+    expect(
+      await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: selected }),
     ).toMatchObject({ groupKey: null });
     session.dispose();
   });
@@ -1622,7 +1674,10 @@ describe("real ordinary chat orchestration", () => {
       },
     };
     await session.ingest([adaptMessengerMessage(request)]);
-    expect(session.getGenerationState(unknownUuid)).toMatchObject({ access: "metadata-only" });
+    expect(
+      await realChatKeyStorage.readChatKey({ ...session.scope, keyUuid: unknownUuid }),
+    ).toBeNull();
+    expect(session.getGenerationState(unknownUuid)).toMatchObject({ access: "missing" });
     await session.rejectKey(request.uuid);
     expect(f.wire.at(-1)?.payload).toMatchObject({
       kind: "key_reject",

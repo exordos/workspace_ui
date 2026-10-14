@@ -306,11 +306,51 @@ describe("useCreateChatDialog", () => {
       inviteOnly: false,
       announce: false,
       encryption: true,
+      creationAttempt: expect.any(Object),
     });
     expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("encrypted-stream", true);
     expect(result.current.channelEncryption).toBe(false);
     expect(result.current.channelName).toBe("");
   });
+  it("keeps one encrypted intent across repeated clicks and dialog close/reopen", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    vi.mocked(runWorkspaceChannelCreate).mockImplementation((options) => {
+      if (options.creationAttempt) options.creationAttempt.dispatched = true;
+      return Promise.reject(new Error("response lost"));
+    });
+    const hookOptions = defaultHookOptions();
+    const { result, rerender } = renderHook(
+      ({ open }) => useCreateChatDialog({ ...hookOptions, open }),
+      { initialProps: { open: true } },
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelDesc("Original description");
+      result.current.toggleChannelUser("alice-user");
+      result.current.setChannelEncryption(true);
+    });
+    act(() => {
+      result.current.createChannel();
+      result.current.createChannel();
+    });
+    await waitFor(() => expect(result.current.creating).toBe(false));
+    expect(runWorkspaceChannelCreate).toHaveBeenCalledOnce();
+    const original = vi.mocked(runWorkspaceChannelCreate).mock.calls[0]?.[0].creationAttempt;
+    rerender({ open: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender({ open: true });
+    await waitFor(() => expect(result.current.channelEncryption).toBe(true));
+    expect(result.current.channelName).toBe("Protected team");
+    expect(result.current.channelDesc).toBe("Original description");
+    expect(result.current.channelSelectedUserKeys.has("alice-user")).toBe(true);
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(runWorkspaceChannelCreate).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(runWorkspaceChannelCreate).mock.calls[1]?.[0].creationAttempt).toBe(original);
+  });
+
   it("keeps failed creation visible and does not navigate or close", async () => {
     seedWorkspaceSession();
     vi.mocked(runWorkspaceChannelCreate).mockRejectedValue(new Error("request failed"));

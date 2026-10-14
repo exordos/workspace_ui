@@ -848,7 +848,8 @@
     "moveTopicToChannel": "Перенести в канал",
     "moveTopicToChannelTitle": "Перенести тему в канал",
     "moveTopicToChannelError": "Не удалось перенести тему в канал",
-    "selectTargetChannel": "Целевой канал"
+    "selectTargetChannel": "Целевой канал",
+    "creationUncertain": "Не удалось подтвердить создание чата. Повторите проверку с исходными параметрами: новая попытка создания может привести к дубликату."
   },
   "dm": {
     "groupChat": "Групповой чат",

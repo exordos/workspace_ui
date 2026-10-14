@@ -842,7 +842,8 @@
     "moveTopicToChannel": "Move to channel",
     "moveTopicToChannelTitle": "Move topic to channel",
     "moveTopicToChannelError": "Could not move topic to channel",
-    "selectTargetChannel": "Target channel"
+    "selectTargetChannel": "Target channel",
+    "creationUncertain": "Chat creation could not be confirmed. Retry with the original settings to check the existing attempt; creating again could produce a duplicate."
   },
   "dm": {
     "groupChat": "Group chat",

@@ -4,6 +4,7 @@ import {
   runWorkspaceChannelCreate,
   runWorkspaceDirectStreamCreate,
 } from "~/entities/messenger/messenger-create-chat-actions.lib";
+import type { EncryptedChannelCreationAttempt } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
@@ -20,6 +21,7 @@ import {
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -223,6 +225,21 @@ export function useCreateChatDialog(options: {
     context: WorkspaceRuntimeRequestContext;
   } | null>(null);
   const nextChannelAttemptId = useRef(0);
+  const encryptedCreationAttempts = useRef(
+    new Map<
+      string,
+      {
+        attempt: EncryptedChannelCreationAttempt;
+        name: string;
+        description: string;
+        selectedUserKeys: Set<string>;
+      }
+    >(),
+  );
+  const channelCreationPending = useRef<{
+    id: number;
+    context: WorkspaceRuntimeRequestContext;
+  } | null>(null);
   const [channelsSearch, setChannelsSearch] = useState("");
   const [channelsSubscriptionFilter, setChannelsSubscriptionFilter] =
     useState<BrowseChannelSubscriptionFilter>("unsubscribed");
@@ -242,6 +259,9 @@ export function useCreateChatDialog(options: {
       }),
     [workspaceCurrentAccountId, workspaceSessions],
   );
+  const channelOwnerKey = workspaceRuntimeContext
+    ? workspaceRuntimeOwnerKey(workspaceRuntimeContext)
+    : null;
   // An old runtime's request does not block creation in the current runtime.
   const creating =
     otherCreating ||
@@ -322,6 +342,24 @@ export function useCreateChatDialog(options: {
     selectedWorkspaceTopicStreamUuid.trim().length === 0 || !workspaceTopicName.trim();
 
   useEffect(() => {
+    const unresolved = channelOwnerKey
+      ? encryptedCreationAttempts.current.get(channelOwnerKey)
+      : undefined;
+    if (unresolved) {
+      let active = true;
+      if (open) {
+        void Promise.resolve().then(() => {
+          if (!active) return;
+          setChannelName(unresolved.name);
+          setChannelDesc(unresolved.description);
+          setChannelSelectedUserKeys(new Set(unresolved.selectedUserKeys));
+          setChannelEncryptionState(true);
+        });
+      }
+      return () => {
+        active = false;
+      };
+    }
     if (open) return;
     void Promise.resolve().then(() => {
       setTabState(visibleTabs[0] ?? "dm");
@@ -341,7 +379,7 @@ export function useCreateChatDialog(options: {
       setWorkspaceTopicStreamUuid("");
       setWorkspaceTopicName("");
     });
-  }, [open, visibleTabs]);
+  }, [channelOwnerKey, open, visibleTabs]);
 
   useEffect(() => {
     if (visibleTabs.includes(tab)) return;
@@ -399,15 +437,52 @@ export function useCreateChatDialog(options: {
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating || workspaceRuntimeContext == null) return;
+    if (
+      !channelName.trim() ||
+      creating ||
+      (channelCreationPending.current &&
+        isWorkspaceRuntimeRequestContextCurrent(
+          channelCreationPending.current.context,
+          () => workspaceRuntimeContext,
+        )) ||
+      workspaceRuntimeContext == null
+    )
+      return;
+    const ownerKey = workspaceRuntimeOwnerKey(workspaceRuntimeContext);
+    let encryptedIntent = encryptedCreationAttempts.current.get(ownerKey);
+    if (!channelEncryption && encryptedIntent) {
+      if (encryptedIntent.attempt.dispatched || encryptedIntent.attempt.pending) {
+        setChannelCreateErrorKey("channel.creationUncertain");
+        return;
+      }
+      encryptedCreationAttempts.current.delete(ownerKey);
+      encryptedIntent = undefined;
+    }
     const memberUserUuids = channelUsers
       .filter((user) => channelSelectedUserKeys.has(user.userKey))
       .map((user) => user.workspaceUserUuid)
       .filter((userUuid): userUuid is string => userUuid != null);
 
     const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
-    if (requestContext == null) return;
+    if (requestContext == null) {
+      return;
+    }
+    if (channelEncryption && !encryptedIntent) {
+      encryptedIntent = {
+        attempt: {},
+        name: channelName,
+        description: channelDesc,
+        selectedUserKeys: new Set(channelSelectedUserKeys),
+      };
+      encryptedCreationAttempts.current.set(ownerKey, encryptedIntent);
+    }
+    if (encryptedIntent && !encryptedIntent.attempt.dispatched) {
+      encryptedIntent.name = channelName;
+      encryptedIntent.description = channelDesc;
+      encryptedIntent.selectedUserKeys = new Set(channelSelectedUserKeys);
+    }
     const attemptId = ++nextChannelAttemptId.current;
+    channelCreationPending.current = { id: attemptId, context: requestContext };
     setChannelCreateErrorKey(null);
     setChannelAttempt({ id: attemptId, context: requestContext });
     void runWorkspaceChannelCreate({
@@ -416,7 +491,7 @@ export function useCreateChatDialog(options: {
       memberUserUuids,
       inviteOnly: channelEncryption ? false : channelInviteOnly,
       announce: channelEncryption ? false : channelAnnounce,
-      ...(channelEncryption ? { encryption: true } : {}),
+      ...(channelEncryption ? { encryption: true, creationAttempt: encryptedIntent?.attempt } : {}),
     })
       .then((result) => {
         if (
@@ -427,6 +502,7 @@ export function useCreateChatDialog(options: {
         )
           return;
         if (result.status !== "applied") return;
+        encryptedCreationAttempts.current.delete(ownerKey);
         setChannelName("");
         setChannelDesc("");
         setChannelSelectedUserKeys(new Set());
@@ -451,6 +527,7 @@ export function useCreateChatDialog(options: {
             ? {
                 "encryption-unavailable": "channel.encryptionUnavailable",
                 "encryption-mismatch": "channel.encryptionMismatch",
+                "creation-uncertain": "channel.creationUncertain",
               }[err.reason]
             : null;
         setChannelCreateErrorKey(encryptionErrorKey ?? "channel.createFailed");
@@ -459,6 +536,7 @@ export function useCreateChatDialog(options: {
         });
       })
       .finally(() => {
+        if (channelCreationPending.current?.id === attemptId) channelCreationPending.current = null;
         setChannelAttempt((pending) => (pending?.id === attemptId ? null : pending));
       });
   }, [

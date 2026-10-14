@@ -9,7 +9,11 @@ import type {
 import { realChatKeyStorage } from "./chat-crypto-resources.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import { createWorkspaceChannel } from "./messenger-create-chat-actions.lib";
-import type { MessengerCreateChatClientDeps } from "./messenger-create-chat-actions.lib";
+import * as messengerRequestOptions from "./messenger-request-options.lib";
+import type {
+  EncryptedChannelCreationAttempt,
+  MessengerCreateChatClientDeps,
+} from "./messenger-create-chat-actions.lib";
 
 const PROJECT = "22222222-2222-4222-8222-222222222222";
 const USER = "44444444-4444-4444-8444-444444444444";
@@ -120,6 +124,258 @@ describe("real creation key bootstrap", () => {
     expect(
       await realChatKeyStorage.listStagedCreations({ owner: current, deviceId: device.deviceId }),
     ).toEqual([]);
+  });
+
+  it("recovers a committed POST with a lost response across stream and topic pages without creating twice", async () => {
+    const current = runtime();
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    let committed: ReturnType<typeof response> | undefined;
+    const create = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >((_options, body) => {
+      committed = response(current, body.current_encryption_key_uuid);
+      return Promise.reject(new Error("response lost"));
+    });
+    const getStreamsPage = vi.fn<NonNullable<MessengerCreateChatClientDeps["getStreamsPage"]>>(
+      (_options, query) =>
+        Promise.resolve({
+          items: committed
+            ? query.pageMarker === "next"
+              ? [{ ...committed.stream, direct_user_uuid: undefined }]
+              : [{ ...committed.stream, uuid: crypto.randomUUID(), owner: crypto.randomUUID() }]
+            : [],
+          nextPageMarker: query.pageMarker === "next" ? null : "next",
+          pageLimit: 1,
+        }),
+    );
+    const getStreamTopicsPage = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["getStreamTopicsPage"]>
+    >((_options, query) =>
+      Promise.resolve({
+        items: committed && query.pageMarker === "topics-next" ? [committed.defaultTopic] : [],
+        nextPageMarker: query.pageMarker === "topics-next" ? null : "topics-next",
+        pageLimit: 1,
+      }),
+    );
+    const addStreamUsers = vi
+      .fn<NonNullable<MessengerCreateChatClientDeps["addStreamUsers"]>>()
+      .mockResolvedValue([]);
+    const options = {
+      runtimeContext: current,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      memberUserUuids: [crypto.randomUUID()],
+      client: {
+        createStreamWithDefaultTopic: create,
+        getStreamsPage,
+        getStreamTopicsPage,
+        addStreamUsers,
+      },
+    };
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("response lost");
+    const initialMetadata = creationAttempt.metadata;
+    const result = await createWorkspaceChannel(options);
+    expect(result.status).toBe("applied");
+    expect(create).toHaveBeenCalledOnce();
+    expect(getStreamsPage).toHaveBeenCalledTimes(2);
+    expect(getStreamTopicsPage).toHaveBeenCalledTimes(2);
+    expect(addStreamUsers).toHaveBeenCalledWith(expect.any(Object), STREAM, {
+      member: options.memberUserUuids,
+    });
+    expect(creationAttempt.metadata).toBe(initialMetadata);
+    const metadata = creationAttempt.metadata;
+    if (!metadata?.deviceId) throw new Error("missing metadata");
+    expect(
+      (
+        await realChatKeyStorage.readChatKey({
+          owner: current,
+          deviceId: metadata.deviceId,
+          streamUuid: STREAM,
+          keyUuid: metadata.keyUuid,
+        })
+      )?.groupKey?.bytes,
+    ).toHaveLength(32);
+  });
+
+  it("never replays an ambiguous POST when no committed stream is visible or the form changes", async () => {
+    const current = runtime();
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const create = vi
+      .fn<NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>>()
+      .mockRejectedValue(new Error("offline"));
+    const getStreamsPage = vi
+      .fn<NonNullable<MessengerCreateChatClientDeps["getStreamsPage"]>>()
+      .mockResolvedValue({ items: [], nextPageMarker: null, pageLimit: 100 });
+    const options = {
+      runtimeContext: current,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      client: { createStreamWithDefaultTopic: create, getStreamsPage },
+    };
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("offline");
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("creation-uncertain");
+    await expect(createWorkspaceChannel({ ...options, name: "Edited" })).rejects.toThrow(
+      "creation-uncertain",
+    );
+    expect(create).toHaveBeenCalledOnce();
+    expect(getStreamsPage).toHaveBeenCalledOnce();
+  });
+
+  it("retries finalization and invitations on the accepted bundle without another POST", async () => {
+    const current = runtime();
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const create = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >((_options, body) => Promise.resolve(response(current, body.current_encryption_key_uuid)));
+    const finalize = vi
+      .spyOn(realChatKeyStorage, "finalizeCreation")
+      .mockRejectedValueOnce(new Error("storage unavailable"));
+    const addStreamUsers = vi
+      .fn<NonNullable<MessengerCreateChatClientDeps["addStreamUsers"]>>()
+      .mockRejectedValueOnce(new Error("invite unavailable"))
+      .mockResolvedValue([]);
+    const options = {
+      runtimeContext: current,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      memberUserUuids: [crypto.randomUUID()],
+      client: { createStreamWithDefaultTopic: create, addStreamUsers },
+    };
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("storage unavailable");
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("invite unavailable");
+    expect((await createWorkspaceChannel(options)).status).toBe("applied");
+    expect(create).toHaveBeenCalledOnce();
+    expect(addStreamUsers).toHaveBeenCalledTimes(2);
+    expect(finalize).toHaveBeenCalledTimes(3);
+  });
+
+  it("recovers a failed default-topic fetch and fences a late recovery page after owner invalidation", async () => {
+    const current = runtime();
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    let committed: ReturnType<typeof response> | undefined;
+    let active = true;
+    const create = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >((_options, body) => {
+      committed = response(current, body.current_encryption_key_uuid);
+      return Promise.reject(new Error("topic GET failed"));
+    });
+    const getStreamsPage = vi.fn<NonNullable<MessengerCreateChatClientDeps["getStreamsPage"]>>(
+      () => {
+        active = false;
+        return Promise.resolve({
+          items: committed ? [committed.stream] : [],
+          nextPageMarker: null,
+          pageLimit: 100,
+        });
+      },
+    );
+    const finalize = vi.spyOn(realChatKeyStorage, "finalizeCreation");
+    const options = {
+      runtimeContext: current,
+      getRuntimeContext: () => (active ? current : null),
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      client: { createStreamWithDefaultTopic: create, getStreamsPage },
+    };
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("topic GET failed");
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("stale-owner");
+    expect(create).toHaveBeenCalledOnce();
+    expect(finalize).not.toHaveBeenCalled();
+    expect(creationAttempt.bundle).toBeUndefined();
+  });
+
+  it("reuses the prepared key after session refresh invalidates creation before POST dispatch", async () => {
+    const current = runtime();
+    let active = current;
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    let finishToken: ((token: string) => void) | undefined;
+    const pendingToken = new Promise<string>((resolve) => {
+      finishToken = resolve;
+    });
+    const getAccessToken = vi
+      .fn()
+      .mockReturnValueOnce(pendingToken)
+      .mockResolvedValue(current.accessToken);
+    const buildOptions = messengerRequestOptions.buildMessengerRequestOptions;
+    vi.spyOn(messengerRequestOptions, "buildMessengerRequestOptions").mockImplementation(
+      (...args) => ({ ...buildOptions(...args), getAccessToken }),
+    );
+    const fetchImpl = vi.fn<typeof fetch>((_request, init) => {
+      const metadata = creationAttempt.metadata;
+      if (!metadata) throw new Error("no prepared metadata");
+      const bundle = response(active, metadata.keyUuid);
+      if (init?.method === "POST") {
+        if (typeof init.body !== "string") throw new Error("expected JSON body");
+        expect(JSON.parse(init.body)).toMatchObject({
+          current_encryption_key_uuid: metadata.keyUuid,
+        });
+        return Promise.resolve(new Response(JSON.stringify(bundle.stream), { status: 201 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify([bundle.defaultTopic]), { status: 200 }));
+    });
+    const options = {
+      runtimeContext: current,
+      getRuntimeContext: () => active,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      clientOptions: { fetchImpl },
+    };
+    const first = createWorkspaceChannel(options);
+    await vi.waitFor(() => expect(getAccessToken).toHaveBeenCalledOnce());
+    const prepared = creationAttempt.metadata;
+    active = { ...current, runtimeGeneration: current.runtimeGeneration + 1 };
+    finishToken?.(current.accessToken);
+    await expect(first).rejects.toThrow("stale-owner");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(creationAttempt.dispatched).toBe(false);
+    expect((await createWorkspaceChannel({ ...options, runtimeContext: active })).status).toBe(
+      "applied",
+    );
+    expect(creationAttempt.metadata).toBe(prepared);
+    expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes one intent and keeps separate intentional creations distinct", async () => {
+    const current = runtime();
+    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    let complete: (() => void) | undefined;
+    const create = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >(async (_options, body) => {
+      await new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      return response(current, body.current_encryption_key_uuid);
+    });
+    const options = {
+      runtimeContext: current,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      client: { createStreamWithDefaultTopic: create },
+    };
+    const first = createWorkspaceChannel(options);
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("creation-uncertain");
+    complete?.();
+    expect((await first).status).toBe("applied");
+    const nextCreate = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >((_options, body) => Promise.resolve(response(current, body.current_encryption_key_uuid)));
+    const secondAttempt: EncryptedChannelCreationAttempt = {};
+    await createWorkspaceChannel({
+      ...options,
+      creationAttempt: secondAttempt,
+      client: { createStreamWithDefaultTopic: nextCreate },
+    });
+    expect(secondAttempt.metadata?.keyUuid).not.toBe(creationAttempt.metadata?.keyUuid);
   });
 
   it("keeps staged secrets recoverable when a creation response has the wrong generation", async () => {

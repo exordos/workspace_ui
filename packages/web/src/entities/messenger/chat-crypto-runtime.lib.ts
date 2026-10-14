@@ -296,7 +296,8 @@ export async function openRealChatSession({
   const generationController = async (keyUuid: string, initializeMetadata = true) => {
     assertCurrent();
     const existing = generationControllers.get(keyUuid);
-    if (existing) return existing;
+    if (existing && (!initializeMetadata || existing.getState().access !== "missing"))
+      return existing;
     const scope = scopeFor(keyUuid);
     const revision = keyRevisions.get(keyUuid) ?? 0;
     const unchanged = () => current() && (keyRevisions.get(keyUuid) ?? 0) === revision;
@@ -309,7 +310,7 @@ export async function openRealChatSession({
       assertCurrent();
       if (!persisted) throw new Error("storage-failed");
     }
-    const controller = createController(scope);
+    const controller = existing ?? createController(scope);
     const loaded = await controller.loadKey();
     assertCurrent();
     if (!loaded.ok) throw new Error(loaded.reason);
@@ -321,7 +322,8 @@ export async function openRealChatSession({
     return controller;
   };
   const ingestKeyMessage = async (message: ChatE2eeMessage) => {
-    const controller = await generationController(message.payload.keyUuid);
+    // Incoming generation UUIDs are untrusted; only explicit local actions create metadata.
+    const controller = await generationController(message.payload.keyUuid, false);
     const address = scopeFor(message.payload.keyUuid);
     const before = await realChatKeyStorage.readChatKey(address);
     assertCurrent();

@@ -22,7 +22,9 @@ export interface ChatInitialKeyBootstrap {
 }
 
 export class MessengerChannelCreationError extends Error {
-  constructor(readonly reason: "encryption-unavailable" | "encryption-mismatch") {
+  constructor(
+    readonly reason: "encryption-unavailable" | "encryption-mismatch" | "creation-uncertain",
+  ) {
     super(reason);
     this.name = "MessengerChannelCreationError";
   }
