@@ -33,7 +33,7 @@ describe("EncryptedChatPreview", () => {
     })) {
       expect(grant).toBeDisabled();
     }
-    expect(panel.getByRole("button", { name: t("e2ee.rotateKey") })).toBeDisabled();
+    expect(panel.queryByRole("button", { name: t("e2ee.rotateKey") })).not.toBeInTheDocument();
     expect(panel.getByRole("button", { name: t("e2ee.grantAll") })).toBeDisabled();
     expect(
       panel.getAllByRole("button", {
