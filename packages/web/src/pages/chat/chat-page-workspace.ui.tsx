@@ -3792,7 +3792,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             disabled={isTopicClosed}
             initialValue=""
             aiMessagesContext={[]}
-            joinedTop
+            joinedTop={composerJoinedTop}
           />
         ) : stream?.encryption === true ? (
           <div className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted">

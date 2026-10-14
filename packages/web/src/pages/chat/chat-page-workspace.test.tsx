@@ -1035,6 +1035,7 @@ describe("ChatPage Workspace route", () => {
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
     const textbox = await screen.findByRole("textbox");
+    expect(screen.getByRole("form", { name: t("a11y.messageComposer") })).toHaveClass("rounded-xl");
     expect(screen.queryByText("Test mode: no real encryption")).not.toBeInTheDocument();
     fireEvent.change(textbox, { target: { value: "Local test message" } });
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
