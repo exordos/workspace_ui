@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -9,6 +9,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { writeText } from "~/shared/lib/clipboard";
+import { toast } from "~/shared/lib/toast/toast";
 import { selectEncryptedChatInfo } from "./encrypted-chat-info-selector.lib";
 
 export function useEncryptedChatInfo(streamUuid: string) {
@@ -53,11 +54,14 @@ export function useEncryptedChatInfo(streamUuid: string) {
       usersById,
     ],
   );
-  const [copyFailure, setCopyFailure] = useState<string | null>(null);
-  const scopeKey =
-    ownerKey == null
-      ? null
-      : `${ownerKey}:${streamUuid}:${runtime?.runtimeGeneration}:${projection?.stream.currentEncryptionKey?.keyUuid}`;
+  const scopeKey = `${ownerKey}:${runtime?.runtimeGeneration}:${streamUuid}:${projection?.stream.currentEncryptionKey?.keyUuid}`;
+  const activeScopeRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activeScopeRef.current = scopeKey;
+    return () => {
+      activeScopeRef.current = null;
+    };
+  }, [scopeKey]);
   const onCopyKey = useCallback(() => {
     const current = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     const catalog = useMessengerStore.getState();
@@ -80,6 +84,7 @@ export function useEncryptedChatInfo(streamUuid: string) {
     void writeText(stream.currentEncryptionKey.keyUuid).then((copied) => {
       const latest = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (
+        activeScopeRef.current !== scopeKey ||
         latest == null ||
         workspaceRuntimeOwnerKey(latest) !== ownerKey ||
         latest.runtimeGeneration !== current.runtimeGeneration ||
@@ -88,12 +93,11 @@ export function useEncryptedChatInfo(streamUuid: string) {
           keyUuid
       )
         return;
-      setCopyFailure(copied ? null : scopeKey);
+      if (!copied) toast.error(t("e2ee.copyFailed"));
     });
   }, [ownerKey, runtime?.runtimeGeneration, scopeKey, streamUuid]);
   return {
     projection,
     onCopyKey,
-    copyError: copyFailure != null && copyFailure === scopeKey ? t("e2ee.copyFailed") : null,
   };
 }

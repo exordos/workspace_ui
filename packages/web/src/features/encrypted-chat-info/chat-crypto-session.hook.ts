@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
@@ -11,6 +11,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { toast } from "~/shared/lib/toast/toast";
 
 const emptyMessages: Record<string, MessengerMessage> = {};
 
@@ -53,6 +54,29 @@ export function useChatCryptoSession(streamUuid: string | null) {
   }, [runtime]);
   const [view, setView] = useState<SessionView | null>(null);
   const current = view?.scopeKey === scopeKey ? view : null;
+  const activeSessionRef = useRef<RealChatSession | null>(null);
+  useLayoutEffect(() => {
+    activeSessionRef.current = current?.session ?? null;
+    return () => {
+      activeSessionRef.current = null;
+    };
+  }, [current?.session, scopeKey]);
+  const isActionCurrent = useCallback(
+    (active: RealChatSession) => {
+      const latest = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      const catalog = useMessengerStore.getState();
+      return (
+        activeSessionRef.current === active &&
+        latest !== null &&
+        workspaceRuntimeOwnerKey(latest) === ownerKey &&
+        latest.runtimeGeneration === runtime?.runtimeGeneration &&
+        catalog.ownerKey === ownerKey &&
+        streamUuid !== null &&
+        catalog.streamsById[streamUuid]?.encryption === true
+      );
+    },
+    [ownerKey, runtime?.runtimeGeneration, streamUuid],
+  );
   const messagesById = useWorkspaceMessageStore((state) =>
     enabled && state.ownerKey === ownerKey ? state.messagesById : emptyMessages,
   );
@@ -150,49 +174,60 @@ export function useChatCryptoSession(streamUuid: string | null) {
     [scopeKey],
   );
   const perform = useCallback(
-    async (operation: (session: RealChatSession) => Promise<unknown>) => {
+    async (
+      operation: (session: RealChatSession) => Promise<unknown>,
+      failureMessage: string,
+      showToast = false,
+    ) => {
       const active = current?.session;
       if (active == null) return false;
       clearActionError(active);
       try {
         await operation(active);
-        return true;
+        return isActionCurrent(active);
       } catch (error) {
+        if (!isActionCurrent(active)) return false;
+        const errorMessage =
+          error instanceof Error && error.message === "historical-key-unavailable"
+            ? t("e2ee.historicalKeyUnavailable")
+            : failureMessage;
         setView((previous) =>
           previous?.scopeKey === scopeKey && previous.session === active
             ? {
                 ...previous,
                 error: true,
-                errorMessage:
-                  error instanceof Error && error.message === "historical-key-unavailable"
-                    ? t("e2ee.historicalKeyUnavailable")
-                    : undefined,
+                errorMessage,
               }
             : previous,
         );
+        if (showToast) toast.error(errorMessage);
         return false;
       }
     },
-    [current?.session, scopeKey, clearActionError],
+    [current?.session, scopeKey, clearActionError, isActionCurrent],
   );
   const requestKey = useCallback(
     (keyUuid?: string, recoveryMessage?: MessengerMessage) =>
-      perform(async (active) => {
-        const catalog = useWorkspaceMessageStore.getState();
-        const probe =
-          !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
-            ? Object.values(catalog.messagesById).find(
-                (message) =>
-                  message.streamUuid === streamUuid &&
-                  message.projectId === runtime?.projectId &&
-                  message.payload.kind === "e2ee" &&
-                  message.payload.keyUuid === keyUuid,
-              )
-            : undefined;
-        if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
-        else if (probe) await active.requestKey(keyUuid, probe, true);
-        else await active.requestKey(keyUuid);
-      }),
+      perform(
+        async (active) => {
+          const catalog = useWorkspaceMessageStore.getState();
+          const probe =
+            !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
+              ? Object.values(catalog.messagesById).find(
+                  (message) =>
+                    message.streamUuid === streamUuid &&
+                    message.projectId === runtime?.projectId &&
+                    message.payload.kind === "e2ee" &&
+                    message.payload.keyUuid === keyUuid,
+                )
+              : undefined;
+          if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
+          else if (probe) await active.requestKey(keyUuid, probe, true);
+          else await active.requestKey(keyUuid);
+        },
+        t("e2ee.requestKeyFailed"),
+        true,
+      ),
     [perform, ownerKey, streamUuid, runtime?.projectId],
   );
   const requestOutcomes = useCallback(
@@ -226,9 +261,12 @@ export function useChatCryptoSession(streamUuid: string | null) {
       } catch {
         status = "failed";
       }
+      if (!isActionCurrent(active)) return;
+      if (status === "failed")
+        toast.error(t(action === "grantKey" ? "e2ee.grantKeyFailed" : "e2ee.rejectKeyFailed"));
       requestOutcomes(active, [{ requestMessageUuid: requestUuid, status }]);
     },
-    [current?.session, requestOutcomes],
+    [current?.session, requestOutcomes, isActionCurrent],
   );
   const grantKey = useCallback(
     (requestUuid: string) => respondToRequest(requestUuid, "grantKey"),
@@ -239,17 +277,28 @@ export function useChatCryptoSession(streamUuid: string | null) {
     [respondToRequest],
   );
   const removeLocalKey = useCallback(
-    (keyUuid: string) => perform((active) => active.removeLocalKey(keyUuid)),
+    (keyUuid: string) =>
+      perform((active) => active.removeLocalKey(keyUuid), t("e2ee.deleteLocalKeyFailed")),
     [perform],
   );
-  const reissueKey = useCallback(() => perform((active) => active.reissueKey()), [perform]);
+  const reissueKey = useCallback(
+    () => perform((active) => active.reissueKey(), t("e2ee.rotateKeyFailed")),
+    [perform],
+  );
   const grantAllKeys = useCallback(
     () =>
-      perform(async (active) => {
-        const results = await active.grantAllKeys();
-        requestOutcomes(active, results);
-      }),
-    [perform, requestOutcomes],
+      perform(
+        async (active) => {
+          const results = await active.grantAllKeys();
+          if (!isActionCurrent(active)) return;
+          requestOutcomes(active, results);
+          const count = results.filter((result) => result.status === "failed").length;
+          if (count > 0) toast.error(t("e2ee.grantAllFailed", { count }));
+        },
+        t("e2ee.grantAllKeysFailed"),
+        true,
+      ),
+    [perform, requestOutcomes, isActionCurrent],
   );
   return {
     session: current?.session ?? null,

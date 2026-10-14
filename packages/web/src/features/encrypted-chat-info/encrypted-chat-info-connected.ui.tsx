@@ -112,6 +112,7 @@ function useLocalKeyActions(
     session: typeof crypto.session;
     streamUuid: string;
     keyUuid: string;
+    failed?: boolean;
   } | null>(null);
   const [requested, setRequested] = useState<{
     session: typeof crypto.session;
@@ -162,7 +163,12 @@ function useLocalKeyActions(
               const submitted = deleteConfirmation;
               if (submitted == null || !deleteConfirmationOpen) return;
               void crypto.removeLocalKey(submitted.keyUuid).then((success) => {
-                if (!success) return;
+                if (!success) {
+                  setDeleteConfirmation((latest) =>
+                    latest === submitted ? { ...latest, failed: true } : latest,
+                  );
+                  return;
+                }
                 setDeleteConfirmation((latest) => (latest === submitted ? null : latest));
                 // A completion from an old session must not navigate the active drawer.
                 if (
@@ -175,9 +181,9 @@ function useLocalKeyActions(
           />
         }
       >
-        {crypto.error ? (
+        {deleteConfirmationOpen && deleteConfirmation?.failed ? (
           <p role="alert" className="text-sm text-danger">
-            {crypto.error}
+            {crypto.error ?? t("e2ee.deleteLocalKeyFailed")}
           </p>
         ) : null}
       </AppDialog>
@@ -224,12 +230,13 @@ export function EncryptedChatInfoConnected({
   readonly onClose?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
-  const { projection, onCopyKey, copyError } = useEncryptedChatInfo(streamUuid);
+  const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid);
   const crypto = useChatCryptoSession(streamUuid);
   // Scope transient presentation to the exact session so navigation cannot carry a confirmation.
   const [confirmation, setConfirmation] = useState<{
     session: typeof crypto.session;
     keyUuid: string;
+    failed?: boolean;
   } | null>(null);
   const { inventory: currentInventory, retry: retryInventory } = useLocalKeyInventory(
     crypto.session,
@@ -271,7 +278,6 @@ export function EncryptedChatInfoConnected({
         pending: crypto.state.pending,
         canGrant: crypto.session?.canGrantKey(request.requestMessageUuid) === true,
         canReject: crypto.session?.canRejectKey(request.requestMessageUuid) === true,
-        error: crypto.requestErrors[request.requestMessageUuid],
       }));
   };
   const requests = requestsFor("pending");
@@ -340,7 +346,6 @@ export function EncryptedChatInfoConnected({
         removingMemberIds={removingMemberIds}
         removeMemberError={removeMemberError}
         renderAvatar={renderAvatar}
-        error={copyError ?? crypto.error}
         onClose={onClose}
         onCopyKey={currentKey == null ? undefined : onCopyKey}
       />
@@ -359,8 +364,12 @@ export function EncryptedChatInfoConnected({
             onCancel={() => setConfirmation(null)}
             onSubmit={() => {
               const submitted = confirmation;
+              if (submitted == null || !confirmationOpen) return;
               void crypto.reissueKey().then((success) => {
-                if (success) setConfirmation((latest) => (latest === submitted ? null : latest));
+                setConfirmation((latest) => {
+                  if (latest !== submitted) return latest;
+                  return success ? null : { ...latest, failed: true };
+                });
               });
             }}
             submitDisabled={crypto.session?.getRights().canRotate !== true}
@@ -368,9 +377,9 @@ export function EncryptedChatInfoConnected({
           />
         }
       >
-        {crypto.error ? (
+        {confirmation?.failed ? (
           <p role="alert" className="text-sm text-danger">
-            {crypto.error}
+            {crypto.error ?? t("e2ee.rotateKeyFailed")}
           </p>
         ) : null}
       </AppDialog>

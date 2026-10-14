@@ -534,7 +534,6 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
     onlineCount,
     screen = "info",
     loading,
-    error,
     unavailableReason,
     showKeyManagement = true,
   } = props;
@@ -552,11 +551,6 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
           >
             <Spinner size="sm" />
             {t("e2ee.loading")}
-          </p>
-        ) : null}
-        {error ? (
-          <p role="alert" className="px-4 text-sm text-danger">
-            {error}
           </p>
         ) : null}
         {unavailableReason ? (

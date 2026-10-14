@@ -2,14 +2,20 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
+import type { ChatE2eeControllerState } from "~/entities/messenger/chat-e2ee-controller.types";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { writeText } from "~/shared/lib/clipboard";
+import { toast } from "~/shared/lib/toast/toast";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
+import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";
 
 const open = vi.hoisted(() => vi.fn());
 vi.mock("~/entities/messenger/chat-crypto-runtime.lib", () => ({ openRealChatSession: open }));
+vi.mock("~/shared/lib/toast/toast", () => ({ toast: { error: vi.fn() } }));
+vi.mock("~/shared/lib/clipboard", () => ({ writeText: vi.fn().mockResolvedValue(true) }));
 const streamUuid = "11111111-1111-4111-8111-111111111111";
 function seed() {
   useWorkspaceAuthStore.getState().setSession({
@@ -88,7 +94,13 @@ function session() {
       };
     }),
     dispose: vi.fn(),
-    getState: () => ({ access: "ready", pending, requestStatus: "idle", error: null, sendKeyUuid }),
+    getState: (): ChatE2eeControllerState & { sendKeyUuid: string } => ({
+      access: "ready",
+      pending,
+      requestStatus: "idle",
+      error: null,
+      sendKeyUuid,
+    }),
     requestKey: vi.fn().mockResolvedValue(undefined),
     reissueKey: vi.fn().mockResolvedValue(undefined),
     grantAllKeys: vi.fn().mockResolvedValue([]),
@@ -102,8 +114,98 @@ afterEach(() => {
   useMessengerStore.getState().clear();
   useWorkspaceMessageStore.getState().clear();
   open.mockReset();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(writeText).mockReset().mockResolvedValue(true);
 });
 describe("real chat session ownership", () => {
+  it.each([
+    ["requestKey", "Could not send the key request. Please try again."],
+    ["grantKey", "Could not send the key to the participant. Please try again."],
+    ["rejectKey", "Could not reject the key request. Please try again."],
+  ] as const)(
+    "toasts a specific failure only for the invoked %s action",
+    async (action, message) => {
+      seed();
+      const active = session();
+      active[action].mockRejectedValue(new Error("opaque server failure"));
+      open.mockResolvedValue(active);
+      const page = renderHook(() => useChatCryptoSession(streamUuid));
+      const panel = renderHook(() => useChatCryptoSession(streamUuid));
+      await waitFor(() => expect(page.result.current.session).toBe(active));
+      await waitFor(() => expect(panel.result.current.session).toBe(active));
+      await act(async () => {
+        await page.result.current[action]("key-or-request");
+      });
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+      act(() => active.emit());
+      expect(toast.error).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["reissueKey", "removeLocalKey"] as const)(
+    "keeps a failed %s operation in its dialog without a toast",
+    async (action) => {
+      seed();
+      const active = session();
+      active[action].mockRejectedValue(new Error("operation failed"));
+      open.mockResolvedValue(active);
+      const view = renderHook(() => useChatCryptoSession(streamUuid));
+      await waitFor(() => expect(view.result.current.session).toBe(active));
+      await act(async () => {
+        if (action === "removeLocalKey") await view.result.current.removeLocalKey("key");
+        else await view.result.current.reissueKey();
+      });
+      expect(view.result.current.error).toBe(
+        action === "removeLocalKey"
+          ? "Could not delete the key from this device. Please try again."
+          : "Could not reissue the encryption key. Please try again.",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it("toasts a failed whole batch once and stays quiet after a successful retry", async () => {
+    seed();
+    const active = session();
+    active.grantAllKeys
+      .mockRejectedValueOnce(new Error("opaque failure"))
+      .mockResolvedValueOnce([]);
+    open.mockResolvedValue(active);
+    const view = renderHook(() => useChatCryptoSession(streamUuid));
+    await waitFor(() => expect(view.result.current.session).toBe(active));
+    await act(async () => {
+      expect(await view.result.current.grantAllKeys()).toBe(false);
+    });
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+      "Could not send the key to participants. Please try again.",
+    );
+    await act(async () => {
+      expect(await view.result.current.grantAllKeys()).toBe(true);
+    });
+    expect(toast.error).toHaveBeenCalledOnce();
+  });
+
+  it.each(["opening", "ingestion", "state"])(
+    "does not turn a background %s error into a toast",
+    async (source) => {
+      seed();
+      const active = session();
+      if (source === "opening") open.mockRejectedValue(new Error("unavailable"));
+      else open.mockResolvedValue(active);
+      if (source === "ingestion") active.ingest.mockRejectedValue(new Error("background error"));
+      const view = renderHook(() => useChatCryptoSession(streamUuid));
+      if (source === "state") {
+        await waitFor(() => expect(view.result.current.session).toBe(active));
+        vi.spyOn(active, "getState").mockReturnValue({
+          ...active.getState(),
+          error: "storage-failed",
+        });
+        act(() => active.emit());
+      }
+      await waitFor(() => expect(view.result.current.error).not.toBeNull());
+      expect(toast.error).not.toHaveBeenCalled();
+    },
+  );
   it("reports local deletion success and a failed repeated request", async () => {
     seed();
     const active = session();
@@ -138,6 +240,9 @@ describe("real chat session ownership", () => {
     });
     expect(active.requestKey).toHaveBeenCalledWith("historical-key");
     expect(view.result.current.error).toBe(
+      "Key information for this message is unavailable. Load the chat history and try again.",
+    );
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
       "Key information for this message is unavailable. Load the chat history and try again.",
     );
   });
@@ -199,6 +304,7 @@ describe("real chat session ownership", () => {
       await request;
     });
     expect(second.result.current.error).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
   });
   it("keeps the shared session and receives state without ingesting again on generation changes", async () => {
     seed();
@@ -295,12 +401,16 @@ describe("real chat session ownership", () => {
       await view.result.current.grantAllKeys();
     });
     expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed"]);
-    expect(view.result.current.error).toContain("1 requests");
+    expect(view.result.current.error).toContain("Requests to retry: 1");
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+      "Could not send the key. Requests to retry: 1.",
+    );
     await act(async () => {
       await view.result.current.grantKey("failed");
     });
     expect(view.result.current.requestErrors).toEqual({});
     expect(view.result.current.error).toBeNull();
+    expect(toast.error).toHaveBeenCalledOnce();
   });
   it("discards a late batch failure after switching runtime owners", async () => {
     seed();
@@ -328,6 +438,7 @@ describe("real chat session ownership", () => {
     });
     expect(view.result.current.requestErrors).toEqual({});
     expect(view.result.current.error).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
   });
   it("preserves failed rows across domain emissions, unrelated actions, and a later partial batch", async () => {
     seed();
@@ -355,12 +466,45 @@ describe("real chat session ownership", () => {
       await view.result.current.grantKey("unrelated");
     });
     expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-a", "failed-b"]);
-    expect(view.result.current.error).toContain("2 requests");
+    expect(view.result.current.error).toContain("Requests to retry: 2");
     await act(async () => {
       await view.result.current.grantAllKeys();
     });
     expect(Object.keys(view.result.current.requestErrors)).toEqual(["failed-b"]);
-    expect(view.result.current.error).toContain("1 requests");
+    expect(view.result.current.error).toContain("Requests to retry: 1");
+  });
+});
+
+describe("key ID clipboard feedback", () => {
+  it.each([true, false])("toasts only a failed copy (success=%s)", async (copied) => {
+    seed();
+    vi.mocked(writeText).mockResolvedValue(copied);
+    const view = renderHook(() => useEncryptedChatInfo(streamUuid));
+    await act(async () => {
+      view.result.current.onCopyKey();
+      await Promise.resolve();
+    });
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("key");
+    if (copied) expect(toast.error).not.toHaveBeenCalled();
+    else expect(toast.error).toHaveBeenCalledExactlyOnceWith("Could not copy the key ID.");
+  });
+
+  it("ignores a late clipboard failure after closing the panel", async () => {
+    seed();
+    let finish: ((copied: boolean) => void) | undefined;
+    vi.mocked(writeText).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const view = renderHook(() => useEncryptedChatInfo(streamUuid));
+    act(() => view.result.current.onCopyKey());
+    view.unmount();
+    await act(async () => {
+      finish?.(false);
+      await Promise.resolve();
+    });
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 

@@ -134,6 +134,15 @@ describe("encrypted chat sidebar actions", () => {
     },
   );
 
+  it("does not display a generic crypto failure above the channel information", () => {
+    const { crypto } = fixture();
+    mocks.crypto.mockReturnValue({ ...crypto, error: "Unrelated crypto failure" });
+    render(<EncryptedChatInfoConnected streamUuid="stream" />);
+    expect(screen.getByText("Protected")).toBeInTheDocument();
+    expect(screen.queryByText("Unrelated crypto failure")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("connects the add-member button to the owning panel action", () => {
     fixture();
     const onAddMember = vi.fn();
@@ -207,7 +216,8 @@ describe("encrypted chat sidebar actions", () => {
   });
 
   it("disables only the pending removal and keeps its error in the member section", () => {
-    const { info } = fixture();
+    const { crypto, info } = fixture();
+    mocks.crypto.mockReturnValue({ ...crypto, error: "Unrelated crypto failure" });
     mocks.info.mockReturnValue({
       ...info,
       projection: {
@@ -237,6 +247,7 @@ describe("encrypted chat sidebar actions", () => {
     expect(screen.getByRole("button", { name: "Remove from channel: Ready member" })).toBeEnabled();
     const memberSection = screen.getByRole("region", { name: "Members" });
     expect(within(memberSection).getByRole("alert")).toHaveTextContent("Member removal failed");
+    expect(screen.queryByText("Unrelated crypto failure")).toBeNull();
   });
 
   it("uses generation-specific grant capability and removes terminal outcomes from incoming requests", () => {
@@ -295,6 +306,7 @@ describe("encrypted chat sidebar actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reissue key" }));
     expect(crypto.reissueKey).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(within(dialog).getByText(/Previous keys remain available/)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Reissue key" }));
@@ -302,6 +314,9 @@ describe("encrypted chat sidebar actions", () => {
     });
     expect(crypto.reissueKey).toHaveBeenCalledOnce();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
+      "Could not reissue the encryption key. Please try again.",
+    );
     crypto.reissueKey.mockResolvedValue(true);
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Reissue key" }));
@@ -586,6 +601,9 @@ describe("local encrypted chat keys", () => {
       await Promise.resolve();
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
+      "Could not delete the key from this device. Please try again.",
+    );
     expect(navigate).not.toHaveBeenCalled();
   });
 });
