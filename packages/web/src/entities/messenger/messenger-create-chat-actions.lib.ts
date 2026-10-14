@@ -104,14 +104,25 @@ export type MessengerCreateStreamResult =
     }
   | MessengerCreateChatSkippedResult;
 
+interface PreparedEncryptedChannelCreation {
+  inputIdentity: string;
+  metadata: ChatInitialKeyMetadata;
+}
+
+type EncryptedChannelCreationState =
+  | { phase: "idle" }
+  | (PreparedEncryptedChannelCreation & { phase: "prepared" | "dispatched" })
+  | (PreparedEncryptedChannelCreation & {
+      phase: "resolved";
+      bundle: WorkspaceMessengerCreateStreamWithDefaultTopicResult;
+    });
+
 /** Keep this object for retries of one user intent, including an ambiguous POST response. */
 export interface EncryptedChannelCreationAttempt {
-  ownerKey?: string;
-  inputIdentity?: string;
-  metadata?: ChatInitialKeyMetadata;
-  dispatched?: boolean;
-  bundle?: WorkspaceMessengerCreateStreamWithDefaultTopicResult;
-  pending?: boolean;
+  // Owner binding survives local preparation failures; pending only serializes this intent.
+  ownerKey: string | null;
+  state: EncryptedChannelCreationState;
+  pending: boolean;
 }
 
 export interface CreateWorkspaceChannelOptions extends MessengerCreateChatBaseOptions {
@@ -239,7 +250,11 @@ export async function createWorkspaceChannel(
   options: CreateWorkspaceChannelOptions,
 ): Promise<MessengerCreateStreamResult> {
   if (!options.encryption) return createWorkspaceChannelAttempt(options);
-  const creationAttempt = options.creationAttempt ?? {};
+  const creationAttempt: EncryptedChannelCreationAttempt = options.creationAttempt ?? {
+    ownerKey: null,
+    state: { phase: "idle" },
+    pending: false,
+  };
   if (creationAttempt.pending) throw new MessengerChannelCreationError("creation-uncertain");
   creationAttempt.pending = true;
   try {
@@ -329,23 +344,28 @@ async function createWorkspaceChannelAttempt({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  const inputIdentity = JSON.stringify([
+    name,
+    description,
+    uniqueMemberUserUuids(memberUserUuids).sort(),
+  ]);
   if (encryption && creationAttempt) {
-    const inputIdentity = JSON.stringify([
-      name,
-      description,
-      uniqueMemberUserUuids(memberUserUuids).sort(),
-    ]);
     if (
-      (creationAttempt.ownerKey && creationAttempt.ownerKey !== action.ownerKey) ||
-      (creationAttempt.dispatched &&
-        creationAttempt.inputIdentity &&
-        creationAttempt.inputIdentity !== inputIdentity)
+      (creationAttempt.ownerKey !== null && creationAttempt.ownerKey !== action.ownerKey) ||
+      ((creationAttempt.state.phase === "dispatched" ||
+        creationAttempt.state.phase === "resolved") &&
+        creationAttempt.state.inputIdentity !== inputIdentity)
     )
       throw new MessengerChannelCreationError("creation-uncertain");
     creationAttempt.ownerKey = action.ownerKey;
-    creationAttempt.inputIdentity = inputIdentity;
+    if (creationAttempt.state.phase === "prepared") {
+      creationAttempt.state = { ...creationAttempt.state, inputIdentity };
+    }
   }
-  let initialKey: ChatInitialKeyMetadata | null = creationAttempt?.metadata ?? null;
+  let initialKey: ChatInitialKeyMetadata | null =
+    creationAttempt && creationAttempt.state.phase !== "idle"
+      ? creationAttempt.state.metadata
+      : null;
   if (encryption) {
     try {
       initialKey ??= await encryptionBootstrap.prepare({
@@ -360,7 +380,13 @@ async function createWorkspaceChannelAttempt({
     }
     if (action.isStale())
       return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-    if (creationAttempt && initialKey) creationAttempt.metadata = initialKey;
+    if (creationAttempt?.state.phase === "idle") {
+      creationAttempt.state = {
+        phase: "prepared",
+        metadata: initialKey,
+        inputIdentity,
+      };
+    }
   }
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   if (encryption) {
@@ -373,26 +399,31 @@ async function createWorkspaceChannelAttempt({
         request instanceof Request ? request.url : String(request),
         runtimeContext.organizationOrigin,
       );
-      if (creationAttempt && method.toUpperCase() === "POST" && url.pathname.endsWith("/streams/"))
-        creationAttempt.dispatched = true;
+      if (
+        creationAttempt?.state.phase === "prepared" &&
+        method.toUpperCase() === "POST" &&
+        url.pathname.endsWith("/streams/")
+      )
+        creationAttempt.state = { ...creationAttempt.state, phase: "dispatched" };
       return fetchImpl(request, init);
     };
   }
   const encryptionKeyUuid = initialEncryptionKeyUuid(initialKey);
-  let bundle = creationAttempt?.bundle;
-  if (!bundle && creationAttempt?.dispatched && initialKey) {
+  let bundle =
+    creationAttempt?.state.phase === "resolved" ? creationAttempt.state.bundle : undefined;
+  if (creationAttempt?.state.phase === "dispatched") {
     bundle = await recoverEncryptedChannel(
       requestOptions,
       client,
-      initialKey,
+      creationAttempt.state.metadata,
       runtimeContext,
       () => !action.isStale(),
     );
   }
   if (!bundle) {
-    if (creationAttempt) {
-      // Opaque clients cannot expose the transport boundary; assume dispatch when invoking them.
-      creationAttempt.dispatched = client.createStreamWithDefaultTopic !== undefined;
+    // Opaque clients cannot expose the transport boundary; assume dispatch when invoking them.
+    if (creationAttempt?.state.phase === "prepared" && client.createStreamWithDefaultTopic) {
+      creationAttempt.state = { ...creationAttempt.state, phase: "dispatched" };
     }
     bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
       requestOptions,
@@ -416,7 +447,9 @@ async function createWorkspaceChannelAttempt({
       bundle.stream.current_encryption_key_uuid !== encryptionKeyUuid)
   )
     throw new MessengerChannelCreationError("encryption-mismatch");
-  if (creationAttempt) creationAttempt.bundle = bundle;
+  if (creationAttempt && creationAttempt.state.phase !== "idle") {
+    creationAttempt.state = { ...creationAttempt.state, phase: "resolved", bundle };
+  }
 
   if (initialKey !== null && encryptionBootstrap.finalize) {
     await encryptionBootstrap.finalize({

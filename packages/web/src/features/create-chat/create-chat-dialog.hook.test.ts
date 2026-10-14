@@ -316,7 +316,13 @@ describe("useCreateChatDialog", () => {
     seedWorkspaceSession();
     seedUsers();
     vi.mocked(runWorkspaceChannelCreate).mockImplementation((options) => {
-      if (options.creationAttempt) options.creationAttempt.dispatched = true;
+      if (options.creationAttempt) {
+        options.creationAttempt.state = {
+          phase: "dispatched",
+          metadata: { keyUuid: "key" },
+          inputIdentity: "original",
+        };
+      }
       return Promise.reject(new Error("response lost"));
     });
     const hookOptions = defaultHookOptions();
@@ -349,6 +355,20 @@ describe("useCreateChatDialog", () => {
     act(() => result.current.createChannel());
     await waitFor(() => expect(runWorkspaceChannelCreate).toHaveBeenCalledTimes(2));
     expect(vi.mocked(runWorkspaceChannelCreate).mock.calls[1]?.[0].creationAttempt).toBe(original);
+  });
+
+  it("ignores a saved create callback after its runtime is replaced before rerender", () => {
+    seedWorkspaceSession();
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+    act(() => result.current.setChannelName("Protected team"));
+    const staleCreate = result.current.createChannel;
+    act(() => {
+      useWorkspaceAuthStore.getState().clear();
+      seedWorkspaceSession();
+      staleCreate();
+    });
+    expect(runWorkspaceChannelCreate).not.toHaveBeenCalled();
+    expect(result.current.creating).toBe(false);
   });
 
   it("keeps failed creation visible and does not navigate or close", async () => {

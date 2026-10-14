@@ -220,11 +220,11 @@ export function useCreateChatDialog(options: {
     }
   }, []);
   const [otherCreating, setCreating] = useState(false);
-  const [channelAttempt, setChannelAttempt] = useState<{
-    id: number;
-    context: WorkspaceRuntimeRequestContext;
-  } | null>(null);
-  const nextChannelAttemptId = useRef(0);
+  // One context object identifies the operation; state is its render snapshot.
+  const channelCreationRef = useRef<WorkspaceRuntimeRequestContext | null>(null);
+  const [channelCreation, setChannelCreation] = useState<WorkspaceRuntimeRequestContext | null>(
+    null,
+  );
   const encryptedCreationAttempts = useRef(
     new Map<
       string,
@@ -236,10 +236,6 @@ export function useCreateChatDialog(options: {
       }
     >(),
   );
-  const channelCreationPending = useRef<{
-    id: number;
-    context: WorkspaceRuntimeRequestContext;
-  } | null>(null);
   const [channelsSearch, setChannelsSearch] = useState("");
   const [channelsSubscriptionFilter, setChannelsSubscriptionFilter] =
     useState<BrowseChannelSubscriptionFilter>("unsubscribed");
@@ -265,11 +261,8 @@ export function useCreateChatDialog(options: {
   // An old runtime's request does not block creation in the current runtime.
   const creating =
     otherCreating ||
-    (channelAttempt != null &&
-      isWorkspaceRuntimeRequestContextCurrent(
-        channelAttempt.context,
-        () => workspaceRuntimeContext,
-      ));
+    (channelCreation != null &&
+      isWorkspaceRuntimeRequestContextCurrent(channelCreation, () => workspaceRuntimeContext));
   const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
   const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
   const workspaceStreams = useMemo(
@@ -440,18 +433,29 @@ export function useCreateChatDialog(options: {
     if (
       !channelName.trim() ||
       creating ||
-      (channelCreationPending.current &&
-        isWorkspaceRuntimeRequestContextCurrent(
-          channelCreationPending.current.context,
-          () => workspaceRuntimeContext,
+      (channelCreationRef.current &&
+        isWorkspaceRuntimeRequestContextCurrent(channelCreationRef.current, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
         )) ||
       workspaceRuntimeContext == null
+    )
+      return;
+    const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
+    if (
+      requestContext == null ||
+      !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      )
     )
       return;
     const ownerKey = workspaceRuntimeOwnerKey(workspaceRuntimeContext);
     let encryptedIntent = encryptedCreationAttempts.current.get(ownerKey);
     if (!channelEncryption && encryptedIntent) {
-      if (encryptedIntent.attempt.dispatched || encryptedIntent.attempt.pending) {
+      if (
+        encryptedIntent.attempt.state.phase === "dispatched" ||
+        encryptedIntent.attempt.state.phase === "resolved" ||
+        encryptedIntent.attempt.pending
+      ) {
         setChannelCreateErrorKey("channel.creationUncertain");
         return;
       }
@@ -463,28 +467,27 @@ export function useCreateChatDialog(options: {
       .map((user) => user.workspaceUserUuid)
       .filter((userUuid): userUuid is string => userUuid != null);
 
-    const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
-    if (requestContext == null) {
-      return;
-    }
     if (channelEncryption && !encryptedIntent) {
       encryptedIntent = {
-        attempt: {},
+        attempt: { ownerKey: null, state: { phase: "idle" }, pending: false },
         name: channelName,
         description: channelDesc,
         selectedUserKeys: new Set(channelSelectedUserKeys),
       };
       encryptedCreationAttempts.current.set(ownerKey, encryptedIntent);
     }
-    if (encryptedIntent && !encryptedIntent.attempt.dispatched) {
+    if (
+      encryptedIntent &&
+      (encryptedIntent.attempt.state.phase === "idle" ||
+        encryptedIntent.attempt.state.phase === "prepared")
+    ) {
       encryptedIntent.name = channelName;
       encryptedIntent.description = channelDesc;
       encryptedIntent.selectedUserKeys = new Set(channelSelectedUserKeys);
     }
-    const attemptId = ++nextChannelAttemptId.current;
-    channelCreationPending.current = { id: attemptId, context: requestContext };
+    channelCreationRef.current = requestContext;
     setChannelCreateErrorKey(null);
-    setChannelAttempt({ id: attemptId, context: requestContext });
+    setChannelCreation(requestContext);
     void runWorkspaceChannelCreate({
       name: channelName.trim(),
       description: channelDesc.trim(),
@@ -495,7 +498,7 @@ export function useCreateChatDialog(options: {
     })
       .then((result) => {
         if (
-          nextChannelAttemptId.current !== attemptId ||
+          channelCreationRef.current !== requestContext ||
           !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
             useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
           )
@@ -516,7 +519,7 @@ export function useCreateChatDialog(options: {
       })
       .catch((err) => {
         if (
-          nextChannelAttemptId.current !== attemptId ||
+          channelCreationRef.current !== requestContext ||
           !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
             useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
           )
@@ -536,8 +539,9 @@ export function useCreateChatDialog(options: {
         });
       })
       .finally(() => {
-        if (channelCreationPending.current?.id === attemptId) channelCreationPending.current = null;
-        setChannelAttempt((pending) => (pending?.id === attemptId ? null : pending));
+        if (channelCreationRef.current !== requestContext) return;
+        channelCreationRef.current = null;
+        setChannelCreation(null);
       });
   }, [
     channelEncryption,

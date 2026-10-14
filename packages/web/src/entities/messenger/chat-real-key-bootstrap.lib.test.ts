@@ -31,6 +31,10 @@ function runtime(): WorkspaceRuntimeContext {
     runtimeGeneration: 1,
   };
 }
+function newCreationAttempt(): EncryptedChannelCreationAttempt {
+  return { ownerKey: null, state: { phase: "idle" }, pending: false };
+}
+
 function response(
   current: WorkspaceRuntimeContext,
   key: WorkspaceMessengerStreamDto["current_encryption_key_uuid"],
@@ -126,9 +130,43 @@ describe("real creation key bootstrap", () => {
     ).toEqual([]);
   });
 
+  it("keeps owner binding after a local prepare failure while allowing that owner to edit and retry", async () => {
+    const current = runtime();
+    const creationAttempt = newCreationAttempt();
+    const prepare = vi
+      .spyOn(realChatInitialKeyBootstrap, "prepare")
+      .mockRejectedValueOnce(new Error("local storage unavailable"));
+    const create = vi.fn<
+      NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
+    >((_options, body) => Promise.resolve(response(current, body.current_encryption_key_uuid)));
+    const options = {
+      runtimeContext: current,
+      name: "Encrypted",
+      encryption: true,
+      creationAttempt,
+      client: { createStreamWithDefaultTopic: create },
+    };
+    await expect(createWorkspaceChannel(options)).rejects.toThrow("local storage unavailable");
+    expect(creationAttempt.state.phase).toBe("idle");
+    expect(creationAttempt.pending).toBe(false);
+    expect(creationAttempt.ownerKey).not.toBeNull();
+    await expect(createWorkspaceChannel({ ...options, runtimeContext: runtime() })).rejects.toThrow(
+      "creation-uncertain",
+    );
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(create).not.toHaveBeenCalled();
+    const result = await createWorkspaceChannel({ ...options, name: "Edited", description: "New" });
+    expect(result.status).toBe("applied");
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ name: "Edited", description: "New" }),
+    );
+  });
+
   it("recovers a committed POST with a lost response across stream and topic pages without creating twice", async () => {
     const current = runtime();
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     let committed: ReturnType<typeof response> | undefined;
     const create = vi.fn<
       NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
@@ -174,7 +212,9 @@ describe("real creation key bootstrap", () => {
       },
     };
     await expect(createWorkspaceChannel(options)).rejects.toThrow("response lost");
-    const initialMetadata = creationAttempt.metadata;
+    if (creationAttempt.state.phase !== "dispatched")
+      throw new Error("expected dispatched attempt");
+    const initialMetadata = creationAttempt.state.metadata;
     const result = await createWorkspaceChannel(options);
     expect(result.status).toBe("applied");
     expect(create).toHaveBeenCalledOnce();
@@ -183,8 +223,8 @@ describe("real creation key bootstrap", () => {
     expect(addStreamUsers).toHaveBeenCalledWith(expect.any(Object), STREAM, {
       member: options.memberUserUuids,
     });
-    expect(creationAttempt.metadata).toBe(initialMetadata);
-    const metadata = creationAttempt.metadata;
+    expect(creationAttempt.state).toMatchObject({ phase: "resolved", metadata: initialMetadata });
+    const metadata = creationAttempt.state.metadata;
     if (!metadata?.deviceId) throw new Error("missing metadata");
     expect(
       (
@@ -200,7 +240,7 @@ describe("real creation key bootstrap", () => {
 
   it("never replays an ambiguous POST when no committed stream is visible or the form changes", async () => {
     const current = runtime();
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     const create = vi
       .fn<NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>>()
       .mockRejectedValue(new Error("offline"));
@@ -225,7 +265,7 @@ describe("real creation key bootstrap", () => {
 
   it("retries finalization and invitations on the accepted bundle without another POST", async () => {
     const current = runtime();
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     const create = vi.fn<
       NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
     >((_options, body) => Promise.resolve(response(current, body.current_encryption_key_uuid)));
@@ -254,7 +294,7 @@ describe("real creation key bootstrap", () => {
 
   it("recovers a failed default-topic fetch and fences a late recovery page after owner invalidation", async () => {
     const current = runtime();
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     let committed: ReturnType<typeof response> | undefined;
     let active = true;
     const create = vi.fn<
@@ -286,13 +326,13 @@ describe("real creation key bootstrap", () => {
     await expect(createWorkspaceChannel(options)).rejects.toThrow("stale-owner");
     expect(create).toHaveBeenCalledOnce();
     expect(finalize).not.toHaveBeenCalled();
-    expect(creationAttempt.bundle).toBeUndefined();
+    expect(creationAttempt.state.phase).toBe("dispatched");
   });
 
   it("reuses the prepared key after session refresh invalidates creation before POST dispatch", async () => {
     const current = runtime();
     let active = current;
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     let finishToken: ((token: string) => void) | undefined;
     const pendingToken = new Promise<string>((resolve) => {
       finishToken = resolve;
@@ -306,8 +346,8 @@ describe("real creation key bootstrap", () => {
       (...args) => ({ ...buildOptions(...args), getAccessToken }),
     );
     const fetchImpl = vi.fn<typeof fetch>((_request, init) => {
-      const metadata = creationAttempt.metadata;
-      if (!metadata) throw new Error("no prepared metadata");
+      if (creationAttempt.state.phase === "idle") throw new Error("no prepared metadata");
+      const metadata = creationAttempt.state.metadata;
       const bundle = response(active, metadata.keyUuid);
       if (init?.method === "POST") {
         if (typeof init.body !== "string") throw new Error("expected JSON body");
@@ -328,23 +368,24 @@ describe("real creation key bootstrap", () => {
     };
     const first = createWorkspaceChannel(options);
     await vi.waitFor(() => expect(getAccessToken).toHaveBeenCalledOnce());
-    const prepared = creationAttempt.metadata;
+    if (creationAttempt.state.phase !== "prepared") throw new Error("expected prepared attempt");
+    const prepared = creationAttempt.state.metadata;
     active = { ...current, runtimeGeneration: current.runtimeGeneration + 1 };
     finishToken?.(current.accessToken);
     await expect(first).rejects.toThrow("stale-owner");
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(creationAttempt.dispatched).toBe(false);
+    expect(creationAttempt.state.phase).toBe("prepared");
     expect((await createWorkspaceChannel({ ...options, runtimeContext: active })).status).toBe(
       "applied",
     );
-    expect(creationAttempt.metadata).toBe(prepared);
+    expect(creationAttempt.state).toMatchObject({ phase: "resolved", metadata: prepared });
     expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("serializes one intent and keeps separate intentional creations distinct", async () => {
     const current = runtime();
-    const creationAttempt: EncryptedChannelCreationAttempt = {};
+    const creationAttempt = newCreationAttempt();
     let complete: (() => void) | undefined;
     const create = vi.fn<
       NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
@@ -369,13 +410,15 @@ describe("real creation key bootstrap", () => {
     const nextCreate = vi.fn<
       NonNullable<MessengerCreateChatClientDeps["createStreamWithDefaultTopic"]>
     >((_options, body) => Promise.resolve(response(current, body.current_encryption_key_uuid)));
-    const secondAttempt: EncryptedChannelCreationAttempt = {};
+    const secondAttempt = newCreationAttempt();
     await createWorkspaceChannel({
       ...options,
       creationAttempt: secondAttempt,
       client: { createStreamWithDefaultTopic: nextCreate },
     });
-    expect(secondAttempt.metadata?.keyUuid).not.toBe(creationAttempt.metadata?.keyUuid);
+    if (secondAttempt.state.phase !== "resolved" || creationAttempt.state.phase !== "resolved")
+      throw new Error("expected resolved attempts");
+    expect(secondAttempt.state.metadata.keyUuid).not.toBe(creationAttempt.state.metadata.keyUuid);
   });
 
   it("keeps staged secrets recoverable when a creation response has the wrong generation", async () => {
