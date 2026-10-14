@@ -13,7 +13,6 @@ import type {
   MessengerCollectionPage,
 } from "~/shared/api/messenger-client";
 import {
-  assertMessengerOpaquePayloadWithinLimit,
   createMessage as defaultCreateMessage,
   deleteMessage as defaultDeleteMessage,
   editMessage as defaultEditMessage,
@@ -282,7 +281,6 @@ export async function sendMessengerMessage({
     kind: "markdown",
     content: markdown,
   };
-  assertMessengerOpaquePayloadWithinLimit(payload);
   const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
     uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
     stream_uuid: streamUuid,
@@ -393,7 +391,6 @@ export async function sendMessengerE2eePayload({
       ? fetchImpl(request, init)
       : Promise.reject(new Error("stale"));
   const wire = encodeChatE2eePayload(payload);
-  assertMessengerOpaquePayloadWithinLimit(wire);
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   // Realtime may report this exact own announcement before its POST response arrives.
   dispatched = true;

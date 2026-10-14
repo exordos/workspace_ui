@@ -49,10 +49,10 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     isPrivate: dto.private,
     encryption: dto.encryption ?? false,
     currentEncryptionKey:
-      dto.current_encryption_key == null
+      dto.current_encryption_key_uuid == null
         ? null
         : {
-            keyUuid: dto.current_encryption_key.key_uuid,
+            keyUuid: dto.current_encryption_key_uuid,
           },
     inviteOnly: dto.invite_only,
     announce: dto.announce,

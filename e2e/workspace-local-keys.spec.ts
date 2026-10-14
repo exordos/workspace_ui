@@ -3,9 +3,77 @@ import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 import {
   E2E_STREAM_UUID,
   E2E_TOPIC_UUID,
+  E2E_USER_UUID,
   messageSuccess,
   streamsSuccess,
+  usersSuccess,
 } from "./mocks/workspace-default-responses";
+
+test("encrypted channel owner adds a participant through the shared picker", async ({
+  authenticated,
+}) => {
+  const page = authenticated;
+  const newUserUuid = crypto.randomUUID();
+  const stream = {
+    ...streamsSuccess()[0],
+    encryption: true,
+    current_encryption_key_uuid: crypto.randomUUID(),
+  };
+  const users = [
+    ...usersSuccess(),
+    {
+      ...usersSuccess()[0],
+      uuid: newUserUuid,
+      username: "new-participant",
+      first_name: "New",
+      last_name: "Participant",
+      email: "new-participant@example.test",
+    },
+  ];
+  const submittedBodies: unknown[] = [];
+  await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+    await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+  });
+  await page.route(/\/users\/?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: users });
+  });
+  await page.route(/\/streams\/[^/]+\/actions\/add_users\/invoke$/, async (route) => {
+    submittedBodies.push(route.request().postDataJSON() as unknown);
+    await route.fulfill({
+      json: [
+        {
+          uuid: crypto.randomUUID(),
+          project_id: stream.project_id,
+          stream_uuid: E2E_STREAM_UUID,
+          user_uuid: newUserUuid,
+          who_uuid: E2E_USER_UUID,
+          role: "member",
+          notification_mode: "all_messages",
+          created_at: stream.created_at,
+          updated_at: stream.updated_at,
+        },
+      ],
+    });
+  });
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  await page
+    .getByRole("button", { name: /^(channel info|информация о канале)$/i })
+    .first()
+    .click();
+  const addMembers = page.getByRole("button", { name: /^(add members|добавить участников)$/i });
+  await expect(addMembers).toBeEnabled();
+  await addMembers.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox", { name: /E2E User/ })).toHaveCount(0);
+  await dialog.getByRole("checkbox", { name: /New Participant/ }).check();
+  await dialog.getByRole("button", { name: /^(add|добавить)$/i }).click();
+  await expect.poll(() => submittedBodies).toEqual([{ member: [newUserUuid] }]);
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("complementary").getByText(/^New Participant/)).toBeVisible();
+});
 
 test("local key manager separates current metadata from saved keys and deletes only the selected key", async ({
   authenticated,
@@ -16,7 +84,7 @@ test("local key manager separates current metadata from saved keys and deletes o
   const stream = {
     ...streamsSuccess()[0],
     encryption: true,
-    current_encryption_key: { key_uuid: currentKeyUuid },
+    current_encryption_key_uuid: currentKeyUuid,
   };
   const encryptedContent = await page.evaluate(
     async ({ streamUuid, keyUuid }) => {

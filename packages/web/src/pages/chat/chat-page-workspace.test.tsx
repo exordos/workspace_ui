@@ -1061,6 +1061,13 @@ describe("ChatPage Workspace route", () => {
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
     await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
     expect(textbox).toHaveValue("Keep this text");
+    send.mockClear();
+    const overPlaintextLimit = "A".repeat(40_001);
+    fireEvent.change(textbox, { target: { value: overPlaintextLimit } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(screen.getByText(t("composer.messageTooLong"))).toBeInTheDocument());
+    expect(send).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue(overPlaintextLimit);
   });
   it("preserves the editor during rotation and a pending current-key request", async () => {
     const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();

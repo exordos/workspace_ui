@@ -205,12 +205,14 @@ export function EncryptedChatInfoConnected({
   onScreenChange,
   selectedLocalKeyUuid,
   onOpenLocalKey,
+  onAddMember,
 }: {
   readonly streamUuid: string;
   readonly screen?: EncryptedChatInfoProps["screen"];
   readonly onScreenChange?: EncryptedChatInfoProps["onScreenChange"];
   readonly selectedLocalKeyUuid?: string;
   readonly onOpenLocalKey?: EncryptedChatInfoProps["onOpenLocalKey"];
+  readonly onAddMember?: EncryptedChatInfoProps["onAddMember"];
   readonly onClose?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
@@ -324,6 +326,7 @@ export function EncryptedChatInfoConnected({
           void crypto.rejectKey(uuid);
         }}
         members={members}
+        onAddMember={onAddMember}
         renderAvatar={renderAvatar}
         error={copyError ?? crypto.error}
         onClose={onClose}

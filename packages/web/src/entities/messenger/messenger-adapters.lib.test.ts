@@ -519,7 +519,7 @@ it("preserves encrypted stream metadata and defaults pre-encryption snapshots sa
     adaptMessengerStream({
       ...streamDto,
       encryption: true,
-      current_encryption_key: { key_uuid: MESSAGE_UUID },
+      current_encryption_key_uuid: MESSAGE_UUID,
     }),
   ).toMatchObject({
     encryption: true,

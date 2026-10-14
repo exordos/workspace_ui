@@ -190,7 +190,7 @@ function uniqueMemberUserUuids(userUuids: readonly MessengerUuid[] | undefined):
   return result;
 }
 
-function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
+function initialEncryptionKeyUuid(metadata: ChatInitialKeyMetadata | null) {
   const announcement =
     metadata === null
       ? null
@@ -203,7 +203,7 @@ function initialEncryptionKey(metadata: ChatInitialKeyMetadata | null) {
     (!isWorkspaceMessengerMessagePayloadDto(announcement) || announcement.kind !== "key_announced")
   )
     throw new MessengerChannelCreationError("encryption-unavailable");
-  return announcement?.kind === "key_announced" ? { key_uuid: announcement.key_uuid } : null;
+  return announcement?.kind === "key_announced" ? announcement.key_uuid : null;
 }
 
 export async function createWorkspaceChannel({
@@ -249,7 +249,7 @@ export async function createWorkspaceChannel({
     requestOptions.fetchImpl = (request, init) =>
       action.isStale() ? Promise.reject(new Error("stale-owner")) : fetchImpl(request, init);
   }
-  const encryptionKey = initialEncryptionKey(initialKey);
+  const encryptionKeyUuid = initialEncryptionKeyUuid(initialKey);
   const bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
     requestOptions,
     {
@@ -259,7 +259,7 @@ export async function createWorkspaceChannel({
         inviteOnly: encryption ? false : inviteOnly,
         announce: encryption ? false : announce,
       }),
-      ...(encryption ? { encryption: true, current_encryption_key: encryptionKey } : {}),
+      ...(encryption ? { encryption: true, current_encryption_key_uuid: encryptionKeyUuid } : {}),
     },
   );
   if (action.isStale())
@@ -268,7 +268,7 @@ export async function createWorkspaceChannel({
   if (
     encryption &&
     (bundle.stream.encryption !== true ||
-      bundle.stream.current_encryption_key?.key_uuid !== encryptionKey?.key_uuid)
+      bundle.stream.current_encryption_key_uuid !== encryptionKeyUuid)
   )
     throw new MessengerChannelCreationError("encryption-mismatch");
 

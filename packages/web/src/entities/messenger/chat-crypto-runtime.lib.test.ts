@@ -223,7 +223,7 @@ async function setup({ publishRotationUpdates = true } = {}) {
     is_archived: false,
     direct_user_uuid: null,
     encryption: true,
-    current_encryption_key: currentKey,
+    current_encryption_key_uuid: currentKey.key_uuid,
     created_at: DATE,
     updated_at: DATE,
   });
@@ -362,7 +362,25 @@ describe("real ordinary chat orchestration", () => {
     }
   });
 
-  it("rejects real ciphertext over the wire limit even when multibyte plaintext is below the character limit", async () => {
+  it("sends 40,000 plaintext characters even when the ciphertext exceeds the former client limit", async () => {
+    const f = await setup();
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    await session.load();
+    const text = "A".repeat(40_000);
+    await expect(session.send({ text, topicUuid: TOPIC })).resolves.toMatchObject({
+      status: "applied",
+    });
+    expect(createMessage).toHaveBeenCalledOnce();
+    const payload = vi.mocked(createMessage).mock.calls[0]?.[1].payload;
+    if (payload?.kind !== "e2ee") throw new Error("Expected encrypted payload");
+    expect(payload.content).toHaveLength(53_404);
+  });
+
+  it("preserves keys and session state when the backend rejects real ciphertext", async () => {
     const f = await setup();
     const session = await openRealChatSession({
       runtimeContext: f.admin,
@@ -371,10 +389,10 @@ describe("real ordinary chat orchestration", () => {
     });
     await session.load();
     const originalKey = await realChatKeyStorage.readChatKey(session.scope);
-    const text = "😀".repeat(8_000);
-    expect(Array.from(text).length).toBeLessThan(40_000);
-    expect(text.length).toBeLessThan(40_000);
-    expect(new TextEncoder().encode(text)).toHaveLength(32_000);
+    const text = "😀".repeat(40_000);
+    expect(Array.from(text)).toHaveLength(40_000);
+    expect(new TextEncoder().encode(text)).toHaveLength(160_000);
+    vi.mocked(createMessage).mockRejectedValueOnce(new Error("Backend rejected payload"));
     let encodedLength = 0;
     const encrypt = realChatCryptoProvider.encryptMessage;
     const encryption = vi
@@ -394,8 +412,8 @@ describe("real ordinary chat orchestration", () => {
       });
     await expect(session.send({ text, topicUuid: TOPIC })).rejects.toThrow("send-failed");
     expect(encryption).toHaveBeenCalledOnce();
-    expect(encodedLength).toBeGreaterThan(40_000);
-    expect(createMessage).not.toHaveBeenCalled();
+    expect(encodedLength).toBe(213_404);
+    expect(createMessage).toHaveBeenCalledOnce();
     expect(f.wire).toEqual([]);
     expect(await realChatKeyStorage.readChatKey(session.scope)).toEqual(originalKey);
     expect(session.getState()).toMatchObject({
@@ -896,7 +914,7 @@ describe("real ordinary chat orchestration", () => {
       return response;
     });
     await expect(session.reissueKey()).rejects.toThrow("response lost");
-    const lastKey = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const lastKey = f.stream(ADMIN).current_encryption_key_uuid!;
     expect(
       await realChatKeyStorage.listStagedCreations({
         owner: f.admin,
@@ -942,7 +960,7 @@ describe("real ordinary chat orchestration", () => {
       return response;
     });
     await expect(session.reissueKey()).rejects.toThrow("response lost");
-    const committedKey = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const committedKey = f.stream(ADMIN).current_encryption_key_uuid!;
     expect((await session.reissueKey()).status).toBe("applied");
     expect(session.scope.keyUuid).toBe(committedKey);
     expect(session.getState().access).toBe("ready");
@@ -1035,7 +1053,7 @@ describe("real ordinary chat orchestration", () => {
       throw new Error("response lost");
     });
     await expect(session.reissueKey()).rejects.toThrow("response lost");
-    const committedUuid = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const committedUuid = f.stream(ADMIN).current_encryption_key_uuid!;
     vi.mocked(getStream).mockClear();
     vi.mocked(getStreamBindingsPage).mockClear();
     const keyChanged = vi.fn();
@@ -1096,7 +1114,7 @@ describe("real ordinary chat orchestration", () => {
     const rotating = session.reissueKey();
     const rejected = expect(rotating).rejects.toThrow("send-failed");
     await started.promise;
-    const announcedUuid = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const announcedUuid = f.stream(ADMIN).current_encryption_key_uuid!;
     const nextUuid = crypto.randomUUID();
     expect(announcedUuid).not.toBe(nextUuid);
     const catalog = f.catalog(f.admin);
@@ -1104,7 +1122,7 @@ describe("real ordinary chat orchestration", () => {
       workspaceRuntimeOwnerKey(f.admin),
       adaptMessengerStream({
         ...f.stream(ADMIN),
-        current_encryption_key: { key_uuid: nextUuid },
+        current_encryption_key_uuid: nextUuid,
       }),
     );
     gate.resolve();
@@ -1141,7 +1159,7 @@ describe("real ordinary chat orchestration", () => {
       throw new Error("response lost");
     });
     await expect(session.reissueKey()).rejects.toThrow("response lost");
-    const committedUuid = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const committedUuid = f.stream(ADMIN).current_encryption_key_uuid!;
     const catalog = f.catalog(f.admin);
     const owner = workspaceRuntimeOwnerKey(f.admin);
     const reads = vi.spyOn(realChatKeyStorage, "readChatKey");
@@ -1199,7 +1217,7 @@ describe("real ordinary chat orchestration", () => {
       throw new Error("response lost");
     });
     await expect(session.reissueKey()).rejects.toThrow("response lost");
-    const committedUuid = f.stream(ADMIN).current_encryption_key!.key_uuid;
+    const committedUuid = f.stream(ADMIN).current_encryption_key_uuid!;
     const catalog = f.catalog(f.admin);
     const owner = workspaceRuntimeOwnerKey(f.admin);
     const started = deferred<void>();
@@ -1529,9 +1547,9 @@ describe("real ordinary chat orchestration", () => {
     // Every read in one session observes the same current generation.
     const latest = {
       ...f.stream(ADMIN),
-      current_encryption_key: { key_uuid: crypto.randomUUID() },
+      current_encryption_key_uuid: crypto.randomUUID(),
     };
-    f.publishKey(latest.current_encryption_key.key_uuid);
+    f.publishKey(latest.current_encryption_key_uuid);
     const issuer = await openRealChatSession({
       runtimeContext: f.admin,
       streamUuid: STREAM,
@@ -1610,12 +1628,12 @@ describe("real ordinary chat orchestration", () => {
 
   it("rejects historical text and announcements even when a caller supplies the current guard", async () => {
     const f = await setup();
-    const key = f.stream(ADMIN).current_encryption_key!;
+    const key = f.stream(ADMIN).current_encryption_key_uuid!;
     const shared = {
       runtimeContext: f.admin,
       streamUuid: STREAM,
       topicUuid: TOPIC,
-      expectedCurrentKey: { keyUuid: key.key_uuid },
+      expectedCurrentKey: { keyUuid: key },
       messengerStore: f.catalog(f.admin),
       isCurrent: () => true,
     };
@@ -1841,7 +1859,7 @@ describe("real ordinary chat orchestration", () => {
         workspaceRuntimeOwnerKey(f.admin),
         adaptMessengerStream({
           ...f.stream(ADMIN),
-          current_encryption_key: { key_uuid: nextUuid },
+          current_encryption_key_uuid: nextUuid,
         }),
       );
     await vi.waitFor(() => {
@@ -2121,7 +2139,7 @@ describe("real ordinary chat orchestration", () => {
     const sending = session.send({ text: "generation race", topicUuid: TOPIC });
     const rejected = expect(sending).rejects.toThrow("send-failed");
     await started.promise;
-    const nextStream = { ...f.stream(ADMIN), current_encryption_key: { key_uuid: nextUuid } };
+    const nextStream = { ...f.stream(ADMIN), current_encryption_key_uuid: nextUuid };
     f.catalog(f.admin)
       .getState()
       .upsertStream(workspaceRuntimeOwnerKey(f.admin), adaptMessengerStream(nextStream));
@@ -2182,7 +2200,7 @@ describe("real ordinary chat orchestration", () => {
           workspaceRuntimeOwnerKey(f.admin),
           adaptMessengerStream({
             ...f.stream(ADMIN),
-            current_encryption_key: { key_uuid: keyUuid },
+            current_encryption_key_uuid: keyUuid,
           }),
         );
     update(secondUuid);
@@ -2224,7 +2242,7 @@ describe("real ordinary chat orchestration", () => {
     await started.promise;
     const requesting = session.requestKey();
     const nextUuid = crypto.randomUUID();
-    const nextStream = { ...f.stream(MEMBER), current_encryption_key: { key_uuid: nextUuid } };
+    const nextStream = { ...f.stream(MEMBER), current_encryption_key_uuid: nextUuid };
     f.catalog(f.member)
       .getState()
       .upsertStream(workspaceRuntimeOwnerKey(f.member), adaptMessengerStream(nextStream));
@@ -2268,7 +2286,7 @@ describe("real ordinary chat orchestration", () => {
     vi.mocked(getStreamBindingsPage).mockClear();
     const nextStream = adaptMessengerStream({
       ...f.stream(ADMIN),
-      current_encryption_key: { key_uuid: nextUuid },
+      current_encryption_key_uuid: nextUuid,
     });
     const catalog = f.catalog(f.admin);
     catalog.getState().upsertStream(workspaceRuntimeOwnerKey(f.admin), nextStream);
@@ -2321,7 +2339,7 @@ describe("real ordinary chat orchestration", () => {
       workspaceRuntimeOwnerKey(f.admin),
       adaptMessengerStream({
         ...f.stream(ADMIN),
-        current_encryption_key: { key_uuid: crypto.randomUUID() },
+        current_encryption_key_uuid: crypto.randomUUID(),
       }),
     );
     await expect(session.send({ text: "disposed", topicUuid: TOPIC })).rejects.toThrow("stale");
@@ -2365,7 +2383,7 @@ describe("real ordinary chat orchestration", () => {
         ...oldStream,
         owner: MEMBER,
         role: "member",
-        current_encryption_key: { key_uuid: nextUuid },
+        current_encryption_key_uuid: nextUuid,
       }),
     );
     catalog.getState().upsertStreamBindings(owner, [{ ...adminBinding(), role: "member" }]);
@@ -2411,7 +2429,7 @@ describe("real ordinary chat orchestration", () => {
       getRuntimeContext: () => f.admin,
     });
     await started.promise;
-    const nextStream = { ...f.stream(ADMIN), current_encryption_key: { key_uuid: nextUuid } };
+    const nextStream = { ...f.stream(ADMIN), current_encryption_key_uuid: nextUuid };
     f.catalog(f.admin)
       .getState()
       .upsertStream(workspaceRuntimeOwnerKey(f.admin), adaptMessengerStream(nextStream));

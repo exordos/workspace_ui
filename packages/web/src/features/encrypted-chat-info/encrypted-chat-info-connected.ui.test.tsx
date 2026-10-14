@@ -69,6 +69,20 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("encrypted chat sidebar actions", () => {
+  it("connects the add-member button to the owning panel action", () => {
+    fixture();
+    const onAddMember = vi.fn();
+    const view = render(
+      <EncryptedChatInfoConnected streamUuid="stream" onAddMember={onAddMember} />,
+    );
+    const button = screen.getByRole("button", { name: "Add members" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(onAddMember).toHaveBeenCalledOnce();
+    view.rerender(<EncryptedChatInfoConnected streamUuid="stream" />);
+    expect(screen.getByRole("button", { name: "Add members" })).toBeDisabled();
+  });
+
   it("uses generation-specific grant capability and removes terminal outcomes from incoming requests", () => {
     const { crypto } = fixture();
     render(<EncryptedChatInfoConnected streamUuid="stream" />);

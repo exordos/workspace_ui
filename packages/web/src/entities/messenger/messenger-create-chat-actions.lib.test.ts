@@ -153,13 +153,11 @@ describe("messenger create chat actions", () => {
         expect(body.encryption).toBe(true);
         expect(body.invite_only).toBe(false);
         expect(body.announce).toBe(false);
-        expect(body.current_encryption_key).toEqual({
-          key_uuid: "00000000-0000-4000-8000-000000000001",
-        });
+        expect(body.current_encryption_key_uuid).toBe("00000000-0000-4000-8000-000000000001");
         return Promise.resolve({
           stream: createStreamDto({
             encryption: true,
-            current_encryption_key: body.current_encryption_key,
+            current_encryption_key_uuid: body.current_encryption_key_uuid,
           }),
           defaultTopic: createTopicDto(),
         });
@@ -184,13 +182,11 @@ describe("messenger create chat actions", () => {
     prepareStoreOwner(runtimeContext);
     const create = vi.fn(
       (_options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) => {
-        expect(body.current_encryption_key).toEqual({
-          key_uuid: STREAM_A,
-        });
+        expect(body.current_encryption_key_uuid).toBe(STREAM_A);
         return Promise.resolve({
           stream: createStreamDto({
             encryption: true,
-            current_encryption_key: body.current_encryption_key,
+            current_encryption_key_uuid: body.current_encryption_key_uuid,
           }),
           defaultTopic: createTopicDto(),
         });
@@ -245,7 +241,7 @@ describe("messenger create chat actions", () => {
               Promise.resolve({
                 stream: createStreamDto({
                   encryption: encrypted,
-                  current_encryption_key: { key_uuid: STREAM_A },
+                  current_encryption_key_uuid: STREAM_A,
                 }),
                 defaultTopic: createTopicDto(),
               }),

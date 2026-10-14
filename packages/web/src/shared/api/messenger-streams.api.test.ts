@@ -367,15 +367,15 @@ it("rejects an encrypted create response that reuses a plaintext direct stream",
         source_name: "native",
         source: { kind: "native" },
         encryption: true,
-        current_encryption_key: { key_uuid: STREAM_UUID },
+        current_encryption_key_uuid: STREAM_UUID,
       },
     ),
   ).rejects.toThrow("requested encrypted stream");
 });
 
 it("accepts an encrypted create only with the requested initial generation", async () => {
-  const key = { key_uuid: STREAM_UUID };
-  const encrypted = { ...streamDto, encryption: true, current_encryption_key: key };
+  const key = STREAM_UUID;
+  const encrypted = { ...streamDto, encryption: true, current_encryption_key_uuid: key };
   const fetchMock = createFetchMock(encrypted);
   await expect(
     createStream(
@@ -386,8 +386,17 @@ it("accepts an encrypted create only with the requested initial generation", asy
         source_name: "native",
         source: { kind: "native" },
         encryption: true,
-        current_encryption_key: key,
+        current_encryption_key_uuid: key,
       },
     ),
   ).resolves.toEqual(encrypted);
+  const body = fetchMock.mock.calls[0]?.[1]?.body;
+  expect(typeof body).toBe("string");
+  if (typeof body !== "string") throw new Error("Expected a JSON request body");
+  const requestBody: unknown = JSON.parse(body);
+  expect(requestBody).toMatchObject({
+    encryption: true,
+    current_encryption_key_uuid: STREAM_UUID,
+  });
+  expect(requestBody).not.toHaveProperty("current_encryption_key");
 });

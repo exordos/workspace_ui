@@ -43,10 +43,6 @@ export type WorkspaceMessengerSourceDto =
   | WorkspaceMessengerNativeSourceDto
   | WorkspaceMessengerZulipSourceDto;
 
-export interface WorkspaceMessengerEncryptionKeyDto {
-  key_uuid: WorkspaceMessengerUuid;
-}
-
 export interface WorkspaceMessengerStreamDto {
   uuid: WorkspaceMessengerUuid;
   name: string;
@@ -65,7 +61,7 @@ export interface WorkspaceMessengerStreamDto {
   announce: boolean;
   private: boolean;
   encryption?: boolean;
-  current_encryption_key?: WorkspaceMessengerEncryptionKeyDto | null;
+  current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
   is_archived: boolean;
   color?: number | null;
   direct_user_uuid?: WorkspaceMessengerUuid | null;
@@ -363,7 +359,7 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
   announce?: boolean;
   direct_user_uuid?: WorkspaceMessengerUuid;
   encryption?: boolean;
-  current_encryption_key?: WorkspaceMessengerEncryptionKeyDto | null;
+  current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
 }
 
 export interface WorkspaceMessengerUpdateStreamRequestBody {
@@ -1203,9 +1199,9 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
     (value.encryption === undefined || typeof value.encryption === "boolean") &&
-    (value.current_encryption_key === undefined ||
-      value.current_encryption_key === null ||
-      (isRecord(value.current_encryption_key) && isUuid(value.current_encryption_key.key_uuid))) &&
+    (value.current_encryption_key_uuid === undefined ||
+      value.current_encryption_key_uuid === null ||
+      isUuid(value.current_encryption_key_uuid)) &&
     typeof value.is_archived === "boolean" &&
     (value.color === undefined ||
       value.color === null ||

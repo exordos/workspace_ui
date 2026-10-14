@@ -542,7 +542,7 @@ it.each<WorkspaceMessengerE2eePayloadDto>([
   expect(isWorkspaceRealtimeEvent({ epoch_version: 23, type: "message", message: dto })).toBe(true);
 });
 
-describe("opaque payload wire limits", () => {
+describe("opaque payload backend validation", () => {
   function payload(kind: "e2ee" | "key_grant", content: string): WorkspaceMessengerE2eePayloadDto {
     return kind === "e2ee"
       ? { kind, key_uuid: MESSAGE_UUID, content }
@@ -557,9 +557,9 @@ describe("opaque payload wire limits", () => {
   }
 
   it.each(["e2ee", "key_grant"] as const)(
-    "posts %s content containing exactly 40,000 encoded characters",
+    "posts %s content above the former client limit when the backend accepts it",
     async (kind) => {
-      const wire = payload(kind, "A".repeat(40_000));
+      const wire = payload(kind, "A".repeat(213_340));
       const fetchImpl = createFetchMock({ ...messageDto, payload: wire });
       await expect(
         createMessage(
@@ -579,9 +579,10 @@ describe("opaque payload wire limits", () => {
   );
 
   it.each(["e2ee", "key_grant"] as const)(
-    "rejects %s content of 40,004 encoded characters before tokens or HTTP are requested",
+    "propagates the backend rejection of %s content without a local size check",
     async (kind) => {
-      const fetchImpl = vi.fn<typeof fetch>();
+      const data = { type: "ParseError", code: 400, message: "Can't parse value: payload." };
+      const fetchImpl = createFetchMock(data, 400);
       const getAccessToken = vi.fn(() => Promise.resolve("access-token"));
       await expect(
         createMessage(
@@ -589,12 +590,12 @@ describe("opaque payload wire limits", () => {
           {
             stream_uuid: STREAM_UUID,
             topic_uuid: TOPIC_UUID,
-            payload: payload(kind, "A".repeat(40_000) + "AA=="),
+            payload: payload(kind, "A".repeat(213_340)),
           },
         ),
-      ).rejects.toThrow("message-too-long");
-      expect(getAccessToken).not.toHaveBeenCalled();
-      expect(fetchImpl).not.toHaveBeenCalled();
+      ).rejects.toMatchObject({ status: 400, data });
+      expect(getAccessToken).toHaveBeenCalledOnce();
+      expect(fetchImpl).toHaveBeenCalledOnce();
     },
   );
 

@@ -1142,7 +1142,7 @@ it("blocks plaintext retries to a known encrypted stream before creating any mes
     adaptMessengerStream(
       createStreamDto({
         encryption: true,
-        current_encryption_key: { key_uuid: MESSAGE_A },
+        current_encryption_key_uuid: MESSAGE_A,
       }),
     ),
   );
@@ -1211,7 +1211,7 @@ describe("encrypted payload local dispatch guards", () => {
     const ownerKey = prepareStoreOwner(runtimeContext);
     useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
     const stream = adaptMessengerStream(
-      createStreamDto({ encryption: true, current_encryption_key: { key_uuid: MESSAGE_A } }),
+      createStreamDto({ encryption: true, current_encryption_key_uuid: MESSAGE_A }),
     );
     useMessengerStore.getState().upsertStream(ownerKey, stream);
     const payload: ChatE2eePayload = {
@@ -1254,29 +1254,31 @@ describe("encrypted payload local dispatch guards", () => {
   }
 
   it.each(["e2ee", "key_grant"] as const)(
-    "sends %s content at the exact 40,000-character Base64 wire limit",
+    "sends %s content above the former wire limit to the backend",
     async (kind) => {
       const f = prepareEncryptedSend();
       await expect(
-        sendMessengerE2eePayload({ ...f.input, payload: opaquePayload(kind, 30_000) }),
+        sendMessengerE2eePayload({ ...f.input, payload: opaquePayload(kind, 30_003) }),
       ).resolves.toMatchObject({ status: "applied" });
       expect(f.createMessage).toHaveBeenCalledOnce();
       const wire = f.createMessage.mock.calls[0]?.[1].payload;
       if (wire?.kind !== "e2ee" && wire?.kind !== "key_grant")
         throw new Error("Expected opaque content");
-      expect(wire.content).toHaveLength(40_000);
+      expect(wire.content).toHaveLength(40_004);
     },
   );
 
   it.each(["e2ee", "key_grant"] as const)(
-    "rejects %s content exceeding the encoded wire limit before injected POST or cache writes",
+    "does not write rejected %s content to the store or cache",
     async (kind) => {
       const f = prepareEncryptedSend();
+      const error = new Error("Backend rejected payload");
+      f.createMessage.mockRejectedValueOnce(error);
       await expect(
         sendMessengerE2eePayload({ ...f.input, payload: opaquePayload(kind, 30_001) }),
-      ).rejects.toThrow("message-too-long");
+      ).rejects.toBe(error);
       expect(f.getStream).not.toHaveBeenCalled();
-      expect(f.createMessage).not.toHaveBeenCalled();
+      expect(f.createMessage).toHaveBeenCalledOnce();
       expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
       expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
       expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();

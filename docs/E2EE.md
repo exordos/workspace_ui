@@ -30,9 +30,9 @@ The messenger store owns the stream, current key UUID, and roles. The session do
 
 ## Wire contract and cryptography
 
-Exact DTOs and validation are in [messenger.types.ts](../packages/web/src/shared/api/messenger.types.ts); byte conversion is in the [payload adapter](../packages/web/src/entities/messenger/chat-e2ee-payload-adapters.lib.ts). The client expects `current_encryption_key: { key_uuid }`. Messages use `e2ee`, `key_request`, `key_grant`, `key_reject`, and `key_announced`; an announcement contains only `kind` and `key_uuid`.
+Exact DTOs and validation are in [messenger.types.ts](../packages/web/src/shared/api/messenger.types.ts); byte conversion is in the [payload adapter](../packages/web/src/entities/messenger/chat-e2ee-payload-adapters.lib.ts). The client expects `current_encryption_key_uuid`. Messages use `e2ee`, `key_request`, `key_grant`, `key_reject`, and `key_announced`; an announcement contains only `kind` and `key_uuid`.
 
-`key_uuid` addresses a generation of a random 32-byte symmetric `GroupKey`; it is not its fingerprint. `key_request.public_key` is the public X25519 key of an individual request. `e2ee.content` and `key_grant.content` contain binary envelopes encoded as standard padded Base64. `GroupKey` and private request keys are never sent to the backend in plaintext. The opaque payload limit is checked after encryption and Base64 encoding in [message actions](../packages/web/src/entities/messenger/messenger-message-actions.lib.ts).
+`key_uuid` addresses a generation of a random 32-byte symmetric `GroupKey`; it is not its fingerprint. `key_request.public_key` is the public X25519 key of an individual request. `e2ee.content` and `key_grant.content` contain binary envelopes encoded as standard padded Base64. `GroupKey` and private request keys are never sent to the backend in plaintext. The composer checks the 40,000-character plaintext limit before encryption. The backend validates the final opaque payload size; failed sends preserve the composer text.
 
 The provider defines the format; library versions belong to [package.json](../packages/web/package.json) and the lockfile.
 

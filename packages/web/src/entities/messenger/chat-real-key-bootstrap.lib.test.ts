@@ -29,7 +29,7 @@ function runtime(): WorkspaceRuntimeContext {
 }
 function response(
   current: WorkspaceRuntimeContext,
-  key: WorkspaceMessengerStreamDto["current_encryption_key"],
+  key: WorkspaceMessengerStreamDto["current_encryption_key_uuid"],
 ) {
   const stream: WorkspaceMessengerStreamDto = {
     uuid: STREAM,
@@ -51,7 +51,7 @@ function response(
     is_archived: false,
     direct_user_uuid: null,
     encryption: true,
-    current_encryption_key: key,
+    current_encryption_key_uuid: key,
     created_at: DATE,
     updated_at: DATE,
   };
@@ -90,9 +90,9 @@ describe("real creation key bootstrap", () => {
         deviceId: device.deviceId,
       });
       expect(pending).toHaveLength(1);
-      expect(pending[0]?.keyUuid).toBe(body.current_encryption_key?.key_uuid);
+      expect(pending[0]?.keyUuid).toBe(body.current_encryption_key_uuid);
       expect(JSON.stringify(body)).not.toContain("groupKey");
-      return response(current, body.current_encryption_key);
+      return response(current, body.current_encryption_key_uuid);
     });
     await expect(
       createWorkspaceChannel({
@@ -108,7 +108,7 @@ describe("real creation key bootstrap", () => {
     ).rejects.toThrow("invitation failed");
     const device = await realChatKeyStorage.readDeviceIdentity(current);
     if (!device) throw new Error("no identity");
-    const keyUuid = create.mock.calls[0]?.[1].current_encryption_key?.key_uuid;
+    const keyUuid = create.mock.calls[0]?.[1].current_encryption_key_uuid;
     if (!keyUuid) throw new Error("no key");
     const key = await realChatKeyStorage.readChatKey({
       owner: current,
@@ -130,10 +130,8 @@ describe("real creation key bootstrap", () => {
         name: "Encrypted",
         encryption: true,
         client: {
-          createStreamWithDefaultTopic: (_options, body) =>
-            Promise.resolve(
-              response(current, { ...body.current_encryption_key!, key_uuid: crypto.randomUUID() }),
-            ),
+          createStreamWithDefaultTopic: () =>
+            Promise.resolve(response(current, crypto.randomUUID())),
         },
       }),
     ).rejects.toThrow("encryption-mismatch");
@@ -174,7 +172,7 @@ describe("real creation key bootstrap", () => {
       client: {
         createStreamWithDefaultTopic: (_options, body) => {
           active = false;
-          return Promise.resolve(response(current, body.current_encryption_key));
+          return Promise.resolve(response(current, body.current_encryption_key_uuid));
         },
       },
     });

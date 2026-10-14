@@ -397,7 +397,8 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
 
 const RightPanelWorkspaceChannelInfo: React.FC<{
   info: WorkspaceRightPanelChannelInfoView;
-}> = ({ info }) => {
+  renderContent?: (onAddMember: (() => void) | undefined) => React.ReactNode;
+}> = ({ info, renderContent }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
     () => createNotificationActionState(info.streamUuid),
@@ -693,6 +694,34 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [info.streamUuid, memberActionCurrent.removingUserUuids, runtimeContext],
   );
 
+  const addMembersDialog = (
+    <WorkspaceAddStreamMembersDialog
+      open={memberActionCurrent.addDialogOpen}
+      streamName={info.title}
+      query={memberActionCurrent.query}
+      options={addMemberOptions}
+      selectedUserUuids={selectedUserUuidSet}
+      submitting={memberActionCurrent.adding}
+      error={memberActionCurrent.addError}
+      onOpenChange={handleAddDialogOpenChange}
+      onQueryChange={handleSetAddMemberQuery}
+      onToggle={handleToggleSelectedMember}
+      onSubmit={() => {
+        void handleSubmitAddMembers();
+      }}
+    />
+  );
+
+  if (renderContent != null)
+    return (
+      <>
+        {renderContent(
+          info.streamUuid != null && runtimeContext != null ? handleOpenAddMembers : undefined,
+        )}
+        {addMembersDialog}
+      </>
+    );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
       {/* Drawer already has px-2 (8px); header adds another 8px to match Figma title/avatar inset. */}
@@ -841,21 +870,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           )}
         </div>
       </ScrollArea>
-      <WorkspaceAddStreamMembersDialog
-        open={memberActionCurrent.addDialogOpen}
-        streamName={info.title}
-        query={memberActionCurrent.query}
-        options={addMemberOptions}
-        selectedUserUuids={selectedUserUuidSet}
-        submitting={memberActionCurrent.adding}
-        error={memberActionCurrent.addError}
-        onOpenChange={handleAddDialogOpenChange}
-        onQueryChange={handleSetAddMemberQuery}
-        onToggle={handleToggleSelectedMember}
-        onSubmit={() => {
-          void handleSubmitAddMembers();
-        }}
-      />
+      {addMembersDialog}
     </div>
   );
 };
@@ -872,8 +887,8 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   const encrypted = useMessengerStore(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
-  if (encrypted && streamUuid != null)
-    return (
+  if (encrypted && streamUuid != null) {
+    const renderEncryptedInfo = (onAddMember?: () => void) => (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
         screen={chatScreen}
@@ -885,6 +900,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
         }
         onScreenChange={onChatScreenChange}
         onClose={onClose}
+        onAddMember={onAddMember}
         renderAvatar={(person) => (
           <WorkspaceAvatar
             size="sm"
@@ -897,6 +913,12 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
         )}
       />
     );
+    return info.kind === "channel" ? (
+      <RightPanelWorkspaceChannelInfo info={info} renderContent={renderEncryptedInfo} />
+    ) : (
+      renderEncryptedInfo()
+    );
+  }
   if (info.kind === "directPrivate" || info.kind === "userProfile") {
     return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
   }

@@ -232,6 +232,20 @@ function seedWorkspaceUsers(): void {
   ]);
 }
 
+function seedEncryptedChannel(): void {
+  useMessengerStore.getState().startBootstrap(OWNER_KEY);
+  useMessengerStore.getState().upsertStream(
+    OWNER_KEY,
+    createStream({
+      projectId: RUNTIME_CONTEXT.projectId,
+      userUuid: CURRENT_USER_UUID,
+      ownerUuid: CURRENT_USER_UUID,
+      encryption: true,
+      currentEncryptionKey: { keyUuid: "12345678-1234-4234-8234-123456789abc" },
+    }),
+  );
+}
+
 describe("RightPanelWorkspaceInfo", () => {
   it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", async () => {
     seedWorkspaceAuth();
@@ -1016,6 +1030,48 @@ describe("RightPanelWorkspaceInfo", () => {
         }),
       );
     });
+  });
+
+  it("reuses the member picker and action for an encrypted channel owner", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    seedEncryptedChannel();
+    addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const button = screen.getByRole("button", { name: "Add members" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addWorkspaceStreamMembersMock).toHaveBeenCalledWith(
+        expect.objectContaining({ streamUuid: STREAM_UUID, userUuids: [BOB_USER_UUID] }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("keeps the encrypted channel picker open when backend membership authorization fails", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    seedEncryptedChannel();
+    addWorkspaceStreamMembersMock.mockRejectedValue(new Error("Permission denied"));
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const button = screen.getByRole("button", { name: "Add members" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    expect(await within(dialog).findByText("Something went wrong")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Bob Baker/i })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Add" })).toBeEnabled();
   });
 
   it("submits workspace remove member action", async () => {
