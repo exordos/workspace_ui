@@ -1,6 +1,8 @@
 import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
+import { seedAuthStorage } from "./helpers/seed-auth";
+import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
 import {
   E2E_STREAM_UUID,
   E2E_TOPIC_UUID,
@@ -9,6 +11,188 @@ import {
   streamsSuccess,
   usersSuccess,
 } from "./mocks/workspace-default-responses";
+
+for (const role of ["owner", "member"] as const) {
+  test(`one ${role} account on two devices keeps device-specific key rendering and existing grant rights`, async ({
+    authenticated: source,
+    browser,
+  }, testInfo) => {
+    const context = await browser.newContext({ baseURL: "http://localhost:5173" });
+    try {
+      const target = await context.newPage();
+      const api = new WorkspaceApiMock(target);
+      await api.install();
+      await seedAuthStorage(target);
+      await target.goto(`${e2eOrgBasePath()}/messenger`);
+      await target.waitForSelector("[data-focus-zone='topbar']");
+      const keyUuid = crypto.randomUUID();
+      const stream = {
+        ...streamsSuccess()[0],
+        owner: role === "owner" ? E2E_USER_UUID : crypto.randomUUID(),
+        role,
+        encryption: true,
+        current_encryption_key_uuid: keyUuid,
+      };
+      let encryptedContent = "";
+      const deviceIds: string[] = [];
+      for (const [page, deviceName, hasKey] of [
+        [source, "MacBook", true],
+        [target, "iPhone", false],
+      ] as const) {
+        const seeded = await page.evaluate(
+          async ({ deviceName, hasKey, keyUuid, streamUuid }) => {
+            const { useWorkspaceAuthStore } =
+              await import("/src/entities/workspace-auth/workspace-auth.model.ts");
+            const { realChatKeyStorage, realChatCryptoProvider } =
+              await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+            const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+            if (!runtime) throw new Error("Missing test runtime");
+            const previous = await realChatKeyStorage.readDeviceIdentity(runtime);
+            const deviceId = previous?.deviceId ?? crypto.randomUUID();
+            await realChatKeyStorage.writeDeviceIdentity(runtime, { deviceId, deviceName });
+            if (!hasKey) return { deviceId, content: "", userUuid: runtime.userUuid };
+            const key = await realChatCryptoProvider.createGroupKey();
+            if (!key.ok) throw new Error("Key creation failed");
+            await realChatKeyStorage.writeChatKey(
+              { owner: runtime, deviceId, streamUuid, keyUuid },
+              { groupKey: key.value },
+            );
+            const encrypted = await realChatCryptoProvider.encryptMessage({
+              groupKey: key.value,
+              plaintext: new TextEncoder().encode("Two-device encrypted history"),
+              context: { streamUuid, keyUuid },
+            });
+            if (!encrypted.ok) throw new Error("Encryption failed");
+            return {
+              deviceId,
+              content: btoa(String.fromCharCode(...encrypted.value.bytes)),
+              userUuid: runtime.userUuid,
+            };
+          },
+          { deviceName, hasKey, keyUuid, streamUuid: E2E_STREAM_UUID },
+        );
+        expect(seeded.userUuid).toBe(E2E_USER_UUID);
+        deviceIds.push(seeded.deviceId);
+        if (hasKey) encryptedContent = seeded.content;
+      }
+      expect(deviceIds[0]).not.toBe(deviceIds[1]);
+      type TestMessage = Omit<ReturnType<typeof messageSuccess>, "payload"> & {
+        payload: Record<string, string>;
+      };
+      const history: TestMessage[] = [
+        {
+          ...messageSuccess(""),
+          payload: { kind: "e2ee", key_uuid: keyUuid, content: encryptedContent },
+        },
+      ];
+      for (const page of [source, target]) {
+        await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+          if (route.request().method() !== "GET") return route.fallback();
+          const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+          await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+        });
+        await page.route(/\/messenger\/stream_bindings\/?(?:\?.*)?$/, async (route) => {
+          await route.fulfill({
+            json: [
+              {
+                uuid: "66666666-6666-4666-8666-666666666666",
+                project_id: stream.project_id,
+                stream_uuid: E2E_STREAM_UUID,
+                user_uuid: E2E_USER_UUID,
+                who_uuid: stream.owner,
+                role,
+                notification_mode: "all_messages",
+                created_at: stream.created_at,
+                updated_at: stream.updated_at,
+              },
+            ],
+          });
+        });
+        await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
+          if (route.request().method() === "GET") {
+            const unreadOnly = new URL(route.request().url()).searchParams.get("read") === "false";
+            return route.fulfill({ json: unreadOnly ? [] : history });
+          }
+          if (route.request().method() !== "POST") return route.fallback();
+          const body = route.request().postDataJSON() as {
+            uuid: string;
+            payload: Record<string, string>;
+          };
+          const created = {
+            ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+            payload: body.payload,
+          };
+          history.push(created);
+          await route.fulfill({ status: 201, json: created });
+        });
+      }
+      const path = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`;
+      await source.goto(path);
+      await expect(source.getByText("Two-device encrypted history", { exact: true })).toBeVisible();
+      await target.goto(path);
+      await expect(target.getByText("Two-device encrypted history", { exact: true })).toHaveCount(
+        0,
+      );
+      await target.getByRole("button", { name: /^(request key|запросить ключ)$/i }).click();
+      const targetRequest = target.locator('[data-encrypted-service-message="key_request"]');
+      await expect(targetRequest).toContainText(/You requested.*iPhone|Вы запросили.*iPhone/);
+      await expect(targetRequest.getByRole("button")).toHaveCount(0);
+      if (role === "owner")
+        await expect(targetRequest).toContainText(
+          /Approve the request on another device|Подтвердите запрос на другом устройстве/,
+        );
+      else {
+        await expect(targetRequest).toContainText(
+          /Wait for access|Дождитесь предоставления доступа/,
+        );
+        await expect(targetRequest).not.toContainText(/Approve the request|Подтвердите запрос/);
+      }
+      await source.reload();
+      const sourceRequest = source.locator('[data-encrypted-service-message="key_request"]');
+      await expect(sourceRequest).toContainText(/You requested.*iPhone|Вы запросили.*iPhone/);
+      const transfer = sourceRequest.getByRole("button", { name: /^(send key|передать ключ)$/i });
+      if (role === "member") {
+        await expect(transfer).toHaveCount(0);
+        await expect(sourceRequest.getByRole("button")).toHaveCount(0);
+        await expect(sourceRequest).toContainText(
+          /Wait for access|Дождитесь предоставления доступа/,
+        );
+        expect(history.some((item) => item.payload.kind === "key_grant")).toBe(false);
+        return;
+      }
+      await expect(transfer).toBeEnabled();
+      await sourceRequest.screenshot({
+        path: testInfo.outputPath("same-account-other-device-request.png"),
+      });
+      await transfer.click();
+      await expect.poll(() => history.some((item) => item.payload.kind === "key_grant")).toBe(true);
+      expect(history.at(-1)?.payload).toMatchObject({
+        kind: "key_grant",
+        sender_device_id: deviceIds[0],
+        recipient_device_id: deviceIds[1],
+      });
+      const sourceGrant = source.locator('[data-encrypted-service-message="key_grant"]');
+      await expect(sourceGrant).toContainText(/You sent.*iPhone|Вы передали.*iPhone/);
+      await expect(sourceGrant.getByRole("status")).toHaveCount(0);
+      await target.reload();
+      await expect(target.getByText("Two-device encrypted history", { exact: true })).toBeVisible();
+      const targetGrant = target.locator('[data-encrypted-service-message="key_grant"]');
+      await expect(targetGrant.getByRole("status")).toContainText(
+        /available on this device|доступен на этом устройстве/,
+      );
+      await expect(
+        target.locator('[data-encrypted-service-message="key_request"]'),
+      ).not.toContainText(
+        /Wait for access|Дождитесь предоставления доступа|Approve the request|Подтвердите запрос/,
+      );
+      await targetGrant.screenshot({
+        path: testInfo.outputPath("same-account-key-available-on-recipient.png"),
+      });
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test("encrypted chat header explains message and media protection on hover and keyboard focus", async ({
   authenticated,

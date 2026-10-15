@@ -4,6 +4,7 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
+import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import type { WorkspaceMessageAnchorFocusTarget } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
 import type {
   WorkspaceMessageFileReference,
@@ -33,6 +34,7 @@ export interface WorkspaceMessageListActions {
   getKeyRequestActions?: (
     message: MessengerMessage,
   ) => readonly { label: string; onClick: () => void; disabled?: boolean }[];
+  getKeyServiceState?: (message: MessengerMessage) => EncryptedChatServiceState | null;
   onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
   requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

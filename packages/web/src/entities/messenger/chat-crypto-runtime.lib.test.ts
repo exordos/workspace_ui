@@ -15,6 +15,7 @@ import {
   realChatKeyStorage,
   subscribeRealChatKeyChanges,
 } from "./chat-crypto-resources.lib";
+import * as cryptoResources from "./chat-crypto-resources.lib";
 import {
   openRealChatSession as openChatSession,
   decryptRealChatMessage,
@@ -326,6 +327,72 @@ afterEach(() => {
 });
 
 describe("real ordinary chat orchestration", () => {
+  it.each(["owner", "administrator", "member"] as const)(
+    "exchanges keys between two devices of one %s account only with existing grant rights",
+    async (role) => {
+      const f = await setup();
+      const owner = await openSessionFor(f.admin);
+      await owner.load();
+      const account = role === "owner" ? f.admin : f.member;
+      if (role === "administrator")
+        deviceCatalog(account)
+          .getState()
+          .upsertStreamBindings(workspaceRuntimeOwnerKey(account), [
+            memberBinding("administrator"),
+          ]);
+      const source = role === "owner" ? owner : await openSessionFor(account);
+      const initialKey = await realChatKeyStorage.readChatKey(owner.scope);
+      if (!initialKey?.groupKey) throw new Error("Missing source key");
+      if (source !== owner) await realChatKeyStorage.writeChatKey(source.scope, initialKey);
+      await source.load();
+      expect(source.getState().access).toBe("ready");
+
+      // Separate device identity and key addresses model independent browser installations.
+      const identity = { deviceId: crypto.randomUUID(), deviceName: "iPhone" };
+      const deviceIdentity = vi
+        .spyOn(cryptoResources, "ensureChatDeviceIdentity")
+        .mockResolvedValueOnce(identity);
+      let target = await openSessionFor(account);
+      await target.load();
+      expect(target.scope.owner).toEqual(source.scope.owner);
+      expect(target.device.deviceId).not.toBe(source.device.deviceId);
+      expect(target.getState().access).toBe("metadata-only");
+      await target.requestKey();
+      const request = f.wire.at(-1)!;
+      expect(request.author_uuid).toBe(account.userUuid);
+      expect(request.payload).toMatchObject({ kind: "key_request", device_id: identity.deviceId });
+      target.dispose();
+      deviceIdentity.mockResolvedValueOnce(identity);
+      target = await openSessionFor(account);
+      deviceIdentity.mockRestore();
+      await target.load();
+      await source.ingest(f.wire.map(adaptMessengerMessage));
+      expect(source.canGrantKey(request.uuid)).toBe(role !== "member");
+      expect(target.canGrantKey(request.uuid)).toBe(false);
+      if (role === "member") {
+        await expect(source.grantKey(request.uuid)).rejects.toThrow("forbidden");
+        expect(f.wire.some((item) => item.payload.kind === "key_grant")).toBe(false);
+        expect(target.getState().access).toBe("metadata-only");
+        return;
+      }
+      await source.grantKey(request.uuid);
+      expect(f.wire.at(-1)?.payload).toMatchObject({
+        kind: "key_grant",
+        sender_device_id: source.device.deviceId,
+        recipient_device_id: identity.deviceId,
+        request_message_uuid: request.uuid,
+      });
+      await target.ingest(f.wire.map(adaptMessengerMessage));
+      expect(target.getState().access).toBe("ready");
+      expect(await realChatKeyStorage.readChatKey(target.scope)).toEqual(initialKey);
+      expect(source.canGrantKey(request.uuid)).toBe(false);
+      await target.send({ text: "same account, second device", topicUuid: TOPIC });
+      expect(await source.decrypt(adaptMessengerMessage(f.wire.at(-1)!))).toBe(
+        "same account, second device",
+      );
+    },
+  );
+
   it("loads the local session and ingests an empty batch without catalog requests or message dispatch", async () => {
     const f = await setup();
     const session = await openSessionFor(f.admin);

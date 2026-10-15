@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import { getEncryptedChatServiceActions } from "./encrypted-chat-service-actions.lib";
+import {
+  getEncryptedChatServiceActions,
+  getEncryptedChatServiceState,
+} from "./encrypted-chat-service-actions.lib";
 
 function message(
   payload: MessengerMessage["payload"],
@@ -61,11 +65,71 @@ function setup() {
       isIssuerAllowed: (uuid: string) => uuid === "admin",
       canGrantKey: vi.fn((_uuid: string) => true),
       canRejectKey: vi.fn((_uuid: string) => true),
+      getKeyRequestOutcome: vi.fn<RealChatSession["getKeyRequestOutcome"]>(() => null),
     },
   };
 }
 
 describe("encrypted service actions", () => {
+  it("reads device, rights and the exact requested generation from the scoped session", () => {
+    const opts = setup();
+    const generation = vi.spyOn(opts.session, "getGenerationState");
+    expect(getEncryptedChatServiceState(opts)).toEqual({
+      deviceId: "local-device",
+      canManageKeys: true,
+      hasKey: true,
+      requestStatus: null,
+    });
+    expect(generation).toHaveBeenCalledWith("historical");
+    expect(
+      getEncryptedChatServiceState({
+        ...opts,
+        session: {
+          ...opts.session,
+          getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+          getGenerationState: () => null,
+        },
+      }),
+    ).toMatchObject({ canManageKeys: false, hasKey: false });
+    generation.mockRestore();
+  });
+  it("does not read device or key state for another project, stream or missing session", () => {
+    const opts = setup();
+    expect(getEncryptedChatServiceState({ ...opts, projectId: "another" })).toBeNull();
+    expect(getEncryptedChatServiceState({ ...opts, streamUuid: "another" })).toBeNull();
+    expect(getEncryptedChatServiceState({ ...opts, session: null })).toBeNull();
+    expect(opts.session.getKeyRequestOutcome).not.toHaveBeenCalled();
+  });
+  it.each(["granted", "rejected"] as const)(
+    "reads the %s outcome for the exact request",
+    (status) => {
+      const opts = setup();
+      opts.session.getKeyRequestOutcome.mockImplementation((uuid) =>
+        uuid === "request"
+          ? {
+              status,
+              request: {
+                uuid: "request",
+                streamUuid: "stream",
+                authorUuid: "member",
+                payload: {
+                  kind: "key_request",
+                  keyUuid: "historical",
+                  deviceId: "other-device",
+                  deviceName: "Laptop",
+                  publicKey: { bytes: new Uint8Array(32) },
+                },
+              },
+            }
+          : null,
+      );
+      expect(getEncryptedChatServiceState(opts)?.requestStatus).toBe(status);
+      expect(
+        getEncryptedChatServiceState({ ...opts, message: { ...opts.message, uuid: "unrelated" } })
+          ?.requestStatus,
+      ).toBeNull();
+    },
+  );
   it("uses domain eligibility and grants the exact request", () => {
     const opts = setup();
     const actions = getEncryptedChatServiceActions(opts);

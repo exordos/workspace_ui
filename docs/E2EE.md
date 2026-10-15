@@ -1,6 +1,6 @@
 # Encrypted chats
 
-Current for the client implementation on this branch as of 2026-10-08. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
+Current for the client implementation on this branch as of 2026-10-15. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
 
 ## Capabilities
 
@@ -14,6 +14,29 @@ Current for the client implementation on this branch as of 2026-10-08. This is a
 Ordinary Markdown send/edit/forward operations and saving ordinary server drafts are blocked for encrypted chats. Text and attachment references are encrypted together in the message. Attachments use the existing Workspace file upload flow; their bytes and file metadata are not E2EE-encrypted. Failed encrypted sends retain the editor text and uploaded attachments for retry. Converting an existing chat to encrypted mode and automatically granting keys to a new device are not implemented by this flow.
 
 Decrypted attachment references use the existing inline image/video previews and file download actions. Locking a message after local key deletion or an owner change removes inline previews, aborts their pending loads, and releases their display URLs. Plaintext references remain in scoped presentation memory; the message store retains the encrypted payload. Deleting a chat key does not revoke access to unencrypted media already opened in the viewer, downloaded files, or previously learned file references.
+
+## Device-specific key requests
+
+Request titles name the requesting account and target device: "You requested a security key for device…" for the current account, or the other person's name. Device names come from the request; IDs determine device equality. Separate tabs sharing the same secrets database represent the same device. Blank names display "Unknown device"; existing installations default to "Workspace browser".
+
+The following rules apply to pending requests. "Manager" means an owner or administrator; having the key or sharing an account never grants this role.
+
+| Request author  | Viewing device    | Viewer role | Requested generation's local key | Presentation                                                                                     |
+| --------------- | ----------------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Current account | Requesting device | Manager     | Either                           | Suggest approval on another device with the key, or waiting for access. No grant/reject actions. |
+| Current account | Requesting device | Member      | Either                           | Existing wait-for-access text. No grant/reject actions.                                          |
+| Current account | Another device    | Manager     | Available                        | Send key and reject actions. No wait-for-access text.                                            |
+| Current account | Another device    | Manager     | Unavailable                      | Explain that the requested key is missing here. Reject remains available.                        |
+| Current account | Another device    | Member      | Either                           | Existing wait-for-access text. No grant/reject actions.                                          |
+| Another account | Viewer's device   | Manager     | Available                        | Send key and reject actions.                                                                     |
+| Another account | Viewer's device   | Manager     | Unavailable                      | Explain that the requested key is missing here. Reject remains available.                        |
+| Another account | Viewer's device   | Member      | Either                           | Author and target device only; no grant/reject actions.                                          |
+
+Completed requests show "Key sent" or "Request rejected" without waiting text or response actions. Actions are disabled during operations. Until the scoped session is available, the UI does not suggest approving on another device. Historical requests use their exact generation; a newer local key is insufficient.
+
+Grants and rejections name the actor, recipient, and target device. The same account on another device does not imply local receipt. "The key is available on this device" requires both the matching recipient account/device and a locally available generation key. Retry after rejection is shown on the requesting device when allowed by the existing session rules. A response whose request is unavailable or mismatched does not infer its recipient.
+
+The [service-message tests](../packages/web/src/widgets/workspace-message-list/workspace-encrypted-message-bubble.ui.test.tsx) cover these display states. [Runtime tests](../packages/web/src/entities/messenger/chat-crypto-runtime.lib.test.ts) cover owner, administrator, and member accounts across two device scopes. [Chromium tests](../e2e/workspace-local-keys.spec.ts) exercise one account across isolated browser contexts, persisted requests, real cryptography, and mocked REST history: owner transfer succeeds and member transfer remains unavailable.
 
 ## Ownership and source map
 

@@ -524,6 +524,7 @@ export async function openRealChatSession({
     },
     getRights: rights,
     getKeyRequestOutcomes,
+    getKeyRequestOutcome: (uuid: string) => indexedRequestOutcomes().get(uuid) ?? null,
     getKeyRequests: () =>
       getKeyRequestOutcomes()
         .filter((item) => item.status === "pending")

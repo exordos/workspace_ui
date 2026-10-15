@@ -68,7 +68,10 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatCryptoSession } from "~/features/encrypted-chat-info/chat-crypto-session.hook";
-import { getEncryptedChatServiceActions } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import {
+  getEncryptedChatServiceActions,
+  getEncryptedChatServiceState,
+} from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
@@ -1124,6 +1127,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       encryptedChat.rejectKey,
       encryptedChat.requestKey,
     ],
+  );
+  const getKeyServiceState = useCallback(
+    (message: MessengerMessage) =>
+      encryptedChat.state.error === "stale"
+        ? null
+        : getEncryptedChatServiceState({
+            message,
+            projectId: runtimeContext?.projectId,
+            streamUuid,
+            session: encryptedChat.session,
+          }),
+    // Session notifications also update historical request outcomes and local key availability.
+    [streamUuid, runtimeContext?.projectId, encryptedChat.session, encryptedChat.state],
   );
   const streamsById = useMessengerStore((state) => state.streamsById);
   const isFavoritesConversation = shouldPresentWorkspaceFavorites({
@@ -3457,6 +3473,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onRequestMessageKey={stream?.encryption === true ? handleRequestMessageKey : undefined}
             requestMessageKeyPending={encryptedChat.loading || encryptedChat.state.pending}
             getKeyRequestActions={stream?.encryption === true ? getKeyRequestActions : undefined}
+            getKeyServiceState={stream?.encryption === true ? getKeyServiceState : undefined}
             onRequestDeleteMessage={handleRequestDeleteMessage}
             onCopyMessageText={handleCopyMessageText}
             onToggleMessageReaction={handleToggleMessageReaction}
