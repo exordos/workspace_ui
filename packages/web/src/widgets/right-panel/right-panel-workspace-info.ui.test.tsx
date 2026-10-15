@@ -1006,6 +1006,56 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
   });
 
+  it("keeps selections across searches and submits members hidden by the final query", async () => {
+    seedWorkspaceAuth();
+    seedOwnerChannel();
+    seedWorkspaceUsers();
+    addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
+    renderWithProviders(
+      <RightPanelWorkspaceInfo info={createInfo({ members: [], participantsCount: 0 })} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const dialog = screen.getByRole("dialog");
+    const search = within(dialog).getByRole("textbox");
+
+    fireEvent.change(search, { target: { value: "Alice" } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Alice Adams/i }));
+    fireEvent.change(search, { target: { value: "Bob" } });
+    expect(
+      within(dialog).queryByRole("checkbox", { name: /Alice Adams/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.change(search, { target: { value: "Alice" } });
+    expect(within(dialog).getByRole("checkbox", { name: /Alice Adams/i })).toBeChecked();
+    fireEvent.change(search, { target: { value: "no matching users" } });
+    expect(within(dialog).queryAllByRole("checkbox")).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addWorkspaceStreamMembersMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuids: [ALICE_USER_UUID, BOB_USER_UUID] }),
+      ),
+    );
+  });
+
+  it("finds members by username while continuing to display their full name", () => {
+    seedWorkspaceAuth();
+    seedOwnerChannel();
+    useUsersStore
+      .getState()
+      .replaceUsers([
+        createUser({ uuid: BOB_USER_UUID, username: "hidden-login", displayName: "Bob Baker" }),
+      ]);
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: " HIDDEN-LOGIN " } });
+
+    expect(within(dialog).getByRole("checkbox", { name: /Bob Baker/i })).toBeInTheDocument();
+    expect(within(dialog).queryByText("hidden-login")).not.toBeInTheDocument();
+  });
+
   it("submits workspace add members action", async () => {
     seedWorkspaceAuth();
     seedOwnerChannel();

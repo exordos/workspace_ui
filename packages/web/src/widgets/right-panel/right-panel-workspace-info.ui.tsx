@@ -43,6 +43,11 @@ import { t } from "~/i18n/i18n";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
+  buildUserPickerOptions,
+  toggleUserPickerSelection,
+  type UserPickerOption,
+} from "~/shared/lib/user-picker";
+import {
   AppDialogShell,
   APP_DIALOG_CONTENT_BASE_CLASS,
   DialogCancelButton,
@@ -50,8 +55,8 @@ import {
 } from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
 import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
 import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
@@ -89,14 +94,6 @@ interface WorkspaceMemberActionState {
   removeError: string | null;
 }
 
-interface WorkspaceUserPickerOption {
-  userUuid: MessengerUuid;
-  fullName: string;
-  email: string;
-  presence: PresenceVisual;
-  statusLabel: string | null;
-}
-
 const ADD_STREAM_MEMBERS_INPUT_CLASS =
   "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
 
@@ -105,7 +102,7 @@ const ADD_MEMBERS_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex
 const removeMemberActionClassName =
   "flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted opacity-100 transition-colors hover:bg-bg hover:text-notice-base disabled:opacity-40 sm:opacity-0 sm:group-hover/member:opacity-100";
 
-const EMPTY_WORKSPACE_USER_OPTIONS: WorkspaceUserPickerOption[] = [];
+const EMPTY_WORKSPACE_USER_OPTIONS: UserPickerOption<MessengerUuid>[] = [];
 
 function createNotificationActionState(streamUuid: string | null): NotificationActionState {
   return {
@@ -128,14 +125,6 @@ function createWorkspaceMemberActionState(streamUuid: string | null): WorkspaceM
   };
 }
 
-function resolveWorkspaceUserDisplayName(user: User): string {
-  return selectUserDisplayName(user, user.uuid);
-}
-
-function resolveWorkspacePresence(status: User["status"] | null): PresenceVisual {
-  return resolveUserPresenceVisual(status) ?? "offline";
-}
-
 function resolveWorkspaceStatusLabel(status: User["status"] | null): string | null {
   if (status == null) return null;
   if (status === "active") return t("presence.online");
@@ -151,124 +140,32 @@ function resolveWorkspaceRoleLabel(
   return t(`roles.${role}`);
 }
 
-function normalizeWorkspaceMemberQuery(query: string): string {
-  return query.trim().toLowerCase();
-}
-
-function filterWorkspaceUserOptions(
+function buildWorkspaceUserOptions(
   usersById: UsersById,
   existingMemberUuids: ReadonlySet<MessengerUuid>,
   selectedUserUuids: readonly MessengerUuid[],
-  query: string,
-): WorkspaceUserPickerOption[] {
-  // The old picker depends on numeric Zulip userId, so Workspace keeps the same
-  // visual list but builds it from UUID users in user store.
-  const normalizedQuery = normalizeWorkspaceMemberQuery(query);
-  const selected = new Set(selectedUserUuids);
-  const options: WorkspaceUserPickerOption[] = [];
-
-  for (const user of Object.values(usersById)) {
-    if (!isSelectableWorkspaceUser(user)) continue;
-    if (existingMemberUuids.has(user.uuid)) continue;
-
-    const fullName = resolveWorkspaceUserDisplayName(user);
-    const email = user.email?.trim() ?? "";
-    const searchValue = `${fullName} ${email}`.trim().toLowerCase();
-    if (normalizedQuery.length > 0 && !searchValue.includes(normalizedQuery)) continue;
-
-    options.push({
-      userUuid: user.uuid,
-      fullName,
-      email,
-      presence: resolveWorkspacePresence(user.status),
-      statusLabel: resolveWorkspaceStatusLabel(user.status),
-    });
-  }
-
-  options.sort((left, right) => {
-    const leftSelected = selected.has(left.userUuid) ? 0 : 1;
-    const rightSelected = selected.has(right.userUuid) ? 0 : 1;
-    if (leftSelected !== rightSelected) return leftSelected - rightSelected;
-    return left.fullName.localeCompare(right.fullName);
+): UserPickerOption<MessengerUuid>[] {
+  return buildUserPickerOptions({
+    candidates: Object.values(usersById)
+      .filter(isSelectableWorkspaceUser)
+      .map((user) => ({
+        userId: user.uuid,
+        fullName: selectUserDisplayName(user, user.uuid),
+        username: user.username,
+        email: user.email ?? "",
+        presence: resolveUserPresenceVisual(user.status) ?? "offline",
+        statusLabel: resolveWorkspaceStatusLabel(user.status),
+      })),
+    selectedUserIds: selectedUserUuids,
+    excludedUserIds: Array.from(existingMemberUuids),
   });
-
-  return options;
 }
-
-function toggleWorkspaceUserUuidSelection(
-  selectedUserUuids: readonly MessengerUuid[],
-  userUuid: MessengerUuid,
-): MessengerUuid[] {
-  const next = new Set(selectedUserUuids);
-  if (next.has(userUuid)) {
-    next.delete(userUuid);
-  } else {
-    next.add(userUuid);
-  }
-  return Array.from(next).sort((left, right) => left.localeCompare(right));
-}
-
-interface WorkspaceUserPickerListProps {
-  options: readonly WorkspaceUserPickerOption[];
-  selectedUserUuids: ReadonlySet<MessengerUuid>;
-  query: string;
-  onQueryChange: (query: string) => void;
-  onToggle: (userUuid: MessengerUuid) => void;
-}
-
-const WorkspaceUserPickerList: React.FC<WorkspaceUserPickerListProps> = ({
-  options,
-  selectedUserUuids,
-  query,
-  onQueryChange,
-  onToggle,
-}) => {
-  return (
-    <div className="flex flex-1 flex-col gap-3 overflow-hidden">
-      <input
-        type="text"
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
-        className={ADD_STREAM_MEMBERS_INPUT_CLASS}
-        placeholder={t("message.searchUsers")}
-      />
-      <div className="h-96 overflow-y-auto rounded-lg border border-border-subtle">
-        {options.length === 0 ? (
-          <p className="px-3 py-4 text-center text-sm text-text-muted">{t("search.noResults")}</p>
-        ) : (
-          options.map((option) => (
-            <label
-              key={option.userUuid}
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg"
-            >
-              <input
-                type="checkbox"
-                checked={selectedUserUuids.has(option.userUuid)}
-                onChange={() => onToggle(option.userUuid)}
-                className="h-4 w-4 rounded border-border-subtle"
-              />
-              <PresenceIndicator status={option.presence} size="sm" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{option.fullName}</span>
-                {(option.statusLabel ?? option.email) && (
-                  <span className="block truncate text-[11px] text-text-secondary">
-                    {option.statusLabel ?? option.email}
-                  </span>
-                )}
-              </span>
-            </label>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
 
 interface WorkspaceAddStreamMembersDialogProps {
   open: boolean;
   streamName: string;
   query: string;
-  options: readonly WorkspaceUserPickerOption[];
+  options: readonly UserPickerOption<MessengerUuid>[];
   selectedUserUuids: ReadonlySet<MessengerUuid>;
   submitting: boolean;
   error: string | null;
@@ -318,12 +215,13 @@ const WorkspaceAddStreamMembersDialog: React.FC<WorkspaceAddStreamMembersDialogP
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden p-4">
-        <WorkspaceUserPickerList
+        <UserPickerList
           options={options}
-          selectedUserUuids={selectedUserUuids}
+          selectedUserIds={selectedUserUuids}
           query={query}
           onQueryChange={onQueryChange}
           onToggle={onToggle}
+          inputClassName={ADD_STREAM_MEMBERS_INPUT_CLASS}
         />
 
         {error && <p className="text-xs text-notice-base">{error}</p>}
@@ -497,18 +395,16 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
       // Build candidates only for the open dialog: the user list can be large,
       // and the panel does not need this data outside the add flow.
       canAddMembers && memberActionCurrent.addDialogOpen
-        ? filterWorkspaceUserOptions(
+        ? buildWorkspaceUserOptions(
             workspaceUsersById,
             existingMemberUuids,
             memberActionCurrent.selectedUserUuids,
-            memberActionCurrent.query,
           )
         : EMPTY_WORKSPACE_USER_OPTIONS,
     [
       canAddMembers,
       existingMemberUuids,
       memberActionCurrent.addDialogOpen,
-      memberActionCurrent.query,
       memberActionCurrent.selectedUserUuids,
       workspaceUsersById,
     ],
@@ -591,7 +487,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const handleToggleSelectedMember = useCallback((userUuid: MessengerUuid) => {
     setMemberActionState((prev) => ({
       ...prev,
-      selectedUserUuids: toggleWorkspaceUserUuidSelection(prev.selectedUserUuids, userUuid),
+      selectedUserUuids: toggleUserPickerSelection(prev.selectedUserUuids, userUuid),
     }));
   }, []);
 

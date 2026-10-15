@@ -6,33 +6,38 @@ export type UserPickerPresence = "active" | "idle" | "offline" | null;
 const ACTIVE_PRESENCE_WINDOW_SECONDS = 2 * 60;
 const IDLE_PRESENCE_WINDOW_SECONDS = 10 * 60;
 
-export interface UserPickerOption {
-  userId: UserPickerId;
+export interface UserPickerOption<TId extends UserPickerId = UserPickerId> {
+  userId: TId;
   fullName: string;
+  username?: string;
   email: string;
   presence: UserPickerPresence;
   statusLabel: string | null;
   isDisabled: boolean;
 }
 
-export interface UserPickerCandidate {
-  userId: UserPickerId;
+export interface UserPickerCandidate<TId extends UserPickerId = UserPickerId> {
+  userId: TId;
   fullName: string;
+  username?: string;
   email?: string;
+  presence?: UserPickerPresence;
   presenceStatus?: PresenceStatus;
   presenceTimestamp?: number;
   statusLabel?: string | null;
 }
 
-function normalizeSearchValue(value: string | undefined): string {
-  return (value ?? "").trim().toLowerCase();
+export function userPickerSearchText(
+  user: Pick<UserPickerCandidate, "fullName" | "username" | "email">,
+): string {
+  return [user.fullName, user.username, user.email].filter(Boolean).join("\n");
 }
 
-function matchesQuery(candidate: UserPickerCandidate, query: string): boolean {
-  if (query.length === 0) return true;
-  const normalizedName = normalizeSearchValue(candidate.fullName);
-  const normalizedEmail = normalizeSearchValue(candidate.email);
-  return normalizedName.includes(query) || normalizedEmail.includes(query);
+export function matchesUserPickerQuery(
+  candidate: Pick<UserPickerCandidate, "fullName" | "username" | "email">,
+  query: string,
+): boolean {
+  return userPickerSearchText(candidate).toLowerCase().includes(query.trim().toLowerCase());
 }
 
 function toPresence(
@@ -52,19 +57,19 @@ function toPresence(
   return "offline";
 }
 
-export function buildUserPickerOptions(options: {
-  candidates: readonly UserPickerCandidate[];
-  selectedUserIds: readonly UserPickerId[];
-  excludedUserIds?: readonly UserPickerId[];
+export function buildUserPickerOptions<TId extends UserPickerId>(options: {
+  candidates: readonly UserPickerCandidate<TId>[];
+  selectedUserIds: readonly TId[];
+  excludedUserIds?: readonly TId[];
   query?: string;
-}): UserPickerOption[] {
+}): UserPickerOption<TId>[] {
   const { candidates, selectedUserIds, excludedUserIds = [], query = "" } = options;
   const normalizedQuery = query.trim().toLowerCase();
   const selected = new Set(selectedUserIds);
   const excluded = new Set(excludedUserIds);
   const now = Math.floor(Date.now() / 1000);
 
-  const deduped = new Map<UserPickerId, UserPickerOption>();
+  const deduped = new Map<TId, UserPickerOption<TId>>();
   for (const candidate of candidates) {
     if (deduped.has(candidate.userId)) {
       continue;
@@ -76,7 +81,7 @@ export function buildUserPickerOptions(options: {
     if (fullName.length === 0) {
       continue;
     }
-    if (!matchesQuery(candidate, normalizedQuery)) {
+    if (!matchesUserPickerQuery(candidate, normalizedQuery)) {
       continue;
     }
 
@@ -85,8 +90,11 @@ export function buildUserPickerOptions(options: {
     deduped.set(candidate.userId, {
       userId: candidate.userId,
       fullName,
+      ...(candidate.username != null ? { username: candidate.username.trim() } : {}),
       email: (candidate.email ?? "").trim(),
-      presence: toPresence(candidate.presenceStatus, candidate.presenceTimestamp, now),
+      presence:
+        candidate.presence ??
+        toPresence(candidate.presenceStatus, candidate.presenceTimestamp, now),
       statusLabel: statusLabel != null && statusLabel.length > 0 ? statusLabel : null,
       isDisabled: false,
     });
@@ -104,10 +112,10 @@ export function buildUserPickerOptions(options: {
   return rows;
 }
 
-export function toggleUserPickerSelection(
-  selectedUserIds: readonly UserPickerId[],
-  userId: UserPickerId,
-): UserPickerId[] {
+export function toggleUserPickerSelection<TId extends UserPickerId>(
+  selectedUserIds: readonly TId[],
+  userId: TId,
+): TId[] {
   const next = new Set(selectedUserIds);
   if (next.has(userId)) {
     next.delete(userId);
