@@ -15,6 +15,7 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { setLocale } from "~/i18n/i18n";
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
   return {
@@ -136,6 +137,196 @@ function view(stored: MessengerMessage) {
     />
   );
 }
+describe("key response service messages", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    setLocale("en");
+    useWorkspaceMessageStore.getState().clear();
+  });
+
+  function responseFixture(kind: "key_grant" | "key_reject") {
+    const request = {
+      ...message("request", {
+        kind: "key_request",
+        keyUuid: "generation",
+        deviceId: "recipient-device",
+        deviceName: "Workspace browser",
+        publicKey: "opaque-public-key",
+      }),
+      authorUuid: "recipient",
+    };
+    const responseFields = {
+      keyUuid: "generation",
+      requestMessageUuid: request.uuid,
+      senderDeviceId: "issuer-device",
+      recipientDeviceId: "recipient-device",
+    };
+    const response = message(
+      "response",
+      kind === "key_grant"
+        ? { ...responseFields, kind, content: "opaque-encrypted-key" }
+        : { ...responseFields, kind },
+    );
+    const props = {
+      message: response,
+      currentUserUuid: "observer",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      resolveAuthorLabel: (uuid: string) =>
+        ({ author: "Толя Тестировщик", recipient: "Саша" })[uuid],
+    };
+    useWorkspaceMessageStore.getState().setOwner("owner", false);
+    return { request, props };
+  }
+
+  it.each([
+    ["key_grant", "Толя Тестировщик предоставил ключ безопасности пользователю Саша"],
+    ["key_reject", "Толя Тестировщик отклонил запрос ключа безопасности пользователя Саша"],
+  ] as const)("names both participants in %s for the issuer and other viewers", (kind, title) => {
+    setLocale("ru");
+    const { request, props } = responseFixture(kind);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
+    const { rerender, container } = render(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="author" />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain("opaque-encrypted-key");
+    expect(container.innerHTML).not.toContain("opaque-public-key");
+  });
+
+  it.each([
+    ["key_grant", "ru", "Ключ получен.", "Владелец канала предоставил вам ключ безопасности"],
+    ["key_reject", "ru", "Запрос отклонён.", "Владелец канала отклонил запрос на выдачу ключа."],
+    ["key_grant", "en", "Key received.", "The channel owner provided you with a security key"],
+    [
+      "key_reject",
+      "en",
+      "Request rejected.",
+      "The channel owner rejected the request for a security key.",
+    ],
+  ] as const)("personalizes %s for the recipient in %s", (kind, locale, title, description) => {
+    setLocale(locale);
+    const { request, props } = responseFixture(kind);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
+    const { container } = render(
+      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />,
+    );
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(description)).toBeInTheDocument();
+    expect(screen.queryByText(/Толя|Саша/)).toBeNull();
+    expect(container.querySelector("[data-encrypted-service-message]")).toHaveAttribute(
+      "data-encrypted-service-message",
+      kind,
+    );
+  });
+
+  it("updates the recipient when the request arrives and puts retry on a separate row", () => {
+    setLocale("en");
+    const { request, props } = responseFixture("key_reject");
+    const retry = vi.fn();
+    render(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        currentUserUuid="recipient"
+        actions={{
+          getKeyRequestActions: () => [{ label: "Request key", onClick: retry }],
+        }}
+      />,
+    );
+    expect(screen.getByText(/Recipient information is unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText("Request rejected.")).toBeNull();
+    act(() => useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request));
+    expect(screen.getByText("Request rejected.")).toBeInTheDocument();
+    const description = screen.getByText(
+      "The channel owner rejected the request for a security key.",
+    );
+    const retryDescription = screen.getByText("You can request the key again");
+    const requestButton = screen.getByRole("button", { name: "Request" });
+    const primaryRow = screen.getByText("Request rejected.").parentElement?.parentElement;
+    expect(description.parentElement?.parentElement).toBe(primaryRow);
+    expect(retryDescription.parentElement).not.toBe(primaryRow);
+    expect(retryDescription.parentElement?.parentElement).toBe(primaryRow?.parentElement);
+    expect(requestButton.parentElement).toBe(retryDescription.parentElement);
+    expect(requestButton).toHaveClass("underline");
+    fireEvent.click(requestButton);
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("keeps pending retry disabled and uses the short Russian action label", () => {
+    setLocale("ru");
+    const { request, props } = responseFixture("key_reject");
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
+    const retry = vi.fn();
+    render(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        currentUserUuid="recipient"
+        actions={{
+          getKeyRequestActions: () => [{ label: "Запросить ключ", onClick: retry, disabled: true }],
+        }}
+      />,
+    );
+    expect(screen.getByText("Вы можете запросить ключ повторно")).toBeInTheDocument();
+    const requestButton = screen.getByRole("button", { name: "Запросить" });
+    expect(requestButton).toBeDisabled();
+    fireEvent.click(requestButton);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("does not offer unavailable retry actions and keeps grants inline", () => {
+    setLocale("en");
+    const { request, props } = responseFixture("key_reject");
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />,
+    );
+    expect(screen.queryByText("You can request the key again")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    const grant = responseFixture("key_grant");
+    rerender(<WorkspaceEncryptedMessageBubble {...grant.props} currentUserUuid="recipient" />);
+    const title = screen.getByText("Key received.");
+    const description = screen.getByText("The channel owner provided you with a security key");
+    expect(title.parentElement).toBe(description.parentElement);
+    expect(screen.queryByText("You can request the key again")).toBeNull();
+  });
+
+  it.each([
+    { projectId: "other-project" },
+    { streamUuid: "99999999-9999-4999-8999-999999999999" },
+    { payload: { kind: "markdown", content: "not a request" } },
+    {
+      payload: {
+        kind: "key_request",
+        keyUuid: "other-generation",
+        deviceId: "recipient-device",
+        deviceName: "device",
+        publicKey: "opaque",
+      },
+    },
+    {
+      payload: {
+        kind: "key_request",
+        keyUuid: "generation",
+        deviceId: "other-device",
+        deviceName: "device",
+        publicKey: "opaque",
+      },
+    },
+  ] satisfies Partial<MessengerMessage>[])(
+    "does not infer a recipient from an unrelated request %j",
+    (overrides) => {
+      setLocale("en");
+      const { request, props } = responseFixture("key_grant");
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage({ ...request, ...overrides });
+      render(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />);
+      expect(screen.queryByText("Key received.")).toBeNull();
+      expect(screen.getByText("Recipient information is unavailable.")).toBeInTheDocument();
+      expect(screen.queryByText(/Саша/)).toBeNull();
+    },
+  );
+});
+
 describe("real encrypted message presentation", () => {
   afterEach(() => {
     cleanup();
