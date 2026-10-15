@@ -234,6 +234,7 @@ export async function sendJsonResult(
   params: MessengerQueryParams = {},
   body?: unknown,
   requestHeaders?: HeadersInit,
+  onDispatch?: () => void,
 ): Promise<MessengerJsonResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
@@ -251,17 +252,19 @@ export async function sendJsonResult(
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: options.signal,
   };
+  onDispatch?.();
   let response = await fetchImpl(url, init);
   let responsePath = path;
   const fallbackPath = pathWithoutTrailingSlash(path);
   if (response.status === 404 && fallbackPath != null) {
     responsePath = fallbackPath;
+    onDispatch?.();
     response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
   }
   let data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
   if (!response.ok && shouldRetryAfterAuthFailure(response, data)) {
     const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
-    response = await fetchImpl(retryUrl, {
+    const retryInit = {
       ...init,
       headers: buildMessengerRequestHeaders(
         await resolveMessengerAccessToken(options, true),
@@ -272,7 +275,9 @@ export async function sendJsonResult(
         "application/json",
         requestHeaders,
       ),
-    });
+    };
+    onDispatch?.();
+    response = await fetchImpl(retryUrl, retryInit);
     data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
   }
   if (!response.ok) {

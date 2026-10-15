@@ -172,21 +172,26 @@ describe("encrypted chat info projection", () => {
     const projection = selectEncryptedChatInfo(
       snapshot({
         usersOwnerKey: "old-owner",
-        bindingsById: { binding },
+        bindingsById: {
+          binding,
+          otherStream: { ...binding, uuid: "other-stream", streamUuid: "another" },
+          second: { ...binding, uuid: "second", userUuid: "missing-user" },
+          otherProject: { ...binding, uuid: "other-project", projectId: "another" },
+        },
         usersById: { author: user },
       }),
     );
-    expect(projection?.members).toEqual([
-      {
-        id: "binding",
-        name: "author",
+    expect(projection?.members).toEqual(
+      ["binding", "second"].map((id, index) => ({
+        id,
+        name: index === 0 ? "author" : "missing-user",
         avatarUrl: null,
         email: null,
         presence: null,
         statusLabel: null,
         roleLabel: t("roles.member"),
-      },
-    ]);
+      })),
+    );
     expect(projection?.onlineCount).toBe(0);
   });
   it("projects member contact, role, and presence from the current users owner", () => {

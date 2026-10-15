@@ -379,7 +379,10 @@ export class ChatE2eeController {
     });
   }
 
-  encryptMessage(plaintext: Uint8Array): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
+  encryptMessage<T>(
+    plaintext: Uint8Array,
+    dispatch: (payload: ChatEncryptedPayload, isCurrent: () => boolean) => Promise<T>,
+  ): Promise<ChatE2eeControllerResult<T>> {
     return this.run(async () => {
       if (!this.deps.getRights().canSend) return failure("forbidden");
       const deletionRevision = await this.readDeletionRevision();
@@ -396,38 +399,19 @@ export class ChatE2eeController {
       if (!encrypted.ok) return encrypted;
       const retained = await this.checkDeletionRevision(deletionRevision.value);
       if (!retained.ok) return retained;
-      return this.send(
-        { kind: "e2ee", keyUuid: this.deps.scope.keyUuid, content: encrypted.value },
-        () => this.deps.getRights().canSend,
-      );
-    });
-  }
-
-  decryptMessage(
-    message: ChatE2eeMessage<ChatEncryptedPayload>,
-  ): Promise<ChatE2eeControllerResult<Uint8Array>> {
-    return this.run(async () => {
-      if (
-        message.streamUuid !== this.deps.scope.streamUuid ||
-        message.payload.keyUuid !== this.deps.scope.keyUuid
-      )
-        return failure("invalid-message");
-      const deletionRevision = await this.readDeletionRevision();
-      if (!deletionRevision.ok) return deletionRevision;
-      const stored = await this.readKey();
-      if (!stored.ok) return stored;
-      if (stored.value?.groupKey == null) return failure("missing-key");
-      const decrypted = await this.deps.provider.decryptMessage({
-        groupKey: stored.value.groupKey,
-        envelope: message.payload.content,
-        context: this.deps.scope,
-      });
-      const retained = await this.checkDeletionRevision(deletionRevision.value);
-      if (!retained.ok) {
-        if (decrypted.ok) decrypted.value.fill(0);
-        return retained;
+      const guard = () => this.isCurrent() && this.deps.getRights().canSend;
+      if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
+      try {
+        // The transport verifies its receipt and retains this guard through dispatch and commits.
+        const sent = await dispatch(
+          { kind: "e2ee", keyUuid: this.deps.scope.keyUuid, content: encrypted.value },
+          guard,
+        );
+        if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
+        return success(sent);
+      } catch {
+        return failure("send-failed");
       }
-      return decrypted;
     });
   }
 

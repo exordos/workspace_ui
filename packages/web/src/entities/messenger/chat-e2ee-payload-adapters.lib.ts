@@ -1,5 +1,7 @@
 import type { WorkspaceMessengerE2eePayloadDto } from "~/shared/api/messenger.types";
+import { adaptMessengerMessagePayload } from "./messenger-adapters.lib";
 import type { ChatE2eePayload } from "./chat-e2ee.types";
+import type { MessengerMessagePayload } from "./messenger.types";
 
 export type ChatE2eePayloadDecodeResult =
   | { readonly ok: true; readonly value: ChatE2eePayload }
@@ -73,47 +75,20 @@ export function encodeChatE2eePayload(payload: ChatE2eePayload): WorkspaceMessen
 export function decodeChatE2eePayload(
   dto: WorkspaceMessengerE2eePayloadDto,
 ): ChatE2eePayloadDecodeResult {
-  if (dto.kind === "key_reject")
-    return {
-      ok: true,
-      value: {
-        kind: dto.kind,
-        keyUuid: dto.key_uuid,
-        requestMessageUuid: dto.request_message_uuid,
-        senderDeviceId: dto.sender_device_id,
-        recipientDeviceId: dto.recipient_device_id,
-      },
-    };
-  if (dto.kind === "key_announced")
-    return { ok: true, value: { kind: dto.kind, keyUuid: dto.key_uuid } };
-  const field = dto.kind === "key_request" ? "public_key" : "content";
-  const bytes = decodeBytes(dto.kind === "key_request" ? dto.public_key : dto.content);
+  const payload = adaptMessengerMessagePayload(dto);
+  if (payload.kind === "markdown") throw new TypeError("Expected encrypted payload");
+  return decodeMessengerE2eePayload(payload);
+}
+
+export function decodeMessengerE2eePayload(
+  payload: Exclude<MessengerMessagePayload, { kind: "markdown" }>,
+): ChatE2eePayloadDecodeResult {
+  if (payload.kind === "key_reject" || payload.kind === "key_announced")
+    return { ok: true, value: payload };
+  const field = payload.kind === "key_request" ? "public_key" : "content";
+  const bytes = decodeBytes(payload.kind === "key_request" ? payload.publicKey : payload.content);
   if (bytes === null) return { ok: false, reason: "invalid-base64", field };
-  switch (dto.kind) {
-    case "e2ee":
-      return { ok: true, value: { kind: dto.kind, keyUuid: dto.key_uuid, content: { bytes } } };
-    case "key_request":
-      return {
-        ok: true,
-        value: {
-          kind: dto.kind,
-          keyUuid: dto.key_uuid,
-          deviceId: dto.device_id,
-          deviceName: dto.device_name,
-          publicKey: { bytes },
-        },
-      };
-    case "key_grant":
-      return {
-        ok: true,
-        value: {
-          kind: dto.kind,
-          keyUuid: dto.key_uuid,
-          requestMessageUuid: dto.request_message_uuid,
-          senderDeviceId: dto.sender_device_id,
-          recipientDeviceId: dto.recipient_device_id,
-          content: { bytes },
-        },
-      };
-  }
+  return payload.kind === "key_request"
+    ? { ok: true, value: { ...payload, publicKey: { bytes } } }
+    : { ok: true, value: { ...payload, content: { bytes } } };
 }

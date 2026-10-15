@@ -27,7 +27,6 @@ import type {
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
 import { isWorkspaceMessengerMessagePayloadDto } from "~/shared/api/messenger.types";
-import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { MessengerChannelCreationError } from "./chat-initial-key-bootstrap.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import {
@@ -231,19 +230,10 @@ function uniqueMemberUserUuids(userUuids: readonly MessengerUuid[] | undefined):
 }
 
 function initialEncryptionKeyUuid(metadata: ChatInitialKeyMetadata | null) {
-  const announcement =
-    metadata === null
-      ? null
-      : encodeChatE2eePayload({
-          kind: "key_announced",
-          keyUuid: metadata.keyUuid,
-        });
-  if (
-    announcement !== null &&
-    (!isWorkspaceMessengerMessagePayloadDto(announcement) || announcement.kind !== "key_announced")
-  )
+  if (metadata === null) return null;
+  if (!isWorkspaceMessengerMessagePayloadDto({ kind: "key_announced", key_uuid: metadata.keyUuid }))
     throw new MessengerChannelCreationError("encryption-unavailable");
-  return announcement?.kind === "key_announced" ? announcement.key_uuid : null;
+  return metadata.keyUuid;
 }
 
 export async function createWorkspaceChannel(
@@ -394,17 +384,6 @@ async function createWorkspaceChannelAttempt({
     // Session refresh may yield before dispatch; do not send for an invalidated runtime.
     requestOptions.fetchImpl = (request, init) => {
       if (action.isStale()) return Promise.reject(new Error("stale-owner"));
-      const method = init?.method ?? (request instanceof Request ? request.method : "GET");
-      const url = new URL(
-        request instanceof Request ? request.url : String(request),
-        runtimeContext.organizationOrigin,
-      );
-      if (
-        creationAttempt?.state.phase === "prepared" &&
-        method.toUpperCase() === "POST" &&
-        url.pathname.endsWith("/streams/")
-      )
-        creationAttempt.state = { ...creationAttempt.state, phase: "dispatched" };
       return fetchImpl(request, init);
     };
   }
@@ -421,22 +400,33 @@ async function createWorkspaceChannelAttempt({
     );
   }
   if (!bundle) {
+    const create =
+      client.createStreamWithDefaultTopic ??
+      ((options: MessengerClientOptions, body: WorkspaceMessengerCreateStreamRequestBody) =>
+        defaultCreateStreamWithDefaultTopic(
+          options,
+          body,
+          encryption
+            ? () => {
+                if (action.isStale()) throw new Error("stale-owner");
+                if (creationAttempt?.state.phase === "prepared")
+                  creationAttempt.state = { ...creationAttempt.state, phase: "dispatched" };
+              }
+            : undefined,
+        ));
     // Opaque clients cannot expose the transport boundary; assume dispatch when invoking them.
     if (creationAttempt?.state.phase === "prepared" && client.createStreamWithDefaultTopic) {
       creationAttempt.state = { ...creationAttempt.state, phase: "dispatched" };
     }
-    bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
-      requestOptions,
-      {
-        ...nativeStreamBody({
-          name,
-          description,
-          inviteOnly: encryption ? false : inviteOnly,
-          announce: encryption ? false : announce,
-        }),
-        ...(encryption ? { encryption: true, current_encryption_key_uuid: encryptionKeyUuid } : {}),
-      },
-    );
+    bundle = await create(requestOptions, {
+      ...nativeStreamBody({
+        name,
+        description,
+        inviteOnly: encryption ? false : inviteOnly,
+        announce: encryption ? false : announce,
+      }),
+      ...(encryption ? { encryption: true, current_encryption_key_uuid: encryptionKeyUuid } : {}),
+    });
   }
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };

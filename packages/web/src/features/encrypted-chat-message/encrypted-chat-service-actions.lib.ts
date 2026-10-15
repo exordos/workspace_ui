@@ -9,13 +9,17 @@ interface ServiceAction {
 }
 interface ServiceActionOptions {
   readonly message: MessengerMessage;
-  readonly messages: readonly MessengerMessage[];
   readonly currentUserUuid?: string;
   readonly streamUuid: string | null;
   readonly projectId?: string;
   readonly session: Pick<
     RealChatSession,
-    "getRights" | "getGenerationState" | "isIssuerAllowed" | "device"
+    | "getRights"
+    | "getGenerationState"
+    | "isIssuerAllowed"
+    | "canGrantKey"
+    | "canRejectKey"
+    | "device"
   > | null;
   readonly pending: boolean;
   readonly onRequestKey: (keyUuid: string) => void;
@@ -26,7 +30,6 @@ interface ServiceActionOptions {
 /** Actions follow the message generation and scoped issuer policy, never the latest key implicitly. */
 export function getEncryptedChatServiceActions({
   message,
-  messages,
   currentUserUuid,
   streamUuid,
   projectId,
@@ -45,11 +48,10 @@ export function getEncryptedChatServiceActions({
     payload.kind === "e2ee"
   )
     return [];
-  const generation = session.getGenerationState(payload.keyUuid);
-  const rights = session.getRights();
   if (payload.kind === "key_announced" || payload.kind === "key_reject") {
+    const generation = session.getGenerationState(payload.keyUuid);
     if (
-      !rights.canRequest ||
+      !session.getRights().canRequest ||
       generation?.access === "ready" ||
       !session.isIssuerAllowed(message.authorUuid)
     )
@@ -67,25 +69,14 @@ export function getEncryptedChatServiceActions({
     (message.authorUuid === currentUserUuid && payload.deviceId === session.device.deviceId)
   )
     return [];
-  const answered = messages.some(
-    (response) =>
-      response.streamUuid === streamUuid &&
-      response.projectId === projectId &&
-      (response.payload.kind === "key_grant" || response.payload.kind === "key_reject") &&
-      response.payload.requestMessageUuid === message.uuid &&
-      response.payload.keyUuid === payload.keyUuid &&
-      response.payload.recipientDeviceId === payload.deviceId &&
-      session.isIssuerAllowed(response.authorUuid),
-  );
-  if (answered) return [];
   const actions: ServiceAction[] = [];
-  if (rights.canGrant && generation?.access === "ready")
+  if (session.canGrantKey(message.uuid))
     actions.push({
       label: t("e2ee.confirmAccess"),
       disabled: pending,
       onClick: () => onGrantKey(message.uuid),
     });
-  if (rights.canReject)
+  if (session.canRejectKey(message.uuid))
     actions.push({
       label: t("e2ee.rejectAccess"),
       disabled: pending,

@@ -34,8 +34,6 @@ describe("E2EE payload boundaries", () => {
     const dto = encodeChatE2eePayload(payload);
     expect(isWorkspaceMessengerMessagePayloadDto(dto)).toBe(true);
     expect(decodeChatE2eePayload(dto)).toEqual({ ok: true, value: payload });
-    const stored = adaptMessengerMessagePayload(dto);
-    expect(stored.kind).toBe(payload.kind);
     if ("content" in dto) expect(dto.content).toBe("AH+A/w==");
     if ("public_key" in dto) expect(dto.public_key).toBe("AH+A/w==");
     expect(dto).not.toHaveProperty("bytes");
@@ -56,11 +54,7 @@ describe("E2EE payload boundaries", () => {
     },
   );
 
-  it("keeps key announcements UUID-only and rejects incomplete service payloads", () => {
-    expect(decodeChatE2eePayload({ kind: "key_announced", key_uuid: keyUuid })).toEqual({
-      ok: true,
-      value: { kind: "key_announced", keyUuid },
-    });
+  it("rejects incomplete service payloads", () => {
     expect(
       isWorkspaceMessengerMessagePayloadDto({
         kind: "key_request",

@@ -1,10 +1,19 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RealChatKeyChange } from "~/entities/messenger/chat-crypto-resources.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { EncryptedChatInfoConnected } from "./encrypted-chat-info-connected.ui";
 
-const mocks = vi.hoisted(() => ({ info: vi.fn(), crypto: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  info: vi.fn(),
+  crypto: vi.fn(),
+  keyChanges: vi.fn<(listener: (change?: RealChatKeyChange) => void) => () => void>(),
+}));
 vi.mock("./encrypted-chat-info.hook", () => ({ useEncryptedChatInfo: mocks.info }));
 vi.mock("./chat-crypto-session.hook", () => ({ useChatCryptoSession: mocks.crypto }));
+vi.mock("~/entities/messenger/chat-crypto-resources.lib", () => ({
+  subscribeRealChatKeyChanges: mocks.keyChanges,
+}));
 function fixture() {
   const request = (uuid: string, name: string) => ({
     requestMessageUuid: uuid,
@@ -19,6 +28,17 @@ function fixture() {
     request("rejected", "Rejected"),
   ];
   const session = {
+    scope: {
+      owner: {
+        accountId: "account",
+        instanceId: "instance",
+        organizationId: "organization",
+        projectId: "project",
+        userUuid: "user",
+      },
+      deviceId: "device",
+      streamUuid: "stream",
+    },
     getRights: () => ({ canRotate: true, canRequest: true }),
     subscribe: vi.fn((_listener: () => void) => () => undefined),
     listLocalKeys: vi
@@ -66,6 +86,7 @@ function fixture() {
 beforeEach(() => {
   mocks.crypto.mockReset();
   mocks.info.mockReset();
+  mocks.keyChanges.mockReset().mockReturnValue(() => undefined);
 });
 afterEach(cleanup);
 describe("encrypted chat sidebar actions", () => {
@@ -480,50 +501,64 @@ describe("local encrypted chat keys", () => {
     expect(navigate).toHaveBeenCalledWith("key");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
-  it("hides stale inventory and confirmation on session/stream changes and ignores their delayed completion", async () => {
-    const { crypto } = fixture();
-    crypto.session.listLocalKeys.mockResolvedValue([{ keyUuid: oldKey, receivedAt: null }]);
-    let finishRemoval: ((success: boolean) => void) | undefined;
-    crypto.removeLocalKey.mockReturnValue(
-      new Promise<boolean>((resolve) => {
-        finishRemoval = resolve;
-      }),
-    );
-    const navigate = vi.fn();
-    const view = render(
-      <EncryptedChatInfoConnected
-        streamUuid="stream"
-        screen="local-key"
-        selectedLocalKeyUuid={oldKey}
-        onScreenChange={navigate}
-      />,
-    );
-    await screen.findByText(oldKey);
-    fireEvent.click(screen.getByRole("button", { name: "Delete from this device" }));
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete from this device" }),
-    );
-    mocks.crypto.mockReturnValue({
-      ...crypto,
-      session: { ...crypto.session, listLocalKeys: vi.fn().mockResolvedValue([]) },
-    });
-    view.rerender(
-      <EncryptedChatInfoConnected
-        streamUuid="another-stream"
-        screen="local-key"
-        selectedLocalKeyUuid={oldKey}
-        onScreenChange={navigate}
-      />,
-    );
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText(oldKey)).toBeNull();
-    await act(async () => {
-      finishRemoval?.(true);
-      await Promise.resolve();
-    });
-    expect(navigate).not.toHaveBeenCalled();
-    expect(screen.getByText("This key is no longer saved on this device.")).toBeInTheDocument();
-  });
+  it.each([false, true])(
+    "discards old inventory and deletion completion when the next session is stale=%s",
+    async (stale) => {
+      const { crypto } = fixture();
+      crypto.session.listLocalKeys.mockResolvedValue([{ keyUuid: oldKey, receivedAt: null }]);
+      let finishRemoval: ((success: boolean) => void) | undefined;
+      crypto.removeLocalKey.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          finishRemoval = resolve;
+        }),
+      );
+      const navigate = vi.fn();
+      const view = render(
+        <EncryptedChatInfoConnected
+          streamUuid="stream"
+          screen="local-key"
+          selectedLocalKeyUuid={oldKey}
+          onScreenChange={navigate}
+        />,
+      );
+      await screen.findByText(oldKey);
+      fireEvent.click(screen.getByRole("button", { name: "Delete from this device" }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Delete from this device" }),
+      );
+      const nextSession = { ...crypto.session, listLocalKeys: vi.fn().mockResolvedValue([]) };
+      if (stale)
+        Object.defineProperty(nextSession, "scope", {
+          get() {
+            throw new Error("stale");
+          },
+        });
+      mocks.crypto.mockReturnValue({ ...crypto, session: nextSession });
+      view.rerender(
+        <EncryptedChatInfoConnected
+          streamUuid={stale ? "stream" : "another-stream"}
+          screen="local-key"
+          selectedLocalKeyUuid={oldKey}
+          onScreenChange={navigate}
+        />,
+      );
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByText(oldKey)).toBeNull();
+      await act(async () => {
+        finishRemoval?.(true);
+        await Promise.resolve();
+      });
+      expect(navigate).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(
+          stale
+            ? "Could not load keys from this device."
+            : "This key is no longer saved on this device.",
+        ),
+      ).toBeInTheDocument();
+      if (stale) expect(nextSession.listLocalKeys).not.toHaveBeenCalled();
+    },
+  );
   it("ignores a delayed inventory read from a previous session and supports retry after storage failure", async () => {
     const { crypto } = fixture();
     let finishRead: ((keys: { keyUuid: string; receivedAt: number | null }[]) => void) | undefined;
@@ -568,6 +603,21 @@ describe("local encrypted chat keys", () => {
     );
     await screen.findByText(oldKey);
     expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(crypto.session.subscribe).not.toHaveBeenCalled();
+    const notify = mocks.keyChanges.mock.calls[0]?.[0];
+    const change: RealChatKeyChange = {
+      kind: "removed",
+      ownerKey: workspaceRuntimeOwnerKey(crypto.session.scope.owner),
+      deviceId: "device",
+      streamUuid: "stream",
+      keyUuid: oldKey,
+    };
+    act(() => {
+      notify?.({ ...change, ownerKey: "another-owner" });
+      notify?.({ ...change, deviceId: "another-device" });
+      notify?.({ ...change, streamUuid: "another-stream" });
+    });
+    expect(crypto.session.listLocalKeys).toHaveBeenCalledOnce();
     let finishRead: ((keys: { keyUuid: string; receivedAt: number | null }[]) => void) | undefined;
     crypto.session.listLocalKeys.mockReturnValue(
       new Promise((resolve) => {
@@ -575,8 +625,9 @@ describe("local encrypted chat keys", () => {
       }),
     );
     act(() => {
-      crypto.session.subscribe.mock.calls[0]?.[0]();
+      notify?.(change);
     });
+    expect(crypto.session.listLocalKeys).toHaveBeenCalledTimes(2);
     expect(screen.getByText(oldKey)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request this key again" })).toBeEnabled();
     await act(async () => {

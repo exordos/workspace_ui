@@ -80,7 +80,6 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
       key = null;
       return Promise.resolve(true);
     }),
-    readPendingRequest: vi.fn((_address, id) => Promise.resolve(pending.get(id) ?? null)),
     listPendingRequests: vi.fn(() => Promise.resolve([...pending.values()])),
     writePendingRequest: vi.fn((_address, request, options) => {
       if (options?.isCurrent?.() === false) return Promise.resolve(false);
@@ -129,7 +128,6 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
       return Promise.resolve(true);
     }),
     listStagedCreations: vi.fn(() => Promise.resolve([])),
-    readStagedCreation: vi.fn(() => Promise.resolve(null)),
     writeStagedCreation: vi.fn(() => Promise.resolve(false)),
     finalizeCreation: vi.fn(() => Promise.resolve(false)),
   };
@@ -211,13 +209,12 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
 }
 
 describe("ChatE2eeController", () => {
-  it.each(["encrypt", "grant", "decrypt"] as const)(
+  it.each(["encrypt", "grant"] as const)(
     "stops an already-read key operation after durable deletion before broadcast: %s",
     async (operation) => {
       const f = fixture(chatPair);
       const started = deferred<void>();
       const gate = deferred<void>();
-      const plaintext = new Uint8Array([42]);
       const envelope = { bytes: new Uint8Array([3]) };
       const waitForEnvelope = async () => {
         started.resolve();
@@ -226,29 +223,16 @@ describe("ChatE2eeController", () => {
       };
       vi.mocked(f.provider.encryptMessage).mockImplementation(waitForEnvelope);
       vi.mocked(f.provider.encryptGroupKeyGrant).mockImplementation(waitForEnvelope);
-      vi.mocked(f.provider.decryptMessage).mockImplementation(async () => {
-        started.resolve();
-        await gate.promise;
-        return ok(plaintext);
-      });
       const pending =
         operation === "encrypt"
-          ? f.controller.encryptMessage(new Uint8Array([42]))
-          : operation === "grant"
-            ? f.controller.grantKey(f.request)
-            : f.controller.decryptMessage({
-                uuid: "ciphertext",
-                streamUuid: "chat",
-                authorUuid: "author",
-                payload: { kind: "e2ee", keyUuid: "generation", content: envelope },
-              });
+          ? f.controller.encryptMessage(new Uint8Array([42]), f.sendPayload)
+          : f.controller.grantKey(f.request);
       await started.promise;
       vi.mocked(f.storage.readChatKeyDeletionRevision).mockResolvedValue(1);
       gate.resolve();
       expect(await pending).toEqual({ ok: false, reason: "missing-key" });
       expect(f.sendPayload).not.toHaveBeenCalled();
       expect(f.controller.getState().access).toBe("missing");
-      if (operation === "decrypt") expect(plaintext).toEqual(new Uint8Array([0]));
     },
   );
 
@@ -434,24 +418,20 @@ describe("ChatE2eeController", () => {
     { deviceId: "other-device" },
     { streamUuid: "other-chat" },
     { keyUuid: "other-generation" },
-  ])("invalidates a pending decryption when its scope changes: %j", async (change) => {
+  ])("invalidates a pending encryption when its scope changes: %j", async (change) => {
     const f = fixture(chatPair);
-    const decrypted = deferred<ChatCryptoResult<Uint8Array>>();
+    const encrypted = deferred<ChatCryptoResult<{ bytes: Uint8Array }>>();
     const started = deferred<void>();
-    vi.mocked(f.provider.decryptMessage).mockImplementation(() => {
+    vi.mocked(f.provider.encryptMessage).mockImplementation(() => {
       started.resolve();
-      return decrypted.promise;
+      return encrypted.promise;
     });
-    const operation = f.controller.decryptMessage({
-      uuid: "ciphertext",
-      streamUuid: "chat",
-      authorUuid: "author",
-      payload: { kind: "e2ee", keyUuid: "generation", content: { bytes: new Uint8Array([3]) } },
-    });
+    const operation = f.controller.encryptMessage(new Uint8Array([42]), f.sendPayload);
     await started.promise;
     f.setCurrent({ ...f.scope, ...change });
-    decrypted.resolve(ok(new Uint8Array([42])));
+    encrypted.resolve(ok({ bytes: new Uint8Array([3]) }));
     expect(await operation).toEqual({ ok: false, reason: "stale" });
+    expect(f.sendPayload).not.toHaveBeenCalled();
   });
 
   it("guards a delayed durable commit and never stores an old runtime grant", async () => {
@@ -528,29 +508,26 @@ describe("ChatE2eeController", () => {
     expect(f.controller.getState().access).toBe("ready");
   });
 
-  it("does not accept a request for another account even when its device ID collides", async () => {
-    const f = fixture();
-    await f.controller.ingestKeyMessage({ ...f.request, authorUuid: "another-account" });
-    expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
-      ok: false,
-      reason: "invalid-message",
-    });
-    expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
-  });
-
-  it("does not accept a colliding device ID with a different request public key", async () => {
-    const f = fixture();
-    await f.controller.ingestKeyMessage({
-      ...f.request,
-      payload: { ...f.request.payload, publicKey: { bytes: new Uint8Array([99]) } },
-    });
-    expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
-      ok: false,
-      reason: "invalid-message",
-    });
-    expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
-    expect(f.storage.writeChatKey).not.toHaveBeenCalled();
-  });
+  it.each(["account", "public-key"] as const)(
+    "rejects a colliding device ID with a different %s",
+    async (mismatch) => {
+      const f = fixture();
+      const request =
+        mismatch === "account"
+          ? { ...f.request, authorUuid: "another-account" }
+          : {
+              ...f.request,
+              payload: { ...f.request.payload, publicKey: { bytes: new Uint8Array([99]) } },
+            };
+      await f.controller.ingestKeyMessage(request);
+      expect(await f.controller.ingestKeyMessage(f.grant)).toEqual({
+        ok: false,
+        reason: "invalid-message",
+      });
+      expect(f.provider.decryptGroupKeyGrant).not.toHaveBeenCalled();
+      expect(f.storage.completeGrant).not.toHaveBeenCalled();
+    },
+  );
 
   it("discards a queued invalid response without blocking the later valid grant", async () => {
     const f = fixture();
@@ -632,7 +609,7 @@ describe("ChatE2eeController", () => {
   it("requires the symmetric group secret for grants and messages", async () => {
     const f = fixture();
     expect(await f.controller.grantKey(f.request)).toEqual({ ok: false, reason: "missing-key" });
-    expect(await f.controller.encryptMessage(new Uint8Array([42]))).toEqual({
+    expect(await f.controller.encryptMessage(new Uint8Array([42]), f.sendPayload)).toEqual({
       ok: false,
       reason: "missing-key",
     });

@@ -28,26 +28,21 @@ function message(
   };
 }
 function setup() {
-  const request = message({
-    kind: "key_request",
-    keyUuid: "historical",
-    deviceId: "other-device",
-    deviceName: "Laptop",
-    publicKey: "public",
-  });
-  const onRequestKey = vi.fn(),
-    onGrantKey = vi.fn(),
-    onRejectKey = vi.fn();
   return {
-    message: request,
-    messages: [] as MessengerMessage[],
+    message: message({
+      kind: "key_request",
+      keyUuid: "historical",
+      deviceId: "other-device",
+      deviceName: "Laptop",
+      publicKey: "public",
+    }),
     currentUserUuid: "admin",
     streamUuid: "stream",
     projectId: "project",
     pending: false,
-    onRequestKey,
-    onGrantKey,
-    onRejectKey,
+    onRequestKey: vi.fn(),
+    onGrantKey: vi.fn(),
+    onRejectKey: vi.fn(),
     session: {
       device: { deviceId: "local-device", deviceName: "Local" },
       getRights: () => ({
@@ -64,56 +59,25 @@ function setup() {
         error: null,
       }),
       isIssuerAllowed: (uuid: string) => uuid === "admin",
+      canGrantKey: vi.fn((_uuid: string) => true),
+      canRejectKey: vi.fn((_uuid: string) => true),
     },
   };
 }
 
 describe("encrypted service actions", () => {
-  it("ignores unauthorized or wrong-generation answers and grants the exact request", () => {
+  it("uses domain eligibility and grants the exact request", () => {
     const opts = setup();
-    opts.messages.push(
-      message(
-        {
-          kind: "key_reject",
-          keyUuid: "historical",
-          requestMessageUuid: "request",
-          senderDeviceId: "member-device",
-          recipientDeviceId: "other-device",
-        },
-        "member",
-        "spoof",
-      ),
-    );
-    opts.messages.push(
-      message(
-        {
-          kind: "key_reject",
-          keyUuid: "latest",
-          requestMessageUuid: "request",
-          senderDeviceId: "issuer",
-          recipientDeviceId: "other-device",
-        },
-        "admin",
-        "wrong-epoch",
-      ),
-    );
     const actions = getEncryptedChatServiceActions(opts);
     expect(actions).toHaveLength(2);
+    expect(opts.session.canGrantKey).toHaveBeenCalledWith("request");
+    expect(opts.session.canRejectKey).toHaveBeenCalledWith("request");
     actions[0]?.onClick();
     expect(opts.onGrantKey).toHaveBeenCalledWith("request");
-    opts.messages.push(
-      message(
-        {
-          kind: "key_reject",
-          keyUuid: "historical",
-          requestMessageUuid: "request",
-          senderDeviceId: "issuer",
-          recipientDeviceId: "other-device",
-        },
-        "admin",
-        "answer",
-      ),
-    );
+    actions[1]?.onClick();
+    expect(opts.onRejectKey).toHaveBeenCalledWith("request");
+    opts.session.canGrantKey.mockReturnValue(false);
+    opts.session.canRejectKey.mockReturnValue(false);
     expect(getEncryptedChatServiceActions(opts)).toHaveLength(0);
   });
   it("allows manual approval for the same account on another device", () => {
@@ -137,31 +101,30 @@ describe("encrypted service actions", () => {
     const session = {
       ...opts.session,
       getGenerationState: () => ({
+        ...opts.session.getGenerationState(),
         access: "missing" as const,
-        pending: false,
-        requestStatus: "idle" as const,
-        error: null,
       }),
     };
-    const actions = getEncryptedChatServiceActions({
+    const announcement = {
       ...opts,
       session,
       message: message({ kind: "key_announced", keyUuid: "historical" }, "admin"),
-    });
+    };
+    const actions = getEncryptedChatServiceActions(announcement);
     actions[0]?.onClick();
     expect(opts.onRequestKey).toHaveBeenCalledWith("historical");
-    const pending = getEncryptedChatServiceActions({
-      ...opts,
-      pending: true,
-      session,
-      message: message({ kind: "key_announced", keyUuid: "historical" }, "admin"),
-    });
+    const pending = getEncryptedChatServiceActions({ ...announcement, pending: true });
     expect(pending[0]?.disabled).toBe(true);
   });
   it("keeps rejection available without a group key and refuses another project", () => {
     const opts = setup();
-    const session = { ...opts.session, getGenerationState: () => null };
+    const session = { ...opts.session, canGrantKey: () => false };
     expect(getEncryptedChatServiceActions({ ...opts, session })).toHaveLength(1);
-    expect(getEncryptedChatServiceActions({ ...opts, projectId: "another" })).toHaveLength(0);
+    opts.session.canGrantKey.mockClear();
+    opts.session.canRejectKey.mockClear();
+    expect(getEncryptedChatServiceActions({ ...opts, streamUuid: "another" })).toEqual([]);
+    expect(getEncryptedChatServiceActions({ ...opts, projectId: "another" })).toEqual([]);
+    expect(opts.session.canGrantKey).not.toHaveBeenCalled();
+    expect(opts.session.canRejectKey).not.toHaveBeenCalled();
   });
 });

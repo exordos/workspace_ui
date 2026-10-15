@@ -178,6 +178,23 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     });
   }
 
+  private async readRows<T>(
+    storeName: StoreName,
+    query: IDBValidKey | IDBKeyRange,
+    indexName?: "address",
+  ): Promise<Row<T>[]> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const store = tx.objectStore(storeName);
+      const source = indexName ? store.index(indexName) : store;
+      const request = source.getAll(query) as IDBRequest<Row<T>[]>;
+      tx.oncomplete = () => resolve(request.result);
+      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
+      tx.onerror = () => undefined;
+    });
+  }
+
   private async read<T>(storeName: StoreName, id: string): Promise<T | null> {
     const row = await this.readRow<T>(storeName, id);
     return row?.value ?? null;
@@ -284,73 +301,41 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
   async listChatKeys(
     address: Omit<ChatKeyStorageAddress, "keyUuid">,
   ): Promise<readonly StoredChatKeyMetadata[]> {
-    const range = chatKeyRange(address);
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("keys", "readonly");
-      const request = tx.objectStore("keys").getAll(range) as IDBRequest<Row<StoredChatKey>[]>;
-      tx.oncomplete = () => {
-        try {
-          const keys = request.result
-            .filter((row) => row.value.groupKey !== null)
-            .map((row): StoredChatKeyMetadata => {
-              validKey(row.value);
-              const parts: unknown = JSON.parse(row.id);
-              if (!Array.isArray(parts) || typeof parts[2] !== "string")
-                throw new ChatKeyStorageError("invalid-record");
-              return {
-                keyUuid: parts[2],
-                receivedAt:
-                  row.receivedAt !== undefined && Number.isFinite(row.receivedAt)
-                    ? row.receivedAt
-                    : null,
-              };
-            })
-            .sort(
-              (left, right) =>
-                (right.receivedAt ?? -Infinity) - (left.receivedAt ?? -Infinity) ||
-                left.keyUuid.localeCompare(right.keyUuid),
-            );
-          resolve(keys);
-        } catch (error) {
-          reject(error instanceof Error ? error : new ChatKeyStorageError("invalid-record"));
-        }
-      };
-      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
-      tx.onerror = () => undefined;
-    });
+    const rows = await this.readRows<StoredChatKey>("keys", chatKeyRange(address));
+    return rows
+      .filter((row) => row.value.groupKey !== null)
+      .map((row): StoredChatKeyMetadata => {
+        validKey(row.value);
+        const parts: unknown = JSON.parse(row.id);
+        if (!Array.isArray(parts) || typeof parts[2] !== "string")
+          throw new ChatKeyStorageError("invalid-record");
+        return {
+          keyUuid: parts[2],
+          receivedAt:
+            row.receivedAt !== undefined && Number.isFinite(row.receivedAt) ? row.receivedAt : null,
+        };
+      })
+      .sort(
+        (left, right) =>
+          (right.receivedAt ?? -Infinity) - (left.receivedAt ?? -Infinity) ||
+          left.keyUuid.localeCompare(right.keyUuid),
+      );
   }
   async readLastAvailableChatKey(address: Omit<ChatKeyStorageAddress, "keyUuid">) {
-    const range = chatKeyRange(address);
-    const db = await this.open();
-    return new Promise<{
-      keyUuid: string;
-      groupKey: NonNullable<StoredChatKey["groupKey"]>;
-    } | null>((resolve, reject) => {
-      const tx = db.transaction("keys", "readonly");
-      const request = tx.objectStore("keys").getAll(range) as IDBRequest<Row<StoredChatKey>[]>;
-      tx.oncomplete = () => {
-        try {
-          const row = request.result
-            .filter((row) => row.value.groupKey !== null)
-            .sort(
-              (left, right) =>
-                (right.sendOrder ?? 0) - (left.sendOrder ?? 0) ||
-                (right.receivedAt ?? 0) - (left.receivedAt ?? 0),
-            )[0];
-          if (!row) return resolve(null);
-          validKey(row.value);
-          const parts: unknown = JSON.parse(row.id);
-          if (!Array.isArray(parts) || typeof parts[2] !== "string")
-            throw new ChatKeyStorageError("invalid-record");
-          resolve({ keyUuid: parts[2], groupKey: copyRecord(row.value.groupKey!) });
-        } catch (error) {
-          reject(error instanceof Error ? error : new ChatKeyStorageError("invalid-record"));
-        }
-      };
-      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
-      tx.onerror = () => undefined;
-    });
+    const rows = await this.readRows<StoredChatKey>("keys", chatKeyRange(address));
+    const row = rows
+      .filter((row) => row.value.groupKey !== null)
+      .sort(
+        (left, right) =>
+          (right.sendOrder ?? 0) - (left.sendOrder ?? 0) ||
+          (right.receivedAt ?? 0) - (left.receivedAt ?? 0),
+      )[0];
+    if (!row) return null;
+    validKey(row.value);
+    const parts: unknown = JSON.parse(row.id);
+    if (!Array.isArray(parts) || typeof parts[2] !== "string")
+      throw new ChatKeyStorageError("invalid-record");
+    return { keyUuid: parts[2], groupKey: copyRecord(row.value.groupKey!) };
   }
   writeChatKey(
     address: ChatKeyStorageAddress,
@@ -423,27 +408,15 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
         });
     });
   }
-  readPendingRequest(
-    address: ChatKeyStorageAddress,
-    localRequestId: string,
-  ): Promise<PendingChatKeyRequest | null> {
-    return this.read("requests", recordId(keyAddress(address), localRequestId));
-  }
   async listPendingRequests(
     address: ChatKeyStorageAddress,
   ): Promise<readonly PendingChatKeyRequest[]> {
-    const capturedAddress = keyAddress(address);
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("requests", "readonly");
-      const request = tx
-        .objectStore("requests")
-        .index("address")
-        .getAll(capturedAddress) as IDBRequest<Row<PendingChatKeyRequest>[]>;
-      tx.oncomplete = () => resolve(request.result.map((row) => copyRecord(row.value)));
-      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
-      tx.onerror = () => undefined;
-    });
+    const rows = await this.readRows<PendingChatKeyRequest>(
+      "requests",
+      keyAddress(address),
+      "address",
+    );
+    return rows.map((row) => copyRecord(row.value));
   }
   writePendingRequest(
     address: ChatKeyStorageAddress,
@@ -534,24 +507,14 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     address: ChatKeyStorageAddress,
     requestMessageUuid: string,
   ): Promise<ChatKeyRequestCompletion | null> {
-    const capturedAddress = keyAddress(address);
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("completions", "readonly");
-      const request = tx
-        .objectStore("completions")
-        .index("address")
-        .getAll(capturedAddress) as IDBRequest<Row<ChatKeyRequestCompletion>[]>;
-      tx.oncomplete = () =>
-        resolve(
-          copyRecord(
-            request.result.find((row) => row.value.requestMessageUuid === requestMessageUuid)
-              ?.value ?? null,
-          ),
-        );
-      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
-      tx.onerror = () => undefined;
-    });
+    const rows = await this.readRows<ChatKeyRequestCompletion>(
+      "completions",
+      keyAddress(address),
+      "address",
+    );
+    return copyRecord(
+      rows.find((row) => row.value.requestMessageUuid === requestMessageUuid)?.value ?? null,
+    );
   }
   completeGrant(
     address: ChatKeyStorageAddress,
@@ -650,31 +613,16 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
       };
     });
   }
-  readStagedCreation(
-    scope: ChatKeyStorageScope,
-    creationId: string,
-  ): Promise<StagedChatCreation | null> {
-    return this.read("creations", recordId(scopeAddress(scope), creationId));
-  }
   async listStagedCreations(scope: ChatKeyStorageScope): Promise<readonly StagedChatCreation[]> {
-    const address = scopeAddress(scope);
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("creations", "readonly");
-      const request = tx.objectStore("creations").index("address").getAll(address) as IDBRequest<
-        Row<StagedChatCreation>[]
-      >;
-      tx.oncomplete = () => {
-        try {
-          const values = request.result.map((row) => copyRecord(row.value));
-          for (const value of values) validKey(value);
-          resolve(values);
-        } catch (error) {
-          reject(error instanceof Error ? error : new ChatKeyStorageError("invalid-record"));
-        }
-      };
-      tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
-      tx.onerror = () => undefined;
+    const rows = await this.readRows<StagedChatCreation>(
+      "creations",
+      scopeAddress(scope),
+      "address",
+    );
+    return rows.map((row) => {
+      const value = copyRecord(row.value);
+      validKey(value);
+      return value;
     });
   }
   writeStagedCreation(

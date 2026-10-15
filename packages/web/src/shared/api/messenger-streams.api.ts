@@ -71,8 +71,17 @@ export async function getStream(
 export async function createStream(
   options: MessengerClientOptions,
   body: WorkspaceMessengerCreateStreamRequestBody,
+  onDispatch?: () => void,
 ): Promise<WorkspaceMessengerStreamDto> {
-  const { data } = await messengerRequestJsonResult("POST", "/streams/", options, {}, body);
+  const { data } = await messengerRequestJsonResult(
+    "POST",
+    "/streams/",
+    options,
+    {},
+    body,
+    undefined,
+    onDispatch,
+  );
   const stream = parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
   if (
     body.encryption === true &&
@@ -87,8 +96,9 @@ export async function createStream(
 export async function createStreamWithDefaultTopic(
   options: MessengerClientOptions,
   body: WorkspaceMessengerCreateStreamRequestBody,
+  onDispatch?: () => void,
 ): Promise<WorkspaceMessengerCreateStreamWithDefaultTopicResult> {
-  const stream = await createStream(options, body);
+  const stream = await createStream(options, body, onDispatch);
   // TODO: Remove this fetch when POST /streams/ returns default_topic.
   const topics = await getStreamTopics(options, { streamUuid: stream.uuid });
   const defaultTopic = topics.find(

@@ -1097,7 +1097,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (message: MessengerMessage) =>
       getEncryptedChatServiceActions({
         message,
-        messages: Object.values(allWorkspaceMessagesById),
         currentUserUuid: runtimeContext?.userUuid,
         projectId: runtimeContext?.projectId,
         streamUuid,
@@ -1114,7 +1113,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         },
       }),
     [
-      allWorkspaceMessagesById,
       streamUuid,
       runtimeContext?.userUuid,
       runtimeContext?.projectId,

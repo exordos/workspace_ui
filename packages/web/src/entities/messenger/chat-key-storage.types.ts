@@ -108,10 +108,6 @@ export interface ChatKeyStorage {
     address: ChatKeyStorageAddress,
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean>;
-  readPendingRequest(
-    address: ChatKeyStorageAddress,
-    localRequestId: string,
-  ): Promise<PendingChatKeyRequest | null>;
   listPendingRequests(address: ChatKeyStorageAddress): Promise<readonly PendingChatKeyRequest[]>;
   writePendingRequest(
     address: ChatKeyStorageAddress,
@@ -142,10 +138,6 @@ export interface ChatKeyStorage {
     rejection: CompleteChatKeyReject,
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean>;
-  readStagedCreation(
-    scope: ChatKeyStorageScope,
-    creationId: string,
-  ): Promise<StagedChatCreation | null>;
   listStagedCreations(scope: ChatKeyStorageScope): Promise<readonly StagedChatCreation[]>;
   writeStagedCreation(
     scope: ChatKeyStorageScope,

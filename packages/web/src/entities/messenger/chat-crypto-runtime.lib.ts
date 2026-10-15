@@ -14,7 +14,7 @@ import {
   subscribeRealChatKeyChanges,
 } from "./chat-crypto-resources.lib";
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
-import { decodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse } from "./chat-e2ee.lib";
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -25,47 +25,18 @@ import type {
 } from "./chat-e2ee-controller.types";
 import type {
   ChatE2eeMessage,
+  ChatE2eePayload,
   ChatKeyRequestPayload,
   ChatKeyResponsePayload,
 } from "./chat-e2ee.types";
 import type { StoredChatKey } from "./chat-key-storage.types";
-import type { MessengerMessageActionResult } from "./messenger-message-actions.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerMessage } from "./messenger.types";
 
 function domainMessage(message: MessengerMessage): ChatE2eeMessage | null {
   const payload = message.payload;
   if (payload.kind === "markdown") return null;
-  const wire =
-    payload.kind === "e2ee"
-      ? { kind: payload.kind, key_uuid: payload.keyUuid, content: payload.content }
-      : payload.kind === "key_request"
-        ? {
-            kind: payload.kind,
-            key_uuid: payload.keyUuid,
-            device_id: payload.deviceId,
-            device_name: payload.deviceName,
-            public_key: payload.publicKey,
-          }
-        : payload.kind === "key_announced"
-          ? { kind: payload.kind, key_uuid: payload.keyUuid }
-          : payload.kind === "key_grant"
-            ? {
-                kind: payload.kind,
-                key_uuid: payload.keyUuid,
-                request_message_uuid: payload.requestMessageUuid,
-                sender_device_id: payload.senderDeviceId,
-                recipient_device_id: payload.recipientDeviceId,
-                content: payload.content,
-              }
-            : {
-                kind: payload.kind,
-                key_uuid: payload.keyUuid,
-                request_message_uuid: payload.requestMessageUuid,
-                sender_device_id: payload.senderDeviceId,
-                recipient_device_id: payload.recipientDeviceId,
-              };
-  const decoded = decodeChatE2eePayload(wire);
+  const decoded = decodeMessengerE2eePayload(payload);
   return decoded.ok
     ? {
         uuid: message.uuid,
@@ -206,9 +177,6 @@ export async function openRealChatSession({
   let committingCatalog = false;
   let operationDispatchKeyUuid: string | null = null;
   let sendingKeyUuid: string | null = null;
-  let lastSent: MessengerMessageActionResult | null = null;
-  let sendTopic: string | null = null;
-  let includeStream = true;
   const requests = new Map<string, ChatE2eeMessage<ChatKeyRequestPayload>>();
   const responses = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
   interface KeyRequestOutcome {
@@ -240,6 +208,47 @@ export async function openRealChatSession({
     }
   };
   const keyRevisions = new Map<string, number>();
+  const dispatchPayload = async (
+    payload: ChatE2eePayload,
+    guard: () => boolean,
+    options: {
+      topicUuid?: string;
+      canonicalMessageUuid?: string;
+      includeStreamConversation?: boolean;
+    } = {},
+  ) => {
+    assertCurrent();
+    const dispatchKey = { keyUuid: operationDispatchKeyUuid ?? currentScope().keyUuid };
+    const topicUuid =
+      options.topicUuid ??
+      Object.values(messengerStore.getState().topicsById).find(
+        (topic) =>
+          topic.streamUuid === streamUuid &&
+          topic.projectId === runtimeContext.projectId &&
+          topic.isDefault,
+      )?.uuid;
+    if (!topicUuid) throw new Error("missing-topic");
+    const result = await sendMessengerE2eePayload({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      messengerStore,
+      streamUuid,
+      topicUuid,
+      payload,
+      expectedCurrentKey: dispatchKey,
+      allowHistoricalKey: payload.kind === "e2ee" && payload.keyUuid === sendingKeyUuid,
+      isCurrent: () =>
+        current() &&
+        guard() &&
+        ownedStream()?.currentEncryptionKey?.keyUuid === dispatchKey.keyUuid,
+      canonicalMessageUuid: options.canonicalMessageUuid,
+      includeStreamConversation: options.includeStreamConversation ?? true,
+    });
+    assertCurrent();
+    if (result.status !== "applied" || !result.message) throw new Error("send-failed");
+    return { ...result, message: result.message };
+  };
   const createController = (generationScope: ChatE2eeControllerScope) => {
     const revision = keyRevisions.get(generationScope.keyUuid) ?? 0;
     return new ChatE2eeController({
@@ -255,37 +264,7 @@ export async function openRealChatSession({
       isIssuerAllowed: issuerAllowed,
       isAnnouncerAllowed: issuerAllowed,
       sendPayload: async (payload, guard, canonicalMessageUuid) => {
-        assertCurrent();
-        const dispatchKey = { keyUuid: operationDispatchKeyUuid ?? currentScope().keyUuid };
-        const topicUuid =
-          sendTopic ??
-          Object.values(messengerStore.getState().topicsById).find(
-            (topic) =>
-              topic.streamUuid === streamUuid &&
-              topic.projectId === runtimeContext.projectId &&
-              topic.isDefault,
-          )?.uuid;
-        if (!topicUuid) throw new Error("missing-topic");
-        const result = await sendMessengerE2eePayload({
-          runtimeContext,
-          getRuntimeContext,
-          signal,
-          messengerStore,
-          streamUuid,
-          topicUuid,
-          payload,
-          expectedCurrentKey: dispatchKey,
-          allowHistoricalKey: payload.kind === "e2ee" && payload.keyUuid === sendingKeyUuid,
-          isCurrent: () =>
-            current() &&
-            guard() &&
-            ownedStream()?.currentEncryptionKey?.keyUuid === dispatchKey.keyUuid,
-          canonicalMessageUuid,
-          includeStreamConversation: includeStream,
-        });
-        assertCurrent();
-        if (result.status !== "applied" || !result.message) throw new Error("send-failed");
-        lastSent = result;
+        const result = await dispatchPayload(payload, guard, { canonicalMessageUuid });
         const mapped = domainMessage(result.message);
         if (!mapped) throw new Error("invalid-message");
         return mapped;
@@ -764,20 +743,14 @@ export async function openRealChatSession({
       readonly includeStreamConversation?: boolean;
     }) =>
       run(async () => {
-        sendTopic = input.topicUuid;
-        includeStream = input.includeStreamConversation ?? true;
-        try {
-          if (!sendingKeyUuid) throw new Error("missing-key");
-          const controller = await generationController(sendingKeyUuid);
-          const result = await controller.encryptMessage(new TextEncoder().encode(input.text));
-          if (!result.ok) throw new Error(result.reason);
-          const sent = lastSent;
-          if (sent?.status !== "applied" || sent.message?.uuid !== result.value.uuid)
-            throw new Error("send-failed");
-          return sent;
-        } finally {
-          sendTopic = null;
-        }
+        if (!sendingKeyUuid) throw new Error("missing-key");
+        const controller = await generationController(sendingKeyUuid);
+        const result = await controller.encryptMessage(
+          new TextEncoder().encode(input.text),
+          (payload, guard) => dispatchPayload(payload, guard, input),
+        );
+        if (!result.ok) throw new Error(result.reason);
+        return result.value;
       }),
     decrypt: (message: MessengerMessage) =>
       decryptRealChatMessage(runtimeContext, message, current),

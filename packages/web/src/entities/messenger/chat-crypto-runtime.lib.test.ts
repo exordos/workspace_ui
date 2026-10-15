@@ -23,6 +23,8 @@ import {
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
 import { adaptMessengerMessage, adaptMessengerStream } from "./messenger-adapters.lib";
+import { messengerMessageActionCache } from "./messenger-cache.lib";
+import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -146,6 +148,14 @@ async function openRealChatSession(options: Parameters<typeof openChatSession>[0
   const session = await openChatSession({ ...options, messengerStore });
   openSessions.add(session);
   return session;
+}
+
+function openSessionFor(runtimeContext: WorkspaceRuntimeContext) {
+  return openRealChatSession({
+    runtimeContext,
+    streamUuid: STREAM,
+    getRuntimeContext: () => runtimeContext,
+  });
 }
 
 function deviceCatalog(owner: WorkspaceRuntimeContext): DeviceCatalog {
@@ -318,11 +328,7 @@ afterEach(() => {
 describe("real ordinary chat orchestration", () => {
   it("loads the local session and ingests an empty batch without catalog requests or message dispatch", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     await session.ingest([]);
     expect(session.getState()).toMatchObject({ access: "ready", sendKeyUuid: f.metadata.keyUuid });
@@ -331,11 +337,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("publishes scoped bootstrap keys once and keeps state-only operations local", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     const keyChanged = vi.fn();
     const stateChanged = vi.fn();
     const unsubscribeKeys = subscribeRealChatKeyChanges(keyChanged);
@@ -368,11 +370,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("sends 40,000 plaintext characters even when the ciphertext exceeds the former client limit", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const text = "A".repeat(40_000);
     await expect(session.send({ text, topicUuid: TOPIC })).resolves.toMatchObject({
@@ -387,11 +385,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("preserves keys and session state when the backend rejects real ciphertext", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const originalKey = await realChatKeyStorage.readChatKey(session.scope);
     const text = "😀".repeat(40_000);
@@ -437,11 +431,7 @@ describe("real ordinary chat orchestration", () => {
       streamBindingIdsByStreamId: {},
       streamBindingsLoadedByStreamId: {},
     });
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     await session.requestKey();
     const request = f.wire.at(-1)!;
@@ -466,11 +456,7 @@ describe("real ordinary chat orchestration", () => {
     await member.load();
     await sibling.load();
     expect(await member.listLocalKeys()).toEqual([]);
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
     const actual = await realChatKeyStorage.readChatKey(admin.scope);
     if (!actual?.groupKey) throw new Error("Missing fixture key");
@@ -504,16 +490,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not restore a removed secret from a late grant or its saved repair request", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     await admin.send({ text: "recovery probe", topicUuid: TOPIC });
@@ -536,43 +514,47 @@ describe("real ordinary chat orchestration", () => {
     expect(f.wire.at(-1)?.uuid).not.toBe(request.uuid);
   });
 
-  it("discards plaintext from a key removed while decryption awaits before broadcast", async () => {
-    const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    await session.load();
-    await session.send({ text: "discard after removal", topicUuid: TOPIC });
-    const message = adaptMessengerMessage(f.wire.at(-1)!);
-    const decrypt = realChatCryptoProvider.decryptMessage.bind(realChatCryptoProvider);
-    const started = deferred<void>();
-    const gate = deferred<void>();
-    let decodedBytes: Uint8Array | null = null;
-    vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementationOnce(async (input) => {
-      const result = await decrypt(input);
-      if (result.ok) decodedBytes = result.value;
-      started.resolve();
-      await gate.promise;
-      return result;
-    });
-    const pending = decryptRealChatMessageResult(f.admin, message, () => true);
-    await started.promise;
-    await realChatKeyStorage.removeChatKey(session.scope);
-    gate.resolve();
-    expect(await pending).toEqual({ status: "missing-key" });
-    expect(decodedBytes).not.toBeNull();
-    expect(decodedBytes).toEqual(new Uint8Array("discard after removal".length));
-  });
+  it.each(["key-removed", "disposed", "runtime-replaced"] as const)(
+    "discards and clears plaintext when a pending presentation decryption is %s",
+    async (reason) => {
+      const f = await setup();
+      let current = f.admin;
+      const session = await openRealChatSession({
+        runtimeContext: f.admin,
+        streamUuid: STREAM,
+        getRuntimeContext: () => current,
+      });
+      await session.load();
+      await session.send({ text: "scoped plaintext", topicUuid: TOPIC });
+      const decrypt = realChatCryptoProvider.decryptMessage.bind(realChatCryptoProvider);
+      const started = deferred<void>();
+      const gate = deferred<void>();
+      let plaintext: Uint8Array | null = null;
+      vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementationOnce(async (input) => {
+        const result = await decrypt(input);
+        if (result.ok) plaintext = result.value;
+        started.resolve();
+        await gate.promise;
+        return result;
+      });
+      const message = adaptMessengerMessage(f.wire.at(-1)!);
+      const pending =
+        reason === "key-removed"
+          ? decryptRealChatMessageResult(f.admin, message, () => true)
+          : session.decrypt(message);
+      await started.promise;
+      if (reason === "key-removed") await realChatKeyStorage.removeChatKey(session.scope);
+      else if (reason === "disposed") session.dispose();
+      else current = { ...f.admin, runtimeGeneration: f.admin.runtimeGeneration + 2 };
+      gate.resolve();
+      expect(await pending).toEqual(reason === "key-removed" ? { status: "missing-key" } : null);
+      expect(plaintext).toEqual(new Uint8Array("scoped plaintext".length));
+    },
+  );
 
   it("cancels a prepared request through durable deletion even before another tab broadcasts", async () => {
     const f = await setup();
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const member = await openSessionFor(f.member);
     await member.load();
     const started = deferred<void>();
     const gate = deferred<void>();
@@ -601,11 +583,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("re-requests a usable saved key without deleting it or creating an unchecked repair", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     await session.send({ text: "readable probe", topicUuid: TOPIC });
     const message = adaptMessengerMessage(f.wire.at(-1)!);
@@ -624,16 +602,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("retains an existing secret when a repeated grant has different bytes and no ciphertext probe", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     const wrong = await realChatCryptoProvider.createGroupKey();
@@ -695,16 +665,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("keeps sending with the previous key after rotation and reload until the current key is granted", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    let member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    let member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     await member.requestKey();
@@ -725,11 +687,7 @@ describe("real ordinary chat orchestration", () => {
       "old key after rotation",
     );
     member.dispose();
-    member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    member = await openSessionFor(f.member);
     await member.load();
     expect(member.getState().sendKeyUuid).toBe(oldUuid);
     await member.requestKey();
@@ -752,19 +710,11 @@ describe("real ordinary chat orchestration", () => {
 
   it("repairs an existing key through a real grant after the requesting session reloads", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
     await admin.send({ text: "repair probe", topicUuid: TOPIC });
     const message = adaptMessengerMessage(f.wire.at(-1)!);
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const member = await openSessionFor(f.member);
     await member.load();
     const wrong = await realChatCryptoProvider.createGroupKey();
     if (!wrong.ok) throw new Error(wrong.reason);
@@ -776,11 +726,7 @@ describe("real ordinary chat orchestration", () => {
     expect(request.payload).not.toHaveProperty("recovery");
     expect((await realChatKeyStorage.readChatKey(member.scope))?.groupKey).toEqual(wrong.value);
     member.dispose();
-    const restored = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const restored = await openSessionFor(f.member);
     await restored.load();
     await admin.ingest([adaptMessengerMessage(request)]);
     await admin.grantKey(request.uuid);
@@ -799,11 +745,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("requests the same key for one damaged message without affecting other readable text", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     await session.send({ text: "still readable", topicUuid: TOPIC });
     const readable = adaptMessengerMessage(f.wire.at(-1)!);
@@ -840,11 +782,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("reissues a durable generation from the verified receipt without WebSocket and preserves old secrets", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     await session.send({ text: "before rotation", topicUuid: TOPIC });
     const oldScope = session.scope;
@@ -872,11 +810,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("lets a fresh device request the initial generation from real rotation history without unlocking the newest", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
     await admin.send({ text: "initial generation", topicUuid: TOPIC });
     const oldMessage = f.wire[0]!;
@@ -884,11 +818,7 @@ describe("real ordinary chat orchestration", () => {
     vi.mocked(getMessagesPage).mockImplementation(() =>
       Promise.resolve({ items: [...f.wire], nextPageMarker: null, pageLimit: 100 }),
     );
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const member = await openSessionFor(f.member);
     await member.load();
     await member.requestKey(f.metadata.keyUuid);
     const request = f.wire.at(-1)!;
@@ -904,11 +834,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("restores a committed rotation after its POST response is lost without announcing the old key again", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     let announced = 0;
@@ -928,11 +854,7 @@ describe("real ordinary chat orchestration", () => {
     ).toHaveLength(1);
     session.dispose();
     f.publishKey();
-    const restored = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const restored = await openSessionFor(f.admin);
     await restored.load();
     expect(restored.scope.keyUuid).toBe(lastKey);
     expect(restored.getState().access).toBe("ready");
@@ -950,11 +872,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("reconciles a committed rotation on same-session retry instead of generating a second epoch", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     let announcements = 0;
@@ -975,11 +893,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("retries a lost rotation response without WebSocket using the same durable announcement and secret", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     const receipt = deferred<WorkspaceMessengerMessageDto>();
@@ -1026,11 +940,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("creates distinct generations for two intentional successful rotations", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     await session.reissueKey();
     const firstUuid = session.scope.keyUuid;
@@ -1048,11 +958,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("recovers a lost rotation response from a store event before retry without publishing another announcement", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
@@ -1103,11 +1009,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not overwrite a newer realtime generation with its delayed rotation response", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const started = deferred<void>();
     const gate = deferred<void>();
@@ -1154,11 +1056,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("retries staged key recovery after ownership returns without changing the generation or refreshing", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
@@ -1212,11 +1110,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("rechecks skipped staged recovery when ownership returns during local controller loading", async () => {
     const f = await setup({ publishRotationUpdates: false });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
@@ -1274,11 +1168,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("retries a failed rotation with its persisted secret and canonical announcement UUID", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation()!;
     let announced = 0;
@@ -1304,19 +1194,11 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not publish a rotation when durable staging fails or the user is not the owner", async () => {
     const f = await setup();
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const member = await openSessionFor(f.member);
     await member.load();
     expect(member.getRights().canRotate).toBe(false);
     await expect(member.reissueKey()).rejects.toThrow("forbidden");
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
     const write = vi.spyOn(realChatKeyStorage, "writeStagedCreation").mockResolvedValueOnce(false);
     await expect(admin.reissueKey()).rejects.toThrow("storage-failed");
@@ -1329,17 +1211,9 @@ describe("real ordinary chat orchestration", () => {
 
   it("filters correlated terminal responses across historical generations and batches independent failures", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const member = await openSessionFor(f.member);
     await member.load();
     await member.requestKey();
     const request = f.wire.at(-1)!;
@@ -1396,11 +1270,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("requests and grants the selected historical generation after reload without unlocking the latest", async () => {
     const f = await setup();
-    const creator = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const creator = await openSessionFor(f.admin);
     await creator.load();
     await creator.send({ text: "earlier generation text", topicUuid: TOPIC });
     const earlierMessage = f.wire[0]!;
@@ -1420,11 +1290,7 @@ describe("real ordinary chat orchestration", () => {
       nextPageMarker: null,
       pageLimit: 100,
     });
-    let recipient = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    let recipient = await openSessionFor(f.member);
     await recipient.load();
     await recipient.requestKey(f.metadata.keyUuid);
     const request = f.wire.at(-1)!;
@@ -1434,17 +1300,9 @@ describe("real ordinary chat orchestration", () => {
     const pendingBefore = await realChatKeyStorage.listPendingRequests(historicalScope);
     expect(pendingBefore).toHaveLength(1);
     recipient.dispose();
-    recipient = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    recipient = await openSessionFor(f.member);
     await recipient.load();
-    const issuer = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const issuer = await openSessionFor(f.admin);
     await issuer.load();
     await issuer.ingest([adaptMessengerMessage(request)]);
     await issuer.grantKey(request.uuid);
@@ -1463,11 +1321,7 @@ describe("real ordinary chat orchestration", () => {
     );
     expect(getMessagesPage).not.toHaveBeenCalled();
     recipient.dispose();
-    const restored = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const restored = await openSessionFor(f.member);
     await restored.load();
     expect(await restored.decrypt(adaptMessengerMessage(earlierMessage))).toBe(
       "earlier generation text",
@@ -1478,11 +1332,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("requests an unknown historical generation by its UUID", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     const unknownUuid = crypto.randomUUID();
     await session.requestKey(unknownUuid);
@@ -1498,11 +1348,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("ignores unauthorized announcements while requests still address generations by UUID", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     const unknownUuid = crypto.randomUUID();
     const spoofed: WorkspaceMessengerMessageDto = {
@@ -1545,11 +1391,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not persist metadata for a batch of untrusted unknown generations", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     const writes = vi.spyOn(realChatKeyStorage, "writeChatKey");
     const unknown = Array.from({ length: 24 }, () => crypto.randomUUID());
@@ -1594,11 +1436,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not change stored keys when an announcement repeats a generation UUID", async () => {
     const f = await setup();
-    const creator = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const creator = await openSessionFor(f.admin);
     await creator.load();
     const oldScope = creator.scope;
     const original = await realChatKeyStorage.readChatKey(oldScope);
@@ -1609,11 +1447,7 @@ describe("real ordinary chat orchestration", () => {
       current_encryption_key_uuid: crypto.randomUUID(),
     };
     f.publishKey(latest.current_encryption_key_uuid);
-    const issuer = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const issuer = await openSessionFor(f.admin);
     await issuer.load();
     const badAnnouncement: WorkspaceMessengerMessageDto = {
       uuid: crypto.randomUUID(),
@@ -1643,11 +1477,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("lets an issuer reject an unknown historical request without requiring its secret metadata", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const unknownUuid = crypto.randomUUID();
     const request: WorkspaceMessengerMessageDto = {
@@ -1723,11 +1553,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("addresses unknown history generations by UUID without requiring announcement metadata", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     const unknownUuid = crypto.randomUUID();
     await session.requestKey(unknownUuid);
@@ -1742,42 +1568,48 @@ describe("real ordinary chat orchestration", () => {
 
   it("restores a staged creator key after a lost create response and serializes concurrent sends to distinct topics", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     expect(session.getState().access).toBe("ready");
     const scopes = { owner: f.admin, deviceId: session.device.deviceId };
     expect(await realChatKeyStorage.listStagedCreations(scopes)).toEqual([]);
+    const writeCache = vi
+      .spyOn(messengerMessageActionCache, "writeConversationMessagePage")
+      .mockResolvedValue(undefined);
     const secondTopic = crypto.randomUUID();
     const sent = await Promise.all([
       session.send({ text: "first private text", topicUuid: TOPIC }),
-      session.send({ text: "second private text", topicUuid: secondTopic }),
+      session.send({
+        text: "second private text",
+        topicUuid: secondTopic,
+        includeStreamConversation: false,
+      }),
     ]);
     expect(sent.every((result) => result.status === "applied")).toBe(true);
     expect(f.wire.map((message) => message.topic_uuid)).toEqual([TOPIC, secondTopic]);
     expect(JSON.stringify(f.wire)).not.toContain("private text");
     expect(await session.decrypt(adaptMessengerMessage(f.wire[0]!))).toBe("first private text");
     expect(await session.decrypt(adaptMessengerMessage(f.wire[1]!))).toBe("second private text");
+    expect(writeCache.mock.calls.map(([, conversationId]) => conversationId)).toEqual([
+      conversationIdForTopic(STREAM, TOPIC),
+      conversationIdForStream(STREAM),
+      conversationIdForTopic(STREAM, secondTopic),
+    ]);
+    await session.requestKey();
+    expect(f.wire.at(-1)?.topic_uuid).toBe(TOPIC);
+    expect(writeCache.mock.calls.slice(-2).map(([, conversationId]) => conversationId)).toEqual([
+      conversationIdForTopic(STREAM, TOPIC),
+      conversationIdForStream(STREAM),
+    ]);
     session.dispose();
   });
 
   it("completes a grant received before request history for a legacy unbound pending request after reload", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const admin = await openSessionFor(f.admin);
     await admin.load();
     await admin.send({ text: "protected history", topicUuid: TOPIC });
-    let member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    let member = await openSessionFor(f.member);
     await member.load();
     expect(await member.decrypt(adaptMessengerMessage(f.wire[0]!))).toBeNull();
     expect(member.getRights().canGrant).toBe(false);
@@ -1796,11 +1628,7 @@ describe("real ordinary chat orchestration", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]?.requestMessageUuid).toBeNull();
     member.dispose();
-    member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    member = await openSessionFor(f.member);
     await member.load();
     expect(member.getState().requestStatus).toBe("requested");
     await admin.ingest(f.wire.map(adaptMessengerMessage));
@@ -1837,19 +1665,6 @@ describe("real ordinary chat orchestration", () => {
     member.dispose();
   });
 
-  it("opens streams with UUID-only generation metadata", async () => {
-    const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    await session.load();
-    expect(session.getState().access).toBe("ready");
-    session.dispose();
-    expect(createMessage).not.toHaveBeenCalled();
-  });
-
   it("discards decoded content and queued actions after an owner generation change", async () => {
     const f = await setup();
     let current = f.admin;
@@ -1871,11 +1686,7 @@ describe("real ordinary chat orchestration", () => {
   });
   it("accepts a semantically identical encrypted response with reordered JSON fields", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const create = vi.mocked(createMessage).getMockImplementation();
     if (!create) throw new Error("missing fixture");
@@ -1899,11 +1710,7 @@ describe("real ordinary chat orchestration", () => {
   });
   it("adopts a store-only generation update without refreshing the stream or participants", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const oldScope = session.scope;
     const nextUuid = crypto.randomUUID();
@@ -1941,11 +1748,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("observes issuer promotion, demotion and removal directly from the store", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const owner = workspaceRuntimeOwnerKey(f.admin);
     const catalog = f.catalog(f.admin);
@@ -1970,11 +1773,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("uses the current participant's binding role while stream metadata still has the old role", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     await session.load();
     const catalog = f.catalog(f.member);
     const owner = workspaceRuntimeOwnerKey(f.member);
@@ -2012,16 +1811,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("reprocesses a previously unauthorized HPKE grant when a new administrator binding arrives", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     await member.requestKey();
@@ -2067,16 +1858,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not dispatch a grant after permission is revoked during HPKE encryption", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     await member.requestKey();
@@ -2115,16 +1898,8 @@ describe("real ordinary chat orchestration", () => {
 
   it("does not fall back to stale administrator metadata after the current participant's binding is deleted", async () => {
     const f = await setup();
-    const admin = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
-    const member = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const admin = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
     await admin.load();
     await member.load();
     await member.requestKey();
@@ -2174,11 +1949,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("keeps encryption bound to its generation and rejects dispatch when the stream changes mid-operation", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const oldUuid = session.scope.keyUuid;
     const nextUuid = crypto.randomUUID();
@@ -2226,11 +1997,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("reconciles the latest store generation when another update arrives during local key loading", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const oldScope = session.scope;
     const secondUuid = crypto.randomUUID();
@@ -2285,11 +2052,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("selects the current generation when a default request was queued before the stream changed", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-    });
+    const session = await openSessionFor(f.member);
     const started = deferred<void>();
     const gate = deferred<void>();
     const lookup = realChatKeyStorage.readLastAvailableChatKey.bind(realChatKeyStorage);
@@ -2322,11 +2085,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("retries failed local reconciliation on the next store update without a network refresh", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const nextUuid = crypto.randomUUID();
     const key = await realChatCryptoProvider.createGroupKey();
@@ -2384,11 +2143,7 @@ describe("real ordinary chat orchestration", () => {
         cleanup();
       };
     });
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const changed = vi.fn();
     session.subscribe(changed);
@@ -2412,11 +2167,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("permanently rejects a session after the store owner leaves and returns", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     const catalog = f.catalog(f.admin);
     catalog.setState({ ownerKey: workspaceRuntimeOwnerKey(f.member) });
@@ -2449,11 +2200,7 @@ describe("real ordinary chat orchestration", () => {
       }),
     );
     catalog.getState().upsertStreamBindings(owner, [{ ...adminBinding(), role: "member" }]);
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     expect(session.scope.keyUuid).toBe(nextUuid);
     expect(session.getRights()).toMatchObject({
@@ -2505,11 +2252,7 @@ describe("real ordinary chat orchestration", () => {
 
   it("invalidates the session when the stream is removed from the current owner's store", async () => {
     const f = await setup();
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     f.catalog(f.admin).setState({ streamsById: {}, streamIds: [] });
     expect(session.getState()).toMatchObject({
@@ -2545,11 +2288,7 @@ describe("real ordinary chat orchestration", () => {
     const f = await setup();
     const owner = workspaceRuntimeOwnerKey(f.admin);
     const catalog = f.catalog(f.admin);
-    const session = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-    });
+    const session = await openSessionFor(f.admin);
     await session.load();
     catalog
       .getState()

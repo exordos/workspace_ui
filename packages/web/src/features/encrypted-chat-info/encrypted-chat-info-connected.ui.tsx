@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { StoredChatKeyMetadata } from "~/entities/messenger/chat-key-storage.types";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
@@ -58,7 +60,24 @@ function useLocalKeyInventory(
         },
       );
     };
-    const unsubscribe = session.subscribe(load);
+    let scope: RealChatSession["scope"];
+    try {
+      scope = session.scope;
+    } catch {
+      setInventory({ session, streamUuid, keys: [], loading: false, error: true });
+      return;
+    }
+    const ownerKey = workspaceRuntimeOwnerKey(scope.owner);
+    const unsubscribe = subscribeRealChatKeyChanges((change) => {
+      if (
+        change &&
+        (change.ownerKey !== ownerKey ||
+          change.deviceId !== scope.deviceId ||
+          change.streamUuid !== streamUuid)
+      )
+        return;
+      load();
+    });
     load();
     return () => {
       disposed = true;

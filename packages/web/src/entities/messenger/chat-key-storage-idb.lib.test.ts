@@ -29,14 +29,19 @@ const pending: PendingChatKeyRequest = {
   privateKey: new Uint8Array(32).fill(3),
   createdAt: 100,
 };
+const recovery = { envelope: { bytes: new Uint8Array([7]) }, previousGroupKey: key.groupKey! };
+const creation = { creationId: "creation", keyUuid: address.keyUuid, groupKey: key.groupKey! };
 const stores: IndexedDbChatKeyStorage[] = [];
 const databases: string[] = [];
-function setup() {
-  const name = `e2ee-test-${crypto.randomUUID()}`;
+function openStorage(name: string) {
   const storage = new IndexedDbChatKeyStorage(name);
   stores.push(storage);
+  return storage;
+}
+function setup() {
+  const name = `e2ee-test-${crypto.randomUUID()}`;
   databases.push(name);
-  return { storage, name };
+  return { storage: openStorage(name), name };
 }
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -74,8 +79,7 @@ describe("durable chat key storage", () => {
     clock.mockReturnValue(300);
     for (const variant of variants) await storage.writeChatKey(variant, key);
     storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
+    const reopened = openStorage(name);
     expect(await reopened.listChatKeys(address)).toEqual([
       { keyUuid: "a-newer", receivedAt: 200 },
       { keyUuid: "z-newer", receivedAt: 200 },
@@ -97,10 +101,7 @@ describe("durable chat key storage", () => {
     await storage.writeChatKey(address, { groupKey: null });
     await storage.writePendingRequest(address, {
       ...pending,
-      recovery: {
-        envelope: { bytes: new Uint8Array([7]) },
-        previousGroupKey: key.groupKey!,
-      },
+      recovery,
     });
     await storage.completeGrant(address, {
       ...grant,
@@ -168,8 +169,7 @@ describe("durable chat key storage", () => {
 
   it("atomically deletes one local generation and its recovery copies while preventing late grants", async () => {
     const { storage, name } = setup();
-    const other = new IndexedDbChatKeyStorage(name);
-    stores.push(other);
+    const other = openStorage(name);
     const otherGeneration = { ...address, keyUuid: "other" };
     const otherDevice = { ...address, deviceId: "other" };
     const otherOwner = { ...address, owner: { ...address.owner, accountId: "other" } };
@@ -177,10 +177,7 @@ describe("durable chat key storage", () => {
       await storage.writeChatKey(variant, key);
       await storage.writePendingRequest(variant, {
         ...pending,
-        recovery: {
-          envelope: { bytes: new Uint8Array([7]) },
-          previousGroupKey: key.groupKey!,
-        },
+        recovery,
       });
     }
     await storage.writePendingRequest(address, {
@@ -228,8 +225,7 @@ describe("durable chat key storage", () => {
 
   it("fences provider-prepared requests after another connection deletes before notification", async () => {
     const { storage, name } = setup();
-    const other = new IndexedDbChatKeyStorage(name);
-    stores.push(other);
+    const other = openStorage(name);
     const clock = vi.spyOn(Date, "now").mockReturnValue(100);
     await storage.writeChatKey(address, key);
     const preparedRevision = await other.readChatKeyDeletionRevision(address);
@@ -241,10 +237,7 @@ describe("durable chat key storage", () => {
         address,
         {
           ...pending,
-          recovery: {
-            envelope: { bytes: new Uint8Array([7]) },
-            previousGroupKey: key.groupKey!,
-          },
+          recovery,
         },
         { isCurrent: () => true, expectedDeletionRevision: preparedRevision },
       ),
@@ -276,15 +269,10 @@ describe("durable chat key storage", () => {
   it("preserves deletion fences across finalized creations and reopened connections", async () => {
     const { storage, name } = setup();
     await storage.removeChatKey(address);
-    await storage.writeStagedCreation(address, {
-      creationId: "creation",
-      keyUuid: address.keyUuid,
-      groupKey: key.groupKey!,
-    });
+    await storage.writeStagedCreation(address, creation);
     await storage.finalizeCreation(address, "creation", address.streamUuid);
     storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
+    const reopened = openStorage(name);
     expect(await reopened.readChatKeyDeletionRevision(address)).toBe(1);
     expect(await reopened.readChatKey(address)).toEqual(key);
     expect(await reopened.listStagedCreations(address)).toEqual([]);
@@ -312,8 +300,7 @@ describe("durable chat key storage", () => {
       { forSending: true },
     );
     storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
+    const reopened = openStorage(name);
     expect(await reopened.readLastAvailableChatKey(address)).toEqual({
       keyUuid: "newer",
       groupKey: key.groupKey,
@@ -328,31 +315,25 @@ describe("durable chat key storage", () => {
 
   it("restores an explicit repair and atomically replaces only its generation", async () => {
     const { storage, name } = setup();
-    const recovery = { envelope: { bytes: new Uint8Array([7]) }, previousGroupKey: key.groupKey! };
     const replacement = { bytes: new Uint8Array(32).fill(8) };
     const otherAddress = { ...address, keyUuid: "other-generation" };
     await storage.writeChatKey(address, key);
     await storage.writeChatKey(otherAddress, key);
     await storage.writePendingRequest(address, { ...pending, recovery });
     storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
-    expect((await reopened.readPendingRequest(address, pending.localRequestId))?.recovery).toEqual(
-      recovery,
-    );
+    const reopened = openStorage(name);
+    expect(await reopened.listPendingRequests(address)).toEqual([{ ...pending, recovery }]);
     const repairingGrant = { ...grant, groupKey: replacement, replaceExistingKey: true };
     expect(await reopened.completeGrant(address, repairingGrant)).toBe(true);
     expect(await reopened.completeGrant(address, repairingGrant)).toBe(true);
     expect(await reopened.readChatKey(address)).toEqual({ groupKey: replacement });
     expect(await reopened.readChatKey(otherAddress)).toEqual(key);
-    expect(await reopened.readPendingRequest(address, pending.localRequestId)).toBeNull();
+    expect(await reopened.listPendingRequests(address)).toEqual([]);
   });
 
   it("does not let a delayed repair overwrite a different key saved by another connection", async () => {
     const { storage, name } = setup();
-    const other = new IndexedDbChatKeyStorage(name);
-    stores.push(other);
-    const recovery = { envelope: { bytes: new Uint8Array([7]) }, previousGroupKey: key.groupKey! };
+    const other = openStorage(name);
     await storage.writeChatKey(address, key);
     await storage.writePendingRequest(address, { ...pending, recovery });
     await other.writePendingRequest(address, {
@@ -377,7 +358,7 @@ describe("durable chat key storage", () => {
       }),
     ).rejects.toMatchObject({ reason: "conflict" });
     expect(await storage.readChatKey(address)).toEqual({ groupKey: winner });
-    expect(await storage.readPendingRequest(address, pending.localRequestId)).not.toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([{ ...pending, recovery }]);
     // An ordinary delayed grant also cannot roll back a repaired generation.
     await expect(storage.completeGrant(address, grant)).rejects.toMatchObject({
       reason: "conflict",
@@ -403,7 +384,7 @@ describe("durable chat key storage", () => {
       }),
     ).rejects.toMatchObject({ reason: "conflict" });
     expect(await storage.readChatKey(address)).toEqual(key);
-    expect(await storage.readPendingRequest(address, pending.localRequestId)).toEqual(pending);
+    expect(await storage.listPendingRequests(address)).toEqual([pending]);
   });
 
   it("restores pending secret and stable device labels through a new connection", async () => {
@@ -411,9 +392,8 @@ describe("durable chat key storage", () => {
     await storage.writeDeviceIdentity(address.owner, { deviceId: "device", deviceName: "Laptop" });
     await storage.writePendingRequest(address, pending);
     storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
-    expect(await reopened.readPendingRequest(address, "local")).toEqual(pending);
+    const reopened = openStorage(name);
+    expect(await reopened.listPendingRequests(address)).toEqual([pending]);
     expect(await reopened.readDeviceIdentity(address.owner)).toEqual({
       deviceId: "device",
       deviceName: "Laptop",
@@ -423,8 +403,7 @@ describe("durable chat key storage", () => {
 
   it("preserves the first device identity when two connections initialize concurrently", async () => {
     const { storage, name } = setup();
-    const other = new IndexedDbChatKeyStorage(name);
-    stores.push(other);
+    const other = openStorage(name);
     const first = { deviceId: "first-device", deviceName: "First" };
     const second = { deviceId: "second-device", deviceName: "Second" };
     const results = await Promise.allSettled([
@@ -450,8 +429,9 @@ describe("durable chat key storage", () => {
     });
     expect(await storage.completeGrant(address, grant)).toBe(true);
     expect(await storage.readChatKey(address)).toEqual(key);
-    expect(await storage.readPendingRequest(address, "local")).toBeNull();
-    expect(await storage.readPendingRequest(address, "other")).not.toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([
+      { ...pending, localRequestId: "other", requestMessageUuid: "other-request" },
+    ]);
     expect(await storage.readRequestCompletion(address, "local")).toEqual({
       localRequestId: "local",
       requestMessageUuid: "request",
@@ -471,7 +451,7 @@ describe("durable chat key storage", () => {
     await expect(
       storage.completeGrant(address, { ...grant, groupKey: { bytes: new Uint8Array(32).fill(8) } }),
     ).rejects.toMatchObject({ reason: "conflict" });
-    expect(await storage.readPendingRequest(address, "local")).toEqual(pending);
+    expect(await storage.listPendingRequests(address)).toEqual([pending]);
     expect(await storage.readRequestCompletion(address, "local")).toBeNull();
     expect(await storage.readChatKey(address)).toEqual(key);
   });
@@ -485,7 +465,7 @@ describe("durable chat key storage", () => {
     );
     expect(await storage.readChatKey(address)).toBeNull();
     expect(await storage.readRequestCompletion(address, "local")).toBeNull();
-    expect(await storage.readPendingRequest(address, "local")).toEqual(pending);
+    expect(await storage.listPendingRequests(address)).toEqual([pending]);
   });
 
   it("rejects a mismatched request and accepts a terminal rejection without removing a previously available group key", async () => {
@@ -495,9 +475,9 @@ describe("durable chat key storage", () => {
     await expect(
       storage.completeReject(address, { ...grant, requestMessageUuid: "wrong" }),
     ).rejects.toMatchObject({ reason: "conflict" });
-    expect(await storage.readPendingRequest(address, "local")).not.toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([pending]);
     await storage.completeReject(address, grant);
-    expect(await storage.readPendingRequest(address, "local")).toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([]);
     expect(await storage.readChatKey(address)).toEqual(key);
     expect((await storage.readRequestCompletion(address, "local"))?.outcome).toBe("rejected");
     await expect(storage.completeGrant(address, grant)).rejects.toMatchObject({
@@ -510,7 +490,7 @@ describe("durable chat key storage", () => {
     await storage.writePendingRequest(address, pending);
     await storage.completeReject(address, grant);
     expect(await storage.readChatKey(address)).toBeNull();
-    expect(await storage.readPendingRequest(address, "local")).toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([]);
   });
 
   it("snapshots mutable input before database opening and normalizes cloned byte arrays", async () => {
@@ -526,17 +506,16 @@ describe("durable chat key storage", () => {
     input.publicKey.bytes.fill(0);
     mutableAddress.owner.userUuid = "other";
     await writing;
-    const restored = await storage.readPendingRequest(address, "local");
+    const [restored] = await storage.listPendingRequests(address);
     expect(restored).toEqual(pending);
     expect(restored?.privateKey).toBeInstanceOf(Uint8Array);
     restored?.privateKey.fill(0);
-    expect(await storage.readPendingRequest(address, "local")).toEqual(pending);
+    expect(await storage.listPendingRequests(address)).toEqual([pending]);
   });
 
   it("serializes competing connections so exactly one terminal outcome wins", async () => {
     const { storage, name } = setup();
-    const other = new IndexedDbChatKeyStorage(name);
-    stores.push(other);
+    const other = openStorage(name);
     await storage.writePendingRequest(address, pending);
     const results = await Promise.allSettled([
       storage.completeGrant(address, grant),
@@ -544,7 +523,7 @@ describe("durable chat key storage", () => {
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
-    expect(await storage.readPendingRequest(address, "local")).toBeNull();
+    expect(await storage.listPendingRequests(address)).toEqual([]);
     const receipt = await storage.readRequestCompletion(address, "local");
     expect(receipt?.outcome).toBe("granted");
     expect(await storage.readChatKey(address)).toEqual(key);
@@ -610,43 +589,27 @@ describe("durable chat key storage", () => {
     );
   });
 
-  it("moves a staged creation secret to the returned stream atomically", async () => {
-    const { storage } = setup();
-    const creation = {
-      creationId: "creation",
-      keyUuid: address.keyUuid,
-      groupKey: key.groupKey!,
-    };
+  it("restores a staged creation after reload and finalizes it atomically", async () => {
+    const { storage, name } = setup();
     await storage.writeStagedCreation(address, creation);
+    storage.close();
+    const reopened = openStorage(name);
+    expect(await reopened.listStagedCreations(address)).toEqual([creation]);
+    expect(await reopened.listStagedCreations({ ...address, deviceId: "other" })).toEqual([]);
     expect(
-      await storage.finalizeCreation(address, "creation", address.streamUuid, {
+      await reopened.finalizeCreation(address, "creation", address.streamUuid, {
         isCurrent: () => false,
       }),
     ).toBe(false);
-    expect(await storage.readStagedCreation(address, "creation")).toEqual(creation);
-    expect(await storage.readChatKey(address)).toBeNull();
-    await storage.finalizeCreation(address, "creation", address.streamUuid);
-    expect(await storage.readStagedCreation(address, "creation")).toBeNull();
-    expect((await storage.readChatKey(address))?.groupKey).toEqual(key.groupKey);
-    expect(await storage.finalizeCreation(address, "creation", address.streamUuid)).toBe(true);
-    await expect(
-      storage.finalizeCreation(address, "creation", "different-stream"),
-    ).rejects.toMatchObject({ reason: "missing-request" });
-  });
-
-  it("discovers staged creation secrets after reload without knowing their local IDs", async () => {
-    const { storage, name } = setup();
-    const creation = {
-      creationId: "creation",
-      keyUuid: address.keyUuid,
-      groupKey: key.groupKey!,
-    };
-    await storage.writeStagedCreation(address, creation);
-    storage.close();
-    const reopened = new IndexedDbChatKeyStorage(name);
-    stores.push(reopened);
     expect(await reopened.listStagedCreations(address)).toEqual([creation]);
-    expect(await reopened.listStagedCreations({ ...address, deviceId: "other" })).toEqual([]);
+    expect(await reopened.readChatKey(address)).toBeNull();
+    await reopened.finalizeCreation(address, "creation", address.streamUuid);
+    expect(await reopened.listStagedCreations(address)).toEqual([]);
+    expect((await reopened.readChatKey(address))?.groupKey).toEqual(key.groupKey);
+    expect(await reopened.finalizeCreation(address, "creation", address.streamUuid)).toBe(true);
+    await expect(
+      reopened.finalizeCreation(address, "creation", "different-stream"),
+    ).rejects.toMatchObject({ reason: "missing-request" });
   });
 
   it("rejects invalid secret sizes and has no memory fallback if IndexedDB is unavailable", async () => {

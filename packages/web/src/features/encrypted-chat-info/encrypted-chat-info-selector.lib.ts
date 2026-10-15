@@ -1,3 +1,4 @@
+import { selectWorkspaceStreamMembers } from "~/entities/messenger/messenger-right-panel.lib";
 import type {
   MessengerMessage,
   MessengerStream,
@@ -36,7 +37,7 @@ export interface EncryptedChatInfoProjection {
   readonly onlineCount: number;
 }
 
-function resolveMemberStatusLabel(status: User["status"] | undefined): string | null {
+function resolveMemberStatusLabel(status: User["status"] | null): string | null {
   if (status == null) return null;
   if (status === "active") return t("presence.online");
   if (status === "idle") return t("presence.away");
@@ -56,28 +57,22 @@ export function selectEncryptedChatInfo(
   const stream = snapshot.streamsById[snapshot.streamUuid];
   if (stream?.encryption !== true || stream.projectId !== snapshot.projectId) return null;
   const users = snapshot.usersOwnerKey === snapshot.ownerKey ? snapshot.usersById : {};
-  const members = Object.values(snapshot.bindingsById)
-    .filter(
+  const streamMembers = selectWorkspaceStreamMembers(
+    Object.values(snapshot.bindingsById).filter(
       (binding) => binding.streamUuid === stream.uuid && binding.projectId === snapshot.projectId,
-    )
-    .map((binding) => {
-      const user = users[binding.userUuid];
-      return {
-        id: binding.uuid,
-        name: selectUserDisplayName(user, binding.userUuid),
-        avatarUrl: user?.avatarUrl ?? null,
-        email: user?.email?.trim() || null,
-        presence: resolveUserPresenceVisual(user?.status),
-        statusLabel: resolveMemberStatusLabel(user?.status),
-        roleLabel: resolveMemberRoleLabel(binding.role),
-      };
-    });
-  const onlineCount = Object.values(snapshot.bindingsById).filter(
-    (binding) =>
-      binding.streamUuid === stream.uuid &&
-      binding.projectId === snapshot.projectId &&
-      resolveUserPresenceVisual(users[binding.userUuid]?.status) === "active",
-  ).length;
+    ),
+    users,
+  );
+  const members = streamMembers.map((member) => ({
+    id: member.bindingUuid,
+    name: member.name,
+    avatarUrl: member.avatarUrl,
+    email: member.email,
+    presence: resolveUserPresenceVisual(member.status),
+    statusLabel: resolveMemberStatusLabel(member.status),
+    roleLabel: resolveMemberRoleLabel(member.role),
+  }));
+  const onlineCount = streamMembers.filter((member) => member.isOnline).length;
   const messages =
     snapshot.messagesOwnerKey === snapshot.ownerKey
       ? Object.values(snapshot.messagesById).filter(
