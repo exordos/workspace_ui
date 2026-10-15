@@ -726,7 +726,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           time={time}
           createdAt={displayMessage.createdAt}
           deliveryIndicator={deliveryIndicator}
-          serverMessage={encryptedPayload ? null : serverMessage}
+          serverMessage={locked ? null : serverMessage}
           usersById={usersById}
           passiveLoadersEnabled={passiveContentEnabled}
           onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}

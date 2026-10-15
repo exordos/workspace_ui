@@ -335,6 +335,58 @@ describe("real encrypted message presentation", () => {
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
+  it("shows and toggles shared reactions only while the message is decrypted", async () => {
+    const { stored, owner, stream, runtime, device } =
+      await seedRealEncryptedMessage("Reacted encrypted text");
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    const reacted: MessengerMessage = {
+      ...stored,
+      reactions: { "👍": 2 },
+      ownReactionUuidsByEmojiName: { "👍": "reaction-uuid" },
+    };
+    const onToggleMessageReaction = vi.fn();
+    const renderMessage = (message: MessengerMessage) => (
+      <WorkspaceEncryptedMessageBubble
+        message={message}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onToggleMessageReaction }}
+      />
+    );
+    const { rerender } = render(renderMessage(reacted));
+    expect(screen.queryByRole("button", { name: "👍 2" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Reacted encrypted text")).toBeInTheDocument();
+    const chip = screen.getByRole("button", { name: "👍 2" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(chip);
+    expect(onToggleMessageReaction).toHaveBeenCalledWith(stored.uuid, "👍");
+
+    rerender(
+      renderMessage({ ...reacted, reactions: { "👍": 1 }, ownReactionUuidsByEmojiName: {} }),
+    );
+    expect(screen.getByRole("button", { name: "👍 1" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "👍 2" })).not.toBeInTheDocument();
+
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    act(() => {
+      if (stored.payload.kind !== "e2ee") return;
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+    });
+    expect(screen.queryByText("Reacted encrypted text")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "👍 1" })).not.toBeInTheDocument();
+  });
   it("clears visible plaintext after its local key is removed and ignores unrelated removals", async () => {
     const { stored, owner, stream, runtime, device } =
       await seedRealEncryptedMessage("local secret text");
