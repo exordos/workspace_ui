@@ -6,6 +6,68 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-15
+
+### Added
+
+- Native chats can now be created with end-to-end encryption. The client
+  generates and stores the initial group key before creating the chat, encrypts
+  message payloads locally, and restores locally available keys after reload.
+- Encrypted chats support key requests, individual and bulk grants, rejection,
+  owner-initiated key rotation, historical key generations, and explicit local
+  key deletion. Locked messages expose retry and key-request actions instead of
+  falling back to plaintext.
+- Encrypted text and attachment references use ChaCha20-Poly1305 with per-message
+  derived keys. Device-to-device key grants use HPKE with X25519, HKDF-SHA256,
+  and ChaCha20-Poly1305.
+- The encrypted-chat panel shows the current generation, local key availability,
+  pending requests, and administrative actions. Service events and message
+  placeholders keep key exchange and failure states visible in the conversation.
+
+### Changed
+
+- Chat creation, sending, history presentation, drafts, replies, edits, forwards,
+  and attachments now enforce encrypted-chat boundaries. Plain Markdown
+  operations and server drafts are blocked in encrypted chats, while failed
+  encrypted sends retain their editor state for retry.
+- Encryption state is isolated by Workspace account, device, chat, and key
+  generation. Stale asynchronous work is discarded when the active session or
+  runtime changes.
+
+### Security and limitations
+
+- The backend stores ciphertext, stream encryption metadata, key UUIDs, and key
+  exchange service messages, but not plaintext group keys or private request
+  keys.
+- Attachment references are encrypted with the message, but uploaded attachment
+  bytes and file metadata are not end-to-end encrypted. Chat metadata,
+  participants, and service messages also remain visible to the server.
+- Local chat secrets are stored in the separate IndexedDB database
+  `workspace-chat-secrets-v1`. This storage is not hardware-backed, keys are not
+  exported or backed up automatically, and losing every local copy makes that
+  key generation's history unavailable.
+- Existing chats cannot be converted to encrypted mode. Key rotation protects
+  future sends with a new generation but does not revoke previously granted
+  keys or rewrite existing history.
+
+### Requirements and compatibility
+
+- Exordos Core `0.2.3` or newer remains required.
+- Encrypted chats require Workspace backend `1.3.0` or newer. Deployments on an
+  older backend can continue using ordinary chats but must not enable encrypted
+  chat flows.
+- The messenger cache remains at schema version 7. The encrypted-key database is
+  created automatically, and no client data migration is required.
+- Ordinary unencrypted chats remain compatible with `0.8.5`; this release does
+  not convert or re-encrypt existing conversations.
+
+### Migration notes
+
+- Update Workspace backend to `1.3.0` or newer before enabling encrypted chats,
+  then update `workspace_ui` to `0.9.0`.
+- No manual database migration is required on the client. Each additional device
+  must request and receive the relevant chat keys before it can decrypt history.
+
 ## [0.8.5] — 2026-10-14
 
 ### Added
