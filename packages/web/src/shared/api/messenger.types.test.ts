@@ -675,6 +675,19 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(false);
   });
 
+  it("validates the flat current encryption key UUID returned by the backend", () => {
+    for (const key of [undefined, null, MESSAGE_UUID]) {
+      expect(
+        isWorkspaceMessengerStreamDto({ ...streamDto, current_encryption_key_uuid: key }),
+      ).toBe(true);
+    }
+    for (const key of ["bad", { key_uuid: MESSAGE_UUID }, 42]) {
+      expect(
+        isWorkspaceMessengerStreamDto({ ...streamDto, current_encryption_key_uuid: key }),
+      ).toBe(false);
+    }
+  });
+
   it("accepts optional topic last message uuid", () => {
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: undefined })).toBe(true);
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: null })).toBe(true);

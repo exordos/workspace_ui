@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { MessengerChannelCreationError } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
 import {
   runWorkspaceChannelCreate,
   runWorkspaceDirectStreamCreate,
 } from "~/entities/messenger/messenger-create-chat-actions.lib";
+import type { EncryptedChannelCreationAttempt } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
@@ -16,6 +18,12 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
 import type { UserPickerOption } from "~/shared/lib/user-picker";
 import {
@@ -87,6 +95,9 @@ export interface UseCreateChatDialogResult {
   setChannelName: (v: string) => void;
   channelDesc: string;
   setChannelDesc: (v: string) => void;
+  channelEncryption: boolean;
+  setChannelEncryption: (v: boolean) => void;
+  channelCreateErrorKey: string | null;
   channelInviteOnly: boolean;
   setChannelInviteOnly: (v: boolean) => void;
   channelAnnounce: boolean;
@@ -133,7 +144,7 @@ export interface UseCreateChatDialogResult {
 export function useCreateChatDialog(options: {
   open: boolean;
   visibleTabs?: readonly CreateChatTab[];
-  onNavigateWorkspaceStream?: (streamUuid: string) => void;
+  onNavigateWorkspaceStream?: (streamUuid: string, encryption?: boolean) => void;
   onNavigateWorkspaceTopic?: (streamUuid: string, topicUuid: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
@@ -197,7 +208,34 @@ export function useCreateChatDialog(options: {
   const [channelInviteOnly, setChannelInviteOnly] = useState(false);
   const [channelAnnounce, setChannelAnnounce] = useState(false);
   const [channelAnnouncementOnly, setChannelAnnouncementOnly] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [channelEncryption, setChannelEncryptionState] = useState(false);
+  const [channelCreateErrorKey, setChannelCreateErrorKey] = useState<string | null>(null);
+  const setChannelEncryption = useCallback((encrypted: boolean) => {
+    setChannelEncryptionState(encrypted);
+    setChannelCreateErrorKey(null);
+    if (encrypted) {
+      setChannelInviteOnly(false);
+      setChannelAnnounce(false);
+      setChannelAnnouncementOnly(false);
+    }
+  }, []);
+  const [otherCreating, setCreating] = useState(false);
+  // One context object identifies the operation; state is its render snapshot.
+  const channelCreationRef = useRef<WorkspaceRuntimeRequestContext | null>(null);
+  const [channelCreation, setChannelCreation] = useState<WorkspaceRuntimeRequestContext | null>(
+    null,
+  );
+  const encryptedCreationAttempts = useRef(
+    new Map<
+      string,
+      {
+        attempt: EncryptedChannelCreationAttempt;
+        name: string;
+        description: string;
+        selectedUserKeys: Set<string>;
+      }
+    >(),
+  );
   const [channelsSearch, setChannelsSearch] = useState("");
   const [channelsSubscriptionFilter, setChannelsSubscriptionFilter] =
     useState<BrowseChannelSubscriptionFilter>("unsubscribed");
@@ -217,6 +255,14 @@ export function useCreateChatDialog(options: {
       }),
     [workspaceCurrentAccountId, workspaceSessions],
   );
+  const channelOwnerKey = workspaceRuntimeContext
+    ? workspaceRuntimeOwnerKey(workspaceRuntimeContext)
+    : null;
+  // An old runtime's request does not block creation in the current runtime.
+  const creating =
+    otherCreating ||
+    (channelCreation != null &&
+      isWorkspaceRuntimeRequestContextCurrent(channelCreation, () => workspaceRuntimeContext));
   const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
   const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
   const workspaceStreams = useMemo(
@@ -289,6 +335,24 @@ export function useCreateChatDialog(options: {
     selectedWorkspaceTopicStreamUuid.trim().length === 0 || !workspaceTopicName.trim();
 
   useEffect(() => {
+    const unresolved = channelOwnerKey
+      ? encryptedCreationAttempts.current.get(channelOwnerKey)
+      : undefined;
+    if (unresolved) {
+      let active = true;
+      if (open) {
+        void Promise.resolve().then(() => {
+          if (!active) return;
+          setChannelName(unresolved.name);
+          setChannelDesc(unresolved.description);
+          setChannelSelectedUserKeys(new Set(unresolved.selectedUserKeys));
+          setChannelEncryptionState(true);
+        });
+      }
+      return () => {
+        active = false;
+      };
+    }
     if (open) return;
     void Promise.resolve().then(() => {
       setTabState(visibleTabs[0] ?? "dm");
@@ -300,6 +364,7 @@ export function useCreateChatDialog(options: {
       setChannelInviteOnly(false);
       setChannelAnnounce(false);
       setChannelAnnouncementOnly(false);
+      setChannelEncryptionState(false);
       setCreating(false);
       setChannelsSearch("");
       setChannelsSubscriptionFilter("unsubscribed");
@@ -307,7 +372,7 @@ export function useCreateChatDialog(options: {
       setWorkspaceTopicStreamUuid("");
       setWorkspaceTopicName("");
     });
-  }, [open, visibleTabs]);
+  }, [channelOwnerKey, open, visibleTabs]);
 
   useEffect(() => {
     if (visibleTabs.includes(tab)) return;
@@ -365,40 +430,121 @@ export function useCreateChatDialog(options: {
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating || workspaceRuntimeContext == null) return;
+    if (
+      !channelName.trim() ||
+      creating ||
+      (channelCreationRef.current &&
+        isWorkspaceRuntimeRequestContextCurrent(channelCreationRef.current, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        )) ||
+      workspaceRuntimeContext == null
+    )
+      return;
+    const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
+    if (
+      requestContext == null ||
+      !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      )
+    )
+      return;
+    const ownerKey = workspaceRuntimeOwnerKey(workspaceRuntimeContext);
+    let encryptedIntent = encryptedCreationAttempts.current.get(ownerKey);
+    if (!channelEncryption && encryptedIntent) {
+      if (
+        encryptedIntent.attempt.state.phase === "dispatched" ||
+        encryptedIntent.attempt.state.phase === "resolved" ||
+        encryptedIntent.attempt.pending
+      ) {
+        setChannelCreateErrorKey("channel.creationUncertain");
+        return;
+      }
+      encryptedCreationAttempts.current.delete(ownerKey);
+      encryptedIntent = undefined;
+    }
     const memberUserUuids = channelUsers
       .filter((user) => channelSelectedUserKeys.has(user.userKey))
       .map((user) => user.workspaceUserUuid)
       .filter((userUuid): userUuid is string => userUuid != null);
 
-    setCreating(true);
+    if (channelEncryption && !encryptedIntent) {
+      encryptedIntent = {
+        attempt: { ownerKey: null, state: { phase: "idle" }, pending: false },
+        name: channelName,
+        description: channelDesc,
+        selectedUserKeys: new Set(channelSelectedUserKeys),
+      };
+      encryptedCreationAttempts.current.set(ownerKey, encryptedIntent);
+    }
+    if (
+      encryptedIntent &&
+      (encryptedIntent.attempt.state.phase === "idle" ||
+        encryptedIntent.attempt.state.phase === "prepared")
+    ) {
+      encryptedIntent.name = channelName;
+      encryptedIntent.description = channelDesc;
+      encryptedIntent.selectedUserKeys = new Set(channelSelectedUserKeys);
+    }
+    channelCreationRef.current = requestContext;
+    setChannelCreateErrorKey(null);
+    setChannelCreation(requestContext);
     void runWorkspaceChannelCreate({
       name: channelName.trim(),
       description: channelDesc.trim(),
       memberUserUuids,
-      inviteOnly: channelInviteOnly,
-      announce: channelAnnounce,
+      inviteOnly: channelEncryption ? false : channelInviteOnly,
+      announce: channelEncryption ? false : channelAnnounce,
+      ...(channelEncryption ? { encryption: true, creationAttempt: encryptedIntent?.attempt } : {}),
     })
       .then((result) => {
+        if (
+          channelCreationRef.current !== requestContext ||
+          !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+            useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          )
+        )
+          return;
         if (result.status !== "applied") return;
+        encryptedCreationAttempts.current.delete(ownerKey);
         setChannelName("");
         setChannelDesc("");
         setChannelSelectedUserKeys(new Set());
         setChannelInviteOnly(false);
         setChannelAnnounce(false);
         setChannelAnnouncementOnly(false);
-        onNavigateWorkspaceStream?.(result.stream.uuid);
+        setChannelEncryptionState(false);
+        if (channelEncryption) onNavigateWorkspaceStream?.(result.stream.uuid, true);
+        else onNavigateWorkspaceStream?.(result.stream.uuid);
         onChannelCreated();
       })
       .catch((err) => {
+        if (
+          channelCreationRef.current !== requestContext ||
+          !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+            useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          )
+        )
+          return;
+        const encryptionErrorKey =
+          err instanceof MessengerChannelCreationError
+            ? {
+                "encryption-unavailable": "channel.encryptionUnavailable",
+                "encryption-mismatch": "channel.encryptionMismatch",
+                "creation-uncertain": "channel.creationUncertain",
+              }[err.reason]
+            : null;
+        setChannelCreateErrorKey(encryptionErrorKey ?? "channel.createFailed");
         log.error("workspace channel create failed", {
-          error: err instanceof Error ? err.message : String(err),
+          reason: err instanceof MessengerChannelCreationError ? err.reason : "request-failed",
         });
       })
       .finally(() => {
-        setCreating(false);
+        if (channelCreationRef.current !== requestContext) return;
+        channelCreationRef.current = null;
+        setChannelCreation(null);
       });
   }, [
+    channelEncryption,
     channelAnnounce,
     channelDesc,
     channelInviteOnly,
@@ -463,12 +609,15 @@ export function useCreateChatDialog(options: {
     setChannelName,
     channelDesc,
     setChannelDesc,
+    channelEncryption,
+    setChannelEncryption,
+    channelCreateErrorKey,
     channelInviteOnly,
-    setChannelInviteOnly,
+    setChannelInviteOnly: (value) => setChannelInviteOnly(value && !channelEncryption),
     channelAnnounce,
-    setChannelAnnounce,
+    setChannelAnnounce: (value) => setChannelAnnounce(value && !channelEncryption),
     channelAnnouncementOnly: channelAnnouncementOnly && !channelAnnouncementOnlyBlocked,
-    setChannelAnnouncementOnly,
+    setChannelAnnouncementOnly: (value) => setChannelAnnouncementOnly(value && !channelEncryption),
     channelAnnouncementOnlyBlocked,
     channelAnnouncementOnlyBlockedReasonKey,
     creating,

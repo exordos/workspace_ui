@@ -1,5 +1,5 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
@@ -9,12 +9,14 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   useRightDrawerStore,
+  sameRightDrawerChatScope,
   type RightDrawerAccountScreen,
 } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
@@ -90,6 +92,9 @@ export const Layout: React.FC = () => {
   const toggleRightDrawerChatInfo = useRightDrawerStore((s) => s.toggleChatInfo);
   const rightDrawerMode = useRightDrawerStore((s) => s.mode);
   const rightDrawerAccountScreen = useRightDrawerStore((s) => s.accountScreen);
+  const rightDrawerChatScreen = useRightDrawerStore((s) => s.chatScreen);
+  const openRightDrawerChatScreen = useRightDrawerStore((s) => s.openChatScreen);
+  const resetRightDrawerChatScreens = useRightDrawerStore((s) => s.resetChatScreens);
   const rightDrawerActiveLayerKind = useRightDrawerStore((s) => s.layers.at(-1)?.kind ?? null);
   const rightDrawerCanGoBack = useRightDrawerStore(
     (s) => (s.layers.at(-1)?.screens.length ?? 0) > 1,
@@ -249,6 +254,52 @@ export const Layout: React.FC = () => {
     workspaceRoute: workspaceMessengerRoute,
   });
 
+  let rightDrawerChatStreamUuid: string | null | undefined = null;
+  if (workspaceMessengerRoute?.kind === "stream" || workspaceMessengerRoute?.kind === "topic") {
+    rightDrawerChatStreamUuid = workspaceMessengerRoute.streamUuid;
+  } else if (
+    workspaceRightPanelInfo?.kind === "channel" ||
+    workspaceRightPanelInfo?.kind === "directPrivate"
+  ) {
+    rightDrawerChatStreamUuid = workspaceRightPanelInfo.streamUuid;
+  }
+  const rightDrawerRuntimeGeneration = currentWorkspaceRuntimeContext?.runtimeGeneration;
+  const rightDrawerChatScope = useMemo(
+    () =>
+      workspaceRouteReady &&
+      currentWorkspaceOwnerKey != null &&
+      rightDrawerRuntimeGeneration != null &&
+      rightDrawerChatStreamUuid != null
+        ? {
+            ownerKey: currentWorkspaceOwnerKey,
+            runtimeGeneration: rightDrawerRuntimeGeneration,
+            streamUuid: rightDrawerChatStreamUuid,
+          }
+        : null,
+    [
+      workspaceRouteReady,
+      currentWorkspaceOwnerKey,
+      rightDrawerRuntimeGeneration,
+      rightDrawerChatStreamUuid,
+    ],
+  );
+  const scopedRightDrawerChatScreen = sameRightDrawerChatScope(
+    rightDrawerChatScreen,
+    rightDrawerChatScope,
+  )
+    ? rightDrawerChatScreen
+    : null;
+  useEffect(() => {
+    resetRightDrawerChatScreens(rightDrawerChatScope);
+  }, [resetRightDrawerChatScreens, rightDrawerChatScope]);
+  const handleChatScreenChange = useCallback(
+    (screen: EncryptedChatInfoScreen, keyUuid?: string) => {
+      if (rightDrawerChatScope != null)
+        openRightDrawerChatScreen({ ...rightDrawerChatScope, screen, keyUuid });
+    },
+    [rightDrawerChatScope, openRightDrawerChatScreen],
+  );
+
   const handleRetryBootstrap = useCallback(() => {
     setBootstrapRetryNonce((value) => value + 1);
   }, []);
@@ -302,6 +353,8 @@ export const Layout: React.FC = () => {
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}
             rightDrawerAccountScreen={rightDrawerAccountScreen}
+            rightDrawerChatScreen={scopedRightDrawerChatScreen}
+            onChatScreenChange={handleChatScreenChange}
             rightDrawerCanGoBack={rightDrawerCanGoBack}
             onCloseRightDrawer={closeCurrentRightDrawer}
             onBackRightDrawer={rightDrawerCanGoBack ? backRightDrawer : undefined}

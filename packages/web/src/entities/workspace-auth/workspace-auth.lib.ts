@@ -328,10 +328,13 @@ function abortSignalError(): Error {
 function assertWorkspaceLoginCurrent(
   signal: AbortSignal | undefined,
   initialSession: WorkspaceAuthSession | null,
+  initialSelectionGeneration: number,
 ): void {
-  const currentSession = useWorkspaceAuthStore.getState().getCurrentSession();
+  const state = useWorkspaceAuthStore.getState();
+  const currentSession = state.getCurrentSession();
   if (
     signal?.aborted === true ||
+    state.sessionSelectionGeneration !== initialSelectionGeneration ||
     currentSession?.accountId !== initialSession?.accountId ||
     currentSession?.instanceId !== initialSession?.instanceId
   ) {
@@ -772,8 +775,10 @@ export async function completeWorkspaceProjectLogin({
   fetchImpl,
   signal,
 }: CompleteWorkspaceProjectLoginParams): Promise<LoginWorkspaceWithPasswordResult> {
-  const initialSession = useWorkspaceAuthStore.getState().getCurrentSession();
-  assertWorkspaceLoginCurrent(signal, initialSession);
+  const initialState = useWorkspaceAuthStore.getState();
+  const initialSession = initialState.getCurrentSession();
+  const initialSelectionGeneration = initialState.sessionSelectionGeneration;
+  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
   const trimmedProjectId = projectId.trim();
   if (!preparedLogin.projects.some((project) => project.id === trimmedProjectId)) {
     throw new WorkspaceAuthFlowError(
@@ -844,7 +849,7 @@ export async function completeWorkspaceProjectLogin({
     runtimeGeneration: existing?.runtimeGeneration ?? 0,
   };
 
-  assertWorkspaceLoginCurrent(signal, initialSession);
+  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
   resetTerminalRefreshFailureAttempts(accountId);
   useWorkspaceAuthStore.getState().setSession(session);
   recordSuccessfulWorkspaceOrganization(session.organizationOrigin);
@@ -862,8 +867,10 @@ export async function loginWorkspaceWithPassword({
   fetchImpl,
   signal,
 }: LoginWorkspaceWithPasswordParams): Promise<LoginWorkspaceWithPasswordResult> {
-  const initialSession = useWorkspaceAuthStore.getState().getCurrentSession();
-  assertWorkspaceLoginCurrent(signal, initialSession);
+  const initialState = useWorkspaceAuthStore.getState();
+  const initialSession = initialState.getCurrentSession();
+  const initialSelectionGeneration = initialState.sessionSelectionGeneration;
+  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
   const organizationOrigin = workspaceOrgOriginFromLoginServerUrlInput(organizationUrl);
   const trimmedProjectId = projectId.trim();
   if (trimmedProjectId.length === 0) {
@@ -931,7 +938,7 @@ export async function loginWorkspaceWithPassword({
     runtimeGeneration: existing?.runtimeGeneration ?? 0,
   };
 
-  assertWorkspaceLoginCurrent(signal, initialSession);
+  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
   resetTerminalRefreshFailureAttempts(accountId);
   useWorkspaceAuthStore.getState().setSession(session);
   recordSuccessfulWorkspaceOrganization(session.organizationOrigin);

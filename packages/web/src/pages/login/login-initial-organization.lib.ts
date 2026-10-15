@@ -28,7 +28,12 @@ export function resolveInitialLoginOrganization(input: {
   }
 
   const browserOrigin = input.browserOrigin?.trim() ?? "";
-  if (browserOrigin.length > 0 && isValidRealmUrl(browserOrigin)) {
+  // A local Vite origin is a frontend, not an implicit organization backend.
+  if (
+    browserOrigin.length > 0 &&
+    isValidRealmUrl(browserOrigin) &&
+    new URL(browserOrigin).protocol === "https:"
+  ) {
     return { organizationUrl: browserOrigin, autoAdvance: true };
   }
 

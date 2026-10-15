@@ -30,8 +30,13 @@ export function isValidRealmUrl(input: string): boolean {
   if (!isValidUrl(input)) return false;
   try {
     const url = new URL(input);
+    // Local development backends run without TLS; remote and production realms still require it.
+    const isDevLoopbackHttp =
+      import.meta.env.DEV &&
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
     return (
-      url.protocol === "https:" &&
+      (url.protocol === "https:" || isDevLoopbackHttp) &&
       !url.hostname.includes(" ") &&
       hasValidHostnameLabels(url.hostname)
     );

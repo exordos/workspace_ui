@@ -1,15 +1,15 @@
 import React from "react";
 import { Icon } from "~/shared/ui/icon";
-import type { MenuButtonProps } from "./right-panel-user-menu.types";
+import type { PanelMenuRowProps } from "./panel-menu-row.types";
 
 /**
- * Flat account-menu row (Figma right menu): icon + label/subtitle + trailing value/chevron.
+ * Flat sidebar menu row: icon + label/subtitle + trailing value/chevron.
  * No card wells around icons — the section list provides dividers.
  *
  * Root rows use `px-4`; nested rows bleed through the parent `px-2` while keeping
  * their content aligned to the same inset.
  */
-export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
+export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
   label,
   icon,
   iconSize = 22,
@@ -19,6 +19,7 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
   disabled = false,
   tone = "default",
   variant = "root",
+  density = "regular",
   id,
   testId,
   ariaLabel,
@@ -36,22 +37,28 @@ export const RightPanelUserMenuMenuButton: React.FC<MenuButtonProps> = ({
       aria-label={ariaLabel}
       aria-controls={ariaControls}
       aria-expanded={ariaExpanded}
-      className={`flex items-center justify-between gap-2 py-1.5 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
+      className={`flex items-center justify-between gap-2 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
+        density === "compact" ? "h-10 py-0" : "py-1.5"
+      } ${
         variant === "nested" ? "-mx-2 w-[calc(100%+1rem)] px-2" : "w-full px-4"
       } ${isDanger ? "text-danger" : "text-text-primary"}`}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center ${
-            isDanger ? "text-danger" : "text-text-secondary"
-          }`}
-        >
-          <Icon name={icon} size={iconSize} className="text-current" />
-        </span>
+      <span className="flex min-h-8 min-w-0 items-center gap-2">
+        {icon != null ? (
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center ${
+              isDanger ? "text-danger" : "text-text-secondary"
+            }`}
+          >
+            <Icon name={icon} size={iconSize} className="text-current" />
+          </span>
+        ) : null}
         <span className="min-w-0">
           <span
             className={`block text-sm ${
-              variant === "nested" ? "font-normal leading-4" : "font-medium leading-5"
+              variant === "nested" || density === "compact"
+                ? "font-normal leading-5"
+                : "font-medium leading-5"
             } ${isDanger ? "text-danger" : "text-text-primary"}`}
           >
             {label}

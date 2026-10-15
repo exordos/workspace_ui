@@ -78,7 +78,12 @@ function resetStore(): void {
   localStorage.removeItem("workspace-auth-sessions");
   localStorage.removeItem("workspace-auth-current-account");
   localStorage.removeItem("workspace-organization-history-v1");
-  useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
+    sessionSelectionGeneration: 0,
+  });
 }
 
 function ownerKeyFromSession(session: WorkspaceAuthSession): string {
@@ -503,6 +508,86 @@ describe("workspace-auth flow", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(other);
     expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
+  describe.each(["password", "project"] as const)("pending %s login", (flow) => {
+    function startLogin() {
+      const params = {
+        organizationUrl: "https://workspace.example.com",
+        login: "user@example.com",
+        password: "secret",
+        projectId: PROJECT_ID,
+      };
+      if (flow === "password") return loginWorkspaceWithPassword(params);
+      refreshWorkspaceIamToken.mockResolvedValueOnce({
+        accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+        refreshToken: "project-refresh-token",
+      });
+      return completeWorkspaceProjectLogin({
+        preparedLogin: {
+          organizationUrl: params.organizationUrl,
+          organizationOrigin: params.organizationUrl,
+          login: params.login,
+          userUuid: USER_UUID,
+          accessToken: "temporary-access-token",
+          refreshToken: "temporary-refresh-token",
+          projects: [{ id: PROJECT_ID, name: "Workspace" }],
+        },
+        projectId: PROJECT_ID,
+      });
+    }
+
+    it.each(["A to B to A", "no session to A to no session"] as const)(
+      "does not revive a response after %s",
+      async (transition) => {
+        const first = storeWorkspaceSession(createWorkspaceSession());
+        const second = storeWorkspaceSession(createWorkspaceSession({ accountId: "second" }));
+        useWorkspaceAuthStore
+          .getState()
+          .setCurrentAccountId(transition === "A to B to A" ? first.accountId : null);
+        const profile = createDeferredValue<unknown>();
+        getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+        const pending = startLogin();
+        await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+        if (transition === "A to B to A") {
+          useWorkspaceAuthStore.getState().setCurrentAccountId(second.accountId);
+          useWorkspaceAuthStore.getState().setCurrentAccountId(first.accountId);
+        } else {
+          useWorkspaceAuthStore.getState().setCurrentAccountId(first.accountId);
+          useWorkspaceAuthStore.getState().setCurrentAccountId(null);
+        }
+        const sessions = useWorkspaceAuthStore.getState().sessions;
+        const persistedSessions = localStorage.getItem("workspace-auth-sessions");
+        const currentAccountId = useWorkspaceAuthStore.getState().currentAccountId;
+        const generation = useWorkspaceAuthStore.getState().runtimeGeneration;
+        profile.resolve({ uuid: USER_UUID, username: "stale-login-profile" });
+
+        await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+        expect(useWorkspaceAuthStore.getState().sessions).toEqual(sessions);
+        expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(currentAccountId);
+        expect(useWorkspaceAuthStore.getState().runtimeGeneration).toBe(generation);
+        expect(localStorage.getItem("workspace-auth-sessions")).toBe(persistedSessions);
+        expect(readWorkspaceOrganizationHistory()).toEqual([]);
+      },
+    );
+
+    it("allows token refresh and removing an inactive account", async () => {
+      const first = storeWorkspaceSession(createWorkspaceSession({ accountId: "existing" }));
+      const second = storeWorkspaceSession(createWorkspaceSession({ accountId: "second" }));
+      useWorkspaceAuthStore.getState().setCurrentAccountId(first.accountId);
+      const profile = createDeferredValue<unknown>();
+      getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+      const pending = startLogin();
+      await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+      useWorkspaceAuthStore.getState().updateTokens(first.accountId, { accessToken: "fresh" });
+      useWorkspaceAuthStore.getState().removeSession(second.accountId);
+      profile.resolve({ uuid: USER_UUID });
+
+      await expect(pending).resolves.toMatchObject({
+        session: { organizationOrigin: "https://workspace.example.com" },
+      });
+      expect(readWorkspaceOrganizationHistory()).toEqual(["https://workspace.example.com"]);
+    });
   });
 
   it("allows pending add-account login when active account tokens refresh", async () => {

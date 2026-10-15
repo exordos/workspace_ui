@@ -109,6 +109,7 @@ const captured = vi.hoisted(() => ({
   uploadWorkspaceFileWithProgress: vi.fn(),
   deleteWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
+  openRealChatSession: vi.fn(),
   editMessengerMessage: vi.fn(),
   deleteMessengerMessage: vi.fn(),
   toggleMessengerMessageReaction: vi.fn(),
@@ -117,6 +118,11 @@ const captured = vi.hoisted(() => ({
   streamBindingsForRoute: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
   deleteWorkspaceComposerDraftFromServer: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("~/entities/messenger/chat-crypto-runtime.lib", () => ({
+  openRealChatSession: captured.openRealChatSession,
+  decryptRealChatMessage: vi.fn().mockResolvedValue(null),
 }));
 
 function createTestWorkspaceFileResourceCache() {
@@ -427,7 +433,7 @@ vi.mock("./chat-page-workspace-message-list-section.ui", async (importOriginal) 
         <div data-testid="workspace-message-list-section">
           {props.messages.map((message) => (
             <article key={message.uuid} data-message-uuid={message.uuid}>
-              {message.payload.content}
+              {message.payload.kind === "markdown" ? message.payload.content : message.payload.kind}
             </article>
           ))}
           {props.outgoingMessages?.map((message) => (
@@ -909,6 +915,8 @@ describe("ChatPage Workspace route", () => {
     });
     captured.deleteWorkspaceFile.mockReset();
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
+    captured.openRealChatSession.mockReset();
+    captured.openRealChatSession.mockRejectedValue(new Error("unavailable"));
     captured.sendMessengerMessage.mockReset();
     captured.sendMessengerMessage.mockImplementation((request: TestSendMessengerMessageRequest) => {
       if (request.canonicalMessageUuid == null) {
@@ -994,6 +1002,332 @@ describe("ChatPage Workspace route", () => {
     }
     resetWorkspaceMessengerCacheDbSingletonForTests();
     await deleteWorkspaceMessengerCacheDatabase();
+  });
+
+  it("uses the real crypto session editor without plaintext draft persistence or outbox and retains failed text", async () => {
+    const session = { ...createSession(), organizationOrigin: "http://127.0.0.1:9100" };
+    useWorkspaceAuthStore.getState().setSession(session);
+    const owner = workspaceRuntimeOwnerKey(session);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: {
+          keyUuid: "mock-key",
+        },
+      })),
+    });
+    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    captured.openRealChatSession.mockResolvedValue({
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn().mockResolvedValue(undefined),
+      subscribe: () => () => undefined,
+      dispose: vi.fn(),
+      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+      send,
+    });
+    const hydrate = vi.fn();
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: hydrate });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    expect(screen.getByRole("form", { name: t("a11y.messageComposer") })).toHaveClass("rounded-xl");
+    expect(screen.queryByText("Test mode: no real encryption")).not.toBeInTheDocument();
+    fireEvent.change(textbox, { target: { value: "Local test message" } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(textbox).toHaveValue(""));
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Local test message",
+        topicUuid: TOPIC_UUID,
+      }),
+    );
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(
+      Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
+    ).toHaveLength(0);
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        owner,
+        `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      ),
+    ).toBeNull();
+    send.mockRejectedValueOnce(new Error("crypto operation failure"));
+    fireEvent.change(textbox, { target: { value: "Keep this text" } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
+    expect(textbox).toHaveValue("Keep this text");
+    send.mockClear();
+    const overPlaintextLimit = "A".repeat(40_001);
+    fireEvent.change(textbox, { target: { value: overPlaintextLimit } });
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => expect(screen.getByText(t("composer.messageTooLong"))).toBeInTheDocument());
+    expect(send).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue(overPlaintextLimit);
+  });
+  it.each([
+    { name: "screen.png", contentType: "image/png", urnType: "image" },
+    { name: "clip.mp4", contentType: "video/mp4", urnType: "video" },
+    { name: "report.pdf", contentType: "application/pdf", urnType: "file" },
+  ])(
+    "sends $urnType references through crypto and retains failed attachments",
+    async ({ name, contentType, urnType }) => {
+      const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (runtime == null) throw new Error("Expected runtime");
+      const owner = workspaceRuntimeOwnerKey(runtime);
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(owner, {
+        ...bootstrap,
+        streams: bootstrap.streams.map((stream) => ({
+          ...stream,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "mock-key" },
+        })),
+      });
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ status: "stale" })
+        .mockResolvedValue({ status: "applied" });
+      captured.openRealChatSession.mockResolvedValue({
+        load: vi.fn().mockResolvedValue(undefined),
+        ingest: vi.fn().mockResolvedValue(undefined),
+        subscribe: () => () => undefined,
+        dispose: vi.fn(),
+        getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+        getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+        send,
+      });
+      const file = new File(
+        [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+        name,
+        { type: contentType },
+      );
+      const upload = createDeferred<{
+        uuid: string;
+        name: string;
+        content_type: string;
+        size_bytes: number;
+      }>();
+      captured.uploadWorkspaceFileWithProgress.mockReturnValueOnce(upload.promise);
+      const { container } = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      const textbox = await screen.findByRole("textbox");
+      const input = container.querySelector('input[type="file"]');
+      if (input == null) throw new Error("Expected file picker");
+      fireEvent.change(input, { target: { files: [file] } });
+      await waitFor(() => expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce());
+      expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ file, streamUuid: STREAM_UUID }),
+      );
+      const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+      expect(sendButton).toBeDisabled();
+      expect(send).not.toHaveBeenCalled();
+      await act(async () => {
+        upload.resolve({
+          uuid: "99999999-9999-4999-8999-999999999999",
+          name,
+          content_type: contentType,
+          size_bytes: file.size,
+        });
+        await upload.promise;
+      });
+      await waitFor(() => expect(sendButton).not.toBeDisabled());
+      fireEvent.change(textbox, { target: { value: "Keep with attachment" } });
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
+      expect(textbox).toHaveValue("Keep with attachment");
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining(`urn:${urnType}:99999999-9999-4999-8999-999999999999`),
+          topicUuid: TOPIC_UUID,
+        }),
+      );
+      expect(send.mock.calls[0]?.[0].text).toContain("\nKeep with attachment");
+      send.mockRejectedValueOnce(new Error("send failed"));
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
+      expect(textbox).toHaveValue("Keep with attachment");
+      expect(screen.getByText(name)).toBeInTheDocument();
+      fireEvent.change(textbox, { target: { value: "" } });
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(screen.queryByText(name)).not.toBeInTheDocument());
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(send.mock.calls[2]?.[0].text).not.toContain("Keep with attachment");
+      expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce();
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+      expect(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid).toEqual({});
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          owner,
+          `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        ),
+      ).toBeNull();
+      expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an accepted encrypted attachment when its chat unmounts before send completes", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "mock-key" },
+      })),
+    });
+    const pendingSend = createDeferred<{ status: "applied" }>();
+    const send = vi.fn().mockReturnValue(pendingSend.promise);
+    captured.openRealChatSession.mockResolvedValue({
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn().mockResolvedValue(undefined),
+      subscribe: () => () => undefined,
+      dispose: vi.fn(),
+      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+      send,
+    });
+    const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByRole("textbox");
+    const input = container.querySelector('input[type="file"]');
+    if (input == null) throw new Error("Missing file picker");
+    fireEvent.change(input, {
+      target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
+    });
+    const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.click(sendButton);
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    unmount();
+    await act(async () => {
+      pendingSend.resolve({ status: "applied" });
+      await pendingSend.promise;
+    });
+    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("preserves the editor during rotation and a pending current-key request", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (!runtime) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({
+        ...stream,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "old-key" },
+      })),
+    });
+    let currentKey = "old-key";
+    let pending = false;
+    const listeners = new Set<() => void>();
+    const emit = () => {
+      for (const listener of listeners) listener();
+    };
+    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    const requestKey = vi.fn(() => {
+      pending = true;
+      emit();
+      return Promise.resolve();
+    });
+    const active = {
+      load: vi.fn().mockResolvedValue(undefined),
+      ingest: vi.fn(() => {
+        emit();
+        return Promise.resolve();
+      }),
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      dispose: vi.fn(),
+      getState: () => ({
+        access: currentKey === "old-key" ? "ready" : "missing",
+        sendKeyUuid: "old-key",
+        pending,
+        requestStatus: pending ? "requested" : "idle",
+        error: null,
+      }),
+      getRights: () => ({ canRequest: true }),
+      send,
+      requestKey,
+    };
+    captured.openRealChatSession.mockResolvedValue(active);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Keep this draft through rotation" } });
+    await act(() => {
+      currentKey = "new-key";
+      const stream = useMessengerStore.getState().streamsById[STREAM_UUID]!;
+      useMessengerStore
+        .getState()
+        .upsertStream(owner, { ...stream, currentEncryptionKey: { keyUuid: currentKey } });
+      emit();
+      return Promise.resolve();
+    });
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(textbox).toHaveValue("Keep this draft through rotation");
+    const notice = screen.getByText(t("e2ee.keyUpdatedNotice")).parentElement!;
+    expect(notice.parentElement).toHaveClass("bg-composer-outer", "rounded-t-xl", "border-b-0");
+    const composer = screen.getByRole("form", { name: t("a11y.messageComposer") });
+    expect(composer).toHaveClass("bg-composer-outer", "rounded-b-xl");
+    expect(composer).not.toHaveClass("border-t", "rounded-xl");
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: t("e2ee.requestUpdatedKey") }));
+      return Promise.resolve();
+    });
+    expect(requestKey).toHaveBeenCalledOnce();
+    expect(within(notice).getByRole("button", { name: t("e2ee.statusWaiting") })).toBeDisabled();
+    expect(textbox).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: t("chat.sendPlaceholder") })).not.toBeDisabled();
+    fireEvent.click(within(notice).getByRole("button", { name: t("common.close") }));
+    expect(screen.queryByText(t("e2ee.keyUpdatedNotice"))).not.toBeInTheDocument();
+    expect(composer).toHaveClass("rounded-xl", "border-t");
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(textbox).toHaveValue("Keep this draft through rotation");
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Keep this draft through rotation" }),
+      ),
+    );
+    expect(captured.openRealChatSession).toHaveBeenCalledOnce();
+    expect(active.dispose).not.toHaveBeenCalled();
+  });
+
+  it("blocks the plaintext composer for an encrypted stream while retaining its history", async () => {
+    const session = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (session == null) throw new Error("Expected runtime");
+    const payload = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(session), {
+      ...payload,
+      streams: payload.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+    expect(await screen.findByText(t("e2ee.lockedDescription"))).toBeInTheDocument();
+    expect(captured.channelHeaderProps).toMatchObject({ encrypted: true });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -2858,23 +3192,27 @@ describe("ChatPage Workspace route", () => {
 
         await act(async () => {
           response.resolve({
-            items: [cachedMessage, createSecondMessage()].map((message) => ({
-              uuid: message.uuid,
-              project_id: message.projectId,
-              stream_uuid: message.streamUuid,
-              topic_uuid: message.topicUuid,
-              author_uuid: message.authorUuid,
-              user_uuid: USER_UUID,
-              payload: message.payload,
-              read: message.read,
-              pinned: false,
-              starred: false,
-              is_own: false,
-              reactions: {},
-              reaction_users: {},
-              created_at: message.createdAt,
-              updated_at: message.updatedAt,
-            })),
+            items: [cachedMessage, createSecondMessage()].map((message) => {
+              if (message.payload.kind !== "markdown")
+                throw new Error("Expected Markdown test fixture");
+              return {
+                uuid: message.uuid,
+                project_id: message.projectId,
+                stream_uuid: message.streamUuid,
+                topic_uuid: message.topicUuid,
+                author_uuid: message.authorUuid,
+                user_uuid: USER_UUID,
+                payload: message.payload,
+                read: message.read,
+                pinned: false,
+                starred: false,
+                is_own: false,
+                reactions: {},
+                reaction_users: {},
+                created_at: message.createdAt,
+                updated_at: message.updatedAt,
+              };
+            }),
             nextPageMarker: null,
             pageLimit: 50,
           });

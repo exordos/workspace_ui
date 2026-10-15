@@ -26,8 +26,12 @@
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "2.0.1",
+    "@hpke/chacha20poly1305": "1.8.0",
+    "@hpke/core": "1.9.0",
+    "@hpke/dhkem-x25519": "1.8.0",
     "@jitsi/electron-sdk": "10.0.4",
     "@jitsi/react-sdk": "1.4.4",
+    "@noble/ciphers": "2.4.0",
     "@noble/hashes": "2.2.0",
     "@radix-ui/react-dialog": "1.1.16",
     "@radix-ui/react-dropdown-menu": "2.1.17",

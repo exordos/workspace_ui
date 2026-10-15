@@ -20,6 +20,8 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
 import { t } from "~/i18n/i18n";
+import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
 import {
@@ -27,6 +29,7 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
@@ -48,6 +51,7 @@ import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { SidebarChatTitleWithStatus } from "./sidebar-chat-title-with-status.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
+import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
@@ -385,10 +389,14 @@ function WorkspaceSidebarStreamRow({
   const avatarSize = compact ? "sm" : "md";
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
-  const avatarStyle =
-    !isDirectPrivate && stream.color != null
-      ? { backgroundColor: `#${stream.color.toString(16).padStart(6, "0")}` }
-      : undefined;
+  const lockSize = compact && !isDirectPrivate ? 20 : 24;
+  const avatarContent = stream.encryption ? (
+    <span role="img" aria-label={t("e2ee.protectedChat")}>
+      <Icon name="chatLock" size={lockSize} className="text-text-primary" />
+    </span>
+  ) : (
+    avatarLabel
+  );
   const title = isDirectPrivate ? stream.title : `#${stream.title}`;
   const statusEmoji = isDirectPrivate ? (stream.statusEmoji ?? null) : null;
   const statusText =
@@ -442,14 +450,22 @@ function WorkspaceSidebarStreamRow({
             className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
             onClick={handleStreamLinkClick}
           >
-            <WorkspaceAvatar
-              size={avatarSize}
-              avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
-              style={avatarStyle}
-              presence={isDirectPrivate ? (stream.presence ?? null) : null}
-            >
-              {avatarLabel}
-            </WorkspaceAvatar>
+            {isDirectPrivate ? (
+              <WorkspaceAvatar
+                size={avatarSize}
+                avatarUrn={stream.avatarUrl}
+                presence={stream.presence ?? null}
+              >
+                {avatarContent}
+              </WorkspaceAvatar>
+            ) : (
+              <Avatar
+                size={avatarSize}
+                style={{ backgroundColor: resolveAvatarBackgroundColor(stream.color) }}
+              >
+                {avatarContent}
+              </Avatar>
+            )}
           </Link>
           <div className={sidebarChatRowBodyClass(compact)}>
             <Link
@@ -565,6 +581,8 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const rightDrawer = useRightDrawer();
+  const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
   const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
   const createChatOpen = useSidebarConfigStore((s) => s.createChatOpen);
@@ -629,9 +647,14 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     setCreateChatOpen(true);
   }, [setCreateChatOpen]);
   const handleWorkspaceStreamCreated = useCallback(
-    (streamUuid: string) => {
+    (streamUuid: string, encryption?: boolean) => {
       if (routeMatch == null) return;
       setCreateChatOpen(false);
+      if (encryption === true) {
+        setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
+        setSearchQuery("");
+        setActivityOpen(false);
+      }
       void navigate(
         workspaceMessengerStreamRoute({
           orgId: routeMatch.orgId,
@@ -639,8 +662,20 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           streamUuid,
         }),
       );
+      if (encryption === true) {
+        if (rightDrawer?.openInfo != null) rightDrawer.openInfo();
+        else rightDrawer?.setOpen(true);
+      }
     },
-    [navigate, routeMatch, setCreateChatOpen],
+    [
+      navigate,
+      routeMatch,
+      setCreateChatOpen,
+      setSelectedFolderId,
+      setSearchQuery,
+      setActivityOpen,
+      rightDrawer,
+    ],
   );
   const handleWorkspaceTopicCreated = useCallback(
     (streamUuid: string, topicUuid: string) => {

@@ -30,6 +30,11 @@ export interface WorkspaceMessageMediaGalleryOpenRequest {
 export interface WorkspaceMessageListActions {
   jitsiServerBaseUrl?: string | null;
   jitsiLocationName?: string | null;
+  getKeyRequestActions?: (
+    message: MessengerMessage,
+  ) => readonly { label: string; onClick: () => void; disabled?: boolean }[];
+  onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

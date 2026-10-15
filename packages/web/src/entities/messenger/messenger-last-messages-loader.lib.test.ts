@@ -14,6 +14,7 @@ import {
   primeMessengerLastMessagesFromCache,
 } from "./messenger-last-messages-loader.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerMessagePayload } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -196,9 +197,9 @@ describe("messenger last messages loader", () => {
       }),
       [MESSAGE_A, MESSAGE_B],
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
     expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
       expect.objectContaining({
         uuid: MESSAGE_A,
@@ -237,12 +238,12 @@ describe("messenger last messages loader", () => {
 
     expect(getMessagesByUuids).not.toHaveBeenCalled();
     expect(writeMessages).not.toHaveBeenCalled();
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload.content).toBe(
-      "Cached B",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload),
+    ).toBe("Cached B");
   });
 
   it("shows cached previews while revalidating their unchanged uuids from the server", async () => {
@@ -270,9 +271,9 @@ describe("messenger last messages loader", () => {
     await requestStarted.promise;
 
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
     expect(writeMessages).not.toHaveBeenCalled();
 
     messageRequest.resolve([
@@ -284,9 +285,9 @@ describe("messenger last messages loader", () => {
       requested: 2,
       applied: 2,
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Edited on server",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Edited on server");
     expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
       expect.objectContaining({
         uuid: MESSAGE_A,
@@ -335,9 +336,9 @@ describe("messenger last messages loader", () => {
       requested: 2,
       applied: 1,
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Newer realtime edit",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Newer realtime edit");
     expect(writeMessages).toHaveBeenCalledWith(ownerKey, []);
   });
 
@@ -367,12 +368,12 @@ describe("messenger last messages loader", () => {
     });
 
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_B]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload.content).toBe(
-      "Network B",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload),
+    ).toBe("Network B");
   });
 
   it("writes network responses back to the message cache", async () => {
@@ -581,9 +582,9 @@ describe("messenger last messages loader", () => {
     });
 
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
   });
 
   it("keeps the sidebar snapshot when last message loading fails", async () => {
@@ -609,3 +610,7 @@ describe("messenger last messages loader", () => {
     expect(useMessengerStore.getState().error).toBeNull();
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}

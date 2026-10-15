@@ -6,7 +6,7 @@ This document maps mechanisms present in source and their limits. It is not a se
 
 Workspace session tokens and profile data are held by [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts). The store serializes sessions, including token fields, into `localStorage` using the keys in [workspace-auth-storage.lib.ts](../packages/web/src/shared/lib/workspace-auth-storage.lib.ts). This is not a secure enclave or encrypted credential vault: script execution in the application origin can read these credentials.
 
-Message data exists in active stores and durable [IndexedDB cache](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts). Runtime owner scoping separates accounts/projects logically; it does not encrypt their cached content against origin-level script execution or local device access. Do not infer end-to-end message encryption from HTTPS, cache scoping or a proposed protocol.
+Message data exists in active stores and durable [IndexedDB cache](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts). Runtime owner scoping separates accounts/projects logically; it does not encrypt ordinary message content against origin-level script execution or local device access. [Encrypted chats](E2EE.md) store ciphertext in the message store/cache and keep keys in separate IndexedDB storage; decrypted text exists in presentation/editor memory. Origin-level script execution can access those secrets too. HTTPS and cache scoping alone do not establish end-to-end encryption.
 
 ## Implemented controls and limits
 

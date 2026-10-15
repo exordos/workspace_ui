@@ -1463,3 +1463,24 @@ describe("messenger background projection", () => {
     expect(useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey).toEqual({});
   });
 });
+
+it("advances background projection for encrypted realtime without plaintext notifications", async () => {
+  useMessengerBackgroundProjectionStore.getState().clear();
+  const context = createContext();
+  const applier = createMessengerRealtimeBackgroundApplier();
+  useMessengerStore.getState().startBootstrap(context.ownerKey);
+  await applier.applyEvent(
+    {
+      epoch_version: 2001,
+      type: "message",
+      message: createMessageDto({
+        payload: { kind: "e2ee", key_uuid: MESSAGE_A, content: MESSAGE_MARKDOWN },
+      }),
+    },
+    context,
+  );
+  const projection =
+    useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+  expect(projection?.notificationCandidates).toEqual([]);
+  expect(projection?.lastEpochVersion).toBe(2001);
+});

@@ -33,6 +33,8 @@ export interface WorkspaceAuthState {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
   runtimeGeneration: number;
+  // Unlike runtimeGeneration, this does not change during token refresh.
+  sessionSelectionGeneration: number;
   setSession: (session: Omit<WorkspaceAuthSession, "runtimeGeneration">) => void;
   updateProfileForRuntime: (
     runtime: WorkspaceRuntimeContext,
@@ -182,6 +184,7 @@ function withGeneration(
 export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   ...loadFromStorage(),
   runtimeGeneration: 0,
+  sessionSelectionGeneration: 0,
 
   setSession: (session) => {
     set((state) => {
@@ -212,6 +215,7 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         sessions,
         currentAccountId,
         runtimeGeneration,
+        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
       };
     });
   },
@@ -231,7 +235,12 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       logStoreAction("workspaceAuth", "setCurrentAccountId", { accountId });
 
       persist(sessions, accountId);
-      return { currentAccountId: accountId, runtimeGeneration, sessions };
+      return {
+        currentAccountId: accountId,
+        runtimeGeneration,
+        sessions,
+        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
+      };
     });
   },
 
@@ -310,7 +319,15 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       logStoreAction("workspaceAuth", "removeSession", { accountId });
 
       persist(nextSessions, currentAccountId);
-      return { sessions: nextSessions, currentAccountId, runtimeGeneration };
+      return {
+        sessions: nextSessions,
+        currentAccountId,
+        runtimeGeneration,
+        sessionSelectionGeneration:
+          state.currentAccountId === accountId
+            ? nextGeneration(state.sessionSelectionGeneration)
+            : state.sessionSelectionGeneration,
+      };
     });
   },
 
@@ -320,7 +337,12 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       const runtimeGeneration = nextGeneration(state.runtimeGeneration);
       logStoreAction("workspaceAuth", "clear", {});
       persist([], null);
-      return { sessions: [], currentAccountId: null, runtimeGeneration };
+      return {
+        sessions: [],
+        currentAccountId: null,
+        runtimeGeneration,
+        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
+      };
     });
   },
 

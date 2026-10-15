@@ -60,6 +60,8 @@ export interface WorkspaceMessengerStreamDto {
   invite_only: boolean;
   announce: boolean;
   private: boolean;
+  encryption?: boolean;
+  current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
   is_archived: boolean;
   color?: number | null;
   direct_user_uuid?: WorkspaceMessengerUuid | null;
@@ -110,9 +112,52 @@ export interface WorkspaceMessengerMarkdownPayloadDto {
   content: string;
 }
 
-// Keep the backend payload envelope extensible. The current Workspace API
-// supports markdown only, but new message kinds must be added here explicitly.
-export type WorkspaceMessengerMessagePayloadDto = WorkspaceMessengerMarkdownPayloadDto;
+export interface WorkspaceMessengerEncryptedPayloadDto {
+  kind: "e2ee";
+  key_uuid: WorkspaceMessengerUuid;
+  content: string;
+}
+
+export interface WorkspaceMessengerKeyRequestPayloadDto {
+  kind: "key_request";
+  key_uuid: WorkspaceMessengerUuid;
+  device_id: string;
+  device_name: string;
+  public_key: string;
+}
+
+export interface WorkspaceMessengerKeyGrantPayloadDto {
+  kind: "key_grant";
+  key_uuid: WorkspaceMessengerUuid;
+  request_message_uuid: WorkspaceMessengerUuid;
+  sender_device_id: string;
+  recipient_device_id: string;
+  content: string;
+}
+
+export interface WorkspaceMessengerKeyAnnouncedPayloadDto {
+  kind: "key_announced";
+  key_uuid: WorkspaceMessengerUuid;
+}
+
+export interface WorkspaceMessengerKeyRejectPayloadDto {
+  kind: "key_reject";
+  key_uuid: WorkspaceMessengerUuid;
+  request_message_uuid: WorkspaceMessengerUuid;
+  sender_device_id: string;
+  recipient_device_id: string;
+}
+
+export type WorkspaceMessengerE2eePayloadDto =
+  | WorkspaceMessengerEncryptedPayloadDto
+  | WorkspaceMessengerKeyRequestPayloadDto
+  | WorkspaceMessengerKeyGrantPayloadDto
+  | WorkspaceMessengerKeyAnnouncedPayloadDto
+  | WorkspaceMessengerKeyRejectPayloadDto;
+
+export type WorkspaceMessengerMessagePayloadDto =
+  | WorkspaceMessengerMarkdownPayloadDto
+  | WorkspaceMessengerE2eePayloadDto;
 
 export type WorkspaceMessengerDeliveryClass = "live" | "backfill";
 
@@ -313,6 +358,8 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
   invite_only?: boolean;
   announce?: boolean;
   direct_user_uuid?: WorkspaceMessengerUuid;
+  encryption?: boolean;
+  current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
 }
 
 export interface WorkspaceMessengerUpdateStreamRequestBody {
@@ -1057,7 +1104,30 @@ export function isWorkspaceMessengerMarkdownPayloadDto(
 export function isWorkspaceMessengerMessagePayloadDto(
   value: unknown,
 ): value is WorkspaceMessengerMessagePayloadDto {
-  return isWorkspaceMessengerMarkdownPayloadDto(value);
+  if (isWorkspaceMessengerMarkdownPayloadDto(value)) return true;
+  if (!isRecord(value) || !isUuid(value.key_uuid)) return false;
+  switch (value.kind) {
+    case "e2ee":
+      return typeof value.content === "string";
+    case "key_request":
+      return (
+        typeof value.device_id === "string" &&
+        typeof value.device_name === "string" &&
+        typeof value.public_key === "string"
+      );
+    case "key_announced":
+      return true;
+    case "key_grant":
+    case "key_reject":
+      return (
+        isUuid(value.request_message_uuid) &&
+        typeof value.sender_device_id === "string" &&
+        typeof value.recipient_device_id === "string" &&
+        (value.kind === "key_reject" || typeof value.content === "string")
+      );
+    default:
+      return false;
+  }
 }
 
 export function isWorkspaceMessengerDraftDto(value: unknown): value is WorkspaceMessengerDraftDto {
@@ -1128,6 +1198,10 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.invite_only === "boolean" &&
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
+    (value.encryption === undefined || typeof value.encryption === "boolean") &&
+    (value.current_encryption_key_uuid === undefined ||
+      value.current_encryption_key_uuid === null ||
+      isUuid(value.current_encryption_key_uuid)) &&
     typeof value.is_archived === "boolean" &&
     (value.color === undefined ||
       value.color === null ||

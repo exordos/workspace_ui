@@ -184,12 +184,81 @@ describe("WorkspaceMessageList", () => {
     vi.useRealTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // Radix restores focus on a deferred task; run it before replacing the jsdom globals.
+    await act(async () => {
+      if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+      else
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+    });
     setLocale("en");
     useUsersStore.getState().clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("renders encrypted and key-service history without exposing encoded content or loading files", () => {
+    const encoded =
+      "<img src=secret-key-material onerror=alert(1)> [asset](urn:file:11111111-1111-4111-8111-111111111111)";
+    const payloads: MessengerMessage["payload"][] = [
+      { kind: "e2ee", keyUuid: "generation", content: encoded },
+      {
+        kind: "key_request",
+        keyUuid: "generation",
+        deviceId: "device",
+        deviceName: "MacBook",
+        publicKey: encoded,
+      },
+      {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+        content: encoded,
+      },
+      { kind: "key_announced", keyUuid: "generation" },
+      {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+      },
+    ];
+    const loadPreview = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={payloads.map((payload, index) =>
+          createWorkspaceMessage({ uuid: `encrypted-${index}`, payload }),
+        )}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: loadPreview }}
+      />,
+    );
+    expect(screen.getByText("Key required")).toBeInTheDocument();
+    expect(screen.getByText(/requested a security key/)).toBeInTheDocument();
+    expect(screen.getByText(/sent an encrypted security key/)).toBeInTheDocument();
+    expect(screen.getByText("The security key was updated")).toBeInTheDocument();
+    expect(screen.getByText(/rejected the key request/)).toBeInTheDocument();
+    expect(screen.queryByText("MacBook")).not.toBeInTheDocument();
+    const events = container.querySelectorAll("[data-encrypted-service-message]");
+    expect(events).toHaveLength(4);
+    for (const event of events) {
+      expect(
+        event.closest("[data-author-group]")?.querySelector("[data-workspace-peer-avatar]"),
+      ).toBeNull();
+      expect(event.querySelector("time")).toBeNull();
+    }
+    expect(container.querySelectorAll("article")).toHaveLength(5);
+    expect(container.innerHTML).not.toContain("secret-key-material");
+    expect(container.innerHTML).not.toContain("urn:file:");
+    expect(loadPreview).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea, [contenteditable=true]")).toBeNull();
   });
 
   it("renders Workspace messages with uuid based DOM identity", () => {

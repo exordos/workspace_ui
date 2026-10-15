@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "personal-info";
@@ -14,9 +15,31 @@ export type RightDrawerProfileOverride =
   | { kind: "legacy-user-id"; userId: number }
   | { kind: "workspace-user-uuid"; userUuid: MessengerUuid };
 
+export interface RightDrawerChatScope {
+  readonly ownerKey: string;
+  readonly runtimeGeneration: number;
+  readonly streamUuid: MessengerUuid;
+}
+export interface RightDrawerChatScreen extends RightDrawerChatScope {
+  readonly screen: EncryptedChatInfoScreen;
+  readonly keyUuid?: string;
+}
+export function sameRightDrawerChatScope(
+  left: RightDrawerChatScope | null | undefined,
+  right: RightDrawerChatScope | null | undefined,
+): boolean {
+  return (
+    left != null &&
+    left.ownerKey === right?.ownerKey &&
+    left.runtimeGeneration === right.runtimeGeneration &&
+    left.streamUuid === right.streamUuid
+  );
+}
+
 export interface RightDrawerScreen {
   mode: RightDrawerMode;
   accountScreen?: RightDrawerAccountScreen;
+  chatScreen?: RightDrawerChatScreen;
   profileOverride?: RightDrawerProfileOverride;
 }
 
@@ -32,6 +55,7 @@ interface RightDrawerState {
   /** Compatibility projections consumed by the existing layout while the active screen is rendered. */
   mode: RightDrawerMode;
   accountScreen: RightDrawerAccountScreen | null;
+  chatScreen: RightDrawerChatScreen | null;
   userIdOverride: number | null;
   workspaceUserUuidOverride: MessengerUuid | null;
 
@@ -42,6 +66,8 @@ interface RightDrawerState {
   openLayer: (layer: RightDrawerLayer) => void;
   openScreen: (screen: RightDrawerScreen) => void;
   openAccountScreen: (screen: RightDrawerAccountScreen) => void;
+  openChatScreen: (screen: RightDrawerChatScreen) => void;
+  resetChatScreens: (scope: RightDrawerChatScope | null) => void;
   back: () => void;
   closeCurrent: () => void;
   clearAll: () => void;
@@ -77,6 +103,7 @@ function project(open: boolean, layers: RightDrawerLayer[]) {
     layers,
     mode: screen?.mode ?? "info",
     accountScreen: screen?.accountScreen ?? null,
+    chatScreen: screen?.chatScreen ?? null,
     userIdOverride: profileOverride?.kind === "legacy-user-id" ? profileOverride.userId : null,
     workspaceUserUuidOverride:
       profileOverride?.kind === "workspace-user-uuid" ? profileOverride.userUuid : null,
@@ -103,6 +130,10 @@ function sameScreen(left: RightDrawerScreen | undefined, right: RightDrawerScree
   return (
     left?.mode === right.mode &&
     left.accountScreen === right.accountScreen &&
+    (left.chatScreen === right.chatScreen ||
+      (sameRightDrawerChatScope(left.chatScreen, right.chatScreen) &&
+        left.chatScreen?.screen === right.chatScreen?.screen &&
+        left.chatScreen?.keyUuid === right.chatScreen?.keyUuid)) &&
     sameProfileOverride(left.profileOverride, right.profileOverride)
   );
 }
@@ -184,6 +215,43 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
       return;
     }
     state.openScreen(accountScreen(screen));
+  },
+  openChatScreen(chatScreen) {
+    if (chatScreen.screen === "local-key" && !chatScreen.keyUuid) return;
+    const state = get();
+    if (state.layers.at(-1)?.kind !== "chat-info") {
+      state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN] });
+    }
+    const requested: RightDrawerScreen = { mode: "info", chatScreen };
+    const active = get().layers.at(-1);
+    const existingIndex = active?.screens.findIndex((screen) => sameScreen(screen, requested));
+    // Returning from key details reuses the list screen instead of adding a loop to Back.
+    if (active && existingIndex !== undefined && existingIndex >= 0) {
+      const layers = get().layers.slice(0, -1);
+      set(
+        project(true, [
+          ...layers,
+          { ...active, screens: active.screens.slice(0, existingIndex + 1) },
+        ]),
+      );
+      return;
+    }
+    get().openScreen(requested);
+  },
+  resetChatScreens(scope) {
+    set((state) => {
+      let changed = false;
+      const layers = state.layers.map((layer) => {
+        const screens = layer.screens.filter(
+          (screen) =>
+            screen.chatScreen == null || sameRightDrawerChatScope(screen.chatScreen, scope),
+        );
+        if (screens.length === layer.screens.length) return layer;
+        changed = true;
+        return { ...layer, screens: screens.length > 0 ? screens : [CHAT_INFO_SCREEN] };
+      });
+      return changed ? project(state.open, layers) : state;
+    });
   },
   back() {
     logStoreAction("rightDrawer", "back", {});

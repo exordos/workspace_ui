@@ -1,4 +1,5 @@
 import type { WorkspaceRightPanelInfoView } from "~/entities/messenger/messenger-right-panel.lib";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import type {
   RightDrawerAccountScreen,
   RightDrawerMode,
@@ -36,4 +37,14 @@ export function resolveLayoutRightPanelTitle(
     return translate("info.information");
   }
   return translate("info.channelInfo");
+}
+
+export function resolveLayoutChatScreenTitle(
+  screen: EncryptedChatInfoScreen | undefined,
+  translate: (key: string) => string,
+): string | null {
+  if (screen === "settings") return translate("channel.editChannel");
+  if (screen === "key") return translate("e2ee.keyTitle");
+  if (screen === "local-key") return translate("e2ee.localKeyTitle");
+  return null;
 }

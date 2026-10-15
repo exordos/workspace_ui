@@ -509,3 +509,20 @@ describe("messenger adapters", () => {
     ).toThrow("Topic stream does not match conversation stream");
   });
 });
+
+it("preserves encrypted stream metadata and defaults pre-encryption snapshots safely", () => {
+  expect(adaptMessengerStream(streamDto)).toMatchObject({
+    encryption: false,
+    currentEncryptionKey: null,
+  });
+  expect(
+    adaptMessengerStream({
+      ...streamDto,
+      encryption: true,
+      current_encryption_key_uuid: MESSAGE_UUID,
+    }),
+  ).toMatchObject({
+    encryption: true,
+    currentEncryptionKey: { keyUuid: MESSAGE_UUID },
+  });
+});

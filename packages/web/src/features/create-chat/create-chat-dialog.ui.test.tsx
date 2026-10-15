@@ -24,12 +24,12 @@ function createUser(overrides: Partial<User> & { uuid: string }): User {
   };
 }
 
-function seedWorkspaceSession(): void {
+function seedWorkspaceSession(organizationOrigin = "https://workspace.test"): void {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
     organizationId: "org",
-    organizationOrigin: "https://workspace.test",
+    organizationOrigin,
     projectId: "project",
     userUuid: "current-user",
     accessToken: "token",
@@ -160,6 +160,29 @@ describe("CreateChatDialog", () => {
     expect(screen.getByPlaceholderText("Search archived channels…")).toBeInTheDocument();
     expect(screen.getByText("No archived channels found")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Unarchive/i })).not.toBeInTheDocument();
+  });
+
+  it("clears and disables conflicting options when encrypted creation is selected", () => {
+    seedWorkspaceSession();
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
+    const invite = screen.getByLabelText("Invite only");
+    const announce = screen.getByLabelText("Announce channel creation");
+    fireEvent.click(invite);
+    fireEvent.click(announce);
+    expect(invite).toBeChecked();
+    expect(announce).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(invite).not.toBeChecked();
+    expect(invite).toBeDisabled();
+    expect(announce).not.toBeChecked();
+    expect(announce).toBeDisabled();
+    expect(screen.getByLabelText("Announcement-only channel")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Create encrypted chat"));
+    expect(invite).toBeEnabled();
+    expect(announce).toBeEnabled();
+    expect(invite).not.toBeChecked();
+    expect(announce).not.toBeChecked();
   });
 
   it("keeps announcement-only control visible but disabled for Workspace", () => {

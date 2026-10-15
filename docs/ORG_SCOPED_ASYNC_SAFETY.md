@@ -25,6 +25,15 @@ The getter used for validation must return the **current** runtime, not always t
 
 See [catalog bootstrap](../packages/web/src/entities/messenger/messenger-bootstrap.lib.ts) and [message loaders](../packages/web/src/entities/messenger/messenger-messages-loader.lib.ts) for working examples. Prefer extending these flows rather than copying a new lifecycle into a page.
 
+## Login completion
+
+Login may begin with no active session. Capture the auth store's `sessionSelectionGeneration`
+before starting the request and check it before persisting the session or successful organization.
+It changes on session replacement, account selection, active account removal, and logout, so
+returning to the same account or to no session does not revive an earlier login. Token refresh
+and removing an inactive account do not change it; an add-account login may continue through
+those operations. Messenger requests still use `runtimeGeneration` to fence token changes.
+
 ## Store and cache commits
 
 Cancellation reduces unnecessary work but does not replace validity checks. An already resolved promise can continue after cleanup. A request version protects ordering within a loader, not ownership across accounts/projects.

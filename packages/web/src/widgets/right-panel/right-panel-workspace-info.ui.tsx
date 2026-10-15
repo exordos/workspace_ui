@@ -34,10 +34,13 @@ import {
 } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { EncryptedChatInfoConnected } from "~/features/encrypted-chat-info/encrypted-chat-info-connected.ui";
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   AppDialogShell,
@@ -49,13 +52,18 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
 import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 export interface RightPanelWorkspaceInfoProps {
+  chatScreen?: EncryptedChatInfoScreen;
+  selectedLocalKeyUuid?: string;
+  onChatScreenChange?: (screen: EncryptedChatInfoScreen, keyUuid?: string) => void;
   info: WorkspaceRightPanelInfoView;
+  onClose?: () => void;
 }
 
 type WorkspaceRightPanelChannelInfoView = Extract<WorkspaceRightPanelInfoView, { kind: "channel" }>;
@@ -388,9 +396,35 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
   return <RightPanelUserProfile info={info} />;
 };
 
+interface WorkspaceChannelMemberActions {
+  onAddMember?: () => void;
+  onRemoveMember?: (memberId: string) => void;
+  removableMemberIds: readonly string[];
+  removingMemberIds: readonly string[];
+  removeMemberError: string | null;
+}
+
+function isCurrentWorkspaceStreamOwner(
+  streamUuid: string | null,
+  runtimeContext: WorkspaceRuntimeContext | null,
+): boolean {
+  if (streamUuid == null || runtimeContext == null) return false;
+  const currentRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  const state = useMessengerStore.getState();
+  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  return (
+    currentRuntime != null &&
+    workspaceRuntimeOwnerKey(currentRuntime) === ownerKey &&
+    currentRuntime.runtimeGeneration === runtimeContext.runtimeGeneration &&
+    state.ownerKey === ownerKey &&
+    state.streamsById[streamUuid]?.ownerUuid === runtimeContext.userUuid
+  );
+}
+
 const RightPanelWorkspaceChannelInfo: React.FC<{
   info: WorkspaceRightPanelChannelInfoView;
-}> = ({ info }) => {
+  renderContent?: (actions: WorkspaceChannelMemberActions) => React.ReactNode;
+}> = ({ info, renderContent }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
     () => createNotificationActionState(info.streamUuid),
@@ -423,6 +457,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [currentAccountId, sessions],
   );
   const summaryOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const canAddMembers = useMessengerStore(
+    (state) =>
+      runtimeContext != null &&
+      info.streamUuid != null &&
+      state.ownerKey === summaryOwnerKey &&
+      state.streamsById[info.streamUuid]?.ownerUuid === runtimeContext.userUuid,
+  );
   const summaryCapabilities = useWorkspaceIamCapabilitiesStore((state) =>
     selectWorkspaceIamPermissionsForOwner(state, summaryOwnerKey),
   );
@@ -438,13 +479,6 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const summaryRuntimeKey =
     runtimeContext == null ? null : `${summaryOwnerKey}:${runtimeContext.runtimeGeneration}`;
   const notificationMode = storeNotificationMode ?? info.notificationMode;
-  const channelAvatarStyle = useMemo(
-    () =>
-      info.color == null
-        ? undefined
-        : { backgroundColor: `#${info.color.toString(16).padStart(6, "0")}` },
-    [info.color],
-  );
   const notificationLevel = useMemo<WorkspaceStreamNotificationLevel | null>(
     () =>
       notificationMode == null ? null : mapWorkspaceStreamNotificationModeToLevel(notificationMode),
@@ -462,7 +496,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     () =>
       // Build candidates only for the open dialog: the user list can be large,
       // and the panel does not need this data outside the add flow.
-      memberActionCurrent.addDialogOpen
+      canAddMembers && memberActionCurrent.addDialogOpen
         ? filterWorkspaceUserOptions(
             workspaceUsersById,
             existingMemberUuids,
@@ -471,6 +505,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           )
         : EMPTY_WORKSPACE_USER_OPTIONS,
     [
+      canAddMembers,
       existingMemberUuids,
       memberActionCurrent.addDialogOpen,
       memberActionCurrent.query,
@@ -531,12 +566,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   );
 
   const handleOpenAddMembers = useCallback(() => {
+    if (!isCurrentWorkspaceStreamOwner(info.streamUuid, runtimeContext)) return;
     setMemberActionState({
       ...createWorkspaceMemberActionState(info.streamUuid),
       streamUuid: info.streamUuid,
       addDialogOpen: true,
     });
-  }, [info.streamUuid]);
+  }, [info.streamUuid, runtimeContext]);
 
   const handleAddDialogOpenChange = useCallback((open: boolean) => {
     setMemberActionState((prev) => ({
@@ -563,6 +599,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     if (
       info.streamUuid == null ||
       runtimeContext == null ||
+      !isCurrentWorkspaceStreamOwner(info.streamUuid, runtimeContext) ||
       memberActionCurrent.adding ||
       memberActionCurrent.selectedUserUuids.length === 0
     ) {
@@ -686,16 +723,57 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [info.streamUuid, memberActionCurrent.removingUserUuids, runtimeContext],
   );
 
+  const addMembersDialog = (
+    <WorkspaceAddStreamMembersDialog
+      open={canAddMembers && memberActionCurrent.addDialogOpen}
+      streamName={info.title}
+      query={memberActionCurrent.query}
+      options={addMemberOptions}
+      selectedUserUuids={selectedUserUuidSet}
+      submitting={memberActionCurrent.adding}
+      error={memberActionCurrent.addError}
+      onOpenChange={handleAddDialogOpenChange}
+      onQueryChange={handleSetAddMemberQuery}
+      onToggle={handleToggleSelectedMember}
+      onSubmit={() => {
+        void handleSubmitAddMembers();
+      }}
+    />
+  );
+
+  if (renderContent != null)
+    return (
+      <>
+        {renderContent({
+          onAddMember: canAddMembers ? handleOpenAddMembers : undefined,
+          onRemoveMember:
+            runtimeContext == null
+              ? undefined
+              : (memberId) => {
+                  const member = info.members.find((item) => item.bindingUuid === memberId);
+                  if (member != null) void handleRemoveMember(member);
+                },
+          removableMemberIds:
+            runtimeContext == null
+              ? []
+              : info.members
+                  .filter((member) => member.canRemove)
+                  .map((member) => member.bindingUuid),
+          removingMemberIds: info.members
+            .filter((member) => memberActionCurrent.removingUserUuids.includes(member.userUuid))
+            .map((member) => member.bindingUuid),
+          removeMemberError: memberActionCurrent.removeError,
+        })}
+        {addMembersDialog}
+      </>
+    );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
       {/* Drawer already has px-2 (8px); header adds another 8px to match Figma title/avatar inset. */}
       <header className="flex-shrink-0 border-b border-border-subtle px-2 pb-3 pt-1">
         <div className="flex items-center gap-4">
-          <Avatar
-            size="lg"
-            className="bg-bg-elevated text-text-secondary"
-            style={channelAvatarStyle}
-          >
+          <Avatar size="lg" style={{ backgroundColor: resolveAvatarBackgroundColor(info.color) }}>
             {info.title.slice(0, 1)}
           </Avatar>
           <div className="min-w-0 flex-1">
@@ -772,7 +850,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           {/* Members block: title + person_add only (no leading profile icon). Hit area 32×32. */}
           <h3 className="mb-3 flex h-8 items-center justify-between px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.members")}
-            {info.streamUuid != null && runtimeContext != null && (
+            {canAddMembers && (
               <button
                 type="button"
                 aria-label={t("channel.addMembers")}
@@ -793,8 +871,11 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                 <li key={member.bindingUuid} className="group/member">
                   {/* The member row is intentionally not a button: Workspace profile
                       flow is not wired here yet, so this surface creates no false action. */}
-                  <div className="flex items-center gap-3 rounded-lg bg-card-bg px-3 py-2 transition-colors hover:bg-card-bg-active">
-                    <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <WorkspaceMemberCard
+                    name={member.name}
+                    roleLabel={resolveWorkspaceRoleLabel(member.role)}
+                    secondaryText={resolveWorkspaceStatusLabel(member.status) ?? member.email}
+                    avatar={
                       <WorkspaceAvatar
                         size="sm"
                         avatarUrn={member.avatarUrl}
@@ -803,36 +884,25 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
                       >
                         {member.name.slice(0, 1)}
                       </WorkspaceAvatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
-                          {member.name}
-                          <span className="text-[10px] font-normal text-text-secondary">
-                            {resolveWorkspaceRoleLabel(member.role)}
-                          </span>
-                        </p>
-                        {(member.status != null || member.email != null) && (
-                          <p className="truncate text-[11px] text-text-secondary">
-                            {resolveWorkspaceStatusLabel(member.status) ?? member.email}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {member.canRemove && runtimeContext != null && (
-                      <button
-                        type="button"
-                        aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
-                        disabled={memberActionCurrent.removingUserUuids.includes(member.userUuid)}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void handleRemoveMember(member);
-                        }}
-                        className={removeMemberActionClassName}
-                      >
-                        <Icon name="close" size={14} className="text-current" />
-                      </button>
-                    )}
-                  </div>
+                    }
+                    action={
+                      member.canRemove && runtimeContext != null ? (
+                        <button
+                          type="button"
+                          aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
+                          disabled={memberActionCurrent.removingUserUuids.includes(member.userUuid)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void handleRemoveMember(member);
+                          }}
+                          className={removeMemberActionClassName}
+                        >
+                          <Icon name="close" size={14} className="text-current" />
+                        </button>
+                      ) : null
+                    }
+                  />
                 </li>
               ))}
             </ul>
@@ -842,26 +912,59 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
           )}
         </div>
       </ScrollArea>
-      <WorkspaceAddStreamMembersDialog
-        open={memberActionCurrent.addDialogOpen}
-        streamName={info.title}
-        query={memberActionCurrent.query}
-        options={addMemberOptions}
-        selectedUserUuids={selectedUserUuidSet}
-        submitting={memberActionCurrent.adding}
-        error={memberActionCurrent.addError}
-        onOpenChange={handleAddDialogOpenChange}
-        onQueryChange={handleSetAddMemberQuery}
-        onToggle={handleToggleSelectedMember}
-        onSubmit={() => {
-          void handleSubmitAddMembers();
-        }}
-      />
+      {addMembersDialog}
     </div>
   );
 };
 
-export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
+export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({
+  info,
+  onClose,
+  chatScreen,
+  selectedLocalKeyUuid,
+  onChatScreenChange,
+}) => {
+  const streamUuid =
+    info.kind === "channel" || info.kind === "directPrivate" ? info.streamUuid : null;
+  const encrypted = useMessengerStore(
+    (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
+  );
+  if (encrypted && streamUuid != null) {
+    const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
+      <EncryptedChatInfoConnected
+        streamUuid={streamUuid}
+        screen={chatScreen}
+        selectedLocalKeyUuid={selectedLocalKeyUuid}
+        onOpenLocalKey={
+          onChatScreenChange == null
+            ? undefined
+            : (keyUuid) => onChatScreenChange("local-key", keyUuid)
+        }
+        onScreenChange={onChatScreenChange}
+        onClose={onClose}
+        onAddMember={actions?.onAddMember}
+        onRemoveMember={actions?.onRemoveMember}
+        removableMemberIds={actions?.removableMemberIds}
+        removingMemberIds={actions?.removingMemberIds}
+        removeMemberError={actions?.removeMemberError}
+        renderAvatar={(person) => (
+          <WorkspaceAvatar
+            size="sm"
+            avatarUrn={person.avatarUrl}
+            className="bg-bg-elevated text-text-primary"
+            presence={person.presence}
+          >
+            {person.name.slice(0, 1)}
+          </WorkspaceAvatar>
+        )}
+      />
+    );
+    return info.kind === "channel" ? (
+      <RightPanelWorkspaceChannelInfo info={info} renderContent={renderEncryptedInfo} />
+    ) : (
+      renderEncryptedInfo()
+    );
+  }
   if (info.kind === "directPrivate" || info.kind === "userProfile") {
     return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
   }

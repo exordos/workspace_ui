@@ -26,14 +26,18 @@ import {
   editMessengerMessage,
   markMessengerMessageRead,
   markMessengerMessagesReadUpTo,
+  sendMessengerE2eePayload,
   sendMessengerMessage,
   type MessengerMessageActionClientDeps,
   type MessengerMessageActionResult,
 } from "./messenger-message-actions.lib";
+import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
+import * as messengerRequestOptions from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerConversationId } from "./messenger.types";
+import type { ChatE2eePayload } from "./chat-e2ee.types";
+import type { MessengerMessagePayload, MessengerConversationId } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -146,6 +150,7 @@ function createTopicDto(
 function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   useMessengerStore.getState().startBootstrap(ownerKey);
+  useMessengerStore.getState().upsertStream(ownerKey, adaptMessengerStream(createStreamDto()));
   return ownerKey;
 }
 
@@ -409,9 +414,9 @@ describe("messenger message actions", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).not.toBe(
-      "Edited",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).not.toBe("Edited");
     expect(cache.patchCachedMessage).not.toHaveBeenCalled();
   });
 
@@ -443,9 +448,9 @@ describe("messenger message actions", () => {
     );
 
     await action;
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "New realtime body",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("New realtime body");
   });
 
   it("does not resurrect a realtime-deleted message from a late read response", async () => {
@@ -1123,5 +1128,434 @@ describe("messenger message actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({ uuid: MESSAGE_A }),
     );
+  });
+});
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}
+
+it("blocks plaintext retries to a known encrypted stream before creating any message", async () => {
+  const runtimeContext = createRuntimeContext();
+  const ownerKey = prepareStoreOwner(runtimeContext);
+  useMessengerStore.getState().upsertStream(
+    ownerKey,
+    adaptMessengerStream(
+      createStreamDto({
+        encryption: true,
+        current_encryption_key_uuid: MESSAGE_A,
+      }),
+    ),
+  );
+  const createMessage = vi.fn();
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage },
+    }),
+  ).rejects.toThrow("crypto provider");
+  expect(createMessage).not.toHaveBeenCalled();
+});
+
+it("resolves unknown stream encryption before sending and blocks encrypted results", async () => {
+  const runtimeContext = createRuntimeContext();
+  useMessengerStore.getState().clear();
+  const createMessage = vi.fn();
+  const getStream = vi.fn().mockResolvedValue(createStreamDto({ encryption: true }));
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage, getStream },
+    }),
+  ).rejects.toThrow("crypto provider");
+  expect(getStream).toHaveBeenCalledWith(expect.any(Object), STREAM_A);
+  expect(createMessage).not.toHaveBeenCalled();
+});
+
+it("does not send after the runtime owner changes during unknown stream preflight", async () => {
+  const runtimeContext = createRuntimeContext();
+  let current = runtimeContext;
+  useMessengerStore.getState().clear();
+  const createMessage = vi.fn();
+  const getStream = vi.fn(() => {
+    current = createRuntimeContext({ organizationId: ORGANIZATION_B, projectId: PROJECT_B });
+    return Promise.resolve(createStreamDto());
+  });
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => current,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown: "private text",
+      client: { createMessage, getStream },
+    }),
+  ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+  expect(createMessage).not.toHaveBeenCalled();
+});
+
+describe("encrypted payload local dispatch guards", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
+  });
+
+  function prepareEncryptedSend() {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+    const stream = adaptMessengerStream(
+      createStreamDto({ encryption: true, current_encryption_key_uuid: MESSAGE_A }),
+    );
+    useMessengerStore.getState().upsertStream(ownerKey, stream);
+    const payload: ChatE2eePayload = {
+      kind: "e2ee",
+      keyUuid: MESSAGE_A,
+      content: { bytes: new Uint8Array([1, 2, 3]) },
+    };
+    const getStream = vi.fn().mockRejectedValue(new Error("Catalog GET must not run"));
+    const createMessage = vi.fn(
+      (_options: MessengerClientOptions, body: WorkspaceMessengerCreateMessageRequestBody) =>
+        Promise.resolve(
+          createMessageDto({
+            uuid: createMessengerPlacementUuid(TOPIC_A, body.uuid ?? MESSAGE_B),
+            payload: body.payload,
+          }),
+        ),
+    );
+    const cache = { writeConversationMessagePage: vi.fn(() => Promise.resolve()) };
+    const input = {
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      payload,
+      expectedCurrentKey: { keyUuid: MESSAGE_A },
+      canonicalMessageUuid: MESSAGE_B,
+      isCurrent: () => true,
+      client: { getStream, createMessage },
+      cache,
+    };
+    return { runtimeContext, ownerKey, stream, getStream, createMessage, cache, input };
+  }
+
+  function opaquePayload(kind: "e2ee" | "key_grant", byteLength: number): ChatE2eePayload {
+    const content = { bytes: new Uint8Array(byteLength) };
+    return kind === "e2ee"
+      ? { kind, keyUuid: MESSAGE_A, content }
+      : {
+          kind,
+          keyUuid: MESSAGE_A,
+          requestMessageUuid: MESSAGE_C,
+          senderDeviceId: "sender-device",
+          recipientDeviceId: "recipient-device",
+          content,
+        };
+  }
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "sends %s content above the former wire limit to the backend",
+    async (kind) => {
+      const f = prepareEncryptedSend();
+      await expect(
+        sendMessengerE2eePayload({ ...f.input, payload: opaquePayload(kind, 30_003) }),
+      ).resolves.toMatchObject({ status: "applied" });
+      expect(f.createMessage).toHaveBeenCalledOnce();
+      const wire = f.createMessage.mock.calls[0]?.[1].payload;
+      if (wire?.kind !== "e2ee" && wire?.kind !== "key_grant")
+        throw new Error("Expected opaque content");
+      expect(wire.content).toHaveLength(40_004);
+    },
+  );
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "does not write rejected %s content to the store or cache",
+    async (kind) => {
+      const f = prepareEncryptedSend();
+      const error = new Error("Backend rejected payload");
+      f.createMessage.mockRejectedValueOnce(error);
+      await expect(
+        sendMessengerE2eePayload({ ...f.input, payload: opaquePayload(kind, 30_001) }),
+      ).rejects.toBe(error);
+      expect(f.getStream).not.toHaveBeenCalled();
+      expect(f.createMessage).toHaveBeenCalledOnce();
+      expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[
+          createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+        ],
+      ).toBeUndefined();
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();
+    },
+  );
+
+  it("posts opaque payloads directly from the owned catalog without a stream GET", async () => {
+    const f = prepareEncryptedSend();
+    await expect(sendMessengerE2eePayload(f.input)).resolves.toMatchObject({ status: "applied" });
+    expect(f.getStream).not.toHaveBeenCalled();
+    expect(f.createMessage).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        uuid: MESSAGE_B,
+        payload: { kind: "e2ee", key_uuid: MESSAGE_A, content: "AQID" },
+      }),
+    );
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ]?.payload.kind,
+    ).toBe("e2ee");
+    expect(f.cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([MESSAGE_B, MESSAGE_C])("rejects an unexpected public message UUID %s", async (uuid) => {
+    const f = prepareEncryptedSend();
+    f.createMessage.mockImplementation((_options, body) =>
+      Promise.resolve(createMessageDto({ uuid, payload: body.payload })),
+    );
+    await expect(sendMessengerE2eePayload(f.input)).rejects.toThrow("invalid-message");
+    expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[uuid]).toBeUndefined();
+  });
+
+  it("uses the injected browser catalog for authorization and message pointers", async () => {
+    const f = prepareEncryptedSend();
+    const applyMessagePointer = vi.fn();
+    const catalog = { ...useMessengerStore.getState(), applyMessagePointer };
+    useMessengerStore.getState().clear();
+    await expect(
+      sendMessengerE2eePayload({
+        ...f.input,
+        messengerStore: { getState: () => catalog },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(applyMessagePointer).toHaveBeenCalledWith(
+      f.ownerKey,
+      expect.objectContaining({ uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B) }),
+    );
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
+    expect(f.getStream).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "foreign-owner", "wrong-project", "wrong-user", "unencrypted"])(
+    "does not hydrate or send from an invalid %s catalog",
+    async (invalid) => {
+      const f = prepareEncryptedSend();
+      if (invalid === "missing")
+        useMessengerStore.getState().removeStream(f.ownerKey, { uuid: STREAM_A });
+      if (invalid === "foreign-owner") useMessengerStore.setState({ ownerKey: "foreign-owner" });
+      if (invalid === "wrong-project")
+        useMessengerStore
+          .getState()
+          .upsertStream(f.ownerKey, { ...f.stream, projectId: PROJECT_B });
+      if (invalid === "wrong-user")
+        useMessengerStore.getState().upsertStream(f.ownerKey, { ...f.stream, userUuid: USER_B });
+      if (invalid === "unencrypted")
+        useMessengerStore.getState().upsertStream(f.ownerKey, { ...f.stream, encryption: false });
+      await expect(sendMessengerE2eePayload(f.input)).rejects.toThrow("invalid-key");
+      expect(f.getStream).not.toHaveBeenCalled();
+      expect(f.createMessage).not.toHaveBeenCalled();
+      expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps historical ciphertext bound to its own UUID under the current dispatch guard", async () => {
+    const f = prepareEncryptedSend();
+    useMessengerStore.getState().upsertStream(f.ownerKey, {
+      ...f.stream,
+      currentEncryptionKey: { keyUuid: MESSAGE_C },
+    });
+    const input = { ...f.input, expectedCurrentKey: { keyUuid: MESSAGE_C } };
+    await expect(sendMessengerE2eePayload(input)).rejects.toThrow("invalid-key");
+    await expect(
+      sendMessengerE2eePayload({ ...input, allowHistoricalKey: true }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(f.createMessage.mock.calls[0]?.[1].payload).toMatchObject({ key_uuid: MESSAGE_A });
+    expect(f.getStream).not.toHaveBeenCalled();
+  });
+
+  it.each(["permission", "generation", "stream-deletion", "runtime-aba"])(
+    "discards a pending POST response after %s invalidation",
+    async (invalidation) => {
+      const f = prepareEncryptedSend();
+      const deferred = createDeferred<WorkspaceMessengerMessageDto>();
+      f.createMessage.mockReturnValue(deferred.promise);
+      let permitted = true;
+      let live = f.runtimeContext;
+      const sending = sendMessengerE2eePayload({
+        ...f.input,
+        getRuntimeContext: () => live,
+        isCurrent: () => permitted,
+      });
+      expect(f.createMessage).toHaveBeenCalledOnce();
+      if (invalidation === "permission") permitted = false;
+      if (invalidation === "generation")
+        useMessengerStore
+          .getState()
+          .upsertStream(f.ownerKey, { ...f.stream, currentEncryptionKey: { keyUuid: MESSAGE_C } });
+      if (invalidation === "stream-deletion")
+        useMessengerStore.getState().removeStream(f.ownerKey, { uuid: STREAM_A });
+      if (invalidation === "runtime-aba") live = { ...f.runtimeContext, runtimeGeneration: 3 };
+      const body = f.createMessage.mock.calls[0]?.[1];
+      if (!body) throw new Error("Missing POST fixture");
+      deferred.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
+      await expect(sending).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+      expect(
+        useWorkspaceMessageStore.getState().messagesById[
+          createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+        ],
+      ).toBeUndefined();
+      expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+      expect(f.getStream).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts its own announced generation arriving over realtime before the POST response", async () => {
+    const f = prepareEncryptedSend();
+    f.createMessage.mockImplementation((_options, body) => {
+      useMessengerStore
+        .getState()
+        .upsertStream(f.ownerKey, { ...f.stream, currentEncryptionKey: { keyUuid: MESSAGE_C } });
+      return Promise.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
+    });
+    await expect(
+      sendMessengerE2eePayload({
+        ...f.input,
+        rotateKey: true,
+        payload: { kind: "key_announced", keyUuid: MESSAGE_C },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.currentEncryptionKey?.keyUuid).toBe(
+      MESSAGE_C,
+    );
+    expect(f.getStream).not.toHaveBeenCalled();
+  });
+
+  it("checks the captured generation after token loading before the first actual POST", async () => {
+    const f = prepareEncryptedSend();
+    const token = createDeferred<string>();
+    const fetchImpl = vi.fn<typeof fetch>();
+    vi.spyOn(messengerRequestOptions, "buildMessengerRequestOptions").mockReturnValue({
+      accessToken: null,
+      baseUrl: "https://org-a.example.com/api/workspace/v1/messenger",
+      projectId: PROJECT_A,
+      getAccessToken: () => token.promise,
+      fetchImpl,
+    });
+    const sending = sendMessengerE2eePayload({
+      ...f.input,
+      client: { getStream: f.getStream },
+      rotateKey: true,
+      payload: { kind: "key_announced", keyUuid: MESSAGE_C },
+    });
+    useMessengerStore.getState().upsertStream(f.ownerKey, {
+      ...f.stream,
+      currentEncryptionKey: { keyUuid: MESSAGE_C },
+    });
+    const rejected = expect(sending).rejects.toThrow("stale");
+    token.resolve("fixture-access-token");
+    await rejected;
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ],
+    ).toBeUndefined();
+    expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(f.getStream).not.toHaveBeenCalled();
+  });
+
+  it("accepts the exact own generation after the real POST has started", async () => {
+    const f = prepareEncryptedSend();
+    const response = createDeferred<Response>();
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(() => {
+      useMessengerStore.getState().upsertStream(f.ownerKey, {
+        ...f.stream,
+        currentEncryptionKey: { keyUuid: MESSAGE_C },
+      });
+      return response.promise;
+    });
+    vi.spyOn(messengerRequestOptions, "buildMessengerRequestOptions").mockReturnValue({
+      accessToken: null,
+      baseUrl: "https://org-a.example.com/api/workspace/v1/messenger",
+      projectId: PROJECT_A,
+      getAccessToken: () => Promise.resolve("fixture-access-token"),
+      fetchImpl,
+    });
+    const sending = sendMessengerE2eePayload({
+      ...f.input,
+      client: { getStream: f.getStream },
+      rotateKey: true,
+      payload: { kind: "key_announced", keyUuid: MESSAGE_C },
+    });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+    response.resolve(
+      Response.json(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: { kind: "key_announced", key_uuid: MESSAGE_C },
+        }),
+      ),
+    );
+    await expect(sending).resolves.toMatchObject({ status: "applied" });
+    expect(f.getStream).not.toHaveBeenCalled();
+  });
+
+  it("does not accept a newer foreign generation while its own announcement is pending", async () => {
+    const f = prepareEncryptedSend();
+    f.createMessage.mockImplementation((_options, body) => {
+      useMessengerStore.getState().upsertStream(f.ownerKey, {
+        ...f.stream,
+        currentEncryptionKey: { keyUuid: crypto.randomUUID() },
+      });
+      return Promise.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B),
+          payload: body.payload,
+        }),
+      );
+    });
+    await expect(
+      sendMessengerE2eePayload({
+        ...f.input,
+        rotateKey: true,
+        payload: { kind: "key_announced", keyUuid: MESSAGE_C },
+      }),
+    ).resolves.toMatchObject({ status: "skipped" });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[
+        createMessengerPlacementUuid(TOPIC_A, MESSAGE_B)
+      ],
+    ).toBeUndefined();
+    expect(f.cache.writeConversationMessagePage).not.toHaveBeenCalled();
+  });
+
+  it("stops later cache writes when a synchronous subscriber invalidates the operation", async () => {
+    const f = prepareEncryptedSend();
+    let permitted = true;
+    f.cache.writeConversationMessagePage.mockImplementation(() => {
+      permitted = false;
+      return Promise.resolve();
+    });
+    await expect(
+      sendMessengerE2eePayload({ ...f.input, isCurrent: () => permitted }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(f.cache.writeConversationMessagePage).toHaveBeenCalledOnce();
   });
 });

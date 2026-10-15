@@ -9,7 +9,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 
 const chatPageMounts = vi.hoisted(() => ({ count: 0 }));
@@ -28,8 +28,12 @@ vi.mock("~/widgets/layout/layout.ui", () => ({
   Layout: () => <Outlet />,
 }));
 vi.mock("~/pages/inbox/inbox-page.ui", () => ({ InboxPage: () => <div>Inbox</div> }));
+vi.mock("~/pages/login/login-page.ui", () => ({ LoginPage: () => <div>Login</div> }));
+vi.mock("~/pages/encrypted-chat/encrypted-chat-preview.ui", () => ({
+  EncryptedChatPreview: () => <div>E2EE preview</div>,
+}));
 
-const { AuthenticatedAppRoutes } = await import("./app-route-definitions");
+const { AuthenticatedAppRoutes, LoginAppRoutes } = await import("./app-route-definitions");
 
 const FIRST_TOPIC = "/org/org-1/project/project-1/stream/stream-1/topic/topic-1";
 const SECOND_TOPIC = "/org/org-1/project/project-1/stream/stream-1/topic/topic-2";
@@ -78,9 +82,22 @@ const NavigateToSecondTopic: React.FC = () => {
 };
 
 describe("AuthenticatedAppRoutes", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     chatPageMounts.count = 0;
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+  });
+
+  it.each([true, false])("removes the insecure sandbox route in DEV=%s", async (dev) => {
+    vi.stubEnv("DEV", dev);
+    render(
+      <MemoryRouter initialEntries={["/login/e2ee-sandbox"]}>
+        <React.Suspense fallback={null}>
+          <AuthenticatedAppRoutes defaultMessengerRoute="/org/org-1/project/project-1/inbox" />
+        </React.Suspense>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Inbox")).toBeInTheDocument();
   });
 
   it.each(["/", "/org/org-1", "/org/org-1/project/project-1/messenger"])(
@@ -119,5 +136,31 @@ describe("AuthenticatedAppRoutes", () => {
     screen.getByTestId("switch-topic").click();
 
     await waitFor(() => expect(chatPageMounts.count).toBe(2));
+  });
+
+  it.each([true, false])("gates authenticated E2EE preview behind DEV=%s", async (dev) => {
+    vi.stubEnv("DEV", dev);
+    render(
+      <MemoryRouter initialEntries={["/login/e2ee-preview"]}>
+        <React.Suspense fallback={null}>
+          <AuthenticatedAppRoutes defaultMessengerRoute="/org/org-1/project/project-1/inbox" />
+        </React.Suspense>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(dev ? "E2EE preview" : "Inbox")).toBeInTheDocument();
+    if (!dev) expect(screen.queryByText("E2EE preview")).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])("gates unauthenticated E2EE preview behind DEV=%s", async (dev) => {
+    vi.stubEnv("DEV", dev);
+    render(
+      <MemoryRouter initialEntries={["/login/e2ee-preview"]}>
+        <React.Suspense fallback={null}>
+          <LoginAppRoutes />
+        </React.Suspense>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(dev ? "E2EE preview" : "Login")).toBeInTheDocument();
+    if (!dev) expect(screen.queryByText("E2EE preview")).not.toBeInTheDocument();
   });
 });

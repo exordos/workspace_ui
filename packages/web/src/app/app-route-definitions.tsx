@@ -51,6 +51,11 @@ const InboxPage = React.lazy(() =>
 const FeedPage = React.lazy(() =>
   import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })),
 );
+const EncryptedChatPreview = React.lazy(() =>
+  import("~/pages/encrypted-chat/encrypted-chat-preview.ui").then((m) => ({
+    default: m.EncryptedChatPreview,
+  })),
+);
 function resolveWorkspaceMessengerRootFromSessions(params: {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
@@ -119,6 +124,9 @@ export const WebViewAppRoutes: React.FC = () => (
 
 export const LoginAppRoutes: React.FC = () => (
   <Routes>
+    {import.meta.env.DEV ? (
+      <Route path="/login/e2ee-preview" element={<EncryptedChatPreview />} />
+    ) : null}
     <Route path="*" element={<LoginPage />} />
   </Routes>
 );
@@ -139,6 +147,9 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
 
   return (
     <Routes>
+      {import.meta.env.DEV ? (
+        <Route path="/login/e2ee-preview" element={<EncryptedChatPreview />} />
+      ) : null}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<WorkspaceShareEntryRedirect fallback={defaultMessengerRoute} />} />
       <Route path="/org/:orgId" element={<WorkspaceMessengerRootRedirect />} />

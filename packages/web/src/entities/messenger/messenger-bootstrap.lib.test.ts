@@ -23,6 +23,7 @@ import {
   useMessengerStore,
 } from "./messenger.model";
 import type { MessengerBootstrapClientDeps } from "./messenger-bootstrap.lib";
+import type { MessengerMessagePayload } from "./messenger.types";
 
 const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
 
@@ -557,9 +558,9 @@ describe("messenger bootstrap store", () => {
     await bootstrap;
     await flushPromises();
 
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Hello, workspace",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Hello, workspace");
   });
 
   it("restores cached last messages after cached sidebar snapshot before network bootstrap", async () => {
@@ -597,9 +598,9 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.color).toBe(0x2563eb);
     expect(readMessagesByUuids).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "Cached preview",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("Cached preview");
     expect(getMessagesByUuids).not.toHaveBeenCalled();
 
     streamRequest.resolve([createStreamDto({ last_message_uuid: MESSAGE_A })]);
@@ -1607,3 +1608,7 @@ describe("messenger bootstrap store", () => {
     ]);
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}

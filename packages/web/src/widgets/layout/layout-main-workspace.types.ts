@@ -1,5 +1,7 @@
+import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import type {
   RightDrawerAccountScreen,
+  RightDrawerChatScreen,
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
@@ -11,6 +13,8 @@ export interface LayoutMainWorkspaceProps {
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   rightDrawerAccountScreen: RightDrawerAccountScreen | null;
+  rightDrawerChatScreen?: RightDrawerChatScreen | null;
+  onChatScreenChange?: (screen: EncryptedChatInfoScreen, keyUuid?: string) => void;
   rightDrawerCanGoBack: boolean;
   onCloseRightDrawer: () => void;
   /** Shell back control for the active layer's internal screen history. */

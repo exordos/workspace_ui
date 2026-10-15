@@ -30,6 +30,7 @@ import {
   clearMessengerReadBoundariesForOwner,
 } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerMessagePayload } from "./messenger.types";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
 const ACCOUNT_A = "account-a";
@@ -671,9 +672,9 @@ describe("messenger conversation messages loader", () => {
       message: { payload: { content: "fresh" } },
     });
     expect(getMessage).toHaveBeenCalledTimes(1);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-      "fresh",
-    );
+    expect(
+      readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+    ).toBe("fresh");
   });
 
   it.each(["update", "delete"] as const)(
@@ -718,9 +719,9 @@ describe("messenger conversation messages loader", () => {
         status: "resolved",
         message: { payload: { content: "newer realtime body" } },
       });
-      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
-        "newer realtime body",
-      );
+      expect(
+        readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
+      ).toBe("newer realtime body");
     },
   );
 
@@ -2441,7 +2442,7 @@ describe("messenger conversation messages loader", () => {
       selectWorkspaceMessagesForConversation(
         useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
-      ).map((message) => [message.uuid, message.payload.content]),
+      ).map((message) => [message.uuid, readMarkdownPayload(message.payload)]),
     ).toEqual([
       [MESSAGE_A, "Hello, workspace"],
       [MESSAGE_B, "Edited overlap"],
@@ -2680,3 +2681,7 @@ describe("messenger conversation messages loader", () => {
     });
   });
 });
+
+function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
+  return payload?.kind === "markdown" ? payload.content : undefined;
+}

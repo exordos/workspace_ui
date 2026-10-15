@@ -18,11 +18,14 @@ import {
   editMessage as defaultEditMessage,
   markMessagesReadUpTo as defaultMarkMessagesReadUpTo,
 } from "~/shared/api/messenger-messages.api";
+import { getStream as defaultGetStream } from "~/shared/api/messenger-streams.api";
 import type {
+  WorkspaceMessengerStreamDto,
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
+import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
@@ -33,7 +36,10 @@ import {
   repairDeletedMessagePointers,
 } from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
-import { normalizeMessengerMessageUuid } from "./messenger-message-identity.lib";
+import {
+  createMessengerPlacementUuid,
+  normalizeMessengerMessageUuid,
+} from "./messenger-message-identity.lib";
 import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import {
   beginWorkspaceTopicReadCounters,
@@ -48,6 +54,7 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatE2eePayload } from "./chat-e2ee.types";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -56,6 +63,10 @@ import type {
 } from "./messenger.types";
 
 export interface MessengerMessageActionClientDeps {
+  getStream?: (
+    options: MessengerClientOptions,
+    streamUuid: string,
+  ) => Promise<WorkspaceMessengerStreamDto>;
   createMessage?: (
     options: MessengerClientOptions,
     body: WorkspaceMessengerCreateMessageRequestBody,
@@ -216,6 +227,7 @@ async function writeMessagePageCacheBestEffort(
   ownerKey: string,
   conversationIds: readonly MessengerConversationId[],
   message: MessengerMessage,
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   const writeConversationMessagePage = cache?.writeConversationMessagePage;
   if (writeConversationMessagePage == null) return;
@@ -223,12 +235,14 @@ async function writeMessagePageCacheBestEffort(
   await writeActionCacheBestEffort(async () => {
     await Promise.all(
       conversationIds.map((conversationId) =>
-        Promise.resolve(
-          writeConversationMessagePage(ownerKey, conversationId, {
-            messages: [message],
-            source: "message-action",
-          }),
-        ),
+        !isCurrent()
+          ? Promise.resolve()
+          : Promise.resolve(
+              writeConversationMessagePage(ownerKey, conversationId, {
+                messages: [message],
+                source: "message-action",
+              }),
+            ),
       ),
     );
   });
@@ -255,15 +269,27 @@ export async function sendMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const dto = await (client.createMessage ?? defaultCreateMessage)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    {
-      uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
-      stream_uuid: streamUuid,
-      topic_uuid: topicUuid,
-      payload: { kind: "markdown", content: markdown },
-    },
-  );
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const catalog = useMessengerStore.getState();
+  const knownStream =
+    catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
+  const stream =
+    knownStream ?? (await (client.getStream ?? defaultGetStream)(requestOptions, streamUuid));
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (stream.uuid !== streamUuid || stream.encryption === true) {
+    throw new Error("Encrypted chats require an available crypto provider");
+  }
+  const payload: WorkspaceMessengerCreateMessageRequestBody["payload"] = {
+    kind: "markdown",
+    content: markdown,
+  };
+  const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
+    uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
+    stream_uuid: streamUuid,
+    topic_uuid: topicUuid,
+    payload,
+  });
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
@@ -277,6 +303,132 @@ export async function sendMessengerMessage({
     action.ownerKey,
     conversationIdsForMessageAction(message, includeStreamConversation),
     message,
+  );
+  return { status: "applied", ownerKey: action.ownerKey, message };
+}
+
+export interface SendMessengerE2eePayloadOptions extends MessengerMessageActionBaseOptions {
+  readonly messengerStore?: Pick<typeof useMessengerStore, "getState">;
+  readonly streamUuid: string;
+  readonly topicUuid: string;
+  readonly payload: ChatE2eePayload;
+  // Historical key service messages retain the current stream-generation dispatch guard.
+  readonly expectedCurrentKey?: { readonly keyUuid: string };
+  // A session may explicitly send with its last locally available generation.
+  readonly allowHistoricalKey?: boolean;
+  // Only rotation may announce a new generation under the captured previous-key guard.
+  readonly rotateKey?: boolean;
+  readonly isCurrent: () => boolean;
+  readonly canonicalMessageUuid?: string;
+  readonly includeStreamConversation?: boolean;
+}
+
+/** Dedicated encrypted transport: commits only opaque payloads through existing cache/store paths. */
+export async function sendMessengerE2eePayload({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  cache = messengerMessageActionCache,
+  signal,
+  store = useWorkspaceMessageStore,
+  messengerStore = useMessengerStore,
+  streamUuid,
+  topicUuid,
+  payload,
+  expectedCurrentKey,
+  allowHistoricalKey = false,
+  rotateKey = false,
+  isCurrent,
+  canonicalMessageUuid = crypto.randomUUID(),
+  includeStreamConversation = true,
+}: SendMessengerE2eePayloadOptions): Promise<MessengerMessageActionResult> {
+  const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
+  const ownerCurrent = () => !action.isStale() && isCurrent();
+  if (action.ownerKey == null)
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  if (!ownerCurrent())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const ownedStream = () => {
+    const catalog = messengerStore.getState();
+    const stream =
+      catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
+    return stream?.uuid === streamUuid &&
+      stream.projectId === runtimeContext.projectId &&
+      stream.userUuid === runtimeContext.userUuid &&
+      stream.encryption === true &&
+      !!stream.currentEncryptionKey?.keyUuid
+      ? stream
+      : undefined;
+  };
+  const stream = ownedStream();
+  const dispatchKeyUuid = expectedCurrentKey?.keyUuid ?? payload.keyUuid;
+  if (
+    !stream ||
+    stream.currentEncryptionKey?.keyUuid !== dispatchKeyUuid ||
+    (rotateKey &&
+      (payload.kind !== "key_announced" || stream.ownerUuid !== runtimeContext.userUuid)) ||
+    (((payload.kind === "e2ee" && !allowHistoricalKey) ||
+      (payload.kind === "key_announced" && !rotateKey)) &&
+      payload.keyUuid !== dispatchKeyUuid)
+  )
+    throw new Error("invalid-key");
+  let dispatched = false;
+  const current = () => {
+    if (!ownerCurrent()) return false;
+    const stream = ownedStream();
+    if (!stream) return false;
+    if (rotateKey && stream.ownerUuid !== runtimeContext.userUuid) return false;
+    return (
+      stream.currentEncryptionKey?.keyUuid === dispatchKeyUuid ||
+      (dispatched &&
+        rotateKey &&
+        payload.kind === "key_announced" &&
+        stream.currentEncryptionKey?.keyUuid === payload.keyUuid)
+    );
+  };
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const fetchImpl = requestOptions.fetchImpl ?? fetch;
+  requestOptions.fetchImpl = (request, init) =>
+    current() && ownedStream()?.currentEncryptionKey?.keyUuid === dispatchKeyUuid
+      ? fetchImpl(request, init)
+      : Promise.reject(new Error("stale"));
+  const wire = encodeChatE2eePayload(payload);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  // Realtime may report this exact own announcement before its POST response arrives.
+  dispatched = true;
+  const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
+    uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
+    stream_uuid: streamUuid,
+    topic_uuid: topicUuid,
+    payload: wire,
+  });
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const decodedResponse =
+    dto.payload.kind === "markdown" ? null : decodeChatE2eePayload(dto.payload);
+  if (
+    dto.uuid !== createMessengerPlacementUuid(topicUuid, canonicalMessageUuid) ||
+    dto.project_id !== runtimeContext.projectId ||
+    dto.user_uuid !== runtimeContext.userUuid ||
+    dto.author_uuid !== runtimeContext.userUuid ||
+    dto.stream_uuid !== streamUuid ||
+    dto.topic_uuid !== topicUuid ||
+    !decodedResponse?.ok ||
+    JSON.stringify(encodeChatE2eePayload(decodedResponse.value)) !== JSON.stringify(wire)
+  )
+    throw new Error("invalid-message");
+  const message = adaptMessengerMessage(dto);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  store.getState().applyLiveCreatedMessage(message);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  messengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  void writeMessagePageCacheBestEffort(
+    cache,
+    action.ownerKey,
+    conversationIdsForMessageAction(message, includeStreamConversation),
+    message,
+    current,
   );
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
@@ -300,6 +452,26 @@ export async function editMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const capturedMutationRevision = store.getState().messageMutationRevision;
+  const originalMessage = store.getState().messagesById[messageUuid];
+  if (originalMessage?.payload.kind !== "markdown") {
+    throw new Error("A loaded Markdown message is required for editing");
+  }
+  const catalog = useMessengerStore.getState();
+  const knownStream =
+    catalog.ownerKey === action.ownerKey
+      ? catalog.streamsById[originalMessage.streamUuid]
+      : undefined;
+  const stream =
+    knownStream ??
+    (await (client.getStream ?? defaultGetStream)(
+      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+      originalMessage.streamUuid,
+    ));
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (stream.uuid !== originalMessage.streamUuid || stream.encryption === true) {
+    throw new Error("Encrypted messages cannot be edited as Markdown");
+  }
 
   const dto = await (client.editMessage ?? defaultEditMessage)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),

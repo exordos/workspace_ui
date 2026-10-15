@@ -48,9 +48,45 @@ export interface MessengerMarkdownPayload {
   content: string;
 }
 
-// Domain payload mirrors the Workspace API envelope. Add new message kinds
-// here when the backend contract grows instead of flattening them into text.
-export type MessengerMessagePayload = MessengerMarkdownPayload;
+export interface MessengerEncryptedPayload {
+  kind: "e2ee";
+  keyUuid: string;
+  content: string;
+}
+export interface MessengerKeyRequestPayload {
+  kind: "key_request";
+  keyUuid: string;
+  deviceId: string;
+  deviceName: string;
+  publicKey: string;
+}
+export interface MessengerKeyGrantPayload {
+  kind: "key_grant";
+  keyUuid: string;
+  requestMessageUuid: string;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+  content: string;
+}
+export interface MessengerKeyAnnouncedPayload {
+  kind: "key_announced";
+  keyUuid: string;
+}
+export interface MessengerKeyRejectPayload {
+  kind: "key_reject";
+  keyUuid: string;
+  requestMessageUuid: string;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+}
+export type MessengerE2eePayload =
+  | MessengerEncryptedPayload
+  | MessengerKeyRequestPayload
+  | MessengerKeyGrantPayload
+  | MessengerKeyAnnouncedPayload
+  | MessengerKeyRejectPayload;
+// Encoded payloads are preserved in store/cache; decoding belongs at the crypto boundary.
+export type MessengerMessagePayload = MessengerMarkdownPayload | MessengerE2eePayload;
 
 // Минимальная строка собственной реакции для обогащения message store из cache
 // или SWR. Store не зависит от IndexedDB-типа и принимает только доменные поля,
@@ -76,6 +112,8 @@ export interface MessengerStream {
   source: WorkspaceMessengerSourceDto;
   audience: MessengerAudience;
   isPrivate: boolean;
+  encryption?: boolean;
+  currentEncryptionKey?: { keyUuid: string } | null;
   inviteOnly: boolean;
   announce: boolean;
   isArchived: boolean;
@@ -275,6 +313,7 @@ export interface MessengerSidebarStreamItem {
   title: string;
   audience: MessengerAudience;
   isPrivate: boolean;
+  encryption?: boolean;
   isArchived: boolean;
   uiKind: WorkspaceConversationUiKind;
   notificationMode: WorkspaceMessengerStreamNotificationMode | null;

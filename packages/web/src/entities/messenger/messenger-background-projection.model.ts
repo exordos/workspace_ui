@@ -606,7 +606,12 @@ function applyMessageProjection(
     );
   }
 
-  if (!isMessageCreatedEvent(event) || context.notificationsEnabled !== true || messageRead) {
+  if (
+    !isMessageCreatedEvent(event) ||
+    context.notificationsEnabled !== true ||
+    messageRead ||
+    event.message.payload.kind !== "markdown"
+  ) {
     // Updates are needed for the id snapshot but must not become notification candidates again.
     return compactProjection(nextProjection, observedAt);
   }

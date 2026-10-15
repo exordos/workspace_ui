@@ -187,10 +187,51 @@ export interface WorkspaceMessengerMessagePointerCacheTargets {
   conversationIds?: readonly string[];
 }
 
-export interface WorkspaceMessengerCachedMessagePayload {
+export interface WorkspaceMessengerCachedEncryptedPayload {
+  kind: "e2ee";
+  keyUuid: string;
+  content: string;
+}
+export interface WorkspaceMessengerCachedKeyRequestPayload {
+  kind: "key_request";
+  keyUuid: string;
+  deviceId: string;
+  deviceName: string;
+  publicKey: string;
+}
+export interface WorkspaceMessengerCachedKeyGrantPayload {
+  kind: "key_grant";
+  keyUuid: string;
+  requestMessageUuid: string;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+  content: string;
+}
+export interface WorkspaceMessengerCachedKeyAnnouncedPayload {
+  kind: "key_announced";
+  keyUuid: string;
+}
+export interface WorkspaceMessengerCachedKeyRejectPayload {
+  kind: "key_reject";
+  keyUuid: string;
+  requestMessageUuid: string;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+}
+export type WorkspaceMessengerCachedE2eePayload =
+  | WorkspaceMessengerCachedEncryptedPayload
+  | WorkspaceMessengerCachedKeyRequestPayload
+  | WorkspaceMessengerCachedKeyGrantPayload
+  | WorkspaceMessengerCachedKeyAnnouncedPayload
+  | WorkspaceMessengerCachedKeyRejectPayload;
+// Encoded payloads are preserved in store/cache; decoding belongs at the crypto boundary.
+export interface WorkspaceMessengerCachedMarkdownPayload {
   kind: "markdown";
   content: string;
 }
+export type WorkspaceMessengerCachedMessagePayload =
+  | WorkspaceMessengerCachedMarkdownPayload
+  | WorkspaceMessengerCachedE2eePayload;
 
 export interface WorkspaceMessengerMessageCacheRow {
   id: string;
@@ -383,12 +424,32 @@ function isCachedMessageWithPayload(value: unknown): value is WorkspaceMessenger
   if (value == null || typeof value !== "object") return false;
   const message = value as { payload?: unknown };
   const payload = message.payload;
-  return (
-    payload != null &&
-    typeof payload === "object" &&
-    (payload as { kind?: unknown }).kind === "markdown" &&
-    typeof (payload as { content?: unknown }).content === "string"
-  );
+  if (payload == null || typeof payload !== "object") return false;
+  const fields = payload as Record<string, unknown>;
+  if (fields.kind === "markdown") return typeof fields.content === "string";
+  if (typeof fields.keyUuid !== "string") return false;
+  switch (fields.kind) {
+    case "e2ee":
+      return typeof fields.content === "string";
+    case "key_request":
+      return (
+        typeof fields.deviceId === "string" &&
+        typeof fields.deviceName === "string" &&
+        typeof fields.publicKey === "string"
+      );
+    case "key_announced":
+      return true;
+    case "key_grant":
+    case "key_reject":
+      return (
+        typeof fields.requestMessageUuid === "string" &&
+        typeof fields.senderDeviceId === "string" &&
+        typeof fields.recipientDeviceId === "string" &&
+        (fields.kind === "key_reject" || typeof fields.content === "string")
+      );
+    default:
+      return false;
+  }
 }
 
 export interface WorkspaceMessengerSearchResultWrite {

@@ -3,6 +3,7 @@ import {
   addStreamUsers,
   archiveStream,
   createStream,
+  createStreamWithDefaultTopic,
   deleteStreamBinding,
   getStreamBinding,
   getStreamBindings,
@@ -89,6 +90,15 @@ const streamDto = {
   updated_at: DATE,
 };
 
+const createBody = {
+  name: "Engineering",
+  description: "Engineering workspace",
+  source_name: "native",
+  source: { kind: "native" },
+  invite_only: false,
+  announce: false,
+} as const;
+
 const streamBindingDto = {
   uuid: BINDING_UUID,
   project_id: PROJECT_UUID,
@@ -150,31 +160,77 @@ describe("messenger-streams api", () => {
     const fetchMock = createFetchMock(streamDto);
 
     await expect(
-      createStream(
-        { accessToken: "access-token", fetchImpl: fetchMock },
-        {
-          name: "Engineering",
-          description: "Engineering workspace",
-          source_name: "native",
-          source: { kind: "native" },
-          invite_only: false,
-          announce: false,
-        },
-      ),
+      createStream({ accessToken: "access-token", fetchImpl: fetchMock }, createBody),
     ).resolves.toEqual(streamDto);
 
     const [url, init] = firstFetchCall(fetchMock);
     expect(url).toBe("/api/workspace/v1/messenger/streams/");
     expect(init?.method).toBe("POST");
-    expect(requestBody(init)).toEqual({
-      name: "Engineering",
-      description: "Engineering workspace",
-      source_name: "native",
-      source: { kind: "native" },
-      invite_only: false,
-      announce: false,
-    });
+    expect(requestBody(init)).toEqual(createBody);
     expect(requestBody(init)).not.toHaveProperty("private");
+  });
+
+  it.each([404, 401])(
+    "reports each create POST dispatch after token resolution, including %s retry",
+    async (status) => {
+      const events: string[] = [];
+      const topic = {
+        uuid: BINDING_UUID,
+        project_id: PROJECT_UUID,
+        stream_uuid: STREAM_UUID,
+        user_uuid: USER_UUID,
+        name: "General",
+        is_default: true,
+        is_done: false,
+        notification_mode: "default",
+        unread_count: 0,
+        active_unread_count: 0,
+        passive_unread_count: 0,
+        created_at: DATE,
+        updated_at: DATE,
+      };
+      const getAccessToken = () => {
+        events.push("token");
+        return Promise.resolve("fresh-token");
+      };
+      let postCount = 0;
+      const fetchImpl = vi.fn<typeof fetch>((_url, init) => {
+        events.push(init?.method ?? "GET");
+        if (init?.method !== "POST") return Promise.resolve(jsonResponse([topic]));
+        postCount += 1;
+        return Promise.resolve(
+          postCount === 1 ? jsonResponse({}, status) : jsonResponse(streamDto),
+        );
+      });
+      const onDispatch = vi.fn(() => events.push("dispatch"));
+      const operation = createStreamWithDefaultTopic(
+        { accessToken: "old-token", getAccessToken, fetchImpl },
+        createBody,
+        onDispatch,
+      );
+      expect(events).toEqual(["token"]);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      await expect(operation).resolves.toEqual({ stream: streamDto, defaultTopic: topic });
+      expect(events).toEqual(
+        status === 401
+          ? ["token", "dispatch", "POST", "token", "dispatch", "POST", "token", "GET"]
+          : ["token", "dispatch", "POST", "dispatch", "POST", "token", "GET"],
+      );
+    },
+  );
+
+  it("does not send a create POST when its dispatch guard rejects after token resolution", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    await expect(
+      createStream(
+        { accessToken: "token", getAccessToken: () => Promise.resolve("fresh-token"), fetchImpl },
+        createBody,
+        () => {
+          throw new Error("stale-owner");
+        },
+      ),
+    ).rejects.toThrow("stale-owner");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("creates a direct native stream with direct_user_uuid", async () => {
@@ -354,4 +410,49 @@ describe("messenger-streams api", () => {
       getStreamBindingsPage({ accessToken: "access-token", fetchImpl: fetchMock }),
     ).rejects.toThrow("Expected valid messenger stream bindings response item at index 0");
   });
+});
+
+it("rejects an encrypted create response that reuses a plaintext direct stream", async () => {
+  const fetchMock = createFetchMock(streamDto);
+  await expect(
+    createStream(
+      { accessToken: "access-token", fetchImpl: fetchMock },
+      {
+        name: "Protected",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+        encryption: true,
+        current_encryption_key_uuid: STREAM_UUID,
+      },
+    ),
+  ).rejects.toThrow("requested encrypted stream");
+});
+
+it("accepts an encrypted create only with the requested initial generation", async () => {
+  const key = STREAM_UUID;
+  const encrypted = { ...streamDto, encryption: true, current_encryption_key_uuid: key };
+  const fetchMock = createFetchMock(encrypted);
+  await expect(
+    createStream(
+      { accessToken: "access-token", fetchImpl: fetchMock },
+      {
+        name: "Protected",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+        encryption: true,
+        current_encryption_key_uuid: key,
+      },
+    ),
+  ).resolves.toEqual(encrypted);
+  const body = fetchMock.mock.calls[0]?.[1]?.body;
+  expect(typeof body).toBe("string");
+  if (typeof body !== "string") throw new Error("Expected a JSON request body");
+  const requestBody: unknown = JSON.parse(body);
+  expect(requestBody).toMatchObject({
+    encryption: true,
+    current_encryption_key_uuid: STREAM_UUID,
+  });
+  expect(requestBody).not.toHaveProperty("current_encryption_key");
 });

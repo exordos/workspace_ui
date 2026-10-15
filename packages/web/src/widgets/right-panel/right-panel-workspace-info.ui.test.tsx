@@ -8,10 +8,17 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import * as chatCryptoSessionHook from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
+import { RightDrawer } from "./right-drawer.ui";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
+
+const writeTextMock = vi.hoisted(() => vi.fn());
+vi.mock("~/shared/lib/clipboard", () => ({
+  writeText: (...args: unknown[]) => writeTextMock(...args),
+}));
 
 const runWorkspaceStreamNotificationUpdateMock = vi.hoisted(() => vi.fn());
 const addWorkspaceStreamMembersMock = vi.hoisted(() => vi.fn());
@@ -226,8 +233,60 @@ function seedWorkspaceUsers(): void {
   ]);
 }
 
+function seedOwnerChannel(overrides: Partial<MessengerStream> = {}): void {
+  useMessengerStore.getState().startBootstrap(OWNER_KEY);
+  useMessengerStore.getState().upsertStream(
+    OWNER_KEY,
+    createStream({
+      projectId: RUNTIME_CONTEXT.projectId,
+      userUuid: CURRENT_USER_UUID,
+      ownerUuid: CURRENT_USER_UUID,
+      ...overrides,
+    }),
+  );
+}
+
 describe("RightPanelWorkspaceInfo", () => {
+  it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", async () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          name: "Encrypted team",
+          encryption: true,
+          currentEncryptionKey: {
+            keyUuid: "actual-key-uuid",
+          },
+        }),
+      );
+    });
+    const onClose = vi.fn();
+    const { container } = renderWithProviders(
+      <RightDrawer title={t("chatInfo.channelInfo")} onClose={onClose}>
+        <RightPanelWorkspaceInfo info={createInfo()} onClose={onClose} />
+      </RightDrawer>,
+    );
+    expect(screen.getByText("Encrypted team")).toBeInTheDocument();
+    expect(screen.getByText("actual-key-uuid")).toBeInTheDocument();
+    expect(screen.queryByText(t("e2ee.requestsTitle", { count: 0 }))).not.toBeInTheDocument();
+    expect(await screen.findByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
+    expect(container.innerHTML).toContain("actual-key-uuid");
+    expect(container.textContent).not.toContain(DATE);
+    expect(screen.getAllByRole("heading", { name: t("chatInfo.channelInfo") })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: t("common.close") })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: t("common.close") }));
+    expect(onClose).toHaveBeenCalledOnce();
+    act(() => useMessengerStore.setState({ ownerKey: "other-owner" }));
+    expect(screen.queryByText("actual-key-uuid")).not.toBeInTheDocument();
+    expect(screen.queryByText("Encrypted team")).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
+    vi.restoreAllMocks();
+    writeTextMock.mockReset();
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     addWorkspaceStreamMembersMock.mockReset();
     removeWorkspaceStreamMemberMock.mockReset();
@@ -239,6 +298,86 @@ describe("RightPanelWorkspaceInfo", () => {
     useWorkspaceIamCapabilitiesStore.getState().clear();
   });
 
+  it("copies only explicitly and ignores a clipboard failure after runtime ownership changes", async () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "actual-key" },
+        }),
+      );
+    });
+    let complete: ((copied: boolean) => void) | undefined;
+    writeTextMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        complete = resolve;
+      }),
+    );
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    expect(writeTextMock).not.toHaveBeenCalled();
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
+    fireEvent.click(screen.getByRole("button", { name: t("e2ee.copyKey") }));
+    expect(writeTextMock).toHaveBeenCalledWith("actual-key");
+    await act(async () => {
+      useWorkspaceAuthStore.getState().clear();
+      complete?.(false);
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(t("e2ee.copyFailed"))).not.toBeInTheDocument();
+  });
+
+  it("uses the encrypted info for actual direct chat UUIDs and keeps explicitly opened user profiles", async () => {
+    seedWorkspaceAuth();
+    act(() => {
+      useMessengerStore.getState().startBootstrap(OWNER_KEY);
+      useMessengerStore.getState().upsertStream(
+        OWNER_KEY,
+        createStream({
+          projectId: RUNTIME_CONTEXT.projectId,
+          encryption: true,
+          name: "Encrypted direct",
+          audience: "private",
+          directUserUuid: ALICE_USER_UUID,
+          currentEncryptionKey: { keyUuid: "direct-key" },
+        }),
+      );
+    });
+    const { rerender } = renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "directPrivate",
+          streamUuid: STREAM_UUID,
+          directUserUuid: ALICE_USER_UUID,
+          title: "Alice",
+          avatarUrl: null,
+          status: null,
+          isOwnProfile: false,
+          details: [],
+        }}
+      />,
+    );
+    expect(screen.getByText("direct-key")).toBeInTheDocument();
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
+    rerender(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "userProfile",
+          userUuid: ALICE_USER_UUID,
+          title: "Alice profile",
+          avatarUrl: null,
+          status: null,
+          isOwnProfile: false,
+          details: [],
+        }}
+      />,
+    );
+    expect(screen.queryByText("direct-key")).not.toBeInTheDocument();
+    expect(screen.getByText("Alice profile")).toBeInTheDocument();
+  });
   it("shows the selected topic summary and its freshness state", () => {
     const { rerender } = renderWithProviders(
       <RightPanelWorkspaceInfo
@@ -678,6 +817,7 @@ describe("RightPanelWorkspaceInfo", () => {
   it("renders members heading without a leading profile icon and a 24px add button", () => {
     // Figma members block: title + person_add only (24px glyph in 32px hit area), no profile icon.
     seedWorkspaceAuth();
+    seedOwnerChannel();
 
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
@@ -852,6 +992,7 @@ describe("RightPanelWorkspaceInfo", () => {
 
   it("opens add members dialog and excludes existing members", () => {
     seedWorkspaceAuth();
+    seedOwnerChannel();
     seedWorkspaceUsers();
 
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
@@ -867,6 +1008,7 @@ describe("RightPanelWorkspaceInfo", () => {
 
   it("submits workspace add members action", async () => {
     seedWorkspaceAuth();
+    seedOwnerChannel();
     seedWorkspaceUsers();
     addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
 
@@ -892,6 +1034,169 @@ describe("RightPanelWorkspaceInfo", () => {
         }),
       );
     });
+  });
+
+  it.each([
+    { encryption: false, role: "member" as const },
+    { encryption: false, role: "administrator" as const },
+    { encryption: true, role: "member" as const },
+    { encryption: true, role: "administrator" as const },
+  ])(
+    "hides member addition for a non-owner $role with encryption=$encryption",
+    async ({ encryption, role }) => {
+      seedWorkspaceAuth();
+      seedWorkspaceUsers();
+      seedOwnerChannel({ ownerUuid: ALICE_USER_UUID, encryption, role });
+      renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+      expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(addWorkspaceStreamMembersMock).not.toHaveBeenCalled();
+      if (encryption) await screen.findByText(t("e2ee.cryptoUnavailable"));
+    },
+  );
+
+  it.each(["ownership", "catalog-owner", "runtime"] as const)(
+    "hides an open member picker when %s changes and blocks its saved submit callback",
+    (change) => {
+      seedWorkspaceAuth();
+      seedOwnerChannel();
+      seedWorkspaceUsers();
+      renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+      const dialog = screen.getByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+      const submitButton = within(dialog).getByRole("button", { name: "Add" });
+
+      act(() => {
+        if (change === "ownership") {
+          useMessengerStore
+            .getState()
+            .upsertStream(OWNER_KEY, createStream({ ownerUuid: ALICE_USER_UUID }));
+        } else if (change === "catalog-owner") {
+          useMessengerStore.setState({ ownerKey: "other-owner" });
+        } else {
+          useWorkspaceAuthStore.getState().clear();
+        }
+        fireEvent.click(submitButton);
+      });
+
+      expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(addWorkspaceStreamMembersMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reuses the member picker and action for an encrypted channel owner", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    seedOwnerChannel({
+      encryption: true,
+      currentEncryptionKey: { keyUuid: "12345678-1234-4234-8234-123456789abc" },
+    });
+    addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const button = screen.getByRole("button", { name: "Add members" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addWorkspaceStreamMembersMock).toHaveBeenCalledWith(
+        expect.objectContaining({ streamUuid: STREAM_UUID, userUuids: [BOB_USER_UUID] }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("keeps the encrypted channel picker open when backend membership authorization fails", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    seedOwnerChannel({
+      encryption: true,
+      currentEncryptionKey: { keyUuid: "12345678-1234-4234-8234-123456789abc" },
+    });
+    addWorkspaceStreamMembersMock.mockRejectedValue(new Error("Permission denied"));
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    const button = screen.getByRole("button", { name: "Add members" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    expect(await within(dialog).findByText("Something went wrong")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Bob Baker/i })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Add" })).toBeEnabled();
+  });
+
+  it("reuses encrypted removal with the actual binding UUID, pending state, error, and retry", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    useUsersStore.setState({ ownerKey: OWNER_KEY });
+    seedOwnerChannel({ encryption: true });
+    const member = createInfo().members[0]!;
+    useMessengerStore.getState().upsertStreamBindings(OWNER_KEY, [
+      {
+        uuid: member.bindingUuid,
+        projectId: RUNTIME_CONTEXT.projectId,
+        streamUuid: STREAM_UUID,
+        userUuid: member.userUuid,
+        whoUuid: CURRENT_USER_UUID,
+        role: "member",
+        notificationMode: "all_messages",
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+    ]);
+    // Keep crypto initialization pending to exercise the real encrypted member UI
+    // without requiring the crypto provider in this membership-focused test.
+    vi.spyOn(chatCryptoSessionHook, "useChatCryptoSession").mockReturnValue({
+      session: null,
+      state: { access: "missing", pending: false, requestStatus: "idle", error: null },
+      sendKeyUuid: null,
+      loading: true,
+      error: null,
+      requestErrors: {},
+      reissueKey: vi.fn(() => Promise.resolve(false)),
+      removeLocalKey: vi.fn(() => Promise.resolve(false)),
+      grantAllKeys: vi.fn(() => Promise.resolve(false)),
+      requestKey: vi.fn(() => Promise.resolve(false)),
+      grantKey: vi.fn(() => Promise.resolve()),
+      rejectKey: vi.fn(() => Promise.resolve()),
+    });
+    let rejectRemoval: ((reason: Error) => void) | undefined;
+    removeWorkspaceStreamMemberMock.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        rejectRemoval = reject;
+      }),
+    );
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    const removeButton = screen.getByRole("button", { name: "Remove from channel: Alice Adams" });
+    fireEvent.click(removeButton);
+    expect(removeButton).toBeDisabled();
+    expect(removeWorkspaceStreamMemberMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        streamUuid: STREAM_UUID,
+        bindingUuid: ALICE_BINDING_UUID,
+        userUuid: ALICE_USER_UUID,
+      }),
+    );
+    await act(() => {
+      rejectRemoval?.(new Error("Membership rejected"));
+      return Promise.resolve();
+    });
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(removeButton).toBeEnabled();
+    removeWorkspaceStreamMemberMock.mockResolvedValueOnce({ status: "applied" });
+    fireEvent.click(removeButton);
+    await waitFor(() => expect(removeWorkspaceStreamMemberMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument());
   });
 
   it("submits workspace remove member action", async () => {

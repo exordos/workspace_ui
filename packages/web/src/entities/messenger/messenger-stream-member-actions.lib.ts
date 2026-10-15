@@ -29,7 +29,8 @@ export type WorkspaceStreamMemberActionErrorCode =
   | "invalid-binding-uuid"
   | "invalid-current-user-uuid"
   | "invalid-stream-uuid"
-  | "invalid-user-uuid";
+  | "invalid-user-uuid"
+  | "not-stream-owner";
 
 export class WorkspaceStreamMemberActionError extends Error {
   readonly code: WorkspaceStreamMemberActionErrorCode;
@@ -54,7 +55,10 @@ export interface MessengerStreamMemberActionClientDeps {
 }
 
 export interface MessengerStreamMemberActionStoreApi {
-  getState: () => Pick<MessengerStoreState, "upsertStreamBindings" | "removeStreamBinding">;
+  getState: () => Pick<
+    MessengerStoreState,
+    "ownerKey" | "streamsById" | "upsertStreamBindings" | "removeStreamBinding"
+  >;
 }
 
 export type WorkspaceStreamMemberActionResult =
@@ -171,6 +175,17 @@ export async function addWorkspaceStreamMembers({
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const state = store.getState();
+  if (
+    state.ownerKey !== action.ownerKey ||
+    state.streamsById[normalizedStreamUuid]?.ownerUuid !== runtimeContext.userUuid
+  ) {
+    throw new WorkspaceStreamMemberActionError(
+      "not-stream-owner",
+      "Only the Workspace stream owner can add members",
+    );
+  }
 
   // Первую итерацию делаем без выбора роли: backend contract принимает группы
   // по ролям, а пользовательский сценарий сейчас всегда добавляет обычных member.

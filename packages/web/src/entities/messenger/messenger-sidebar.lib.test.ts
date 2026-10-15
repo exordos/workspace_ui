@@ -229,6 +229,7 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
   const folderA = folder();
 
   return {
+    streamBindingRevisionByStreamId: {},
     ownerKey: "owner",
     isLoading: false,
     error: null,
@@ -1832,5 +1833,81 @@ describe("messenger sidebar selectors", () => {
     expect(workspaceMessengerRootRoute(ORGANIZATION_ID, PROJECT_ID)).toBe(
       `/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/messenger`,
     );
+  });
+});
+
+describe("All folder creation visibility", () => {
+  const options = {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    currentUserUuid: "user",
+    selectedFolderUuid: FOLDER_A,
+  };
+
+  it("shows a newly created encrypted catalog stream before folder refresh and deduplicates later", () => {
+    const store = useMessengerStore;
+    store.getState().startBootstrap("owner");
+    store.getState().applyFolderSnapshot("owner", folder({ items: [] }));
+    store.getState().upsertStream("owner", stream({ encryption: true }));
+    const before = selectMessengerSidebarStreams(store.getState(), options);
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({
+      streamUuid: STREAM_A,
+      encryption: true,
+      route: `/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/stream/${STREAM_A}`,
+    });
+    expect(selectMessengerSidebarStreams(store.getState(), options)).toBe(before);
+    store.getState().applyFolderSnapshot("owner", folder());
+    expect(
+      selectMessengerSidebarStreams(store.getState(), options).filter(
+        (item) => item.streamUuid === STREAM_A,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("preserves category and custom membership", () => {
+    const customUuid = "custom-folder";
+    for (const uuid of [
+      customUuid,
+      "00000000-0000-0000-0000-000000000001",
+      "00000000-0000-0000-0000-000000000002",
+    ]) {
+      const snapshot = state({ foldersById: { [uuid]: folder({ uuid, items: [] }) } });
+      expect(
+        selectMessengerSidebarStreams(snapshot, { ...options, selectedFolderUuid: uuid }),
+      ).toEqual([]);
+    }
+  });
+
+  it("does not add archived, deleted, foreign-project or foreign-user catalog entries", () => {
+    for (const override of [
+      { isArchived: true },
+      { projectId: "other-project" },
+      { userUuid: "another-user" },
+    ]) {
+      const snapshot = state({
+        foldersById: { [FOLDER_A]: folder({ items: [] }) },
+        streamIds: [STREAM_A],
+        streamsById: { [STREAM_A]: stream(override) },
+      });
+      expect(selectMessengerSidebarStreams(snapshot, options)).toEqual([]);
+    }
+    expect(
+      selectMessengerSidebarStreams(
+        state({ foldersById: { [FOLDER_A]: folder({ items: [] }) }, streamIds: [] }),
+        options,
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects stale-owner creation and keeps ordinary streams visible", () => {
+    useMessengerStore.getState().startBootstrap("current-owner");
+    useMessengerStore.getState().applyFolderSnapshot("current-owner", folder({ items: [] }));
+    useMessengerStore.getState().upsertStream("stale-owner", stream({ encryption: true }));
+    expect(selectMessengerSidebarStreams(useMessengerStore.getState(), options)).toEqual([]);
+    useMessengerStore.getState().upsertStream("current-owner", stream());
+    expect(
+      selectMessengerSidebarStreams(useMessengerStore.getState(), options)[0]?.streamUuid,
+    ).toBe(STREAM_A);
   });
 });

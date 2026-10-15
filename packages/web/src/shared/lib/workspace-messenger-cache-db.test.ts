@@ -1,3 +1,7 @@
+import type {
+  WorkspaceMessengerCachedMessagePayload,
+  WorkspaceMessengerComposerDraftCacheRow,
+} from "./workspace-messenger-cache-db";
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -38,7 +42,6 @@ import {
   writeMessengerSearchResults,
   writeRealtimeCursor,
 } from "./workspace-messenger-cache-db";
-import type { WorkspaceMessengerComposerDraftCacheRow } from "./workspace-messenger-cache-db";
 
 const OWNER = "account:a:org:o:project:p:user:u";
 const OTHER_OWNER = "account:b:org:o:project:p:user:u";
@@ -1070,4 +1073,50 @@ describe("workspace-messenger-cache-db", () => {
       (await readConversationMessageWindow(OWNER, `topic:${STREAM}:topic-b`)).messages[0]?.read,
     ).toBeUndefined();
   });
+});
+
+it("restores every encrypted payload without plaintext projection and isolates owners", async () => {
+  const payloads: WorkspaceMessengerCachedMessagePayload[] = [
+    { kind: "e2ee", keyUuid: "generation", content: "opaque-encrypted-body" },
+    {
+      kind: "key_request",
+      keyUuid: "generation",
+      deviceId: "mac",
+      deviceName: "MacBook",
+      publicKey: "opaque-public-key",
+    },
+    { kind: "key_announced", keyUuid: "generation" },
+    {
+      kind: "key_grant",
+      keyUuid: "generation",
+      requestMessageUuid: "request",
+      senderDeviceId: "admin",
+      recipientDeviceId: "mac",
+      content: "opaque-encrypted-key",
+    },
+    {
+      kind: "key_reject",
+      keyUuid: "generation",
+      requestMessageUuid: "request",
+      senderDeviceId: "admin",
+      recipientDeviceId: "mac",
+    },
+  ];
+  const messages = payloads.map((payload, index) => ({
+    ...message(`encrypted-${index}`, "2026-10-02T00:00:00Z"),
+    payload,
+  }));
+  await upsertCachedMessages(OWNER, messages);
+  expect(
+    await readCachedMessagesByUuids(
+      OWNER,
+      messages.map((item) => item.uuid),
+    ),
+  ).toEqual(messages);
+  expect(
+    await readCachedMessagesByUuids(
+      OTHER_OWNER,
+      messages.map((item) => item.uuid),
+    ),
+  ).toEqual([]);
 });

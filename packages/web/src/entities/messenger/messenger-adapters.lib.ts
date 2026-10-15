@@ -47,6 +47,13 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     source: dto.source,
     audience: streamAudience(dto),
     isPrivate: dto.private,
+    encryption: dto.encryption ?? false,
+    currentEncryptionKey:
+      dto.current_encryption_key_uuid == null
+        ? null
+        : {
+            keyUuid: dto.current_encryption_key_uuid,
+          },
     inviteOnly: dto.invite_only,
     announce: dto.announce,
     isArchived: dto.is_archived,
@@ -190,6 +197,35 @@ export function adaptMessengerMessagePayload(
   switch (dto.kind) {
     case "markdown":
       return { kind: "markdown", content: dto.content };
+    case "e2ee":
+      return { kind: dto.kind, keyUuid: dto.key_uuid, content: dto.content };
+    case "key_request":
+      return {
+        kind: dto.kind,
+        keyUuid: dto.key_uuid,
+        deviceId: dto.device_id,
+        deviceName: dto.device_name,
+        publicKey: dto.public_key,
+      };
+    case "key_announced":
+      return { kind: dto.kind, keyUuid: dto.key_uuid };
+    case "key_grant":
+      return {
+        kind: dto.kind,
+        keyUuid: dto.key_uuid,
+        requestMessageUuid: dto.request_message_uuid,
+        senderDeviceId: dto.sender_device_id,
+        recipientDeviceId: dto.recipient_device_id,
+        content: dto.content,
+      };
+    case "key_reject":
+      return {
+        kind: dto.kind,
+        keyUuid: dto.key_uuid,
+        requestMessageUuid: dto.request_message_uuid,
+        senderDeviceId: dto.sender_device_id,
+        recipientDeviceId: dto.recipient_device_id,
+      };
   }
 }
 

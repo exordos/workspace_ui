@@ -39,6 +39,8 @@ export interface ChatHeaderCommonProps {
 
 export interface ChatChannelHeaderProps extends ChatHeaderCommonProps {
   channelName: string;
+  color?: number | null;
+  encrypted?: boolean;
   topic?: string;
   systemTopic?: boolean;
   participantsCount?: number;

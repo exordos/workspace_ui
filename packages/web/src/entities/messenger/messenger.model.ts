@@ -72,6 +72,8 @@ export interface MessengerDomainData {
 }
 
 export interface MessengerStoreState extends MessengerDomainData {
+  // Runtime-only revisions fence pending member snapshots against realtime mutations.
+  streamBindingRevisionByStreamId: Record<MessengerUuid, number>;
   ownerKey: string | null;
   isLoading: boolean;
   error: string | null;
@@ -159,6 +161,19 @@ export function restoreMessengerStream(ownerKey: string, streamUuid: MessengerUu
   removedStreamUuidsByOwnerKey.get(ownerKey)?.delete(streamUuid);
 }
 
+export function isMessengerStreamRemoved(ownerKey: string, streamUuid: MessengerUuid): boolean {
+  return removedStreamUuidsByOwnerKey.get(ownerKey)?.has(streamUuid) ?? false;
+}
+
+function bumpStreamBindingRevisions(
+  state: Pick<MessengerStoreState, "streamBindingRevisionByStreamId">,
+  streamUuids: Iterable<MessengerUuid>,
+): Record<MessengerUuid, number> {
+  const next = { ...state.streamBindingRevisionByStreamId };
+  for (const streamUuid of new Set(streamUuids)) next[streamUuid] = (next[streamUuid] ?? 0) + 1;
+  return next;
+}
+
 function withoutRemovedStreamProjections(
   ownerKey: string,
   payload: MessengerBootstrapPayload,
@@ -207,6 +222,7 @@ function createInitialState(): Omit<
   | "clear"
 > {
   return {
+    streamBindingRevisionByStreamId: {},
     ownerKey: null,
     isLoading: false,
     error: null,
@@ -674,6 +690,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
 
       return {
         ...createEmptyMessengerData(),
+        streamBindingRevisionByStreamId: {},
         ownerKey,
         isLoading: true,
         error: null,
@@ -731,6 +748,13 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       return {
         ...nextDomainData,
         ...streamBindingsState,
+        streamBindingRevisionByStreamId: bumpStreamBindingRevisions(state, [
+          ...state.streamIds,
+          ...Object.keys(state.streamBindingRevisionByStreamId),
+          ...Object.keys(state.streamBindingIdsByStreamId),
+          ...safePayload.streams.map((stream) => stream.uuid),
+          ...safePayload.streamBindings.map((binding) => binding.streamUuid),
+        ]),
         ownerKey,
         isLoading: false,
         error: null,
@@ -788,6 +812,11 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           [stream.uuid]: stream,
         },
         streamIds: appendUniqueId(state.streamIds, stream.uuid),
+        streamBindingRevisionByStreamId:
+          state.streamsById[stream.uuid]?.ownerUuid !== stream.ownerUuid ||
+          state.streamsById[stream.uuid]?.role !== stream.role
+            ? bumpStreamBindingRevisions(state, [stream.uuid])
+            : state.streamBindingRevisionByStreamId,
         foldersById: projectStreamUnreadIntoFolders(state.foldersById, stream),
         ...conversationState,
       };
@@ -843,6 +872,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       return {
         streamsById: nextStreamsById,
         streamIds: removeId(state.streamIds, stream.uuid),
+        streamBindingRevisionByStreamId: bumpStreamBindingRevisions(state, [stream.uuid]),
         topicsById: nextTopicsById,
         topicIds: state.topicIds.filter((topicId) => !removedTopicIds.includes(topicId)),
         conversationsById: nextConversationsById,
@@ -866,12 +896,22 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (state.ownerKey !== ownerKey) return state;
 
       const removedStreamUuids = removedStreamUuidsByOwnerKey.get(ownerKey);
-      return applyStreamBindingUpserts(
-        state,
+      const activeBindings =
         removedStreamUuids == null
           ? bindings
-          : bindings.filter((binding) => !removedStreamUuids.has(binding.streamUuid)),
-      );
+          : bindings.filter((binding) => !removedStreamUuids.has(binding.streamUuid));
+      return {
+        ...applyStreamBindingUpserts(state, activeBindings),
+        streamBindingRevisionByStreamId: bumpStreamBindingRevisions(
+          state,
+          activeBindings.flatMap((binding) => {
+            const previousStreamUuid = state.streamBindingsById[binding.uuid]?.streamUuid;
+            return previousStreamUuid
+              ? [previousStreamUuid, binding.streamUuid]
+              : [binding.streamUuid];
+          }),
+        ),
+      };
     });
   },
 
@@ -917,6 +957,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
 
       return {
         ...nextState,
+        streamBindingRevisionByStreamId: bumpStreamBindingRevisions(state, [streamUuid]),
         streamBindingsLoadedByStreamId: {
           ...state.streamBindingsLoadedByStreamId,
           [streamUuid]: true,
@@ -956,13 +997,15 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const previous = state.streamBindingsById[binding.uuid];
       const streamUuid = previous?.streamUuid ?? binding.streamUuid;
       const streamBindingIds = state.streamBindingIdsByStreamId[streamUuid] ?? EMPTY_IDS;
-      if (previous == null && !streamBindingIds.includes(binding.uuid)) return state;
+      if (previous == null && !streamBindingIds.includes(binding.uuid))
+        return { streamBindingRevisionByStreamId: bumpStreamBindingRevisions(state, [streamUuid]) };
 
       const nextStreamBindingsById = { ...state.streamBindingsById };
       delete nextStreamBindingsById[binding.uuid];
 
       return {
         streamBindingsById: nextStreamBindingsById,
+        streamBindingRevisionByStreamId: bumpStreamBindingRevisions(state, [streamUuid]),
         streamBindingIds: removeId(state.streamBindingIds, binding.uuid),
         streamBindingIdsByStreamId: {
           ...state.streamBindingIdsByStreamId,

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { setLocale, useTranslation } from "~/i18n/i18n";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 import {
@@ -95,6 +97,7 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
 describe("LayoutMainWorkspace", () => {
   beforeEach(() => {
     setLocale("en");
+    useMessengerStore.setState({ streamsById: {} });
     window.localStorage.clear();
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -161,6 +164,88 @@ describe("LayoutMainWorkspace", () => {
 
     expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "false");
     expect(screen.getByRole("heading", { name: "App version" })).toBeInTheDocument();
+  });
+
+  it("uses flush rows for encrypted chat screens and restores ordinary panel padding", () => {
+    const streamUuid = "11111111-1111-4111-8111-111111111111";
+    const stream: MessengerStream = {
+      uuid: streamUuid,
+      projectId: "project",
+      ownerUuid: "user",
+      userUuid: "user",
+      role: "owner",
+      notificationMode: "all_messages",
+      name: "Protected chat",
+      description: "",
+      unreadCount: 0,
+      sourceName: "native",
+      source: { kind: "native" },
+      audience: "channel",
+      isPrivate: true,
+      encryption: true,
+      inviteOnly: false,
+      announce: false,
+      isArchived: false,
+      directUserUuid: null,
+      lastMessageUuid: null,
+      createdAt: "2026-10-05T00:00:00Z",
+      updatedAt: "2026-10-05T00:00:00Z",
+    };
+    useMessengerStore.setState({ streamsById: { [streamUuid]: stream } });
+    const props = buildProps({
+      rightDrawerOpen: true,
+      workspaceRightPanelInfo: {
+        kind: "channel",
+        streamUuid,
+        notificationMode: "all_messages",
+        title: stream.name,
+        color: null,
+        description: null,
+        participantsCount: 0,
+        onlineCount: 0,
+        members: [],
+        topics: [],
+      },
+    });
+    const { rerender } = render(<LayoutMainWorkspace {...props} />);
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "true");
+
+    rerender(
+      <LayoutMainWorkspace
+        {...props}
+        rightDrawerChatScreen={{
+          ownerKey: "owner",
+          runtimeGeneration: 1,
+          streamUuid,
+          screen: "key",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "true");
+
+    act(() =>
+      useMessengerStore.setState({
+        streamsById: { [streamUuid]: { ...stream, encryption: false } },
+      }),
+    );
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "false");
+
+    act(() => useMessengerStore.setState({ streamsById: { [streamUuid]: stream } }));
+    rerender(
+      <LayoutMainWorkspace
+        {...props}
+        workspaceRightPanelInfo={{
+          kind: "userProfile",
+          userUuid: "user",
+          title: "Profile",
+          avatarUrl: null,
+          status: null,
+          isOwnProfile: false,
+          details: [],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "false");
   });
 
   it("does not limit the workspace row width", () => {

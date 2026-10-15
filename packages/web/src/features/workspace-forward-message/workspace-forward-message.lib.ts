@@ -71,6 +71,7 @@ export function buildWorkspaceForwardMarkdown(options: {
   resolveSourceKind?: (message: WorkspaceForwardSourceMessage) => "direct" | "channel";
   wroteLabel?: string;
 }): string | null {
+  if (options.messages.some((message) => message.payload.kind !== "markdown")) return null;
   const selectedText = normalizeSelectedForwardText(options.selectedText);
   const shouldUseSelectedText = options.messages.length === 1 && selectedText != null;
 
@@ -78,10 +79,11 @@ export function buildWorkspaceForwardMarkdown(options: {
     const senderName =
       options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
     const sourceLabel = options.resolveSourceLabel(message).trim() || message.streamUuid;
+    const markdown = message.payload.kind === "markdown" ? message.payload.content : "";
     const forwardReference = buildWorkspaceForwardReference({
       senderName,
       messageUuid: message.uuid,
-      snapshotMarkdown: shouldUseSelectedText ? selectedText : message.payload.content,
+      snapshotMarkdown: shouldUseSelectedText ? selectedText : markdown,
       ...(shouldUseSelectedText ? { snapshotFormat: "plain" as const } : {}),
       sourceLabel,
       ...(options.resolveSourceKind?.(message) === "direct"

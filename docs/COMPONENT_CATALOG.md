@@ -23,6 +23,8 @@ This map identifies entry points rather than enumerating every component or dupl
 
 Look in [shared/ui](../packages/web/src/shared/ui) for existing primitives before creating one. Shared components receive data and callbacks; they must not import entity stores. Domain-specific presentation belongs in an entity, an interaction in a feature, and composed screens in widgets/pages.
 
+[AppTooltip](../packages/web/src/shared/ui/app-tooltip.ui.tsx) wraps a focusable trigger and accepts React content for reusable hover/focus explanations. It uses a rounded theme surface in a portal, stays inside the viewport, and dismisses with Escape. Chat-specific copy belongs in the header, not in the shared tooltip.
+
 Preserve the visible messenger shell unless redesign is part of the task. New visible text goes through [i18n](../packages/web/src/i18n), with both English and Russian keys. Use the existing keyboard, focus and accessible-name patterns of the chosen primitive.
 
 Message HTML uses the established [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts) and sanitization. Component reuse must not bypass that boundary. UUIDs remain UUIDs throughout callbacks; do not adapt Workspace identity to obsolete numeric Zulip identifiers.

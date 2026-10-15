@@ -23,6 +23,7 @@ import {
   createWorkspaceMessageListOutgoingItem,
   createWorkspaceMessageListServerItem,
   groupWorkspaceMessagesByDayAndAuthor,
+  isWorkspaceServiceMessage,
 } from "./workspace-message-list-grouping.lib";
 import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
@@ -428,6 +429,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   passiveLoadersEnabled,
 }: WorkspaceMessageListRowProps): React.ReactElement {
   const serverMessage = message.kind === "server" ? message.message : null;
+  const service = isWorkspaceServiceMessage(message);
   const serverMessageUuid = serverMessage?.uuid;
   const messageUuid = serverMessageUuid ?? message.key;
   const messageAnchorId =
@@ -453,7 +455,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   return (
     <article
       id={messageAnchorId}
-      className={`${owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME} ${
+      className={`${service ? "relative flex w-full justify-center self-stretch" : owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME} ${
         selectionMode ? "items-end" : ""
       } ${
         rendersSelectionControl
@@ -494,7 +496,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         className={`min-w-0 ${
           selectionMode ? "flex min-w-0 flex-1" : "contents"
         } ${rendersSelectionControl ? "ml-2" : ""} ${
-          owner === "own" ? "justify-end" : "justify-start"
+          service ? "justify-center" : owner === "own" ? "justify-end" : "justify-start"
         }`}
       >
         <WorkspaceMessageBubble
@@ -565,6 +567,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   usersById,
 }: WorkspaceMessageAuthorGroupViewProps): React.ReactElement {
   const firstMessage = group.messages[0];
+  const serviceGroup = firstMessage != null && isWorkspaceServiceMessage(firstMessage);
   const groupOwner =
     group.authorUuid === currentUserUuid || firstMessage?.isOwn === true ? "own" : "peer";
 
@@ -612,12 +615,12 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
 
   return (
     <section
-      className={authorGroupClassName}
+      className={serviceGroup ? "flex w-full flex-col items-center py-1" : authorGroupClassName}
       data-author-group="true"
       data-author-uuid={group.authorUuid}
       data-message-owner={groupOwner}
     >
-      {groupOwner === "peer" ? (
+      {groupOwner === "peer" && !serviceGroup ? (
         <div
           className={
             selectionMode
@@ -645,7 +648,11 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           </button>
         </div>
       ) : null}
-      <div className={authorGroupContentClassName}>{messageRows}</div>
+      <div
+        className={serviceGroup ? "flex w-full flex-col items-center" : authorGroupContentClassName}
+      >
+        {messageRows}
+      </div>
     </section>
   );
 });

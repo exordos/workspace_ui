@@ -26,6 +26,7 @@ import {
   uploadAttachmentUnsupported,
 } from "./messenger-messages.api";
 import type { UnsupportedMessengerApiAction } from "./messenger-messages.api";
+import type { WorkspaceMessengerE2eePayloadDto } from "./messenger.types";
 
 // Message tests cover markdown CRUD and explicit unsupported backend gaps.
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -489,5 +490,124 @@ describe("messenger messages API", () => {
       before: [beforeMessage],
       after: [afterMessage],
     });
+  });
+});
+
+it.each<WorkspaceMessengerE2eePayloadDto>([
+  { kind: "e2ee", key_uuid: MESSAGE_UUID, content: "opaque-ciphertext" },
+  {
+    kind: "key_request",
+    key_uuid: MESSAGE_UUID,
+    device_id: "mac",
+    device_name: "MacBook",
+    public_key: "opaque-public-key",
+  },
+  { kind: "key_announced", key_uuid: MESSAGE_UUID },
+  {
+    kind: "key_grant",
+    key_uuid: MESSAGE_UUID,
+    request_message_uuid: MESSAGE_UUID,
+    sender_device_id: "admin",
+    recipient_device_id: "mac",
+    content: "opaque-key-grant",
+  },
+  {
+    kind: "key_reject",
+    key_uuid: MESSAGE_UUID,
+    request_message_uuid: MESSAGE_UUID,
+    sender_device_id: "admin",
+    recipient_device_id: "mac",
+  },
+])("preserves $kind through REST creation/history and realtime guards", async (payload) => {
+  const dto = { ...messageDto, payload };
+  const createFetch = createFetchMock(dto);
+  expect(
+    await createMessage(
+      { accessToken: "access-token", fetchImpl: createFetch },
+      { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload },
+    ),
+  ).toEqual(dto);
+  const [, init] = firstFetchCall(createFetch);
+  expect(init?.body).toBe(
+    JSON.stringify({ stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload }),
+  );
+  const historyFetch = createFetchMock([dto]);
+  expect(
+    await getMessages(
+      { accessToken: "access-token", fetchImpl: historyFetch },
+      { streamUuid: STREAM_UUID },
+    ),
+  ).toEqual([dto]);
+  const { isWorkspaceRealtimeEvent } = await import("./messenger.types");
+  expect(isWorkspaceRealtimeEvent({ epoch_version: 23, type: "message", message: dto })).toBe(true);
+});
+
+describe("opaque payload backend validation", () => {
+  function payload(kind: "e2ee" | "key_grant", content: string): WorkspaceMessengerE2eePayloadDto {
+    return kind === "e2ee"
+      ? { kind, key_uuid: MESSAGE_UUID, content }
+      : {
+          kind,
+          key_uuid: MESSAGE_UUID,
+          request_message_uuid: MESSAGE_UUID,
+          sender_device_id: "sender-device",
+          recipient_device_id: "recipient-device",
+          content,
+        };
+  }
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "posts %s content above the former client limit when the backend accepts it",
+    async (kind) => {
+      const wire = payload(kind, "A".repeat(213_340));
+      const fetchImpl = createFetchMock({ ...messageDto, payload: wire });
+      await expect(
+        createMessage(
+          { accessToken: "access-token", fetchImpl },
+          { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload: wire },
+        ),
+      ).resolves.toMatchObject({ payload: wire });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(firstFetchCall(fetchImpl)[1]?.body).toBe(
+        JSON.stringify({
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          payload: wire,
+        }),
+      );
+    },
+  );
+
+  it.each(["e2ee", "key_grant"] as const)(
+    "propagates the backend rejection of %s content without a local size check",
+    async (kind) => {
+      const data = { type: "ParseError", code: 400, message: "Can't parse value: payload." };
+      const fetchImpl = createFetchMock(data, 400);
+      const getAccessToken = vi.fn(() => Promise.resolve("access-token"));
+      await expect(
+        createMessage(
+          { accessToken: null, fetchImpl, getAccessToken },
+          {
+            stream_uuid: STREAM_UUID,
+            topic_uuid: TOPIC_UUID,
+            payload: payload(kind, "A".repeat(213_340)),
+          },
+        ),
+      ).rejects.toMatchObject({ status: 400, data });
+      expect(getAccessToken).toHaveBeenCalledOnce();
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("preserves the existing Markdown transport policy", async () => {
+    const wire = { kind: "markdown" as const, content: "x".repeat(40_001) };
+    const fetchImpl = createFetchMock({ ...messageDto, payload: wire });
+    await expect(
+      createMessage(
+        { accessToken: "access-token", fetchImpl },
+        { stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID, payload: wire },
+      ),
+    ).resolves.toMatchObject({ payload: wire });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });

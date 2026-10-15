@@ -19,9 +19,9 @@ import { playNotificationSound } from "~/shared/lib/notification-sound";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
 import { Icon } from "~/shared/ui/icon";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelOptionButton, RightPanelOptionList } from "./right-panel-option-list.ui";
-import { RightPanelUserMenuMenuButton } from "./right-panel-user-menu-buttons.ui";
 import {
   AUTH_IDLE_TIMEOUT_LABEL_KEYS,
   CHAT_LIST_DENSITIES,
@@ -176,7 +176,7 @@ export function RightPanelUserSettings({
       ) : null}
       <ScrollArea className="min-h-0 flex-1 pb-5 pt-3">
         <div className="space-y-0 px-2">
-          <RightPanelUserMenuMenuButton
+          <PanelMenuRow
             label={t("settings.notificationSound")}
             icon="volumeUp"
             variant="nested"
@@ -209,7 +209,7 @@ export function RightPanelUserSettings({
             </OptionSurface>
           ) : null}
 
-          <RightPanelUserMenuMenuButton
+          <PanelMenuRow
             label={t("settings.language")}
             icon="language"
             variant="nested"
@@ -242,7 +242,7 @@ export function RightPanelUserSettings({
             </OptionSurface>
           ) : null}
 
-          <RightPanelUserMenuMenuButton
+          <PanelMenuRow
             label={t("settings.authIdleTimeout")}
             icon="delete_history"
             subtitle={t("settings.authIdleTimeoutHint")}
@@ -408,7 +408,7 @@ export function RightPanelUserAppearance({
           data-testid="right-panel-appearance-sections"
         >
           <div>
-            <RightPanelUserMenuMenuButton
+            <PanelMenuRow
               ariaLabel={t("settings.themeSettings")}
               label={t("settings.themeSettings")}
               icon="draw"
@@ -440,7 +440,7 @@ export function RightPanelUserAppearance({
           </div>
 
           <div>
-            <RightPanelUserMenuMenuButton
+            <PanelMenuRow
               ariaLabel={t("settings.messengerSidebarSortMode")}
               label={t("settings.messengerSidebarSortMode")}
               icon="list_arrow"
@@ -475,7 +475,7 @@ export function RightPanelUserAppearance({
           </div>
 
           <div>
-            <RightPanelUserMenuMenuButton
+            <PanelMenuRow
               ariaLabel={t("settings.folderLayout")}
               label={t("settings.folderLayout")}
               icon="folder_copy"
@@ -508,7 +508,7 @@ export function RightPanelUserAppearance({
           </div>
 
           <div>
-            <RightPanelUserMenuMenuButton
+            <PanelMenuRow
               ariaLabel={t("settings.chatListDensity")}
               label={t("settings.chatListDensity")}
               icon="lists"

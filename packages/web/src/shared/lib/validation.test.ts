@@ -6,7 +6,7 @@
  * Invalid input could lead to XSS attacks, path traversal, or server-side exploits.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isValidUrl,
   isValidRealmUrl,
@@ -37,6 +37,38 @@ describe("isValidUrl", () => {
 
 // Realm URL validation — used when connecting to a Zulip server instance
 describe("isValidRealmUrl", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["http://localhost:23190", "http://127.0.0.1:23190", "http://[::1]:23190"])(
+    "accepts local development realm %s only in DEV",
+    (realm) => {
+      vi.stubEnv("DEV", true);
+      expect(isValidRealmUrl(realm)).toBe(true);
+
+      vi.stubEnv("DEV", false);
+      expect(isValidRealmUrl(realm)).toBe(false);
+    },
+  );
+
+  it.each([true, false])("keeps HTTPS and hostname validation when DEV=%s", (dev) => {
+    vi.stubEnv("DEV", dev);
+    expect(isValidRealmUrl("https://workspace.example.com")).toBe(true);
+    expect(isValidRealmUrl("https://chat.example.com.")).toBe(false);
+    expect(isValidRealmUrl("https://chat..example.com")).toBe(false);
+  });
+
+  it.each([
+    "http://workspace.example.com",
+    "http://localhost.example.com",
+    "http://127.0.0.2:23190",
+    "http://192.168.1.10:23190",
+    "http://localhost.:23190",
+    "http://[::2]:23190",
+  ])("rejects non-allowed HTTP realm %s in DEV", (realm) => {
+    vi.stubEnv("DEV", true);
+    expect(isValidRealmUrl(realm)).toBe(false);
+  });
+
   // Realm must be HTTPS to protect credentials in transit
   it("accepts valid realm", () => expect(isValidRealmUrl("https://zulip.example.com")).toBe(true));
   // HTTP realm would send API key over plaintext — must be rejected

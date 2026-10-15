@@ -29,6 +29,7 @@ export interface WorkspaceChatHeaderDirectPrivatePartnerView {
 export interface WorkspaceChatHeaderChannelView {
   kind: "channel";
   channelName: string;
+  color: number | null;
   topic?: string;
   hideTopic: boolean;
   participantsCount: number;
@@ -78,6 +79,7 @@ export function selectWorkspaceChatHeaderView(
     return {
       kind: "channel",
       channelName: `#${fallbackTitle}`,
+      color: null,
       hideTopic: true,
       participantsCount: 0,
       onlineCount: 0,
@@ -130,6 +132,7 @@ export function selectWorkspaceChatHeaderView(
   return {
     kind: "channel",
     channelName: `#${title}`,
+    color: stream?.color ?? null,
     topic: selection.kind === "topic" ? (topic?.name ?? conversation?.title) : undefined,
     hideTopic: selection.kind !== "topic",
     participantsCount,

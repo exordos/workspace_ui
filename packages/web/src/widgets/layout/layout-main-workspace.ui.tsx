@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
-import { resolveLayoutAccountScreenTitle } from "./layout-right-drawer-title.lib";
+import {
+  resolveLayoutChatScreenTitle,
+  resolveLayoutAccountScreenTitle,
+} from "./layout-right-drawer-title.lib";
 import {
   clampLayoutSidebarWidth,
   getLayoutSidebarWidthBounds,
@@ -20,6 +24,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   rightDrawerOpen,
   rightDrawerMode,
   rightDrawerAccountScreen,
+  rightDrawerChatScreen,
+  onChatScreenChange,
   rightDrawerCanGoBack,
   onCloseRightDrawer,
   onBackRightDrawer,
@@ -45,11 +51,23 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
     loadLayoutSidebarWidth(),
   );
   const accountDrawerTitle =
-    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ?? rightDrawerTitle;
+    resolveLayoutAccountScreenTitle(rightDrawerAccountScreen, t) ??
+    resolveLayoutChatScreenTitle(rightDrawerChatScreen?.screen, t) ??
+    rightDrawerTitle;
   const showAccountMenuRows =
     (rightDrawerMode === "user-menu" || rightDrawerMode === "settings") &&
     rightDrawerAccountScreen !== "about" &&
     rightDrawerAccountScreen !== "personal-info";
+  const infoStreamUuid =
+    workspaceRightPanelInfo?.kind === "channel" || workspaceRightPanelInfo?.kind === "directPrivate"
+      ? workspaceRightPanelInfo.streamUuid
+      : null;
+  const showEncryptedMenuRows = useMessengerStore(
+    (state) =>
+      rightDrawerMode === "info" &&
+      infoStreamUuid != null &&
+      state.streamsById[infoStreamUuid]?.encryption === true,
+  );
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -180,16 +198,20 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
             onClose={onCloseRightDrawer}
             onBack={rightDrawerCanGoBack ? onBackRightDrawer : undefined}
             title={accountDrawerTitle}
-            // Account menu rows need edge-to-edge hover; detail screens keep drawer padding.
-            contentFlush={showAccountMenuRows}
+            // Account and encrypted-chat menus own their insets; other panels keep drawer padding.
+            contentFlush={showAccountMenuRows || showEncryptedMenuRows}
           >
             <RightPanel
+              onClose={onCloseRightDrawer}
               mode={rightDrawerMode}
               title={rightPanelTitle}
               participantsCount={participantsCount}
               onlineCount={onlineCount}
               workspaceInfo={workspaceRightPanelInfo}
               accountScreen={rightDrawerAccountScreen ?? "root"}
+              chatScreen={rightDrawerChatScreen?.screen}
+              selectedLocalKeyUuid={rightDrawerChatScreen?.keyUuid}
+              onChatScreenChange={onChatScreenChange}
               onAccountScreenChange={onAccountScreenChange}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}

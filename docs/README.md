@@ -19,6 +19,10 @@ Start with [AGENTS.md](../AGENTS.md) and [Project Facts](PROJECT_FACTS.md). Read
 | [Presence and status](PRESENCE_AND_STATUS.md)     | Manual status versus measured activity                   |
 | [Power budget](POWER_BUDGET.md)                   | Background activity policy and measurement method        |
 
+## Messenger features
+
+- [Шифрованные чаты](E2EE.md): реализованные сценарии, криптографический формат, хранение ключей и ограничения.
+
 ## Operations
 
 - [Contributing](../CONTRIBUTING.md): setup, review and release workflow.

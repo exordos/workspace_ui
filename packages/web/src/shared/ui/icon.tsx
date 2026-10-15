@@ -17,6 +17,7 @@ import CelebrationIcon from "../assets/icons/celebration.svg?react";
 import ChannelsIcon from "../assets/icons/channels.svg?react";
 import ChatBubbleIcon from "../assets/icons/chat_bubble.svg?react";
 import ChatBubbleOutlineIcon from "../assets/icons/chat_bubble_outline.svg?react";
+import ChatLockIcon from "../assets/icons/chat_lock.svg?react";
 import CheckIcon from "../assets/icons/check.svg?react";
 import ChevronDownIcon from "../assets/icons/chevron-down.svg?react";
 import ChevronRightIcon from "../assets/icons/chevron-right.svg?react";
@@ -97,6 +98,7 @@ import TopicUnmuteIcon from "../assets/icons/topic_unmute.svg?react";
 import VideosIcon from "../assets/icons/videos.svg?react";
 import VisibilityIcon from "../assets/icons/visibility.svg?react";
 import VolumeUpIcon from "../assets/icons/volume_up.svg?react";
+import WarningIcon from "../assets/icons/warning.svg?react";
 import WbSunnyIcon from "../assets/icons/wb_sunny.svg?react";
 import type { IconSvgComponent } from "./icon.types";
 
@@ -170,6 +172,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   desktop_windows: DesktopWindowsIcon,
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
+  chatLock: ChatLockIcon,
   calendar: CalendarIcon,
   calendar_month: CalendarMonthIcon,
   celebration: CelebrationIcon,
@@ -181,6 +184,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   mail_outline: MailOutlineIcon,
   magic_wand: MagicWandIcon,
   info: InfoIcon,
+  warning: WarningIcon,
   // Clipboard checklist — connection diagnostics (Figma lab_profile)
   lab_profile: LabProfileIcon,
   language: LanguageIcon,

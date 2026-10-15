@@ -18,13 +18,13 @@ import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
 import { Icon } from "~/shared/ui/icon";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import {
   RightPanelConnectExternalAccountDialog,
   RightPanelExternalAccountsList,
 } from "./right-panel-external-account.integration";
-import { RightPanelUserMenuMenuButton } from "./right-panel-user-menu-buttons.ui";
 import { APP_VERSION, getInstanceLabel } from "./right-panel-user-menu-constants.lib";
 import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-dialog.ui";
 import { RightPanelUserAppearance, RightPanelUserSettings } from "./right-panel-user-settings.ui";
@@ -293,7 +293,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               )}
               {currentWorkspaceSession != null && (
                 <>
-                  <RightPanelUserMenuMenuButton
+                  <PanelMenuRow
                     label={t("externalAccounts.title")}
                     // Same chain as `links`; compact viewBox so weight matches sibling menu icons
                     icon="links_compact"
@@ -313,13 +313,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   )}
                 </>
               )}
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.personalInfo")}
                 icon="accountCircle"
                 onClick={openPersonalInfo}
                 right={<MenuChevron />}
               />
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.status")}
                 icon="sentiment_satisfied"
                 subtitle={currentStatusSubtitle}
@@ -334,7 +334,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.settings")}
             </SectionLabel>
             <div className={SECTION_LIST_CLASS}>
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.settings")}
                 icon="settings"
                 subtitle={`${t("settings.notificationSound")}, ${t("settings.language")}, ${t("settings.authIdleTimeout")}`}
@@ -342,7 +342,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 right={<MenuChevron />}
                 testId="user-menu-settings-row"
               />
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.appearance")}
                 icon="draw"
                 subtitle={`${t("settings.themeSettings")}, ${t("settings.folderLayout")}, ${t("settings.chatListDensity")}`}
@@ -358,7 +358,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.appVersion")}
             </SectionLabel>
             <div className={SECTION_LIST_CLASS}>
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.appVersion")}
                 icon="info"
                 onClick={openAbout}
@@ -370,14 +370,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 }
               />
               {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
-                <RightPanelUserMenuMenuButton
+                <PanelMenuRow
                   label={t("settings.connectionDiagnostics")}
                   icon="lab_profile"
                   onClick={openDiagnostics}
                   right={<MenuChevron />}
                 />
               )}
-              <RightPanelUserMenuMenuButton
+              <PanelMenuRow
                 label={t("settings.clearCache")}
                 icon="delete"
                 subtitle={t("settings.clearCacheHint")}
@@ -385,7 +385,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 right={<MenuChevron />}
               />
               {currentWorkspaceSession != null && (
-                <RightPanelUserMenuMenuButton
+                <PanelMenuRow
                   label={t("auth.logout")}
                   // Same glyph as `logout`; compact crop matches sibling menu optical size
                   icon="logout_compact"

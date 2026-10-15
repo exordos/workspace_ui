@@ -16,6 +16,8 @@ export interface WorkspaceMessageBubbleMenuProps {
   contextLinkUrl: string | null;
   contextImageFile: WorkspaceMessageFileReference | null;
   onOpenChange: (open: boolean) => void;
+  onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

@@ -388,32 +388,36 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 className={CREATE_CHAT_TEXT_INPUT_CLASS}
                 placeholder={t("channel.description")}
               />
-              <div className="grid gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2">
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+              <fieldset
+                disabled={vm.channelEncryption || vm.creating}
+                className="grid gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2"
+              >
+                <legend className="sr-only">{t("channel.channelSettings")}</legend>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:text-border-subtle">
                   <input
                     type="checkbox"
                     checked={vm.channelInviteOnly}
                     onChange={(e) => vm.setChannelInviteOnly(e.target.checked)}
-                    className="h-4 w-4 rounded border-border-subtle"
+                    className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed"
                   />
                   <span>{t("channel.inviteOnly")}</span>
                 </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:text-border-subtle">
                   <input
                     type="checkbox"
                     checked={vm.channelAnnounce}
                     onChange={(e) => vm.setChannelAnnounce(e.target.checked)}
-                    className="h-4 w-4 rounded border-border-subtle"
+                    className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed"
                   />
                   <span>{t("channel.announceChannel")}</span>
                 </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:text-border-subtle">
                   <input
                     type="checkbox"
                     checked={vm.channelAnnouncementOnly}
                     onChange={(e) => vm.setChannelAnnouncementOnly(e.target.checked)}
                     disabled={vm.channelAnnouncementOnlyBlocked}
-                    className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                    className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed"
                   />
                   <span>{t("channel.announcementOnly")}</span>
                 </label>
@@ -422,7 +426,23 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     {t(vm.channelAnnouncementOnlyBlockedReasonKey)}
                   </p>
                 )}
-              </div>
+              </fieldset>
+              <label className="flex w-fit cursor-pointer items-center gap-3 text-sm text-text-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+                <span className="relative shrink-0">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label={t("channel.createEncryptedChat")}
+                    checked={vm.channelEncryption}
+                    onChange={(event) => vm.setChannelEncryption(event.target.checked)}
+                    disabled={vm.creating}
+                    className="peer sr-only"
+                  />
+                  <span className="peer-focus-visible:ring-accent/40 pointer-events-none block h-[18px] w-[30px] rounded-full bg-border-subtle transition-colors peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg" />
+                  <span className="pointer-events-none absolute left-0.5 top-0.5 h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-3" />
+                </span>
+                <span aria-hidden="true">{t("channel.protectedChannelE2ee")}</span>
+              </label>
               <div className="flex min-h-0 flex-col gap-3 overflow-x-auto">
                 <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
                 <input
@@ -447,6 +467,11 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   )}
                 </div>
               </div>
+              {vm.channelCreateErrorKey != null && (
+                <p role="alert" className="text-sm text-danger">
+                  {t(vm.channelCreateErrorKey)}
+                </p>
+              )}
               {vm.channelCreateBlockedReasonKey != null && (
                 <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>
               )}

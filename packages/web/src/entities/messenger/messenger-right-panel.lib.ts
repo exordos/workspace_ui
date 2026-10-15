@@ -94,6 +94,7 @@ export interface WorkspaceRightPanelChannelInfoView {
 
 export interface WorkspaceRightPanelDirectPrivateInfoView {
   kind: "directPrivate";
+  streamUuid?: MessengerUuid | null;
   directUserUuid: MessengerUuid;
   title: string;
   avatarUrl: string | null;
@@ -128,13 +129,6 @@ export interface SelectWorkspaceRightPanelInfoViewOptions {
   sortMode?: MessengerTopicListSortMode;
   workspaceUserUuidOverride?: MessengerUuid | null;
   temporarilyNotConnectedText: string;
-}
-
-function resolveWorkspaceRightPanelMemberName(
-  user: User | undefined,
-  userUuid: MessengerUuid,
-): string {
-  return selectUserDisplayName(user, userUuid);
 }
 
 function resolveWorkspaceRightPanelDirectUserName(
@@ -251,6 +245,31 @@ export function canRemoveWorkspaceRightPanelMember(input: {
   return input.isCurrentUser || input.isCurrentUserStreamOwner;
 }
 
+export function selectWorkspaceStreamMembers(
+  bindings: readonly MessengerStreamBinding[],
+  usersById: UsersById,
+  currentUserUuid: MessengerUuid | null = null,
+  streamOwnerUuid?: MessengerUuid,
+): WorkspaceRightPanelMemberView[] {
+  const isCurrentUserStreamOwner = currentUserUuid != null && streamOwnerUuid === currentUserUuid;
+  return bindings.map((binding) => {
+    const user = usersById[binding.userUuid];
+    const isCurrentUser = binding.userUuid === currentUserUuid;
+    return {
+      bindingUuid: binding.uuid,
+      userUuid: binding.userUuid,
+      name: selectUserDisplayName(user, binding.userUuid),
+      avatarUrl: user?.avatarUrl ?? null,
+      email: user?.email?.trim() || null,
+      status: user?.status ?? null,
+      role: binding.role,
+      isOnline: resolveUserPresenceVisual(user?.status) === "active",
+      isCurrentUser,
+      canRemove: canRemoveWorkspaceRightPanelMember({ isCurrentUser, isCurrentUserStreamOwner }),
+    };
+  });
+}
+
 export function selectWorkspaceRightPanelInfoView(
   state: WorkspaceRightPanelState,
   {
@@ -301,6 +320,7 @@ export function selectWorkspaceRightPanelInfoView(
 
     return {
       kind: "directPrivate",
+      streamUuid: selection.streamUuid,
       directUserUuid: routeDirectUserUuid,
       title: resolveWorkspaceRightPanelDirectUserName(user, directFallbackTitle),
       avatarUrl: user?.avatarUrl ?? null,
@@ -318,32 +338,14 @@ export function selectWorkspaceRightPanelInfoView(
   const title = titleSeed != null && titleSeed.trim().length > 0 ? titleSeed : fallbackTitle;
   const bindingIds = state.streamBindingIdsByStreamId[selection.streamUuid] ?? [];
   const effectiveCurrentUserUuid = currentUserUuid ?? stream?.userUuid ?? null;
-  // Calculate remove permission in the projection, so UI stays thin: the panel
-  // only shows the button from ready `canRemove` and does not know role rules.
-  const isCurrentUserStreamOwner =
-    effectiveCurrentUserUuid != null && stream?.ownerUuid === effectiveCurrentUserUuid;
-  const members = bindingIds
-    .map((bindingId) => state.streamBindingsById[bindingId])
-    .filter((binding): binding is NonNullable<typeof binding> => binding != null)
-    .map((binding): WorkspaceRightPanelMemberView => {
-      const user = usersById[binding.userUuid];
-      const isCurrentUser = binding.userUuid === effectiveCurrentUserUuid;
-      return {
-        bindingUuid: binding.uuid,
-        userUuid: binding.userUuid,
-        name: resolveWorkspaceRightPanelMemberName(user, binding.userUuid),
-        avatarUrl: user?.avatarUrl ?? null,
-        email: user?.email?.trim() || null,
-        status: user?.status ?? null,
-        role: binding.role,
-        isOnline: resolveUserPresenceVisual(user?.status) === "active",
-        isCurrentUser,
-        canRemove: canRemoveWorkspaceRightPanelMember({
-          isCurrentUser,
-          isCurrentUserStreamOwner,
-        }),
-      };
-    });
+  const members = selectWorkspaceStreamMembers(
+    bindingIds
+      .map((bindingId) => state.streamBindingsById[bindingId])
+      .filter((binding): binding is NonNullable<typeof binding> => binding != null),
+    usersById,
+    effectiveCurrentUserUuid,
+    stream?.ownerUuid,
+  );
   const participantsCount = members.length;
   const onlineCount = members.reduce((total, member) => total + (member.isOnline ? 1 : 0), 0);
 
