@@ -129,6 +129,7 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { createLogger } from "~/shared/lib/logger";
 import {
   createWorkspaceFileResourceCache,
@@ -3529,6 +3530,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const hasInlineComposerNotice = Boolean(actionError) || Boolean(sendError);
   const hasDeleteComposerNotice = pendingDeleteMessageUuid != null;
   const hasSelectionComposerNotice = selectedMessageUuids.size > 0;
+  const hasKeyUpdateComposerNotice =
+    stream?.encryption === true && hasOutdatedSendingKey && dismissedKeyNotice !== keyNoticeId;
   const showStreamTopicPrompt = selection.status === "conversation" && selection.kind === "stream";
   const replyTargetReady =
     runtimeContext != null &&
@@ -3600,8 +3603,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     workspaceReplySession,
   ]);
   const composerJoinedTop =
-    !showStreamTopicPrompt &&
-    (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice);
+    hasKeyUpdateComposerNotice ||
+    (!showStreamTopicPrompt &&
+      (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice));
   const renderEncryptedComposer = useCallback(
     (controlledProps?: WorkspaceComposerControlledProps) => (
       <MessageComposer
@@ -3742,7 +3746,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           onForward={handleForwardSelectedMessages}
           onDelete={noop}
           onCancel={handleCancelMessageSelection}
-          joinedBelow={hasInlineComposerNotice || hasDeleteComposerNotice || !showStreamTopicPrompt}
+          joinedBelow={
+            hasInlineComposerNotice ||
+            hasDeleteComposerNotice ||
+            hasKeyUpdateComposerNotice ||
+            !showStreamTopicPrompt
+          }
           omitBottomBorder={!hasInlineComposerNotice && !hasDeleteComposerNotice}
         />
         <ChatPageInlineAlerts
@@ -3753,7 +3762,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           onDismissActionError={() => setActionError(null)}
           onDismissSendError={() => setSendError(null)}
           joinedAbove={hasSelectionComposerNotice}
-          joinedBelow={hasDeleteComposerNotice || !showStreamTopicPrompt}
+          joinedBelow={
+            hasDeleteComposerNotice || hasKeyUpdateComposerNotice || !showStreamTopicPrompt
+          }
         />
         {pendingDeleteMessageUuid != null ? (
           <ChatPageDeleteConfirmBar
@@ -3761,52 +3772,60 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onConfirm={handleConfirmDeleteMessage}
             onCancel={handleCancelDeleteMessage}
             joinedAbove={hasSelectionComposerNotice || hasInlineComposerNotice}
-            joinedBelow={!showStreamTopicPrompt}
+            joinedBelow={hasKeyUpdateComposerNotice || !showStreamTopicPrompt}
           />
         ) : null}
-        {stream?.encryption === true &&
-        hasOutdatedSendingKey &&
-        dismissedKeyNotice !== keyNoticeId ? (
-          <div className="bg-accent/10 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 pb-2.5 pt-3 text-accent">
-            <p role="status" className="text-sm">
-              {t("e2ee.keyUpdatedNotice")}
-            </p>
-            <div className="flex items-center gap-2">
-              {encryptedChat.session?.getRights().canRequest ? (
+        {hasKeyUpdateComposerNotice ? (
+          <div
+            className={chatBottomNoticeBarClassName({
+              joinedAbove:
+                hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice,
+              joinedBelow: true,
+              shellOnly: true,
+              className: "border-b-0",
+            })}
+          >
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-3 pt-3 text-accent">
+              <p role="status" className="text-sm">
+                {t("e2ee.keyUpdatedNotice")}
+              </p>
+              <div className="flex items-center gap-2">
+                {encryptedChat.session?.getRights().canRequest ? (
+                  <Button
+                    size="sm"
+                    className="font-normal!"
+                    disabled={
+                      encryptedChat.loading ||
+                      encryptedChat.state.pending ||
+                      encryptedChat.state.requestStatus === "requested"
+                    }
+                    onClick={() => {
+                      void encryptedChat.requestKey();
+                    }}
+                  >
+                    {t(
+                      encryptedChat.state.requestStatus === "requested"
+                        ? "e2ee.statusWaiting"
+                        : "e2ee.requestUpdatedKey",
+                    )}
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
-                  className="font-normal!"
-                  disabled={
-                    encryptedChat.loading ||
-                    encryptedChat.state.pending ||
-                    encryptedChat.state.requestStatus === "requested"
-                  }
-                  onClick={() => {
-                    void encryptedChat.requestKey();
-                  }}
+                  appearance="ghost"
+                  className="h-6 w-6 p-0"
+                  aria-label={t("common.close")}
+                  onClick={() => setDismissedKeyNotice(keyNoticeId)}
                 >
-                  {t(
-                    encryptedChat.state.requestStatus === "requested"
-                      ? "e2ee.statusWaiting"
-                      : "e2ee.requestUpdatedKey",
-                  )}
+                  <Icon name="close" size={16} />
                 </Button>
+              </div>
+              {encryptedChat.error ? (
+                <p role="alert" className="w-full text-sm text-danger">
+                  {encryptedChat.error}
+                </p>
               ) : null}
-              <Button
-                size="sm"
-                appearance="ghost"
-                className="h-6 w-6 p-0"
-                aria-label={t("common.close")}
-                onClick={() => setDismissedKeyNotice(keyNoticeId)}
-              >
-                <Icon name="close" size={16} />
-              </Button>
             </div>
-            {encryptedChat.error ? (
-              <p role="alert" className="w-full text-sm text-danger">
-                {encryptedChat.error}
-              </p>
-            ) : null}
           </div>
         ) : null}
         {stream?.encryption === true && encryptedChatAvailable ? (

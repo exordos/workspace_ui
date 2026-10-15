@@ -1284,17 +1284,23 @@ describe("ChatPage Workspace route", () => {
     });
     expect(screen.getByRole("textbox")).toBe(textbox);
     expect(textbox).toHaveValue("Keep this draft through rotation");
-    expect(screen.getByText(t("e2ee.keyUpdatedNotice"))).toBeInTheDocument();
+    const notice = screen.getByText(t("e2ee.keyUpdatedNotice")).parentElement!;
+    expect(notice.parentElement).toHaveClass("bg-composer-outer", "rounded-t-xl", "border-b-0");
+    const composer = screen.getByRole("form", { name: t("a11y.messageComposer") });
+    expect(composer).toHaveClass("bg-composer-outer", "rounded-b-xl");
+    expect(composer).not.toHaveClass("border-t", "rounded-xl");
     await act(() => {
       fireEvent.click(screen.getByRole("button", { name: t("e2ee.requestUpdatedKey") }));
       return Promise.resolve();
     });
     expect(requestKey).toHaveBeenCalledOnce();
+    expect(within(notice).getByRole("button", { name: t("e2ee.statusWaiting") })).toBeDisabled();
     expect(textbox).not.toBeDisabled();
     expect(screen.getByRole("button", { name: t("chat.sendPlaceholder") })).not.toBeDisabled();
-    const notice = screen.getByText(t("e2ee.keyUpdatedNotice")).parentElement!;
     fireEvent.click(within(notice).getByRole("button", { name: t("common.close") }));
     expect(screen.queryByText(t("e2ee.keyUpdatedNotice"))).not.toBeInTheDocument();
+    expect(composer).toHaveClass("rounded-xl", "border-t");
+    expect(screen.getByRole("textbox")).toBe(textbox);
     expect(textbox).toHaveValue("Keep this draft through rotation");
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
     await waitFor(() =>
