@@ -39,6 +39,7 @@ export interface EncryptedChatMemberView {
 /** Display data and capabilities are resolved by the owning chat controller. */
 export interface EncryptedChatInfoProps {
   readonly title: string;
+  readonly color?: number | null;
   readonly participantsCount: number;
   readonly onlineCount: number;
   readonly keyInfo: EncryptedChatKeyInfo | null;

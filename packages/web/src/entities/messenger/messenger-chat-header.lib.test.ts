@@ -159,11 +159,34 @@ describe("selectWorkspaceChatHeaderView", () => {
     expect(view).toEqual({
       kind: "channel",
       channelName: "#general",
+      color: null,
       hideTopic: true,
       participantsCount: 2,
       onlineCount: 1,
       topic: undefined,
     });
+  });
+
+  it("uses the stream color for a topic header instead of its topic color", () => {
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(
+        OWNER_KEY,
+        createBootstrapPayload({ streams: [createStream({ color: 0x2563eb })] }),
+      );
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "topic",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Unavailable",
+    });
+    expect(view).toMatchObject({ kind: "channel", color: 0x2563eb });
   });
 
   it("projects topic title while keeping stream binding counts", () => {
@@ -183,6 +206,7 @@ describe("selectWorkspaceChatHeaderView", () => {
     expect(view).toEqual({
       kind: "channel",
       channelName: "#general",
+      color: null,
       hideTopic: false,
       participantsCount: 2,
       onlineCount: 1,
@@ -312,6 +336,7 @@ describe("selectWorkspaceChatHeaderView", () => {
     expect(view).toEqual({
       kind: "channel",
       channelName: "#private-room",
+      color: null,
       hideTopic: true,
       participantsCount: 0,
       onlineCount: 0,
@@ -336,6 +361,7 @@ describe("selectWorkspaceChatHeaderView", () => {
     expect(view).toEqual({
       kind: "channel",
       channelName: "#general",
+      color: null,
       hideTopic: true,
       participantsCount: 2,
       onlineCount: 1,

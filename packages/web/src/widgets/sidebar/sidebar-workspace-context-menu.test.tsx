@@ -237,6 +237,13 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
   });
 
+  it("keeps the stream color when a lock replaces the channel placeholder", () => {
+    renderWorkspaceSidebar([createStream({ color: 0x2563eb, encryption: true })]);
+    expect(screen.getByRole("img", { name: "Protected chat" }).parentElement).toHaveStyle({
+      backgroundColor: "#2563eb",
+    });
+  });
+
   it("hides non-muted channel and inherited topic notification modes", () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
 

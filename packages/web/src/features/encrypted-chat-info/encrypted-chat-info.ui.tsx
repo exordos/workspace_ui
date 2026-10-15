@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { t } from "~/i18n/i18n";
+import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
@@ -16,11 +17,6 @@ import type {
 } from "./encrypted-chat-info.types";
 
 const ICON_BUTTON_CLASS = "h-6 w-6 shrink-0 rounded p-0 text-accent";
-export const EncryptedChatAvatar = () => (
-  <Avatar size="xl" className="border-0 bg-accent">
-    <Icon name="chatLock" size={40} className="text-on-accent" />
-  </Avatar>
-);
 interface KeyRequestRowProps {
   readonly request: EncryptedChatKeyRequestView;
   readonly actionsPending: boolean;
@@ -570,7 +566,14 @@ export const EncryptedChatInfo = (props: EncryptedChatInfoProps) => {
         {screen === "info" ? (
           <>
             <div className="flex items-center gap-4 px-4">
-              <EncryptedChatAvatar />
+              <Avatar
+                size="xl"
+                style={{ backgroundColor: resolveAvatarBackgroundColor(props.color) }}
+              >
+                <span role="img" aria-label={t("e2ee.protectedChat")}>
+                  <Icon name="chatLock" size={40} className="text-text-primary" />
+                </span>
+              </Avatar>
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <p className="truncate text-xl font-medium leading-5">{title}</p>
                 <p className="text-base leading-4 text-accent">{t("e2ee.protectedChat")}</p>

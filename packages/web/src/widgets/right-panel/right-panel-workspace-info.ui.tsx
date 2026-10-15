@@ -40,6 +40,7 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import { TopicSummarySettingsDialog } from "~/features/topic-summary-settings/topic-summary-settings-dialog.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   AppDialogShell,
@@ -478,13 +479,6 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const summaryRuntimeKey =
     runtimeContext == null ? null : `${summaryOwnerKey}:${runtimeContext.runtimeGeneration}`;
   const notificationMode = storeNotificationMode ?? info.notificationMode;
-  const channelAvatarStyle = useMemo(
-    () =>
-      info.color == null
-        ? undefined
-        : { backgroundColor: `#${info.color.toString(16).padStart(6, "0")}` },
-    [info.color],
-  );
   const notificationLevel = useMemo<WorkspaceStreamNotificationLevel | null>(
     () =>
       notificationMode == null ? null : mapWorkspaceStreamNotificationModeToLevel(notificationMode),
@@ -779,11 +773,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
       {/* Drawer already has px-2 (8px); header adds another 8px to match Figma title/avatar inset. */}
       <header className="flex-shrink-0 border-b border-border-subtle px-2 pb-3 pt-1">
         <div className="flex items-center gap-4">
-          <Avatar
-            size="lg"
-            className="bg-bg-elevated text-text-secondary"
-            style={channelAvatarStyle}
-          >
+          <Avatar size="lg" style={{ backgroundColor: resolveAvatarBackgroundColor(info.color) }}>
             {info.title.slice(0, 1)}
           </Avatar>
           <div className="min-w-0 flex-1">

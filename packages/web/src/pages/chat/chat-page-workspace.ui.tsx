@@ -437,6 +437,7 @@ function WorkspaceConversationHeader({
       {...commonHeaderProps}
       encrypted={encrypted}
       channelName={headerView.channelName}
+      color={headerView.color}
       topic={headerView.topic}
       hideTopic={headerView.hideTopic}
       participantsCount={headerView.participantsCount}

@@ -69,6 +69,18 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("encrypted chat sidebar actions", () => {
+  it("uses the stream color for the protected chat avatar", () => {
+    const { info } = fixture();
+    mocks.info.mockReturnValue({
+      ...info,
+      projection: { ...info.projection, stream: { ...info.projection.stream, color: 0x2563eb } },
+    });
+    render(<EncryptedChatInfoConnected streamUuid="stream" />);
+    expect(screen.getByRole("img", { name: "Protected chat" }).parentElement).toHaveStyle({
+      backgroundColor: "#2563eb",
+    });
+  });
+
   it.each(["info", "key"] as const)(
     "hides key rotation for a participant on the %s screen while keeping the current key",
     async (activeScreen) => {

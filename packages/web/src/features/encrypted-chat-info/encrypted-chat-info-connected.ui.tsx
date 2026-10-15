@@ -287,6 +287,7 @@ export function EncryptedChatInfoConnected({
     <>
       <EncryptedChatInfo
         title={stream.name}
+        color={stream.color}
         screen={screen}
         description={stream.description}
         channelTypeLabel={t(stream.isPrivate ? "channel.typeClosedProtected" : "channel.typeOpen")}

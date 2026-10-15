@@ -5,6 +5,19 @@ import { renderWithProviders } from "~/test/render";
 import { ChatChannelHeader } from "./chat-header-channel.ui";
 
 describe("ChatChannelHeader", () => {
+  it("keeps the encrypted header avatar in sync with the stream color", () => {
+    const { container, rerender } = renderWithProviders(
+      <ChatChannelHeader channelName="#engineering" encrypted color={0x2563eb} />,
+    );
+    const avatar = () => container.querySelector('[aria-hidden="true"] .rounded-full');
+    expect(avatar()).toHaveStyle({ backgroundColor: "#2563eb" });
+    rerender(<ChatChannelHeader channelName="#engineering" encrypted color={0} />);
+    expect(avatar()).toHaveStyle({ backgroundColor: "#000000" });
+    rerender(<ChatChannelHeader channelName="#engineering" encrypted color={null} />);
+    expect(avatar()).toHaveClass("bg-bg");
+    expect(avatar()).not.toHaveStyle({ backgroundColor: "#000000" });
+  });
+
   it("shows encrypted chat information on the protected label without a separate header action", async () => {
     const togglePanel = vi.fn();
     renderWithProviders(

@@ -1,6 +1,8 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
+import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { AppTooltip } from "~/shared/ui/app-tooltip.ui";
+import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeaderShell } from "./chat-header-shell.ui";
 import type { ChatChannelHeaderProps } from "./chat-header.types";
@@ -12,6 +14,7 @@ const TITLE_ACTION_BUTTON_CLASS =
 /** Channel or topic header with member counts and actions. */
 export const ChatChannelHeader: React.FC<ChatChannelHeaderProps> = ({
   channelName,
+  color,
   encrypted = false,
   topic = t("chat.generalChat"),
   systemTopic = false,
@@ -49,11 +52,10 @@ export const ChatChannelHeader: React.FC<ChatChannelHeaderProps> = ({
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {encrypted ? (
-          <span
-            aria-hidden="true"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-text-secondary"
-          >
-            <Icon name="chatLock" size={20} className="text-bg-elevated" />
+          <span aria-hidden="true">
+            <Avatar size="sm" style={{ backgroundColor: resolveAvatarBackgroundColor(color) }}>
+              <Icon name="chatLock" size={20} className="text-text-primary" />
+            </Avatar>
           </span>
         ) : null}
         <div className="relative flex min-w-0 flex-1 flex-col rounded-lg text-left">
