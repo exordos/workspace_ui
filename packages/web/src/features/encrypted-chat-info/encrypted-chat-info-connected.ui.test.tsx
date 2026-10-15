@@ -39,7 +39,7 @@ function fixture() {
       deviceId: "device",
       streamUuid: "stream",
     },
-    getRights: () => ({ canRotate: true, canRequest: true }),
+    getRights: () => ({ canRotate: true, canRequest: true, canGrant: true, canReject: true }),
     subscribe: vi.fn((_listener: () => void) => () => undefined),
     listLocalKeys: vi
       .fn<() => Promise<{ keyUuid: string; receivedAt: number | null }[]>>()
@@ -49,7 +49,7 @@ function fixture() {
       { request: { uuid: "done" }, status: "granted" },
       { request: { uuid: "rejected" }, status: "rejected" },
     ],
-    canGrantKey: (uuid: string) => uuid === "old",
+    canGrantKey: (uuid: string): boolean => uuid === "old",
     canRejectKey: (uuid: string) => uuid === "old",
   };
   const crypto = {
@@ -106,7 +106,12 @@ describe("encrypted chat sidebar actions", () => {
     "hides key rotation for a participant on the %s screen while keeping the current key",
     async (activeScreen) => {
       const { crypto, info } = fixture();
-      crypto.session.getRights = () => ({ canRotate: false, canRequest: true });
+      crypto.session.getRights = () => ({
+        canRotate: false,
+        canRequest: true,
+        canGrant: false,
+        canReject: false,
+      });
       await act(async () => {
         render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
         await Promise.resolve();
@@ -295,6 +300,50 @@ describe("encrypted chat sidebar actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Grant all" }));
     expect(crypto.grantAllKeys).toHaveBeenCalledOnce();
   });
+  it.each(["info", "key"] as const)(
+    "hides requests and their history after management rights are revoked on the %s screen",
+    async (activeScreen) => {
+      const { crypto } = fixture();
+      const view = render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+      expect(screen.getByText("Showing loaded history.")).toBeInTheDocument();
+      crypto.session.getRights = () => ({
+        canRotate: false,
+        canRequest: true,
+        canGrant: false,
+        canReject: false,
+      });
+      await act(async () => {
+        view.rerender(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      expect(screen.queryByText("Showing loaded history.")).toBeNull();
+      expect(screen.queryByText(/Security key requests|Incoming requests/)).toBeNull();
+      expect(screen.queryByRole("button", { name: /Granted keys|Rejected requests/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Grant all" })).toBeNull();
+      expect(screen.queryByText("Old epoch device")).toBeNull();
+      expect(screen.getByText("current")).toBeInTheDocument();
+      if (activeScreen === "key")
+        expect(screen.getByRole("button", { name: "Request current key" })).toBeEnabled();
+      expect(crypto.grantKey).not.toHaveBeenCalled();
+      expect(crypto.rejectKey).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["info", "key"] as const)(
+    "shows requests to a manager without the requested local key on the %s screen",
+    async (activeScreen) => {
+      const { crypto } = fixture();
+      crypto.session.canGrantKey = () => false;
+      await act(async () => {
+        render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      if (activeScreen === "key")
+        fireEvent.click(screen.getByRole("button", { name: "Incoming requests (1)" }));
+      expect(screen.getByRole("button", { name: "Grant access to Old epoch" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Grant all" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Reject request from Old epoch" })).toBeEnabled();
+    },
+  );
   it("reports settings/key navigation to its drawer owner and renders only the active body", async () => {
     fixture();
     const navigate = vi.fn();
@@ -423,7 +472,12 @@ describe("local encrypted chat keys", () => {
     crypto.session.listLocalKeys.mockResolvedValue([
       { keyUuid: oldKey, receivedAt: Date.parse("2026-10-08T08:00:00Z") },
     ]);
-    crypto.session.getRights = () => ({ canRotate: false, canRequest: true });
+    crypto.session.getRights = () => ({
+      canRotate: false,
+      canRequest: true,
+      canGrant: false,
+      canReject: false,
+    });
     const openKey = vi.fn();
     render(
       <EncryptedChatInfoConnected streamUuid="stream" screen="key" onOpenLocalKey={openKey} />,

@@ -283,8 +283,10 @@ export function EncryptedChatInfoConnected({
     );
   const { stream, keyCreatedAt, requests: loadedRequests, members, onlineCount } = projection;
   const currentKey = stream.currentEncryptionKey;
+  const rights = crypto.session?.getRights();
   const outcomes = crypto.session?.getKeyRequestOutcomes() ?? [];
   const requestsFor = (status: "pending" | "granted" | "rejected") => {
+    if (rights?.canGrant !== true && rights?.canReject !== true) return [];
     const ids = new Set(
       outcomes
         .filter((outcome) => outcome.status === status)
