@@ -1,9 +1,8 @@
 name: Exordos element
 
 on:
-  pull_request:
   push:
-    branches:
+    branches-ignore:
       - master
     tags:
       - "*"
