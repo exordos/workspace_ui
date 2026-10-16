@@ -2191,6 +2191,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       pendingEncryptedReplySourceRef.current = null;
       const isUiActionCurrent = captureWorkspaceChatUiAction();
       const payload = message.payload;
+      encryptedEditSourceRef.current = null;
+      setRestoredWorkspaceReplySession(null);
+      setComposerEditSession(null);
+      setComposerEditMessageUuid(null);
+      setComposerEditAttachments([]);
       encryptedEditSourceRef.current = payload.kind === "e2ee" ? message : null;
       const isCurrent = () => {
         const latestRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
