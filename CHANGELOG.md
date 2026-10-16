@@ -6,6 +6,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-10-17
+
+### Changed
+
+- Ordinary and encrypted sends now share the retryable outbox. Failed encrypted
+  messages retain their envelope and editor state for retry without blocking new
+  typing.
+- Encrypted conversations now expose the same reactions, replies, copy action,
+  quick actions, message editing, sidebar previews, and call controls as ordinary
+  conversations where the local key is available.
+- Encrypted key requests are distinguished by device, and member selections are
+  preserved while searching in participant pickers.
+
+### Fixed
+
+- Empty streams are ordered consistently by creation time instead of appearing
+  in an unstable order.
+- Quick actions stay reachable around narrow message bubbles.
+- Switching from an open encrypted edit to a message that cannot be decrypted
+  now clears the previous plaintext editor instead of leaving it open and no
+  longer tracked by key-removal cleanup.
+
+### Requirements and compatibility
+
+- Requirements are unchanged from `0.9.0`: Exordos Core `0.2.3` or newer.
+- Encrypted chats continue to require Workspace backend `1.3.0` or newer.
+- The messenger cache remains at schema version 7. No client data migration is
+  required, and ordinary chats remain compatible with `0.9.0`.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.1`.
+- No manual migration is required.
+
 ## [0.9.0] — 2026-10-15
 
 ### Added

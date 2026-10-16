@@ -1198,6 +1198,43 @@ describe("ChatPage Workspace route", () => {
     expect(screen.getByRole("textbox")).not.toHaveValue("Historical secret");
   });
 
+  it("clears the prior encrypted editor when switching to an undecryptable message", async () => {
+    const { owner, message } = seedEncryptedReplyComposer("ready", true);
+    const nextMessage: MessengerMessage = {
+      ...message,
+      uuid: SECOND_MESSAGE_UUID,
+      payload: { kind: "e2ee", keyUuid: "next-key", content: "next-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message, nextMessage]);
+    replaceTestConversationWindow(`stream:${STREAM_UUID}`, [message, nextMessage]);
+    vi.mocked(decryptRealChatMessage).mockImplementation((_runtime, candidate) =>
+      Promise.resolve(candidate.uuid === message.uuid ? "Historical secret" : null),
+    );
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Historical secret"));
+
+    act(() => captured.messageListProps?.onEditMessage?.(nextMessage.uuid));
+    await screen.findByText(t("message.editUnavailable"));
+    act(() =>
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "reply-key",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox")).not.toHaveValue("Historical secret");
+  });
+
   it.each(["topic", "stream"])(
     "replies to decrypted messages from a %s with an encrypted reference and no durable plaintext draft",
     async (kind) => {
