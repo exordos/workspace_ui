@@ -1,5 +1,5 @@
 /**
- * Bridge from profile / mention UI to ChatPage for starting a 1:1 Jitsi call.
+ * Bridge from profile / mention and sidebar UI to ChatPage for starting a Jitsi call.
  * ChatPage watches pending partner uuid and starts the call once the DM route is active.
  */
 import { create } from "zustand";
@@ -7,7 +7,16 @@ import { logStoreAction } from "~/shared/lib/logger";
 
 export type InvokeDmCallFromProfileHandler = (partnerUserUuid: string) => void;
 
+export interface ActiveChatCall {
+  readonly ownerKey: string;
+  readonly runtimeGeneration: number;
+  readonly streamUuid: string;
+  readonly invoke: () => void;
+}
+
 interface ChatDmCallBridgeState {
+  activeChatCall: ActiveChatCall | null;
+  setActiveChatCall: (call: ActiveChatCall | null) => void;
   pendingDmCallPartnerUserUuid: string | null;
   invokeDmCallFromProfileHandler: InvokeDmCallFromProfileHandler | null;
 
@@ -18,6 +27,8 @@ interface ChatDmCallBridgeState {
 }
 
 export const useChatDmCallBridgeStore = create<ChatDmCallBridgeState>((set, get) => ({
+  activeChatCall: null,
+  setActiveChatCall: (activeChatCall) => set({ activeChatCall }),
   pendingDmCallPartnerUserUuid: null,
   invokeDmCallFromProfileHandler: null,
 

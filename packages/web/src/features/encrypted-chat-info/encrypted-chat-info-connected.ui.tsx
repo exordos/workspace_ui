@@ -225,6 +225,7 @@ function currentKeyInfo(
 export function EncryptedChatInfoConnected({
   streamUuid,
   onClose,
+  onCall,
   renderAvatar,
   screen = "info",
   onScreenChange,
@@ -247,6 +248,7 @@ export function EncryptedChatInfoConnected({
   readonly removingMemberIds?: EncryptedChatInfoProps["removingMemberIds"];
   readonly removeMemberError?: EncryptedChatInfoProps["removeMemberError"];
   readonly onClose?: () => void;
+  readonly onCall?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
   const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid);
@@ -369,6 +371,7 @@ export function EncryptedChatInfoConnected({
         removeMemberError={removeMemberError}
         renderAvatar={renderAvatar}
         onClose={onClose}
+        onCall={onCall}
         onCopyKey={currentKey == null ? undefined : onCopyKey}
       />
       {localActions.dialog}

@@ -457,6 +457,7 @@ function WorkspaceConversationHeader({
       participantsCount={headerView.participantsCount}
       onlineCount={headerView.onlineCount}
       onOpenRightPanel={onOpenRightPanel}
+      onCallClick={onCallClick}
     />
   );
 }
@@ -1978,6 +1979,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     if (pendingWorkspaceJitsiHeaderCallRef.current) {
       return;
     }
+    const cryptoSession = stream?.encryption === true ? encryptedChat.session : null;
+    if (
+      stream?.encryption === true &&
+      (cryptoSession == null || encryptedChat.sendKeyUuid == null)
+    ) {
+      setSendError(t("e2ee.cryptoUnavailable"));
+      return;
+    }
 
     const meetingUrl = buildWorkspaceJitsiMeetingUrl({
       meetUrl: workspaceMeetUrl,
@@ -2004,15 +2013,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     pendingWorkspaceJitsiHeaderCallRef.current = true;
     const isUiActionCurrent = captureWorkspaceChatUiAction();
     void runMessengerRuntimeMutation(runtimeContext, (signal) =>
-      sendMessengerMessage({
-        runtimeContext,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        signal,
-        streamUuid: target.streamUuid,
-        topicUuid: target.topicUuid,
-        markdown: meetingUrl,
-        includeStreamConversation: target.includeStreamConversation,
-      }),
+      cryptoSession != null
+        ? cryptoSession.send({
+            text: meetingUrl,
+            topicUuid: target.topicUuid,
+            includeStreamConversation: target.includeStreamConversation,
+          })
+        : sendMessengerMessage({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+            streamUuid: target.streamUuid,
+            topicUuid: target.topicUuid,
+            markdown: meetingUrl,
+            includeStreamConversation: target.includeStreamConversation,
+          }),
     )
       .then((result) => {
         if (!isUiActionCurrent()) return;
@@ -2052,6 +2067,46 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     runtimeContext,
     usersById,
     workspaceMeetUrl,
+    stream?.encryption,
+    encryptedChat.session,
+    encryptedChat.sendKeyUuid,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      runtimeContext == null ||
+      ownerKey == null ||
+      workspaceMeetUrl == null ||
+      isFavoritesConversation ||
+      selection.status !== "conversation" ||
+      (stream?.encryption === true && !encryptedChatAvailable)
+    )
+      return;
+    const isCurrent = captureWorkspaceChatUiAction();
+    const call = {
+      ownerKey,
+      runtimeGeneration: runtimeContext.runtimeGeneration,
+      streamUuid: selection.streamUuid,
+      invoke: () => {
+        if (isCurrent()) handleStartWorkspaceHeaderCall();
+      },
+    };
+    useChatDmCallBridgeStore.getState().setActiveChatCall(call);
+    return () => {
+      if (useChatDmCallBridgeStore.getState().activeChatCall === call) {
+        useChatDmCallBridgeStore.getState().setActiveChatCall(null);
+      }
+    };
+  }, [
+    runtimeContext,
+    ownerKey,
+    workspaceMeetUrl,
+    isFavoritesConversation,
+    selection,
+    stream?.encryption,
+    encryptedChatAvailable,
+    captureWorkspaceChatUiAction,
+    handleStartWorkspaceHeaderCall,
   ]);
 
   // Звонок из чужого профиля: pending uuid → ждём активный DM → стартуем как из хедера.

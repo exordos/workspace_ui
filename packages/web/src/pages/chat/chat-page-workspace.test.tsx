@@ -26,6 +26,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
@@ -4103,6 +4104,106 @@ describe("ChatPage Workspace route", () => {
     });
 
     expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
+  });
+
+  it.each(["stream", "topic"])(
+    "starts a Jitsi call from the ordinary %s header",
+    async (routeKind) => {
+      const ownerKey = workspaceRuntimeOwnerKey(createSession());
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+        ...bootstrap,
+        topics: bootstrap.topics.map((topic) => ({ ...topic, isDefault: true })),
+      });
+      useWorkspaceJitsiSettingsStore
+        .getState()
+        .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com");
+      const topicPath = routeKind === "topic" ? `/topic/${TOPIC_UUID}` : "";
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}${topicPath}`,
+      );
+      await waitFor(() =>
+        expect(captured.channelHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+      );
+      act(() => captured.channelHeaderProps?.onCallClick?.());
+      await waitFor(() =>
+        expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            streamUuid: STREAM_UUID,
+            topicUuid: TOPIC_UUID,
+            includeStreamConversation: routeKind === "stream",
+          }),
+        ),
+      );
+      await waitFor(() => expect(useJitsiCallStore.getState().activeCall).not.toBeNull());
+    },
+  );
+
+  it.each(["header", "sidebar"])(
+    "starts the existing Jitsi flow from the encrypted %s and encrypts the invite",
+    async (entry) => {
+      const { owner, send } = seedEncryptedReplyComposer();
+      const pending = createDeferred<{ status: "applied" }>();
+      send.mockReturnValueOnce(pending.promise);
+      useWorkspaceJitsiSettingsStore
+        .getState()
+        .setWorkspaceMeetUrl(owner, "https://meet.workspace.example.com");
+      const view = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      const sidebarCall = useChatDmCallBridgeStore.getState().activeChatCall;
+      expect(sidebarCall).toMatchObject({ ownerKey: owner, streamUuid: STREAM_UUID });
+      act(() => {
+        if (entry === "header") captured.channelHeaderProps?.onCallClick?.();
+        else sidebarCall?.invoke();
+        // Both surfaces share the same in-flight guard.
+        sidebarCall?.invoke();
+      });
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("https://meet.workspace.example.com/workspace-"),
+          topicUuid: TOPIC_UUID,
+          includeStreamConversation: false,
+        }),
+      );
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+      expect(useJitsiCallStore.getState().activeCall).toBeNull();
+      await act(async () => {
+        pending.resolve({ status: "applied" });
+        await pending.promise;
+      });
+      await waitFor(() =>
+        expect(useJitsiCallStore.getState().activeCall?.meetingUrl).toBe(
+          send.mock.calls[0]?.[0].text,
+        ),
+      );
+      view.unmount();
+      expect(useChatDmCallBridgeStore.getState().activeChatCall).toBeNull();
+      send.mockClear();
+      act(() => sidebarCall?.invoke());
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks encrypted call invites without a local key", async () => {
+    const { owner, send } = seedEncryptedReplyComposer("missing");
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(owner, "https://meet.workspace.example.com");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.channelHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
+    act(() => captured.channelHeaderProps?.onCallClick?.());
+    expect(useChatDmCallBridgeStore.getState().activeChatCall).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(screen.getByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
   });
 
   it("sends and opens a Workspace Jitsi call from the direct private header", async () => {

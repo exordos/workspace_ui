@@ -8,6 +8,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import * as chatCryptoSessionHook from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
@@ -284,7 +285,46 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.queryByText("Encrypted team")).not.toBeInTheDocument();
   });
 
+  it("connects the encrypted sidebar call only to the active chat and runtime", async () => {
+    seedWorkspaceAuth();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().upsertStream(
+      OWNER_KEY,
+      createStream({
+        projectId: RUNTIME_CONTEXT.projectId,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "actual-key" },
+      }),
+    );
+    const invoke = vi.fn();
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const call = {
+      ownerKey: OWNER_KEY,
+      runtimeGeneration: runtime.runtimeGeneration,
+      streamUuid: STREAM_UUID,
+      invoke,
+    };
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
+    const button = screen.getByRole("button", { name: t("call.call") });
+    expect(button).toBeDisabled();
+    act(() => useChatDmCallBridgeStore.getState().setActiveChatCall(call));
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(invoke).toHaveBeenCalledOnce();
+    for (const mismatch of [
+      { ownerKey: "other-owner" },
+      { runtimeGeneration: runtime.runtimeGeneration + 1 },
+      { streamUuid: SECOND_STREAM_UUID },
+    ]) {
+      act(() => useChatDmCallBridgeStore.getState().setActiveChatCall({ ...call, ...mismatch }));
+      expect(button).toBeDisabled();
+    }
+  });
+
   afterEach(() => {
+    useChatDmCallBridgeStore.getState().setActiveChatCall(null);
     vi.restoreAllMocks();
     writeTextMock.mockReset();
     runWorkspaceStreamNotificationUpdateMock.mockReset();

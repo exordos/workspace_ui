@@ -34,6 +34,7 @@ import {
 } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { EncryptedChatInfoConnected } from "~/features/encrypted-chat-info/encrypted-chat-info-connected.ui";
 import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
@@ -825,6 +826,22 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   const encrypted = useMessengerStore(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
+  const ownerKey = useWorkspaceAuthStore((state) => {
+    const runtime = selectCurrentWorkspaceRuntimeContext(state);
+    return runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
+  });
+  const runtimeGeneration = useWorkspaceAuthStore(
+    (state) => selectCurrentWorkspaceRuntimeContext(state)?.runtimeGeneration,
+  );
+  const onCall = useChatDmCallBridgeStore((state) => {
+    const call = state.activeChatCall;
+    if (call == null) return undefined;
+    return call.ownerKey === ownerKey &&
+      call.runtimeGeneration === runtimeGeneration &&
+      call.streamUuid === streamUuid
+      ? call.invoke
+      : undefined;
+  });
   if (encrypted && streamUuid != null) {
     const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
       <EncryptedChatInfoConnected
@@ -838,6 +855,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
         }
         onScreenChange={onChatScreenChange}
         onClose={onClose}
+        onCall={onCall}
         onAddMember={actions?.onAddMember}
         onRemoveMember={actions?.onRemoveMember}
         removableMemberIds={actions?.removableMemberIds}
