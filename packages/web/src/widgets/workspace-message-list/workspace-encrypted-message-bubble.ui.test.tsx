@@ -639,6 +639,98 @@ describe("real encrypted message presentation", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each(["author", "observer"])(
+    "offers quick reply and reactions for decrypted messages viewed by %s, then removes them when the key disappears",
+    async (currentUserUuid) => {
+      const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
+        "Readable encrypted quick actions",
+      );
+      if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+      const reply = vi.fn();
+      const react = vi.fn();
+      const requestKey = vi.fn();
+      const { container } = render(
+        <WorkspaceEncryptedMessageBubble
+          message={stored}
+          currentUserUuid={currentUserUuid}
+          isFirstInGroup
+          isLastInGroup
+          actions={{
+            onReplyMessage: reply,
+            onToggleMessageReaction: react,
+            onRequestMessageKey: requestKey,
+          }}
+        />,
+      );
+      expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+      expect(await screen.findByText("Readable encrypted quick actions")).toBeInTheDocument();
+      const replyButton = screen.getByRole("button", { name: "Reply" });
+      expect(replyButton.closest("[data-workspace-message-quick-actions]")).toHaveAttribute(
+        "data-visibility",
+        "hover",
+      );
+      fireEvent.click(replyButton);
+      expect(reply).toHaveBeenCalledExactlyOnceWith(stored.uuid, undefined);
+      const heart = screen.getByRole("button", { name: "Like" });
+      fireEvent.click(heart);
+      expect(react).toHaveBeenCalledExactlyOnceWith(stored.uuid, "❤️");
+      const reactionGroup = heart.closest("[role='group']");
+      if (reactionGroup == null) throw new Error("Missing quick reaction group");
+      fireEvent.mouseEnter(reactionGroup);
+      fireEvent.click(await screen.findByRole("button", { name: "Thumbs up" }));
+      expect(react).toHaveBeenLastCalledWith(stored.uuid, "👍");
+
+      await realChatKeyStorage.removeChatKey({
+        owner: runtime,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+      act(() =>
+        notifyRealChatKeyChanges({
+          kind: "removed",
+          ownerKey: owner,
+          deviceId: device.deviceId,
+          streamUuid: stream.uuid,
+          keyUuid: stored.payload.kind === "e2ee" ? stored.payload.keyUuid : "",
+        }),
+      );
+      expect(screen.queryByRole("button", { name: "Reply" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Like" })).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "Request key for this message" }),
+      ).toBeInTheDocument();
+      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+        stored.payload,
+      );
+    },
+  );
+
+  it("keeps decrypted quick actions out of previews and invalidated owners", async () => {
+    const { stored } = await seedRealEncryptedMessage("Scoped quick actions");
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      actions: {
+        onReplyMessage: vi.fn(),
+        onToggleMessageReaction: vi.fn(),
+        onRequestMessageKey: vi.fn(),
+      },
+    };
+    const { container, rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />,
+    );
+    expect(await screen.findByText("Scoped quick actions")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(screen.getByRole("button", { name: "Reply" })).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+    expect(screen.queryByText("Scoped quick actions")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+  });
+
   it("shows and toggles shared reactions only while the message is decrypted", async () => {
     const { stored, owner, stream, runtime, device } =
       await seedRealEncryptedMessage("Reacted encrypted text");
@@ -913,7 +1005,7 @@ describe("real encrypted message presentation", () => {
     if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
     expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Reply" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Forward" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Select" })).not.toBeInTheDocument();

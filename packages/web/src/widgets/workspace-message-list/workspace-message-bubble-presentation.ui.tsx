@@ -37,6 +37,7 @@ import {
   type WorkspaceMessageBubbleQuickAction,
 } from "./workspace-message-bubble-quick-actions.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
+import { WORKSPACE_MESSAGE_QUICK_REACTIONS } from "./workspace-message-quick-reactions.lib";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
@@ -372,6 +373,7 @@ function getWorkspaceMessageQuickActions(
   message: MessengerMessage | null,
   actions: WorkspaceMessageBubbleProps["actions"],
   requestMessageKeyAvailable: boolean,
+  readable: boolean,
   getSelectedText: () => string | undefined,
 ): WorkspaceMessageBubbleQuickAction[] {
   const quickActionItems: WorkspaceMessageBubbleQuickAction[] = [];
@@ -382,37 +384,52 @@ function getWorkspaceMessageQuickActions(
         key: "request-message-key",
         label: t("e2ee.requestMessageKey"),
         icon: "chatLock",
-        showLabel: false,
+        showLabel: true,
         pending: actions.requestMessageKeyPending,
         onSelect: () => {
           void actions.onRequestMessageKey?.(messageUuid);
         },
       });
-    } else if (message.payload.kind === "markdown") {
+    } else if (
+      readable &&
+      (message.payload.kind === "markdown" || message.payload.kind === "e2ee")
+    ) {
       if (actions?.onReplyMessage != null) {
         quickActionItems.push({
           key: "reply",
           label: t("message.reply"),
-          icon: "reply",
-          showLabel: false,
+          showLabel: true,
           onSelect: () => actions.onReplyMessage?.(messageUuid, getSelectedText()),
         });
       }
       if (actions?.onToggleMessageReaction != null) {
-        const pendingHeart = message.pendingOwnReactionsByEmojiName?.["❤️"];
-        quickActionItems.push({
-          key: "reaction",
-          label: t("a11y.like"),
-          glyph: "❤️",
-          pressed:
-            pendingHeart?.operation === "add" ||
-            (pendingHeart?.operation !== "remove" &&
-              message.ownReactionUuidsByEmojiName["❤️"] != null),
-          pending: pendingHeart != null,
-          onSelect: () => {
-            void actions.onToggleMessageReaction?.(messageUuid, "❤️");
+        const reactions = WORKSPACE_MESSAGE_QUICK_REACTIONS.map(
+          ({ emojiName, labelKey, glyph }) => {
+            const pending = message.pendingOwnReactionsByEmojiName?.[glyph];
+            return {
+              key: emojiName,
+              label: t(labelKey),
+              glyph,
+              pressed:
+                pending?.operation === "add" ||
+                (pending?.operation !== "remove" &&
+                  message.ownReactionUuidsByEmojiName[glyph] != null),
+              pending: pending != null,
+              onSelect: () => {
+                void actions.onToggleMessageReaction?.(messageUuid, glyph);
+              },
+            };
           },
-        });
+        );
+        const firstReaction = reactions[0];
+        if (firstReaction != null) {
+          quickActionItems.push({
+            ...firstReaction,
+            key: "reaction",
+            placement: "corner",
+            reactions,
+          });
+        }
       }
     }
   }
@@ -704,6 +721,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       interactiveServerMessage,
       interactiveActions,
       requestMessageKeyAvailable,
+      !locked,
       getSelectedText,
     );
     const quickActionsVisibility = requestMessageKeyAvailable
@@ -711,8 +729,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       : (quickActions?.message ?? "hover");
     const hasQuickActions =
       quickActionItems.length > 0 && quickActionsVisibility !== "disabled" && !isPreview;
-    // Leave a side rail for actions without covering adjacent bubbles or changing row spacing.
-    const quickActionsMaxWidth = hasQuickActions ? "min(88%, calc(100% - 4rem))" : undefined;
+    const hasTopQuickActions =
+      hasQuickActions && quickActionItems.some((action) => action.placement !== "corner");
+    // Reserve the text pill's upper edge and the smaller reaction's outer corner before hover.
+    const quickActionsMaxWidth = hasQuickActions ? "min(88%, calc(100% - 3rem))" : undefined;
 
     const bubble = (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
@@ -720,7 +740,11 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         className={`group/workspace-message-bubble relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
           effectiveReadRequestPending,
         )}`}
-        style={authorOutside ? undefined : { maxWidth: quickActionsMaxWidth }}
+        style={{
+          maxWidth: authorOutside ? undefined : quickActionsMaxWidth,
+          minWidth: hasTopQuickActions ? "7rem" : undefined,
+          marginTop: hasTopQuickActions ? "1.25rem" : undefined,
+        }}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-payload-kind={serverMessage?.payload.kind}
@@ -752,7 +776,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             onOpenChange={handleMenuOpenChange}
             onRequestMessageKey={locked ? interactiveActions?.onRequestMessageKey : undefined}
             requestMessageKeyPending={interactiveActions?.requestMessageKeyPending}
-            onReplyMessage={encryptedPayload ? undefined : interactiveActions?.onReplyMessage}
+            onReplyMessage={locked ? undefined : interactiveActions?.onReplyMessage}
             onAddReplyMessage={encryptedPayload ? undefined : interactiveActions?.onAddReplyMessage}
             onForwardMessage={encryptedPayload ? undefined : interactiveActions?.onForwardMessage}
             onToggleMessageSelection={
