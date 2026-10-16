@@ -396,6 +396,9 @@ function finishOptimisticStreamNotificationRequest(
     entry.confirmedStream = {
       ...entry.confirmedStream,
       notificationMode: outcome.confirmedStream.notificationMode,
+      unreadCount: outcome.confirmedStream.unreadCount,
+      activeUnreadCount: outcome.confirmedStream.activeUnreadCount,
+      passiveUnreadCount: outcome.confirmedStream.passiveUnreadCount,
       updatedAt: outcome.confirmedStream.updatedAt,
     };
   }
