@@ -10,7 +10,9 @@ import {
 import * as cryptoRuntime from "~/entities/messenger/chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "~/entities/messenger/chat-e2ee-payload-adapters.lib";
 import { createRealChatCryptoProvider } from "~/entities/messenger/chat-real-crypto-provider.lib";
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import * as quoteResolver from "~/entities/messenger/messenger-quote-resolver.hook";
+import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -19,6 +21,8 @@ import type { EncryptedChatServiceState } from "~/features/encrypted-chat-messag
 import type { EncryptedChatServiceMessageProps } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { setLocale } from "~/i18n/i18n";
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
+import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
   return {
     uuid: "11111111-1111-4111-8111-111111111111",
@@ -68,7 +72,10 @@ function message(uuid: string, payload: MessengerMessage["payload"]): MessengerM
   };
 }
 
-async function seedRealEncryptedMessage(text: string) {
+async function seedRealEncryptedMessage(
+  text: string,
+  uuid = "55555555-5555-4555-8555-555555555555",
+) {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
@@ -121,7 +128,7 @@ async function seedRealEncryptedMessage(text: string) {
     content: encrypted.value,
   });
   if (wire.kind !== "e2ee") throw new Error("Unexpected payload");
-  const stored = message("55555555-5555-4555-8555-555555555555", {
+  const stored = message(uuid, {
     kind: "e2ee",
     keyUuid: wire.key_uuid,
     content: wire.content,
@@ -520,6 +527,277 @@ describe("real encrypted message presentation", () => {
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
+  it("keeps the shared quote after an outgoing reply becomes a saved encrypted message", async () => {
+    const source = await seedRealEncryptedMessage(
+      "Original **encrypted quote**",
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const markdown = `[Alice](urn:quote:${source.stored.uuid})\n\nMy encrypted answer`;
+    const { stored, owner, device } = await seedRealEncryptedMessage(markdown);
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    const outgoing: MessengerOutgoingMessage = {
+      canonicalMessageUuid: crypto.randomUUID(),
+      placementUuid: stored.uuid,
+      ownerKey: owner,
+      conversationId: stored.conversationId,
+      projectId: stored.projectId,
+      streamUuid: stored.streamUuid,
+      topicUuid: stored.topicUuid,
+      authorUuid: stored.authorUuid,
+      markdown,
+      sourceMarkdown: markdown,
+      status: "sending",
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
+      attempt: 1,
+      error: null,
+      includeStreamConversation: false,
+      encryption: { keyUuid: stored.payload.keyUuid, deviceId: device.deviceId },
+    };
+    const props = { currentUserUuid: "author", conversationId: stored.conversationId };
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList {...props} messages={[]} outgoingMessages={[outgoing]} />,
+    );
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+    const quoteHtml = container.querySelector("[data-workspace-quote='true']")?.innerHTML;
+    expect(quoteHtml).toBeTruthy();
+
+    rerender(<WorkspaceMessageList {...props} messages={[stored]} outgoingMessages={[]} />);
+    expect(await screen.findByText("My encrypted answer")).toBeInTheDocument();
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-quote='true']")?.innerHTML).toBe(quoteHtml);
+    expect(container.querySelector("blockquote.workspace-message-quote-reference")).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[source.stored.uuid]?.payload).toEqual(
+      source.stored.payload,
+    );
+
+    unmount();
+    render(<WorkspaceMessageList {...props} messages={[stored]} outgoingMessages={[]} />);
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+  });
+
+  it.each([undefined, "Saved selected fragment"])(
+    "uses the original historical key for a quote with selected text %s",
+    async (selectedText) => {
+      const source = await seedRealEncryptedMessage(
+        "Historical original text",
+        "44444444-4444-4444-8444-444444444444",
+      );
+      if (source.stored.payload.kind !== "e2ee") throw new Error("Missing source payload");
+      const selectedQuery = selectedText == null ? "" : `?text=${encodeURIComponent(selectedText)}`;
+      const { stored } = await seedRealEncryptedMessage(
+        `[Alice](urn:quote:${source.stored.uuid}${selectedQuery})\n\nReadable reply`,
+      );
+      const address = {
+        owner: source.runtime,
+        deviceId: source.device.deviceId,
+        streamUuid: source.stream.uuid,
+        keyUuid: source.stored.payload.keyUuid,
+      };
+      const savedKey = await realChatKeyStorage.readChatKey(address);
+      if (savedKey == null) throw new Error("Missing historical key");
+      await realChatKeyStorage.removeChatKey(address);
+      const { container } = render(view(stored));
+      expect(await screen.findByText("Readable reply")).toBeInTheDocument();
+      const quote = container.querySelector("[data-workspace-quote='true']");
+      await waitFor(() => {
+        expect(quote?.querySelector("[data-encrypted-message-state='locked']")).not.toBeNull();
+      });
+      expect(quote).not.toHaveTextContent("Historical original text");
+      expect(quote).not.toHaveTextContent("Saved selected fragment");
+
+      await realChatKeyStorage.writeChatKey(address, savedKey);
+      act(() =>
+        notifyRealChatKeyChanges({
+          ...address,
+          ownerKey: source.owner,
+          kind: "updated",
+        }),
+      );
+      expect(
+        await screen.findByText(selectedText ?? "Historical original text"),
+      ).toBeInTheDocument();
+      expect(quote?.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
+
+      await realChatKeyStorage.removeChatKey(address);
+      act(() =>
+        notifyRealChatKeyChanges({
+          ...address,
+          ownerKey: source.owner,
+          kind: "removed",
+        }),
+      );
+      expect(
+        screen.queryByText(selectedText ?? "Historical original text"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Readable reply")).toBeInTheDocument();
+      expect(quote?.querySelector("[data-encrypted-message-placeholder]")).not.toBeNull();
+    },
+  );
+
+  it.each(["key removal", "owner change", "runtime replacement", "source replacement", "unmount"])(
+    "rejects a late quoted-message decrypt after %s",
+    async (invalidation) => {
+      const { stored, runtime, owner, device } = await seedRealEncryptedMessage("Original secret");
+      if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      const payload = stored.payload;
+      let complete!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
+      const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((resolve) => {
+        complete = resolve;
+      });
+      const decrypt = vi
+        .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
+        .mockReturnValueOnce(pending);
+      const { container, unmount } = render(
+        <WorkspaceMessageQuote
+          reference={{ messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" }}
+        />,
+      );
+      await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+      if (invalidation === "key removal") {
+        const address = {
+          owner: runtime,
+          deviceId: device.deviceId,
+          streamUuid: stored.streamUuid,
+          keyUuid: stored.payload.keyUuid,
+        };
+        await realChatKeyStorage.removeChatKey(address);
+        act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+      } else if (invalidation === "owner change") {
+        act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+      } else if (invalidation === "runtime replacement") {
+        const session = useWorkspaceAuthStore.getState().sessions[0];
+        if (session == null) throw new Error("Missing session");
+        act(() =>
+          useWorkspaceAuthStore.getState().setSession({ ...session, accessToken: "new-token" }),
+        );
+      } else if (invalidation === "source replacement") {
+        act(() =>
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...stored,
+            payload: { ...payload, content: "changed-envelope" },
+            updatedAt: "2026-10-02T00:00:00Z",
+          }),
+        );
+      } else {
+        unmount();
+      }
+      await act(async () => {
+        complete({ status: "ready", plaintext: "Stale quoted secret" });
+        await pending;
+      });
+      expect(container).not.toHaveTextContent("Stale quoted secret");
+      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload.kind).toBe(
+        "e2ee",
+      );
+    },
+  );
+
+  it("does not reuse decrypted quote text after switching through a forward snapshot", async () => {
+    const { stored, owner, runtime, device } =
+      await seedRealEncryptedMessage("Original quote secret");
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    const reference = { messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" };
+    const { container, rerender } = render(<WorkspaceMessageQuote reference={reference} />);
+    expect(await screen.findByText("Original quote secret")).toBeInTheDocument();
+    rerender(
+      <WorkspaceMessageQuote reference={{ ...reference, snapshotMarkdown: "Saved forward" }} />,
+    );
+    expect(screen.getByText("Saved forward")).toBeInTheDocument();
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stored.streamUuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    await realChatKeyStorage.removeChatKey(address);
+    act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+    rerender(<WorkspaceMessageQuote reference={reference} />);
+    expect(screen.queryByText("Original quote secret")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(container.querySelector("[data-encrypted-message-state='locked']")).not.toBeNull(),
+    );
+  });
+
+  it.each(["pending", "ready"])(
+    "clears quoted encrypted media and aborts its %s preview when the original key is removed",
+    async (previewState) => {
+      const imageUuid = "66666666-6666-4666-8666-666666666666";
+      const { stored, owner, runtime, device } = await seedRealEncryptedMessage(
+        `![photo.png](urn:image:${imageUuid}?content_type=image%2Fpng)\n\nQuoted caption`,
+      );
+      if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      let complete!: (blob: Blob) => void;
+      const pending = new Promise<Blob>((resolve) => {
+        complete = resolve;
+      });
+      const preview = vi.fn<LoadWorkspaceFilePreview>().mockReturnValue(pending);
+      const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:encrypted-quote");
+      const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+      const { container } = render(
+        <WorkspaceMessageQuote
+          reference={{ messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" }}
+          onLoadWorkspaceFilePreview={preview}
+        />,
+      );
+      expect(await screen.findByText("Quoted caption")).toBeInTheDocument();
+      await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+      const image = new Blob(["photo"], { type: "image/png" });
+      if (previewState === "ready") {
+        await act(async () => {
+          complete(image);
+          await pending;
+        });
+        await waitFor(() =>
+          expect(container.querySelector("img[src='blob:encrypted-quote']")).not.toBeNull(),
+        );
+      }
+      const address = {
+        owner: runtime,
+        deviceId: device.deviceId,
+        streamUuid: stored.streamUuid,
+        keyUuid: stored.payload.keyUuid,
+      };
+      await realChatKeyStorage.removeChatKey(address);
+      act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+      expect(screen.queryByText("Quoted caption")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail]")).toBeNull();
+      expect(preview.mock.calls[0]?.[1].aborted).toBe(true);
+      if (previewState === "pending") {
+        await act(async () => {
+          complete(image);
+          await pending;
+        });
+        expect(createUrl).not.toHaveBeenCalled();
+      } else {
+        expect(revokeUrl).toHaveBeenCalledWith("blob:encrypted-quote");
+      }
+    },
+  );
+
+  it("renders decrypted call invitations through the shared Jitsi card", async () => {
+    const url = "https://meet.workspace.example.com/workspace-encrypted-room";
+    const { stored } = await seedRealEncryptedMessage(url);
+    const openCall = vi.fn();
+    render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{
+          jitsiServerBaseUrl: "https://meet.workspace.example.com/",
+          onOpenJitsiCall: openCall,
+        }}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Join call" }));
+    expect(openCall).toHaveBeenCalledWith(url, "");
+  });
+
   it("requests the missing historical message key and removes the quick action when the key arrives", async () => {
     const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
       "Restored historical text",
@@ -957,7 +1235,8 @@ describe("real encrypted message presentation", () => {
     );
     const encoded = stored.payload.kind === "e2ee" ? stored.payload.content : "";
     const { container, unmount } = render(view(stored));
-    expect((await screen.findByText("мир")).tagName).toBe("STRONG");
+    const strongText = await screen.findByText("мир");
+    expect(strongText.tagName).toBe("STRONG");
     expect(container.querySelector("[data-workspace-message-bubble]")).toHaveClass("bg-msg-own-bg");
     expect(container.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
     expect(container.querySelector("script")).toBeNull();
@@ -969,7 +1248,7 @@ describe("real encrypted message presentation", () => {
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
     expect(await screen.findByText("мир")).toBeInTheDocument();
   });
-  it("opens the shared context menu for decrypted text without loading quoted messages", async () => {
+  it("uses shared quotes, code controls and the context menu for decrypted text", async () => {
     const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
     const preview = vi.fn();
     const copyMessageText = vi.fn();
@@ -978,6 +1257,12 @@ describe("real encrypted message presentation", () => {
     const decryptedText =
       "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```";
     const { stored } = await seedRealEncryptedMessage(decryptedText);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(
+      message("44444444-4444-4444-8444-444444444444", {
+        kind: "markdown",
+        content: "Original quoted text",
+      }),
+    );
     const { container } = render(
       <WorkspaceEncryptedMessageBubble
         message={stored}
@@ -996,11 +1281,11 @@ describe("real encrypted message presentation", () => {
       />,
     );
     expect(await screen.findByText("Readable fixture")).toBeInTheDocument();
-    expect(quote).not.toHaveBeenCalled();
+    expect(await screen.findByText("Original quoted text")).toBeInTheDocument();
+    expect(quote).toHaveBeenCalledWith("44444444-4444-4444-8444-444444444444", true);
     expect(preview).not.toHaveBeenCalled();
-    expect(
-      container.querySelector("[data-workspace-code-copy], [data-workspace-quote]"),
-    ).toBeNull();
+    expect(container.querySelector("[data-code-copy-button='true']")).not.toBeNull();
+    expect(container.querySelector("[data-workspace-quote='true']")).not.toBeNull();
     const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
     if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });

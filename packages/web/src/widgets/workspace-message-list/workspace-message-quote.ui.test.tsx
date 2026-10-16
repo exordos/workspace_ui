@@ -209,6 +209,29 @@ describe("WorkspaceMessageQuote", () => {
     expect(screen.queryByText("# Bob Reed")).not.toBeInTheDocument();
   });
 
+  it("keeps a forward snapshot readable when its encrypted original has no local key", () => {
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: {
+        ...messageB,
+        payload: { kind: "e2ee", keyUuid: "missing-original-key", content: "opaque" },
+      },
+    });
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_B,
+          fallbackAuthorLabel: "Saved Bob",
+          snapshotMarkdown: "Saved forwarded content",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Saved forwarded content")).toBeInTheDocument();
+    expect(container.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
+    expect(mocked.resolve).toHaveBeenCalledWith(MESSAGE_B, false);
+  });
+
   it("shows the preferred media thumbnail without changing quote navigation", async () => {
     const imageUuid = "55555555-5555-4555-8555-555555555555";
     const videoUuid = "66666666-6666-4666-8666-666666666666";

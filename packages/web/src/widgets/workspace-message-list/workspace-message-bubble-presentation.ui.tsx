@@ -22,10 +22,7 @@ import {
   parseWorkspaceMessageBody,
 } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
-import {
-  renderWorkspaceMessageBody,
-  renderWorkspaceMessageBodySegments,
-} from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
@@ -69,11 +66,6 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
   enableProtectedMedia: false,
   enableAttachments: false,
   enableGallery: false,
-} as const;
-const WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS = {
-  ...WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS,
-  enableProtectedMedia: true,
-  enableAttachments: true,
 } as const;
 const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
 
@@ -474,8 +466,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const isOwn = owner === "own";
     const serverMessage = message.kind === "server" ? message.message : null;
     const encryptedPayload = serverMessage?.payload.kind === "e2ee";
-    const passiveContentEnabled = !isPreview && !encryptedPayload && passiveLoadersEnabled;
-    const fileContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
+    const passiveContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
     const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
     const effectiveReadRequestPending =
@@ -493,8 +484,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       [interactiveActions?.jitsiServerBaseUrl],
     );
     const jitsiUrl = useMemo(
-      () => (encryptedPayload ? null : getJitsiMeetingUrl(markdown, jitsiLinkOptions)),
-      [encryptedPayload, jitsiLinkOptions, markdown],
+      () => getJitsiMeetingUrl(markdown, jitsiLinkOptions),
+      [jitsiLinkOptions, markdown],
     );
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = interactiveActions?.jitsiLocationName?.trim() ?? "";
@@ -528,28 +519,15 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
       const document = parseWorkspaceMessageBody(markdown, { resolveMention });
-      const encryptedBody = encryptedPayload
-        ? renderWorkspaceMessageBody(
-            document,
-            isPreview
-              ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
-              : WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS,
-          )
-        : null;
-      const segmented = encryptedBody
-        ? {
-            segments: [{ kind: "html" as const, html: encryptedBody.html }],
-            metadata: encryptedBody.metadata,
-          }
-        : renderWorkspaceMessageBodySegments(document, {
-            ...(isPreview
-              ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
-              : WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS),
-            // Enable interactive mentions only when the current surface exposes a
-            // UUID-only callback. Otherwise keep `@Name` as plain text instead of
-            // swapping the action back to the old number-based direct-message/profile path.
-            enableMentions: interactiveActions?.onOpenMentionUser != null,
-          });
+      const segmented = renderWorkspaceMessageBodySegments(document, {
+        ...(isPreview
+          ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
+          : WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS),
+        // Enable interactive mentions only when the current surface exposes a
+        // UUID-only callback. Otherwise keep `@Name` as plain text instead of
+        // swapping the action back to the old number-based direct-message/profile path.
+        enableMentions: interactiveActions?.onOpenMentionUser != null,
+      });
       return {
         ...segmented,
         hasForwardSnapshot: hasWorkspaceForwardSnapshot(document),
@@ -567,14 +545,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           .join("\u0000"),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
-    }, [
-      encryptedPayload,
-      interactiveActions?.onOpenMentionUser,
-      isPreview,
-      markdown,
-      resolveMention,
-    ]);
-    const fileReferences = fileContentEnabled ? renderedBody.fileReferences : EMPTY_FILE_REFERENCES;
+    }, [interactiveActions?.onOpenMentionUser, isPreview, markdown, resolveMention]);
+    const fileReferences = passiveContentEnabled
+      ? renderedBody.fileReferences
+      : EMPTY_FILE_REFERENCES;
     const {
       menuOpen,
       contextMenuAnchor,
@@ -589,7 +563,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       bodyRef,
       renderedHtml: renderedBody.html,
       enableCodeCopy:
-        !isPreview && !encryptedPayload && WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
+        !isPreview && !locked && WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
       fileReferences,
       onOpenMentionUser: interactiveActions?.onOpenMentionUser,
       onOpenMessageInChat: interactiveActions?.onOpenMessageInChat,
@@ -602,7 +576,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       bodyRef,
       renderedHtml: renderedBody.html,
       fileReferences,
-      onLoadWorkspaceFilePreview: fileContentEnabled
+      onLoadWorkspaceFilePreview: passiveContentEnabled
         ? interactiveActions?.onLoadWorkspaceFilePreview
         : undefined,
     });
@@ -793,7 +767,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               locked ? undefined : interactiveActions?.onToggleMessageReaction
             }
             onLoadWorkspaceFilePreview={
-              fileContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
             getSelectedText={getSelectedText}
           />

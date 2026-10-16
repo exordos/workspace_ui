@@ -15,6 +15,8 @@ Ordinary Markdown send/edit/forward operations and saving ordinary server drafts
 
 Decrypted attachment references use the existing inline image/video previews and file download actions. Locking a message after local key deletion or an owner change removes inline previews, aborts their pending loads, and releases their display URLs. Plaintext references remain in scoped presentation memory; the message store retains the encrypted payload. Deleting a chat key does not revoke access to unencrypted media already opened in the viewer, downloaded files, or previously learned file references.
 
+Successfully decrypted text uses the same segmented message renderer as ordinary Markdown, including quote components, mentions, code controls, and Jitsi cards. A referenced encrypted original is decrypted independently with its own exact key UUID, including historical generations. Without that key, the quote shows the decorative blurred placeholder; selected quote text does not bypass the key check. Removing the original's key clears its quote content and media while leaving a separately readable reply visible. Plaintext is never written back into the canonical message store or durable cache. Forward snapshots remain self-contained content of their enclosing message.
+
 ## Device-specific key requests
 
 Request titles name the requesting account and target device: "You requested a security key for device…" for the current account, or the other person's name. Device names come from the request; IDs determine device equality. Separate tabs sharing the same secrets database represent the same device. Blank names display "Unknown device"; existing installations default to "Workspace browser".

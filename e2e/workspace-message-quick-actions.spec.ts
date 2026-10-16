@@ -199,6 +199,7 @@ test.describe("Workspace message quick actions @mock", () => {
       .click();
     const request = await sent;
     const payload = request.postDataJSON() as {
+      uuid: string;
       payload: { kind: string; key_uuid: string; content: string };
     };
     expect(payload.payload.kind).toBe("e2ee");
@@ -243,6 +244,20 @@ test.describe("Workspace message quick actions @mock", () => {
     expect(decrypted).toContain(answer);
     await expect(composer).toHaveValue("");
     await expect(quote).toHaveCount(0);
+    const replyUuid = createMessengerPlacementUuid(E2E_TOPIC_UUID, payload.uuid);
+    const savedReply = page.locator(`[data-message-uuid='${replyUuid}']`);
+    await expect(savedReply).toHaveAttribute("data-message-kind", "server");
+    await expect(savedReply).toContainText(answer);
+    await expect(savedReply.locator("[data-workspace-quote='true']")).toContainText(
+      ENCRYPTED_MESSAGE_TEXT,
+    );
+    await expect(savedReply.locator("blockquote.workspace-message-quote-reference")).toHaveCount(0);
+
+    await page.reload();
+    await expect(savedReply).toContainText(answer);
+    await expect(savedReply.locator("[data-workspace-quote='true']")).toContainText(
+      ENCRYPTED_MESSAGE_TEXT,
+    );
   });
 
   test("removing a decrypted message key replaces hover actions with the persistent key request", async ({
