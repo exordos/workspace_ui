@@ -38,6 +38,20 @@ describe("buildUserPickerOptions", () => {
     expect(result.map((row) => row.userId)).toEqual([3, 1, 2]);
   });
 
+  it("matches username independently of full name and email", () => {
+    const result = buildUserPickerOptions({
+      candidates: [
+        { userId: "alice", fullName: "Alice Adams", username: "engineer-alpha" },
+        { userId: "bob", fullName: "Bob Baker", username: "engineer-beta" },
+      ],
+      selectedUserIds: ["alice"],
+      query: " ENGINEER-BETA ",
+    });
+
+    expect(result.map((row) => row.userId)).toEqual(["bob"]);
+    expect(result[0]?.fullName).toBe("Bob Baker");
+  });
+
   it("supports workspace uuid candidates", () => {
     const result = buildUserPickerOptions({
       candidates: [

@@ -7,6 +7,51 @@ interface ServiceAction {
   readonly disabled?: boolean;
   readonly onClick: () => void;
 }
+
+export interface EncryptedChatServiceState {
+  readonly deviceId: string;
+  readonly canManageKeys: boolean;
+  readonly hasKey: boolean;
+  readonly requestStatus: "pending" | "granted" | "rejected" | null;
+}
+
+/** Read only public presentation state from the existing scoped session. */
+export function getEncryptedChatServiceState({
+  message,
+  streamUuid,
+  projectId,
+  session,
+}: {
+  readonly message: MessengerMessage;
+  readonly streamUuid: string | null;
+  readonly projectId?: string;
+  readonly session: Pick<
+    RealChatSession,
+    "device" | "getRights" | "getGenerationState" | "getKeyRequestOutcome"
+  > | null;
+}): EncryptedChatServiceState | null {
+  const payload = message.payload;
+  if (
+    session == null ||
+    message.streamUuid !== streamUuid ||
+    message.projectId !== projectId ||
+    payload.kind === "markdown" ||
+    payload.kind === "e2ee"
+  )
+    return null;
+  const rights = session.getRights();
+  let requestUuid: string | null = null;
+  if (payload.kind === "key_request") requestUuid = message.uuid;
+  if (payload.kind === "key_grant" || payload.kind === "key_reject")
+    requestUuid = payload.requestMessageUuid;
+  const outcome = requestUuid == null ? undefined : session.getKeyRequestOutcome(requestUuid);
+  return {
+    deviceId: session.device.deviceId,
+    canManageKeys: rights.canGrant || rights.canReject,
+    hasKey: session.getGenerationState(payload.keyUuid)?.access === "ready",
+    requestStatus: outcome?.status ?? null,
+  };
+}
 interface ServiceActionOptions {
   readonly message: MessengerMessage;
   readonly currentUserUuid?: string;
@@ -72,7 +117,7 @@ export function getEncryptedChatServiceActions({
   const actions: ServiceAction[] = [];
   if (session.canGrantKey(message.uuid))
     actions.push({
-      label: t("e2ee.confirmAccess"),
+      label: t("e2ee.serviceTransferKey"),
       disabled: pending,
       onClick: () => onGrantKey(message.uuid),
     });

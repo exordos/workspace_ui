@@ -110,6 +110,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
       .filter(isSelectableWorkspaceUser)
       .map((user) => ({
         userId: user.uuid,
+        username: user.username,
         fullName: selectUserDisplayName(user, user.username || user.uuid),
         email: user.email ?? undefined,
         presenceStatus: resolveWorkspacePickerPresence(user.status),
@@ -131,9 +132,8 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
         candidates,
         selectedUserIds: selectedIds,
         excludedUserIds,
-        query,
       }),
-    [candidates, excludedUserIds, query, selectedIds],
+    [candidates, excludedUserIds, selectedIds],
   );
 
   const selectedUserIdSet = useMemo(() => new Set<UserPickerId>(selectedIds), [selectedIds]);

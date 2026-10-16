@@ -5,6 +5,7 @@ import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import { WORKSPACE_MESSAGE_QUICK_REACTIONS } from "./workspace-message-quick-reactions.lib";
 import type {
   WorkspaceMessageBubbleMenuProps,
   WorkspaceReactionEmojiPickerProps,
@@ -18,15 +19,6 @@ const REACTION_EMOJI_PICKER_WIDTH = 320;
 const REACTION_EMOJI_PICKER_HEIGHT = 360;
 const REACTION_EMOJI_PICKER_MARGIN = 8;
 const REACTION_EMOJI_PICKER_GAP = 8;
-
-const QUICK_REACTIONS = [
-  { emojiName: "heart", labelKey: "a11y.like", glyph: "❤️" },
-  { emojiName: "thumbs_up", labelKey: "a11y.thumbsUp", glyph: "👍" },
-  { emojiName: "joy", labelKey: "a11y.joy", glyph: "😂" },
-  { emojiName: "open_mouth", labelKey: "a11y.surprised", glyph: "😮" },
-  { emojiName: "cry", labelKey: "a11y.crying", glyph: "😢" },
-  { emojiName: "clap", labelKey: "a11y.clap", glyph: "👏" },
-] as const;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(min, value), max);
@@ -201,8 +193,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [];
-    if (message.payload.kind !== "markdown") {
-      if (message.payload.kind === "e2ee" && onRequestMessageKey != null) {
+    let markdown: string | undefined;
+    if (message.payload.kind === "markdown") {
+      markdown = message.payload.content;
+    } else if (message.payload.kind === "e2ee") {
+      if (onRequestMessageKey != null) {
         items.push({
           type: "action",
           key: "request-message-key",
@@ -214,10 +209,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
             closeMenu();
           },
         });
+        return items;
       }
+    } else {
       return items;
     }
-    const markdown = message.payload.content;
 
     if (onToggleMessageReaction != null) {
       items.push({
@@ -225,12 +221,13 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         key: "quick-reactions",
         render: () => (
           <div className="flex items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-            {QUICK_REACTIONS.map((reaction) => (
+            {WORKSPACE_MESSAGE_QUICK_REACTIONS.map((reaction) => (
               <button
                 key={reaction.emojiName}
                 type="button"
                 className={`${REACTION_BUTTON_CLASS_NAME} text-current`}
                 aria-label={t(reaction.labelKey)}
+                data-workspace-message-quick-reaction={reaction.glyph}
                 onClick={(event) => {
                   event.preventDefault();
                   handleReaction(reaction.glyph);
@@ -328,22 +325,25 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
-    secondaryActionItems.push({
-      type: "action",
-      key: "copy",
-      icon: "copy",
-      label: t("message.copy"),
-      onSelect: () => {
-        const selectedText = getSelectedText();
-        const textToCopy = selectedText ?? markdown;
-        if (onCopyMessageText != null) {
-          void onCopyMessageText(message.uuid, textToCopy);
-        } else {
-          void writeText(textToCopy);
-        }
-        closeMenu();
-      },
-    });
+    if (markdown != null || onCopyMessageText != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy",
+        icon: "copy",
+        label: t("message.copy"),
+        onSelect: () => {
+          const selectedText = getSelectedText();
+          if (onCopyMessageText != null) {
+            void onCopyMessageText(message.uuid, selectedText);
+          } else if (selectedText != null) {
+            void writeText(selectedText);
+          } else if (markdown != null) {
+            void writeText(markdown);
+          }
+          closeMenu();
+        },
+      });
+    }
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",

@@ -31,8 +31,6 @@ export interface WorkspaceComposerAttachmentTarget {
 
 export interface WorkspaceComposerSendResult {
   shouldClearComposer?: boolean;
-  /** A server-accepted message may outlive the editor that initiated it. */
-  messageAccepted?: boolean;
 }
 
 export interface WorkspaceComposerControlledAttachmentView {
@@ -67,7 +65,6 @@ interface WorkspaceComposerAttachmentsProps {
   ownerKey: string;
   target: WorkspaceComposerAttachmentTarget;
   sessionKey?: string;
-  waitForSend?: boolean;
   onSendFinalMarkdown: (
     markdown: string,
     subjectOverride?: string,
@@ -91,7 +88,6 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
   ownerKey,
   target,
   sessionKey = "compose",
-  waitForSend = false,
   onSendFinalMarkdown,
   editAttachmentMarkdown = [],
   onSubmitEditFinalMarkdown,
@@ -186,23 +182,11 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
         );
         return onSendFinalMarkdown(markdown, subjectOverride);
       };
-      if (waitForSend) {
-        return commitReady(async (ready) => {
-          const result = await sendReady(ready);
-          if (result?.shouldClearComposer === false && result.messageAccepted !== true) {
-            throw new Error(t("message.sendFailed"));
-          }
-          return result;
-        }).then((result) => {
-          if (result === null) throw new Error(t("attachmentCard.uploadPending"));
-          return result;
-        });
-      }
       const result = transferReady(sendReady);
       if (result == null) throw new Error(t("attachmentCard.uploadPending"));
       return result;
     },
-    [attachments.length, commitReady, onSendFinalMarkdown, transferReady, waitForSend],
+    [attachments.length, onSendFinalMarkdown, transferReady],
   );
   const handleSubmitEdit = useCallback(
     async (messageId: number, content: string) => {

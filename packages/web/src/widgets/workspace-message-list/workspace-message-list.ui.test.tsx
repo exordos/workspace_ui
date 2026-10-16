@@ -6850,7 +6850,7 @@ describe("WorkspaceMessageList", () => {
     expect(screen.queryByRole("menuitem", { name: "Open in chat" })).not.toBeInTheDocument();
     expect(onOpenMessageInChat).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy text" }));
-    expect(onCopyMessageText).toHaveBeenCalledWith("uuid-callback-message", "Callback body");
+    expect(onCopyMessageText).toHaveBeenCalledWith("uuid-callback-message", undefined);
 
     openWorkspaceMessageMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Select" }));

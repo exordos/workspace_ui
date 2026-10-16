@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { createMessengerMessageIdentity } from "./messenger-message-identity.lib";
+import type { ChatEncryptedPayload } from "./chat-e2ee.types";
 import type {
   MessengerOutgoingMessage,
   MessengerOutgoingMessageDraft,
@@ -23,6 +25,7 @@ export interface MessengerOutboxStoreState {
     patch?: { markdown?: string; sourceMarkdown?: string },
   ) => void;
   markOutgoingMessageFailed: (placementUuid: MessengerUuid, error: string) => void;
+  retainEncryptedPayload: (placementUuid: MessengerUuid, payload: ChatEncryptedPayload) => void;
   removeOutgoingMessage: (placementUuid: MessengerUuid) => void;
   clearOwner: (ownerKey: string) => void;
   clear: () => void;
@@ -123,6 +126,7 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
       attempt: 1,
       error: null,
       includeStreamConversation: draft.includeStreamConversation,
+      ...(draft.encryption == null ? {} : { encryption: { ...draft.encryption } }),
     };
 
     logStoreAction("messengerOutbox", "enqueueOutgoingMessage", {
@@ -166,6 +170,25 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
         },
       };
     });
+  },
+
+  retainEncryptedPayload(placementUuid, payload) {
+    const message = get().outgoingMessagesByPlacementUuid[placementUuid];
+    const encryption = message?.encryption;
+    if (message == null || encryption?.keyUuid !== payload.keyUuid) throw new Error("stale");
+    if (encryption.payload != null) return;
+    set((state) => ({
+      outgoingMessagesByPlacementUuid: {
+        ...state.outgoingMessagesByPlacementUuid,
+        [placementUuid]: {
+          ...message,
+          encryption: {
+            ...encryption,
+            payload: { ...payload, content: { bytes: payload.content.bytes.slice() } },
+          },
+        },
+      },
+    }));
   },
 
   markOutgoingMessageFailed(placementUuid, error) {
@@ -244,6 +267,27 @@ export function selectMessengerOutgoingMessagesForConversation(
   return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
 }
 
+export function isMessengerOutgoingMessageReceipt(
+  outgoing: MessengerOutgoingMessage,
+  message: MessengerMessage,
+): boolean {
+  const encryption = outgoing.encryption;
+  const preparedPayload =
+    encryption?.payload == null ? null : encodeChatE2eePayload(encryption.payload);
+  return (
+    outgoing.placementUuid === message.uuid &&
+    outgoing.projectId === message.projectId &&
+    outgoing.streamUuid === message.streamUuid &&
+    outgoing.topicUuid === message.topicUuid &&
+    outgoing.authorUuid === message.authorUuid &&
+    (encryption == null ||
+      (message.payload.kind === "e2ee" &&
+        message.payload.keyUuid === encryption.keyUuid &&
+        preparedPayload?.kind === "e2ee" &&
+        message.payload.content === preparedPayload.content))
+  );
+}
+
 export function settleMessengerOutgoingMessage(
   ownerKey: string,
   message: MessengerMessage,
@@ -252,13 +296,9 @@ export function settleMessengerOutgoingMessage(
   const outgoingMessage = state.outgoingMessagesByPlacementUuid[message.uuid];
   if (
     outgoingMessage?.ownerKey !== ownerKey ||
-    outgoingMessage.projectId !== message.projectId ||
-    outgoingMessage.streamUuid !== message.streamUuid ||
-    outgoingMessage.topicUuid !== message.topicUuid ||
-    outgoingMessage.authorUuid !== message.authorUuid
-  ) {
+    !isMessengerOutgoingMessageReceipt(outgoingMessage, message)
+  )
     return false;
-  }
 
   state.removeOutgoingMessage(message.uuid);
   return true;

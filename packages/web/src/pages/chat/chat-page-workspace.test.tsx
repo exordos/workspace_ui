@@ -10,6 +10,8 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { notifyRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
+import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import {
   settleMessengerOutgoingMessage,
@@ -24,6 +26,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
@@ -783,7 +786,9 @@ function renderWorkspaceChatPageWithShellContexts(
   rightDrawerOverrides: Partial<RightDrawerContextValue> = {},
   page: "chat" | "favorites" = "chat",
   history?: { entries: string[]; index: number },
+  keyByPath = false,
 ) {
+  const Chat = keyByPath ? WorkspaceKeyedChatPage : ChatPage;
   return render(
     <MemoryRouter initialEntries={history?.entries ?? [route]} initialIndex={history?.index}>
       <WorkspaceNavigationProbe />
@@ -801,11 +806,52 @@ function renderWorkspaceChatPageWithShellContexts(
             ...rightDrawerOverrides,
           }}
         >
-          {page === "favorites" ? <FavoritesPage /> : <ChatPage />}
+          {page === "favorites" ? <FavoritesPage /> : <Chat />}
         </RightDrawerContext.Provider>
       </OpenSearchContext.Provider>
     </MemoryRouter>,
   );
+}
+
+function WorkspaceKeyedChatPage() {
+  const location = useLocation();
+  return <ChatPage key={location.pathname} />;
+}
+
+function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready", own = false) {
+  const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  if (runtime == null) throw new Error("Expected runtime");
+  const owner = workspaceRuntimeOwnerKey(runtime);
+  const bootstrap = createBootstrapPayload();
+  useMessengerStore.getState().replaceBootstrapState(owner, {
+    ...bootstrap,
+    streams: bootstrap.streams.map((stream) => ({
+      ...stream,
+      encryption: true,
+      currentEncryptionKey: { keyUuid: "reply-key" },
+    })),
+  });
+  const message: MessengerMessage = {
+    ...createMessage(),
+    ...(own ? { isOwn: true, authorUuid: USER_UUID, userUuid: USER_UUID } : {}),
+    payload: { kind: "e2ee", keyUuid: "reply-key", content: "reply-ciphertext" },
+  };
+  replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message]);
+  replaceTestConversationWindow(`stream:${STREAM_UUID}`, [message]);
+  const send = vi.fn().mockResolvedValue({ status: "applied" });
+  const edit = vi.fn().mockResolvedValue({ status: "applied", message });
+  captured.openRealChatSession.mockResolvedValue({
+    device: { deviceId: "mock-device", deviceName: "Test" },
+    load: vi.fn().mockResolvedValue(undefined),
+    ingest: vi.fn().mockResolvedValue(undefined),
+    subscribe: () => () => undefined,
+    dispose: vi.fn(),
+    getState: () => ({ access, pending: false, requestStatus: "idle", error: null }),
+    getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+    send,
+    edit,
+  });
+  return { runtime, owner, message, send, edit };
 }
 
 function WorkspaceLocationProbe() {
@@ -917,6 +963,7 @@ describe("ChatPage Workspace route", () => {
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
     captured.openRealChatSession.mockReset();
     captured.openRealChatSession.mockRejectedValue(new Error("unavailable"));
+    vi.mocked(decryptRealChatMessage).mockReset().mockResolvedValue(null);
     captured.sendMessengerMessage.mockReset();
     captured.sendMessengerMessage.mockImplementation((request: TestSendMessengerMessageRequest) => {
       if (request.canonicalMessageUuid == null) {
@@ -1004,7 +1051,330 @@ describe("ChatPage Workspace route", () => {
     await deleteWorkspaceMessengerCacheDatabase();
   });
 
-  it("uses the real crypto session editor without plaintext draft persistence or outbox and retains failed text", async () => {
+  it.each(["menu", "ArrowUp"])(
+    "edits encrypted text through %s and retains opaque store/drafts",
+    async (entry) => {
+      const { message, edit } = seedEncryptedReplyComposer("ready", true);
+      vi.mocked(decryptRealChatMessage).mockResolvedValue("Original secret");
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      if (entry === "menu") act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      else fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
+      await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Original secret"));
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited secret" } });
+      fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+      await waitFor(() => expect(edit).toHaveBeenCalled());
+      expect(edit).toHaveBeenCalledWith(message, "Edited secret", expect.any(AbortSignal));
+      expect(captured.editMessengerMessage).not.toHaveBeenCalled();
+      expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]?.payload).toEqual(
+        message.payload,
+      );
+      expect(JSON.stringify(useWorkspaceComposerDraftStore.getState())).not.toContain(
+        "Original secret",
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument(),
+      );
+    },
+  );
+
+  it.each(["reply", "attachment"])(
+    "preserves encrypted %s references when saving an edit",
+    async (kind) => {
+      const { message, edit } = seedEncryptedReplyComposer("ready", true);
+      const reference =
+        kind === "reply"
+          ? `[Bob Reed](urn:quote:${SECOND_MESSAGE_UUID})`
+          : "[notes.txt](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa)";
+      vi.mocked(decryptRealChatMessage).mockResolvedValue(`${reference}\n\nOriginal secret`);
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      await waitFor(() =>
+        expect(screen.getByRole("textbox")).toHaveValue(
+          kind === "reply" ? `${reference}\n\nOriginal secret` : "\nOriginal secret",
+        ),
+      );
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: kind === "reply" ? `${reference}\n\nEdited secret` : "Edited secret" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+      await waitFor(() =>
+        expect(edit).toHaveBeenCalledWith(
+          message,
+          kind === "reply" ? `${reference}\n\nEdited secret` : `${reference}\nEdited secret`,
+          expect.any(AbortSignal),
+        ),
+      );
+    },
+  );
+
+  it("retains a failed encrypted edit for retry and restores the draft on cancel", async () => {
+    const { message, edit } = seedEncryptedReplyComposer("ready", true);
+    edit.mockRejectedValueOnce(new Error("Save failed"));
+    vi.mocked(decryptRealChatMessage).mockResolvedValue("Original secret");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Unsent draft" } });
+    act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+    await waitFor(() => expect(textbox).toHaveValue("Original secret"));
+    fireEvent.change(textbox, { target: { value: "Retry this edit" } });
+    fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+    await waitFor(() => expect(edit).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    expect(textbox).toHaveValue("Retry this edit");
+    fireEvent.click(screen.getByRole("button", { name: t("common.cancel") }));
+    await waitFor(() => expect(textbox).toHaveValue("Unsent draft"));
+  });
+
+  it.each(["key removal", "navigation", "message update", "logout"])(
+    "drops pending encrypted edit after %s",
+    async (change) => {
+      const { owner, message } = seedEncryptedReplyComposer("ready", true);
+      const decrypt = createDeferred<string | null>();
+      vi.mocked(decryptRealChatMessage).mockReturnValue(decrypt.promise);
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByTestId("workspace-message-list-section");
+      act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      await waitFor(() => expect(decryptRealChatMessage).toHaveBeenCalled());
+      await act(async () => {
+        if (change === "key removal")
+          notifyRealChatKeyChanges({
+            kind: "removed",
+            ownerKey: owner,
+            deviceId: "mock-device",
+            streamUuid: STREAM_UUID,
+            keyUuid: "reply-key",
+          });
+        if (change === "logout")
+          useWorkspaceAuthStore.setState({
+            sessions: [],
+            currentAccountId: null,
+            runtimeGeneration: 2,
+          });
+        if (change === "navigation")
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        if (change === "message update")
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...message,
+            payload: { kind: "e2ee", keyUuid: "reply-key", content: "updated" },
+          });
+        decrypt.resolve("Stale secret");
+      });
+      expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue("Stale secret")).not.toBeInTheDocument();
+    },
+  );
+
+  it("clears an open encrypted editor when its historical key is removed", async () => {
+    const { owner, message } = seedEncryptedReplyComposer("ready", true);
+    vi.mocked(decryptRealChatMessage).mockResolvedValue("Historical secret");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Historical secret"));
+    act(() =>
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "reply-key",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox")).not.toHaveValue("Historical secret");
+  });
+
+  it.each(["topic", "stream"])(
+    "replies to decrypted messages from a %s with an encrypted reference and no durable plaintext draft",
+    async (kind) => {
+      const { owner, message, send } = seedEncryptedReplyComposer();
+      vi.mocked(decryptRealChatMessage).mockResolvedValue("Confidential quoted message");
+      const hydrate = vi.fn();
+      useWorkspaceComposerDraftStore.setState({ hydrateDraft: hydrate });
+      const topicRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+      renderWorkspaceChatPageWithShellContexts(
+        kind === "stream" ? `/org/org-a/project/project-a/stream/${STREAM_UUID}` : topicRoute,
+        {},
+        "chat",
+        undefined,
+        true,
+      );
+      await screen.findByRole("textbox");
+      act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+      expect(await screen.findByText("Confidential quoted message")).toBeInTheDocument();
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(topicRoute);
+      const textbox = screen.getByRole("textbox");
+      fireEvent.change(textbox, { target: { value: "Encrypted answer" } });
+      fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+      await waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: `[Bob Reed](urn:quote:${MESSAGE_UUID})\n\nEncrypted answer`,
+            topicUuid: TOPIC_UUID,
+          }),
+        ),
+      );
+      expect(screen.queryByText("Confidential quoted message")).not.toBeInTheDocument();
+      expect(textbox).toHaveValue("");
+      expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]?.payload).toEqual(
+        message.payload,
+      );
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          owner,
+          `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        ),
+      ).toBeNull();
+      expect(hydrate).not.toHaveBeenCalled();
+      expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["missing-key", "route", "generation", "ciphertext", "key-removal"])(
+    "ignores an encrypted reply resolution after %s",
+    async (change) => {
+      const { owner, message } = seedEncryptedReplyComposer();
+      const decryption = createDeferred<string | null>();
+      vi.mocked(decryptRealChatMessage).mockReturnValue(decryption.promise);
+      const topicRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+      renderWorkspaceChatPageWithShellContexts(topicRoute);
+      const textbox = await screen.findByRole("textbox");
+      fireEvent.change(textbox, { target: { value: "Keep my answer" } });
+      act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+      await waitFor(() => expect(decryptRealChatMessage).toHaveBeenCalled());
+      if (change === "route") {
+        await act(async () => {
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        });
+        await act(async () => {
+          await navigateTo?.(topicRoute);
+        });
+      } else if (change === "generation") {
+        const next = { ...createSession(), runtimeGeneration: 2 };
+        act(() => useWorkspaceAuthStore.setState({ sessions: [next], runtimeGeneration: 2 }));
+      } else if (change === "ciphertext") {
+        act(() =>
+          replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+            {
+              ...message,
+              payload: { kind: "e2ee", keyUuid: "reply-key", content: "replaced-ciphertext" },
+            },
+          ]),
+        );
+      } else if (change === "key-removal") {
+        act(() =>
+          notifyRealChatKeyChanges({
+            kind: "removed",
+            ownerKey: owner,
+            deviceId: "mock-device",
+            streamUuid: STREAM_UUID,
+            keyUuid: "reply-key",
+          }),
+        );
+      }
+      await act(async () => {
+        decryption.resolve(change === "missing-key" ? null : "Late confidential quote");
+        await decryption.promise;
+      });
+      expect(screen.queryByText("Late confidential quote")).not.toBeInTheDocument();
+      if (change === "missing-key" || change === "ciphertext" || change === "key-removal") {
+        expect(screen.getByRole("textbox")).toHaveValue("Keep my answer");
+      }
+      expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps encrypted answers across key rotation and clears only a revoked quote", async () => {
+    const { owner, message } = seedEncryptedReplyComposer();
+    vi.mocked(decryptRealChatMessage).mockResolvedValue("Secret quote before rotation");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Keep this encrypted answer" } });
+    act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+    await screen.findByText("Secret quote before rotation");
+    act(() => {
+      const catalog = useMessengerStore.getState();
+      const stream = catalog.streamsById[STREAM_UUID];
+      if (stream == null) throw new Error("Expected stream");
+      useMessengerStore.setState({
+        streamsById: {
+          ...catalog.streamsById,
+          [STREAM_UUID]: { ...stream, currentEncryptionKey: { keyUuid: "rotated-key" } },
+        },
+      });
+      notifyRealChatKeyChanges({
+        kind: "updated",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "rotated-key",
+      });
+    });
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this encrypted answer");
+    expect(screen.getByText("Secret quote before rotation")).toBeInTheDocument();
+    act(() =>
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "reply-key",
+      }),
+    );
+    expect(screen.queryByText("Secret quote before rotation")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this encrypted answer");
+  });
+
+  it("replies to historical markdown in an encrypted chat and cancels the ephemeral quote", async () => {
+    const { message, send } = seedEncryptedReplyComposer();
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      {
+        ...message,
+        payload: { kind: "markdown", content: "Historical readable message" },
+      },
+    ]);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Existing answer" } });
+    act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+    const composer = within(screen.getByRole("form", { name: t("a11y.messageComposer") }));
+    await composer.findByText("Historical readable message");
+    expect(decryptRealChatMessage).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("form", { name: t("a11y.messageComposer") })).getByRole("button", {
+        name: t("common.cancel"),
+      }),
+    );
+    expect(composer.queryByText("Historical readable message")).not.toBeInTheDocument();
+    expect(textbox).toHaveValue("Existing answer");
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ text: "Existing answer" })),
+    );
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("queues encrypted sends without blocking typing or persisting plaintext drafts", async () => {
     const session = { ...createSession(), organizationOrigin: "http://127.0.0.1:9100" };
     useWorkspaceAuthStore.getState().setSession(session);
     const owner = workspaceRuntimeOwnerKey(session);
@@ -1019,8 +1389,10 @@ describe("ChatPage Workspace route", () => {
         },
       })),
     });
-    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    const firstDelivery = createDeferred<{ status: "applied" }>();
+    const send = vi.fn().mockReturnValueOnce(firstDelivery.promise);
     captured.openRealChatSession.mockResolvedValue({
+      device: { deviceId: "mock-device", deviceName: "Test" },
       load: vi.fn().mockResolvedValue(undefined),
       ingest: vi.fn().mockResolvedValue(undefined),
       subscribe: () => () => undefined,
@@ -1049,7 +1421,9 @@ describe("ChatPage Workspace route", () => {
     expect(hydrate).not.toHaveBeenCalled();
     expect(
       Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(textbox).not.toBeDisabled();
+    expect(textbox).toHaveFocus();
     expect(
       selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
@@ -1060,8 +1434,20 @@ describe("ChatPage Workspace route", () => {
     send.mockRejectedValueOnce(new Error("crypto operation failure"));
     fireEvent.change(textbox, { target: { value: "Keep this text" } });
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
-    await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
-    expect(textbox).toHaveValue("Keep this text");
+    await waitFor(() =>
+      expect(captured.messageListProps?.outgoingMessages?.[1]).toMatchObject({
+        markdown: "Keep this text",
+        status: "failed",
+        encryption: { keyUuid: "mock-key", deviceId: "mock-device" },
+      }),
+    );
+    expect(textbox).toHaveValue("");
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    await act(async () => {
+      firstDelivery.resolve({ status: "applied" });
+      await firstDelivery.promise;
+    });
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toHaveLength(1));
     send.mockClear();
     const overPlaintextLimit = "A".repeat(40_001);
     fireEvent.change(textbox, { target: { value: overPlaintextLimit } });
@@ -1075,7 +1461,7 @@ describe("ChatPage Workspace route", () => {
     { name: "clip.mp4", contentType: "video/mp4", urnType: "video" },
     { name: "report.pdf", contentType: "application/pdf", urnType: "file" },
   ])(
-    "sends $urnType references through crypto and retains failed attachments",
+    "retains encrypted $urnType references in the outbox across retries without re-uploading",
     async ({ name, contentType, urnType }) => {
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (runtime == null) throw new Error("Expected runtime");
@@ -1094,6 +1480,7 @@ describe("ChatPage Workspace route", () => {
         .mockResolvedValueOnce({ status: "stale" })
         .mockResolvedValue({ status: "applied" });
       captured.openRealChatSession.mockResolvedValue({
+        device: { deviceId: "mock-device", deviceName: "Test" },
         load: vi.fn().mockResolvedValue(undefined),
         ingest: vi.fn().mockResolvedValue(undefined),
         subscribe: () => () => undefined,
@@ -1141,25 +1528,34 @@ describe("ChatPage Workspace route", () => {
       await waitFor(() => expect(sendButton).not.toBeDisabled());
       fireEvent.change(textbox, { target: { value: "Keep with attachment" } });
       fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
-      expect(textbox).toHaveValue("Keep with attachment");
+      await waitFor(() =>
+        expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed"),
+      );
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+      expect(textbox).toHaveValue("");
+      expect(textbox).not.toBeDisabled();
       expect(send).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining(`urn:${urnType}:99999999-9999-4999-8999-999999999999`),
           topicUuid: TOPIC_UUID,
         }),
       );
-      expect(send.mock.calls[0]?.[0].text).toContain("\nKeep with attachment");
+      const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+      if (!outgoing) throw new Error("Missing failed attachment message");
+      expect(outgoing.markdown).toContain("\nKeep with attachment");
       send.mockRejectedValueOnce(new Error("send failed"));
-      fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
-      expect(textbox).toHaveValue("Keep with attachment");
-      expect(screen.getByText(name)).toBeInTheDocument();
-      fireEvent.change(textbox, { target: { value: "" } });
-      fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.queryByText(name)).not.toBeInTheDocument());
+      act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed"),
+      );
+      act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
+      await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
       expect(send).toHaveBeenCalledTimes(3);
-      expect(send.mock.calls[2]?.[0].text).not.toContain("Keep with attachment");
+      expect(send.mock.calls[2]?.[0]).toMatchObject({
+        text: outgoing.markdown,
+        canonicalMessageUuid: outgoing.canonicalMessageUuid,
+      });
       expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce();
       expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
       expect(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid).toEqual({});
@@ -1174,49 +1570,78 @@ describe("ChatPage Workspace route", () => {
     },
   );
 
-  it("keeps an accepted encrypted attachment when its chat unmounts before send completes", async () => {
-    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-    if (runtime == null) throw new Error("Expected runtime");
-    const bootstrap = createBootstrapPayload();
-    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
-      ...bootstrap,
-      streams: bootstrap.streams.map((stream) => ({
-        ...stream,
-        encryption: true,
-        currentEncryptionKey: { keyUuid: "mock-key" },
-      })),
-    });
-    const pendingSend = createDeferred<{ status: "applied" }>();
-    const send = vi.fn().mockReturnValue(pendingSend.promise);
-    captured.openRealChatSession.mockResolvedValue({
-      load: vi.fn().mockResolvedValue(undefined),
-      ingest: vi.fn().mockResolvedValue(undefined),
-      subscribe: () => () => undefined,
-      dispose: vi.fn(),
-      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
-      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
-      send,
-    });
-    const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-    await screen.findByRole("textbox");
-    const input = container.querySelector('input[type="file"]');
-    if (input == null) throw new Error("Missing file picker");
-    fireEvent.change(input, {
-      target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
-    });
-    const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
-    fireEvent.click(sendButton);
-    await waitFor(() => expect(send).toHaveBeenCalledOnce());
-    unmount();
-    await act(async () => {
-      pendingSend.resolve({ status: "applied" });
-      await pendingSend.promise;
-    });
-    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
-  });
+  it.each(["applied", "failed", "runtime-replaced"] as const)(
+    "keeps an encrypted attachment after unmount when delivery is %s",
+    async (outcome) => {
+      const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (runtime == null) throw new Error("Expected runtime");
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
+        ...bootstrap,
+        streams: bootstrap.streams.map((stream) => ({
+          ...stream,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "mock-key" },
+        })),
+      });
+      const pendingSend = createDeferred<{ status: "applied" }>();
+      const send = vi.fn().mockReturnValue(pendingSend.promise);
+      captured.openRealChatSession.mockResolvedValue({
+        device: { deviceId: "mock-device", deviceName: "Test" },
+        load: vi.fn().mockResolvedValue(undefined),
+        ingest: vi.fn().mockResolvedValue(undefined),
+        subscribe: () => () => undefined,
+        dispose: vi.fn(),
+        getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+        getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+        send,
+      });
+      const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      const input = container.querySelector('input[type="file"]');
+      if (input == null) throw new Error("Missing file picker");
+      fireEvent.change(input, {
+        target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
+      });
+      const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+      await waitFor(() => expect(sendButton).not.toBeDisabled());
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      const active = await captured.openRealChatSession.mock.results[0]?.value;
+      unmount();
+      expect(active.dispose).not.toHaveBeenCalled();
+      if (outcome === "runtime-replaced") {
+        act(() => {
+          const nextSession = { ...createSession(), runtimeGeneration: 2 };
+          useWorkspaceAuthStore.setState({ sessions: [nextSession], runtimeGeneration: 2 });
+        });
+        await waitFor(() =>
+          expect(
+            Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid)[0]
+              ?.status,
+          ).toBe("failed"),
+        );
+      }
+      await act(async () => {
+        if (outcome !== "failed") pendingSend.resolve({ status: "applied" });
+        else pendingSend.reject(new Error("delivery failed after navigation"));
+        await pendingSend.promise.catch(() => undefined);
+      });
+      await waitFor(() => expect(active.dispose).toHaveBeenCalledOnce());
+      const remaining = Object.values(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+      );
+      if (outcome === "applied") expect(remaining).toEqual([]);
+      else
+        expect(remaining[0]).toMatchObject({
+          status: "failed",
+          markdown: expect.stringContaining("urn:file:"),
+        });
+      expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves the editor during rotation and a pending current-key request", async () => {
     const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -1244,6 +1669,7 @@ describe("ChatPage Workspace route", () => {
       return Promise.resolve();
     });
     const active = {
+      device: { deviceId: "mock-device", deviceName: "Test" },
       load: vi.fn().mockResolvedValue(undefined),
       ingest: vi.fn(() => {
         emit();
@@ -1273,6 +1699,7 @@ describe("ChatPage Workspace route", () => {
     );
     const textbox = await screen.findByRole("textbox");
     fireEvent.change(textbox, { target: { value: "Keep this draft through rotation" } });
+
     await act(() => {
       currentKey = "new-key";
       const stream = useMessengerStore.getState().streamsById[STREAM_UUID]!;
@@ -1328,6 +1755,188 @@ describe("ChatPage Workspace route", () => {
     expect(await screen.findByText(t("e2ee.lockedDescription"))).toBeInTheDocument();
     expect(captured.channelHeaderProps).toMatchObject({ encrypted: true });
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("copies a selected E2EE fragment directly and decrypts the whole message on demand", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    const encryptedMessage: MessengerMessage = {
+      ...createMessage(),
+      payload: { kind: "e2ee", keyUuid: "copy-key", content: "opaque-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [encryptedMessage]);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardWrites: string[] = [];
+    class TestClipboardItem {
+      constructor(readonly data: Record<string, Promise<string | Blob>>) {}
+    }
+    const write = vi.fn(async (items: ClipboardItems) => {
+      const item = items[0];
+      if (item == null) throw new Error("Expected a clipboard item");
+      const testItem = item as ClipboardItem & {
+        data: Record<string, Promise<string | Blob>>;
+      };
+      const valuePromise = testItem.data["text/plain"];
+      if (valuePromise == null) throw new Error("Expected plain text clipboard data");
+      const value = await valuePromise;
+      clipboardWrites.push(typeof value === "string" ? value : await value.text());
+    });
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const clipboardItemDescriptor = Object.getOwnPropertyDescriptor(globalThis, "ClipboardItem");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write, writeText },
+    });
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: TestClipboardItem,
+    });
+    const deferredDecryption = createDeferred<string | null>();
+    vi.mocked(decryptRealChatMessage).mockReturnValue(deferredDecryption.promise);
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+      const copyMessage = captured.messageListProps?.onCopyMessageText;
+      if (copyMessage == null) throw new Error("Expected the copy callback");
+
+      await act(async () => copyMessage(encryptedMessage.uuid, "selected fragment"));
+      expect(writeText).toHaveBeenCalledWith("selected fragment");
+      expect(decryptRealChatMessage).not.toHaveBeenCalled();
+
+      let fullCopy: void | Promise<void> = undefined;
+      act(() => {
+        fullCopy = copyMessage(encryptedMessage.uuid);
+      });
+      expect(write).toHaveBeenCalledOnce();
+      expect(decryptRealChatMessage).toHaveBeenCalledWith(
+        runtime,
+        expect.objectContaining({
+          uuid: encryptedMessage.uuid,
+          payload: encryptedMessage.payload,
+        }),
+        expect.any(Function),
+      );
+      deferredDecryption.resolve("decrypted message");
+      await act(async () => fullCopy);
+      expect(clipboardWrites).toEqual(["decrypted message"]);
+    } finally {
+      if (clipboardDescriptor == null) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      }
+      if (clipboardItemDescriptor == null) {
+        Reflect.deleteProperty(globalThis, "ClipboardItem");
+      } else {
+        Object.defineProperty(globalThis, "ClipboardItem", clipboardItemDescriptor);
+      }
+    }
+  });
+
+  it.each([
+    { failure: "decryption", scope: "current" },
+    { failure: "decryption", scope: "route" },
+    { failure: "decryption", scope: "owner" },
+    { failure: "clipboard", scope: "current" },
+    { failure: "clipboard", scope: "route" },
+    { failure: "clipboard", scope: "owner" },
+  ])("scopes a late $failure copy error to the $scope UI", async ({ failure, scope }) => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    const message: MessengerMessage = {
+      ...createMessage(),
+      payload: { kind: "e2ee", keyUuid: "copy-key", content: "opaque-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message]);
+    const decryption = createDeferred<string | null>();
+    const clipboardWrite = createDeferred<void>();
+    vi.mocked(decryptRealChatMessage).mockReturnValue(decryption.promise);
+    const writeText = vi.fn().mockReturnValue(clipboardWrite.promise);
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByTestId("workspace-message-list-section");
+      const copyMessage = captured.messageListProps?.onCopyMessageText;
+      if (copyMessage == null) throw new Error("Expected the copy callback");
+      let copying: void | Promise<void> = undefined;
+      act(() => {
+        copying = copyMessage(message.uuid);
+      });
+      if (failure === "clipboard") {
+        decryption.resolve("decrypted message");
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith("decrypted message"));
+      }
+
+      if (scope === "route") {
+        await act(async () => {
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        });
+        await act(async () => {
+          await navigateTo?.(
+            `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+          );
+        });
+      } else if (scope === "owner") {
+        const sessionB: WorkspaceAuthSession = {
+          ...createSession(),
+          accountId: "org-b:project-b:user-b",
+          organizationId: "org-b",
+          projectId: "project-b",
+          userUuid: USER_B_UUID,
+          runtimeGeneration: 2,
+        };
+        const ownerB = workspaceRuntimeOwnerKey(sessionB);
+        await act(async () => {
+          useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
+          useWorkspaceMessageStore.getState().setOwner(ownerB, false);
+          useWorkspaceAuthStore.setState({
+            sessions: [sessionB],
+            currentAccountId: sessionB.accountId,
+            runtimeGeneration: sessionB.runtimeGeneration,
+          });
+          await navigateTo?.(`/org/org-b/project/project-b/stream/${STREAM_UUID}`);
+        });
+      }
+
+      await act(async () => {
+        if (failure === "decryption") decryption.resolve(null);
+        else clipboardWrite.reject(new Error("Clipboard denied"));
+        await copying;
+      });
+
+      if (scope === "current") {
+        expect(screen.getByText(t("message.copyFailed"))).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText(t("message.copyFailed"))).not.toBeInTheDocument();
+      }
+      if (failure === "decryption") expect(writeText).not.toHaveBeenCalled();
+    } finally {
+      if (clipboardDescriptor == null) Reflect.deleteProperty(navigator, "clipboard");
+      else Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+    }
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -3702,6 +4311,106 @@ describe("ChatPage Workspace route", () => {
     });
 
     expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
+  });
+
+  it.each(["stream", "topic"])(
+    "starts a Jitsi call from the ordinary %s header",
+    async (routeKind) => {
+      const ownerKey = workspaceRuntimeOwnerKey(createSession());
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+        ...bootstrap,
+        topics: bootstrap.topics.map((topic) => ({ ...topic, isDefault: true })),
+      });
+      useWorkspaceJitsiSettingsStore
+        .getState()
+        .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com");
+      const topicPath = routeKind === "topic" ? `/topic/${TOPIC_UUID}` : "";
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}${topicPath}`,
+      );
+      await waitFor(() =>
+        expect(captured.channelHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+      );
+      act(() => captured.channelHeaderProps?.onCallClick?.());
+      await waitFor(() =>
+        expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            streamUuid: STREAM_UUID,
+            topicUuid: TOPIC_UUID,
+            includeStreamConversation: routeKind === "stream",
+          }),
+        ),
+      );
+      await waitFor(() => expect(useJitsiCallStore.getState().activeCall).not.toBeNull());
+    },
+  );
+
+  it.each(["header", "sidebar"])(
+    "starts the existing Jitsi flow from the encrypted %s and encrypts the invite",
+    async (entry) => {
+      const { owner, send } = seedEncryptedReplyComposer();
+      const pending = createDeferred<{ status: "applied" }>();
+      send.mockReturnValueOnce(pending.promise);
+      useWorkspaceJitsiSettingsStore
+        .getState()
+        .setWorkspaceMeetUrl(owner, "https://meet.workspace.example.com");
+      const view = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      const sidebarCall = useChatDmCallBridgeStore.getState().activeChatCall;
+      expect(sidebarCall).toMatchObject({ ownerKey: owner, streamUuid: STREAM_UUID });
+      act(() => {
+        if (entry === "header") captured.channelHeaderProps?.onCallClick?.();
+        else sidebarCall?.invoke();
+        // Both surfaces share the same in-flight guard.
+        sidebarCall?.invoke();
+      });
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("https://meet.workspace.example.com/workspace-"),
+          topicUuid: TOPIC_UUID,
+          includeStreamConversation: false,
+        }),
+      );
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+      expect(useJitsiCallStore.getState().activeCall).toBeNull();
+      await act(async () => {
+        pending.resolve({ status: "applied" });
+        await pending.promise;
+      });
+      await waitFor(() =>
+        expect(useJitsiCallStore.getState().activeCall?.meetingUrl).toBe(
+          send.mock.calls[0]?.[0].text,
+        ),
+      );
+      view.unmount();
+      expect(useChatDmCallBridgeStore.getState().activeChatCall).toBeNull();
+      send.mockClear();
+      act(() => sidebarCall?.invoke());
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks encrypted call invites without a local key", async () => {
+    const { owner, send } = seedEncryptedReplyComposer("missing");
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(owner, "https://meet.workspace.example.com");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.channelHeaderProps?.onCallClick).toEqual(expect.any(Function)),
+    );
+    act(() => captured.channelHeaderProps?.onCallClick?.());
+    expect(useChatDmCallBridgeStore.getState().activeChatCall).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(screen.getByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
   });
 
   it("sends and opens a Workspace Jitsi call from the direct private header", async () => {

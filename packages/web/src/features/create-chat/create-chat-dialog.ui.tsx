@@ -6,6 +6,7 @@ import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { Select } from "~/shared/ui/select.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
+import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
 import {
   useCreateChatDialog,
   type BrowseChannelSubscriptionFilter,
@@ -127,34 +128,6 @@ const DirectUserRow = React.memo<DirectUserRowProps>(function DirectUserRow({ us
     >
       <CreateChatUserRowBody user={user} />
     </button>
-  );
-});
-
-interface SelectableUserRowProps {
-  user: CreateChatUserOption;
-  checked: boolean;
-  onToggle: (userKey: string) => void;
-}
-
-const SelectableUserRow = React.memo<SelectableUserRowProps>(function SelectableUserRow({
-  user,
-  checked,
-  onToggle,
-}) {
-  const handleChange = useCallback(() => {
-    onToggle(user.userKey);
-  }, [onToggle, user.userKey]);
-
-  return (
-    <label key={user.userKey} className={CREATE_CHAT_LIST_ROW_CLASS}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={handleChange}
-        className="h-4 w-4 rounded border-border-subtle"
-      />
-      <CreateChatUserRowBody user={user} />
-    </label>
   );
 });
 
@@ -445,27 +418,17 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               </label>
               <div className="flex min-h-0 flex-col gap-3 overflow-x-auto">
                 <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
-                <input
-                  type="text"
-                  value={vm.userSearch}
-                  onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
-                  placeholder={t("message.searchUsers")}
+                <UserPickerList
+                  options={vm.channelUsers}
+                  selectedUserIds={vm.channelSelectedUserKeys}
+                  onToggle={vm.toggleChannelUser}
+                  query={vm.userSearch}
+                  onQueryChange={vm.setUserSearch}
+                  inputClassName={CREATE_CHAT_TEXT_INPUT_CLASS}
+                  listClassName={CREATE_CHAT_CHANNEL_MEMBER_LIST_CLASS}
+                  rowClassName={CREATE_CHAT_LIST_ROW_CLASS}
+                  className="flex min-h-0 flex-col gap-3"
                 />
-                <div className={CREATE_CHAT_CHANNEL_MEMBER_LIST_CLASS}>
-                  {vm.channelUsers.length === 0 ? (
-                    <EmptyCreateChatList label={t("search.noResults")} />
-                  ) : (
-                    vm.channelUsers.map((user) => (
-                      <SelectableUserRow
-                        key={user.userKey}
-                        user={user}
-                        checked={vm.channelSelectedUserKeys.has(user.userKey)}
-                        onToggle={vm.toggleChannelUser}
-                      />
-                    ))
-                  )}
-                </div>
               </div>
               {vm.channelCreateErrorKey != null && (
                 <p role="alert" className="text-sm text-danger">

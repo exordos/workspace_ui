@@ -10,13 +10,19 @@ import {
 import * as cryptoRuntime from "~/entities/messenger/chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "~/entities/messenger/chat-e2ee-payload-adapters.lib";
 import { createRealChatCryptoProvider } from "~/entities/messenger/chat-real-crypto-provider.lib";
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import * as quoteResolver from "~/entities/messenger/messenger-quote-resolver.hook";
+import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import type { EncryptedChatServiceMessageProps } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { setLocale } from "~/i18n/i18n";
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
+import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
   return {
     uuid: "11111111-1111-4111-8111-111111111111",
@@ -66,7 +72,10 @@ function message(uuid: string, payload: MessengerMessage["payload"]): MessengerM
   };
 }
 
-async function seedRealEncryptedMessage(text: string) {
+async function seedRealEncryptedMessage(
+  text: string,
+  uuid = "55555555-5555-4555-8555-555555555555",
+) {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
@@ -119,7 +128,7 @@ async function seedRealEncryptedMessage(text: string) {
     content: encrypted.value,
   });
   if (wire.kind !== "e2ee") throw new Error("Unexpected payload");
-  const stored = message("55555555-5555-4555-8555-555555555555", {
+  const stored = message(uuid, {
     kind: "e2ee",
     keyUuid: wire.key_uuid,
     content: wire.content,
@@ -137,6 +146,168 @@ function view(stored: MessengerMessage) {
     />
   );
 }
+describe("key request service messages", () => {
+  afterEach(() => {
+    cleanup();
+    setLocale("en");
+  });
+
+  function requestFixture({
+    own = true,
+    currentDevice = true,
+    canManage = true,
+    hasKey = false,
+    requestStatus = "pending",
+    deviceName = "iPhone",
+    actions = [],
+  }: {
+    own?: boolean;
+    currentDevice?: boolean;
+    canManage?: boolean;
+    hasKey?: boolean;
+    requestStatus?: EncryptedChatServiceState["requestStatus"];
+    deviceName?: string;
+    actions?: EncryptedChatServiceMessageProps["actions"];
+  } = {}) {
+    const request = message("request", {
+      kind: "key_request",
+      keyUuid: "generation",
+      deviceId: "iphone",
+      deviceName,
+      publicKey: "opaque-public-key",
+    });
+    const currentUserUuid = own ? request.authorUuid : "observer";
+    const state: EncryptedChatServiceState = {
+      deviceId: currentDevice ? "iphone" : "macbook",
+      canManageKeys: canManage,
+      hasKey,
+      requestStatus,
+    };
+    const props = {
+      message: request,
+      currentUserUuid,
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      resolveAuthorLabel: () => "Алексей",
+      actions: {
+        getKeyServiceState: () => state,
+        getKeyRequestActions: () => actions,
+      },
+    };
+    return { props };
+  }
+
+  it.each`
+    own      | currentDevice | canManage | hasKey   | hint           | transfer | reject
+    ${true}  | ${true}       | ${true}   | ${false} | ${"elsewhere"} | ${false} | ${false}
+    ${true}  | ${true}       | ${false}  | ${false} | ${"wait"}      | ${false} | ${false}
+    ${true}  | ${false}      | ${true}   | ${true}  | ${"none"}      | ${true}  | ${true}
+    ${true}  | ${false}      | ${true}   | ${false} | ${"missing"}   | ${false} | ${true}
+    ${true}  | ${false}      | ${false}  | ${true}  | ${"wait"}      | ${false} | ${false}
+    ${true}  | ${false}      | ${false}  | ${false} | ${"wait"}      | ${false} | ${false}
+    ${false} | ${false}      | ${true}   | ${true}  | ${"none"}      | ${true}  | ${true}
+    ${false} | ${false}      | ${true}   | ${false} | ${"missing"}   | ${false} | ${true}
+    ${false} | ${false}      | ${false}  | ${true}  | ${"none"}      | ${false} | ${false}
+    ${false} | ${false}      | ${false}  | ${false} | ${"none"}      | ${false} | ${false}
+  `(
+    "renders account, device, rights and local key state: %j",
+    (scenario: {
+      own: boolean;
+      currentDevice: boolean;
+      canManage: boolean;
+      hasKey: boolean;
+      hint: string;
+      transfer: boolean;
+      reject: boolean;
+    }) => {
+      setLocale("ru");
+      const grantKey = vi.fn();
+      const rejectKey = vi.fn();
+      const actions = [];
+      if (scenario.transfer) actions.push({ label: "Передать ключ", onClick: grantKey });
+      if (scenario.reject) actions.push({ label: "Отклонить", onClick: rejectKey });
+      const f = requestFixture({ ...scenario, actions });
+      const { container } = render(<WorkspaceEncryptedMessageBubble {...f.props} />);
+      expect(
+        screen.getByText(
+          scenario.own
+            ? "Вы запросили ключ безопасности для устройства «iPhone»"
+            : "запросил(а) ключ безопасности для устройства «iPhone»",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Алексей") != null).toBe(!scenario.own);
+      const hints = {
+        elsewhere:
+          "Подтвердите запрос на другом устройстве с ключом или дождитесь предоставления доступа",
+        wait: "Дождитесь предоставления доступа, чтобы увидеть сообщения",
+        missing: "На этом устройстве нет запрошенного ключа",
+      };
+      for (const [key, text] of Object.entries(hints))
+        expect(screen.queryByText(text) != null).toBe(scenario.hint === key);
+      const transfer = screen.queryByRole("button", { name: "Передать ключ" });
+      const reject = screen.queryByRole("button", { name: "Отклонить" });
+      expect(transfer != null).toBe(scenario.transfer);
+      expect(reject != null).toBe(scenario.reject);
+      if (transfer) {
+        fireEvent.click(transfer);
+        expect(grantKey).toHaveBeenCalledOnce();
+      }
+      if (reject) {
+        fireEvent.click(reject);
+        expect(rejectKey).toHaveBeenCalledOnce();
+      }
+      expect(container.innerHTML).not.toContain("opaque-public-key");
+    },
+  );
+
+  it.each(["granted", "rejected"] as const)(
+    "does not keep waiting after the request is %s",
+    (requestStatus) => {
+      setLocale("ru");
+      const f = requestFixture({ currentDevice: false, hasKey: true, requestStatus });
+      render(<WorkspaceEncryptedMessageBubble {...f.props} />);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        requestStatus === "granted" ? "Ключ отправлен" : "Запрос отклонён.",
+      );
+      expect(screen.queryByText(/Дождитесь|Подтвердите запрос/)).toBeNull();
+      expect(screen.queryByRole("button")).toBeNull();
+    },
+  );
+
+  it("disables pending actions on another device and preserves the English device label", () => {
+    const grantKey = vi.fn();
+    const f = requestFixture({
+      currentDevice: false,
+      hasKey: true,
+      actions: [
+        { label: "Send key", onClick: grantKey, disabled: true },
+        { label: "Reject", onClick: vi.fn(), disabled: true },
+      ],
+    });
+    render(<WorkspaceEncryptedMessageBubble {...f.props} />);
+    expect(
+      screen.getByText("You requested a security key for device “iPhone”"),
+    ).toBeInTheDocument();
+    const transfer = screen.getByRole("button", { name: "Send key" });
+    expect(transfer).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    fireEvent.click(transfer);
+    expect(grantKey).not.toHaveBeenCalled();
+  });
+
+  it("does not offer cross-device approval until the scoped session is available", () => {
+    const f = requestFixture({ deviceName: "  " });
+    render(
+      <WorkspaceEncryptedMessageBubble {...f.props} actions={{ getKeyServiceState: () => null }} />,
+    );
+    expect(
+      screen.getByText("You requested a security key for device “Unknown device”"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Approve the request/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
 describe("key response service messages", () => {
   afterEach(() => {
     cleanup();
@@ -151,7 +322,7 @@ describe("key response service messages", () => {
         kind: "key_request",
         keyUuid: "generation",
         deviceId: "recipient-device",
-        deviceName: "Workspace browser",
+        deviceName: "iPhone",
         publicKey: "opaque-public-key",
       }),
       authorUuid: "recipient",
@@ -168,89 +339,128 @@ describe("key response service messages", () => {
         ? { ...responseFields, kind, content: "opaque-encrypted-key" }
         : { ...responseFields, kind },
     );
+    const state: EncryptedChatServiceState = {
+      deviceId: "recipient-device",
+      canManageKeys: false,
+      hasKey: true,
+      requestStatus: kind === "key_grant" ? "granted" : "rejected",
+    };
     const props = {
       message: response,
       currentUserUuid: "observer",
       isFirstInGroup: true,
       isLastInGroup: true,
-      resolveAuthorLabel: (uuid: string) =>
-        ({ author: "Толя Тестировщик", recipient: "Саша" })[uuid],
+      resolveAuthorLabel: (uuid: string) => ({ author: "Алексей", recipient: "Саша" })[uuid],
+      actions: { getKeyServiceState: () => state },
     };
     useWorkspaceMessageStore.getState().setOwner("owner", false);
-    return { request, props };
+    return { request, props, state };
   }
 
   it.each([
-    ["key_grant", "Толя Тестировщик предоставил ключ безопасности пользователю Саша"],
-    ["key_reject", "Толя Тестировщик отклонил запрос ключа безопасности пользователя Саша"],
-  ] as const)("names both participants in %s for the issuer and other viewers", (kind, title) => {
+    [
+      "key_grant",
+      "Алексей передал(а) ключ безопасности пользователю Саша для устройства «iPhone»",
+      "Вы передали ключ безопасности пользователю Саша для устройства «iPhone»",
+    ],
+    [
+      "key_reject",
+      "Алексей отклонил(а) запрос ключа безопасности пользователя Саша для устройства «iPhone»",
+      "Вы отклонили запрос ключа безопасности пользователя Саша для устройства «iPhone»",
+    ],
+  ] as const)("names actor, recipient and device in %s", (kind, title, ownTitle) => {
     setLocale("ru");
     const { request, props } = responseFixture(kind);
     useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
     const { rerender, container } = render(<WorkspaceEncryptedMessageBubble {...props} />);
     expect(screen.getByText(title)).toBeInTheDocument();
     rerender(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="author" />);
-    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(ownTitle)).toBeInTheDocument();
     expect(container.innerHTML).not.toContain("opaque-encrypted-key");
     expect(container.innerHTML).not.toContain("opaque-public-key");
   });
 
   it.each([
-    ["key_grant", "ru", "Ключ получен.", "Владелец канала предоставил вам ключ безопасности"],
-    ["key_reject", "ru", "Запрос отклонён.", "Владелец канала отклонил запрос на выдачу ключа."],
-    ["key_grant", "en", "Key received.", "The channel owner provided you with a security key"],
+    ["key_grant", "ru", "Алексей передал(а) вам ключ безопасности для устройства «iPhone»"],
     [
       "key_reject",
-      "en",
-      "Request rejected.",
-      "The channel owner rejected the request for a security key.",
+      "ru",
+      "Алексей отклонил(а) ваш запрос ключа безопасности для устройства «iPhone»",
     ],
-  ] as const)("personalizes %s for the recipient in %s", (kind, locale, title, description) => {
+    ["key_grant", "en", "Алексей sent you a security key for device “iPhone”"],
+    ["key_reject", "en", "Алексей rejected your security key request for device “iPhone”"],
+  ] as const)("personalizes %s for the recipient in %s", (kind, locale, title) => {
     setLocale(locale);
     const { request, props } = responseFixture(kind);
     useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
-    const { container } = render(
-      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />,
-    );
+    render(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />);
     expect(screen.getByText(title)).toBeInTheDocument();
-    expect(screen.getByText(description)).toBeInTheDocument();
-    expect(screen.queryByText(/Толя|Саша/)).toBeNull();
-    expect(container.querySelector("[data-encrypted-service-message]")).toHaveAttribute(
-      "data-encrypted-service-message",
-      kind,
-    );
+    expect(screen.queryByText(/Владелец канала|channel owner/)).toBeNull();
   });
 
-  it("updates the recipient when the request arrives and puts retry on a separate row", () => {
-    setLocale("en");
-    const { request, props } = responseFixture("key_reject");
+  it("distinguishes two devices of one account and only reports locally available keys", () => {
+    setLocale("ru");
+    const { request, props, state } = responseFixture("key_grant");
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage({ ...request, authorUuid: "author" });
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        currentUserUuid="author"
+        actions={{ getKeyServiceState: () => ({ ...state, deviceId: "issuer-device" }) }}
+      />,
+    );
+    expect(
+      screen.getByText("Вы передали ключ безопасности для устройства «iPhone»"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    rerender(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        currentUserUuid="author"
+        actions={{ getKeyServiceState: () => ({ ...state, hasKey: false }) }}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="author" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Ключ доступен на этом устройстве");
+  });
+
+  it("resolves a late request and puts recipient-device retry on a separate row", () => {
+    const { request, props, state } = responseFixture("key_reject");
     const retry = vi.fn();
-    render(
+    const actions = {
+      ...props.actions,
+      getKeyRequestActions: () => [{ label: "Request key", onClick: retry }],
+    };
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" actions={actions} />,
+    );
+    expect(screen.getByText("Recipient information is unavailable.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+    act(() => useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request));
+    const title = screen.getByText(
+      "Алексей rejected your security key request for device “iPhone”",
+    );
+    const retryDescription = screen.getByText("You can request the key again");
+    const button = screen.getByRole("button", { name: "Request" });
+    expect(button.parentElement).toBe(retryDescription.parentElement);
+    expect(retryDescription.parentElement).not.toBe(title.parentElement?.parentElement);
+    fireEvent.click(button);
+    expect(retry).toHaveBeenCalledOnce();
+    rerender(
       <WorkspaceEncryptedMessageBubble
         {...props}
         currentUserUuid="recipient"
         actions={{
-          getKeyRequestActions: () => [{ label: "Request key", onClick: retry }],
+          ...actions,
+          getKeyServiceState: () => ({ ...state, deviceId: "another-device" }),
         }}
       />,
     );
-    expect(screen.getByText(/Recipient information is unavailable/)).toBeInTheDocument();
-    expect(screen.queryByText("Request rejected.")).toBeNull();
-    act(() => useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request));
-    expect(screen.getByText("Request rejected.")).toBeInTheDocument();
-    const description = screen.getByText(
-      "The channel owner rejected the request for a security key.",
-    );
-    const retryDescription = screen.getByText("You can request the key again");
-    const requestButton = screen.getByRole("button", { name: "Request" });
-    const primaryRow = screen.getByText("Request rejected.").parentElement?.parentElement;
-    expect(description.parentElement?.parentElement).toBe(primaryRow);
-    expect(retryDescription.parentElement).not.toBe(primaryRow);
-    expect(retryDescription.parentElement?.parentElement).toBe(primaryRow?.parentElement);
-    expect(requestButton.parentElement).toBe(retryDescription.parentElement);
-    expect(requestButton).toHaveClass("underline");
-    fireEvent.click(requestButton);
-    expect(retry).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText("You can request the key again")).toBeNull();
   });
 
   it("keeps pending retry disabled and uses the short Russian action label", () => {
@@ -263,32 +473,15 @@ describe("key response service messages", () => {
         {...props}
         currentUserUuid="recipient"
         actions={{
+          ...props.actions,
           getKeyRequestActions: () => [{ label: "Запросить ключ", onClick: retry, disabled: true }],
         }}
       />,
     );
-    expect(screen.getByText("Вы можете запросить ключ повторно")).toBeInTheDocument();
-    const requestButton = screen.getByRole("button", { name: "Запросить" });
-    expect(requestButton).toBeDisabled();
-    fireEvent.click(requestButton);
+    const button = screen.getByRole("button", { name: "Запросить" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
     expect(retry).not.toHaveBeenCalled();
-  });
-
-  it("does not offer unavailable retry actions and keeps grants inline", () => {
-    setLocale("en");
-    const { request, props } = responseFixture("key_reject");
-    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request);
-    const { rerender } = render(
-      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />,
-    );
-    expect(screen.queryByText("You can request the key again")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
-    const grant = responseFixture("key_grant");
-    rerender(<WorkspaceEncryptedMessageBubble {...grant.props} currentUserUuid="recipient" />);
-    const title = screen.getByText("Key received.");
-    const description = screen.getByText("The channel owner provided you with a security key");
-    expect(title.parentElement).toBe(description.parentElement);
-    expect(screen.queryByText("You can request the key again")).toBeNull();
   });
 
   it.each([
@@ -316,13 +509,12 @@ describe("key response service messages", () => {
   ] satisfies Partial<MessengerMessage>[])(
     "does not infer a recipient from an unrelated request %j",
     (overrides) => {
-      setLocale("en");
       const { request, props } = responseFixture("key_grant");
       useWorkspaceMessageStore.getState().applyLiveCreatedMessage({ ...request, ...overrides });
       render(<WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" />);
-      expect(screen.queryByText("Key received.")).toBeNull();
       expect(screen.getByText("Recipient information is unavailable.")).toBeInTheDocument();
-      expect(screen.queryByText(/Саша/)).toBeNull();
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByText(/Саша|iPhone/)).toBeNull();
     },
   );
 });
@@ -334,6 +526,540 @@ describe("real encrypted message presentation", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
+  });
+  it("keeps the shared quote after an outgoing reply becomes a saved encrypted message", async () => {
+    const source = await seedRealEncryptedMessage(
+      "Original **encrypted quote**",
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const markdown = `[Alice](urn:quote:${source.stored.uuid})\n\nMy encrypted answer`;
+    const { stored, owner, device } = await seedRealEncryptedMessage(markdown);
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    const outgoing: MessengerOutgoingMessage = {
+      canonicalMessageUuid: crypto.randomUUID(),
+      placementUuid: stored.uuid,
+      ownerKey: owner,
+      conversationId: stored.conversationId,
+      projectId: stored.projectId,
+      streamUuid: stored.streamUuid,
+      topicUuid: stored.topicUuid,
+      authorUuid: stored.authorUuid,
+      markdown,
+      sourceMarkdown: markdown,
+      status: "sending",
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
+      attempt: 1,
+      error: null,
+      includeStreamConversation: false,
+      encryption: { keyUuid: stored.payload.keyUuid, deviceId: device.deviceId },
+    };
+    const props = { currentUserUuid: "author", conversationId: stored.conversationId };
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList {...props} messages={[]} outgoingMessages={[outgoing]} />,
+    );
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+    const quoteHtml = container.querySelector("[data-workspace-quote='true']")?.innerHTML;
+    expect(quoteHtml).toBeTruthy();
+
+    rerender(<WorkspaceMessageList {...props} messages={[stored]} outgoingMessages={[]} />);
+    expect(await screen.findByText("My encrypted answer")).toBeInTheDocument();
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-quote='true']")?.innerHTML).toBe(quoteHtml);
+    expect(container.querySelector("blockquote.workspace-message-quote-reference")).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+      stored.payload,
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[source.stored.uuid]?.payload).toEqual(
+      source.stored.payload,
+    );
+
+    unmount();
+    render(<WorkspaceMessageList {...props} messages={[stored]} outgoingMessages={[]} />);
+    expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
+  });
+
+  it.each([undefined, "Saved selected fragment"])(
+    "uses the original historical key for a quote with selected text %s",
+    async (selectedText) => {
+      const source = await seedRealEncryptedMessage(
+        "Historical original text",
+        "44444444-4444-4444-8444-444444444444",
+      );
+      if (source.stored.payload.kind !== "e2ee") throw new Error("Missing source payload");
+      const selectedQuery = selectedText == null ? "" : `?text=${encodeURIComponent(selectedText)}`;
+      const { stored } = await seedRealEncryptedMessage(
+        `[Alice](urn:quote:${source.stored.uuid}${selectedQuery})\n\nReadable reply`,
+      );
+      const address = {
+        owner: source.runtime,
+        deviceId: source.device.deviceId,
+        streamUuid: source.stream.uuid,
+        keyUuid: source.stored.payload.keyUuid,
+      };
+      const savedKey = await realChatKeyStorage.readChatKey(address);
+      if (savedKey == null) throw new Error("Missing historical key");
+      await realChatKeyStorage.removeChatKey(address);
+      const { container } = render(view(stored));
+      expect(await screen.findByText("Readable reply")).toBeInTheDocument();
+      const quote = container.querySelector("[data-workspace-quote='true']");
+      await waitFor(() => {
+        expect(quote?.querySelector("[data-encrypted-message-state='locked']")).not.toBeNull();
+      });
+      expect(quote).not.toHaveTextContent("Historical original text");
+      expect(quote).not.toHaveTextContent("Saved selected fragment");
+
+      await realChatKeyStorage.writeChatKey(address, savedKey);
+      act(() =>
+        notifyRealChatKeyChanges({
+          ...address,
+          ownerKey: source.owner,
+          kind: "updated",
+        }),
+      );
+      expect(
+        await screen.findByText(selectedText ?? "Historical original text"),
+      ).toBeInTheDocument();
+      expect(quote?.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
+
+      await realChatKeyStorage.removeChatKey(address);
+      act(() =>
+        notifyRealChatKeyChanges({
+          ...address,
+          ownerKey: source.owner,
+          kind: "removed",
+        }),
+      );
+      expect(
+        screen.queryByText(selectedText ?? "Historical original text"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Readable reply")).toBeInTheDocument();
+      expect(quote?.querySelector("[data-encrypted-message-placeholder]")).not.toBeNull();
+    },
+  );
+
+  it.each(["key removal", "owner change", "runtime replacement", "source replacement", "unmount"])(
+    "rejects a late quoted-message decrypt after %s",
+    async (invalidation) => {
+      const { stored, runtime, owner, device } = await seedRealEncryptedMessage("Original secret");
+      if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      const payload = stored.payload;
+      let complete!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
+      const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((resolve) => {
+        complete = resolve;
+      });
+      const decrypt = vi
+        .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
+        .mockReturnValueOnce(pending);
+      const { container, unmount } = render(
+        <WorkspaceMessageQuote
+          reference={{ messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" }}
+        />,
+      );
+      await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+      if (invalidation === "key removal") {
+        const address = {
+          owner: runtime,
+          deviceId: device.deviceId,
+          streamUuid: stored.streamUuid,
+          keyUuid: stored.payload.keyUuid,
+        };
+        await realChatKeyStorage.removeChatKey(address);
+        act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+      } else if (invalidation === "owner change") {
+        act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+      } else if (invalidation === "runtime replacement") {
+        const session = useWorkspaceAuthStore.getState().sessions[0];
+        if (session == null) throw new Error("Missing session");
+        act(() =>
+          useWorkspaceAuthStore.getState().setSession({ ...session, accessToken: "new-token" }),
+        );
+      } else if (invalidation === "source replacement") {
+        act(() =>
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...stored,
+            payload: { ...payload, content: "changed-envelope" },
+            updatedAt: "2026-10-02T00:00:00Z",
+          }),
+        );
+      } else {
+        unmount();
+      }
+      await act(async () => {
+        complete({ status: "ready", plaintext: "Stale quoted secret" });
+        await pending;
+      });
+      expect(container).not.toHaveTextContent("Stale quoted secret");
+      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload.kind).toBe(
+        "e2ee",
+      );
+    },
+  );
+
+  it("does not reuse decrypted quote text after switching through a forward snapshot", async () => {
+    const { stored, owner, runtime, device } =
+      await seedRealEncryptedMessage("Original quote secret");
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+    const reference = { messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" };
+    const { container, rerender } = render(<WorkspaceMessageQuote reference={reference} />);
+    expect(await screen.findByText("Original quote secret")).toBeInTheDocument();
+    rerender(
+      <WorkspaceMessageQuote reference={{ ...reference, snapshotMarkdown: "Saved forward" }} />,
+    );
+    expect(screen.getByText("Saved forward")).toBeInTheDocument();
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stored.streamUuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    await realChatKeyStorage.removeChatKey(address);
+    act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+    rerender(<WorkspaceMessageQuote reference={reference} />);
+    expect(screen.queryByText("Original quote secret")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(container.querySelector("[data-encrypted-message-state='locked']")).not.toBeNull(),
+    );
+  });
+
+  it.each(["pending", "ready"])(
+    "clears quoted encrypted media and aborts its %s preview when the original key is removed",
+    async (previewState) => {
+      const imageUuid = "66666666-6666-4666-8666-666666666666";
+      const { stored, owner, runtime, device } = await seedRealEncryptedMessage(
+        `![photo.png](urn:image:${imageUuid}?content_type=image%2Fpng)\n\nQuoted caption`,
+      );
+      if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      let complete!: (blob: Blob) => void;
+      const pending = new Promise<Blob>((resolve) => {
+        complete = resolve;
+      });
+      const preview = vi.fn<LoadWorkspaceFilePreview>().mockReturnValue(pending);
+      const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:encrypted-quote");
+      const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+      const { container } = render(
+        <WorkspaceMessageQuote
+          reference={{ messageUuid: stored.uuid, fallbackAuthorLabel: "Alice" }}
+          onLoadWorkspaceFilePreview={preview}
+        />,
+      );
+      expect(await screen.findByText("Quoted caption")).toBeInTheDocument();
+      await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+      const image = new Blob(["photo"], { type: "image/png" });
+      if (previewState === "ready") {
+        await act(async () => {
+          complete(image);
+          await pending;
+        });
+        await waitFor(() =>
+          expect(container.querySelector("img[src='blob:encrypted-quote']")).not.toBeNull(),
+        );
+      }
+      const address = {
+        owner: runtime,
+        deviceId: device.deviceId,
+        streamUuid: stored.streamUuid,
+        keyUuid: stored.payload.keyUuid,
+      };
+      await realChatKeyStorage.removeChatKey(address);
+      act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+      expect(screen.queryByText("Quoted caption")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-workspace-quote-media-thumbnail]")).toBeNull();
+      expect(preview.mock.calls[0]?.[1].aborted).toBe(true);
+      if (previewState === "pending") {
+        await act(async () => {
+          complete(image);
+          await pending;
+        });
+        expect(createUrl).not.toHaveBeenCalled();
+      } else {
+        expect(revokeUrl).toHaveBeenCalledWith("blob:encrypted-quote");
+      }
+    },
+  );
+
+  it("renders decrypted call invitations through the shared Jitsi card", async () => {
+    const url = "https://meet.workspace.example.com/workspace-encrypted-room";
+    const { stored } = await seedRealEncryptedMessage(url);
+    const openCall = vi.fn();
+    render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{
+          jitsiServerBaseUrl: "https://meet.workspace.example.com/",
+          onOpenJitsiCall: openCall,
+        }}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Join call" }));
+    expect(openCall).toHaveBeenCalledWith(url, "");
+  });
+
+  it("requests the missing historical message key and removes the quick action when the key arrives", async () => {
+    const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
+      "Restored historical text",
+    );
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    const savedKey = await realChatKeyStorage.readChatKey(address);
+    if (savedKey == null) throw new Error("Missing saved key");
+    await realChatKeyStorage.removeChatKey(address);
+    useMessengerStore.getState().upsertStream(owner, {
+      ...stream,
+      currentEncryptionKey: { keyUuid: crypto.randomUUID() },
+    });
+    const request = vi.fn();
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+    };
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} actions={{ onRequestMessageKey: request }} />,
+    );
+    const button = await screen.findByRole("button", { name: "Request key for this message" });
+    expect(button).toBeVisible();
+    expect(button.closest("[data-workspace-message-quick-actions]")).toHaveAttribute(
+      "data-visibility",
+      "always",
+    );
+    fireEvent.click(button);
+    expect(request).toHaveBeenCalledExactlyOnceWith(stored.uuid);
+    rerender(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
+      />,
+    );
+    const pendingButton = screen.getByRole("button", { name: "Request key for this message" });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect(request).toHaveBeenCalledTimes(1);
+    await realChatKeyStorage.writeChatKey(address, savedKey);
+    act(() => {
+      notifyRealChatKeyChanges({
+        kind: "updated",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: address.keyUuid,
+      });
+    });
+    expect(await screen.findByText("Restored historical text")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("suppresses a missing-key quick action in previews and after owner invalidation", async () => {
+    const { stored, stream, runtime, device } = await seedRealEncryptedMessage("Hidden text");
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    const request = vi.fn();
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      actions: { onRequestMessageKey: request },
+    };
+    const { rerender } = render(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(
+      await screen.findByRole("button", { name: "Request key for this message" }),
+    ).toBeInTheDocument();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />);
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(
+      screen.getByRole("button", { name: "Request key for this message" }),
+    ).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.getState().setOwner("another-owner", false));
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("does not offer a key request while decryption is pending", async () => {
+    const { stored } = await seedRealEncryptedMessage("Pending text");
+    const decrypt = vi
+      .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
+      .mockReturnValue(new Promise(() => {}));
+    render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onRequestMessageKey: vi.fn() }}
+      />,
+    );
+    await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+    expect(screen.getByText("Decrypting message…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["author", "observer"])(
+    "offers quick reply and reactions for decrypted messages viewed by %s, then removes them when the key disappears",
+    async (currentUserUuid) => {
+      const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
+        "Readable encrypted quick actions",
+      );
+      if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+      const reply = vi.fn();
+      const react = vi.fn();
+      const requestKey = vi.fn();
+      const { container } = render(
+        <WorkspaceEncryptedMessageBubble
+          message={stored}
+          currentUserUuid={currentUserUuid}
+          isFirstInGroup
+          isLastInGroup
+          actions={{
+            onReplyMessage: reply,
+            onToggleMessageReaction: react,
+            onRequestMessageKey: requestKey,
+          }}
+        />,
+      );
+      expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+      expect(await screen.findByText("Readable encrypted quick actions")).toBeInTheDocument();
+      const replyButton = screen.getByRole("button", { name: "Reply" });
+      expect(replyButton.closest("[data-workspace-message-quick-actions]")).toHaveAttribute(
+        "data-visibility",
+        "hover",
+      );
+      fireEvent.click(replyButton);
+      expect(reply).toHaveBeenCalledExactlyOnceWith(stored.uuid, undefined);
+      const heart = screen.getByRole("button", { name: "Like" });
+      fireEvent.click(heart);
+      expect(react).toHaveBeenCalledExactlyOnceWith(stored.uuid, "❤️");
+      const reactionGroup = heart.closest("[role='group']");
+      if (reactionGroup == null) throw new Error("Missing quick reaction group");
+      fireEvent.mouseEnter(reactionGroup);
+      fireEvent.click(await screen.findByRole("button", { name: "Thumbs up" }));
+      expect(react).toHaveBeenLastCalledWith(stored.uuid, "👍");
+
+      await realChatKeyStorage.removeChatKey({
+        owner: runtime,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+      act(() =>
+        notifyRealChatKeyChanges({
+          kind: "removed",
+          ownerKey: owner,
+          deviceId: device.deviceId,
+          streamUuid: stream.uuid,
+          keyUuid: stored.payload.kind === "e2ee" ? stored.payload.keyUuid : "",
+        }),
+      );
+      expect(screen.queryByRole("button", { name: "Reply" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Like" })).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "Request key for this message" }),
+      ).toBeInTheDocument();
+      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
+        stored.payload,
+      );
+    },
+  );
+
+  it("keeps decrypted quick actions out of previews and invalidated owners", async () => {
+    const { stored } = await seedRealEncryptedMessage("Scoped quick actions");
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      actions: {
+        onReplyMessage: vi.fn(),
+        onToggleMessageReaction: vi.fn(),
+        onRequestMessageKey: vi.fn(),
+      },
+    };
+    const { container, rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />,
+    );
+    expect(await screen.findByText("Scoped quick actions")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(screen.getByRole("button", { name: "Reply" })).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
+    expect(screen.queryByText("Scoped quick actions")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
+  });
+
+  it("shows and toggles shared reactions only while the message is decrypted", async () => {
+    const { stored, owner, stream, runtime, device } =
+      await seedRealEncryptedMessage("Reacted encrypted text");
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    const reacted: MessengerMessage = {
+      ...stored,
+      reactions: { "👍": 2 },
+      ownReactionUuidsByEmojiName: { "👍": "reaction-uuid" },
+    };
+    const onToggleMessageReaction = vi.fn();
+    const renderMessage = (message: MessengerMessage) => (
+      <WorkspaceEncryptedMessageBubble
+        message={message}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onToggleMessageReaction }}
+      />
+    );
+    const { rerender } = render(renderMessage(reacted));
+    expect(screen.queryByRole("button", { name: "👍 2" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Reacted encrypted text")).toBeInTheDocument();
+    const chip = screen.getByRole("button", { name: "👍 2" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(chip);
+    expect(onToggleMessageReaction).toHaveBeenCalledWith(stored.uuid, "👍");
+
+    rerender(
+      renderMessage({ ...reacted, reactions: { "👍": 1 }, ownReactionUuidsByEmojiName: {} }),
+    );
+    expect(screen.getByRole("button", { name: "👍 1" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "👍 2" })).not.toBeInTheDocument();
+
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    act(() => {
+      if (stored.payload.kind !== "e2ee") return;
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: stored.payload.keyUuid,
+      });
+    });
+    expect(screen.queryByText("Reacted encrypted text")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "👍 1" })).not.toBeInTheDocument();
   });
   it("clears visible plaintext after its local key is removed and ignores unrelated removals", async () => {
     const { stored, owner, stream, runtime, device } =
@@ -509,7 +1235,8 @@ describe("real encrypted message presentation", () => {
     );
     const encoded = stored.payload.kind === "e2ee" ? stored.payload.content : "";
     const { container, unmount } = render(view(stored));
-    expect((await screen.findByText("мир")).tagName).toBe("STRONG");
+    const strongText = await screen.findByText("мир");
+    expect(strongText.tagName).toBe("STRONG");
     expect(container.querySelector("[data-workspace-message-bubble]")).toHaveClass("bg-msg-own-bg");
     expect(container.querySelector("[data-encrypted-message-placeholder]")).toBeNull();
     expect(container.querySelector("script")).toBeNull();
@@ -521,11 +1248,21 @@ describe("real encrypted message presentation", () => {
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
     expect(await screen.findByText("мир")).toBeInTheDocument();
   });
-  it("keeps decrypted text capabilities restricted and never loads quoted messages", async () => {
+  it("uses shared quotes, code controls and the context menu for decrypted text", async () => {
     const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
     const preview = vi.fn();
-    const { stored } = await seedRealEncryptedMessage(
-      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```",
+    const copyMessageText = vi.fn();
+    const onEditMessage = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const onRequestDeleteMessage = vi.fn();
+    const decryptedText =
+      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```";
+    const { stored } = await seedRealEncryptedMessage(decryptedText);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(
+      message("44444444-4444-4444-8444-444444444444", {
+        kind: "markdown",
+        content: "Original quoted text",
+      }),
     );
     const { container } = render(
       <WorkspaceEncryptedMessageBubble
@@ -537,20 +1274,47 @@ describe("real encrypted message presentation", () => {
           onLoadWorkspaceFilePreview: preview,
           onReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
-          onEditMessage: vi.fn(),
+          onEditMessage,
+          onCopyMessageText: copyMessageText,
+          onToggleMessageReaction,
+          onRequestDeleteMessage,
         }}
       />,
     );
     expect(await screen.findByText("Readable fixture")).toBeInTheDocument();
-    expect(quote).not.toHaveBeenCalled();
+    expect(await screen.findByText("Original quoted text")).toBeInTheDocument();
+    expect(quote).toHaveBeenCalledWith("44444444-4444-4444-8444-444444444444", true);
     expect(preview).not.toHaveBeenCalled();
-    expect(
-      container.querySelector("[data-workspace-code-copy], [data-workspace-quote]"),
-    ).toBeNull();
+    expect(container.querySelector("[data-code-copy-button='true']")).not.toBeNull();
+    expect(container.querySelector("[data-workspace-quote='true']")).not.toBeNull();
     const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
     if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Forward" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Select" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy text" }));
+    expect(copyMessageText).toHaveBeenCalledWith(stored.uuid, undefined);
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    expect(copyMessageText).not.toHaveBeenCalledWith(stored.uuid, decryptedText);
+    expect(copyMessageText).not.toHaveBeenCalledWith(stored.uuid, stored.payload.content);
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByLabelText("Thumbs up"));
+    expect(onToggleMessageReaction).toHaveBeenCalledWith(stored.uuid, "👍");
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit message" }));
+    expect(onEditMessage).toHaveBeenCalledWith(stored.uuid);
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(onRequestDeleteMessage).toHaveBeenCalledWith(stored.uuid);
   });
 
   it.each([

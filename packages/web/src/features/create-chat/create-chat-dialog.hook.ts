@@ -25,7 +25,11 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
-import type { UserPickerOption } from "~/shared/lib/user-picker";
+import {
+  matchesUserPickerQuery,
+  toggleUserPickerSelection,
+  type UserPickerOption,
+} from "~/shared/lib/user-picker";
 import {
   CREATE_CHAT_TABS,
   resolveNextTabFromKey,
@@ -53,13 +57,9 @@ interface ArchivedChannelOption {
   time: string;
 }
 
-export interface CreateChatUserOption {
+export interface CreateChatUserOption extends UserPickerOption<string> {
   userKey: string;
   workspaceUserUuid: string | null;
-  fullName: string;
-  email: string;
-  presence: UserPickerOption["presence"];
-  statusLabel: string | null;
 }
 
 export interface CreateChatWorkspaceStreamOption {
@@ -281,30 +281,27 @@ export function useCreateChatDialog(options: {
   const channelAnnouncementOnlyBlockedReasonKey = "channel.workspaceAnnouncementOnlyUnsupported";
 
   const workspaceUserOptions = useMemo<CreateChatUserOption[]>(() => {
-    const normalizedQuery = userSearch.trim().toLowerCase();
     const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
     return selectSelectableWorkspaceUsers(usersById, userIds)
       .filter((user) => user.uuid !== currentUserUuid)
       .map((user) => ({
+        userId: user.uuid,
         userKey: user.uuid,
+        username: user.username,
+        isDisabled: false,
         workspaceUserUuid: user.uuid,
         fullName: selectUserDisplayName(user, user.uuid),
         email: user.email ?? "",
         presence: resolveWorkspacePickerPresence(user.status),
         statusLabel: user.statusText,
       }))
-      .filter((user) => {
-        if (user.fullName.trim().length === 0) return false;
-        if (normalizedQuery.length === 0) return true;
-        return (
-          user.fullName.toLowerCase().includes(normalizedQuery) ||
-          user.email.toLowerCase().includes(normalizedQuery)
-        );
-      })
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
-  }, [userIds, userSearch, usersById, workspaceRuntimeContext?.userUuid]);
+  }, [userIds, usersById, workspaceRuntimeContext?.userUuid]);
 
-  const filteredUsers = workspaceUserOptions;
+  const filteredUsers = useMemo(
+    () => workspaceUserOptions.filter((user) => matchesUserPickerQuery(user, userSearch)),
+    [workspaceUserOptions, userSearch],
+  );
   const channelUsers = useMemo(() => {
     return [...workspaceUserOptions].sort((left, right) => {
       const leftSelected = channelSelectedUserKeys.has(left.userKey) ? 0 : 1;
@@ -380,12 +377,9 @@ export function useCreateChatDialog(options: {
   }, [tab, visibleTabs]);
 
   const toggleChannelUser = useCallback((userKey: string) => {
-    setChannelSelectedUserKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(userKey)) next.delete(userKey);
-      else next.add(userKey);
-      return next;
-    });
+    setChannelSelectedUserKeys(
+      (prev) => new Set(toggleUserPickerSelection(Array.from(prev), userKey)),
+    );
   }, []);
 
   const openDirectUser = useCallback(
@@ -462,7 +456,7 @@ export function useCreateChatDialog(options: {
       encryptedCreationAttempts.current.delete(ownerKey);
       encryptedIntent = undefined;
     }
-    const memberUserUuids = channelUsers
+    const memberUserUuids = workspaceUserOptions
       .filter((user) => channelSelectedUserKeys.has(user.userKey))
       .map((user) => user.workspaceUserUuid)
       .filter((userUuid): userUuid is string => userUuid != null);
@@ -550,7 +544,7 @@ export function useCreateChatDialog(options: {
     channelInviteOnly,
     channelName,
     channelSelectedUserKeys,
-    channelUsers,
+    workspaceUserOptions,
     creating,
     onChannelCreated,
     onNavigateWorkspaceStream,

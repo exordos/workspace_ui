@@ -2,9 +2,10 @@ import "fake-indexeddb/auto";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { createMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
+import { createMessage, editMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
 import { getStream, getStreamBindingsPage } from "~/shared/api/messenger-streams.api";
 import type {
   WorkspaceMessengerMessageDto,
@@ -13,8 +14,10 @@ import type {
 import {
   realChatCryptoProvider,
   realChatKeyStorage,
+  notifyRealChatKeyChanges,
   subscribeRealChatKeyChanges,
 } from "./chat-crypto-resources.lib";
+import * as cryptoResources from "./chat-crypto-resources.lib";
 import {
   openRealChatSession as openChatSession,
   decryptRealChatMessage,
@@ -28,6 +31,7 @@ import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatEncryptedPayload } from "./chat-e2ee.types";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerStreamBinding } from "./messenger.types";
 
@@ -39,6 +43,7 @@ vi.mock("~/shared/api/messenger-streams.api", async (load) => ({
 vi.mock("~/shared/api/messenger-messages.api", async (load) => ({
   ...(await load<typeof import("~/shared/api/messenger-messages.api")>()),
   createMessage: vi.fn(),
+  editMessage: vi.fn(),
   getMessagesPage: vi.fn(),
 }));
 
@@ -326,6 +331,159 @@ afterEach(() => {
 });
 
 describe("real ordinary chat orchestration", () => {
+  async function editFixture() {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "Original secret", topicUuid: TOPIC });
+    const dto = f.wire.at(-1)!;
+    const source = adaptMessengerMessage(dto);
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(f.admin), false);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(source);
+    vi.mocked(editMessage).mockImplementation((_options, _uuid, body) =>
+      Promise.resolve({
+        ...dto,
+        payload: body.payload,
+        updated_at: "2026-10-03T00:00:00Z",
+      }),
+    );
+    return { f, session, source, dto };
+  }
+
+  it("edits encrypted history with its original key after rotation and caches only ciphertext", async () => {
+    const { f, session, source } = await editFixture();
+    await session.reissueKey();
+    const cache = vi.spyOn(messengerMessageActionCache, "patchCachedMessage").mockResolvedValue();
+    const result = await session.edit(source, "Edited secret");
+    expect(result.status).toBe("applied");
+    const edited = useWorkspaceMessageStore.getState().messagesById[source.uuid]!;
+    expect(edited.payload).toMatchObject({ kind: "e2ee", keyUuid: f.metadata.keyUuid });
+    expect(edited.payload).not.toEqual(source.payload);
+    expect(await session.decrypt(edited)).toBe("Edited secret");
+    expect(JSON.stringify(vi.mocked(editMessage).mock.calls)).not.toContain("Edited secret");
+    expect(cache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(f.admin), edited);
+    expect(JSON.stringify(cache.mock.calls)).not.toContain("Edited secret");
+  });
+
+  it.each(["key removal", "dispose", "source update"])(
+    "rejects an edit after %s during encryption",
+    async (change) => {
+      const { session, source } = await editFixture();
+      const encrypt = realChatCryptoProvider.encryptMessage.bind(realChatCryptoProvider);
+      vi.spyOn(realChatCryptoProvider, "encryptMessage").mockImplementationOnce(async (input) => {
+        const result = await encrypt(input);
+        if (change === "key removal") {
+          await realChatKeyStorage.removeChatKey(session.scope);
+          notifyRealChatKeyChanges({
+            kind: "removed",
+            ownerKey: workspaceRuntimeOwnerKey(session.scope.owner),
+            deviceId: session.device.deviceId,
+            streamUuid: STREAM,
+            keyUuid: session.scope.keyUuid,
+          });
+        }
+        if (change === "dispose") session.dispose();
+        if (change === "source update")
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...source,
+            payload: { kind: "e2ee", keyUuid: session.scope.keyUuid, content: "new-ciphertext" },
+          });
+        return result;
+      });
+      await expect(session.edit(source, "Never dispatched")).rejects.toThrow();
+      expect(editMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["markdown", "wrong key", "wrong topic"])(
+    "rejects a mismatched encrypted edit receipt: %s",
+    async (change) => {
+      const { session, source, dto } = await editFixture();
+      vi.mocked(editMessage).mockImplementationOnce((_options, _uuid, body) =>
+        Promise.resolve({
+          ...dto,
+          payload:
+            change === "markdown"
+              ? { kind: "markdown", content: "Unexpected plaintext" }
+              : change === "wrong key" && body.payload.kind === "e2ee"
+                ? { ...body.payload, key_uuid: crypto.randomUUID() }
+                : body.payload,
+          ...(change === "wrong topic" ? { topic_uuid: crypto.randomUUID() } : {}),
+        }),
+      );
+      await expect(session.edit(source, "Edited secret")).rejects.toThrow();
+      expect(useWorkspaceMessageStore.getState().messagesById[source.uuid]?.payload).toEqual(
+        source.payload,
+      );
+    },
+  );
+
+  it.each(["owner", "administrator", "member"] as const)(
+    "exchanges keys between two devices of one %s account only with existing grant rights",
+    async (role) => {
+      const f = await setup();
+      const owner = await openSessionFor(f.admin);
+      await owner.load();
+      const account = role === "owner" ? f.admin : f.member;
+      if (role === "administrator")
+        deviceCatalog(account)
+          .getState()
+          .upsertStreamBindings(workspaceRuntimeOwnerKey(account), [
+            memberBinding("administrator"),
+          ]);
+      const source = role === "owner" ? owner : await openSessionFor(account);
+      const initialKey = await realChatKeyStorage.readChatKey(owner.scope);
+      if (!initialKey?.groupKey) throw new Error("Missing source key");
+      if (source !== owner) await realChatKeyStorage.writeChatKey(source.scope, initialKey);
+      await source.load();
+      expect(source.getState().access).toBe("ready");
+
+      // Separate device identity and key addresses model independent browser installations.
+      const identity = { deviceId: crypto.randomUUID(), deviceName: "iPhone" };
+      const deviceIdentity = vi
+        .spyOn(cryptoResources, "ensureChatDeviceIdentity")
+        .mockResolvedValueOnce(identity);
+      let target = await openSessionFor(account);
+      await target.load();
+      expect(target.scope.owner).toEqual(source.scope.owner);
+      expect(target.device.deviceId).not.toBe(source.device.deviceId);
+      expect(target.getState().access).toBe("metadata-only");
+      await target.requestKey();
+      const request = f.wire.at(-1)!;
+      expect(request.author_uuid).toBe(account.userUuid);
+      expect(request.payload).toMatchObject({ kind: "key_request", device_id: identity.deviceId });
+      target.dispose();
+      deviceIdentity.mockResolvedValueOnce(identity);
+      target = await openSessionFor(account);
+      deviceIdentity.mockRestore();
+      await target.load();
+      await source.ingest(f.wire.map(adaptMessengerMessage));
+      expect(source.canGrantKey(request.uuid)).toBe(role !== "member");
+      expect(target.canGrantKey(request.uuid)).toBe(false);
+      if (role === "member") {
+        await expect(source.grantKey(request.uuid)).rejects.toThrow("forbidden");
+        expect(f.wire.some((item) => item.payload.kind === "key_grant")).toBe(false);
+        expect(target.getState().access).toBe("metadata-only");
+        return;
+      }
+      await source.grantKey(request.uuid);
+      expect(f.wire.at(-1)?.payload).toMatchObject({
+        kind: "key_grant",
+        sender_device_id: source.device.deviceId,
+        recipient_device_id: identity.deviceId,
+        request_message_uuid: request.uuid,
+      });
+      await target.ingest(f.wire.map(adaptMessengerMessage));
+      expect(target.getState().access).toBe("ready");
+      expect(await realChatKeyStorage.readChatKey(target.scope)).toEqual(initialKey);
+      expect(source.canGrantKey(request.uuid)).toBe(false);
+      await target.send({ text: "same account, second device", topicUuid: TOPIC });
+      expect(await source.decrypt(adaptMessengerMessage(f.wire.at(-1)!))).toBe(
+        "same account, second device",
+      );
+    },
+  );
+
   it("loads the local session and ingests an empty batch without catalog requests or message dispatch", async () => {
     const f = await setup();
     const session = await openSessionFor(f.admin);
@@ -1565,6 +1723,63 @@ describe("real ordinary chat orchestration", () => {
     );
     session.dispose();
   });
+
+  it("retries a lost message response with the same UUID and envelope, and still checks the local key", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    const encryption = vi.spyOn(realChatCryptoProvider, "encryptMessage");
+    const retained: { payload?: ChatEncryptedPayload } = {};
+    const input = {
+      text: "uncertain encrypted delivery",
+      topicUuid: TOPIC,
+      canonicalMessageUuid: crypto.randomUUID(),
+      expectedKeyUuid: session.getState().sendKeyUuid!,
+      expectedDeviceId: session.device.deviceId,
+      onEncryptedPayload: (payload: ChatEncryptedPayload) => {
+        retained.payload = payload;
+      },
+    };
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
+      await create(options, body);
+      throw new Error("Response lost after server commit");
+    });
+    await expect(session.send(input)).rejects.toThrow("send-failed");
+    expect(retained.payload).toBeDefined();
+    await session.send({ ...input, preparedPayload: retained.payload });
+    expect(encryption).toHaveBeenCalledOnce();
+    expect(vi.mocked(createMessage).mock.calls[0]?.[1]).toEqual(
+      vi.mocked(createMessage).mock.calls[1]?.[1],
+    );
+    expect(f.wire[0]?.uuid).toBe(createMessengerPlacementUuid(TOPIC, input.canonicalMessageUuid));
+    expect(await session.decrypt(adaptMessengerMessage(f.wire[0]!))).toBe(input.text);
+    await session.removeLocalKey(input.expectedKeyUuid);
+    vi.mocked(createMessage).mockClear();
+    await expect(session.send({ ...input, preparedPayload: retained.payload })).rejects.toThrow(
+      "missing-key",
+    );
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(["key", "device"] as const)(
+    "rejects an outbox retry for a different %s",
+    async (changed) => {
+      const f = await setup();
+      const session = await openSessionFor(f.admin);
+      await session.load();
+      await expect(
+        session.send({
+          text: "bound to the original key and device",
+          topicUuid: TOPIC,
+          expectedKeyUuid:
+            changed === "key" ? crypto.randomUUID() : session.getState().sendKeyUuid!,
+          expectedDeviceId: changed === "device" ? crypto.randomUUID() : session.device.deviceId,
+        }),
+      ).rejects.toThrow("invalid-key");
+      expect(createMessage).not.toHaveBeenCalled();
+    },
+  );
 
   it("restores a staged creator key after a lost create response and serializes concurrent sends to distinct topics", async () => {
     const f = await setup();

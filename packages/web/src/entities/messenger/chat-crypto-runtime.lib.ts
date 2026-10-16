@@ -16,7 +16,7 @@ import {
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse } from "./chat-e2ee.lib";
-import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
+import { editMessengerMessage, sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
 import type {
   ChatE2eeControllerRights,
@@ -26,6 +26,7 @@ import type {
 import type {
   ChatE2eeMessage,
   ChatE2eePayload,
+  ChatEncryptedPayload,
   ChatKeyRequestPayload,
   ChatKeyResponsePayload,
 } from "./chat-e2ee.types";
@@ -524,6 +525,7 @@ export async function openRealChatSession({
     },
     getRights: rights,
     getKeyRequestOutcomes,
+    getKeyRequestOutcome: (uuid: string) => indexedRequestOutcomes().get(uuid) ?? null,
     getKeyRequests: () =>
       getKeyRequestOutcomes()
         .filter((item) => item.status === "pending")
@@ -741,19 +743,65 @@ export async function openRealChatSession({
       readonly text: string;
       readonly topicUuid: string;
       readonly includeStreamConversation?: boolean;
+      readonly canonicalMessageUuid?: string;
+      readonly expectedKeyUuid?: string;
+      readonly expectedDeviceId?: string;
+      readonly preparedPayload?: ChatEncryptedPayload;
+      readonly onEncryptedPayload?: (payload: ChatEncryptedPayload) => void;
     }) =>
       run(async () => {
         if (!sendingKeyUuid) throw new Error("missing-key");
+        if (
+          (input.expectedKeyUuid != null && input.expectedKeyUuid !== sendingKeyUuid) ||
+          (input.expectedDeviceId != null && input.expectedDeviceId !== device.deviceId)
+        )
+          throw new Error("invalid-key");
         const controller = await generationController(sendingKeyUuid);
         const result = await controller.encryptMessage(
           new TextEncoder().encode(input.text),
-          (payload, guard) => dispatchPayload(payload, guard, input),
+          (payload, guard) => {
+            input.onEncryptedPayload?.(payload);
+            return dispatchPayload(payload, guard, input);
+          },
+          input.preparedPayload,
         );
         if (!result.ok) throw new Error(result.reason);
         return result.value;
       }),
     decrypt: (message: MessengerMessage) =>
       decryptRealChatMessage(runtimeContext, message, current),
+    edit: (message: MessengerMessage, text: string, signal?: AbortSignal) =>
+      run(async () => {
+        if (
+          message.payload.kind !== "e2ee" ||
+          message.streamUuid !== streamUuid ||
+          message.projectId !== runtimeContext.projectId ||
+          !message.isOwn ||
+          message.authorUuid !== runtimeContext.userUuid
+        )
+          throw new Error("invalid-message");
+        const controller = await generationController(message.payload.keyUuid, false);
+        const plaintext = new TextEncoder().encode(text);
+        try {
+          const result = await controller.encryptMessage(plaintext, (encryptedPayload, guard) =>
+            editMessengerMessage({
+              runtimeContext,
+              getRuntimeContext,
+              signal,
+              messageUuid: message.uuid,
+              encryptedPayload,
+              sourceMessage: message,
+              messengerStore,
+              isCurrent: guard,
+            }),
+          );
+          if (!result.ok) throw new Error(result.reason);
+          if (result.value.status !== "applied") throw new Error("stale");
+          return result.value;
+        } finally {
+          plaintext.fill(0);
+        }
+      }),
     dispose,
   };
   const catalogSignature = (catalog: MessengerStoreState) => {

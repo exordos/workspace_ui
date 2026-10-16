@@ -404,7 +404,7 @@ describe("messenger sidebar selectors", () => {
     const rows = selectMessengerSidebarStreams(
       state({
         streamsById: {
-          [STREAM_A]: stream(),
+          [STREAM_A]: stream({ createdAt: DATE_B }),
           [STREAM_B]: stream({
             uuid: STREAM_B,
             name: "Muted",
@@ -576,7 +576,169 @@ describe("messenger sidebar selectors", () => {
     ).toEqual([STREAM_A]);
   });
 
-  it("sorts folder rows by cached last message time instead of stream updatedAt", () => {
+  it.each([null, FOLDER_A, "custom-folder"])(
+    "sorts empty streams by creation time alongside message activity in folder %s",
+    (selectedFolderUuid) => {
+      const rows = selectMessengerSidebarStreams(
+        state({
+          streamIds: [STREAM_A, STREAM_B, STREAM_C],
+          streamsById: {
+            [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+            [STREAM_B]: stream({ uuid: STREAM_B, createdAt: DATE_B }),
+            [STREAM_C]: stream({
+              uuid: STREAM_C,
+              createdAt: "2026-06-22T09:10:00Z",
+              updatedAt: "2026-06-22T12:10:00Z",
+            }),
+          },
+          foldersById: {
+            [FOLDER_A]: folder({ items: [folder().items[0]!] }),
+            "custom-folder": folder({
+              uuid: "custom-folder",
+              systemType: null,
+              items: [
+                folder().items[0]!,
+                { ...folder().items[1]!, pinnedAt: null },
+                {
+                  ...folder().items[0]!,
+                  uuid: FOLDER_ITEM_C,
+                  streamUuid: STREAM_C,
+                  conversationId: `stream:${STREAM_C}`,
+                },
+              ],
+            }),
+          },
+          topicIds: [],
+          topicsById: {},
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          projectId: PROJECT_ID,
+          selectedFolderUuid,
+          messagesById: { [MESSAGE_A]: message() },
+        },
+      );
+
+      expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A, STREAM_C]);
+      expect(rows[0]?.lastMessageCreatedAt).toBeNull();
+      expect(rows[0]?.preview).toBeNull();
+    },
+  );
+
+  it("does not use creation time while a known last message is missing", () => {
+    const base = state({
+      streamsById: {
+        [STREAM_A]: stream({ createdAt: DATE_B, lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_B }),
+      },
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_A }) },
+    };
+
+    const before = selectMessengerSidebarStreams(base, options);
+    expect(before.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(before[1]?.lastMessageCreatedAt).toBeNull();
+
+    const after = selectMessengerSidebarStreams(base, {
+      ...options,
+      messagesById: { ...options.messagesById, [MESSAGE_A]: message({ createdAt: DATE_B }) },
+    });
+    expect(after.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+  });
+
+  it("switches an empty stream to message activity after its first message", () => {
+    const firstMessageAt = "2026-06-22T12:10:00Z";
+    const base = state({
+      streamsById: {
+        [STREAM_A]: stream(),
+        [STREAM_B]: stream({ uuid: STREAM_B, lastMessageUuid: MESSAGE_B }),
+      },
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_B]: message({ uuid: MESSAGE_B, createdAt: DATE_B }) },
+    };
+    expect(selectMessengerSidebarStreams(base, options).map((row) => row.streamUuid)).toEqual([
+      STREAM_B,
+      STREAM_A,
+    ]);
+
+    const after = selectMessengerSidebarStreams(
+      {
+        ...base,
+        streamsById: {
+          ...base.streamsById,
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        },
+      },
+      {
+        ...options,
+        messagesById: {
+          ...options.messagesById,
+          [MESSAGE_A]: message({ createdAt: firstMessageAt }),
+        },
+      },
+    );
+    expect(after.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    expect(after[0]?.lastMessageCreatedAt).toBe(firstMessageAt);
+  });
+
+  it.each(["muted", "archived", "unread_first"] as const)(
+    "keeps %s priority ahead of a newer empty stream's creation time",
+    (priority) => {
+      const rows = selectMessengerSidebarStreams(
+        state({
+          streamsById: {
+            [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+            [STREAM_B]: stream({
+              uuid: STREAM_B,
+              createdAt: DATE_B,
+              notificationMode: priority === "muted" ? "muted" : "all_messages",
+              isArchived: priority === "archived",
+            }),
+          },
+          topicIds: [TOPIC_A],
+          topicsById: {
+            [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A, activeUnreadCount: 1 }),
+          },
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          projectId: PROJECT_ID,
+          sortMode: priority === "unread_first" ? "unread_first" : "last_message",
+          messagesById: { [MESSAGE_A]: message() },
+        },
+      );
+
+      expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    },
+  );
+
+  it("keeps folder order when empty streams have the same creation time", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamIds: [STREAM_B, STREAM_A],
+        foldersById: {
+          [FOLDER_A]: folder({
+            items: [{ ...folder().items[1]!, pinnedAt: null }, folder().items[0]!],
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+  });
+
+  it("sorts nonempty folder rows by last message time instead of stream creation or update", () => {
     const newerMessageAt = "2026-06-22T12:10:00Z";
     const rows = selectMessengerSidebarStreams(
       state({
@@ -593,6 +755,7 @@ describe("messenger sidebar selectors", () => {
             directUserUuid: "alice",
             unreadCount: 4,
             lastMessageUuid: MESSAGE_B,
+            createdAt: newerMessageAt,
             updatedAt: newerMessageAt,
           }),
         },
@@ -920,6 +1083,45 @@ describe("messenger sidebar selectors", () => {
       }),
       text: "Topic preview",
       senderName: "Alice Wonderland",
+    });
+  });
+
+  it("keeps encrypted last-message metadata for stream and topic previews without projecting content", () => {
+    const encrypted = message({
+      payload: { kind: "e2ee", keyUuid: STREAM_B, content: "encoded-ciphertext" },
+    });
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: { [STREAM_A]: stream({ encryption: true, lastMessageUuid: MESSAGE_A }) },
+        topicsById: { [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }) },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: { [MESSAGE_A]: encrypted },
+      },
+    );
+    const row = rows.find((item) => item.streamUuid === STREAM_A);
+    const preview = {
+      messageUuid: MESSAGE_A,
+      route: workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+      }),
+      text: "",
+      senderName: "Alice Wonderland",
+      encrypted: true,
+    };
+    expect(row?.preview).toEqual(preview);
+    expect(row?.topics[0]?.preview).toEqual(preview);
+    expect(row?.lastMessageCreatedAt).toBe(DATE_A);
+    expect(encrypted.payload).toEqual({
+      kind: "e2ee",
+      keyUuid: STREAM_B,
+      content: "encoded-ciphertext",
     });
   });
 

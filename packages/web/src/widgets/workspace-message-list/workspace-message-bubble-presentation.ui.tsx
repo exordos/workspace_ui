@@ -22,17 +22,19 @@ import {
   parseWorkspaceMessageBody,
 } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
-import {
-  renderWorkspaceMessageBody,
-  renderWorkspaceMessageBodySegments,
-} from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
+import {
+  WorkspaceMessageBubbleQuickActions,
+  type WorkspaceMessageBubbleQuickAction,
+} from "./workspace-message-bubble-quick-actions.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
+import { WORKSPACE_MESSAGE_QUICK_REACTIONS } from "./workspace-message-quick-reactions.lib";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
@@ -64,11 +66,6 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
   enableProtectedMedia: false,
   enableAttachments: false,
   enableGallery: false,
-} as const;
-const WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS = {
-  ...WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS,
-  enableProtectedMedia: true,
-  enableAttachments: true,
 } as const;
 const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
 
@@ -364,12 +361,80 @@ function WorkspaceMessageBubbleFooter({
   );
 }
 
+function getWorkspaceMessageQuickActions(
+  message: MessengerMessage | null,
+  actions: WorkspaceMessageBubbleProps["actions"],
+  requestMessageKeyAvailable: boolean,
+  readable: boolean,
+  getSelectedText: () => string | undefined,
+): WorkspaceMessageBubbleQuickAction[] {
+  const quickActionItems: WorkspaceMessageBubbleQuickAction[] = [];
+  if (message != null) {
+    const messageUuid = message.uuid;
+    if (requestMessageKeyAvailable && actions?.onRequestMessageKey != null) {
+      quickActionItems.push({
+        key: "request-message-key",
+        label: t("e2ee.requestMessageKey"),
+        icon: "chatLock",
+        showLabel: true,
+        pending: actions.requestMessageKeyPending,
+        onSelect: () => {
+          void actions.onRequestMessageKey?.(messageUuid);
+        },
+      });
+    } else if (
+      readable &&
+      (message.payload.kind === "markdown" || message.payload.kind === "e2ee")
+    ) {
+      if (actions?.onReplyMessage != null) {
+        quickActionItems.push({
+          key: "reply",
+          label: t("message.reply"),
+          showLabel: true,
+          onSelect: () => actions.onReplyMessage?.(messageUuid, getSelectedText()),
+        });
+      }
+      if (actions?.onToggleMessageReaction != null) {
+        const reactions = WORKSPACE_MESSAGE_QUICK_REACTIONS.map(
+          ({ emojiName, labelKey, glyph }) => {
+            const pending = message.pendingOwnReactionsByEmojiName?.[glyph];
+            return {
+              key: emojiName,
+              label: t(labelKey),
+              glyph,
+              pressed:
+                pending?.operation === "add" ||
+                (pending?.operation !== "remove" &&
+                  message.ownReactionUuidsByEmojiName[glyph] != null),
+              pending: pending != null,
+              onSelect: () => {
+                void actions.onToggleMessageReaction?.(messageUuid, glyph);
+              },
+            };
+          },
+        );
+        const firstReaction = reactions[0];
+        if (firstReaction != null) {
+          quickActionItems.push({
+            ...firstReaction,
+            key: "reaction",
+            placement: "corner",
+            reactions,
+          });
+        }
+      }
+    }
+  }
+  return quickActionItems;
+}
+
 interface WorkspaceMessageBubblePresentationProps extends WorkspaceMessageBubbleProps {
   /** Decrypted text lives only in this scoped render, never in a synthetic message payload. */
   readonly bodyMarkdown?: string;
   readonly bodyOverride?: React.ReactNode;
   readonly locked?: boolean;
   readonly authorOutside?: boolean;
+  readonly requestMessageKeyAvailable?: boolean;
 }
 
 export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubblePresentationProps> =
@@ -388,10 +453,12 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     actions,
     presentationMode = "message",
     passiveLoadersEnabled = true,
+    quickActions,
     bodyMarkdown,
     bodyOverride,
     locked = false,
     authorOutside = false,
+    requestMessageKeyAvailable = false,
   }): React.ReactElement {
     const isPreview = presentationMode === "preview";
     const interactiveActions = isPreview ? undefined : actions;
@@ -399,8 +466,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const isOwn = owner === "own";
     const serverMessage = message.kind === "server" ? message.message : null;
     const encryptedPayload = serverMessage?.payload.kind === "e2ee";
-    const passiveContentEnabled = !isPreview && !encryptedPayload && passiveLoadersEnabled;
-    const fileContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
+    const passiveContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
     const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
     const effectiveReadRequestPending =
@@ -418,8 +484,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       [interactiveActions?.jitsiServerBaseUrl],
     );
     const jitsiUrl = useMemo(
-      () => (encryptedPayload ? null : getJitsiMeetingUrl(markdown, jitsiLinkOptions)),
-      [encryptedPayload, jitsiLinkOptions, markdown],
+      () => getJitsiMeetingUrl(markdown, jitsiLinkOptions),
+      [jitsiLinkOptions, markdown],
     );
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = interactiveActions?.jitsiLocationName?.trim() ?? "";
@@ -453,28 +519,15 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
       const document = parseWorkspaceMessageBody(markdown, { resolveMention });
-      const encryptedBody = encryptedPayload
-        ? renderWorkspaceMessageBody(
-            document,
-            isPreview
-              ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
-              : WORKSPACE_ENCRYPTED_MESSAGE_RENDER_OPTIONS,
-          )
-        : null;
-      const segmented = encryptedBody
-        ? {
-            segments: [{ kind: "html" as const, html: encryptedBody.html }],
-            metadata: encryptedBody.metadata,
-          }
-        : renderWorkspaceMessageBodySegments(document, {
-            ...(isPreview
-              ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
-              : WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS),
-            // Enable interactive mentions only when the current surface exposes a
-            // UUID-only callback. Otherwise keep `@Name` as plain text instead of
-            // swapping the action back to the old number-based direct-message/profile path.
-            enableMentions: interactiveActions?.onOpenMentionUser != null,
-          });
+      const segmented = renderWorkspaceMessageBodySegments(document, {
+        ...(isPreview
+          ? WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS
+          : WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS),
+        // Enable interactive mentions only when the current surface exposes a
+        // UUID-only callback. Otherwise keep `@Name` as plain text instead of
+        // swapping the action back to the old number-based direct-message/profile path.
+        enableMentions: interactiveActions?.onOpenMentionUser != null,
+      });
       return {
         ...segmented,
         hasForwardSnapshot: hasWorkspaceForwardSnapshot(document),
@@ -492,14 +545,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           .join("\u0000"),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
-    }, [
-      encryptedPayload,
-      interactiveActions?.onOpenMentionUser,
-      isPreview,
-      markdown,
-      resolveMention,
-    ]);
-    const fileReferences = fileContentEnabled ? renderedBody.fileReferences : EMPTY_FILE_REFERENCES;
+    }, [interactiveActions?.onOpenMentionUser, isPreview, markdown, resolveMention]);
+    const fileReferences = passiveContentEnabled
+      ? renderedBody.fileReferences
+      : EMPTY_FILE_REFERENCES;
     const {
       menuOpen,
       contextMenuAnchor,
@@ -514,7 +563,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       bodyRef,
       renderedHtml: renderedBody.html,
       enableCodeCopy:
-        !isPreview && !encryptedPayload && WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
+        !isPreview && !locked && WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
       fileReferences,
       onOpenMentionUser: interactiveActions?.onOpenMentionUser,
       onOpenMessageInChat: interactiveActions?.onOpenMessageInChat,
@@ -527,7 +576,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       bodyRef,
       renderedHtml: renderedBody.html,
       fileReferences,
-      onLoadWorkspaceFilePreview: fileContentEnabled
+      onLoadWorkspaceFilePreview: passiveContentEnabled
         ? interactiveActions?.onLoadWorkspaceFilePreview
         : undefined,
     });
@@ -642,12 +691,33 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         </div>
       ) : null;
 
+    const quickActionItems = getWorkspaceMessageQuickActions(
+      interactiveServerMessage,
+      interactiveActions,
+      requestMessageKeyAvailable,
+      !locked,
+      getSelectedText,
+    );
+    const quickActionsVisibility = requestMessageKeyAvailable
+      ? (quickActions?.missingKey ?? "always")
+      : (quickActions?.message ?? "hover");
+    const hasQuickActions =
+      quickActionItems.length > 0 && quickActionsVisibility !== "disabled" && !isPreview;
+    const hasTopQuickActions =
+      hasQuickActions && quickActionItems.some((action) => action.placement !== "corner");
+    // Reserve the text pill's upper edge and the smaller reaction's outer corner before hover.
+    const quickActionsMaxWidth = hasQuickActions ? "min(88%, calc(100% - 3rem))" : undefined;
+
     const bubble = (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
       <div
-        className={`relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
+        className={`group/workspace-message-bubble relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
           effectiveReadRequestPending,
         )}`}
+        style={{
+          maxWidth: authorOutside ? undefined : quickActionsMaxWidth,
+          marginTop: hasTopQuickActions ? "1.25rem" : undefined,
+        }}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-payload-kind={serverMessage?.payload.kind}
@@ -662,6 +732,12 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         onKeyDown={isPreview ? undefined : handleKeyDown}
         tabIndex={isPreview || containsInteractiveBody ? undefined : 0}
       >
+        <WorkspaceMessageBubbleQuickActions
+          actions={quickActionItems}
+          visibility={quickActionsVisibility}
+          condition={!isPreview && !menuOpen}
+          isOwn={isOwn}
+        />
         {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu
             message={interactiveServerMessage}
@@ -673,18 +749,24 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             onOpenChange={handleMenuOpenChange}
             onRequestMessageKey={locked ? interactiveActions?.onRequestMessageKey : undefined}
             requestMessageKeyPending={interactiveActions?.requestMessageKeyPending}
-            onReplyMessage={interactiveActions?.onReplyMessage}
-            onAddReplyMessage={interactiveActions?.onAddReplyMessage}
-            onForwardMessage={interactiveActions?.onForwardMessage}
-            onToggleMessageSelection={interactiveActions?.onToggleMessageSelection}
-            onEditMessage={
-              renderedBody.hasForwardSnapshot ? undefined : interactiveActions?.onEditMessage
+            onReplyMessage={locked ? undefined : interactiveActions?.onReplyMessage}
+            onAddReplyMessage={encryptedPayload ? undefined : interactiveActions?.onAddReplyMessage}
+            onForwardMessage={encryptedPayload ? undefined : interactiveActions?.onForwardMessage}
+            onToggleMessageSelection={
+              encryptedPayload ? undefined : interactiveActions?.onToggleMessageSelection
             }
-            onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
-            onCopyMessageText={interactiveActions?.onCopyMessageText}
-            onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
+            onEditMessage={
+              locked || renderedBody.hasForwardSnapshot
+                ? undefined
+                : interactiveActions?.onEditMessage
+            }
+            onRequestDeleteMessage={locked ? undefined : interactiveActions?.onRequestDeleteMessage}
+            onCopyMessageText={locked ? undefined : interactiveActions?.onCopyMessageText}
+            onToggleMessageReaction={
+              locked ? undefined : interactiveActions?.onToggleMessageReaction
+            }
             onLoadWorkspaceFilePreview={
-              fileContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
+              passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
             getSelectedText={getSelectedText}
           />
@@ -726,7 +808,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           time={time}
           createdAt={displayMessage.createdAt}
           deliveryIndicator={deliveryIndicator}
-          serverMessage={encryptedPayload ? null : serverMessage}
+          serverMessage={locked ? null : serverMessage}
           usersById={usersById}
           passiveLoadersEnabled={passiveContentEnabled}
           onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
@@ -734,7 +816,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       </div>
     );
     return authorOutside ? (
-      <div className="flex max-w-[88%] flex-col items-start gap-1">
+      <div
+        className="flex max-w-[88%] flex-col items-start gap-1"
+        style={{ maxWidth: quickActionsMaxWidth }}
+      >
         {authorHeader}
         {bubble}
       </div>

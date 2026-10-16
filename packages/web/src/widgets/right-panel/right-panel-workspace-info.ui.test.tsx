@@ -8,6 +8,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import * as chatCryptoSessionHook from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import { t } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
@@ -284,7 +285,46 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.queryByText("Encrypted team")).not.toBeInTheDocument();
   });
 
+  it("connects the encrypted sidebar call only to the active chat and runtime", async () => {
+    seedWorkspaceAuth();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().upsertStream(
+      OWNER_KEY,
+      createStream({
+        projectId: RUNTIME_CONTEXT.projectId,
+        encryption: true,
+        currentEncryptionKey: { keyUuid: "actual-key" },
+      }),
+    );
+    const invoke = vi.fn();
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const call = {
+      ownerKey: OWNER_KEY,
+      runtimeGeneration: runtime.runtimeGeneration,
+      streamUuid: STREAM_UUID,
+      invoke,
+    };
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    await screen.findByText(t("e2ee.cryptoUnavailable"));
+    const button = screen.getByRole("button", { name: t("call.call") });
+    expect(button).toBeDisabled();
+    act(() => useChatDmCallBridgeStore.getState().setActiveChatCall(call));
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(invoke).toHaveBeenCalledOnce();
+    for (const mismatch of [
+      { ownerKey: "other-owner" },
+      { runtimeGeneration: runtime.runtimeGeneration + 1 },
+      { streamUuid: SECOND_STREAM_UUID },
+    ]) {
+      act(() => useChatDmCallBridgeStore.getState().setActiveChatCall({ ...call, ...mismatch }));
+      expect(button).toBeDisabled();
+    }
+  });
+
   afterEach(() => {
+    useChatDmCallBridgeStore.getState().setActiveChatCall(null);
     vi.restoreAllMocks();
     writeTextMock.mockReset();
     runWorkspaceStreamNotificationUpdateMock.mockReset();
@@ -1004,6 +1044,56 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(within(dialog).getByText("#general")).toBeInTheDocument();
     expect(within(dialog).getByText("Bob Baker")).toBeInTheDocument();
     expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
+  });
+
+  it("keeps selections across searches and submits members hidden by the final query", async () => {
+    seedWorkspaceAuth();
+    seedOwnerChannel();
+    seedWorkspaceUsers();
+    addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
+    renderWithProviders(
+      <RightPanelWorkspaceInfo info={createInfo({ members: [], participantsCount: 0 })} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const dialog = screen.getByRole("dialog");
+    const search = within(dialog).getByRole("textbox");
+
+    fireEvent.change(search, { target: { value: "Alice" } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Alice Adams/i }));
+    fireEvent.change(search, { target: { value: "Bob" } });
+    expect(
+      within(dialog).queryByRole("checkbox", { name: /Alice Adams/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.change(search, { target: { value: "Alice" } });
+    expect(within(dialog).getByRole("checkbox", { name: /Alice Adams/i })).toBeChecked();
+    fireEvent.change(search, { target: { value: "no matching users" } });
+    expect(within(dialog).queryAllByRole("checkbox")).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addWorkspaceStreamMembersMock).toHaveBeenCalledWith(
+        expect.objectContaining({ userUuids: [ALICE_USER_UUID, BOB_USER_UUID] }),
+      ),
+    );
+  });
+
+  it("finds members by username while continuing to display their full name", () => {
+    seedWorkspaceAuth();
+    seedOwnerChannel();
+    useUsersStore
+      .getState()
+      .replaceUsers([
+        createUser({ uuid: BOB_USER_UUID, username: "hidden-login", displayName: "Bob Baker" }),
+      ]);
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: " HIDDEN-LOGIN " } });
+
+    expect(within(dialog).getByRole("checkbox", { name: /Bob Baker/i })).toBeInTheDocument();
+    expect(within(dialog).queryByText("hidden-login")).not.toBeInTheDocument();
   });
 
   it("submits workspace add members action", async () => {

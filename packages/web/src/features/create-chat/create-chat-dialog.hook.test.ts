@@ -264,6 +264,65 @@ describe("useCreateChatDialog", () => {
     });
   });
 
+  it.each([
+    { encryption: false, query: "Bob" },
+    { encryption: true, query: "Bob" },
+    { encryption: false, query: "no matching users" },
+    { encryption: true, query: "no matching users" },
+  ])(
+    "submits all selected members with encryption=$encryption and search=$query",
+    async ({ encryption, query }) => {
+      seedWorkspaceSession();
+      seedUsers();
+      const stream = createStream({ uuid: "stream-a", encryption });
+      vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+        status: "applied",
+        ownerKey: "owner",
+        stream,
+        defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+        streamBindings: [],
+      });
+      const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+      act(() => {
+        result.current.setChannelName("Team");
+        result.current.setChannelEncryption(encryption);
+        result.current.setUserSearch("Alice");
+      });
+      act(() => result.current.toggleChannelUser("alice-user"));
+      act(() => result.current.setUserSearch("Bob"));
+      act(() => result.current.toggleChannelUser("bob-user"));
+      act(() => result.current.setUserSearch(query));
+
+      expect(result.current.channelSelectedUserKeys).toEqual(new Set(["alice-user", "bob-user"]));
+      act(() => result.current.createChannel());
+
+      await waitFor(() =>
+        expect(runWorkspaceChannelCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ memberUserUuids: ["alice-user", "bob-user"] }),
+        ),
+      );
+    },
+  );
+
+  it("searches username independently of the display name and email", () => {
+    seedWorkspaceSession();
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "alice-user",
+        username: "hidden-login",
+        displayName: "Alice Adams",
+        email: null,
+      }),
+    ]);
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => result.current.setUserSearch(" HIDDEN-LOGIN "));
+
+    expect(result.current.filteredUsers.map((user) => user.userKey)).toEqual(["alice-user"]);
+    expect(result.current.filteredUsers[0]?.fullName).toBe("Alice Adams");
+  });
+
   it("creates an encrypted channel through the normal success navigation and clears exclusive flags", async () => {
     seedWorkspaceSession();
     seedUsers();

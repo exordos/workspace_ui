@@ -93,13 +93,16 @@ export function createMessengerTopicMessagePreview(input: {
   if (input.messageUuid == null) return null;
 
   const message = input.messagesById[input.messageUuid];
-  if (message?.payload.kind !== "markdown") return null;
+  if (message == null) return null;
 
   const senderName =
     message.authorUuid === input.currentUserUuid
       ? t("common.you")
       : resolveUserDisplayName(input.usersById[message.authorUuid]);
-  const summary = summarizeWorkspaceMessageMarkdown(message.payload.content);
+  const text =
+    message.payload.kind === "markdown"
+      ? summarizeWorkspaceMessageMarkdown(message.payload.content).text
+      : "";
 
   return {
     messageUuid: message.uuid,
@@ -110,8 +113,9 @@ export function createMessengerTopicMessagePreview(input: {
       topicUuid: message.topicUuid,
     }),
     // List previews never render raw markdown or HTML. The summary also hides private file URLs.
-    text: summary.text,
+    text,
     ...(senderName != null ? { senderName } : {}),
+    ...(message.payload.kind !== "markdown" ? { encrypted: true as const } : {}),
   };
 }
 

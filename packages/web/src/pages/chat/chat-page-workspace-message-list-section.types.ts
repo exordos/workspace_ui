@@ -54,6 +54,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onRequestMessageKey?: WorkspaceMessageListActions["onRequestMessageKey"];
   requestMessageKeyPending?: boolean;
   getKeyRequestActions?: WorkspaceMessageListActions["getKeyRequestActions"];
+  getKeyServiceState?: WorkspaceMessageListActions["getKeyServiceState"];
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
@@ -66,7 +67,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
-  onCopyMessageText?: (messageUuid: MessengerUuid, text: string) => void | Promise<void>;
+  onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onLoadWorkspaceFilePreview?: (

@@ -209,6 +209,40 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
 }
 
 describe("ChatE2eeController", () => {
+  it.each(["missing-key", "forbidden", "stale", "wrong-generation", "deletion-race"] as const)(
+    "rechecks %s before retrying a prepared encrypted payload",
+    async (condition) => {
+      const f = fixture(chatPair);
+      const payload = {
+        kind: "e2ee" as const,
+        keyUuid: f.scope.keyUuid,
+        content: { bytes: new Uint8Array([3]) },
+      };
+      if (condition === "missing-key") await f.storage.removeChatKey(f.scope);
+      if (condition === "forbidden") f.setRights({ canSend: false });
+      if (condition === "stale") f.setCurrent({ ...f.scope, runtimeGeneration: 2 });
+      if (condition === "wrong-generation") payload.keyUuid = "another-key";
+      if (condition === "deletion-race") {
+        vi.mocked(f.storage.readChatKeyDeletionRevision)
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(1);
+      }
+      expect(
+        await f.controller.encryptMessage(new Uint8Array([42]), f.sendPayload, payload),
+      ).toEqual({
+        ok: false,
+        reason:
+          condition === "wrong-generation"
+            ? "invalid-key"
+            : condition === "deletion-race"
+              ? "missing-key"
+              : condition,
+      });
+      expect(f.sendPayload).not.toHaveBeenCalled();
+      expect(f.provider.encryptMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["encrypt", "grant"] as const)(
     "stops an already-read key operation after durable deletion before broadcast: %s",
     async (operation) => {

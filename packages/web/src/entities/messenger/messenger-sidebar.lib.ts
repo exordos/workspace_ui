@@ -121,6 +121,7 @@ function compareSidebarStreams(
   a: MessengerSidebarStreamItem,
   b: MessengerSidebarStreamItem,
   sortMode: MessengerSidebarSortMode,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
 ): number {
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
@@ -134,9 +135,12 @@ function compareSidebarStreams(
     if (unreadCompare !== 0) return unreadCompare;
   }
 
+  const streamA = streamsById[a.streamUuid];
+  const streamB = streamsById[b.streamUuid];
+  // A known last-message UUID may still be waiting for hydration; that stream is not empty.
   const activityCompare = compareNullableStringsDesc(
-    a.lastMessageCreatedAt,
-    b.lastMessageCreatedAt,
+    streamA != null && streamA.lastMessageUuid == null ? streamA.createdAt : a.lastMessageCreatedAt,
+    streamB != null && streamB.lastMessageUuid == null ? streamB.createdAt : b.lastMessageCreatedAt,
   );
   if (activityCompare !== 0) return activityCompare;
 
@@ -468,7 +472,7 @@ export function selectMessengerSidebarStreams(
           });
         })
         .filter((item): item is MessengerSidebarStreamItem => item != null)
-        .sort((a, b) => compareSidebarStreams(a, b, sortMode))
+        .sort((a, b) => compareSidebarStreams(a, b, sortMode, state.streamsById))
     : state.streamIds
         .map((streamId) => state.streamsById[streamId])
         .filter(
@@ -499,7 +503,7 @@ export function selectMessengerSidebarStreams(
             }),
           }),
         )
-        .sort((a, b) => compareSidebarStreams(a, b, sortMode));
+        .sort((a, b) => compareSidebarStreams(a, b, sortMode, state.streamsById));
 
   // Newly created catalog entries can arrive before the All folder snapshot.
   // Other folders retain their explicit membership and counters.
@@ -542,7 +546,7 @@ export function selectMessengerSidebarStreams(
         }),
       );
     }
-    streams.sort((a, b) => compareSidebarStreams(a, b, sortMode));
+    streams.sort((a, b) => compareSidebarStreams(a, b, sortMode, state.streamsById));
   }
 
   const result = streams.length > 0 ? streams : EMPTY_SIDEBAR_STREAMS;
