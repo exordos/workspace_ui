@@ -10,6 +10,7 @@ import {
 } from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import {
   settleMessengerOutgoingMessage,
@@ -917,6 +918,7 @@ describe("ChatPage Workspace route", () => {
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
     captured.openRealChatSession.mockReset();
     captured.openRealChatSession.mockRejectedValue(new Error("unavailable"));
+    vi.mocked(decryptRealChatMessage).mockReset().mockResolvedValue(null);
     captured.sendMessengerMessage.mockReset();
     captured.sendMessengerMessage.mockImplementation((request: TestSendMessengerMessageRequest) => {
       if (request.canonicalMessageUuid == null) {
@@ -1328,6 +1330,188 @@ describe("ChatPage Workspace route", () => {
     expect(await screen.findByText(t("e2ee.lockedDescription"))).toBeInTheDocument();
     expect(captured.channelHeaderProps).toMatchObject({ encrypted: true });
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it("copies a selected E2EE fragment directly and decrypts the whole message on demand", async () => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    const encryptedMessage: MessengerMessage = {
+      ...createMessage(),
+      payload: { kind: "e2ee", keyUuid: "copy-key", content: "opaque-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [encryptedMessage]);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardWrites: string[] = [];
+    class TestClipboardItem {
+      constructor(readonly data: Record<string, Promise<string | Blob>>) {}
+    }
+    const write = vi.fn(async (items: ClipboardItems) => {
+      const item = items[0];
+      if (item == null) throw new Error("Expected a clipboard item");
+      const testItem = item as ClipboardItem & {
+        data: Record<string, Promise<string | Blob>>;
+      };
+      const valuePromise = testItem.data["text/plain"];
+      if (valuePromise == null) throw new Error("Expected plain text clipboard data");
+      const value = await valuePromise;
+      clipboardWrites.push(typeof value === "string" ? value : await value.text());
+    });
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const clipboardItemDescriptor = Object.getOwnPropertyDescriptor(globalThis, "ClipboardItem");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write, writeText },
+    });
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: TestClipboardItem,
+    });
+    const deferredDecryption = createDeferred<string | null>();
+    vi.mocked(decryptRealChatMessage).mockReturnValue(deferredDecryption.promise);
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+      const copyMessage = captured.messageListProps?.onCopyMessageText;
+      if (copyMessage == null) throw new Error("Expected the copy callback");
+
+      await act(async () => copyMessage(encryptedMessage.uuid, "selected fragment"));
+      expect(writeText).toHaveBeenCalledWith("selected fragment");
+      expect(decryptRealChatMessage).not.toHaveBeenCalled();
+
+      let fullCopy: void | Promise<void> = undefined;
+      act(() => {
+        fullCopy = copyMessage(encryptedMessage.uuid);
+      });
+      expect(write).toHaveBeenCalledOnce();
+      expect(decryptRealChatMessage).toHaveBeenCalledWith(
+        runtime,
+        expect.objectContaining({
+          uuid: encryptedMessage.uuid,
+          payload: encryptedMessage.payload,
+        }),
+        expect.any(Function),
+      );
+      deferredDecryption.resolve("decrypted message");
+      await act(async () => fullCopy);
+      expect(clipboardWrites).toEqual(["decrypted message"]);
+    } finally {
+      if (clipboardDescriptor == null) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      }
+      if (clipboardItemDescriptor == null) {
+        Reflect.deleteProperty(globalThis, "ClipboardItem");
+      } else {
+        Object.defineProperty(globalThis, "ClipboardItem", clipboardItemDescriptor);
+      }
+    }
+  });
+
+  it.each([
+    { failure: "decryption", scope: "current" },
+    { failure: "decryption", scope: "route" },
+    { failure: "decryption", scope: "owner" },
+    { failure: "clipboard", scope: "current" },
+    { failure: "clipboard", scope: "route" },
+    { failure: "clipboard", scope: "owner" },
+  ])("scopes a late $failure copy error to the $scope UI", async ({ failure, scope }) => {
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (runtime == null) throw new Error("Expected runtime");
+    const owner = workspaceRuntimeOwnerKey(runtime);
+    const bootstrap = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      streams: bootstrap.streams.map((stream) => ({ ...stream, encryption: true })),
+    });
+    const message: MessengerMessage = {
+      ...createMessage(),
+      payload: { kind: "e2ee", keyUuid: "copy-key", content: "opaque-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message]);
+    const decryption = createDeferred<string | null>();
+    const clipboardWrite = createDeferred<void>();
+    vi.mocked(decryptRealChatMessage).mockReturnValue(decryption.promise);
+    const writeText = vi.fn().mockReturnValue(clipboardWrite.promise);
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByTestId("workspace-message-list-section");
+      const copyMessage = captured.messageListProps?.onCopyMessageText;
+      if (copyMessage == null) throw new Error("Expected the copy callback");
+      let copying: void | Promise<void> = undefined;
+      act(() => {
+        copying = copyMessage(message.uuid);
+      });
+      if (failure === "clipboard") {
+        decryption.resolve("decrypted message");
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith("decrypted message"));
+      }
+
+      if (scope === "route") {
+        await act(async () => {
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        });
+        await act(async () => {
+          await navigateTo?.(
+            `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+          );
+        });
+      } else if (scope === "owner") {
+        const sessionB: WorkspaceAuthSession = {
+          ...createSession(),
+          accountId: "org-b:project-b:user-b",
+          organizationId: "org-b",
+          projectId: "project-b",
+          userUuid: USER_B_UUID,
+          runtimeGeneration: 2,
+        };
+        const ownerB = workspaceRuntimeOwnerKey(sessionB);
+        await act(async () => {
+          useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
+          useWorkspaceMessageStore.getState().setOwner(ownerB, false);
+          useWorkspaceAuthStore.setState({
+            sessions: [sessionB],
+            currentAccountId: sessionB.accountId,
+            runtimeGeneration: sessionB.runtimeGeneration,
+          });
+          await navigateTo?.(`/org/org-b/project/project-b/stream/${STREAM_UUID}`);
+        });
+      }
+
+      await act(async () => {
+        if (failure === "decryption") decryption.resolve(null);
+        else clipboardWrite.reject(new Error("Clipboard denied"));
+        await copying;
+      });
+
+      if (scope === "current") {
+        expect(screen.getByText(t("message.copyFailed"))).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText(t("message.copyFailed"))).not.toBeInTheDocument();
+      }
+      if (failure === "decryption") expect(writeText).not.toHaveBeenCalled();
+    } finally {
+      if (clipboardDescriptor == null) Reflect.deleteProperty(navigator, "clipboard");
+      else Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+    }
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {

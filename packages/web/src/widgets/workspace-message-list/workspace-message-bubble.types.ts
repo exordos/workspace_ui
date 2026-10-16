@@ -1,6 +1,7 @@
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
 import type {
   WorkspaceMessageListActions,
   WorkspaceMessageListItem,
@@ -22,4 +23,5 @@ export interface WorkspaceMessageBubbleProps {
   actions?: WorkspaceMessageListActions;
   presentationMode?: "message" | "preview";
   passiveLoadersEnabled?: boolean;
+  quickActions?: WorkspaceMessageBubbleQuickActionsConfig;
 }

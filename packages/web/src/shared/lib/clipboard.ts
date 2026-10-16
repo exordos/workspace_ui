@@ -73,39 +73,40 @@ export async function writeImage(image: Blob | Promise<Blob>): Promise<boolean> 
   }
 }
 
-export async function writeText(text: string): Promise<boolean> {
-  // Electron: IPC avoids unreliable Web Clipboard API in the renderer.
-  if (isElectron()) {
-    const write = getElectronAPI()?.clipboard?.writeText;
-    if (write == null) {
-      log.warn("Clipboard write API unavailable in Electron runtime", { valueLength: text.length });
-      return false;
-    }
-    try {
-      return await write(text);
-    } catch (error) {
-      log.warn("Clipboard write failed in Electron runtime", {
-        valueLength: text.length,
-        error: String(error),
-      });
-      return false;
-    }
-  }
-
-  const clipboardApi = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
-  if (clipboardApi?.writeText == null) {
-    log.warn("Clipboard write API unavailable in browser runtime", { valueLength: text.length });
-    return false;
-  }
-
+export async function writeText(text: string | Promise<string>): Promise<boolean> {
+  const pendingText = typeof text === "string" ? null : text;
+  // Permissions or missing APIs can fail before the text settles.
+  void pendingText?.catch(() => undefined);
   try {
-    await clipboardApi.writeText(text);
+    // Electron: IPC avoids unreliable Web Clipboard API in the renderer.
+    if (isElectron()) {
+      const write = getElectronAPI()?.clipboard?.writeText;
+      if (write == null) {
+        log.warn("Clipboard write API unavailable in Electron runtime");
+        return false;
+      }
+      return await write(await text);
+    }
+
+    const clipboardApi = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (
+      pendingText != null &&
+      typeof ClipboardItem === "function" &&
+      typeof clipboardApi?.write === "function"
+    ) {
+      // Request access during the click while asynchronous text is still being prepared.
+      await clipboardApi.write([new ClipboardItem({ "text/plain": pendingText })]);
+      return true;
+    }
+    if (clipboardApi?.writeText == null) {
+      log.warn("Clipboard write API unavailable in browser runtime");
+      return false;
+    }
+    await clipboardApi.writeText(typeof text === "string" ? text : await text);
     return true;
-  } catch (error) {
-    log.warn("Clipboard write failed in browser runtime", {
-      valueLength: text.length,
-      error: String(error),
-    });
+  } catch {
+    // Text preparation errors may contain private content.
+    log.warn("Clipboard write failed");
     return false;
   }
 }

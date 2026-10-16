@@ -201,8 +201,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [];
-    if (message.payload.kind !== "markdown") {
-      if (message.payload.kind === "e2ee" && onRequestMessageKey != null) {
+    let markdown: string | undefined;
+    if (message.payload.kind === "markdown") {
+      markdown = message.payload.content;
+    } else if (message.payload.kind === "e2ee") {
+      if (onRequestMessageKey != null) {
         items.push({
           type: "action",
           key: "request-message-key",
@@ -214,10 +217,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
             closeMenu();
           },
         });
+        return items;
       }
+    } else {
       return items;
     }
-    const markdown = message.payload.content;
 
     if (onToggleMessageReaction != null) {
       items.push({
@@ -328,22 +332,25 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
-    secondaryActionItems.push({
-      type: "action",
-      key: "copy",
-      icon: "copy",
-      label: t("message.copy"),
-      onSelect: () => {
-        const selectedText = getSelectedText();
-        const textToCopy = selectedText ?? markdown;
-        if (onCopyMessageText != null) {
-          void onCopyMessageText(message.uuid, textToCopy);
-        } else {
-          void writeText(textToCopy);
-        }
-        closeMenu();
-      },
-    });
+    if (markdown != null || onCopyMessageText != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy",
+        icon: "copy",
+        label: t("message.copy"),
+        onSelect: () => {
+          const selectedText = getSelectedText();
+          if (onCopyMessageText != null) {
+            void onCopyMessageText(message.uuid, selectedText);
+          } else if (selectedText != null) {
+            void writeText(selectedText);
+          } else if (markdown != null) {
+            void writeText(markdown);
+          }
+          closeMenu();
+        },
+      });
+    }
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",

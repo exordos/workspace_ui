@@ -3,6 +3,16 @@ import { readText, writeImage, writeText } from "./clipboard";
 
 type ClipboardItemPayload = Record<string, string | Blob | PromiseLike<string | Blob>>;
 
+function deferredText() {
+  let resolve!: (text: string) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<string>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("clipboard", () => {
   const originalElectronApi = window.electronAPI;
   const originalClipboard = navigator.clipboard;
@@ -124,6 +134,105 @@ describe("clipboard", () => {
   });
 
   describe("writeText", () => {
+    it("starts browser clipboard access before asynchronous text is ready", async () => {
+      const text = deferredText();
+      let clipboardItemData: ClipboardItemPayload | undefined;
+      vi.stubGlobal(
+        "ClipboardItem",
+        class ClipboardItemMock {
+          constructor(data: ClipboardItemPayload) {
+            clipboardItemData = data;
+          }
+        },
+      );
+      const write = vi.fn(async () => {
+        await clipboardItemData?.["text/plain"];
+      });
+      const writeTextMock = vi.fn();
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write, writeText: writeTextMock },
+        configurable: true,
+      });
+
+      const copied = writeText(text.promise);
+      expect(write).toHaveBeenCalledOnce();
+      expect(writeTextMock).not.toHaveBeenCalled();
+
+      text.resolve("prepared text");
+      await expect(copied).resolves.toBe(true);
+      expect(await clipboardItemData?.["text/plain"]).toBe("prepared text");
+    });
+
+    it.each(["permission", "constructor", "browser API", "Electron API"])(
+      "handles a late text rejection after an early %s failure",
+      async (failure) => {
+        const text = deferredText();
+        vi.stubGlobal(
+          "ClipboardItem",
+          class ClipboardItemMock {
+            constructor() {
+              if (failure === "constructor") throw new Error("ClipboardItem unavailable");
+            }
+          },
+        );
+        Object.defineProperty(navigator, "clipboard", {
+          value:
+            failure === "browser API"
+              ? undefined
+              : { write: vi.fn().mockRejectedValue(new Error("Permission denied")) },
+          configurable: true,
+        });
+        if (failure === "Electron API") {
+          (window as unknown as Record<string, unknown>).electronAPI = {};
+        }
+
+        await expect(writeText(text.promise)).resolves.toBe(false);
+        text.reject(new Error("Text preparation failed later"));
+        // A detached rejection is reported after microtasks drain, even if writing already failed.
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
+      },
+    );
+
+    it.each([true, false])(
+      "handles asynchronous text without ClipboardItem (preparation succeeds: %s)",
+      async (succeeds) => {
+        vi.stubGlobal("ClipboardItem", undefined);
+        const text = deferredText();
+        const writeTextMock = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, "clipboard", {
+          value: { writeText: writeTextMock },
+          configurable: true,
+        });
+
+        const copied = writeText(text.promise);
+        expect(writeTextMock).not.toHaveBeenCalled();
+        if (succeeds) text.resolve("prepared text");
+        else text.reject(new Error("Text preparation failed"));
+
+        await expect(copied).resolves.toBe(succeeds);
+        if (succeeds) expect(writeTextMock).toHaveBeenCalledWith("prepared text");
+        else expect(writeTextMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it("writes asynchronous text through Electron IPC without browser clipboard APIs", async () => {
+      const text = deferredText();
+      const writeTextMock = vi.fn().mockResolvedValue(true);
+      (window as unknown as Record<string, unknown>).electronAPI = {
+        clipboard: { writeText: writeTextMock },
+      };
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+
+      const copied = writeText(text.promise);
+      expect(writeTextMock).not.toHaveBeenCalled();
+      text.resolve("prepared text");
+
+      await expect(copied).resolves.toBe(true);
+      expect(writeTextMock).toHaveBeenCalledWith("prepared text");
+    });
+
     it("writes in browser runtime when Clipboard API is available", async () => {
       const writeTextMock = vi.fn().mockResolvedValue(undefined);
       Object.defineProperty(navigator, "clipboard", {

@@ -520,6 +520,125 @@ describe("real encrypted message presentation", () => {
     useWorkspaceMessageStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
+  it("requests the missing historical message key and removes the quick action when the key arrives", async () => {
+    const { stored, owner, stream, runtime, device } = await seedRealEncryptedMessage(
+      "Restored historical text",
+    );
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    const savedKey = await realChatKeyStorage.readChatKey(address);
+    if (savedKey == null) throw new Error("Missing saved key");
+    await realChatKeyStorage.removeChatKey(address);
+    useMessengerStore.getState().upsertStream(owner, {
+      ...stream,
+      currentEncryptionKey: { keyUuid: crypto.randomUUID() },
+    });
+    const request = vi.fn();
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+    };
+    const { rerender } = render(
+      <WorkspaceEncryptedMessageBubble {...props} actions={{ onRequestMessageKey: request }} />,
+    );
+    const button = await screen.findByRole("button", { name: "Request key for this message" });
+    expect(button).toBeVisible();
+    expect(button.closest("[data-workspace-message-quick-actions]")).toHaveAttribute(
+      "data-visibility",
+      "always",
+    );
+    fireEvent.click(button);
+    expect(request).toHaveBeenCalledExactlyOnceWith(stored.uuid);
+    rerender(
+      <WorkspaceEncryptedMessageBubble
+        {...props}
+        actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
+      />,
+    );
+    const pendingButton = screen.getByRole("button", { name: "Request key for this message" });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect(request).toHaveBeenCalledTimes(1);
+    await realChatKeyStorage.writeChatKey(address, savedKey);
+    act(() => {
+      notifyRealChatKeyChanges({
+        kind: "updated",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid: stream.uuid,
+        keyUuid: address.keyUuid,
+      });
+    });
+    expect(await screen.findByText("Restored historical text")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("suppresses a missing-key quick action in previews and after owner invalidation", async () => {
+    const { stored, stream, runtime, device } = await seedRealEncryptedMessage("Hidden text");
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    await realChatKeyStorage.removeChatKey({
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    });
+    const request = vi.fn();
+    const props = {
+      message: stored,
+      currentUserUuid: "author",
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      actions: { onRequestMessageKey: request },
+    };
+    const { rerender } = render(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(
+      await screen.findByRole("button", { name: "Request key for this message" }),
+    ).toBeInTheDocument();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />);
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    expect(
+      screen.getByRole("button", { name: "Request key for this message" }),
+    ).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.getState().setOwner("another-owner", false));
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("does not offer a key request while decryption is pending", async () => {
+    const { stored } = await seedRealEncryptedMessage("Pending text");
+    const decrypt = vi
+      .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
+      .mockReturnValue(new Promise(() => {}));
+    render(
+      <WorkspaceEncryptedMessageBubble
+        message={stored}
+        currentUserUuid="author"
+        isFirstInGroup
+        isLastInGroup
+        actions={{ onRequestMessageKey: vi.fn() }}
+      />,
+    );
+    await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+    expect(screen.getByText("Decrypting message…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Request key for this message" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows and toggles shared reactions only while the message is decrypted", async () => {
     const { stored, owner, stream, runtime, device } =
       await seedRealEncryptedMessage("Reacted encrypted text");
@@ -758,12 +877,15 @@ describe("real encrypted message presentation", () => {
     render(view(useWorkspaceMessageStore.getState().messagesById[stored.uuid] ?? stored));
     expect(await screen.findByText("мир")).toBeInTheDocument();
   });
-  it("keeps decrypted text capabilities restricted and never loads quoted messages", async () => {
+  it("opens the shared context menu for decrypted text without loading quoted messages", async () => {
     const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
     const preview = vi.fn();
-    const { stored } = await seedRealEncryptedMessage(
-      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```",
-    );
+    const copyMessageText = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const onRequestDeleteMessage = vi.fn();
+    const decryptedText =
+      "Readable fixture\n\n[Alice](urn:quote:44444444-4444-4444-8444-444444444444)\n\n```js\nconst x = 1;\n```";
+    const { stored } = await seedRealEncryptedMessage(decryptedText);
     const { container } = render(
       <WorkspaceEncryptedMessageBubble
         message={stored}
@@ -775,6 +897,9 @@ describe("real encrypted message presentation", () => {
           onReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
           onEditMessage: vi.fn(),
+          onCopyMessageText: copyMessageText,
+          onToggleMessageReaction,
+          onRequestDeleteMessage,
         }}
       />,
     );
@@ -787,7 +912,27 @@ describe("real encrypted message presentation", () => {
     const bubble = container.querySelector('[data-workspace-message-bubble="true"]');
     if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Reply" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Forward" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Select" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy text" }));
+    expect(copyMessageText).toHaveBeenCalledWith(stored.uuid, undefined);
+    if (stored.payload.kind !== "e2ee") throw new Error("Expected an encrypted message");
+    expect(copyMessageText).not.toHaveBeenCalledWith(stored.uuid, decryptedText);
+    expect(copyMessageText).not.toHaveBeenCalledWith(stored.uuid, stored.payload.content);
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByLabelText("Thumbs up"));
+    expect(onToggleMessageReaction).toHaveBeenCalledWith(stored.uuid, "👍");
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(onRequestDeleteMessage).toHaveBeenCalledWith(stored.uuid);
   });
 
   it.each([

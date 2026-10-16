@@ -45,6 +45,7 @@ function EncryptedTextBubble({
       message={createWorkspaceMessageListServerItem(message)}
       bodyMarkdown={plaintext ?? ""}
       locked={plaintext == null}
+      requestMessageKeyAvailable={presentation.canRequestKey === true}
       bodyOverride={
         plaintext == null ? (
           <EncryptedMessagePlaceholder
@@ -53,19 +54,6 @@ function EncryptedTextBubble({
             action={
               presentation.status === "error"
                 ? { label: t("e2ee.messageDecryptRetry"), onClick: presentation.retry }
-                : undefined
-            }
-            secondaryAction={
-              presentation.status === "error" &&
-              presentation.canRequestKey === true &&
-              props.actions?.onRequestMessageKey
-                ? {
-                    label: t("e2ee.requestMessageKey"),
-                    onClick: () => {
-                      void props.actions?.onRequestMessageKey?.(message.uuid);
-                    },
-                    disabled: props.actions.requestMessageKeyPending,
-                  }
                 : undefined
             }
           />

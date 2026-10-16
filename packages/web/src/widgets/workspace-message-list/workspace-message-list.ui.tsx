@@ -407,6 +407,7 @@ interface WorkspaceMessageListRowProps {
   topicLabel?: string | null;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
+  quickActions?: WorkspaceMessageListPresentation["quickActions"];
   actions?: WorkspaceMessageListProps["actions"];
   passiveLoadersEnabled: boolean;
 }
@@ -425,6 +426,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   topicLabel,
   resolveMention,
   quoteRenderMode,
+  quickActions,
   actions,
   passiveLoadersEnabled,
 }: WorkspaceMessageListRowProps): React.ReactElement {
@@ -511,6 +513,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
           topicLabel={topicLabel}
           resolveMention={resolveMention}
           quoteRenderMode={quoteRenderMode}
+          quickActions={quickActions}
           actions={actions}
           passiveLoadersEnabled={passiveLoadersEnabled}
         />
@@ -543,6 +546,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   showTopicLabels: boolean;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
+  quickActions?: WorkspaceMessageListPresentation["quickActions"];
   actions?: WorkspaceMessageListProps["actions"];
   passiveLoadersEnabled: boolean;
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
@@ -559,6 +563,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   showTopicLabels,
   resolveMention,
   quoteRenderMode,
+  quickActions,
   actions,
   passiveLoadersEnabled,
   selectedMessageUuids,
@@ -608,6 +613,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       }
       resolveMention={resolveMention}
       quoteRenderMode={quoteRenderMode}
+      quickActions={quickActions}
       actions={actions}
       passiveLoadersEnabled={passiveLoadersEnabled}
     />
@@ -1081,6 +1087,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                   showTopicLabels={presentation?.topicLabels === true}
                   resolveMention={resolveMention}
                   quoteRenderMode={presentation?.quoteRenderMode}
+                  quickActions={presentation?.quickActions}
                   actions={messageActions}
                   passiveLoadersEnabled={!anchorHandoffPending}
                   selectedMessageUuids={selectedMessageUuids}

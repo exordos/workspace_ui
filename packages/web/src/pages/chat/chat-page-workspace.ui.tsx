@@ -20,6 +20,7 @@ import {
   selectWorkspaceMessageStatusForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -133,6 +134,7 @@ import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
+import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import {
   createWorkspaceFileResourceCache,
@@ -2458,21 +2460,58 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft],
   );
 
-  const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
-    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-    if (message == null) {
-      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
-      return;
-    }
-    if (typeof navigator === "undefined" || navigator.clipboard == null) {
-      setActionError(t("message.copyFailed"));
-      return;
-    }
+  const handleCopyMessageText = useCallback(
+    async (messageUuid: string, selectedText?: string) => {
+      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      if (message == null) {
+        setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+        return;
+      }
+      const isUiActionCurrent = captureWorkspaceChatUiAction();
+      let text: string | Promise<string> | undefined = selectedText;
+      if (text == null && message.payload.kind === "markdown") {
+        text = message.payload.content;
+      } else if (text == null && message.payload.kind === "e2ee") {
+        if (runtimeContext == null || ownerKey == null) {
+          setActionError(t("message.copyFailed"));
+          return;
+        }
+        const encryptedPayload = message.payload;
 
-    void navigator.clipboard.writeText(text).catch(() => {
-      setActionError(t("message.copyFailed"));
-    });
-  }, []);
+        const isCurrent = () => {
+          const currentRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+          const messages = useWorkspaceMessageStore.getState();
+          const currentMessage = selectWorkspaceMessageById(messages, messageUuid);
+          const messenger = useMessengerStore.getState();
+          if (currentRuntime == null || currentMessage?.payload.kind !== "e2ee") {
+            return false;
+          }
+          return (
+            workspaceRuntimeOwnerKey(currentRuntime) === ownerKey &&
+            currentRuntime.runtimeGeneration === runtimeContext.runtimeGeneration &&
+            messages.ownerKey === ownerKey &&
+            messenger.ownerKey === ownerKey &&
+            messenger.streamsById[message.streamUuid]?.encryption === true &&
+            currentMessage.projectId === message.projectId &&
+            currentMessage.streamUuid === message.streamUuid &&
+            currentMessage.payload.keyUuid === encryptedPayload.keyUuid &&
+            currentMessage.payload.content === encryptedPayload.content
+          );
+        };
+
+        text = decryptRealChatMessage(runtimeContext, message, isCurrent).then((plaintext) => {
+          if (plaintext == null || !isCurrent()) throw new Error("Message is no longer available");
+          return plaintext;
+        });
+      }
+
+      const copied = text != null && (await writeText(text));
+      if (!copied && isUiActionCurrent()) {
+        setActionError(t("message.copyFailed"));
+      }
+    },
+    [captureWorkspaceChatUiAction, ownerKey, runtimeContext],
+  );
 
   const handleToggleMessageSelection = useCallback((messageUuid: string) => {
     setSelectedMessageUuids((current) => {

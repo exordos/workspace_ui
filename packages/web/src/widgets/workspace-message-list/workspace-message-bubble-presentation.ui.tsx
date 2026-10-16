@@ -32,6 +32,10 @@ import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
+import {
+  WorkspaceMessageBubbleQuickActions,
+  type WorkspaceMessageBubbleQuickAction,
+} from "./workspace-message-bubble-quick-actions.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
@@ -364,12 +368,64 @@ function WorkspaceMessageBubbleFooter({
   );
 }
 
+function getWorkspaceMessageQuickActions(
+  message: MessengerMessage | null,
+  actions: WorkspaceMessageBubbleProps["actions"],
+  requestMessageKeyAvailable: boolean,
+  getSelectedText: () => string | undefined,
+): WorkspaceMessageBubbleQuickAction[] {
+  const quickActionItems: WorkspaceMessageBubbleQuickAction[] = [];
+  if (message != null) {
+    const messageUuid = message.uuid;
+    if (requestMessageKeyAvailable && actions?.onRequestMessageKey != null) {
+      quickActionItems.push({
+        key: "request-message-key",
+        label: t("e2ee.requestMessageKey"),
+        icon: "chatLock",
+        showLabel: false,
+        pending: actions.requestMessageKeyPending,
+        onSelect: () => {
+          void actions.onRequestMessageKey?.(messageUuid);
+        },
+      });
+    } else if (message.payload.kind === "markdown") {
+      if (actions?.onReplyMessage != null) {
+        quickActionItems.push({
+          key: "reply",
+          label: t("message.reply"),
+          icon: "reply",
+          showLabel: false,
+          onSelect: () => actions.onReplyMessage?.(messageUuid, getSelectedText()),
+        });
+      }
+      if (actions?.onToggleMessageReaction != null) {
+        const pendingHeart = message.pendingOwnReactionsByEmojiName?.["❤️"];
+        quickActionItems.push({
+          key: "reaction",
+          label: t("a11y.like"),
+          glyph: "❤️",
+          pressed:
+            pendingHeart?.operation === "add" ||
+            (pendingHeart?.operation !== "remove" &&
+              message.ownReactionUuidsByEmojiName["❤️"] != null),
+          pending: pendingHeart != null,
+          onSelect: () => {
+            void actions.onToggleMessageReaction?.(messageUuid, "❤️");
+          },
+        });
+      }
+    }
+  }
+  return quickActionItems;
+}
+
 interface WorkspaceMessageBubblePresentationProps extends WorkspaceMessageBubbleProps {
   /** Decrypted text lives only in this scoped render, never in a synthetic message payload. */
   readonly bodyMarkdown?: string;
   readonly bodyOverride?: React.ReactNode;
   readonly locked?: boolean;
   readonly authorOutside?: boolean;
+  readonly requestMessageKeyAvailable?: boolean;
 }
 
 export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubblePresentationProps> =
@@ -388,10 +444,12 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     actions,
     presentationMode = "message",
     passiveLoadersEnabled = true,
+    quickActions,
     bodyMarkdown,
     bodyOverride,
     locked = false,
     authorOutside = false,
+    requestMessageKeyAvailable = false,
   }): React.ReactElement {
     const isPreview = presentationMode === "preview";
     const interactiveActions = isPreview ? undefined : actions;
@@ -642,12 +700,27 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         </div>
       ) : null;
 
+    const quickActionItems = getWorkspaceMessageQuickActions(
+      interactiveServerMessage,
+      interactiveActions,
+      requestMessageKeyAvailable,
+      getSelectedText,
+    );
+    const quickActionsVisibility = requestMessageKeyAvailable
+      ? (quickActions?.missingKey ?? "always")
+      : (quickActions?.message ?? "hover");
+    const hasQuickActions =
+      quickActionItems.length > 0 && quickActionsVisibility !== "disabled" && !isPreview;
+    // Leave a side rail for actions without covering adjacent bubbles or changing row spacing.
+    const quickActionsMaxWidth = hasQuickActions ? "min(88%, calc(100% - 4rem))" : undefined;
+
     const bubble = (
       // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
       <div
-        className={`relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
+        className={`group/workspace-message-bubble relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
           effectiveReadRequestPending,
         )}`}
+        style={authorOutside ? undefined : { maxWidth: quickActionsMaxWidth }}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-payload-kind={serverMessage?.payload.kind}
@@ -662,6 +735,12 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         onKeyDown={isPreview ? undefined : handleKeyDown}
         tabIndex={isPreview || containsInteractiveBody ? undefined : 0}
       >
+        <WorkspaceMessageBubbleQuickActions
+          actions={quickActionItems}
+          visibility={quickActionsVisibility}
+          condition={!isPreview && !menuOpen}
+          isOwn={isOwn}
+        />
         {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu
             message={interactiveServerMessage}
@@ -673,16 +752,22 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             onOpenChange={handleMenuOpenChange}
             onRequestMessageKey={locked ? interactiveActions?.onRequestMessageKey : undefined}
             requestMessageKeyPending={interactiveActions?.requestMessageKeyPending}
-            onReplyMessage={interactiveActions?.onReplyMessage}
-            onAddReplyMessage={interactiveActions?.onAddReplyMessage}
-            onForwardMessage={interactiveActions?.onForwardMessage}
-            onToggleMessageSelection={interactiveActions?.onToggleMessageSelection}
-            onEditMessage={
-              renderedBody.hasForwardSnapshot ? undefined : interactiveActions?.onEditMessage
+            onReplyMessage={encryptedPayload ? undefined : interactiveActions?.onReplyMessage}
+            onAddReplyMessage={encryptedPayload ? undefined : interactiveActions?.onAddReplyMessage}
+            onForwardMessage={encryptedPayload ? undefined : interactiveActions?.onForwardMessage}
+            onToggleMessageSelection={
+              encryptedPayload ? undefined : interactiveActions?.onToggleMessageSelection
             }
-            onRequestDeleteMessage={interactiveActions?.onRequestDeleteMessage}
-            onCopyMessageText={interactiveActions?.onCopyMessageText}
-            onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
+            onEditMessage={
+              encryptedPayload || renderedBody.hasForwardSnapshot
+                ? undefined
+                : interactiveActions?.onEditMessage
+            }
+            onRequestDeleteMessage={locked ? undefined : interactiveActions?.onRequestDeleteMessage}
+            onCopyMessageText={locked ? undefined : interactiveActions?.onCopyMessageText}
+            onToggleMessageReaction={
+              locked ? undefined : interactiveActions?.onToggleMessageReaction
+            }
             onLoadWorkspaceFilePreview={
               fileContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
@@ -734,7 +819,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       </div>
     );
     return authorOutside ? (
-      <div className="flex max-w-[88%] flex-col items-start gap-1">
+      <div
+        className="flex max-w-[88%] flex-col items-start gap-1"
+        style={{ maxWidth: quickActionsMaxWidth }}
+      >
         {authorHeader}
         {bubble}
       </div>

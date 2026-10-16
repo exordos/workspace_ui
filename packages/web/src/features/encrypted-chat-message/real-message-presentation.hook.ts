@@ -16,6 +16,7 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 
 type RealMessagePresentation = (RealChatMessageDecryption | { readonly status: "loading" }) & {
   readonly retry: () => void;
+  readonly canRequestKey?: boolean;
 };
 
 /** Plaintext is scoped presentation memory, with no message-store/cache or mock fallback. */
@@ -96,10 +97,16 @@ export function useRealMessagePresentation(message: MessengerMessage): RealMessa
       disposed = true;
     };
   }, [allowed, runtime, owner, scopeKey, message, revision]);
-  if (!allowed) return { status: "missing-key", retry };
+  if (!allowed) return { status: "missing-key", retry, canRequestKey: false };
   if (result?.scopeKey !== scopeKey) return { status: "loading", retry };
   // Unrelated key notifications must not hide verified text during a background check.
   if (result.revision !== revision && result.value.status !== "ready")
     return { status: "loading", retry };
-  return { ...result.value, retry };
+  return {
+    ...result.value,
+    retry,
+    canRequestKey:
+      result.value.status === "missing-key" ||
+      (result.value.status === "error" && result.value.canRequestKey === true),
+  };
 }

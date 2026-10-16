@@ -11,6 +11,7 @@ import type {
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { WorkspaceUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
+import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
 import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
 
 export type WorkspaceMessageConversationReference = Extract<
@@ -47,7 +48,7 @@ export interface WorkspaceMessageListActions {
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
-  onCopyMessageText?: (messageUuid: MessengerUuid, text: string) => void | Promise<void>;
+  onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
@@ -92,6 +93,7 @@ export interface WorkspaceMessageListPresentation {
   topicDividers?: boolean;
   topicLabels?: boolean;
   quoteRenderMode?: WorkspaceQuoteRenderMode;
+  quickActions?: WorkspaceMessageBubbleQuickActionsConfig;
 }
 
 export interface WorkspaceMessageListProps {
