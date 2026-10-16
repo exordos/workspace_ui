@@ -29,6 +29,7 @@ import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids
 import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatEncryptedPayload } from "./chat-e2ee.types";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerStreamBinding } from "./messenger.types";
 
@@ -1632,6 +1633,63 @@ describe("real ordinary chat orchestration", () => {
     );
     session.dispose();
   });
+
+  it("retries a lost message response with the same UUID and envelope, and still checks the local key", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    const encryption = vi.spyOn(realChatCryptoProvider, "encryptMessage");
+    const retained: { payload?: ChatEncryptedPayload } = {};
+    const input = {
+      text: "uncertain encrypted delivery",
+      topicUuid: TOPIC,
+      canonicalMessageUuid: crypto.randomUUID(),
+      expectedKeyUuid: session.getState().sendKeyUuid!,
+      expectedDeviceId: session.device.deviceId,
+      onEncryptedPayload: (payload: ChatEncryptedPayload) => {
+        retained.payload = payload;
+      },
+    };
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
+      await create(options, body);
+      throw new Error("Response lost after server commit");
+    });
+    await expect(session.send(input)).rejects.toThrow("send-failed");
+    expect(retained.payload).toBeDefined();
+    await session.send({ ...input, preparedPayload: retained.payload });
+    expect(encryption).toHaveBeenCalledOnce();
+    expect(vi.mocked(createMessage).mock.calls[0]?.[1]).toEqual(
+      vi.mocked(createMessage).mock.calls[1]?.[1],
+    );
+    expect(f.wire[0]?.uuid).toBe(createMessengerPlacementUuid(TOPIC, input.canonicalMessageUuid));
+    expect(await session.decrypt(adaptMessengerMessage(f.wire[0]!))).toBe(input.text);
+    await session.removeLocalKey(input.expectedKeyUuid);
+    vi.mocked(createMessage).mockClear();
+    await expect(session.send({ ...input, preparedPayload: retained.payload })).rejects.toThrow(
+      "missing-key",
+    );
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(["key", "device"] as const)(
+    "rejects an outbox retry for a different %s",
+    async (changed) => {
+      const f = await setup();
+      const session = await openSessionFor(f.admin);
+      await session.load();
+      await expect(
+        session.send({
+          text: "bound to the original key and device",
+          topicUuid: TOPIC,
+          expectedKeyUuid:
+            changed === "key" ? crypto.randomUUID() : session.getState().sendKeyUuid!,
+          expectedDeviceId: changed === "device" ? crypto.randomUUID() : session.device.deviceId,
+        }),
+      ).rejects.toThrow("invalid-key");
+      expect(createMessage).not.toHaveBeenCalled();
+    },
+  );
 
   it("restores a staged creator key after a lost create response and serializes concurrent sends to distinct topics", async () => {
     const f = await setup();

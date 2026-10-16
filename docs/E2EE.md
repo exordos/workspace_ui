@@ -1,6 +1,6 @@
 # Encrypted chats
 
-Current for the client implementation on this branch as of 2026-10-15. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
+Current for the client implementation on this branch as of 2026-10-16. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
 
 ## Capabilities
 
@@ -11,8 +11,9 @@ Current for the client implementation on this branch as of 2026-10-15. This is a
 - Rotate the key as the owner, with confirmation: a new generation does not rewrite existing history. Participants request the new key themselves.
 - View local keys and delete a selected key with confirmation. Deletion removes available plaintext from mounted messages and notifies other tabs.
 - Until the current key is received, sending can use the last available local key and its UUID. Receiving the current key automatically switches subsequent sends; sending is unavailable when no keys are available.
+- Start calls from the shared chat header or encrypted chat sidebar through the existing Jitsi flow. The invitation link is sent through the crypto session and requires an available local sending key.
 
-Ordinary Markdown send/edit/forward operations and saving ordinary server drafts are blocked for encrypted chats. Text and attachment references are encrypted together in the message. Attachments use the existing Workspace file upload flow; their bytes and file metadata are not E2EE-encrypted. Failed encrypted sends retain the editor text and uploaded attachments for retry. Converting an existing chat to encrypted mode and automatically granting keys to a new device are not implemented by this flow.
+Ordinary Markdown send/edit/forward operations and saving ordinary server drafts are blocked for encrypted chats. Text and attachment references are encrypted together in the message. Attachments use the existing Workspace file upload flow; their bytes and file metadata are not E2EE-encrypted. Both ordinary and encrypted sends enter the shared in-memory outbox before the composer clears and restores focus. Failed sends retain their text and uploaded attachment references in the outgoing row for retry, while the editor remains available for the next message. Converting an existing chat to encrypted mode and automatically granting keys to a new device are not implemented by this flow.
 
 Decrypted attachment references use the existing inline image/video previews and file download actions. Locking a message after local key deletion or an owner change removes inline previews, aborts their pending loads, and releases their display URLs. Plaintext references remain in scoped presentation memory; the message store retains the encrypted payload. Deleting a chat key does not revoke access to unencrypted media already opened in the viewer, downloaded files, or previously learned file references.
 
@@ -54,13 +55,15 @@ The [service-message tests](../packages/web/src/widgets/workspace-message-list/w
 | React integration and key panel                                                 | [Session hook](../packages/web/src/features/encrypted-chat-info/chat-crypto-session.hook.ts), [connected panel](../packages/web/src/features/encrypted-chat-info/encrypted-chat-info-connected.ui.tsx)                     |
 | Decryption for presentation only                                                | [Presentation hook](../packages/web/src/features/encrypted-chat-message/real-message-presentation.hook.ts), [message bubble](../packages/web/src/widgets/workspace-message-list/workspace-encrypted-message-bubble.ui.tsx) |
 
+The [outbox delivery](../packages/web/src/entities/messenger/messenger-outbox-delivery.lib.ts) keeps a session lease until each encrypted attempt completes, independently of the open route. Each outgoing message retains its canonical UUID, exact sending key UUID, device ID, and, once prepared, encrypted envelope. An ambiguous POST retries the same UUID and envelope; retries still check the live runtime, permissions, local key and deletion revision. A different sending key or device fails the existing row instead of silently rebinding it. Uploaded files transfer to the outbox when enqueue succeeds and are not deleted when the composer unmounts.
+
 The messenger store owns the stream, current key UUID, and roles. The session does not fetch them through a separate HTTP flow; it relies on shared bootstrap and participant loading. The page and drawer share a session for the same owner/runtime generation/stream; the final consumer releases it. A generation change preserves the session and editor text. Session state notifications are separate from key change notifications.
 
 ## Wire contract and cryptography
 
 Exact DTOs and validation are in [messenger.types.ts](../packages/web/src/shared/api/messenger.types.ts); byte conversion is in the [payload adapter](../packages/web/src/entities/messenger/chat-e2ee-payload-adapters.lib.ts). The client expects `current_encryption_key_uuid`. Messages use `e2ee`, `key_request`, `key_grant`, `key_reject`, and `key_announced`; an announcement contains only `kind` and `key_uuid`.
 
-`key_uuid` addresses a generation of a random 32-byte symmetric `GroupKey`; it is not its fingerprint. `key_request.public_key` is the public X25519 key of an individual request. `e2ee.content` and `key_grant.content` contain binary envelopes encoded as standard padded Base64. `GroupKey` and private request keys are never sent to the backend in plaintext. The composer checks the 40,000-character plaintext limit before encryption. The backend validates the final opaque payload size; failed sends preserve the composer text.
+`key_uuid` addresses a generation of a random 32-byte symmetric `GroupKey`; it is not its fingerprint. `key_request.public_key` is the public X25519 key of an individual request. `e2ee.content` and `key_grant.content` contain binary envelopes encoded as standard padded Base64. `GroupKey` and private request keys are never sent to the backend in plaintext. The composer checks the 40,000-character plaintext limit before encryption. The backend validates the final opaque payload size; failed sends preserve the outgoing text and attachment references in the outbox.
 
 The provider defines the format; library versions belong to [package.json](../packages/web/package.json) and the lockfile.
 
@@ -88,7 +91,7 @@ Inbound service messages load existing generation keys without creating persiste
 - A shared key does not provide forward secrecy, cryptographic proof of an individual participant's authorship, or revocation of previously granted secrets. Rotation does not revoke access to old history or messages sent with an old key.
 - The client does not serialize rotation across devices; live scope checks do not guarantee resolution of conflicts between devices. If an intermediate generation stops being current before the operation completes, its staged secret does not automatically become an available historical key.
 - IndexedDB is not hardware-backed storage: code running in the origin and access to the device can expose secrets. Key export/import and backup are not implemented. Losing every copy of a key makes that generation's history inaccessible.
-- Metadata, participants, and service messages are not hidden. Plaintext exists in presentation/editor memory and passes through the existing safe renderer; the store/cache retain ciphertext. This flow does not provide encrypted push notifications or server-side plaintext search.
+- Metadata, participants, and service messages are not hidden. Plaintext exists in presentation/editor memory and the owner-scoped in-memory outbox, and passes through the existing safe renderer; the canonical message store and durable message cache retain ciphertext. The outbox is not persisted across reloads. This flow does not provide encrypted push notifications or server-side plaintext search.
 - Old mock envelopes are not migrated automatically. The DEV mock and insecure sandbox have been removed; only the [static UI preview](../packages/web/src/pages/encrypted-chat/encrypted-chat-preview.ui.tsx) remains.
 
 ## Verification and integration

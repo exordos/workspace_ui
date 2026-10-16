@@ -1224,7 +1224,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
-  it("uses the real crypto session editor without plaintext draft persistence or outbox and retains failed text", async () => {
+  it("queues encrypted sends without blocking typing or persisting plaintext drafts", async () => {
     const session = { ...createSession(), organizationOrigin: "http://127.0.0.1:9100" };
     useWorkspaceAuthStore.getState().setSession(session);
     const owner = workspaceRuntimeOwnerKey(session);
@@ -1239,8 +1239,10 @@ describe("ChatPage Workspace route", () => {
         },
       })),
     });
-    const send = vi.fn().mockResolvedValue({ status: "applied" });
+    const firstDelivery = createDeferred<{ status: "applied" }>();
+    const send = vi.fn().mockReturnValueOnce(firstDelivery.promise);
     captured.openRealChatSession.mockResolvedValue({
+      device: { deviceId: "mock-device", deviceName: "Test" },
       load: vi.fn().mockResolvedValue(undefined),
       ingest: vi.fn().mockResolvedValue(undefined),
       subscribe: () => () => undefined,
@@ -1269,7 +1271,9 @@ describe("ChatPage Workspace route", () => {
     expect(hydrate).not.toHaveBeenCalled();
     expect(
       Object.keys(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(textbox).not.toBeDisabled();
+    expect(textbox).toHaveFocus();
     expect(
       selectWorkspaceComposerDraft(
         useWorkspaceComposerDraftStore.getState(),
@@ -1280,8 +1284,20 @@ describe("ChatPage Workspace route", () => {
     send.mockRejectedValueOnce(new Error("crypto operation failure"));
     fireEvent.change(textbox, { target: { value: "Keep this text" } });
     fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
-    await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
-    expect(textbox).toHaveValue("Keep this text");
+    await waitFor(() =>
+      expect(captured.messageListProps?.outgoingMessages?.[1]).toMatchObject({
+        markdown: "Keep this text",
+        status: "failed",
+        encryption: { keyUuid: "mock-key", deviceId: "mock-device" },
+      }),
+    );
+    expect(textbox).toHaveValue("");
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    await act(async () => {
+      firstDelivery.resolve({ status: "applied" });
+      await firstDelivery.promise;
+    });
+    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toHaveLength(1));
     send.mockClear();
     const overPlaintextLimit = "A".repeat(40_001);
     fireEvent.change(textbox, { target: { value: overPlaintextLimit } });
@@ -1295,7 +1311,7 @@ describe("ChatPage Workspace route", () => {
     { name: "clip.mp4", contentType: "video/mp4", urnType: "video" },
     { name: "report.pdf", contentType: "application/pdf", urnType: "file" },
   ])(
-    "sends $urnType references through crypto and retains failed attachments",
+    "retains encrypted $urnType references in the outbox across retries without re-uploading",
     async ({ name, contentType, urnType }) => {
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (runtime == null) throw new Error("Expected runtime");
@@ -1314,6 +1330,7 @@ describe("ChatPage Workspace route", () => {
         .mockResolvedValueOnce({ status: "stale" })
         .mockResolvedValue({ status: "applied" });
       captured.openRealChatSession.mockResolvedValue({
+        device: { deviceId: "mock-device", deviceName: "Test" },
         load: vi.fn().mockResolvedValue(undefined),
         ingest: vi.fn().mockResolvedValue(undefined),
         subscribe: () => () => undefined,
@@ -1361,25 +1378,34 @@ describe("ChatPage Workspace route", () => {
       await waitFor(() => expect(sendButton).not.toBeDisabled());
       fireEvent.change(textbox, { target: { value: "Keep with attachment" } });
       fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
-      expect(textbox).toHaveValue("Keep with attachment");
+      await waitFor(() =>
+        expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed"),
+      );
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+      expect(textbox).toHaveValue("");
+      expect(textbox).not.toBeDisabled();
       expect(send).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining(`urn:${urnType}:99999999-9999-4999-8999-999999999999`),
           topicUuid: TOPIC_UUID,
         }),
       );
-      expect(send.mock.calls[0]?.[0].text).toContain("\nKeep with attachment");
+      const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+      if (!outgoing) throw new Error("Missing failed attachment message");
+      expect(outgoing.markdown).toContain("\nKeep with attachment");
       send.mockRejectedValueOnce(new Error("send failed"));
-      fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.getByText(t("message.sendFailed"))).toBeInTheDocument());
-      expect(textbox).toHaveValue("Keep with attachment");
-      expect(screen.getByText(name)).toBeInTheDocument();
-      fireEvent.change(textbox, { target: { value: "" } });
-      fireEvent.click(sendButton);
-      await waitFor(() => expect(screen.queryByText(name)).not.toBeInTheDocument());
+      act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed"),
+      );
+      act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
+      await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
       expect(send).toHaveBeenCalledTimes(3);
-      expect(send.mock.calls[2]?.[0].text).not.toContain("Keep with attachment");
+      expect(send.mock.calls[2]?.[0]).toMatchObject({
+        text: outgoing.markdown,
+        canonicalMessageUuid: outgoing.canonicalMessageUuid,
+      });
       expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce();
       expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
       expect(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid).toEqual({});
@@ -1394,49 +1420,78 @@ describe("ChatPage Workspace route", () => {
     },
   );
 
-  it("keeps an accepted encrypted attachment when its chat unmounts before send completes", async () => {
-    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-    if (runtime == null) throw new Error("Expected runtime");
-    const bootstrap = createBootstrapPayload();
-    useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
-      ...bootstrap,
-      streams: bootstrap.streams.map((stream) => ({
-        ...stream,
-        encryption: true,
-        currentEncryptionKey: { keyUuid: "mock-key" },
-      })),
-    });
-    const pendingSend = createDeferred<{ status: "applied" }>();
-    const send = vi.fn().mockReturnValue(pendingSend.promise);
-    captured.openRealChatSession.mockResolvedValue({
-      load: vi.fn().mockResolvedValue(undefined),
-      ingest: vi.fn().mockResolvedValue(undefined),
-      subscribe: () => () => undefined,
-      dispose: vi.fn(),
-      getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
-      getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
-      send,
-    });
-    const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-    await screen.findByRole("textbox");
-    const input = container.querySelector('input[type="file"]');
-    if (input == null) throw new Error("Missing file picker");
-    fireEvent.change(input, {
-      target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
-    });
-    const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
-    fireEvent.click(sendButton);
-    await waitFor(() => expect(send).toHaveBeenCalledOnce());
-    unmount();
-    await act(async () => {
-      pendingSend.resolve({ status: "applied" });
-      await pendingSend.promise;
-    });
-    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
-  });
+  it.each(["applied", "failed", "runtime-replaced"] as const)(
+    "keeps an encrypted attachment after unmount when delivery is %s",
+    async (outcome) => {
+      const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (runtime == null) throw new Error("Expected runtime");
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(workspaceRuntimeOwnerKey(runtime), {
+        ...bootstrap,
+        streams: bootstrap.streams.map((stream) => ({
+          ...stream,
+          encryption: true,
+          currentEncryptionKey: { keyUuid: "mock-key" },
+        })),
+      });
+      const pendingSend = createDeferred<{ status: "applied" }>();
+      const send = vi.fn().mockReturnValue(pendingSend.promise);
+      captured.openRealChatSession.mockResolvedValue({
+        device: { deviceId: "mock-device", deviceName: "Test" },
+        load: vi.fn().mockResolvedValue(undefined),
+        ingest: vi.fn().mockResolvedValue(undefined),
+        subscribe: () => () => undefined,
+        dispose: vi.fn(),
+        getState: () => ({ access: "ready", pending: false, requestStatus: "idle", error: null }),
+        getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
+        send,
+      });
+      const { container, unmount } = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      const input = container.querySelector('input[type="file"]');
+      if (input == null) throw new Error("Missing file picker");
+      fireEvent.change(input, {
+        target: { files: [new File(["attachment"], "report.txt", { type: "text/plain" })] },
+      });
+      const sendButton = screen.getByRole("button", { name: t("chat.sendPlaceholder") });
+      await waitFor(() => expect(sendButton).not.toBeDisabled());
+      fireEvent.click(sendButton);
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      const active = await captured.openRealChatSession.mock.results[0]?.value;
+      unmount();
+      expect(active.dispose).not.toHaveBeenCalled();
+      if (outcome === "runtime-replaced") {
+        act(() => {
+          const nextSession = { ...createSession(), runtimeGeneration: 2 };
+          useWorkspaceAuthStore.setState({ sessions: [nextSession], runtimeGeneration: 2 });
+        });
+        await waitFor(() =>
+          expect(
+            Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid)[0]
+              ?.status,
+          ).toBe("failed"),
+        );
+      }
+      await act(async () => {
+        if (outcome !== "failed") pendingSend.resolve({ status: "applied" });
+        else pendingSend.reject(new Error("delivery failed after navigation"));
+        await pendingSend.promise.catch(() => undefined);
+      });
+      await waitFor(() => expect(active.dispose).toHaveBeenCalledOnce());
+      const remaining = Object.values(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+      );
+      if (outcome === "applied") expect(remaining).toEqual([]);
+      else
+        expect(remaining[0]).toMatchObject({
+          status: "failed",
+          markdown: expect.stringContaining("urn:file:"),
+        });
+      expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves the editor during rotation and a pending current-key request", async () => {
     const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -1464,6 +1519,7 @@ describe("ChatPage Workspace route", () => {
       return Promise.resolve();
     });
     const active = {
+      device: { deviceId: "mock-device", deviceName: "Test" },
       load: vi.fn().mockResolvedValue(undefined),
       ingest: vi.fn(() => {
         emit();
@@ -1493,6 +1549,7 @@ describe("ChatPage Workspace route", () => {
     );
     const textbox = await screen.findByRole("textbox");
     fireEvent.change(textbox, { target: { value: "Keep this draft through rotation" } });
+
     await act(() => {
       currentKey = "new-key";
       const stream = useMessengerStore.getState().streamsById[STREAM_UUID]!;

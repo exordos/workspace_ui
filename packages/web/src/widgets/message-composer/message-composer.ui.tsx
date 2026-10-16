@@ -695,15 +695,24 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   });
   const manualResizeReleaseVersionRef = useRef(composerResize.manualResizeReleaseVersion);
   const textareaId = useId();
-  const prevDisabledRef = useRef(disabled);
+  const inputDisabled = disabled || sendInFlight;
+  const [sendFocusRequest, setSendFocusRequest] = useState(0);
+  const appliedSendFocusRequestRef = useRef(0);
+  const prevDisabledRef = useRef(inputDisabled);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
   const prevFocusKeyRef = useRef(focusKey);
   useLayoutEffect(() => {
-    if (prevDisabledRef.current && !disabled && mode === "write") {
-      textareaRef.current?.focus();
+    const wasDisabled = prevDisabledRef.current;
+    prevDisabledRef.current = inputDisabled;
+    const sendRequestedFocus = appliedSendFocusRequestRef.current !== sendFocusRequest;
+    if (!inputDisabled && mode === "write" && (wasDisabled || sendRequestedFocus)) {
+      // Focus only after React has committed the enabled textarea to the DOM.
+      const textarea = textareaRef.current;
+      textarea?.focus();
+      if (sendRequestedFocus) textarea?.setSelectionRange(0, 0);
+      appliedSendFocusRequestRef.current = sendFocusRequest;
     }
-    prevDisabledRef.current = disabled;
-  }, [disabled, mode]);
+  }, [inputDisabled, mode, sendFocusRequest]);
   useLayoutEffect(() => {
     const replyId = effectiveReplyQuote?.id ?? null;
     const prevReplyId = prevReplyQuoteIdRef.current;
@@ -1174,14 +1183,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setValue("");
       setFiles([]);
       setMode("write");
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        if (!textarea || disabled) {
-          return;
-        }
-        textarea.focus();
-        textarea.setSelectionRange(0, 0);
-      });
+      setSendFocusRequest((request) => request + 1);
       if (effectiveReplyQuote) {
         onClearReply?.("submit");
       }
@@ -1211,14 +1213,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setFiles([]);
     }
     setMode("write");
-    requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea || disabled) {
-        return;
-      }
-      textarea.focus();
-      textarea.setSelectionRange(0, 0);
-    });
+    setSendFocusRequest((request) => request + 1);
     if (shouldClearComposer && effectiveReplyQuote) {
       onClearReply?.("submit");
     }
@@ -1847,7 +1842,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       <MessageComposerWriteBody
         value={value}
         placeholder={placeholder}
-        disabled={disabled || sendInFlight}
+        disabled={inputDisabled}
         textareaRef={textareaRef}
         textareaId={textareaId}
         showMentions={showComposerSuggestions}

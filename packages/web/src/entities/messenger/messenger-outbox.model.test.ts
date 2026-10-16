@@ -129,6 +129,63 @@ describe("messenger outbox store", () => {
     ).toEqual(["owner a text"]);
   });
 
+  it("retains an encrypted retry envelope and settles only its exact generation", () => {
+    const state = useMessengerOutboxStore.getState();
+    const outgoing = state.enqueueOutgoingMessage({
+      ownerKey: OWNER_A,
+      conversationId: CONVERSATION_A,
+      projectId: "project-a",
+      streamUuid: "stream-a",
+      topicUuid: TOPIC_UUID,
+      authorUuid: "user-a",
+      markdown: "private outgoing text",
+      status: "sending",
+      includeStreamConversation: false,
+      encryption: { keyUuid: "key-a", deviceId: "device-a" },
+    });
+    const bytes = new Uint8Array([1, 2, 3]);
+    state.retainEncryptedPayload(outgoing.placementUuid, {
+      kind: "e2ee",
+      keyUuid: "key-a",
+      content: { bytes },
+    });
+    bytes.fill(9);
+    state.markOutgoingMessageFailed(outgoing.placementUuid, "response lost");
+    state.markOutgoingMessageSending(outgoing.placementUuid);
+    const retry =
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid];
+    expect(retry?.encryption?.payload?.content.bytes).toEqual(new Uint8Array([1, 2, 3]));
+    expect(retry?.canonicalMessageUuid).toBe(outgoing.canonicalMessageUuid);
+    expect(settleMessengerOutgoingMessage(OWNER_A, createAuthoritativeMessage(outgoing))).toBe(
+      false,
+    );
+    expect(
+      settleMessengerOutgoingMessage(
+        OWNER_A,
+        createAuthoritativeMessage(outgoing, {
+          payload: { kind: "e2ee", keyUuid: "key-b", content: "encrypted" },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      settleMessengerOutgoingMessage(
+        OWNER_A,
+        createAuthoritativeMessage(outgoing, {
+          payload: { kind: "e2ee", keyUuid: "key-a", content: "different-envelope" },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      settleMessengerOutgoingMessage(
+        OWNER_A,
+        createAuthoritativeMessage(outgoing, {
+          payload: { kind: "e2ee", keyUuid: "key-a", content: "AQID" },
+        }),
+      ),
+    ).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
+  });
+
   it("retries the same placement row without changing its identity", () => {
     const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
       ownerKey: OWNER_A,

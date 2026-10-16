@@ -43,6 +43,7 @@ import {
   loadMessengerMessageWindowPage,
   resolveMessengerMessageAnchor,
 } from "~/entities/messenger/messenger-messages-loader.lib";
+import { deliverMessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox-delivery.lib";
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
@@ -82,7 +83,6 @@ import {
   WorkspaceComposerAttachments,
   type WorkspaceComposerAttachmentTarget,
   type WorkspaceComposerControlledProps,
-  type WorkspaceComposerSendResult,
 } from "~/features/workspace-composer-attachments/workspace-composer-attachments.ui";
 import {
   extractWorkspaceComposerEditContent,
@@ -282,26 +282,6 @@ function normalizeWorkspaceMentionLookupText(value: string | null | undefined): 
 
 function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
-}
-
-function isOutgoingMessageIndexed(outgoing: MessengerOutgoingMessage): boolean {
-  const state = useWorkspaceMessageStore.getState();
-  const indexedMessage = state.messagesById[outgoing.placementUuid];
-
-  return (
-    state.ownerKey === outgoing.ownerKey &&
-    indexedMessage?.projectId === outgoing.projectId &&
-    indexedMessage.streamUuid === outgoing.streamUuid &&
-    indexedMessage.topicUuid === outgoing.topicUuid &&
-    indexedMessage.authorUuid === outgoing.authorUuid
-  );
-}
-
-function settleOutgoingMessageIfIndexed(outgoing: MessengerOutgoingMessage): boolean {
-  if (!isOutgoingMessageIndexed(outgoing)) return false;
-
-  useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.placementUuid);
-  return true;
 }
 
 function workspaceConversationRoute({
@@ -1684,74 +1664,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [isTopicClosed, selection, topicsById]);
 
   const deliverOutgoingMessage = useCallback(
-    (placementUuid: MessengerUuid): Promise<boolean> => {
-      const outgoing =
-        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
-      if (outgoing == null) return Promise.resolve(false);
-
-      if (settleOutgoingMessageIfIndexed(outgoing)) return Promise.resolve(true);
-
-      if (runtimeContext == null || ownerKey == null || outgoing.ownerKey !== ownerKey) {
-        useMessengerOutboxStore
-          .getState()
-          .markOutgoingMessageFailed(placementUuid, t("workspaceMessenger.runtimeUnavailable"));
-        return Promise.resolve(false);
-      }
-
-      useMessengerOutboxStore.getState().markOutgoingMessageSending(placementUuid);
-
-      return runMessengerRuntimeMutation(runtimeContext, async (signal) => {
-        try {
-          const markdown = outgoing.markdown;
-          if (markdown.trim().length === 0) {
-            useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
-            return false;
-          }
-
-          const result = await sendMessengerMessage({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            signal,
-            streamUuid: outgoing.streamUuid,
-            topicUuid: outgoing.topicUuid,
-            markdown,
-            includeStreamConversation: outgoing.includeStreamConversation,
-            canonicalMessageUuid: outgoing.canonicalMessageUuid,
-          });
-
-          if (result.status === "applied") {
-            useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
-            return true;
-          }
-
-          if (settleOutgoingMessageIfIndexed(outgoing)) {
-            return true;
-          }
-
-          useMessengerOutboxStore
-            .getState()
-            .markOutgoingMessageFailed(placementUuid, t("message.sendFailed"));
-          return false;
-        } catch (error) {
-          if (settleOutgoingMessageIfIndexed(outgoing)) return true;
-
-          useMessengerOutboxStore
-            .getState()
-            .markOutgoingMessageFailed(
-              placementUuid,
-              normalizeWorkspaceActionError(error, t("message.sendFailed")),
-            );
-          return false;
-        }
-      }).catch(() => {
-        if (settleOutgoingMessageIfIndexed(outgoing)) return true;
-        useMessengerOutboxStore
-          .getState()
-          .markOutgoingMessageFailed(placementUuid, t("message.sendFailed"));
-        return false;
-      });
-    },
-    [ownerKey, runtimeContext],
+    (placementUuid: MessengerUuid) =>
+      deliverMessengerOutgoingMessage(runtimeContext, placementUuid),
+    [runtimeContext],
   );
 
   const encryptedComposerCapabilities = useMemo<MessageComposerCapabilities>(
@@ -1762,52 +1677,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [workspaceComposerCapabilities],
   );
 
-  const handleSendEncrypted = useCallback(
-    async (content: string): Promise<WorkspaceComposerSendResult> => {
-      if (!encryptedChatAvailable || runtimeContext == null || content.trim().length === 0)
-        return { shouldClearComposer: false };
-      const target = resolveSendTarget();
-      if (target.status === "blocked") {
-        setSendError(target.error);
-        return { shouldClearComposer: false };
-      }
-      if (!isWorkspaceMessageWithinLimit(content)) {
-        setSendError(t("composer.messageTooLong"));
-        return { shouldClearComposer: false };
-      }
-      setSendError(null);
-      const isCurrent = captureWorkspaceChatUiAction();
-      takeOpeningControl();
-      try {
-        const result = await encryptedChat.session!.send({
-          text: content,
-          topicUuid: target.topicUuid,
-          includeStreamConversation: target.includeStreamConversation,
-        });
-        return {
-          messageAccepted: result.status === "applied",
-          shouldClearComposer: result.status === "applied" && isCurrent(),
-        };
-      } catch {
-        if (isCurrent()) setSendError(t("message.sendFailed"));
-        return { shouldClearComposer: false };
-      }
-    },
-    [
-      encryptedChatAvailable,
-      encryptedChat.session,
-      runtimeContext,
-      resolveSendTarget,
-      captureWorkspaceChatUiAction,
-      takeOpeningControl,
-    ],
-  );
-
   const handleSend = useCallback(
     (content: string) => {
-      if (stream?.encryption === true) {
-        setSendError(t("e2ee.cryptoUnavailable"));
-        return { shouldClearComposer: false } satisfies MessageComposerSendResult;
+      const encryption =
+        stream?.encryption === true
+          ? encryptedChat.session != null && encryptedChat.sendKeyUuid != null
+            ? {
+                keyUuid: encryptedChat.sendKeyUuid,
+                deviceId: encryptedChat.session.device.deviceId,
+              }
+            : null
+          : undefined;
+      if (encryption === null) {
+        const error = t("e2ee.cryptoUnavailable");
+        setSendError(error);
+        throw new Error(error);
       }
       if (workspaceReplyHandoffBlocksSend || workspaceReplyHandoffClaimRef.current != null) {
         return { shouldClearComposer: false } satisfies MessageComposerSendResult;
@@ -1840,11 +1724,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const sentDraftScopeKey = createWorkspaceComposerDraftKey(sendOwnerKey, conversationId);
       if (content.trim().length === 0) return;
       takeOpeningControl();
-      const draftAtSend = selectWorkspaceComposerDraft(
-        useWorkspaceComposerDraftStore.getState(),
-        sendOwnerKey,
-        conversationId,
-      );
+      const draftAtSend =
+        encryption == null
+          ? selectWorkspaceComposerDraft(
+              useWorkspaceComposerDraftStore.getState(),
+              sendOwnerKey,
+              conversationId,
+            )
+          : null;
       const isUiActionCurrent = captureWorkspaceChatUiAction();
 
       const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
@@ -1860,6 +1747,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         sourceMarkdown: content,
         status: "sending",
         includeStreamConversation: target.includeStreamConversation,
+        ...(encryption == null ? {} : { encryption }),
       });
 
       // Scroll right after the local row appears. A later server snapshot can
@@ -1920,7 +1808,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           if (!isUiActionCurrent()) {
             return { shouldClearComposer: false } satisfies MessageComposerSendResult;
           }
-        } else if (content.trim().length > 0) {
+        } else if (encryption == null && content.trim().length > 0) {
           workspaceComposerDraftLog.warn("Message was sent without an active draft", {
             reason: "draft-delete-not-queued",
           });
@@ -1935,6 +1823,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       runtimeContext,
       setComposerDraftShadow,
       stream?.encryption,
+      encryptedChat.session,
+      encryptedChat.sendKeyUuid,
       workspaceReplyHandoffBlocksSend,
       takeOpeningControl,
     ],
@@ -4015,7 +3905,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       <MessageComposer
         {...controlledProps}
         key={`${encryptedComposerScopeKey}:${conversationId}`}
-        onSend={controlledProps?.onSend ?? handleSendEncrypted}
+        onSend={controlledProps?.onSend ?? handleSend}
         capabilities={encryptedComposerCapabilities}
         disabled={isTopicClosed}
         initialValue={currentEncryptedComposer?.text ?? ""}
@@ -4025,6 +3915,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         outgoingBodyOverride={encryptedReplyBody}
         onClearReply={handleClearEncryptedReply}
         focusKey={encryptedReplyTab?.id}
+        optimisticClearOnSend
         aiMessagesContext={[]}
         joinedTop={composerJoinedTop}
       />
@@ -4038,7 +3929,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       encryptedReplyTab?.id,
       handleEncryptedComposerValueChange,
       handleClearEncryptedReply,
-      handleSendEncrypted,
+      handleSend,
       encryptedComposerCapabilities,
       isTopicClosed,
       composerJoinedTop,
@@ -4250,8 +4141,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
               runtimeContext={runtimeContext}
               ownerKey={ownerKey}
               target={workspaceAttachmentTarget}
-              waitForSend
-              onSendFinalMarkdown={handleSendEncrypted}
+              onSendFinalMarkdown={handleSend}
               renderComposer={renderEncryptedComposer}
             />
           ) : (

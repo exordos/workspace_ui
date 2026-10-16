@@ -382,6 +382,7 @@ export class ChatE2eeController {
   encryptMessage<T>(
     plaintext: Uint8Array,
     dispatch: (payload: ChatEncryptedPayload, isCurrent: () => boolean) => Promise<T>,
+    preparedPayload?: ChatEncryptedPayload,
   ): Promise<ChatE2eeControllerResult<T>> {
     return this.run(async () => {
       if (!this.deps.getRights().canSend) return failure("forbidden");
@@ -390,11 +391,17 @@ export class ChatE2eeController {
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
-      const encrypted = await this.deps.provider.encryptMessage({
-        groupKey: stored.value.groupKey,
-        plaintext,
-        context: this.deps.scope,
-      });
+      if (preparedPayload != null && preparedPayload.keyUuid !== this.deps.scope.keyUuid)
+        return failure("invalid-key");
+      // An ambiguous POST retries the same envelope and UUID, after all local key checks.
+      const encrypted =
+        preparedPayload == null
+          ? await this.deps.provider.encryptMessage({
+              groupKey: stored.value.groupKey,
+              plaintext,
+              context: this.deps.scope,
+            })
+          : success(preparedPayload.content);
       if (!this.isCurrent()) return failure("stale");
       if (!encrypted.ok) return encrypted;
       const retained = await this.checkDeletionRevision(deletionRevision.value);
