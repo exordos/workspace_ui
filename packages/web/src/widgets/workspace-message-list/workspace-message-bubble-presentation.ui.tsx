@@ -756,7 +756,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               encryptedPayload ? undefined : interactiveActions?.onToggleMessageSelection
             }
             onEditMessage={
-              encryptedPayload || renderedBody.hasForwardSnapshot
+              locked || renderedBody.hasForwardSnapshot
                 ? undefined
                 : interactiveActions?.onEditMessage
             }

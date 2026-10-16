@@ -16,7 +16,7 @@ import {
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse } from "./chat-e2ee.lib";
-import { sendMessengerE2eePayload } from "./messenger-message-actions.lib";
+import { editMessengerMessage, sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
 import type {
   ChatE2eeControllerRights,
@@ -770,6 +770,38 @@ export async function openRealChatSession({
       }),
     decrypt: (message: MessengerMessage) =>
       decryptRealChatMessage(runtimeContext, message, current),
+    edit: (message: MessengerMessage, text: string, signal?: AbortSignal) =>
+      run(async () => {
+        if (
+          message.payload.kind !== "e2ee" ||
+          message.streamUuid !== streamUuid ||
+          message.projectId !== runtimeContext.projectId ||
+          !message.isOwn ||
+          message.authorUuid !== runtimeContext.userUuid
+        )
+          throw new Error("invalid-message");
+        const controller = await generationController(message.payload.keyUuid, false);
+        const plaintext = new TextEncoder().encode(text);
+        try {
+          const result = await controller.encryptMessage(plaintext, (encryptedPayload, guard) =>
+            editMessengerMessage({
+              runtimeContext,
+              getRuntimeContext,
+              signal,
+              messageUuid: message.uuid,
+              encryptedPayload,
+              sourceMessage: message,
+              messengerStore,
+              isCurrent: guard,
+            }),
+          );
+          if (!result.ok) throw new Error(result.reason);
+          if (result.value.status !== "applied") throw new Error("stale");
+          return result.value;
+        } finally {
+          plaintext.fill(0);
+        }
+      }),
     dispose,
   };
   const catalogSignature = (catalog: MessengerStoreState) => {

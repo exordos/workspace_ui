@@ -85,7 +85,19 @@ for (const role of ["owner", "member"] as const) {
           payload: { kind: "e2ee", key_uuid: keyUuid, content: encryptedContent },
         },
       ];
+      const edits: unknown[] = [];
       for (const page of [source, target]) {
+        await page.route(/\/messenger\/messages\/[^/?]+$/, async (route) => {
+          if (route.request().method() !== "PUT") return route.fallback();
+          const body = route.request().postDataJSON() as { payload: Record<string, string> };
+          const uuid = new URL(route.request().url()).pathname.split("/").at(-1);
+          const message = history.find((item) => item.uuid === uuid);
+          if (!message) throw new Error("Missing edited message");
+          edits.push(body);
+          message.payload = body.payload;
+          message.updated_at = new Date().toISOString();
+          await route.fulfill({ json: message });
+        });
         await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
           if (route.request().method() !== "GET") return route.fallback();
           const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
@@ -199,6 +211,34 @@ for (const role of ["owner", "member"] as const) {
       ).not.toContainText(
         /Wait for access|Дождитесь предоставления доступа|Approve the request|Подтвердите запрос/,
       );
+      const originalBubble = source
+        .locator("[data-workspace-message-bubble]")
+        .filter({ hasText: "Two-device encrypted history" });
+      await originalBubble.click({ button: "right" });
+      await source.getByRole("menuitem", { name: /^(edit message|изменить сообщение)$/i }).click();
+      const editor = source.getByRole("textbox");
+      await expect(editor).toHaveValue("Two-device encrypted history");
+      await editor.fill("Edited on MacBook");
+      await source.getByRole("button", { name: /^(save|сохранить)$/i }).click();
+      await expect(
+        source
+          .locator("[data-workspace-message-bubble]")
+          .getByText("Edited on MacBook", { exact: true }),
+      ).toBeVisible();
+      expect(edits).toHaveLength(1);
+      expect(edits[0]).toMatchObject({ payload: { kind: "e2ee", key_uuid: keyUuid } });
+      expect(JSON.stringify(edits)).not.toContain("Edited on MacBook");
+      await target.reload();
+      await expect(
+        target
+          .locator("[data-workspace-message-bubble]")
+          .getByText("Edited on MacBook", { exact: true }),
+      ).toBeVisible();
+      await source.reload();
+      await source.getByRole("textbox").press("ArrowUp");
+      await expect(source.getByRole("textbox")).toHaveValue("Edited on MacBook");
+      await source.getByRole("button", { name: /^(cancel|отмена)$/i }).click();
+      await expect(source.getByRole("textbox")).toHaveValue("");
       await targetGrant.screenshot({
         path: testInfo.outputPath("same-account-key-available-on-recipient.png"),
       });

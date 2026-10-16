@@ -1252,6 +1252,7 @@ describe("real encrypted message presentation", () => {
     const quote = vi.spyOn(quoteResolver, "useResolvedMessengerQuoteMessage");
     const preview = vi.fn();
     const copyMessageText = vi.fn();
+    const onEditMessage = vi.fn();
     const onToggleMessageReaction = vi.fn();
     const onRequestDeleteMessage = vi.fn();
     const decryptedText =
@@ -1273,7 +1274,7 @@ describe("real encrypted message presentation", () => {
           onLoadWorkspaceFilePreview: preview,
           onReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
-          onEditMessage: vi.fn(),
+          onEditMessage,
           onCopyMessageText: copyMessageText,
           onToggleMessageReaction,
           onRequestDeleteMessage,
@@ -1292,7 +1293,7 @@ describe("real encrypted message presentation", () => {
     expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Reply" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Forward" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Select" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
     expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
@@ -1306,6 +1307,10 @@ describe("real encrypted message presentation", () => {
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByLabelText("Thumbs up"));
     expect(onToggleMessageReaction).toHaveBeenCalledWith(stored.uuid, "👍");
+
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit message" }));
+    expect(onEditMessage).toHaveBeenCalledWith(stored.uuid);
 
     fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));

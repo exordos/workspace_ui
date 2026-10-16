@@ -54,7 +54,7 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { ChatE2eePayload } from "./chat-e2ee.types";
+import type { ChatE2eePayload, ChatEncryptedPayload } from "./chat-e2ee.types";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -130,6 +130,7 @@ export interface MessengerMessageActionStoreApi {
     | "markMessagesReadUpTo"
     | "removeMessage"
     | "messageMutationRevision"
+    | "ownerKey"
     | "messagesById"
     | "conversationWindowsById"
   >;
@@ -157,10 +158,18 @@ export interface SendMessengerMessageOptions extends MessengerMessageActionBaseO
   includeStreamConversation?: boolean;
 }
 
-export interface EditMessengerMessageOptions extends MessengerMessageActionBaseOptions {
+export type EditMessengerMessageOptions = MessengerMessageActionBaseOptions & {
   messageUuid: MessengerUuid;
-  markdown: string;
-}
+  messengerStore?: Pick<typeof useMessengerStore, "getState">;
+} & (
+    | { markdown: string; encryptedPayload?: never; sourceMessage?: never; isCurrent?: never }
+    | {
+        markdown?: never;
+        encryptedPayload: ChatEncryptedPayload;
+        sourceMessage: MessengerMessage;
+        isCurrent: () => boolean;
+      }
+  );
 
 export interface DeleteMessengerMessageOptions extends MessengerMessageActionBaseOptions {
   messageUuid: MessengerUuid;
@@ -443,6 +452,10 @@ export async function editMessengerMessage({
   store = useWorkspaceMessageStore,
   messageUuid,
   markdown,
+  encryptedPayload,
+  sourceMessage,
+  messengerStore = useMessengerStore,
+  isCurrent,
 }: EditMessengerMessageOptions): Promise<MessengerMessageActionResult> {
   // Editing refreshes a known message body without changing the active window membership.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
@@ -453,10 +466,38 @@ export async function editMessengerMessage({
 
   const capturedMutationRevision = store.getState().messageMutationRevision;
   const originalMessage = store.getState().messagesById[messageUuid];
-  if (originalMessage?.payload.kind !== "markdown") {
-    throw new Error("A loaded Markdown message is required for editing");
+  if (
+    originalMessage == null ||
+    (encryptedPayload == null
+      ? originalMessage.payload.kind !== "markdown"
+      : originalMessage.payload.kind !== "e2ee" ||
+        !originalMessage.isOwn ||
+        originalMessage.authorUuid !== runtimeContext.userUuid ||
+        originalMessage.projectId !== runtimeContext.projectId ||
+        originalMessage.payload.keyUuid !== encryptedPayload.keyUuid ||
+        sourceMessage?.payload.kind !== "e2ee" ||
+        sourceMessage.payload.content !== originalMessage.payload.content ||
+        sourceMessage.payload.keyUuid !== originalMessage.payload.keyUuid ||
+        sourceMessage.streamUuid !== originalMessage.streamUuid ||
+        sourceMessage.topicUuid !== originalMessage.topicUuid)
+  ) {
+    throw new Error("A loaded editable message is required");
   }
-  const catalog = useMessengerStore.getState();
+  const current = () => {
+    if (action.isStale() || !(isCurrent?.() ?? true)) return false;
+    if (encryptedPayload == null) return true;
+    const catalog = messengerStore.getState();
+    return (
+      store.getState().ownerKey === action.ownerKey &&
+      catalog.ownerKey === action.ownerKey &&
+      catalog.streamsById[originalMessage.streamUuid]?.encryption === true
+    );
+  };
+  const sourceCurrent = () => {
+    const latest = store.getState().messagesById[messageUuid];
+    return current() && (encryptedPayload == null || latest === originalMessage);
+  };
+  const catalog = messengerStore.getState();
   const knownStream =
     catalog.ownerKey === action.ownerKey
       ? catalog.streamsById[originalMessage.streamUuid]
@@ -467,25 +508,49 @@ export async function editMessengerMessage({
       buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
       originalMessage.streamUuid,
     ));
-  if (action.isStale())
+  if (!sourceCurrent())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  if (stream.uuid !== originalMessage.streamUuid || stream.encryption === true) {
+  if (
+    stream.uuid !== originalMessage.streamUuid ||
+    (encryptedPayload == null ? stream.encryption === true : stream.encryption !== true)
+  ) {
     throw new Error("Encrypted messages cannot be edited as Markdown");
   }
 
-  const dto = await (client.editMessage ?? defaultEditMessage)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    messageUuid,
-    { payload: { kind: "markdown", content: markdown } },
-  );
-  if (action.isStale())
-    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  const payload =
+    encryptedPayload == null
+      ? { kind: "markdown" as const, content: markdown }
+      : encodeChatE2eePayload(encryptedPayload);
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  if (encryptedPayload != null) {
+    const fetchImpl = requestOptions.fetchImpl ?? fetch;
+    requestOptions.fetchImpl = (request, init) =>
+      sourceCurrent() ? fetchImpl(request, init) : Promise.reject(new Error("stale"));
+  }
+  const dto = await (client.editMessage ?? defaultEditMessage)(requestOptions, messageUuid, {
+    payload,
+  });
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (encryptedPayload != null) {
+    const decoded = dto.payload.kind === "e2ee" ? decodeChatE2eePayload(dto.payload) : null;
+    if (
+      dto.uuid !== messageUuid ||
+      dto.project_id !== runtimeContext.projectId ||
+      dto.author_uuid !== runtimeContext.userUuid ||
+      dto.user_uuid !== runtimeContext.userUuid ||
+      dto.stream_uuid !== originalMessage.streamUuid ||
+      dto.topic_uuid !== originalMessage.topicUuid ||
+      !decoded?.ok ||
+      JSON.stringify(encodeChatE2eePayload(decoded.value)) !== JSON.stringify(payload)
+    )
+      throw new Error("invalid-message");
+  }
 
   const message = adaptMessengerMessage(dto);
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
-    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+    messengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
   }
   if (cache?.patchCachedMessage != null && effectiveMessage != null) {
     await writeActionCacheBestEffort(() =>

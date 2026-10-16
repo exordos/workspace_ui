@@ -2,9 +2,10 @@ import "fake-indexeddb/auto";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { createMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
+import { createMessage, editMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
 import { getStream, getStreamBindingsPage } from "~/shared/api/messenger-streams.api";
 import type {
   WorkspaceMessengerMessageDto,
@@ -13,6 +14,7 @@ import type {
 import {
   realChatCryptoProvider,
   realChatKeyStorage,
+  notifyRealChatKeyChanges,
   subscribeRealChatKeyChanges,
 } from "./chat-crypto-resources.lib";
 import * as cryptoResources from "./chat-crypto-resources.lib";
@@ -41,6 +43,7 @@ vi.mock("~/shared/api/messenger-streams.api", async (load) => ({
 vi.mock("~/shared/api/messenger-messages.api", async (load) => ({
   ...(await load<typeof import("~/shared/api/messenger-messages.api")>()),
   createMessage: vi.fn(),
+  editMessage: vi.fn(),
   getMessagesPage: vi.fn(),
 }));
 
@@ -328,6 +331,93 @@ afterEach(() => {
 });
 
 describe("real ordinary chat orchestration", () => {
+  async function editFixture() {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "Original secret", topicUuid: TOPIC });
+    const dto = f.wire.at(-1)!;
+    const source = adaptMessengerMessage(dto);
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(f.admin), false);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(source);
+    vi.mocked(editMessage).mockImplementation((_options, _uuid, body) =>
+      Promise.resolve({
+        ...dto,
+        payload: body.payload,
+        updated_at: "2026-10-03T00:00:00Z",
+      }),
+    );
+    return { f, session, source, dto };
+  }
+
+  it("edits encrypted history with its original key after rotation and caches only ciphertext", async () => {
+    const { f, session, source } = await editFixture();
+    await session.reissueKey();
+    const cache = vi.spyOn(messengerMessageActionCache, "patchCachedMessage").mockResolvedValue();
+    const result = await session.edit(source, "Edited secret");
+    expect(result.status).toBe("applied");
+    const edited = useWorkspaceMessageStore.getState().messagesById[source.uuid]!;
+    expect(edited.payload).toMatchObject({ kind: "e2ee", keyUuid: f.metadata.keyUuid });
+    expect(edited.payload).not.toEqual(source.payload);
+    expect(await session.decrypt(edited)).toBe("Edited secret");
+    expect(JSON.stringify(vi.mocked(editMessage).mock.calls)).not.toContain("Edited secret");
+    expect(cache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(f.admin), edited);
+    expect(JSON.stringify(cache.mock.calls)).not.toContain("Edited secret");
+  });
+
+  it.each(["key removal", "dispose", "source update"])(
+    "rejects an edit after %s during encryption",
+    async (change) => {
+      const { session, source } = await editFixture();
+      const encrypt = realChatCryptoProvider.encryptMessage.bind(realChatCryptoProvider);
+      vi.spyOn(realChatCryptoProvider, "encryptMessage").mockImplementationOnce(async (input) => {
+        const result = await encrypt(input);
+        if (change === "key removal") {
+          await realChatKeyStorage.removeChatKey(session.scope);
+          notifyRealChatKeyChanges({
+            kind: "removed",
+            ownerKey: workspaceRuntimeOwnerKey(session.scope.owner),
+            deviceId: session.device.deviceId,
+            streamUuid: STREAM,
+            keyUuid: session.scope.keyUuid,
+          });
+        }
+        if (change === "dispose") session.dispose();
+        if (change === "source update")
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...source,
+            payload: { kind: "e2ee", keyUuid: session.scope.keyUuid, content: "new-ciphertext" },
+          });
+        return result;
+      });
+      await expect(session.edit(source, "Never dispatched")).rejects.toThrow();
+      expect(editMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["markdown", "wrong key", "wrong topic"])(
+    "rejects a mismatched encrypted edit receipt: %s",
+    async (change) => {
+      const { session, source, dto } = await editFixture();
+      vi.mocked(editMessage).mockImplementationOnce((_options, _uuid, body) =>
+        Promise.resolve({
+          ...dto,
+          payload:
+            change === "markdown"
+              ? { kind: "markdown", content: "Unexpected plaintext" }
+              : change === "wrong key" && body.payload.kind === "e2ee"
+                ? { ...body.payload, key_uuid: crypto.randomUUID() }
+                : body.payload,
+          ...(change === "wrong topic" ? { topic_uuid: crypto.randomUUID() } : {}),
+        }),
+      );
+      await expect(session.edit(source, "Edited secret")).rejects.toThrow();
+      expect(useWorkspaceMessageStore.getState().messagesById[source.uuid]?.payload).toEqual(
+        source.payload,
+      );
+    },
+  );
+
   it.each(["owner", "administrator", "member"] as const)(
     "exchanges keys between two devices of one %s account only with existing grant rights",
     async (role) => {

@@ -818,7 +818,7 @@ function WorkspaceKeyedChatPage() {
   return <ChatPage key={location.pathname} />;
 }
 
-function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready") {
+function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready", own = false) {
   const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   if (runtime == null) throw new Error("Expected runtime");
   const owner = workspaceRuntimeOwnerKey(runtime);
@@ -833,11 +833,13 @@ function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready") {
   });
   const message: MessengerMessage = {
     ...createMessage(),
+    ...(own ? { isOwn: true, authorUuid: USER_UUID, userUuid: USER_UUID } : {}),
     payload: { kind: "e2ee", keyUuid: "reply-key", content: "reply-ciphertext" },
   };
   replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message]);
   replaceTestConversationWindow(`stream:${STREAM_UUID}`, [message]);
   const send = vi.fn().mockResolvedValue({ status: "applied" });
+  const edit = vi.fn().mockResolvedValue({ status: "applied", message });
   captured.openRealChatSession.mockResolvedValue({
     device: { deviceId: "mock-device", deviceName: "Test" },
     load: vi.fn().mockResolvedValue(undefined),
@@ -847,8 +849,9 @@ function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready") {
     getState: () => ({ access, pending: false, requestStatus: "idle", error: null }),
     getRights: () => ({ canRequest: true, canGrant: true, canReject: true }),
     send,
+    edit,
   });
-  return { runtime, owner, message, send };
+  return { runtime, owner, message, send, edit };
 }
 
 function WorkspaceLocationProbe() {
@@ -1046,6 +1049,153 @@ describe("ChatPage Workspace route", () => {
     }
     resetWorkspaceMessengerCacheDbSingletonForTests();
     await deleteWorkspaceMessengerCacheDatabase();
+  });
+
+  it.each(["menu", "ArrowUp"])(
+    "edits encrypted text through %s and retains opaque store/drafts",
+    async (entry) => {
+      const { message, edit } = seedEncryptedReplyComposer("ready", true);
+      vi.mocked(decryptRealChatMessage).mockResolvedValue("Original secret");
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      if (entry === "menu") act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      else fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
+      await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Original secret"));
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited secret" } });
+      fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+      await waitFor(() => expect(edit).toHaveBeenCalled());
+      expect(edit).toHaveBeenCalledWith(message, "Edited secret", expect.any(AbortSignal));
+      expect(captured.editMessengerMessage).not.toHaveBeenCalled();
+      expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]?.payload).toEqual(
+        message.payload,
+      );
+      expect(JSON.stringify(useWorkspaceComposerDraftStore.getState())).not.toContain(
+        "Original secret",
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument(),
+      );
+    },
+  );
+
+  it.each(["reply", "attachment"])(
+    "preserves encrypted %s references when saving an edit",
+    async (kind) => {
+      const { message, edit } = seedEncryptedReplyComposer("ready", true);
+      const reference =
+        kind === "reply"
+          ? `[Bob Reed](urn:quote:${SECOND_MESSAGE_UUID})`
+          : "[notes.txt](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa)";
+      vi.mocked(decryptRealChatMessage).mockResolvedValue(`${reference}\n\nOriginal secret`);
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByRole("textbox");
+      act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      await waitFor(() =>
+        expect(screen.getByRole("textbox")).toHaveValue(
+          kind === "reply" ? `${reference}\n\nOriginal secret` : "\nOriginal secret",
+        ),
+      );
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: kind === "reply" ? `${reference}\n\nEdited secret` : "Edited secret" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+      await waitFor(() =>
+        expect(edit).toHaveBeenCalledWith(
+          message,
+          kind === "reply" ? `${reference}\n\nEdited secret` : `${reference}\nEdited secret`,
+          expect.any(AbortSignal),
+        ),
+      );
+    },
+  );
+
+  it("retains a failed encrypted edit for retry and restores the draft on cancel", async () => {
+    const { message, edit } = seedEncryptedReplyComposer("ready", true);
+    edit.mockRejectedValueOnce(new Error("Save failed"));
+    vi.mocked(decryptRealChatMessage).mockResolvedValue("Original secret");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Unsent draft" } });
+    act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+    await waitFor(() => expect(textbox).toHaveValue("Original secret"));
+    fireEvent.change(textbox, { target: { value: "Retry this edit" } });
+    fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
+    await waitFor(() => expect(edit).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    expect(textbox).toHaveValue("Retry this edit");
+    fireEvent.click(screen.getByRole("button", { name: t("common.cancel") }));
+    await waitFor(() => expect(textbox).toHaveValue("Unsent draft"));
+  });
+
+  it.each(["key removal", "navigation", "message update", "logout"])(
+    "drops pending encrypted edit after %s",
+    async (change) => {
+      const { owner, message } = seedEncryptedReplyComposer("ready", true);
+      const decrypt = createDeferred<string | null>();
+      vi.mocked(decryptRealChatMessage).mockReturnValue(decrypt.promise);
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await screen.findByTestId("workspace-message-list-section");
+      act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+      await waitFor(() => expect(decryptRealChatMessage).toHaveBeenCalled());
+      await act(async () => {
+        if (change === "key removal")
+          notifyRealChatKeyChanges({
+            kind: "removed",
+            ownerKey: owner,
+            deviceId: "mock-device",
+            streamUuid: STREAM_UUID,
+            keyUuid: "reply-key",
+          });
+        if (change === "logout")
+          useWorkspaceAuthStore.setState({
+            sessions: [],
+            currentAccountId: null,
+            runtimeGeneration: 2,
+          });
+        if (change === "navigation")
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        if (change === "message update")
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessage({
+            ...message,
+            payload: { kind: "e2ee", keyUuid: "reply-key", content: "updated" },
+          });
+        decrypt.resolve("Stale secret");
+      });
+      expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue("Stale secret")).not.toBeInTheDocument();
+    },
+  );
+
+  it("clears an open encrypted editor when its historical key is removed", async () => {
+    const { owner, message } = seedEncryptedReplyComposer("ready", true);
+    vi.mocked(decryptRealChatMessage).mockResolvedValue("Historical secret");
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Historical secret"));
+    act(() =>
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "reply-key",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: t("common.cancel") })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox")).not.toHaveValue("Historical secret");
   });
 
   it.each(["topic", "stream"])(
