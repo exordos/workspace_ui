@@ -112,7 +112,11 @@ async function installReactionMutationMock(page: Page): Promise<void> {
 
 const PREVIOUS_MESSAGE_UUID = "66666666-6666-4666-8666-666666666666";
 
-async function installNarrowMessages(page: Page, owner: "own" | "peer"): Promise<void> {
+async function installNarrowMessages(
+  page: Page,
+  owner: "own" | "peer",
+  text = "Second message with enough text to wrap onto multiple lines in a narrow chat.",
+): Promise<void> {
   await page.setViewportSize({ width: 900, height: 844 });
   await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") {
@@ -123,9 +127,7 @@ async function installNarrowMessages(page: Page, owner: "own" | "peer"): Promise
     const messages = [
       messageSuccess("First short message", PREVIOUS_MESSAGE_UUID),
       {
-        ...messageSuccess(
-          "Second message with enough text to wrap onto multiple lines in a narrow chat.",
-        ),
+        ...messageSuccess(text),
         created_at: "2026-07-16T10:01:00.000Z",
         updated_at: "2026-07-16T10:01:00.000Z",
       },
@@ -483,7 +485,7 @@ test.describe("Workspace message quick actions @mock", () => {
     test(`keeps ${owner} quick actions inside a narrow chat without covering the preceding message`, async ({
       authenticated,
     }, testInfo) => {
-      await installNarrowMessages(authenticated, owner);
+      await installNarrowMessages(authenticated, owner, "ку");
       await openStreamChatWithComposer(authenticated);
       const previousBubble = authenticated.locator(
         `[data-message-uuid='${PREVIOUS_MESSAGE_UUID}'] [data-workspace-message-bubble='true']`,
@@ -527,10 +529,30 @@ test.describe("Workspace message quick actions @mock", () => {
       );
       expect(reactionBounds.y).toBeLessThanOrEqual(bubbleBounds.y + bubbleBounds.height);
       expect(reactionBounds.height).toBeLessThan(replyBounds.height);
+      expect(bubbleBounds.width).toBeLessThan(112);
+      const textToTimeGap = await bubble.evaluate((element) => {
+        const paragraph = element.querySelector("[data-message-body] p");
+        const time = element.querySelector("[data-message-time]");
+        if (paragraph == null || time == null) throw new Error("Message text or time is missing");
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        return time.getBoundingClientRect().left - range.getBoundingClientRect().right;
+      });
+      expect(textToTimeGap).toBeGreaterThanOrEqual(6);
+      expect(textToTimeGap).toBeLessThanOrEqual(12);
       const reactionCenter = reactionBounds.x + reactionBounds.width / 2;
       if (owner === "own") {
+        expect(replyBounds.x + replyBounds.width).toBeCloseTo(
+          bubbleBounds.x + bubbleBounds.width - 12,
+          0,
+        );
+        expect(replyBounds.x).toBeLessThan(bubbleBounds.x);
         expect(reactionCenter).toBeLessThanOrEqual(bubbleBounds.x);
       } else {
+        expect(replyBounds.x).toBeCloseTo(bubbleBounds.x + 12, 0);
+        expect(replyBounds.x + replyBounds.width).toBeGreaterThan(
+          bubbleBounds.x + bubbleBounds.width,
+        );
         expect(reactionCenter).toBeGreaterThanOrEqual(bubbleBounds.x + bubbleBounds.width);
       }
     });

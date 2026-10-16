@@ -716,7 +716,6 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         )}`}
         style={{
           maxWidth: authorOutside ? undefined : quickActionsMaxWidth,
-          minWidth: hasTopQuickActions ? "7rem" : undefined,
           marginTop: hasTopQuickActions ? "1.25rem" : undefined,
         }}
         data-workspace-message-bubble="true"

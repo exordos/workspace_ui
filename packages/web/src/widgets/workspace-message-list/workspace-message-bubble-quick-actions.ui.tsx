@@ -87,7 +87,7 @@ export function WorkspaceMessageBubbleQuickActions({
       data-visibility={visibility}
     >
       <div
-        className={`absolute -top-5 flex max-w-[calc(100%-1.5rem)] items-center gap-1 ${isOwn ? "left-3" : "right-3"} ${visibility === "hover" ? HOVER_INTERACTIVITY : "pointer-events-auto"}`}
+        className={`absolute -top-5 flex w-max max-w-[calc(100vw-3rem)] items-center gap-1 ${isOwn ? "right-3" : "left-3"} ${visibility === "hover" ? HOVER_INTERACTIVITY : "pointer-events-auto"}`}
       >
         {actions.filter((action) => action.placement !== "corner").map(renderAction)}
       </div>
