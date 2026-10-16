@@ -128,10 +128,20 @@ for (const role of ["owner", "member"] as const) {
       }
       const path = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`;
       await source.goto(path);
-      await expect(source.getByText("Two-device encrypted history", { exact: true })).toBeVisible();
+      await expect(
+        source
+          .locator("[data-workspace-message-bubble]")
+          .getByText("Two-device encrypted history", { exact: true }),
+      ).toBeVisible();
+      await expect(source.locator("[data-focus-zone='sidebar']")).toContainText(
+        "Two-device encrypted history",
+      );
       await target.goto(path);
       await expect(target.getByText("Two-device encrypted history", { exact: true })).toHaveCount(
         0,
+      );
+      await expect(target.locator("[data-focus-zone='sidebar']")).toContainText(
+        /Нужен ключ|Key required/,
       );
       await target.getByRole("button", { name: /^(request key|запросить ключ)$/i }).click();
       const targetRequest = target.locator('[data-encrypted-service-message="key_request"]');
@@ -175,7 +185,11 @@ for (const role of ["owner", "member"] as const) {
       await expect(sourceGrant).toContainText(/You sent.*iPhone|Вы передали.*iPhone/);
       await expect(sourceGrant.getByRole("status")).toHaveCount(0);
       await target.reload();
-      await expect(target.getByText("Two-device encrypted history", { exact: true })).toBeVisible();
+      await expect(
+        target
+          .locator("[data-workspace-message-bubble]")
+          .getByText("Two-device encrypted history", { exact: true }),
+      ).toBeVisible();
       const targetGrant = target.locator('[data-encrypted-service-message="key_grant"]');
       await expect(targetGrant.getByRole("status")).toContainText(
         /available on this device|доступен на этом устройстве/,
@@ -453,7 +467,9 @@ test("local key manager separates current metadata from saved keys and deletes o
     await route.fulfill({ status: 201, json: created });
   });
   await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
-  await expect(page.getByText("Saved-key history", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("[data-workspace-message-bubble]").getByText("Saved-key history", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: /^(channel info|информация о канале)$/i })
     .first()

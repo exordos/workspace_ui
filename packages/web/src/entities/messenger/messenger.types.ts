@@ -279,6 +279,8 @@ export interface MessengerSidebarMessagePreview {
   route?: string;
   text: string;
   senderName?: string;
+  /** Encrypted content is resolved only in mounted presentation memory. */
+  encrypted?: true;
 }
 
 // Ready topic-list projection shared by messenger surfaces, not a backend DTO:

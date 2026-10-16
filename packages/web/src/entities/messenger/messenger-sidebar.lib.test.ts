@@ -1086,6 +1086,45 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("keeps encrypted last-message metadata for stream and topic previews without projecting content", () => {
+    const encrypted = message({
+      payload: { kind: "e2ee", keyUuid: STREAM_B, content: "encoded-ciphertext" },
+    });
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: { [STREAM_A]: stream({ encryption: true, lastMessageUuid: MESSAGE_A }) },
+        topicsById: { [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }) },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: { [MESSAGE_A]: encrypted },
+      },
+    );
+    const row = rows.find((item) => item.streamUuid === STREAM_A);
+    const preview = {
+      messageUuid: MESSAGE_A,
+      route: workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+      }),
+      text: "",
+      senderName: "Alice Wonderland",
+      encrypted: true,
+    };
+    expect(row?.preview).toEqual(preview);
+    expect(row?.topics[0]?.preview).toEqual(preview);
+    expect(row?.lastMessageCreatedAt).toBe(DATE_A);
+    expect(encrypted.payload).toEqual({
+      kind: "e2ee",
+      keyUuid: STREAM_B,
+      content: "encoded-ciphertext",
+    });
+  });
+
   it("sorts topics by last message time and exposes that time on each row", () => {
     const rows = selectMessengerSidebarStreams(
       state({

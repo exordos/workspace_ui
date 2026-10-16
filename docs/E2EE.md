@@ -6,6 +6,7 @@ Current for the client implementation on this branch as of 2026-10-15. This is a
 
 - Create a stream with `encryption: true`, generating and durably storing the creator's key before the network request.
 - Send encrypted text and read history after reload when the local key is available. Messages without a key remain locked; decryption errors allow retrying and requesting the message's key.
+- Sidebar last-message previews use the same local decryption and the message's exact key UUID. Available text is summarized in presentation memory only; missing keys show "Key required", while encrypted service messages use their standard labels. Key changes refresh mounted previews without persisting plaintext in the message store or cache.
 - Request a current or historical generation's key; grant, reject, or grant in bulk with individual request outcomes. Owners and administrators can grant and reject requests; granting requires the requested generation's local key.
 - Rotate the key as the owner, with confirmation: a new generation does not rewrite existing history. Participants request the new key themselves.
 - View local keys and delete a selected key with confirmation. Deletion removes available plaintext from mounted messages and notifies other tabs.

@@ -52,12 +52,12 @@ import { SidebarChatTitleWithStatus } from "./sidebar-chat-title-with-status.ui"
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
-import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
+import { WorkspaceSidebarMessagePreview } from "./sidebar-workspace-message-preview.ui";
 import {
   projectWorkspaceSidebarSearch,
   type WorkspaceSidebarSearchProjection,
@@ -197,12 +197,7 @@ function WorkspaceSidebarTopicRow({
           >
             {title}
           </div>
-          {!compact && (
-            <SidebarMessagePreview
-              senderName={topic.preview?.senderName}
-              message={topic.preview?.text}
-            />
-          )}
+          {!compact && <WorkspaceSidebarMessagePreview preview={topic.preview} />}
         </div>
         <SidebarChatRowMeta
           compact={compact}
@@ -481,10 +476,7 @@ function WorkspaceSidebarStreamRow({
             </Link>
             {!compact && stream.preview?.route != null && (
               <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
-                <SidebarMessagePreview
-                  senderName={stream.preview.senderName}
-                  message={stream.preview.text}
-                />
+                <WorkspaceSidebarMessagePreview preview={stream.preview} />
               </Link>
             )}
           </div>
