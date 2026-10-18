@@ -33,7 +33,7 @@ export interface WorkspaceMessengerNativeSourceDto {
 
 export interface WorkspaceMessengerZulipSourceDto {
   kind: "zulip";
-  stream_id: number;
+  stream_id?: number;
   server_url?: string | null;
   topic_name?: string | null;
   message_id?: number | null;
@@ -1038,7 +1038,7 @@ export function isWorkspaceMessengerSourceDto(
     (isRecord(value) && value.kind === "native") ||
     (isRecord(value) &&
       value.kind === "zulip" &&
-      isNonNegativeInteger(value.stream_id) &&
+      (value.stream_id === undefined || isNonNegativeInteger(value.stream_id)) &&
       (value.server_url === undefined ||
         value.server_url === null ||
         typeof value.server_url === "string") &&

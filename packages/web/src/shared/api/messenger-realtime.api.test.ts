@@ -614,6 +614,29 @@ describe("messenger-realtime.api", () => {
     });
   });
 
+  it.each(["stream.created", "stream.updated", "stream.read"] as const)(
+    "normalizes %s for Zulip streams without provider identifiers",
+    (kind) => {
+      const stream: WorkspaceMessengerStreamDto = {
+        ...streamDto,
+        source_name: "zulip",
+        source: { kind: "zulip" },
+      };
+      const event = createEvent({ kind, ...stream });
+      const expected = {
+        epoch_version: event.epoch_version,
+        type: "stream",
+        kind,
+        stream,
+      };
+
+      expect(normalizeWorkspaceRestEvent(event)).toEqual(expected);
+      expect(
+        normalizeWorkspaceWebSocketFrame(parseWorkspaceWebSocketFrame(JSON.stringify(event))),
+      ).toEqual(expected);
+    },
+  );
+
   it("normalizes all REST snapshot and deleted resource events", () => {
     expect(
       normalizeWorkspaceRestEvent(createEvent({ kind: "message.created", ...messageDto })),

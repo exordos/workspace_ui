@@ -663,6 +663,13 @@ describe("Workspace messenger DTO guards", () => {
       isWorkspaceMessengerStreamDto({
         ...streamDto,
         source_name: "zulip",
+        source: { kind: "zulip" },
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerStreamDto({
+        ...streamDto,
+        source_name: "zulip",
         source: { kind: "zulip", stream_id: 123 },
       }),
     ).toBe(true);
