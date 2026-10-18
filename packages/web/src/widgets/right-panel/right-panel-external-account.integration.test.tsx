@@ -194,11 +194,11 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
-    const deleteItem = screen.getByRole("menuitem", { name: "Delete connection" });
+    const deleteItem = screen.getByRole("menuitem", { name: "Disconnect account" });
     expect(deleteItem).toHaveClass("!text-notice-base");
     fireEvent.click(deleteItem);
 
-    expect(screen.getByRole("dialog")).toHaveTextContent("Delete connection");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Disconnect account");
   });
 
   it("does not show chat configuration without an external account", () => {

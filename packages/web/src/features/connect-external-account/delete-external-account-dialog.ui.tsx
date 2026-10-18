@@ -50,9 +50,7 @@ export const DeleteExternalAccountDialog = React.memo<DeleteExternalAccountDialo
           </>
         }
       >
-        <p className="bg-danger/10 rounded-lg px-3 py-2 text-sm text-danger">
-          {t("connectExternalAccount.delete.warning")}
-        </p>
+        <p className="text-sm text-text-muted">{t("connectExternalAccount.delete.warning")}</p>
         {error ? (
           <p className="bg-danger/10 mt-3 rounded-lg px-3 py-2 text-sm text-danger" role="alert">
             {t("connectExternalAccount.delete.error")}

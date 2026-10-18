@@ -21,7 +21,7 @@ describe("DeleteExternalAccountDialog", () => {
     });
   });
 
-  it("requires an explicit confirmation before deletion", () => {
+  it("confirms unbinding without warning about deleting imported history", () => {
     renderWithProviders(
       <DeleteExternalAccountDialog
         open
@@ -32,11 +32,12 @@ describe("DeleteExternalAccountDialog", () => {
     );
 
     expect(
-      screen.getByText(/imported chats and their history will also be deleted/i),
+      screen.getByText(/imported chats and their history will be preserved/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/permanently removes/i)).not.toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
 
-    const deleteButton = screen.getByRole("button", { name: /^delete connection$/i });
+    const deleteButton = screen.getByRole("button", { name: /^disconnect account$/i });
     expect(deleteButton).toHaveClass("bg-danger", "text-white");
     fireEvent.click(deleteButton);
     expect(remove).toHaveBeenCalledTimes(1);
@@ -75,8 +76,6 @@ describe("DeleteExternalAccountDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /could not confirm that the connection was deleted/i,
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/could not disconnect the account/i);
   });
 });

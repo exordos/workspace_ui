@@ -204,14 +204,14 @@
       "action": "Done"
     },
     "delete": {
-      "action": "Delete connection",
-      "shortAction": "Delete",
-      "title": "Delete Zulip connection?",
-      "description": "This action permanently removes the external account from Workspace.",
-      "warning": "If chat synchronization has already started, imported chats and their history will also be deleted.",
-      "confirm": "Delete connection",
-      "deleting": "Deleting…",
-      "error": "Could not confirm that the connection was deleted. Refresh the connections list."
+      "action": "Disconnect account",
+      "shortAction": "Disconnect",
+      "title": "Disconnect Zulip account?",
+      "description": "Pending synchronization tasks will be cancelled and your access token will be removed.",
+      "warning": "Imported chats and their history will be preserved. The external account will be linked to its imported Zulip user.",
+      "confirm": "Disconnect account",
+      "deleting": "Disconnecting…",
+      "error": "Could not disconnect the account. Try again."
     },
     "errors": {
       "allFields": "Fill in all fields",

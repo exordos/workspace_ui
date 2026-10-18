@@ -119,7 +119,7 @@ describe("useDeleteExternalAccount", () => {
     expect(useExternalAccountStore.getState().accounts).toEqual([account]);
   });
 
-  it("cleans only known current-project projections after DELETE succeeds", async () => {
+  it("preserves imported streams when the account is unbound", async () => {
     seedAccount();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const scopeKey = externalChatScopeKey(runtimeContext, account.uuid);
@@ -160,10 +160,9 @@ describe("useDeleteExternalAccount", () => {
     );
 
     act(() => result.current.remove());
-    await waitFor(() =>
-      expect(useMessengerStore.getState().streamsById[STREAM_UUID]).toBeUndefined(),
-    );
+    await waitFor(() => expect(result.current.deleting).toBe(false));
 
+    expect(useMessengerStore.getState().streamsById[STREAM_UUID]?.name).toBe("Support");
     expect(useExternalChatsStore.getState().externalAccountUuid).toBeNull();
   });
 
