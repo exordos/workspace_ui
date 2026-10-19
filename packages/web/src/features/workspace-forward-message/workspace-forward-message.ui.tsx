@@ -31,9 +31,9 @@ import {
   AppDialogShell,
   APP_DIALOG_CONTENT_BASE_CLASS,
   DialogPrimaryButton,
-} from "~/shared/ui/app-dialog.ui";
+} from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
-import { Select } from "~/shared/ui/select.ui";
+import { Select } from "~/shared/ui/select";
 import {
   buildWorkspaceForwardMarkdown,
   buildWorkspaceForwardStreamOptions,

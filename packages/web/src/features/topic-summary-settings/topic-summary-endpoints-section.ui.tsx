@@ -2,7 +2,7 @@ import { type ReactNode, useState } from "react";
 import { useTranslation } from "~/i18n/i18n";
 import type { WorkspaceTopicSummaryEndpointDto } from "~/shared/api/messenger-topic-summary-management.types";
 import { Button } from "~/shared/ui/button";
-import { FormField } from "~/shared/ui/form-field.ui";
+import { FormField } from "~/shared/ui/form-field";
 import {
   ERROR_NOTICE_CLASS,
   INPUT_CLASS,

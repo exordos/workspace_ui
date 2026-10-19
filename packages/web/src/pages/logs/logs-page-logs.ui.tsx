@@ -3,7 +3,7 @@ import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import type { LogEntry } from "~/shared/lib/logger";
 import { Icon } from "~/shared/ui/icon";
-import { Select } from "~/shared/ui/select.ui";
+import { Select } from "~/shared/ui/select";
 import { matchesLogSourceFilter, type LogSourceFilter } from "./logs-source-filter.lib";
 
 export interface LogsPageLogsSectionProps {

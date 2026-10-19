@@ -4,11 +4,11 @@ import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
-import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
+import { Spinner } from "~/shared/ui/loading";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { SelectableRow } from "~/shared/ui/selectable-row.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
-import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
+import { SelectableRow } from "~/shared/ui/selectable-row";
+import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card";
 import cachedUrl from "./assets/cached.svg";
 import settingsUrl from "./assets/instant-mix.svg";
 import type {

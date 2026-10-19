@@ -14,7 +14,7 @@ import {
   summarizeWorkspaceMessageBody,
   summarizeWorkspaceMessageMarkdown,
 } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
-import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
+import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame";
 import { QUOTE_PREVIEW_MAX } from "./message-composer-constants.lib";
 import type { ReplyQuote } from "./message-composer.types";
 

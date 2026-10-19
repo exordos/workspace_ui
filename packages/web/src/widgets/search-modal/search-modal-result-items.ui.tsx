@@ -1,6 +1,6 @@
 import React from "react";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { SelectableRow } from "~/shared/ui/selectable-row.ui";
+import { SelectableRow } from "~/shared/ui/selectable-row";
 
 export const MAX_USER_RESULTS = 20;
 

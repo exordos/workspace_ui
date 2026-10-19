@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
-import type { FloatingLoadingOverlayProps } from "~/shared/ui/floating-loading-overlay.types";
+import type { FloatingLoadingOverlayProps } from "~/shared/ui/loading";
 import type { WorkspaceMessageListProps } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
 
@@ -29,7 +29,7 @@ vi.mock("~/widgets/workspace-message-list/workspace-message-list.ui", () => ({
   },
 }));
 
-vi.mock("~/shared/ui/floating-loading-overlay", () => ({
+vi.mock("~/shared/ui/loading", () => ({
   FloatingLoadingOverlay: (props: FloatingLoadingOverlayProps) => {
     captured.floatingLoadingOverlayProps = props;
     return props.visible ? <div data-testid="floating-loading-overlay" /> : null;

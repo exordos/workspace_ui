@@ -5,7 +5,7 @@ import {
 } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import { resolveWorkspaceDirectPartnerUuid } from "./messenger-direct-partner.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
 import type { MessengerStoreState } from "./messenger.model";

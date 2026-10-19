@@ -35,8 +35,8 @@ import {
 import { buildWorkspaceProfileShareLink } from "~/shared/lib/workspace-profile-link.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
-import { resolvePresenceStatusTextClass } from "~/shared/ui/presence-status-text.lib";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
+import { resolvePresenceStatusTextClass } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelUserProfileActions } from "./right-panel-user-profile-actions.ui";
 import { RightPanelUserProfileDetails } from "./right-panel-user-profile-details.ui";

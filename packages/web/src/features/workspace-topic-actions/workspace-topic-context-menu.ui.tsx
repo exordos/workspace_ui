@@ -13,11 +13,11 @@ import type { MessengerStream, MessengerTopicListItem } from "~/entities/messeng
 import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerTopicNotificationMode } from "~/shared/api/messenger.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
+import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
 import {
   useDropdownContextMenuAnchor,
   wrapChildWithContextMenuHandlers,
-} from "~/shared/ui/dropdown-context-menu.lib";
+} from "~/shared/ui/dropdown-menu";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WorkspaceTopicNotificationSwitch } from "./workspace-topic-notification-switch.ui";
 

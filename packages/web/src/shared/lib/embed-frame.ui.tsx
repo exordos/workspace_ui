@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { Spinner } from "~/shared/ui/loading";
 import { getSandboxPolicy, isEmbedAllowed } from "./embed.lib";
 import { createLogger } from "./logger";
 import type { EmbedFrameProps } from "./embed-frame.types";

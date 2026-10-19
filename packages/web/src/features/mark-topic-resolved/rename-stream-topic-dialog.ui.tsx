@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
+import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
 
 export interface RenameStreamTopicDialogProps {
   open: boolean;

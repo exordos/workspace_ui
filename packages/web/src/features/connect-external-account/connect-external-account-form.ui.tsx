@@ -1,8 +1,8 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
-import { FormField } from "~/shared/ui/form-field.ui";
-import { Select } from "~/shared/ui/select.ui";
+import { FormField } from "~/shared/ui/form-field";
+import { Select } from "~/shared/ui/select";
 import type {
   ConnectExternalAccountError,
   ConnectExternalAccountFormProps,

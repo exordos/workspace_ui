@@ -3,7 +3,7 @@ import type {
   MessengerStream,
   MessengerTopic,
 } from "~/entities/messenger/messenger.types";
-import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
+import { FloatingLoadingOverlay } from "~/shared/ui/loading";
 import { ActivityMessageCard } from "./activity-message-card.ui";
 import type { RefObject, UIEventHandler } from "react";
 

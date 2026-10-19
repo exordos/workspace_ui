@@ -1,5 +1,5 @@
 import React from "react";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { Spinner } from "~/shared/ui/loading";
 import type { ButtonAppearance, ButtonProps, ButtonSize, ButtonVariant } from "./button.types";
 
 const BASE =

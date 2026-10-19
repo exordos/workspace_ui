@@ -8,7 +8,7 @@ import type {
   WorkspaceMessengerTopicNotificationMode,
   WorkspaceMessengerTopicSummaryReasoningEffort,
 } from "~/shared/api/messenger.types";
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 
 // These are domain types for the new path, not raw Workspace API responses.
 // Backend fields such as stream_uuid are converted here into app fields such as streamUuid.

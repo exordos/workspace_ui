@@ -7,6 +7,6 @@ alwaysApply: false
 
 - Extract when callers share a stable responsibility, not merely because two snippets look alike or a file exceeds a line count.
 - Keep domain behavior in its owning feature/entity. `shared/` must not import higher FSD layers.
-- Reuse existing `AppDialog` from `packages/web/src/shared/ui/app-dialog.ui.tsx` and lifecycle/cache helpers when their contracts fit.
+- Reuse existing `AppDialog` from `packages/web/src/shared/ui/app-dialog/app-dialog.ui.tsx` and lifecycle/cache helpers when their contracts fit.
 - Inspect `packages/web/src/shared/lib/use-cache-first-page.hook.ts` and `request-lifecycle.lib.ts` before creating another page-loading abstraction; preserve Workspace owner protection.
 - Prefer small concrete modules and explicit parameters. Do not add a wrapper, store, or barrel merely to establish a template.

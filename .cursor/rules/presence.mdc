@@ -5,7 +5,7 @@ globs:
   - "packages/web/src/entities/user/*presence*"
   - "packages/web/src/shared/lib/presence*"
   - "packages/web/src/features/workspace-avatar/**"
-  - "packages/web/src/shared/ui/presence-indicator*"
+  - "packages/web/src/shared/ui/presence-indicator/**"
 ---
 
 # Presence and status

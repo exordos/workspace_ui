@@ -1,8 +1,7 @@
 import React, { useCallback } from "react";
-import { Badge } from "~/shared/ui/badge";
-import type { BadgeVariant } from "~/shared/ui/badge.types";
+import type { BadgeVariant } from "~/shared/ui/badge";
+import { Badge, MentionBadge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
-import { MentionBadge } from "~/shared/ui/mention-badge";
 
 export interface SidebarChatRowExpandChevronProps {
   expanded: boolean;

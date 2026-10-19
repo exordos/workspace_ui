@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialogShell } from "~/shared/ui/app-dialog.ui";
+import { AppDialogShell } from "~/shared/ui/app-dialog";
 import { Icon, type IconName } from "~/shared/ui/icon";
 import type { RightPanelUserProfileEditAvatarDialogProps } from "./right-panel-user-profile-edit-avatar-dialog.types";
 

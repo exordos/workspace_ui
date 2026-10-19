@@ -4,7 +4,7 @@ import { useWorkspaceSelfChat } from "~/features/workspace-self-chat/workspace-s
 import { t } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { Spinner } from "~/shared/ui/loading";
 import { ChatFavoritesHeader } from "~/widgets/chat-view/chat-header-favorites.ui";
 import { WorkspaceChatPage } from "./chat-page-workspace.ui";
 

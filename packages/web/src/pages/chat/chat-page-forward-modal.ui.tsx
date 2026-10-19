@@ -7,9 +7,9 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
-import { DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
+import { DialogPrimaryButton } from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
-import { Select } from "~/shared/ui/select.ui";
+import { Select } from "~/shared/ui/select";
 import type { ForwardMessageModalBodyProps } from "./chat-page.types";
 
 export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(

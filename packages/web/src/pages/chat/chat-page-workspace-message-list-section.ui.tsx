@@ -1,7 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { FloatingLoadingOverlay, Spinner } from "~/shared/ui/loading";
 import { WorkspaceMessageList } from "~/widgets/workspace-message-list/workspace-message-list.ui";
 import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
 

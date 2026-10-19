@@ -1,6 +1,6 @@
 import React, { useId, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialog } from "~/shared/ui/app-dialog.ui";
+import { AppDialog } from "~/shared/ui/app-dialog";
 import { Button } from "~/shared/ui/button";
 import { ManageExternalProviderForm } from "./manage-external-provider-form.ui";
 import type { UseManageExternalProviderResult } from "./manage-external-provider.hook";

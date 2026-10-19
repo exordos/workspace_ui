@@ -1,4 +1,4 @@
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import type { User, UserPresenceStatus, UsersById, UserUuid } from "./user.types";
 
 export function isSelectableWorkspaceUser(user: User | null | undefined): user is User {

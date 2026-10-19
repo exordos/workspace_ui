@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
-import { AppTooltip } from "~/shared/ui/app-tooltip.ui";
+import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeaderShell } from "./chat-header-shell.ui";

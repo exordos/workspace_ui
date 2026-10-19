@@ -8,7 +8,7 @@ import {
   type NotificationLevel,
   type NotificationLevelOption,
   type NotificationLevelSwitchSize,
-} from "~/shared/ui/notification-level-switch.lib";
+} from "~/shared/ui/notification-level-switch";
 
 export interface StreamNotificationLevelSwitchProps {
   value: NotificationLevel;

@@ -3,7 +3,7 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import type { LogEntry } from "~/shared/lib/logger";
-import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
 import { LogsPageLogsSection } from "./logs-page-logs.ui";
 import type { LogSourceFilter } from "./logs-source-filter.lib";

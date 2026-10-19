@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { t } from "~/i18n/i18n";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
-import { AttachmentCard } from "~/shared/ui/attachment-card.ui";
+import { AttachmentCard } from "~/shared/ui/attachment-card";
 import { Icon } from "~/shared/ui/icon";
 import type { MessageComposerAttachmentView } from "./message-composer.types";
 

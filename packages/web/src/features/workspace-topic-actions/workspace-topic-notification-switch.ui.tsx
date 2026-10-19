@@ -8,7 +8,7 @@ import {
   type NotificationLevelSwitchSize,
   type TopicVisibilityLevel,
   type TopicVisibilityLevelOption,
-} from "~/shared/ui/notification-level-switch.lib";
+} from "~/shared/ui/notification-level-switch";
 
 export interface WorkspaceTopicNotificationSwitchProps {
   value: TopicVisibilityLevel;
