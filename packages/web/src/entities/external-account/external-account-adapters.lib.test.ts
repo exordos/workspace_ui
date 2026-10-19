@@ -28,7 +28,27 @@ const dto: WorkspaceExternalAccountDto = {
   updated_at: "2026-07-10T09:00:00Z",
 };
 
+const TEST_API_KEY = "test-secret";
+
 describe("external account adapters", () => {
+  it("maps a registry model without inventing lifecycle fields or keeping credentials", () => {
+    const settings = { ...dto.settings, api_key: TEST_API_KEY };
+    const account = adaptWorkspaceExternalAccountDto({
+      uuid: dto.uuid,
+      provider: "zulip",
+      settings,
+      status: "new",
+      revision: 1,
+      created_at: dto.created_at,
+      updated_at: dto.updated_at,
+    });
+    expect(account).toMatchObject({ uuid: dto.uuid, provider: "zulip", status: "new" });
+    expect(account.safeError).toBeNull();
+    expect(account).not.toHaveProperty("liveReady");
+    expect(account).not.toHaveProperty("desiredGeneration");
+    expect(account.settings).not.toHaveProperty("api_key");
+    expect(JSON.stringify(account)).not.toContain(TEST_API_KEY);
+  });
   it("maps the sanitized snapshot and derives a strong ETag", () => {
     expect(adaptWorkspaceExternalAccountDto(dto)).toEqual({
       uuid: "account-1",

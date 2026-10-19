@@ -7,9 +7,12 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   createExternalAccount,
+  getExternalAccount,
   reconnectExternalAccount,
+  updateExternalAccount,
 } from "~/shared/api/messenger-external-accounts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
+import { replaceWorkspaceExternalAccountCache } from "~/shared/lib/workspace-external-account-cache-db";
 import { useConnectExternalAccount } from "./connect-external-account.hook";
 
 vi.mock("~/entities/external-account/external-account-sync.lib", () => ({
@@ -17,7 +20,12 @@ vi.mock("~/entities/external-account/external-account-sync.lib", () => ({
 }));
 vi.mock("~/shared/api/messenger-external-accounts.api", () => ({
   createExternalAccount: vi.fn(),
+  getExternalAccount: vi.fn(),
   reconnectExternalAccount: vi.fn(),
+  updateExternalAccount: vi.fn(),
+}));
+vi.mock("~/shared/lib/workspace-external-account-cache-db", () => ({
+  replaceWorkspaceExternalAccountCache: vi.fn().mockResolvedValue(undefined),
 }));
 
 const runtimeContext: WorkspaceRuntimeContext = {
@@ -35,8 +43,8 @@ function snapshot(
   uuid = "external-account-1",
   status: "live" | "backfill" | "connecting" | "auth_required" | "degraded" = "live",
   liveReady = status === "live",
-  selectionMode: "explicit" | "all" = "explicit",
-  historyDepth: "new" | "7_days" | "30_days" | "90_days" | "all" = "30_days",
+  selectionMode: "explicit" | "all" = "all",
+  historyDepth: "new" | "7_days" | "30_days" | "90_days" | "all" = "all",
 ) {
   return {
     account: {
@@ -91,7 +99,131 @@ describe("useConnectExternalAccount", () => {
     useExternalAccountStore.getState().clear();
   });
 
-  it("creates an explicit 30-day connection in the current project and clears the key", async () => {
+  it("does not send PUT after the edit form unmounts during its read", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof getExternalAccount>>>();
+    vi.mocked(getExternalAccount).mockReturnValueOnce(pending.promise);
+    const account = snapshot().account;
+    const editAccount: ExternalAccount = {
+      uuid: account.uuid,
+      provider: "zulip",
+      settings: {
+        kind: "zulip",
+        serverUrl: account.settings.server_url,
+        email: account.settings.email,
+        selectionMode: "all",
+        historyDepth: "all",
+        defaultProjectId: runtimeContext.projectId,
+      },
+      status: "new",
+      safeError: null,
+      revision: 1,
+      etag: '"1"',
+      createdAt: account.created_at,
+      updatedAt: account.updated_at,
+    };
+    const { result, unmount } = renderHook(() =>
+      useConnectExternalAccount({ open: true, runtimeContext, editAccount }),
+    );
+    act(() => result.current.submit());
+    unmount();
+    await act(async () => {
+      pending.resolve(snapshot());
+      await pending.promise;
+    });
+    expect(updateExternalAccount).not.toHaveBeenCalled();
+    expect(replaceWorkspaceExternalAccountCache).not.toHaveBeenCalled();
+  });
+
+  it("rejects a delayed edit result after leaving and returning to the owner", async () => {
+    const account = snapshot().account;
+    const editAccount: ExternalAccount = {
+      uuid: account.uuid,
+      provider: "zulip",
+      settings: {
+        kind: "zulip",
+        serverUrl: account.settings.server_url,
+        email: account.settings.email,
+        selectionMode: "all",
+        historyDepth: "all",
+        defaultProjectId: runtimeContext.projectId,
+      },
+      status: "new",
+      safeError: null,
+      revision: 1,
+      etag: '"1"',
+      createdAt: account.created_at,
+      updatedAt: account.updated_at,
+    };
+    const pending = deferred<Awaited<ReturnType<typeof updateExternalAccount>>>();
+    vi.mocked(getExternalAccount).mockResolvedValueOnce(snapshot());
+    vi.mocked(updateExternalAccount).mockReturnValueOnce(pending.promise);
+    const onCompleted = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ context }) =>
+        useConnectExternalAccount({
+          open: true,
+          runtimeContext: context,
+          editAccount,
+          onCompleted,
+        }),
+      { initialProps: { context: runtimeContext } },
+    );
+    act(() => result.current.submit());
+    await waitFor(() => expect(updateExternalAccount).toHaveBeenCalledOnce());
+    rerender({ context: { ...runtimeContext, accountId: "other-account", runtimeGeneration: 2 } });
+    rerender({ context: { ...runtimeContext, runtimeGeneration: 3 } });
+    publishAccountUpdate(editAccount, { revision: 5 });
+    await act(async () => {
+      pending.resolve(snapshot());
+      await pending.promise;
+    });
+    expect(useExternalAccountStore.getState().accounts[0]?.revision).toBe(5);
+    expect(replaceWorkspaceExternalAccountCache).not.toHaveBeenCalled();
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
+  });
+
+  it("completes once after saving a new model without bridge readiness or events", async () => {
+    const current = snapshot().account;
+    vi.mocked(createExternalAccount).mockResolvedValue({
+      account: {
+        uuid: current.uuid,
+        provider: "zulip",
+        settings: current.settings,
+        status: "new",
+        error_description: null,
+        revision: 1,
+        created_at: current.created_at,
+        updated_at: current.updated_at,
+      },
+      etag: '"1"',
+    });
+    const onCompleted = vi.fn();
+    const { result } = renderHook(() =>
+      useConnectExternalAccount({
+        open: true,
+        runtimeContext,
+        onCompleted,
+      }),
+    );
+    useExternalAccountStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(runtimeContext));
+    act(() => {
+      result.current.setServerUrl("https://zulip.example.com");
+      result.current.setEmail("user@example.com");
+      result.current.setApiKey("test");
+    });
+    act(() => result.current.submit());
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(result.current.error).toBeNull();
+    expect(result.current.draft.apiKey).toBe("");
+    expect(useExternalAccountStore.getState().accounts[0]).toMatchObject({
+      uuid: current.uuid,
+      status: "new",
+    });
+    expect(createExternalAccount).toHaveBeenCalledOnce();
+  });
+
+  it("connects all chats with full history in the current project and clears the key", async () => {
     vi.mocked(createExternalAccount).mockResolvedValue(snapshot());
     const randomUuid = vi
       .spyOn(crypto, "randomUUID")
@@ -101,7 +233,6 @@ describe("useConnectExternalAccount", () => {
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: true,
         onCompleted,
       }),
     );
@@ -118,31 +249,33 @@ describe("useConnectExternalAccount", () => {
     await waitFor(() => expect(createExternalAccount).toHaveBeenCalledTimes(1));
     expect(vi.mocked(createExternalAccount).mock.calls[0]?.[1]).toEqual({
       uuid: "10000000-0000-4000-8000-000000000001",
+      provider: "zulip",
       settings: {
         kind: "zulip",
         server_url: "https://zulip.example.com",
         email: "user@example.com",
         api_key: "test",
-        selection_mode: "explicit",
-        history_depth: "30_days",
+        selection_mode: "all",
+        history_depth: "all",
         default_project_id: "project-1",
       },
     });
     await waitFor(() => expect(result.current.draft.apiKey).toBe(""));
-    await waitFor(() => expect(result.current.phase).toBe("chats"));
-    expect(onCompleted).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
+    expect(onCompleted).toHaveBeenCalledOnce();
     expect(randomUuid).toHaveBeenCalledTimes(1);
     expect(refreshExternalAccounts).toHaveBeenCalledOnce();
   });
 
-  it("completes the legacy explicit flow when no embedded chat step is available", async () => {
-    vi.mocked(createExternalAccount).mockResolvedValue(snapshot());
+  it("finishes automatically even when the server snapshot contains legacy manual settings", async () => {
+    vi.mocked(createExternalAccount).mockResolvedValue(
+      snapshot("external-account-1", "live", true, "explicit", "30_days"),
+    );
     const onCompleted = vi.fn();
     const { result } = renderHook(() =>
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: false,
         onCompleted,
       }),
     );
@@ -154,8 +287,8 @@ describe("useConnectExternalAccount", () => {
     });
     act(() => result.current.submit());
 
-    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
-    expect(result.current.phase).not.toBe("chats");
+    await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
+    expect(onCompleted).toHaveBeenCalledOnce();
   });
 
   it("reconnects an existing account with its ETag", async () => {
@@ -331,7 +464,7 @@ describe("useConnectExternalAccount", () => {
     expect(randomUuid).toHaveBeenCalledOnce();
   });
 
-  it("keeps checking until realtime publishes a ready account snapshot", async () => {
+  it("completes after saving without waiting for a ready account snapshot", async () => {
     const connecting = snapshot("external-account-1", "connecting", false);
     vi.mocked(createExternalAccount).mockResolvedValue(connecting);
     const onCompleted = vi.fn();
@@ -339,7 +472,6 @@ describe("useConnectExternalAccount", () => {
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: true,
         onCompleted,
       }),
     );
@@ -352,7 +484,7 @@ describe("useConnectExternalAccount", () => {
     act(() => result.current.submit());
 
     await waitFor(() => expect(result.current.phase).toBe("checking"));
-    expect(onCompleted).not.toHaveBeenCalled();
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
     await waitFor(() =>
       expect(result.current.lifecycleAccount).toMatchObject({
         status: "connecting",
@@ -368,7 +500,7 @@ describe("useConnectExternalAccount", () => {
       });
     });
 
-    await waitFor(() => expect(result.current.phase).toBe("chats"));
+    await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
     expect(refreshExternalAccounts).toHaveBeenCalledOnce();
   });
 
@@ -380,7 +512,6 @@ describe("useConnectExternalAccount", () => {
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: true,
       }),
     );
 
@@ -412,7 +543,7 @@ describe("useConnectExternalAccount", () => {
       });
     });
 
-    await waitFor(() => expect(result.current.phase).toBe("chats"));
+    await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
   });
 
   it("ignores realtime updates for a different external account", async () => {
@@ -423,7 +554,6 @@ describe("useConnectExternalAccount", () => {
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: true,
       }),
     );
 
@@ -475,31 +605,6 @@ describe("useConnectExternalAccount", () => {
     },
   );
 
-  it.each(["new", "7_days", "30_days", "90_days", "all"] as const)(
-    "sends the selected %s history depth in the create request",
-    async (historyDepth) => {
-      vi.mocked(createExternalAccount).mockResolvedValue(
-        snapshot("external-account-1", "backfill", false, "explicit", historyDepth),
-      );
-      const { result } = renderHook(() =>
-        useConnectExternalAccount({ open: true, runtimeContext }),
-      );
-
-      act(() => {
-        result.current.setServerUrl("https://zulip.example.com");
-        result.current.setEmail("user@example.com");
-        result.current.setApiKey("test");
-        result.current.setHistoryDepth(historyDepth);
-      });
-      act(() => result.current.submit());
-
-      await waitFor(() => expect(createExternalAccount).toHaveBeenCalledOnce());
-      expect(vi.mocked(createExternalAccount).mock.calls[0]?.[1].settings.history_depth).toBe(
-        historyDepth,
-      );
-    },
-  );
-
   it("waits for realtime readiness before finishing automatic onboarding", async () => {
     vi.mocked(createExternalAccount).mockResolvedValue(
       snapshot("external-account-1", "backfill", false, "all"),
@@ -510,7 +615,6 @@ describe("useConnectExternalAccount", () => {
       result.current.setServerUrl("https://zulip.example.com");
       result.current.setEmail("user@example.com");
       result.current.setApiKey("test");
-      result.current.setSelectionMode("all");
     });
     act(() => result.current.submit());
 
@@ -621,13 +725,12 @@ describe("useConnectExternalAccount", () => {
     expect(result.current.phase).toBe("credentials");
   });
 
-  it("leaves a completed chat step when realtime reports a later account error", async () => {
+  it("leaves automatic completion when realtime reports a later account error", async () => {
     vi.mocked(createExternalAccount).mockResolvedValue(snapshot());
     const { result } = renderHook(() =>
       useConnectExternalAccount({
         open: true,
         runtimeContext,
-        hasChatsStep: true,
       }),
     );
     act(() => {
@@ -636,7 +739,7 @@ describe("useConnectExternalAccount", () => {
       result.current.setApiKey("test");
     });
     act(() => result.current.submit());
-    await waitFor(() => expect(result.current.phase).toBe("chats"));
+    await waitFor(() => expect(result.current.phase).toBe("automaticDone"));
     const connectedAccount = result.current.lifecycleAccount;
     expect(connectedAccount).not.toBeNull();
 
@@ -649,7 +752,7 @@ describe("useConnectExternalAccount", () => {
           ...connectedAccount!,
           status: "degraded",
           safeError: "Bridge stopped",
-          revision: connectedAccount!.revision + 1,
+          revision: 2,
         },
       ]);
     });

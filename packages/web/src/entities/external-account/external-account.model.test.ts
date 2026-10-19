@@ -46,6 +46,25 @@ describe("external accounts store", () => {
     expect(store.setLoadStatusForOwner("owner-b", "ready")).toBe(false);
   });
 
+  it("orders unversioned registry models by their server update time", () => {
+    const store = useExternalAccountsStore.getState();
+    store.startOwnerSync("owner-a");
+    const current = {
+      ...account,
+      revision: undefined,
+      etag: undefined,
+      updatedAt: "2026-10-17T12:00:00Z",
+    };
+    store.upsertAccountForOwner("owner-a", current);
+    expect(
+      store.upsertAccountForOwner("owner-a", { ...current, updatedAt: "2026-10-17T11:00:00Z" }),
+    ).toBe(false);
+    expect(
+      store.upsertAccountForOwner("owner-a", { ...current, updatedAt: "2026-10-17T13:00:00Z" }),
+    ).toBe(true);
+    expect(useExternalAccountsStore.getState().accounts[0]?.updatedAt).toBe("2026-10-17T13:00:00Z");
+  });
+
   it("does not let an old account load restore a locally deleted account", () => {
     const store = useExternalAccountsStore.getState();
     const loadGeneration = store.startOwnerSync("owner-a");

@@ -20,11 +20,11 @@ import type {
 
 export interface WorkspaceExternalAccountSnapshot {
   account: WorkspaceExternalAccountDto;
-  etag: string;
+  etag?: string;
 }
 
-function accountEtag(account: WorkspaceExternalAccountDto, headers: Headers): string {
-  return headers.get("ETag") ?? `"${account.revision}"`;
+function accountEtag(account: WorkspaceExternalAccountDto, headers: Headers): string | undefined {
+  return headers.get("ETag") ?? (account.revision == null ? undefined : `"${account.revision}"`);
 }
 
 function parseAccountSnapshot(data: unknown, headers: Headers): WorkspaceExternalAccountSnapshot {
@@ -91,7 +91,7 @@ export async function updateExternalAccount(
   options: MessengerClientOptions,
   accountUuid: string,
   body: WorkspaceExternalAccountUpdateRequestBody,
-  etag: string,
+  etag?: string,
 ): Promise<WorkspaceExternalAccountSnapshot> {
   const { data, headers } = await messengerRequestJsonResult(
     "PUT",
@@ -99,7 +99,7 @@ export async function updateExternalAccount(
     options,
     {},
     body,
-    { "If-Match": etag },
+    etag == null ? {} : { "If-Match": etag },
   );
   return parseAccountSnapshot(data, headers);
 }
@@ -108,7 +108,7 @@ export async function reconnectExternalAccount(
   options: MessengerClientOptions,
   accountUuid: string,
   body: WorkspaceExternalAccountReconnectRequestBody,
-  etag: string,
+  etag?: string,
 ): Promise<WorkspaceExternalAccountSnapshot> {
   const { data, headers } = await messengerRequestJsonResult(
     "POST",
@@ -116,7 +116,7 @@ export async function reconnectExternalAccount(
     options,
     {},
     body,
-    { "If-Match": etag },
+    etag == null ? {} : { "If-Match": etag },
   );
   return parseAccountSnapshot(data, headers);
 }

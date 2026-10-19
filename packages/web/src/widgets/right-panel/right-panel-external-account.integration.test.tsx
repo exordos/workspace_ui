@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
@@ -20,13 +20,16 @@ vi.mock("~/features/connect-external-account/connect-external-account-dialog.ui"
   ConnectExternalAccountDialog: ({
     open,
     runtimeContext,
+    editAccount,
   }: {
     open: boolean;
     runtimeContext: { accountId: string } | null;
+    editAccount?: ExternalAccount | null;
   }) =>
     open ? (
       <div role="dialog" data-testid="external-account-runtime">
         {runtimeContext?.accountId ?? "none"}
+        {editAccount != null ? <span data-testid="editing-account">{editAccount.uuid}</span> : null}
       </div>
     ) : null,
 }));
@@ -139,52 +142,15 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     );
   });
 
-  it("mounts and opens the real chat dialog for a backfill account", async () => {
-    const externalChatDto = {
-      uuid: "external-chat-1",
-      external_account_uuid: account.uuid,
-      source: {
-        kind: "zulip",
-        chat_type: "channel",
-        original_url: "https://zulip.example.com/#narrow/channel/42-support",
-        description: "Customer support",
-        participants: [{ uuid: "zulip-user-1", name: "Ada" }],
-        topics: [{ name: "Incidents" }],
-      },
-      display_name: "Support",
-      selected: false,
-      project_id: null,
-      history_depth: "30_days",
-      projection_stream_uuid: null,
-      status: "available",
-      capabilities: {},
-      safe_error: null,
-      transition_pending: false,
-      revision: 1,
-      created_at: "2026-07-23T10:00:00Z",
-      updated_at: "2026-07-23T10:00:00Z",
-    };
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify([externalChatDto]), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Pagination-Limit": "100",
-        },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("does not offer manual chat configuration for a connected account", () => {
     seedRuntime();
     seedAccounts([account]);
 
     renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Configure chats" }));
-
-    expect(await screen.findByText("Support")).toBeInTheDocument();
-    expect(screen.getByRole("dialog")).toHaveTextContent("Zulip chat sync");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("menuitem", { name: "Configure chats" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Disconnect account" })).toBeInTheDocument();
   });
 
   it("keeps account deletion available from the account actions menu", () => {
@@ -226,7 +192,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     expect(screen.getByRole("button", { name: "Connect service" })).toBeInTheDocument();
   });
 
-  it("uses synchronization wording for an automatic account", () => {
+  it("does not offer manual chat configuration for an automatic account", () => {
     seedRuntime();
     seedAccounts([
       {
@@ -238,7 +204,36 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
-    expect(screen.getByRole("menuitem", { name: "Configure chats" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Configure chats" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Configure" })).not.toBeInTheDocument();
+  });
+
+  it("opens the existing account for editing from its menu", async () => {
+    seedRuntime();
+    seedAccounts([{ ...account, status: "new" }]);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    expect(screen.getByTestId("editing-account")).toHaveTextContent(account.uuid);
+    act(() => {
+      useExternalAccountStore
+        .getState()
+        .setLoadStatusForOwner(workspaceRuntimeOwnerKey(runtimeContext), "loading");
+    });
+    expect(screen.getByTestId("editing-account")).toHaveTextContent(account.uuid);
+  });
+
+  it("shows a loading error instead of claiming no accounts exist", () => {
+    seedRuntime();
+    seedAccounts([]);
+    useExternalAccountStore
+      .getState()
+      .setErrorForOwner(workspaceRuntimeOwnerKey(runtimeContext), "Forbidden");
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load external accounts");
+    expect(screen.queryByText("No external accounts connected yet.")).not.toBeInTheDocument();
   });
 });

@@ -154,7 +154,7 @@
     "reconnectTitle": "Reconnect external account",
     "description": "Connect an external account to this Workspace profile.",
     "servicesTitle": "External integrations",
-    "servicesHint": "Connect Zulip and import selected chats into Workspace.",
+    "servicesHint": "Connect Zulip to synchronize all chats and their full history with Workspace.",
     "provider": "Provider",
     "providers": {
       "zulip": "Zulip"
@@ -180,27 +180,10 @@
     "noAccounts": "No external accounts connected yet.",
     "server": "Server",
     "checking": "Checking…",
-    "selectionMode": {
-      "title": "Which chats should be connected?",
-      "description": "Choose chats manually after connecting, or let Workspace connect them automatically.",
-      "options": {
-        "explicit": "Choose manually",
-        "all": "Available now and new chats automatically"
-      },
-      "explicitHint": "After connecting, choose the chats you need from the list yourself.",
-      "allHint": "Chats will be connected automatically within the limit set by your administrator."
-    },
-    "historyDepth": {
-      "title": "How much history should be loaded?"
-    },
-    "chatsStep": {
-      "title": "Choose Zulip chats",
-      "description": "The account is connected. Now choose the chats to transfer to Workspace."
-    },
     "done": {
       "title": "Account connected",
       "description": "Automatic chat synchronization is enabled.",
-      "message": "Available chats will be connected automatically within the limit set by your administrator.",
+      "message": "All chats and their full history will be synchronized automatically.",
       "action": "Done"
     },
     "delete": {
@@ -222,7 +205,7 @@
       "unavailable": "The Zulip server is unavailable",
       "unavailableShort": "Unavailable",
       "forbidden": "External service connections are unavailable or the allowed limit has been reached. Contact your administrator.",
-      "requestFailed": "Could not connect the external account",
+      "requestFailed": "Could not save the external account",
       "changed": "The connection changed. Refresh it and try again.",
       "serverUrlRequired": "Enter the server URL",
       "serverUrlInvalid": "Enter a valid HTTPS server URL",
@@ -230,6 +213,11 @@
       "tokenRequired": "Enter your token"
     },
     "status": {
+      "saving": "Saving account…",
+      "new": "Initialization queued",
+      "fast_backfill": "Loading recent history…",
+      "active": "Connection is active",
+      "error": "Synchronization failed",
       "sending": "Sending details…",
       "connecting": "Checking connection…",
       "backfill": "Loading history…",
@@ -243,9 +231,17 @@
       "checking": "Checking…",
       "checkingShort": "Checking",
       "unsupportedProvider": "This provider is not supported yet"
+    },
+    "edit": {
+      "action": "Edit",
+      "title": "Edit external account",
+      "description": "Update the server URL, email or API key for this external account.",
+      "save": "Save changes",
+      "apiKeyHint": "Leave blank to keep the current key"
     }
   },
   "externalAccounts": {
+    "loadFailed": "Could not load external accounts. Check access and try again.",
     "title": "External accounts",
     "connected": "Connected",
     "connectedHint": "Linked services let you sign in to the same profile from different messengers without setting it up again",

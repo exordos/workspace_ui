@@ -8,9 +8,6 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { ConfigureExternalChatsDialog } from "~/features/configure-external-chats/configure-external-chats-dialog.ui";
-import { ConfigureExternalChatsOnboardingStep } from "~/features/configure-external-chats/configure-external-chats-onboarding-step.ui";
-import { canConfigureExternalChats } from "~/features/configure-external-chats/configure-external-chats.lib";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { DeleteExternalAccountDialog } from "~/features/connect-external-account/delete-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
@@ -18,13 +15,6 @@ import ZulipExternalAccountIcon from "~/shared/assets/icons/zulip-external-accou
 import { Button } from "~/shared/ui/button";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
-
-function renderChatsOnboardingStep(
-  runtimeContext: WorkspaceRuntimeContext,
-  account: ExternalAccount,
-): React.ReactNode {
-  return <ConfigureExternalChatsOnboardingStep runtimeContext={runtimeContext} account={account} />;
-}
 
 export const RightPanelConnectExternalAccountDialog: React.FC<{
   open: boolean;
@@ -41,7 +31,6 @@ export const RightPanelConnectExternalAccountDialog: React.FC<{
       open={open}
       onOpenChange={onOpenChange}
       runtimeContext={runtimeContext}
-      renderChatsStep={renderChatsOnboardingStep}
     />
   );
 };
@@ -62,35 +51,36 @@ const ExternalAccountRow = React.memo<{
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [reconnectOpen, setReconnectOpen] = useState(false);
-  const [chatsOpen, setChatsOpen] = useState(false);
+  const [editAccount, setEditAccount] = useState<ExternalAccount | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const canReconnect = account.status === "auth_required" || account.status === "degraded";
-  const canConfigureChats = canConfigureExternalChats(account);
   const providerLabel = t(`connectExternalAccount.providers.${account.provider}`);
 
   const openReconnect = useCallback(() => {
     setMenuOpen(false);
     setReconnectOpen(true);
   }, []);
-  const openChats = useCallback(() => {
-    setMenuOpen(false);
-    setChatsOpen(true);
-  }, []);
   const openDelete = useCallback(() => {
     setMenuOpen(false);
     setDeleteOpen(true);
   }, []);
+  const openEdit = useCallback(() => {
+    setMenuOpen(false);
+    setEditAccount(account);
+  }, [account]);
+  const handleEditOpenChange = useCallback((open: boolean) => {
+    if (!open) setEditAccount(null);
+  }, []);
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
-    const items: DropdownMenuItem[] = [];
-    if (canConfigureChats) {
-      items.push({
+    const items: DropdownMenuItem[] = [
+      {
         type: "action",
-        key: "configure-chats",
-        icon: "settings",
-        label: t("configureExternalChats.action"),
-        onSelect: openChats,
-      });
-    }
+        key: "edit",
+        icon: "edit",
+        label: t("connectExternalAccount.edit.action"),
+        onSelect: openEdit,
+      },
+    ];
     if (canReconnect) {
       items.push({
         type: "action",
@@ -110,7 +100,7 @@ const ExternalAccountRow = React.memo<{
       onSelect: openDelete,
     });
     return items;
-  }, [canConfigureChats, canReconnect, openChats, openDelete, openReconnect, t]);
+  }, [canReconnect, openDelete, openEdit, openReconnect, t]);
 
   return (
     <li className="min-w-0" data-testid="external-account-row">
@@ -148,20 +138,17 @@ const ExternalAccountRow = React.memo<{
       ) : null}
 
       <ConnectExternalAccountDialog
+        open={editAccount != null}
+        onOpenChange={handleEditOpenChange}
+        runtimeContext={runtimeContext}
+        editAccount={editAccount}
+      />
+      <ConnectExternalAccountDialog
         open={reconnectOpen}
         onOpenChange={setReconnectOpen}
         runtimeContext={runtimeContext}
         reconnectAccount={account}
-        renderChatsStep={renderChatsOnboardingStep}
       />
-      {canConfigureChats ? (
-        <ConfigureExternalChatsDialog
-          open={chatsOpen}
-          onOpenChange={setChatsOpen}
-          runtimeContext={runtimeContext}
-          account={account}
-        />
-      ) : null}
       <DeleteExternalAccountDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -196,6 +183,16 @@ export const RightPanelExternalAccountsList: React.FC<{
     void refreshExternalAccounts({ runtimeContext }).catch(() => undefined);
   }, [runtimeContext]);
 
+  const accountLoadFailed = accountOwnerKey === runtimeOwnerKey && accountLoadStatus === "error";
+  const emptyState =
+    accountLoadFailed && !accountsLoading ? null : (
+      <p className="text-xs leading-4 text-text-muted">
+        {accountsLoading
+          ? t("connectExternalAccount.checking")
+          : t("connectExternalAccount.noAccounts")}
+      </p>
+    );
+
   return (
     <section
       className="w-full rounded-lg border border-white/10 p-2"
@@ -203,12 +200,13 @@ export const RightPanelExternalAccountsList: React.FC<{
     >
       <div className="flex flex-col gap-5">
         <p className="text-xs leading-4 text-text-muted">{t("externalAccounts.connected")}</p>
-        {accountsLoading || runtimeContext == null || visibleAccounts.length === 0 ? (
-          <p className="text-xs leading-4 text-text-muted">
-            {accountsLoading
-              ? t("connectExternalAccount.checking")
-              : t("connectExternalAccount.noAccounts")}
+        {accountLoadFailed ? (
+          <p role="alert" className="text-xs leading-4 text-notice-base">
+            {t("externalAccounts.loadFailed")}
           </p>
+        ) : null}
+        {runtimeContext == null || visibleAccounts.length === 0 ? (
+          emptyState
         ) : (
           <ul className="space-y-2" data-testid="external-account-rows">
             {visibleAccounts.map((account) => (

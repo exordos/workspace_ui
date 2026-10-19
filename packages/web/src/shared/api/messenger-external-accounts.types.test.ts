@@ -25,6 +25,22 @@ const currentDto = {
 };
 
 describe("external account DTO guard", () => {
+  it.each(["new", "backfill", "fast_backfill", "active", "error"])(
+    "accepts a saved registry model with status %s without processing metadata",
+    (status) => {
+      expect(
+        isWorkspaceExternalAccountDto({
+          uuid: currentDto.uuid,
+          provider: "zulip",
+          settings: currentDto.settings,
+          status,
+          error_description: null,
+          created_at: currentDto.created_at,
+          updated_at: currentDto.updated_at,
+        }),
+      ).toBe(true);
+    },
+  );
   it("accepts the current sanitized contract", () => {
     expect(isWorkspaceExternalAccountDto(currentDto)).toBe(true);
   });

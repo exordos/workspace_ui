@@ -14,7 +14,7 @@ import {
   adaptWorkspaceExternalAccountDto,
   toWorkspaceExternalAccountCacheProfile,
 } from "./external-account-adapters.lib";
-import { useExternalAccountsStore } from "./external-account.model";
+import { isExternalAccountSnapshotOlder, useExternalAccountsStore } from "./external-account.model";
 import type { ExternalAccount } from "./external-account.types";
 
 type ExternalAccountRealtimeEvent = Extract<WorkspaceRealtimeEvent, { type: "external_account" }>;
@@ -77,14 +77,14 @@ function applyEventToAccounts(
   event: ExternalAccountRealtimeEvent,
 ): ExternalAccount[] {
   const current = accounts.find((account) => account.uuid === event.external_account.uuid);
-  if (current != null && current.revision > event.external_account.revision) {
+  const next = adaptWorkspaceExternalAccountDto(event.external_account);
+  if (current != null && isExternalAccountSnapshotOlder(next, current)) {
     return [...accounts];
   }
   if (event.kind === "external_account.deleted") {
     return accounts.filter((account) => account.uuid !== event.external_account.uuid);
   }
 
-  const next = adaptWorkspaceExternalAccountDto(event.external_account);
   return current == null
     ? [...accounts, next]
     : accounts.map((account) => (account.uuid === next.uuid ? next : account));
@@ -121,7 +121,8 @@ function applyActiveEvent(
   if (store.ownerKey !== context.ownerKey) return;
 
   const current = store.accounts.find((account) => account.uuid === event.external_account.uuid);
-  if (current != null && current.revision > event.external_account.revision) return;
+  const next = adaptWorkspaceExternalAccountDto(event.external_account);
+  if (current != null && isExternalAccountSnapshotOlder(next, current)) return;
 
   if (event.kind === "external_account.deleted") {
     markExternalAccountLocallyDeleted(context.ownerKey, event.external_account.uuid);
@@ -141,10 +142,7 @@ function applyActiveEvent(
   }
   if (deletedAccountUuids.has(event.external_account.uuid)) return;
 
-  store.upsertAccountForOwner(
-    context.ownerKey,
-    adaptWorkspaceExternalAccountDto(event.external_account),
-  );
+  store.upsertAccountForOwner(context.ownerKey, next);
 }
 
 export function createExternalAccountRealtimeApplier(

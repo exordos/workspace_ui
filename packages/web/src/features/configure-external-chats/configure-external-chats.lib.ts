@@ -3,7 +3,7 @@ import type { ExternalAccount } from "~/entities/external-account/external-accou
 const TEMPORARILY_ALLOW_EXTERNAL_CHAT_CATALOG_WITHOUT_CAPABILITY = true;
 
 export function hasExternalChatCatalog(account: ExternalAccount): boolean {
-  const capability = account.capabilities["messenger.chat_catalog"];
+  const capability = account.capabilities?.["messenger.chat_catalog"];
   if (typeof capability !== "object" || capability === null || Array.isArray(capability)) {
     return false;
   }

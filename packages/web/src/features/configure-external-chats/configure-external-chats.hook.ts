@@ -53,7 +53,7 @@ export type ExternalChatSettingsSaveStatus =
 interface ExternalAccountSettingsDraftState {
   scopeKey: string;
   accountUuid: string;
-  etag: string;
+  etag?: string;
   saved: {
     historyDepth: ExternalAccountHistoryDepth;
     selectionMode: ExternalAccountSelectionMode;

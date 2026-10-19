@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   adaptWorkspaceExternalAccountDto,
   isExternalAccountDuplicate,
+  toWorkspaceExternalAccountCacheProfile,
 } from "~/entities/external-account/external-account-adapters.lib";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
-import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
-import type {
-  ExternalAccount,
-  ExternalAccountHistoryDepth,
-  ExternalAccountSelectionMode,
-} from "~/entities/external-account/external-account.types";
+import {
+  isExternalAccountSnapshotOlder,
+  useExternalAccountStore,
+} from "~/entities/external-account/external-account.model";
+import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -19,18 +19,21 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   createExternalAccount,
+  getExternalAccount,
   reconnectExternalAccount,
+  updateExternalAccount,
 } from "~/shared/api/messenger-external-accounts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
+import { replaceWorkspaceExternalAccountCache } from "~/shared/lib/workspace-external-account-cache-db";
 import type {
   ConnectExternalAccountDraft,
   ConnectExternalAccountError,
   ConnectExternalAccountProvider,
 } from "./connect-external-account.types";
 
-export type ConnectExternalAccountPhase = "credentials" | "checking" | "chats" | "automaticDone";
+export type ConnectExternalAccountPhase = "credentials" | "checking" | "automaticDone";
 
 function emptyDraft(account?: ExternalAccount | null): ConnectExternalAccountDraft {
   return {
@@ -38,15 +41,13 @@ function emptyDraft(account?: ExternalAccount | null): ConnectExternalAccountDra
     serverUrl: account?.settings.serverUrl ?? "",
     email: account?.settings.email ?? "",
     apiKey: "",
-    selectionMode: account?.settings.selectionMode ?? "explicit",
-    historyDepth: account?.settings.historyDepth ?? "30_days",
   };
 }
 
 function isBridgeConfirmed(account: ExternalAccount): boolean {
   return (
     account.status === "live" &&
-    account.liveReady &&
+    account.liveReady === true &&
     account.appliedGeneration === account.desiredGeneration
   );
 }
@@ -85,7 +86,7 @@ export interface UseConnectExternalAccountOptions {
   open: boolean;
   runtimeContext: WorkspaceRuntimeContext | null;
   reconnectAccount?: ExternalAccount | null;
-  hasChatsStep?: boolean;
+  editAccount?: ExternalAccount | null;
   onCompleted?: () => void;
 }
 
@@ -103,8 +104,6 @@ export interface UseConnectExternalAccountResult {
   setServerUrl: (value: string) => void;
   setEmail: (value: string) => void;
   setApiKey: (value: string) => void;
-  setSelectionMode: (value: ExternalAccountSelectionMode) => void;
-  setHistoryDepth: (value: ExternalAccountHistoryDepth) => void;
   submit: () => void;
   resetCredentials: () => void;
 }
@@ -113,10 +112,10 @@ export function useConnectExternalAccount({
   open,
   runtimeContext,
   reconnectAccount = null,
-  hasChatsStep = false,
+  editAccount = null,
   onCompleted,
 }: UseConnectExternalAccountOptions): UseConnectExternalAccountResult {
-  const [draft, setDraft] = useState(() => emptyDraft(reconnectAccount));
+  const [draft, setDraft] = useState(() => emptyDraft(editAccount ?? reconnectAccount));
   const [phase, setPhase] = useState<ConnectExternalAccountPhase>("credentials");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<ConnectExternalAccountError | null>(null);
@@ -141,8 +140,9 @@ export function useConnectExternalAccount({
   );
   const reconnecting = reconnectTarget != null;
   const duplicateZulip = useMemo(
-    () => !reconnecting && isExternalAccountDuplicate(visibleAccounts, "zulip"),
-    [reconnecting, visibleAccounts],
+    () =>
+      editAccount == null && !reconnecting && isExternalAccountDuplicate(visibleAccounts, "zulip"),
+    [editAccount, reconnecting, visibleAccounts],
   );
 
   useEffect(() => {
@@ -160,7 +160,7 @@ export function useConnectExternalAccount({
       return;
     }
     const controller = new AbortController();
-    setDraft(emptyDraft(reconnectAccount));
+    setDraft(emptyDraft(editAccount ?? reconnectAccount));
     setPhase("credentials");
     setError(null);
     setLifecycleAccount(reconnectAccount);
@@ -172,13 +172,16 @@ export function useConnectExternalAccount({
         () => undefined,
       );
     }
-    return () => controller.abort();
-  }, [open, reconnectAccount, runtimeContext]);
+    return () => {
+      controller.abort();
+      requestControllerRef.current?.abort();
+    };
+  }, [editAccount, open, reconnectAccount, runtimeContext]);
 
   useEffect(() => {
     if (lifecycleAccount == null) return;
     const updated = visibleAccounts.find((account) => account.uuid === lifecycleAccount.uuid);
-    if (updated != null && updated.revision >= lifecycleAccount.revision) {
+    if (updated != null && !isExternalAccountSnapshotOlder(updated, lifecycleAccount)) {
       setLifecycleAccount(updated);
       if (reconnectTarget?.uuid === updated.uuid) setReconnectTarget(updated);
     }
@@ -195,7 +198,7 @@ export function useConnectExternalAccount({
     if (lifecycleAccount.status === "auth_required" || lifecycleAccount.status === "degraded") {
       setReconnectTarget(lifecycleAccount);
     }
-    if (phase === "chats" || phase === "automaticDone") {
+    if (phase === "automaticDone") {
       setPhase("checking");
     }
   }, [lifecycleAccount, phase]);
@@ -207,16 +210,8 @@ export function useConnectExternalAccount({
       reportCompleted();
       return;
     }
-    if (lifecycleAccount.settings.selectionMode === "all") {
-      setPhase("automaticDone");
-      return;
-    }
-    if (hasChatsStep) {
-      setPhase("chats");
-      return;
-    }
-    reportCompleted();
-  }, [hasChatsStep, lifecycleAccount, reconnecting, reportCompleted]);
+    setPhase("automaticDone");
+  }, [lifecycleAccount, reconnecting, reportCompleted]);
 
   const changeDraft = useCallback(
     (patch: Partial<ConnectExternalAccountDraft>, startsNewAttempt = true) => {
@@ -236,21 +231,18 @@ export function useConnectExternalAccount({
   );
   const setEmail = useCallback((email: string) => changeDraft({ email }), [changeDraft]);
   const setApiKey = useCallback((apiKey: string) => changeDraft({ apiKey }), [changeDraft]);
-  const setSelectionMode = useCallback(
-    (selectionMode: ExternalAccountSelectionMode) => changeDraft({ selectionMode }),
-    [changeDraft],
-  );
-  const setHistoryDepth = useCallback(
-    (historyDepth: ExternalAccountHistoryDepth) => changeDraft({ historyDepth }),
-    [changeDraft],
-  );
 
   const submit = useCallback(() => {
-    if (runtimeContext == null || submitting) return;
+    if (!open || runtimeContext == null || submitting || requestControllerRef.current != null)
+      return;
     const serverUrl = normalizeServerBaseUrl(draft.serverUrl);
     const email = draft.email.trim();
     const apiKey = draft.apiKey.trim();
-    if (serverUrl.length === 0 || email.length === 0 || apiKey.length === 0) {
+    if (
+      serverUrl.length === 0 ||
+      email.length === 0 ||
+      (editAccount == null && apiKey.length === 0)
+    ) {
       setError("fill");
       return;
     }
@@ -267,43 +259,66 @@ export function useConnectExternalAccount({
     if (requestContext == null) return;
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const controller = new AbortController();
-    requestControllerRef.current?.abort();
     requestControllerRef.current = controller;
     setSubmitting(true);
     setPhase("checking");
     setError(null);
     const options = buildMessengerRequestOptions(runtimeContext, undefined, controller.signal);
-    const request = reconnectTarget
-      ? reconnectExternalAccount(
+    const isInvalidated = () =>
+      isWorkspaceRuntimeRequestInvalidated(
+        requestContext,
+        () => runtimeRef.current,
+        controller.signal,
+      );
+    const request = (async () => {
+      if (editAccount != null) {
+        const latest = await getExternalAccount(options, editAccount.uuid);
+        if (isInvalidated()) throw new DOMException("Request aborted", "AbortError");
+        // PUT replaces settings, so retain credentials and provider options only in this request.
+        return updateExternalAccount(
+          options,
+          editAccount.uuid,
+          {
+            settings: {
+              ...latest.account.settings,
+              ...(serverUrl !== normalizeServerBaseUrl(editAccount.settings.serverUrl)
+                ? { server_url: serverUrl }
+                : {}),
+              ...(email !== editAccount.settings.email.trim() ? { email } : {}),
+              ...(apiKey.length > 0 ? { api_key: apiKey } : {}),
+            },
+          },
+          latest.etag,
+        );
+      }
+      if (reconnectTarget != null) {
+        return reconnectExternalAccount(
           options,
           reconnectTarget.uuid,
-          { settings: { kind: "zulip", server_url: serverUrl, email, api_key: apiKey } },
-          reconnectTarget.etag,
-        )
-      : createExternalAccount(options, {
-          uuid: currentAttemptUuid(attemptUuidRef),
-          settings: {
-            kind: "zulip",
-            server_url: serverUrl,
-            email,
-            api_key: apiKey,
-            selection_mode: draft.selectionMode,
-            history_depth: draft.historyDepth,
-            default_project_id: runtimeContext.projectId,
+          {
+            settings: { kind: "zulip", server_url: serverUrl, email, api_key: apiKey },
           },
-        });
+          reconnectTarget.etag,
+        );
+      }
+      return createExternalAccount(options, {
+        uuid: currentAttemptUuid(attemptUuidRef),
+        provider: "zulip",
+        settings: {
+          kind: "zulip",
+          server_url: serverUrl,
+          email,
+          api_key: apiKey,
+          selection_mode: "all",
+          history_depth: "all",
+          default_project_id: runtimeContext.projectId,
+        },
+      });
+    })();
 
     void request
-      .then((snapshot) => {
-        if (
-          isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            () => runtimeRef.current,
-            controller.signal,
-          )
-        ) {
-          return;
-        }
+      .then(async (snapshot) => {
+        if (isInvalidated()) return;
         const account = adaptWorkspaceExternalAccountDto(snapshot.account, snapshot.etag);
         const store = useExternalAccountStore.getState();
         store.upsertAccountForOwner(ownerKey, account);
@@ -313,23 +328,35 @@ export function useConnectExternalAccount({
             ? latestStore.accounts.find((item) => item.uuid === account.uuid)
             : undefined;
         const effectiveAccount =
-          currentAccount != null && currentAccount.revision > account.revision
+          currentAccount != null && isExternalAccountSnapshotOlder(account, currentAccount)
             ? currentAccount
             : account;
         setDraft((current) => ({ ...current, apiKey: "" }));
         setLifecycleAccount(effectiveAccount);
+        if (editAccount != null) {
+          await replaceWorkspaceExternalAccountCache(
+            ownerKey,
+            latestStore.accounts.map(toWorkspaceExternalAccountCacheProfile),
+            () =>
+              !isInvalidated() &&
+              useExternalAccountStore.getState().ownerKey === ownerKey &&
+              useExternalAccountStore.getState().loadGeneration === latestStore.loadGeneration,
+          );
+          if (!isInvalidated()) {
+            reportCompleted();
+          }
+          return;
+        }
+        if (reconnectTarget == null) {
+          reportCompleted();
+          return;
+        }
         if (effectiveAccount.status === "auth_required" || effectiveAccount.status === "degraded") {
           setReconnectTarget(effectiveAccount);
         }
       })
       .catch((requestError: unknown) => {
-        if (
-          !isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            () => runtimeRef.current,
-            controller.signal,
-          )
-        ) {
+        if (!isInvalidated()) {
           const mappedError = mapRequestError(requestError);
           setPhase("credentials");
           setError(mappedError);
@@ -341,20 +368,23 @@ export function useConnectExternalAccount({
         }
       })
       .finally(() => {
-        if (
-          !isWorkspaceRuntimeRequestInvalidated(
-            requestContext,
-            () => runtimeRef.current,
-            controller.signal,
-          )
-        ) {
+        if (!isInvalidated()) {
           setSubmitting(false);
           if (requestControllerRef.current === controller) {
             requestControllerRef.current = null;
           }
         }
       });
-  }, [draft, duplicateZulip, reconnectTarget, runtimeContext, submitting]);
+  }, [
+    draft,
+    duplicateZulip,
+    editAccount,
+    open,
+    reconnectTarget,
+    reportCompleted,
+    runtimeContext,
+    submitting,
+  ]);
 
   const resetCredentials = useCallback(() => {
     requestControllerRef.current?.abort();
@@ -381,8 +411,6 @@ export function useConnectExternalAccount({
     setServerUrl,
     setEmail,
     setApiKey,
-    setSelectionMode,
-    setHistoryDepth,
     submit,
     resetCredentials,
   };
