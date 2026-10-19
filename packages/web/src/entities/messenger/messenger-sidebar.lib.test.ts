@@ -13,7 +13,10 @@ import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
-import { createMessengerTopicMessagePreview } from "./messenger-topic-list.lib";
+import {
+  createMessengerTopicMessagePreview,
+  selectMessengerTopicsForStream,
+} from "./messenger-topic-list.lib";
 import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
 import type {
   MessengerConversation,
@@ -280,6 +283,98 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     ...overrides,
   };
 }
+
+describe("topic catalog indexing", () => {
+  function selectTopics(
+    state: Pick<MessengerStoreState, "topicIds" | "topicsById">,
+    streamUuid: string,
+    streamNotificationMode: MessengerStream["notificationMode"] = "all_messages",
+  ) {
+    return selectMessengerTopicsForStream({
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      state,
+      streamUuid,
+      streamNotificationMode,
+      messagesById: {},
+      usersById: {},
+      currentUserUuid: null,
+      sortMode: "unread_first",
+    });
+  }
+
+  it("reads each topic once across stream selections and ignores missing catalog IDs", () => {
+    const get = vi.fn((target: Record<string, MessengerTopic>, key: string) => target[key]);
+    const topicsById = new Proxy(
+      {
+        [TOPIC_A]: topic(),
+        [TOPIC_B]: topic({ uuid: TOPIC_B, streamUuid: STREAM_B }),
+      },
+      { get },
+    );
+    const state = { topicIds: [TOPIC_A, TOPIC_B, "missing"], topicsById };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_A]);
+    expect(selectTopics(state, STREAM_B).map((item) => item.topicUuid)).toEqual([TOPIC_B]);
+    expect(selectTopics(state, STREAM_C)).toEqual([]);
+    expect(get).toHaveBeenCalledTimes(3);
+  });
+
+  it("rebuilds after membership, ordering or immutable topic changes", () => {
+    const first = topic({ unreadCount: 0 });
+    const second = topic({ uuid: TOPIC_B, unreadCount: 0 });
+    const state = {
+      topicIds: [TOPIC_A, TOPIC_B],
+      topicsById: { [TOPIC_A]: first, [TOPIC_B]: second },
+    };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_A, TOPIC_B]);
+    const reordered = { ...state, topicIds: [TOPIC_B, TOPIC_A] };
+    expect(selectTopics(reordered, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+    ]);
+    expect(
+      selectTopics({ ...state, topicIds: [TOPIC_B] }, STREAM_A).map((item) => item.topicUuid),
+    ).toEqual([TOPIC_B]);
+    const moved = {
+      ...state,
+      topicsById: {
+        ...state.topicsById,
+        [TOPIC_A]: { ...first, streamUuid: STREAM_B, name: "Moved" },
+      },
+    };
+    expect(selectTopics(moved, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_B]);
+    expect(selectTopics(moved, STREAM_B)[0]?.title).toBe("Moved");
+    const changed = {
+      ...state,
+      topicsById: { ...state.topicsById, [TOPIC_B]: { ...second, unreadCount: 4 } },
+    };
+    expect(selectTopics(changed, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+    ]);
+  });
+
+  it("applies current stream mute and topic completion rules to indexed topics", () => {
+    const state = {
+      topicIds: [TOPIC_A, TOPIC_B, TOPIC_C],
+      topicsById: {
+        [TOPIC_A]: topic({ notificationMode: "default", updatedAt: DATE_B }),
+        [TOPIC_B]: topic({ uuid: TOPIC_B, notificationMode: "unmute" }),
+        [TOPIC_C]: topic({ uuid: TOPIC_C, isDone: true }),
+      },
+    };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_A,
+      TOPIC_B,
+      TOPIC_C,
+    ]);
+    expect(selectTopics(state, STREAM_A, "muted").map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+      TOPIC_C,
+    ]);
+  });
+});
 
 describe("messenger preview text cache", () => {
   const initialLocale = getLocale();

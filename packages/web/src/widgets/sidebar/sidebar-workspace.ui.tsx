@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   isWorkspaceStreamFullyMuted,
@@ -64,6 +64,34 @@ import {
 } from "./sidebar-workspace-search.lib";
 
 const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic"] as const;
+const SidebarCalendarContext = React.createContext(0);
+
+function useSidebarCalendarDay(): number {
+  const [day, setDay] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") return;
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      timer = setTimeout(refresh, midnight.getTime() - now.getTime());
+    };
+    const refresh = () => {
+      if (document.visibilityState !== "hidden") setDay((previous) => previous + 1);
+      schedule();
+    };
+    // One clock for the entire sidebar, including memoized stream and topic rows.
+    schedule();
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+  return day;
+}
 
 export interface WorkspaceSidebarProps {
   streams: MessengerSidebarStreamItem[];
@@ -166,6 +194,7 @@ const WorkspaceSidebarTopicRow = React.memo(function WorkspaceSidebarTopicRow({
   barColor: string;
 }>): React.ReactElement {
   useTranslation();
+  React.useContext(SidebarCalendarContext);
   const isActive = activeTopicUuid === topic.topicUuid;
   const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
   const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
@@ -373,6 +402,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
   onTopicCreated: (streamUuid: string, topicUuid: string) => void;
 }>): React.ReactElement {
   useTranslation();
+  React.useContext(SidebarCalendarContext);
   // Highlight follows the visible active location (collapsed topic → stream card).
   const isActive = isWorkspaceSidebarStreamHighlighted({
     streamUuid: stream.streamUuid,
@@ -573,6 +603,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   activityPanelBottomSlot,
   onOpenCreateChat,
 }) => {
+  const calendarDay = useSidebarCalendarDay();
   const location = useLocation();
   const navigate = useNavigate();
   const rightDrawer = useRightDrawer();
@@ -731,97 +762,99 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   );
 
   return (
-    <aside
-      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-lg bg-bg-elevated"
-      data-focus-zone="sidebar"
-      role="navigation"
-      aria-label="Chat list"
-    >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <ScrollArea className="flex-1" data-sidebar-scroll>
-          <SidebarSearchHeader
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
-          />
-          {!searchMode && (
-            <WorkspaceSidebarActivity
-              open={activityOpen}
-              onToggle={handleToggleActivity}
-              counts={activityCounts}
+    <SidebarCalendarContext.Provider value={calendarDay}>
+      <aside
+        className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-lg bg-bg-elevated"
+        data-focus-zone="sidebar"
+        role="navigation"
+        aria-label="Chat list"
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <ScrollArea className="flex-1" data-sidebar-scroll>
+            <SidebarSearchHeader
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
             />
-          )}
-          {activityPanelBottomSlot != null && (
-            <>
-              {activityPanelBottomSlot}
-              <div className="my-2">
-                <div className="bg-border-subtle/70 h-px" />
-              </div>
-            </>
-          )}
-          {loading && displayedStreamCount === 0 ? (
-            <div className="px-3 py-4">
-              <div
-                className="bg-bg-elevated/40 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center"
-                role="status"
-                aria-live="polite"
-                aria-busy="true"
-              >
-                <Spinner size="lg" className="shrink-0" />
-                <p className="text-sm text-text-muted">{t("app.loading")}</p>
-              </div>
-            </div>
-          ) : null}
-          {showBlockingError ? (
-            <div className="px-3 py-4">
-              <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
-                <Icon name="info" size={18} className="text-notice-base" />
-                <p className="text-sm font-medium text-text-primary">{t("app.error")}</p>
-                <p className="max-w-[220px] text-xs text-text-muted">{error}</p>
-              </div>
-            </div>
-          ) : null}
-          {showNonBlockingError ? (
-            <div className="px-3 pb-2">
-              <div className="bg-bg-elevated/60 flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2">
-                <Icon name="info" size={16} className="mt-0.5 shrink-0 text-notice-base" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-text-primary">
-                    {t("sidebar.partialLoadError")}
-                  </p>
-                  <p className="truncate text-xs text-text-muted">{error}</p>
+            {!searchMode && (
+              <WorkspaceSidebarActivity
+                open={activityOpen}
+                onToggle={handleToggleActivity}
+                counts={activityCounts}
+              />
+            )}
+            {activityPanelBottomSlot != null && (
+              <>
+                {activityPanelBottomSlot}
+                <div className="my-2">
+                  <div className="bg-border-subtle/70 h-px" />
+                </div>
+              </>
+            )}
+            {loading && displayedStreamCount === 0 ? (
+              <div className="px-3 py-4">
+                <div
+                  className="bg-bg-elevated/40 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <Spinner size="lg" className="shrink-0" />
+                  <p className="text-sm text-text-muted">{t("app.loading")}</p>
                 </div>
               </div>
-            </div>
-          ) : null}
-          {showEmptyState ? (
-            <div className="px-3 py-4">
-              <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
-                <Icon name="chatBubble" size={18} className="text-text-muted" />
-                <p className="text-sm font-medium text-text-primary">{emptyState.title}</p>
-                <p className="max-w-[220px] text-xs text-text-muted">{emptyState.hint}</p>
+            ) : null}
+            {showBlockingError ? (
+              <div className="px-3 py-4">
+                <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+                  <Icon name="info" size={18} className="text-notice-base" />
+                  <p className="text-sm font-medium text-text-primary">{t("app.error")}</p>
+                  <p className="max-w-[220px] text-xs text-text-muted">{error}</p>
+                </div>
               </div>
-            </div>
-          ) : null}
-          {renderWorkspaceSidebarStreamLists({
-            searchMode,
-            loading,
-            streams,
-            displayedStreamCount,
-            selectedFolderIsAll,
-            searchProjection,
-            renderStreams,
-          })}
-        </ScrollArea>
-        <CreateChatDialog
-          open={createChatOpen}
-          onOpenChange={setCreateChatOpen}
-          visibleTabs={WORKSPACE_CREATE_CHAT_VISIBLE_TABS}
-          onNavigateWorkspaceStream={handleWorkspaceStreamCreated}
-          onNavigateWorkspaceTopic={handleWorkspaceTopicCreated}
-          onChannelCreated={() => setCreateChatOpen(false)}
-        />
-      </div>
-    </aside>
+            ) : null}
+            {showNonBlockingError ? (
+              <div className="px-3 pb-2">
+                <div className="bg-bg-elevated/60 flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2">
+                  <Icon name="info" size={16} className="mt-0.5 shrink-0 text-notice-base" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-text-primary">
+                      {t("sidebar.partialLoadError")}
+                    </p>
+                    <p className="truncate text-xs text-text-muted">{error}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {showEmptyState ? (
+              <div className="px-3 py-4">
+                <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+                  <Icon name="chatBubble" size={18} className="text-text-muted" />
+                  <p className="text-sm font-medium text-text-primary">{emptyState.title}</p>
+                  <p className="max-w-[220px] text-xs text-text-muted">{emptyState.hint}</p>
+                </div>
+              </div>
+            ) : null}
+            {renderWorkspaceSidebarStreamLists({
+              searchMode,
+              loading,
+              streams,
+              displayedStreamCount,
+              selectedFolderIsAll,
+              searchProjection,
+              renderStreams,
+            })}
+          </ScrollArea>
+          <CreateChatDialog
+            open={createChatOpen}
+            onOpenChange={setCreateChatOpen}
+            visibleTabs={WORKSPACE_CREATE_CHAT_VISIBLE_TABS}
+            onNavigateWorkspaceStream={handleWorkspaceStreamCreated}
+            onNavigateWorkspaceTopic={handleWorkspaceTopicCreated}
+            onChannelCreated={() => setCreateChatOpen(false)}
+          />
+        </div>
+      </aside>
+    </SidebarCalendarContext.Provider>
   );
 };

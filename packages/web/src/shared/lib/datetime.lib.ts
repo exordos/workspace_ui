@@ -9,6 +9,35 @@
  */
 import { t, getLocale } from "~/i18n/i18n";
 
+const DATE_STYLES = {
+  compact: { day: "numeric", month: "short" },
+  dated: { day: "2-digit", month: "short", year: "numeric" },
+  joined: { year: "numeric", month: "short", day: "numeric" },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+const MAX_DATE_FORMATTERS = 12;
+
+function formatCalendarDate(date: Date, style: keyof typeof DATE_STYLES, locale?: string): string {
+  // Date#toLocaleDateString returns this label for invalid input instead of throwing.
+  if (Number.isNaN(date.getTime())) return date.toString();
+  const key = JSON.stringify([style, locale, new Date().getTimezoneOffset()]);
+  let formatter = dateFormatters.get(key);
+  if (formatter == null) {
+    if (dateFormatters.size >= MAX_DATE_FORMATTERS) dateFormatters.clear();
+    formatter = new Intl.DateTimeFormat(locale, DATE_STYLES[style]);
+    dateFormatters.set(key, formatter);
+  }
+  return formatter.format(date);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("languagechange", () => dateFormatters.clear());
+  document.addEventListener("visibilitychange", () => {
+    // Returning to the app must pick up OS timezone changes, including equal offsets.
+    if (document.visibilityState !== "hidden") dateFormatters.clear();
+  });
+}
+
 function localeTag(): string {
   return getLocale() === "ru" ? "ru-RU" : "en-US";
 }
@@ -42,7 +71,7 @@ export function formatMessageTimeRelative(ts: number): string {
   if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth()) {
     return t("chat.yesterday");
   }
-  return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  return formatCalendarDate(d, "compact", locale);
 }
 
 /** Feed/inbox rows: same day → short time; otherwise date + short time. */
@@ -54,11 +83,7 @@ export function formatMessageTimeWithDate(ts: number): string {
     date.getMonth() === now.getMonth() &&
     date.getFullYear() === now.getFullYear();
   if (sameDay) return formatMessageTimeShort(ts);
-  const datePart = date.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const datePart = formatCalendarDate(date, "dated");
   return `${datePart} ${formatMessageTimeShort(ts)}`;
 }
 
@@ -76,7 +101,7 @@ export function formatActivityItemTime(ts: number): string {
   if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth()) {
     return `${t("chat.yesterday")} ${formatMessageTimeShort(ts)}`;
   }
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return formatCalendarDate(d, "compact");
 }
 
 /** ISO or parseable date string → localized join date; returns input if unparseable. */
@@ -86,9 +111,5 @@ export function formatDateJoined(dateJoined: string | undefined): string | undef
   if (trimmed.length === 0) return undefined;
   const parsed = Date.parse(trimmed);
   if (Number.isNaN(parsed)) return trimmed;
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(parsed);
+  return formatCalendarDate(new Date(parsed), "joined");
 }

@@ -37,6 +37,8 @@ Compact list previews reuse Markdown summaries across read/reaction snapshots. T
 
 The sidebar publishes presentation snapshots at most once per 100 ms during realtime bursts; canonical stores, event order and persistence still update for every event. Hidden documents defer sidebar publication until visibility returns. User interaction and view selection flush the latest snapshot, while owner/generation changes and loading errors invalidate it immediately. Pending publication is cancelled on unmount and owner replacement.
 
+Topic grouping reuses one index per immutable catalog snapshot through weak keys. Date labels reuse at most 12 formatters; locale and visibility changes select or refresh them. One sidebar clock refreshes relative labels at local midnight and on visibility return, including memoized rows.
+
 ## Capability limits
 
 Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.

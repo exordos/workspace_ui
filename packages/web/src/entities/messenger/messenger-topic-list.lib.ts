@@ -20,6 +20,28 @@ import type {
 } from "./messenger.types";
 
 const EMPTY_TOPIC_LIST: MessengerTopicListItem[] = [];
+type TopicCatalog = Pick<MessengerStoreState, "topicIds" | "topicsById">;
+const topicsByStreamCache = new WeakMap<
+  TopicCatalog["topicsById"],
+  { topicIds: TopicCatalog["topicIds"]; byStream: Map<MessengerUuid, MessengerTopic[]> }
+>();
+
+function topicsByStream(state: TopicCatalog): Map<MessengerUuid, MessengerTopic[]> {
+  const cached = topicsByStreamCache.get(state.topicsById);
+  if (cached?.topicIds === state.topicIds) return cached.byStream;
+  const byStream = new Map<MessengerUuid, MessengerTopic[]>();
+  for (const id of state.topicIds) {
+    const topic = state.topicsById[id];
+    if (topic == null) continue;
+    const bucket = byStream.get(topic.streamUuid);
+    if (bucket != null) bucket.push(topic);
+    else byStream.set(topic.streamUuid, [topic]);
+  }
+  // Weak catalog keys let obsolete snapshots and their topic buckets be collected.
+  topicsByStreamCache.set(state.topicsById, { topicIds: state.topicIds, byStream });
+  return byStream;
+}
+
 const MAX_PREVIEW_TEXT_ENTRIES = 512;
 const MAX_PREVIEW_TEXT_BYTES = 1024 * 1024;
 const previewTextCache = new Map<
@@ -240,7 +262,7 @@ export function createMessengerTopicListItem(input: {
 export function selectMessengerTopicsForStream(input: {
   organizationId: string;
   projectId: string;
-  state: Pick<MessengerStoreState, "topicIds" | "topicsById">;
+  state: TopicCatalog;
   streamUuid: MessengerUuid;
   streamNotificationMode: MessengerStream["notificationMode"] | null;
   messagesById: Record<MessengerUuid, MessengerMessage>;
@@ -255,20 +277,17 @@ export function selectMessengerTopicsForStream(input: {
       projectId: input.projectId,
       messagesById: input.messagesById,
     });
-  const topics = input.state.topicIds
-    .map((topicId) => input.state.topicsById[topicId])
-    .filter((topic): topic is MessengerTopic => topic?.streamUuid === input.streamUuid)
-    .map((topic) =>
-      createMessengerTopicListItem({
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        topic,
-        messagesById: input.messagesById,
-        usersById: input.usersById,
-        currentUserUuid: input.currentUserUuid,
-        unreadMentionIndex,
-      }),
-    );
+  const topics = (topicsByStream(input.state).get(input.streamUuid) ?? []).map((topic) =>
+    createMessengerTopicListItem({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      topic,
+      messagesById: input.messagesById,
+      usersById: input.usersById,
+      currentUserUuid: input.currentUserUuid,
+      unreadMentionIndex,
+    }),
+  );
 
   if (topics.length === 0) return EMPTY_TOPIC_LIST;
   return topics.sort((a, b) =>

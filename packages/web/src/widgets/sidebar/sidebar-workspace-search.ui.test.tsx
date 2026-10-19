@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { adaptMessengerFolder } from "~/entities/messenger/messenger-adapters.lib";
 import {
@@ -341,5 +341,75 @@ describe("sidebar row memoization", () => {
     act(() => setLocale(locale === "en" ? "ru" : "en"));
     expect(format).toHaveBeenCalledTimes(5);
     act(() => setLocale(locale));
+  });
+});
+
+describe("sidebar calendar refresh", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
+  });
+
+  it("refreshes memoized chat and topic labels at midnight with one shared timer", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 23, 59, 59));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const createdAt = new Date(2026, 9, 20, 12).toISOString();
+    const release = { ...topic("stream-a", "topic-a", "Release"), lastMessageCreatedAt: createdAt };
+    const engineering = {
+      ...stream("stream-a", "Engineering", [release]),
+      lastMessageCreatedAt: createdAt,
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: ["stream-a"] });
+    renderSidebar({ streams: [engineering] });
+    expect(screen.getAllByText("12:00")).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getAllByText(t("chat.yesterday"))).toHaveLength(2);
+    expect(screen.queryByText("12:00")).not.toBeInTheDocument();
+    cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("defers the calendar while hidden and refreshes labels on return", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const engineering = {
+      ...stream("stream-a", "Engineering"),
+      lastMessageCreatedAt: new Date(2026, 9, 20, 9).toISOString(),
+    };
+    renderSidebar({ streams: [engineering] });
+    expect(screen.getByText("09:00")).toBeInTheDocument();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.setSystemTime(new Date(2026, 9, 21, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(screen.getByText(t("chat.yesterday"))).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("refreshes formatting on visibility return even within the same day and offset", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const format = vi.spyOn(datetime, "formatMessageTimeRelative");
+    const engineering = { ...stream("stream-a", "Engineering"), lastMessageCreatedAt: DATE };
+    renderSidebar({ streams: [engineering] });
+    expect(format).toHaveBeenCalledTimes(1);
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(format).toHaveBeenCalledTimes(2);
   });
 });
