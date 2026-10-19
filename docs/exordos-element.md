@@ -24,6 +24,12 @@ exordos build . \
 checks its root-path PWA contract, adds `build-ref.txt` and the public
 `logo-512x512.png` alias, and produces the versioned zstd tar archive.
 
+The `Exordos element` GitHub Actions workflow builds and publishes a development
+element on pushes to any branch. Branch publications do not advance `latest`;
+tag pushes retain release publication with `--latest`. Pull requests build and
+validate the element, while their branch push handles publication. A manual
+workflow run can also publish when its `publish` input is enabled.
+
 Published manifests download the artifact from:
 
 ```text

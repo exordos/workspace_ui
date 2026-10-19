@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - "**"
     tags:
       - "*"
   workflow_dispatch:
@@ -85,7 +85,7 @@ jobs:
         run: find "${ARTIFACTS_PATH}" -maxdepth 5 -type f -printf "%p %s bytes\n"
 
       - name: Publish element
-        if: ${{ github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
         env:
           PUSH_CFG: ${{ secrets.PUSH_EXORDOS_CFG }}
         run: |
