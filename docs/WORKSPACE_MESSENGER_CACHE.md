@@ -35,6 +35,8 @@ Conversation selector memoization uses weak message-map keys so visiting another
 
 Compact list previews reuse Markdown summaries across read/reaction snapshots. Their in-memory cache is limited to 512 entries and 1 MiB of estimated UTF-16 input/output storage, invalidates on locale changes, and clears on message-store owner changes. Sender names and routes are resolved from the current view; encrypted plaintext is not cached here.
 
+The sidebar publishes presentation snapshots at most once per 100 ms during realtime bursts; canonical stores, event order and persistence still update for every event. Hidden documents defer sidebar publication until visibility returns. User interaction and view selection flush the latest snapshot, while owner/generation changes and loading errors invalidate it immediately. Pending publication is cancelled on unmount and owner replacement.
+
 ## Capability limits
 
 Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.
