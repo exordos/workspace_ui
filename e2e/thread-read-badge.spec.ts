@@ -304,9 +304,7 @@ test.describe("Thread unread badge after scroll read @mock", () => {
 
   test("returning focus reads an older unread message through the already read tail", async ({
     authenticatedMocked: page,
-    browserName,
   }) => {
-    test.skip(browserName !== "chromium", "Requires control of Chromium focus emulation");
     const sockets: WebSocketRoute[] = [];
     const readUpToCalls: string[] = [];
     const gate = createReadUpToGate();
@@ -331,27 +329,35 @@ test.describe("Thread unread badge after scroll read @mock", () => {
     await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(1_000);
 
-    const session = await page.context().newCDPSession(page);
-    // Playwright otherwise keeps background pages focused for deterministic tests.
-    await session.send("Emulation.setFocusEmulationEnabled", { enabled: false });
-    const otherPage = await page.context().newPage();
+    // Headless shell does not blur the original page when another tab is activated.
+    const setFocused = (focused: boolean) =>
+      page.evaluate((focused) => {
+        Object.defineProperty(document, "hasFocus", {
+          configurable: true,
+          value: () => focused,
+        });
+        window.dispatchEvent(new FocusEvent(focused ? "focus" : "blur"));
+      }, focused);
     try {
-      await otherPage.bringToFront();
+      await setFocused(false);
       await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+      await expect(page.locator("html")).toHaveAttribute("data-window-activity", "visible");
       thread.markEarlierUnread(REAL_CONVERSATION_SAMPLE.length - 12);
       const socket = sockets.at(-1);
       if (socket == null) throw new Error("no realtime socket");
       socket.send(JSON.stringify(topicUpdatedFrame(2, 1)));
       await expect(badge).toHaveText("1");
+      // Let the read batch delay elapse before returning focus.
+      await page.waitForTimeout(500);
       expect(readUpToCalls).toHaveLength(0);
 
-      await page.bringToFront();
+      await setFocused(true);
+      await expect(page.locator("html")).toHaveAttribute("data-window-activity", "active");
       await expect.poll(() => readUpToCalls).toContain(LAST_MESSAGE_UUID);
       await expect(badge).toBeHidden();
       expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
     } finally {
-      await otherPage.close();
-      await session.detach();
+      await page.evaluate(() => Reflect.deleteProperty(document, "hasFocus"));
     }
   });
 
