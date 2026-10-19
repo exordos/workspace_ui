@@ -4,7 +4,6 @@
   "version": "0.9.1",
   "description": "Exordos Workspace - smart corporate messenger built with React/Electron",
   "workspaces": [
-    ".",
     "packages/*"
   ],
   "nx": {
@@ -59,11 +58,23 @@
     "node": ">=22"
   },
   "overrides": {
-    "axios": "1.15.2",
+    "axios": "1.20.0",
     "protobufjs": "7.5.8",
     "@protobufjs/utf8": "1.1.1",
-    "fast-uri": "3.1.2",
-    "ip-address": "10.1.1"
+    "fast-uri": "3.1.8",
+    "ip-address": "10.7.4",
+    "@electron/get": {
+      "global-agent": "4.1.3"
+    },
+    "lerna": {
+      "js-yaml": "4.3.2",
+      "pacote": "21.5.1",
+      "tar": "7.5.22"
+    },
+    "nx": {
+      "brace-expansion": "5.0.12",
+      "smol-toml": "1.9.1"
+    }
   },
   "devDependencies": {
     "@commitlint/cli": "21.0.2",
@@ -75,5 +86,16 @@
     "tinyexec": "1.2.4",
     "yaml": "2.9.0"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "allowScripts": {
+    "@jitsi/electron-sdk@10.0.4": true,
+    "@jitsi/robotjs@0.6.24": true,
+    "@swc/core@1.15.18": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true,
+    "msw@2.14.6": true,
+    "nx@22.7.12": true,
+    "simple-git-hooks@2.13.1": true,
+    "unrs-resolver@1.11.1": true
+  }
 }
