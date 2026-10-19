@@ -3,5 +3,14 @@ html,
 body {
   min-height: 100%;
   height: auto;
+  overscroll-behavior: auto;
+}
+
+html {
   overflow: auto;
+}
+
+/* Keep one viewport scroll owner; a second body scroller traps wheel and keyboard input. */
+body {
+  overflow: visible;
 }

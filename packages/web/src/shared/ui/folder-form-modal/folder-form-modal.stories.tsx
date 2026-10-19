@@ -1,15 +1,25 @@
+import { useEffect, useRef } from "react";
 import { useArgs } from "storybook/preview-api";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { FolderFormModal } from "./folder-form-modal.ui";
 import type { FolderFormModalProps } from "./folder-form-modal.types";
+import type { DocsPreviewParameters } from "../../../../.storybook/docs-preview.types";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 function FolderFormExample(args: Readonly<FolderFormModalProps>) {
   const [{ open }, updateArgs] = useArgs<FolderFormModalProps>();
+  const launcher = useRef<HTMLSpanElement>(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) launcher.current?.querySelector("button")?.focus();
+    wasOpen.current = open;
+  }, [open]);
   return (
     <>
-      <Button onClick={() => updateArgs({ open: true })}>{t("common.open")}</Button>
+      <span ref={launcher}>
+        <Button onClick={() => updateArgs({ open: true })}>{t("common.open")}</Button>
+      </span>
       <FolderFormModal {...args} open={open} onOpenChange={(open) => updateArgs({ open })} />
     </>
   );
@@ -32,6 +42,7 @@ const meta = {
   render: FolderFormExample,
   parameters: {
     layout: "centered",
+    docsPreview: { mode: "on-demand" } satisfies DocsPreviewParameters,
     docs: {
       description: {
         component:

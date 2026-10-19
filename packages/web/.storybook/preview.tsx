@@ -5,6 +5,7 @@ import { getLocale, getSupportedLocales, setLocale } from "~/i18n/i18n";
 import type { Locale } from "~/i18n/i18n";
 import { applyTheme } from "~/shared/lib/themes/engine";
 import { defaultPaletteId, palettes } from "~/shared/lib/themes/registry";
+import { LocalizedDocsPage } from "./docs-page";
 import "~/app/app.styles.css";
 import "~/app/focus-outline.styles.css";
 import "./preview.css";
@@ -72,6 +73,7 @@ const preview: Preview = {
     layout: "padded",
     backgrounds: { disable: true },
     controls: { matchers: { color: /(background|color)$/i, date: /Date$/i } },
+    docs: { page: LocalizedDocsPage },
   },
   loaders: [
     ({ globals }) => {

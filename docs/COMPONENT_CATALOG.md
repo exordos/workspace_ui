@@ -52,6 +52,8 @@ From the repository root, run `npm run storybook` to open the local catalog on p
 
 The [preview](../packages/web/.storybook/preview.tsx) uses application CSS and the real [theme engine](../packages/web/src/shared/lib/themes/engine.ts). The toolbar selects a palette from the [theme registry](../packages/web/src/shared/lib/themes/registry.ts), light/dark mode and English/Russian locale. Inspect affected states in the relevant themes and locales, including portal content such as dialogs and menus.
 
+The language toolbar also selects component introductions, authored prop explanations and story prose in Docs. Technical names, types, default values and source code stay unchanged; the optional native Controls panel retains Storybook's own interface. Documentation text lives in the Storybook-only [content dictionary](../packages/web/.storybook/docs-content.ts).
+
 Stories use local, synthetic fixtures and callbacks. They do not start the app, authenticate, or prove backend integration. Keep visible labels on the existing i18n path. For a new shared component or a change to its public behavior/appearance, add or update the adjacent story and revise this selection guide when its responsibility changes. Domain components can have stories in their own FSD layer; this catalog is an initial shared set, not an exhaustive UI inventory.
 
 A static build checks bundling. Visual comparison, accessibility checks and interaction execution are separate checks; do not infer they ran from a successful build. See [verification commands](PROJECT_FACTS.md#verification) and the [integration guide](INTEGRATION_GUIDE.md).

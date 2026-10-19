@@ -1,17 +1,32 @@
+import { useEffect, useRef } from "react";
 import { useArgs } from "storybook/preview-api";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { AppDialog, AppDialogFormFooter } from "./app-dialog.ui";
 import type { AppDialogProps } from "./app-dialog.types";
+import type { DocsPreviewParameters } from "../../../../.storybook/docs-preview.types";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
+function useLauncherFocus(open: boolean) {
+  const launcher = useRef<HTMLSpanElement>(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) launcher.current?.querySelector("button")?.focus();
+    wasOpen.current = open;
+  }, [open]);
+  return launcher;
+}
 
 function DialogExample(args: Readonly<AppDialogProps>) {
   const [{ open }, updateArgs] = useArgs<AppDialogProps>();
   const setOpen = (open: boolean) => updateArgs({ open });
+  const launcher = useLauncherFocus(open);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>{t("common.open")}</Button>
+      <span ref={launcher}>
+        <Button onClick={() => setOpen(true)}>{t("common.open")}</Button>
+      </span>
       <AppDialog
         {...args}
         open={open}
@@ -49,7 +64,10 @@ const meta = {
     footer: { control: false },
     onOpenChange: { control: false },
   },
-  parameters: { layout: "centered" },
+  parameters: {
+    layout: "centered",
+    docsPreview: { mode: "on-demand" } satisfies DocsPreviewParameters,
+  },
 } satisfies Meta<typeof AppDialog>;
 
 export default meta;
@@ -64,9 +82,12 @@ function DialogWithFooterState({
   submitting,
 }: Readonly<{ args: AppDialogProps; submitting: boolean }>) {
   const close = () => args.onOpenChange(false);
+  const launcher = useLauncherFocus(args.open);
   return (
     <>
-      <Button onClick={() => args.onOpenChange(true)}>{t("common.open")}</Button>
+      <span ref={launcher}>
+        <Button onClick={() => args.onOpenChange(true)}>{t("common.open")}</Button>
+      </span>
       <AppDialog
         {...args}
         open={args.open}
@@ -93,10 +114,10 @@ function DialogWithFooterState({
 export const SubmittingFooter: Story = {
   args: { open: true },
   render: function Render(args) {
-    const [, updateArgs] = useArgs<AppDialogProps>();
+    const [{ open }, updateArgs] = useArgs<AppDialogProps>();
     return (
       <DialogWithFooterState
-        args={{ ...args, onOpenChange: (open) => updateArgs({ open }) }}
+        args={{ ...args, open, onOpenChange: (open) => updateArgs({ open }) }}
         submitting
       />
     );
@@ -105,10 +126,10 @@ export const SubmittingFooter: Story = {
 export const DisabledSubmitFooter: Story = {
   args: { open: true },
   render: function Render(args) {
-    const [, updateArgs] = useArgs<AppDialogProps>();
+    const [{ open }, updateArgs] = useArgs<AppDialogProps>();
     return (
       <DialogWithFooterState
-        args={{ ...args, onOpenChange: (open) => updateArgs({ open }) }}
+        args={{ ...args, open, onOpenChange: (open) => updateArgs({ open }) }}
         submitting={false}
       />
     );
@@ -124,6 +145,12 @@ export const OpenAndDismiss: Story = {
     await expect(dialog).toBeVisible();
     await userEvent.click(within(dialog).getByRole("button", { name: t("common.cancel") }));
     await waitFor(() => expect(page.queryByRole("dialog")).not.toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: t("common.open") })).toBeVisible();
+    const launcher = canvas.getByRole("button", { name: t("common.open") });
+    await expect(launcher).toHaveFocus();
+    await userEvent.click(launcher);
+    await expect(await page.findByRole("dialog")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(page.queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(launcher).toHaveFocus();
   },
 };
