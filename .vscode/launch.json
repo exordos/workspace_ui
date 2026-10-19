@@ -5,7 +5,7 @@
       "name": "Vite: Web App",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "/home/agent/.local/bin/node",
       "program": "${workspaceFolder}/node_modules/vite/bin/vite.js",
       "args": ["--host", "127.0.0.1", "--port", "5173", "--strictPort"],
       "cwd": "${workspaceFolder}/packages/web",
