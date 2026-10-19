@@ -177,6 +177,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
       "No external accounts connected yet.",
     );
+    expect(screen.queryByText("Connected", { exact: true })).not.toBeInTheDocument();
   });
 
   it("renders account identity and status without a nested accordion", () => {
@@ -189,6 +190,7 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     expect(screen.getByTestId("external-account-row")).toHaveTextContent("user@example.com");
     expect(screen.getByTestId("external-account-row")).toHaveTextContent("Zulip");
     expect(screen.getByTestId("external-account-row")).toHaveTextContent("Loading history…");
+    expect(screen.getByText("Connected", { exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect service" })).toBeInTheDocument();
   });
 

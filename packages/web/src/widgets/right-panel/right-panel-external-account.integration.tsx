@@ -199,7 +199,9 @@ export const RightPanelExternalAccountsList: React.FC<{
       data-testid="connected-external-accounts-list"
     >
       <div className="flex flex-col gap-5">
-        <p className="text-xs leading-4 text-text-muted">{t("externalAccounts.connected")}</p>
+        {runtimeContext != null && visibleAccounts.length > 0 ? (
+          <p className="text-xs leading-4 text-text-muted">{t("externalAccounts.connected")}</p>
+        ) : null}
         {accountLoadFailed ? (
           <p role="alert" className="text-xs leading-4 text-notice-base">
             {t("externalAccounts.loadFailed")}
