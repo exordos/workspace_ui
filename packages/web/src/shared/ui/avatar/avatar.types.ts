@@ -1,4 +1,4 @@
-import type { PresenceVisual } from "./presence-indicator.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 import type { CSSProperties, ReactNode } from "react";
 
 /** xs=36, sm=32, md=40, lg=48, xl=64 (profile header / Figma profile block). */

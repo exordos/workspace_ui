@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PresenceIndicator } from "./presence-indicator";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import type { AvatarProps, AvatarSize } from "./avatar.types";
 import type { CSSProperties } from "react";
 

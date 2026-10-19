@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Avatar } from "~/shared/ui/avatar";
+import { Avatar } from "./avatar";
 
 describe("Avatar", () => {
   it("renders the supplied image URL directly", () => {

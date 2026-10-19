@@ -7,7 +7,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceAvatarUrl } from "~/shared/lib/workspace-avatar.lib";
 import { Avatar } from "~/shared/ui/avatar";
-import type { AvatarProps } from "~/shared/ui/avatar.types";
+import type { AvatarProps } from "~/shared/ui/avatar";
 
 export interface WorkspaceAvatarProps extends Omit<AvatarProps, "src"> {
   avatarUrn: string | null | undefined;

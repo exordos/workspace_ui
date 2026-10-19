@@ -44,7 +44,7 @@ Import according to the boundary:
 ```ts
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
 ```
 
 `~/` resolves to `packages/web/src/`. Indexes are optional: do not create one for every helper or folder, scaffold module trees, or retroactively migrate working imports merely for consistency. Existing indexes with real implementation may remain natural entrypoints. An index alone does not enforce encapsulation; the module contract and FSD rules still apply.
