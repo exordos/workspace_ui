@@ -18,7 +18,7 @@ Feature/fix PRs normally target `master`; follow an explicitly requested target.
 
 ## Code standards
 
-[AGENTS.md](AGENTS.md) contains the shared core rules. Use Workspace UUIDs, concrete imports, narrow selectors, i18n, semantic tokens, sanitized rendering and project logging. Keep scope small; do not add file segments or abstractions by template.
+[AGENTS.md](AGENTS.md) contains the shared core rules. Use Workspace UUIDs, narrow selectors, i18n, semantic tokens, sanitized rendering and project logging. Follow the [architecture policy](docs/fsd-architecture.md#files-and-imports) for imports. Keep scope small; do not add file segments or abstractions by template.
 
 Use regression tests for behavior with meaningful failure modes. A focused bug test should demonstrate the failure when practical. Pure presentation or documentation changes do not need artificial tests that mirror the implementation.
 

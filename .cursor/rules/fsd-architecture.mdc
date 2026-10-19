@@ -9,5 +9,5 @@ Read `docs/fsd-architecture.md` for the maintained architecture policy and `docs
 
 - Determine the owning layer and data source before adding files. Do not generate types/API/store/UI/page scaffolding by default.
 - Respect the layer direction and documented exceptions; a same-layer import is not automatically valid.
-- Import concrete modules as described in `no-barrel-index.mdc`.
+- Read the [module policy](../../docs/fsd-architecture.md#files-and-imports) when defining boundaries or choosing imports.
 - Keep a new cross-cutting decision in the architecture document or a focused ADR when needed, not in another duplicate rule.

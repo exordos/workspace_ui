@@ -13,7 +13,7 @@ Read `AGENTS.md` for required verification and `docs/PROJECT_FACTS.md` for curre
 
 - Test observable behavior and meaningful boundaries. A bug reproduction should fail for the actual regression, not merely mirror the implementation.
 - Use current Workspace fixtures and UUID contracts; legacy factory data may not fit the new path.
-- Mock owned boundaries through the concrete import path. Reset stores, mocks, timers, storage, and subscriptions between cases.
+- Mock owned boundaries through the module path imported by the caller. Reset stores, mocks, timers, storage, and subscriptions between cases.
 - For async/cache changes, cover obsolete owner responses, failure handling, and persistence only where relevant to the change.
 - Run focused tests first. Do not mandate TDD, a coverage percentage, or the full suite after every minor edit; broaden checks according to the change and failures.
 - Documentation/format-only changes generally need document checks, not implementation-mirroring tests. State any unrun checks.

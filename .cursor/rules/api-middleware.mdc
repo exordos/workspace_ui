@@ -13,4 +13,4 @@ Read `docs/API_CLIENT_REFERENCE.md` and the backend contract links in `docs/PROJ
 - `packages/web/src/shared/api/client.ts` and `zulip-*.ts` contain legacy transport. Do not route new Workspace requests through Zulip middleware or Basic authentication.
 - Reuse the correct transport for URL, auth, error, and response handling; do not duplicate those concerns in pages or components.
 - Verify retry behavior at the actual call site. Do not assume all requests retry or blindly retry a non-idempotent mutation.
-- Mock the concrete module imported by the caller. Cover malformed responses and owner changes when those contracts change; see `docs/ORG_SCOPED_ASYNC_SAFETY.md`.
+- Mock the module path actually imported by the caller. Cover malformed responses and owner changes when those contracts change; see `docs/ORG_SCOPED_ASYNC_SAFETY.md`.

@@ -44,6 +44,6 @@ External-account registry snapshots identify the provider at the top level and m
 - Capture async runtime ownership before a request; cancellation alone does not prevent every stale store/cache write. Follow [async safety](ORG_SCOPED_ASYNC_SAFETY.md).
 - Keep transport errors and server authorization failures visible to the owning feature. Do not turn failures into fabricated successful domain data or automatically retry a mutation without checking its contract.
 - Confirm endpoint availability in the backend contract before implementing it. A UI capability marked `unsupported` describes the current frontend path; it is not proof that every backend deployment lacks the endpoint.
-- Extend the existing transport and domain modules rather than introducing a parallel fetch/token/error layer. Import symbols from concrete modules, not a new barrel.
+- Extend the existing transport and domain modules rather than introducing a parallel fetch/token/error layer. Follow the [module boundary policy](fsd-architecture.md#files-and-imports) for imports.
 
 For integration steps and appropriately scoped checks, see [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).

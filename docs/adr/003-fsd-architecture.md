@@ -2,6 +2,8 @@
 
 > Historical decision record. Versions, file inventories, commands and audit counts below describe the original decision or its dated updates. Use [Project Facts](../PROJECT_FACTS.md) and [active architecture](../fsd-architecture.md) for current implementation guidance.
 
+> Import policy update (2026-10-19): the blanket index prohibition recorded below is historical. Follow the current [module policy](../fsd-architecture.md#files-and-imports).
+
 **Date**: 2026-03
 **Status**: accepted (migration complete)
 
@@ -30,7 +32,7 @@ Current FSD structure (see [PROJECT_FACTS.md](../PROJECT_FACTS.md) for the autho
 
 - **17 entities**, **22 features**, **9 widgets**, **14 pages**
 - **shared**: UI primitives, API client (`shared/api/`), utilities (`shared/lib/`), config, icons
-- **Imports**: concrete segment files only — no barrel-only `index.ts` (see ADR-009, `.cursor/rules/no-barrel-index.mdc`)
+- **Imports**: concrete segment files only — no barrel-only `index.ts` (historical; see current policy above)
 
 Pre-FSD directories (`components/`, `stores/`, `lib/`, `contexts/`) are **removed**. Client-side legacy compatibility for old persisted state was dropped per [ADR-013](013-greenfield-drop-client-legacy-compat.md).
 

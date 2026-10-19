@@ -9,7 +9,7 @@ globs:
 
 Sources: `packages/web/src/shared/lib/embed.lib.ts` and `packages/web/src/shared/lib/embed-frame.ui.tsx`.
 
-- Use the existing allowlist validator and `EmbedFrame` rather than a new raw iframe path. Import the concrete modules.
+- Use the existing allowlist validator and `EmbedFrame` rather than a new raw iframe path.
 - An allowlisted origin is a trust decision; do not weaken the allowlist merely to make a preview render.
 - Choose the minimum sandbox capabilities required. Preserve URL protocol checks and referrer policy.
 - Keep the configured CSP frame policy consistent with application allowlisting; an iframe rendering successfully is not proof its contents are isolated safely.

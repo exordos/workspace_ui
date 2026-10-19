@@ -25,8 +25,8 @@ them within scope, preserve unrelated work, and validate the final change propor
   appropriate. Follow [async safety](../../../docs/ORG_SCOPED_ASYNC_SAFETY.md).
 - **Realtime:** event order, duplicate application, reconnect catch-up, scoped cursors,
   and stale callbacks from a replaced runtime.
-- **Architecture and types:** FSD direction, concrete imports without barrels, workflows
-  owned outside pages, strict types, and explicit handling of absent indexed values.
+- **Architecture and types:** FSD direction and [module boundary imports](../../../docs/fsd-architecture.md#files-and-imports),
+  workflows owned outside pages, strict types, and explicit handling of absent indexed values.
 - **Security:** actual auth/permission boundary, sanitized HTML rendering, URL use in its
   destination context, sensitive logging, Electron IPC and external navigation when relevant.
   Do not equate client UI permission checks with server authorization.

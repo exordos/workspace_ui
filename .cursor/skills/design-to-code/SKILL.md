@@ -25,7 +25,8 @@ requirements with a generic spacing grid; explain any real constraint that affec
 
 ## Implement
 
-Use concrete imports without barrel-only `index.ts` files. Keep reusable visuals in `shared`,
+Follow the [module policy](../../../docs/fsd-architecture.md#files-and-imports) when choosing imports.
+Keep reusable visuals in `shared`,
 domain binding in entities, user actions in features, compositions in widgets, and routes thin.
 Create only the files needed by the change.
 

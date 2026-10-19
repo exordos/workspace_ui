@@ -6,7 +6,7 @@ Start with [AGENTS.md](../AGENTS.md), [PROJECT_FACTS.md](PROJECT_FACTS.md) and [
 
 Trace the current UI entry point to its feature, entity and API module. Use the [component map](COMPONENT_CATALOG.md), [state map](STORES_REFERENCE.md) and [API map](API_CLIENT_REFERENCE.md) for navigation, then read the actual code. Identify which layer owns the change before creating files.
 
-Dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Keep new route/page wiring thin. Extend existing helpers and models where they own the behavior; do not create a store, API wrapper, type file or page merely to complete a template. Import from concrete files, without barrel-only `index.ts` files.
+Dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Keep new route/page wiring thin. Extend existing helpers and models where they own the behavior; do not create a store, API wrapper, type file or page merely to complete a template. Read the [module boundary policy](fsd-architecture.md#files-and-imports) before choosing imports or defining a module API.
 
 Check the backend contract links in `PROJECT_FACTS.md` before relying on an endpoint, mutation or event. Keep Workspace identifiers UUID-native. If an action is not supported by the available contract/integration, expose an explicit unsupported, read-only or error state. Never substitute a hidden Zulip request or fake successful result.
 

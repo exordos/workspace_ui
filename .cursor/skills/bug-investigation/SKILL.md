@@ -36,7 +36,8 @@ do not use legacy numeric guards or Zulip fixtures for the new messenger path.
 ## Fix and validate when authorized
 
 Explain the structural cause and apply the smallest fix that addresses it. Reuse current
-helpers and concrete imports. Preserve cache-first behavior and runtime ownership.
+helpers and follow [module boundary imports](../../../docs/fsd-architecture.md#files-and-imports).
+Preserve cache-first behavior and runtime ownership.
 
 For a logic or state regression, add a focused test that reproduces the failure when useful,
 and verify it fails before the fix if practical. For a visual-only adjustment, use the

@@ -1,6 +1,6 @@
 # Component responsibility map
 
-This map identifies entry points rather than enumerating every component or duplicating props. Follow [FSD architecture](fsd-architecture.md) and [PROJECT_FACTS.md](PROJECT_FACTS.md); imports point to concrete files.
+This map identifies entry points rather than enumerating every component or duplicating props. Follow [FSD architecture](fsd-architecture.md) and [PROJECT_FACTS.md](PROJECT_FACTS.md); the entries below point to current concrete files. Read the [module policy](fsd-architecture.md#files-and-imports) when selecting imports.
 
 ## Current Workspace composition
 
@@ -33,4 +33,4 @@ Preserve the visible messenger shell unless redesign is part of the task. New vi
 
 Message HTML uses the established [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts) and sanitization. Component reuse must not bypass that boundary. UUIDs remain UUIDs throughout callbacks; do not adapt Workspace identity to obsolete numeric Zulip identifiers.
 
-For exact props and examples, inspect the linked component and its adjacent tests. Add only the files needed by the change; no generated `index.ts` barrels or mandatory component/store/API bundles. Behavioral and visual validation requirements are described in [the integration guide](INTEGRATION_GUIDE.md).
+For exact props and examples, inspect the linked component and its adjacent tests. Add only the files needed by the change; no mandatory component/store/API bundles. Behavioral and visual validation requirements are described in [the integration guide](INTEGRATION_GUIDE.md).
