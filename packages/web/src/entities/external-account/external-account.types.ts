@@ -13,11 +13,11 @@ export type ExternalAccountLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface ExternalAccountSettings {
   kind: "zulip";
-  serverUrl: string;
-  email: string;
-  selectionMode: ExternalAccountSelectionMode;
-  historyDepth: ExternalAccountHistoryDepth;
-  defaultProjectId: string;
+  serverUrl?: string;
+  email?: string;
+  selectionMode?: ExternalAccountSelectionMode;
+  historyDepth?: ExternalAccountHistoryDepth;
+  defaultProjectId?: string;
 }
 
 export interface ExternalAccount {

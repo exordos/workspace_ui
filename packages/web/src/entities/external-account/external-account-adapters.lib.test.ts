@@ -3,6 +3,8 @@ import type { WorkspaceExternalAccountDto } from "~/shared/api/messenger-externa
 import {
   adaptWorkspaceExternalAccountDto,
   isExternalAccountDuplicate,
+  toWorkspaceExternalAccountCacheProfile,
+  adaptCachedExternalAccount,
 } from "./external-account-adapters.lib";
 
 const dto: WorkspaceExternalAccountDto = {
@@ -31,6 +33,45 @@ const dto: WorkspaceExternalAccountDto = {
 const TEST_API_KEY = "test-secret";
 
 describe("external account adapters", () => {
+  it("keeps missing registry configuration absent through domain and cache adaptation", () => {
+    const registry = {
+      uuid: dto.uuid,
+      provider: "zulip" as const,
+      settings: {
+        server_url: "https://zulip.example.com",
+        email: "user@example.com",
+        api_key: TEST_API_KEY,
+        provider_secret: "secret-option",
+      },
+      status: "active" as const,
+      created_at: dto.created_at,
+      updated_at: dto.updated_at,
+    };
+    const account = adaptWorkspaceExternalAccountDto(registry);
+    expect(account.settings).toEqual({
+      kind: "zulip",
+      serverUrl: registry.settings.server_url,
+      email: registry.settings.email,
+    });
+    const cached = toWorkspaceExternalAccountCacheProfile(account);
+    expect(adaptCachedExternalAccount(cached)).toEqual(account);
+    expect(JSON.stringify(cached)).not.toContain(TEST_API_KEY);
+    expect(JSON.stringify(cached)).not.toContain("secret-option");
+  });
+
+  it("accepts an account whose registry settings have not been filled in", () => {
+    expect(
+      adaptWorkspaceExternalAccountDto({
+        uuid: dto.uuid,
+        provider: "zulip",
+        settings: {},
+        status: "new",
+        created_at: dto.created_at,
+        updated_at: dto.updated_at,
+      }).settings,
+    ).toEqual({ kind: "zulip" });
+  });
+
   it("maps a registry model without inventing lifecycle fields or keeping credentials", () => {
     const settings = { ...dto.settings, api_key: TEST_API_KEY };
     const account = adaptWorkspaceExternalAccountDto({

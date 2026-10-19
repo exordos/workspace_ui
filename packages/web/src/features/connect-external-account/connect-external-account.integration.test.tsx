@@ -153,13 +153,9 @@ const existingDto = {
   uuid: "33333333-3333-4333-8333-333333333333",
   provider: "zulip" as const,
   settings: {
-    kind: "zulip" as const,
     server_url: "https://zulip.example.invalid",
     email: "test@example.invalid",
     api_key: EXISTING_API_KEY,
-    selection_mode: "explicit" as const,
-    history_depth: "30_days" as const,
-    default_project_id: "original-project",
     provider_option: "preserve-me",
   },
   status: "new" as const,
@@ -177,6 +173,45 @@ function accountResponse(
 }
 
 describe("external account editing", () => {
+  it("fills missing credentials without adding legacy settings", async () => {
+    const empty = { ...existingDto, settings: {}, status: "new" as const };
+    const settings = {
+      server_url: "https://zulip.example.invalid",
+      email: "new@example.invalid",
+      api_key: TEST_API_KEY,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input, init) => {
+      let body: unknown = empty;
+      if (requestUrl(input).endsWith("/external_accounts/")) body = [empty];
+      if (init?.method === "PUT") body = { ...empty, settings };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderWithProviders(<FormHost editAccount={adaptWorkspaceExternalAccountDto(empty)} />);
+    await waitFor(() => expect(useExternalAccountStore.getState().loadStatus).toBe("ready"));
+    expect(screen.getByLabelText("Server URL")).toHaveValue("");
+    expect(screen.getByLabelText("Email")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: settings.server_url },
+    });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: settings.email } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: settings.api_key } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(put?.[1]?.body).toBe(JSON.stringify({ settings }));
+    expect(useExternalAccountStore.getState().accounts[0]?.settings).toEqual({
+      kind: "zulip",
+      serverUrl: settings.server_url,
+      email: settings.email,
+    });
+    expect(JSON.stringify(useExternalAccountStore.getState().accounts)).not.toContain(TEST_API_KEY);
+  });
+
   afterEach(() => {
     useExternalAccountStore.getState().clear();
     vi.unstubAllGlobals();

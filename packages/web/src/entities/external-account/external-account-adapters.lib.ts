@@ -6,16 +6,23 @@ export function adaptWorkspaceExternalAccountDto(
   dto: WorkspaceExternalAccountDto,
   etag = dto.revision == null ? undefined : `"${dto.revision}"`,
 ): ExternalAccount {
+  const provider = "provider" in dto ? dto.provider : dto.settings.kind;
   const account = {
     uuid: dto.uuid,
-    provider: dto.settings.kind,
+    provider,
     settings: {
-      kind: dto.settings.kind,
-      serverUrl: dto.settings.server_url,
-      email: dto.settings.email,
-      selectionMode: dto.settings.selection_mode,
-      historyDepth: dto.settings.history_depth,
-      defaultProjectId: dto.settings.default_project_id,
+      kind: provider,
+      ...(dto.settings.server_url === undefined ? {} : { serverUrl: dto.settings.server_url }),
+      ...(dto.settings.email === undefined ? {} : { email: dto.settings.email }),
+      ...(dto.settings.selection_mode === undefined
+        ? {}
+        : { selectionMode: dto.settings.selection_mode }),
+      ...(dto.settings.history_depth === undefined
+        ? {}
+        : { historyDepth: dto.settings.history_depth }),
+      ...(dto.settings.default_project_id === undefined
+        ? {}
+        : { defaultProjectId: dto.settings.default_project_id }),
     },
     status: dto.status,
     revision: dto.revision,

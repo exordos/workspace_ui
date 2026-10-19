@@ -53,6 +53,12 @@ afterEach(async () => {
 });
 
 describe("workspace-external-account-cache-db", () => {
+  it("persists registry profiles without manufacturing legacy settings", async () => {
+    const account = { ...cachedAccount("registry"), settings: { kind: "zulip" as const } };
+    await replaceWorkspaceExternalAccountCache(OWNER_A, [account]);
+    await expect(readWorkspaceExternalAccountCache(OWNER_A)).resolves.toEqual([account]);
+  });
+
   it("opens the v2 owner-scoped cache", async () => {
     const db = await openWorkspaceExternalAccountCacheDb();
     expect(db.name).toBe(WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_NAME);

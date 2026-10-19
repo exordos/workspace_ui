@@ -281,10 +281,10 @@ export function useConnectExternalAccount({
           {
             settings: {
               ...latest.account.settings,
-              ...(serverUrl !== normalizeServerBaseUrl(editAccount.settings.serverUrl)
+              ...(serverUrl !== normalizeServerBaseUrl(editAccount.settings.serverUrl ?? "")
                 ? { server_url: serverUrl }
                 : {}),
-              ...(email !== editAccount.settings.email.trim() ? { email } : {}),
+              ...(email !== (editAccount.settings.email?.trim() ?? "") ? { email } : {}),
               ...(apiKey.length > 0 ? { api_key: apiKey } : {}),
             },
           },

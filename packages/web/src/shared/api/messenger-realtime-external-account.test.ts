@@ -65,7 +65,7 @@ describe("external account realtime transport", () => {
     const snapshot = {
       uuid: current.uuid,
       provider: "zulip" as const,
-      settings: current.settings,
+      settings: { server_url: "https://zulip.example.com", email: "user@example.com" },
       status: "new" as const,
       created_at: current.created_at,
       updated_at: current.updated_at,

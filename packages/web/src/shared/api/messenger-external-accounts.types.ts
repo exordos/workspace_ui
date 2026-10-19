@@ -28,7 +28,7 @@ export interface WorkspaceZulipExternalAccountSettingsDto {
 export interface WorkspaceExternalAccountRegistryDto {
   uuid: WorkspaceMessengerUuid;
   provider: WorkspaceExternalAccountProvider;
-  settings: WorkspaceZulipExternalAccountSettingsDto;
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto>;
   status: "new" | "backfill" | "fast_backfill" | "active" | "error";
   error_description?: string | null;
   revision?: number;
@@ -65,9 +65,7 @@ export interface WorkspaceExternalAccountCreateRequestBody {
 }
 
 export interface WorkspaceExternalAccountUpdateRequestBody {
-  settings: { kind: "zulip"; api_key?: string } & Partial<
-    Omit<WorkspaceZulipExternalAccountSettingsDto, "kind">
-  >;
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto> & { api_key?: string };
 }
 
 export interface WorkspaceExternalAccountReconnectRequestBody {
@@ -122,6 +120,21 @@ function isStatus(value: unknown): value is WorkspaceExternalAccountStatus {
   );
 }
 
+// Registry settings are a dictionary, not the legacy lifecycle configuration.
+function isRegistrySettings(
+  value: unknown,
+): value is Partial<WorkspaceZulipExternalAccountSettingsDto> {
+  return (
+    isRecord(value) &&
+    (value.kind === undefined || value.kind === "zulip") &&
+    (value.server_url === undefined || typeof value.server_url === "string") &&
+    (value.email === undefined || typeof value.email === "string") &&
+    (value.selection_mode === undefined || isSelectionMode(value.selection_mode)) &&
+    (value.history_depth === undefined || isHistoryDepth(value.history_depth)) &&
+    (value.default_project_id === undefined || typeof value.default_project_id === "string")
+  );
+}
+
 function isSettings(value: unknown): value is WorkspaceZulipExternalAccountSettingsDto {
   return (
     isRecord(value) &&
@@ -141,7 +154,7 @@ export function isWorkspaceExternalAccountDto(
     return (
       isNonEmptyString(value.uuid) &&
       value.provider === "zulip" &&
-      isSettings(value.settings) &&
+      isRegistrySettings(value.settings) &&
       (value.status === "new" ||
         value.status === "backfill" ||
         value.status === "fast_backfill" ||

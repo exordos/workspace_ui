@@ -11,6 +11,7 @@ export function hasExternalChatCatalog(account: ExternalAccount): boolean {
 }
 
 export function canConfigureExternalChats(account: ExternalAccount): boolean {
+  if (account.settings.historyDepth == null || account.settings.selectionMode == null) return false;
   // The account snapshot can lag behind the catalog endpoint during bridge rollout.
   if (TEMPORARILY_ALLOW_EXTERNAL_CHAT_CATALOG_WITHOUT_CAPABILITY) return true;
   return hasExternalChatCatalog(account);

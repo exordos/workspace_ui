@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
-import { hasExternalChatCatalog, runWithConcurrency } from "./configure-external-chats.lib";
+import {
+  canConfigureExternalChats,
+  hasExternalChatCatalog,
+  runWithConcurrency,
+} from "./configure-external-chats.lib";
 
 function account(capabilities: Record<string, unknown>): ExternalAccount {
   return {
@@ -30,6 +34,11 @@ function account(capabilities: Record<string, unknown>): ExternalAccount {
 }
 
 describe("external chat catalog behavior", () => {
+  it("does not offer legacy configuration for registry-only settings", () => {
+    expect(canConfigureExternalChats({ ...account({}), settings: { kind: "zulip" } })).toBe(false);
+    expect(canConfigureExternalChats(account({}))).toBe(true);
+  });
+
   it("allows a backfill account with liveReady false when catalog is available", () => {
     expect(
       hasExternalChatCatalog(

@@ -25,6 +25,36 @@ const currentDto = {
 };
 
 describe("external account DTO guard", () => {
+  it.each([
+    {},
+    { server_url: "https://zulip.example.com", email: "user@example.com", api_key: "test" },
+  ])("accepts registry settings without legacy fields: %j", (settings) => {
+    expect(
+      isWorkspaceExternalAccountDto({
+        uuid: currentDto.uuid,
+        provider: "zulip",
+        settings,
+        status: "new",
+        created_at: currentDto.created_at,
+        updated_at: currentDto.updated_at,
+      }),
+    ).toBe(true);
+  });
+
+  it.each([null, [], "invalid", { server_url: 42 }, { email: false }])(
+    "rejects malformed registry settings: %j",
+    (settings) => {
+      expect(
+        isWorkspaceExternalAccountDto({
+          ...currentDto,
+          provider: "zulip",
+          status: "active",
+          settings,
+        }),
+      ).toBe(false);
+    },
+  );
+
   it.each(["new", "backfill", "fast_backfill", "active", "error"])(
     "accepts a saved registry model with status %s without processing metadata",
     (status) => {

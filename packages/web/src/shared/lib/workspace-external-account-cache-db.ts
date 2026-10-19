@@ -12,11 +12,11 @@ export interface WorkspaceExternalAccountCacheProfile {
   provider: "zulip";
   settings: {
     kind: "zulip";
-    serverUrl: string;
-    email: string;
-    selectionMode: "explicit" | "all";
-    historyDepth: "new" | "7_days" | "30_days" | "90_days" | "all";
-    defaultProjectId: string;
+    serverUrl?: string;
+    email?: string;
+    selectionMode?: "explicit" | "all";
+    historyDepth?: "new" | "7_days" | "30_days" | "90_days" | "all";
+    defaultProjectId?: string;
   };
   credentialPresent?: boolean;
   status:

@@ -55,12 +55,12 @@ interface ExternalAccountSettingsDraftState {
   accountUuid: string;
   etag?: string;
   saved: {
-    historyDepth: ExternalAccountHistoryDepth;
-    selectionMode: ExternalAccountSelectionMode;
+    historyDepth: ExternalAccountHistoryDepth | undefined;
+    selectionMode: ExternalAccountSelectionMode | undefined;
   };
   draft: {
-    historyDepth: ExternalAccountHistoryDepth;
-    selectionMode: ExternalAccountSelectionMode;
+    historyDepth: ExternalAccountHistoryDepth | undefined;
+    selectionMode: ExternalAccountSelectionMode | undefined;
   };
 }
 
@@ -437,7 +437,14 @@ export function useConfigureExternalChats(options: {
   if (saveStatus === "dirty" && !settingsDirty) normalizedSaveStatus = "clean";
 
   const saveSettings = useCallback(() => {
-    if (!settingsDirty || settingsBusy || settingsRequestRef.current != null || submitting) {
+    if (
+      historyDepth == null ||
+      selectionMode == null ||
+      !settingsDirty ||
+      settingsBusy ||
+      settingsRequestRef.current != null ||
+      submitting
+    ) {
       return;
     }
 
@@ -682,7 +689,12 @@ export function useConfigureExternalChats(options: {
     saveStatus: normalizedSaveStatus,
     settingsBusy,
     selectionBlockedBySettings,
-    canSaveSettings: settingsDirty && !settingsBusy && !submitting,
+    canSaveSettings:
+      historyDepth != null &&
+      selectionMode != null &&
+      settingsDirty &&
+      !settingsBusy &&
+      !submitting,
     manualSelectionEnabled,
     selectableVisibleCount: selectableVisibleChatUuids.length,
     selectAllState,
