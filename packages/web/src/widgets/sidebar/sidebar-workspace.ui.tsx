@@ -19,7 +19,7 @@ import {
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
-import { t } from "~/i18n/i18n";
+import { t, useTranslation } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
@@ -148,7 +148,7 @@ function resolveWorkspaceSidebarEmptyState(input: {
   };
 }
 
-function WorkspaceSidebarTopicRow({
+const WorkspaceSidebarTopicRow = React.memo(function WorkspaceSidebarTopicRow({
   topic,
   streamNotificationMode,
   streamTitle,
@@ -165,6 +165,7 @@ function WorkspaceSidebarTopicRow({
   compact: boolean;
   barColor: string;
 }>): React.ReactElement {
+  useTranslation();
   const isActive = activeTopicUuid === topic.topicUuid;
   const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
   const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
@@ -216,7 +217,7 @@ function WorkspaceSidebarTopicRow({
       </Link>
     </WorkspaceTopicContextMenu>
   );
-}
+});
 
 function WorkspaceSidebarTopicRows({
   stream,
@@ -346,7 +347,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   );
 });
 
-function WorkspaceSidebarStreamRow({
+const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow({
   stream,
   expanded,
   activeStreamUuid,
@@ -371,6 +372,7 @@ function WorkspaceSidebarStreamRow({
   onToggleStream: (streamUuid: string) => void;
   onTopicCreated: (streamUuid: string, topicUuid: string) => void;
 }>): React.ReactElement {
+  useTranslation();
   // Highlight follows the visible active location (collapsed topic → stream card).
   const isActive = isWorkspaceSidebarStreamHighlighted({
     streamUuid: stream.streamUuid,
@@ -498,7 +500,7 @@ function WorkspaceSidebarStreamRow({
       </WorkspaceStreamContextMenu>
     </div>
   );
-}
+});
 
 type WorkspaceSidebarRenderStreams = (
   items: MessengerSidebarStreamItem[],

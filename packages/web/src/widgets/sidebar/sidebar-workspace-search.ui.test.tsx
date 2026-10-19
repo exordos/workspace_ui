@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { adaptMessengerFolder } from "~/entities/messenger/messenger-adapters.lib";
 import {
   MESSENGER_ALL_CHATS_FOLDER_UUID,
@@ -11,7 +11,8 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
-import { t } from "~/i18n/i18n";
+import { getLocale, setLocale, t } from "~/i18n/i18n";
+import * as datetime from "~/shared/lib/datetime.lib";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
@@ -317,5 +318,28 @@ describe("WorkspaceSidebar search mode", () => {
 
     expect(screen.getAllByText(t("sidebar.emptySearch"))).toHaveLength(1);
     expect(screen.queryByText(t("sidebar.noMatchesInFolder"))).not.toBeInTheDocument();
+  });
+});
+
+describe("sidebar row memoization", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("formats only changed rows and refreshes memoized labels on locale changes", () => {
+    const format = vi.spyOn(datetime, "formatMessageTimeRelative");
+    const first = { ...stream("stream-a", "Alpha"), lastMessageCreatedAt: DATE };
+    const second = { ...stream("stream-b", "Beta"), lastMessageCreatedAt: DATE };
+    const props = {
+      loading: false,
+      error: null,
+      activityCounts: { inboxCount: null, mentionsCount: null },
+      workspaceStreamCount: 2,
+    };
+    const view = renderWithProviders(<WorkspaceSidebar {...props} streams={[first, second]} />);
+    expect(format).toHaveBeenCalledTimes(2);
+    view.rerender(<WorkspaceSidebar {...props} streams={[first, { ...second, unreadCount: 1 }]} />);
+    expect(format).toHaveBeenCalledTimes(3);
+    const locale = getLocale();
+    act(() => setLocale(locale === "en" ? "ru" : "en"));
+    expect(format).toHaveBeenCalledTimes(5);
+    act(() => setLocale(locale));
   });
 });

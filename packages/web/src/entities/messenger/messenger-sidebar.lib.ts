@@ -3,6 +3,7 @@ import {
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
+import { getLocale, type Locale } from "~/i18n/i18n";
 import { workspaceMessengerStreamRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectWorkspaceConversationUiKind,
@@ -25,7 +26,7 @@ import {
   type MessengerTopicListSortMode,
   type MessengerTopicUnreadMentionIndex,
 } from "./messenger-topic-list.lib";
-import type { MessengerStoreState } from "./messenger.model";
+import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
   MessengerConversation,
@@ -65,9 +66,12 @@ export type MessengerSidebarSortMode = MessengerTopicListSortMode;
 export type MessengerSidebarStreamsState = Pick<
   MessengerStoreState,
   "streamIds" | "streamsById" | "topicIds" | "topicsById" | "foldersById" | "conversationsById"
->;
+> &
+  Partial<Pick<MessengerStoreState, "ownerKey">>;
 
 interface SidebarStreamsCacheEntry {
+  ownerKey: string | null;
+  locale: Locale;
   streamIds: MessengerUuid[];
   streamsById: MessengerStoreState["streamsById"];
   topicIds: MessengerUuid[];
@@ -107,6 +111,64 @@ export type MessengerSidebarUnreadMentionIndex = MessengerTopicUnreadMentionInde
 const sidebarStreamsCache = new Map<string | null, SidebarStreamsCacheEntry>();
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
 let sidebarActivityCountsCache: SidebarActivityCountsCacheEntry | null = null;
+
+useMessengerStore.subscribe((state, previous) => {
+  if (
+    state.ownerKey === previous.ownerKey &&
+    state.bootstrapRequestVersion === previous.bootstrapRequestVersion
+  )
+    return;
+  sidebarStreamsCache.clear();
+  sidebarFoldersCache = null;
+  sidebarActivityCountsCache = null;
+});
+
+function reuseProjection<T extends object>(previous: T | undefined, next: T): T {
+  if (previous == null) return next;
+  const keys = Object.keys(next) as (keyof T)[];
+  return keys.length === Object.keys(previous).length &&
+    keys.every((key) => previous[key] === next[key])
+    ? previous
+    : next;
+}
+
+function reusePreview(
+  previous: MessengerSidebarStreamItem["preview"] | undefined,
+  next: MessengerSidebarStreamItem["preview"],
+): MessengerSidebarStreamItem["preview"] {
+  return next == null ? null : reuseProjection(previous ?? undefined, next);
+}
+
+function reuseStreamRows(
+  previous: MessengerSidebarStreamItem[],
+  next: MessengerSidebarStreamItem[],
+): MessengerSidebarStreamItem[] {
+  const byId = new Map(previous.map((row) => [row.id, row]));
+  const rows = next.map((row) => {
+    const old = byId.get(row.id);
+    if (old == null) return row;
+    const oldTopics = new Map(old.topics.map((item) => [item.id, item]));
+    const topics = row.topics.map((topic) => {
+      const oldTopic = oldTopics.get(topic.id);
+      return reuseProjection(oldTopic, {
+        ...topic,
+        preview: reusePreview(oldTopic?.preview, topic.preview),
+      });
+    });
+    return reuseProjection(old, {
+      ...row,
+      preview: reusePreview(old.preview, row.preview),
+      topics:
+        topics.length === old.topics.length &&
+        topics.every((topic, index) => topic === old.topics[index])
+          ? old.topics
+          : topics,
+    });
+  });
+  return rows.length === previous.length && rows.every((row, index) => row === previous[index])
+    ? previous
+    : rows;
+}
 
 // The sidebar recalculates often, so keep a simple cache keyed by store references.
 // If streams/topics/folders did not change, React receives the same array and avoids redundant rerenders.
@@ -385,6 +447,8 @@ export function selectMessengerSidebarStreams(
   state: MessengerSidebarStreamsState,
   options: MessengerSidebarSelectorOptions,
 ): MessengerSidebarStreamItem[] {
+  const ownerKey = state.ownerKey ?? null;
+  const locale = getLocale();
   const selectedFolderUuid = options.selectedFolderUuid ?? null;
   const sortMode = options.sortMode ?? "last_message";
   const currentUserUuid = options.currentUserUuid ?? null;
@@ -392,7 +456,9 @@ export function selectMessengerSidebarStreams(
   const usersById = options.usersById ?? EMPTY_SIDEBAR_USERS_BY_ID;
   const cachedEntry = sidebarStreamsCache.get(selectedFolderUuid);
   if (
-    cachedEntry?.streamIds === state.streamIds &&
+    cachedEntry?.ownerKey === ownerKey &&
+    cachedEntry.locale === locale &&
+    cachedEntry.streamIds === state.streamIds &&
     cachedEntry.streamsById === state.streamsById &&
     cachedEntry.topicIds === state.topicIds &&
     cachedEntry.topicsById === state.topicsById &&
@@ -549,8 +615,21 @@ export function selectMessengerSidebarStreams(
     streams.sort((a, b) => compareSidebarStreams(a, b, sortMode, state.streamsById));
   }
 
-  const result = streams.length > 0 ? streams : EMPTY_SIDEBAR_STREAMS;
+  const sameScope =
+    cachedEntry?.ownerKey === ownerKey &&
+    cachedEntry.locale === locale &&
+    cachedEntry.organizationId === options.organizationId &&
+    cachedEntry.projectId === options.projectId &&
+    cachedEntry.currentUserUuid === currentUserUuid;
+  const result =
+    streams.length === 0
+      ? EMPTY_SIDEBAR_STREAMS
+      : sameScope
+        ? reuseStreamRows(cachedEntry.result, streams)
+        : streams;
   sidebarStreamsCache.set(selectedFolderUuid, {
+    ownerKey,
+    locale,
     streamIds: state.streamIds,
     streamsById: state.streamsById,
     topicIds: state.topicIds,

@@ -16,6 +16,7 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTranslation } from "~/i18n/i18n";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
@@ -35,6 +36,8 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   sidebarResizeControl,
   pathname = "",
 }) => {
+  const { locale } = useTranslation();
+  const workspaceOwnerKey = useMessengerStore((state) => state.ownerKey);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
@@ -70,6 +73,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   const workspaceUsersById = useUsersStore((state) => state.usersById);
   const workspaceSidebarState = useMemo<MessengerSidebarStreamsState>(
     () => ({
+      ownerKey: workspaceOwnerKey,
       streamIds: workspaceStreamIds,
       streamsById: workspaceStreamsById,
       topicIds: workspaceTopicIds,
@@ -78,6 +82,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       conversationsById: workspaceConversationsById,
     }),
     [
+      workspaceOwnerKey,
       workspaceConversationsById,
       workspaceFoldersById,
       workspaceStreamIds,
@@ -119,6 +124,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           })
         : EMPTY_WORKSPACE_STREAMS,
     [
+      locale,
       currentUserUuid,
       sidebarWorkspaceIdentity,
       workspaceEffectiveFolderId,
@@ -145,6 +151,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
         })
       : EMPTY_WORKSPACE_STREAMS;
   }, [
+    locale,
     currentUserUuid,
     messengerSidebarSortMode,
     sidebarWorkspaceIdentity,

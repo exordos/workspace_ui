@@ -359,6 +359,124 @@ describe("messenger sidebar selectors", () => {
     useMessengerStore.getState().clear();
   });
 
+  it("keeps unchanged rows and previews stable when unrelated messages or read state change", () => {
+    const catalog = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({ uuid: STREAM_B }),
+      },
+      topicsById: { [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }) },
+      topicIds: [TOPIC_A],
+    });
+    const firstMessage = message();
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_A]: firstMessage },
+      usersById: createUsersById(),
+    };
+    const first = selectMessengerSidebarStreams(catalog, options);
+    const unrelated = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: { ...options.messagesById, [MESSAGE_B]: message({ uuid: MESSAGE_B }) },
+    });
+    expect(unrelated).toBe(first);
+    const read = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: { [MESSAGE_A]: { ...firstMessage, read: false } },
+    });
+    expect(read).toBe(first);
+    const edited = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: {
+        [MESSAGE_A]: { ...firstMessage, payload: { kind: "markdown", content: "edited preview" } },
+      },
+    });
+    expect(edited.find((row) => row.streamUuid === STREAM_B)).toBe(
+      first.find((row) => row.streamUuid === STREAM_B),
+    );
+    expect(edited.find((row) => row.streamUuid === STREAM_A)?.topics[0]?.preview?.text).toBe(
+      "edited preview",
+    );
+    expect(edited.find((row) => row.streamUuid === STREAM_A)).not.toBe(
+      first.find((row) => row.streamUuid === STREAM_A),
+    );
+    expect(
+      selectMessengerSidebarStreams(catalog, { ...options, messagesById: {} }).find(
+        (row) => row.streamUuid === STREAM_A,
+      )?.preview,
+    ).toBeNull();
+  });
+
+  it("refreshes only affected sender/presence views and separates runtime owners", () => {
+    const catalog = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({
+          uuid: STREAM_B,
+          audience: "private",
+          isPrivate: true,
+          directUserUuid: "alice",
+        }),
+      },
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_A]: message() },
+      usersById: createUsersById(),
+    };
+    const first = selectMessengerSidebarStreams({ ...catalog, ownerKey: "a" }, options);
+    const renamed = selectMessengerSidebarStreams(
+      { ...catalog, ownerKey: "a" },
+      {
+        ...options,
+        usersById: { ...options.usersById, [AUTHOR_UUID]: user({ displayName: "Renamed" }) },
+      },
+    );
+    expect(renamed.find((row) => row.streamUuid === STREAM_B)).toBe(
+      first.find((row) => row.streamUuid === STREAM_B),
+    );
+    expect(renamed.find((row) => row.streamUuid === STREAM_A)?.preview?.senderName).toBe("Renamed");
+    const presence = selectMessengerSidebarStreams(
+      { ...catalog, ownerKey: "a" },
+      {
+        ...options,
+        usersById: { ...options.usersById, alice: user({ uuid: "alice", status: "idle" }) },
+      },
+    );
+    expect(presence.find((row) => row.streamUuid === STREAM_B)?.presence).toBe("idle");
+    const otherOwner = selectMessengerSidebarStreams({ ...catalog, ownerKey: "b" }, options);
+    expect(otherOwner).not.toBe(first);
+    expect(otherOwner.find((row) => row.streamUuid === STREAM_A)).not.toBe(
+      first.find((row) => row.streamUuid === STREAM_A),
+    );
+  });
+
+  it("invalidates a cached self preview when the language changes", () => {
+    const originalLocale = getLocale();
+    const catalog = state({
+      streamsById: { [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }) },
+      streamIds: [STREAM_A],
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      currentUserUuid: AUTHOR_UUID,
+      messagesById: { [MESSAGE_A]: message() },
+    };
+    try {
+      setLocale("en");
+      const first = selectMessengerSidebarStreams(catalog, options);
+      setLocale("ru");
+      const second = selectMessengerSidebarStreams(catalog, options);
+      expect(second[0]?.preview?.senderName).toBe(t("common.you"));
+      expect(second[0]?.preview?.senderName).not.toBe(first[0]?.preview?.senderName);
+    } finally {
+      setLocale(originalLocale);
+    }
+  });
+
   it("builds nested stream topic rows without DM identities", () => {
     const rows = selectMessengerSidebarStreams(state(), {
       organizationId: ORGANIZATION_ID,
