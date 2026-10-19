@@ -26,6 +26,11 @@
     "queueRegistrationError": "Queue registration error",
     "invalidRegisterResponse": "Invalid register response: missing queue_id or last_event_id"
   },
+  "deviceName": {
+    "unknown": "Device",
+    "desktop": "Desktop",
+    "web": "Web"
+  },
   "auth": {
     "server": "Server",
     "organization": "Organization",

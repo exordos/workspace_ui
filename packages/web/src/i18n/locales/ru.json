@@ -26,6 +26,11 @@
     "reloadApp": "Обновить страницу",
     "retryIn": "Повтор через {{seconds}} с"
   },
+  "deviceName": {
+    "unknown": "Устройство",
+    "desktop": "Desktop",
+    "web": "Web"
+  },
   "auth": {
     "server": "Сервер",
     "organization": "Организация",

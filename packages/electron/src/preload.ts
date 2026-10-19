@@ -39,6 +39,7 @@ const electronAPI = {
   app: {
     getVersion: (): Promise<string> => ipcRenderer.invoke("app:getVersion"),
     getPlatform: (): Promise<string> => ipcRenderer.invoke("app:getPlatform"),
+    getDeviceName: (): Promise<string | null> => ipcRenderer.invoke("app:getDeviceName"),
   },
 
   clipboard: {
