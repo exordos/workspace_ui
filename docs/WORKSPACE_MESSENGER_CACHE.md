@@ -33,6 +33,8 @@ Each socket queues at most 256 pending frames or 4 MiB of estimated string stora
 
 Conversation selector memoization uses weak message-map keys so visiting another conversation cannot keep an obsolete full message map alive.
 
+Compact list previews reuse Markdown summaries across read/reaction snapshots. Their in-memory cache is limited to 512 entries and 1 MiB of estimated UTF-16 input/output storage, invalidates on locale changes, and clears on message-store owner changes. Sender names and routes are resolved from the current view; encrypted plaintext is not cached here.
+
 ## Capability limits
 
 Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.

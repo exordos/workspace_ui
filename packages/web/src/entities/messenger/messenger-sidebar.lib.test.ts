@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { User, UsersById } from "~/entities/user/user.types";
-import { t } from "~/i18n/i18n";
+import { getLocale, setLocale, t } from "~/i18n/i18n";
+import * as messageSummary from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import {
   workspaceMessengerRootRoute,
   workspaceMessengerTopicRoute,
@@ -11,6 +13,7 @@ import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
+import { createMessengerTopicMessagePreview } from "./messenger-topic-list.lib";
 import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
 import type {
   MessengerConversation,
@@ -277,6 +280,79 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     ...overrides,
   };
 }
+
+describe("messenger preview text cache", () => {
+  const initialLocale = getLocale();
+  beforeEach(() => useWorkspaceMessageStore.getState().setOwner("preview-owner-a", false));
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setLocale(initialLocale);
+    useWorkspaceMessageStore.getState().setOwner(null, false);
+  });
+  const preview = (item: MessengerMessage, usersById = createUsersById()) =>
+    createMessengerTopicMessagePreview({
+      messageUuid: item.uuid,
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [item.uuid]: item },
+      usersById,
+      currentUserUuid: null,
+    });
+
+  it("reuses summary text across read/reaction snapshots while refreshing the sender", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const original = message({ markdown: "**unchanged** preview" });
+    expect(preview(original)?.text).toBe("unchanged preview");
+    const renamed = createUsersById({ [AUTHOR_UUID]: user({ displayName: "Renamed" }) });
+    expect(preview({ ...original, read: false, reactions: { like: 2 } }, renamed)?.senderName).toBe(
+      "Renamed",
+    );
+    expect(summarize).toHaveBeenCalledTimes(1);
+    expect(preview({ ...original, payload: { kind: "markdown", content: "edited" } })?.text).toBe(
+      "edited",
+    );
+    expect(summarize).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates text on locale and runtime owner changes", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const item = message();
+    preview(item);
+    setLocale(getLocale() === "en" ? "ru" : "en");
+    preview(item);
+    useWorkspaceMessageStore.getState().setOwner("preview-owner-b", false);
+    preview(item);
+    useWorkspaceMessageStore.getState().setOwner("preview-owner-a", false);
+    preview(item);
+    expect(summarize).toHaveBeenCalledTimes(4);
+  });
+
+  it("bounds entries and preserves recently used summaries", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const items = Array.from({ length: 513 }, (_, i) => message({ uuid: `preview-${i}` }));
+    for (const item of items.slice(0, 512)) preview(item);
+    preview(items[0]!);
+    preview(items[512]!);
+    preview(items[0]!);
+    expect(summarize).toHaveBeenCalledTimes(513);
+    preview(items[1]!);
+    expect(summarize).toHaveBeenCalledTimes(514);
+  });
+
+  it("evicts by text size and does not cache oversized Markdown", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const items = Array.from({ length: 3 }, (_, i) =>
+      message({ uuid: `large-${i}`, markdown: "x".repeat(200_000) }),
+    );
+    for (const item of items) preview(item);
+    preview(items[0]!);
+    expect(summarize).toHaveBeenCalledTimes(4);
+    const oversized = message({ markdown: "x".repeat(600_000) });
+    preview(oversized);
+    preview(oversized);
+    expect(summarize).toHaveBeenCalledTimes(6);
+  });
+});
 
 describe("messenger sidebar selectors", () => {
   afterEach(() => {

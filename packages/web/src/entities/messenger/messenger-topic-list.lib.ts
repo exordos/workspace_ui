@@ -1,6 +1,7 @@
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
-import { t } from "~/i18n/i18n";
+import { getLocale, t, type Locale } from "~/i18n/i18n";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
@@ -19,6 +20,52 @@ import type {
 } from "./messenger.types";
 
 const EMPTY_TOPIC_LIST: MessengerTopicListItem[] = [];
+const MAX_PREVIEW_TEXT_ENTRIES = 512;
+const MAX_PREVIEW_TEXT_BYTES = 1024 * 1024;
+const previewTextCache = new Map<
+  string,
+  { markdown: string; locale: Locale; text: string; bytes: number }
+>();
+let previewTextBytes = 0;
+
+useWorkspaceMessageStore.subscribe((state, previous) => {
+  if (state.ownerKey === previous.ownerKey) return;
+  previewTextCache.clear();
+  previewTextBytes = 0;
+});
+
+function messagePreviewText(message: MessengerMessage, organizationId: string): string {
+  if (message.payload.kind !== "markdown") return "";
+  const key = JSON.stringify([organizationId, message.projectId, message.userUuid, message.uuid]);
+  const markdown = message.payload.content;
+  const locale = getLocale();
+  const cached = previewTextCache.get(key);
+  if (cached?.markdown === markdown && cached.locale === locale) {
+    previewTextCache.delete(key);
+    previewTextCache.set(key, cached);
+    return cached.text;
+  }
+  if (cached != null) {
+    previewTextBytes -= cached.bytes;
+    previewTextCache.delete(key);
+  }
+  const text = summarizeWorkspaceMessageMarkdown(markdown).text;
+  const bytes = (key.length + markdown.length + text.length) * 2;
+  // Keep only compact summaries and their bounded comparison input, never store snapshots.
+  if (bytes > MAX_PREVIEW_TEXT_BYTES) return text;
+  while (
+    previewTextCache.size >= MAX_PREVIEW_TEXT_ENTRIES ||
+    previewTextBytes + bytes > MAX_PREVIEW_TEXT_BYTES
+  ) {
+    const oldest = previewTextCache.entries().next().value;
+    if (oldest == null) break;
+    previewTextCache.delete(oldest[0]);
+    previewTextBytes -= oldest[1].bytes;
+  }
+  previewTextCache.set(key, { markdown, locale, text, bytes });
+  previewTextBytes += bytes;
+  return text;
+}
 
 export type MessengerTopicListSortMode = "last_message" | "unread_first";
 
@@ -99,10 +146,7 @@ export function createMessengerTopicMessagePreview(input: {
     message.authorUuid === input.currentUserUuid
       ? t("common.you")
       : resolveUserDisplayName(input.usersById[message.authorUuid]);
-  const text =
-    message.payload.kind === "markdown"
-      ? summarizeWorkspaceMessageMarkdown(message.payload.content).text
-      : "";
+  const text = messagePreviewText(message, input.organizationId);
 
   return {
     messageUuid: message.uuid,
