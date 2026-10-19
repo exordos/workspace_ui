@@ -211,6 +211,203 @@ async function flushAsyncHandlers(): Promise<void> {
 }
 
 describe("workspace-realtime transport runtime", () => {
+  it.each(["count", "bytes"] as const)(
+    "bounds a websocket backlog by %s and replays discarded frames from the completed cursor",
+    async (limit) => {
+      const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+      cursorStorage.write(cursorOwner, cursor(10));
+      const { applier, appliedEpochs } = createApplier();
+      let release: (() => void) | undefined;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      applier.applyEvent = vi.fn((event, eventContext) => {
+        appliedEpochs.push(event.epoch_version);
+        if (eventContext.source === "websocket") return blocked;
+      });
+      const lastEpoch = limit === "count" ? 311 : 12;
+      const replay = Array.from({ length: lastEpoch - 11 }, (_, index) =>
+        createRestEventDto(index + 12),
+      );
+      const getEventsPage = vi
+        .fn()
+        .mockResolvedValueOnce(createPage([]))
+        .mockResolvedValue({ ...createPage(replay), pageLimit: 500 });
+      const sockets: FakeWebSocket[] = [];
+      const diagnostic = vi.fn();
+      const runtime = createWorkspaceRealtimeTransportCore({
+        clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+        cursorStorage,
+        applier,
+        getEventsPage,
+        pageLimit: 500,
+        onDiagnostic: diagnostic,
+        webSocketFactory: (url, protocols) => {
+          const socket = new FakeWebSocket(url, protocols);
+          sockets.push(socket);
+          return socket;
+        },
+      });
+      try {
+        await runtime.start(context);
+        const socket = sockets[0];
+        expect(socket).toBeDefined();
+        socket?.message(JSON.stringify(createRestEventDto(11)));
+        if (limit === "count") {
+          for (let epoch = 12; epoch <= lastEpoch; epoch += 1) {
+            socket?.message(JSON.stringify(createRestEventDto(epoch)));
+          }
+        } else {
+          socket?.message(
+            JSON.stringify({
+              ...createRestEventDto(12),
+              payload: {
+                kind: "message.created",
+                ...messageDto,
+                payload: { kind: "markdown", content: "x".repeat(2 * 1024 * 1024) },
+              },
+            }),
+          );
+        }
+        expect(diagnostic).toHaveBeenCalledTimes(1);
+        expect(diagnostic).toHaveBeenCalledWith(
+          expect.objectContaining({ reason: "websocket_backpressure" }),
+        );
+        expect(appliedEpochs).toEqual([11]);
+        expect(getEventsPage).toHaveBeenCalledTimes(1);
+        expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+        release?.();
+        await vi.waitFor(() => expect(sockets).toHaveLength(2));
+        expect(getEventsPage).toHaveBeenLastCalledWith(
+          expect.anything(),
+          expect.objectContaining({ afterEpochVersion: 11 }),
+        );
+        expect(appliedEpochs).toEqual(
+          Array.from({ length: lastEpoch - 10 }, (_, index) => index + 11),
+        );
+        expect(cursorStorage.read(cursorOwner)).toEqual(cursor(lastEpoch));
+      } finally {
+        release?.();
+        await runtime.stop();
+      }
+    },
+  );
+
+  it("continues draining queued frames after an invalid-frame handler rejects", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier, appliedEpochs } = createApplier();
+    applier.skipEvent = vi.fn().mockRejectedValueOnce(new Error("skip failed"));
+    let socket: FakeWebSocket | undefined;
+    const diagnostic = vi.fn();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      onDiagnostic: diagnostic,
+      webSocketFactory: (url, protocols) => {
+        socket = new FakeWebSocket(url, protocols);
+        return socket;
+      },
+    });
+    try {
+      await runtime.start(context);
+      socket?.message("{invalid");
+      socket?.message(JSON.stringify(createRestEventDto(11)));
+      socket?.message(JSON.stringify(createRestEventDto(12)));
+      await vi.waitFor(() => expect(appliedEpochs).toEqual([11, 12]));
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
+      expect(diagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "websocket_error" }),
+      );
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it("yields to browser tasks during a burst of synchronously applied frames", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier, appliedEpochs } = createApplier();
+    let appliedAtBrowserTask = 0;
+    applier.applyEvent = vi.fn((event) => {
+      appliedEpochs.push(event.epoch_version);
+      if (appliedEpochs.length === 1)
+        setTimeout(() => {
+          appliedAtBrowserTask = appliedEpochs.length;
+        }, 0);
+    });
+    let socket: FakeWebSocket | undefined;
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        socket = new FakeWebSocket(url, protocols);
+        return socket;
+      },
+    });
+    try {
+      await runtime.start(context);
+      for (let epoch = 11; epoch <= 90; epoch += 1)
+        socket?.message(JSON.stringify(createRestEventDto(epoch)));
+      await vi.waitFor(() => expect(appliedEpochs).toHaveLength(80));
+      expect(appliedAtBrowserTask).toBeGreaterThan(0);
+      expect(appliedAtBrowserTask).toBeLessThan(80);
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(90));
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it("releases an old socket backlog without blocking or advancing a replacement owner", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    let release: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    applier.applyEvent = vi.fn((event) => (event.epoch_version === 99 ? blocked : undefined));
+    const sockets: FakeWebSocket[] = [];
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    const nextOwner = { ...owner, userUuid: USER_B_UUID, runtimeGeneration: 2 };
+    try {
+      await runtime.start(context);
+      sockets[0]?.message(JSON.stringify(createRestEventDto(99)));
+      for (let epoch = 100; epoch < 200; epoch += 1)
+        sockets[0]?.message(JSON.stringify(createRestEventDto(epoch)));
+      await runtime.start({
+        ...context,
+        owner: nextOwner,
+        ownerKey: "owner-b",
+        startCursor: cursor(20),
+      });
+      sockets[1]?.message(JSON.stringify(createRestEventDto(21)));
+      await vi.waitFor(() => expect(cursorStorage.read(nextOwner)).toEqual(cursor(21)));
+      release?.();
+      await flushAsyncHandlers();
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+      expect(cursorStorage.read(nextOwner)).toEqual(cursor(21));
+      expect(applier.applyEvent).toHaveBeenCalledTimes(2);
+    } finally {
+      release?.();
+      await runtime.stop();
+    }
+  });
+
   it.each([3, 99])(
     "starts from the bootstrap boundary with stored cursor %i and reconnects from applied events",
     async (storedEpoch) => {

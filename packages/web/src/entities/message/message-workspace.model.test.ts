@@ -643,6 +643,29 @@ describe("workspace message store", () => {
     ]);
   });
 
+  it.skipIf(typeof globalThis.gc !== "function")(
+    "releases historical message maps after selecting another conversation and clearing the owner",
+    async () => {
+      const historicalMap = (() => {
+        replaceWindow(TOPIC_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_A })]);
+        selectMessages(TOPIC_CONVERSATION_ID);
+        const weak = new WeakRef(useWorkspaceMessageStore.getState().messagesById);
+        replaceWindow(STREAM_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_B })]);
+        selectMessages(STREAM_CONVERSATION_ID);
+        useWorkspaceMessageStore.getState().setOwner(OWNER_B, false);
+        return weak;
+      })();
+      // Weak references remain alive until the current job finishes.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        globalThis.gc?.();
+      }
+      expect(historicalMap.deref()).toBeUndefined();
+    },
+  );
+
   it("keeps selector fallbacks stable and derives pagination from the descriptor", () => {
     const firstMessages = selectWorkspaceMessagesForConversation(
       useWorkspaceMessageStore.getState(),
