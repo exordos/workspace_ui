@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useArgs } from "storybook/preview-api";
 import { t } from "~/i18n/i18n";
-import { Button } from "./button";
+import { Button } from "~/shared/ui/button";
 import { DropdownMenu } from "./dropdown-menu";
 import type { DropdownMenuItem, DropdownMenuProps } from "./dropdown-menu";
 import type { Meta, StoryObj } from "@storybook/react-vite";

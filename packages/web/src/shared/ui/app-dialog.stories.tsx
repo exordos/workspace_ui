@@ -1,8 +1,8 @@
 import { useArgs } from "storybook/preview-api";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { t } from "~/i18n/i18n";
+import { Button } from "~/shared/ui/button";
 import { AppDialog, AppDialogFormFooter } from "./app-dialog.ui";
-import { Button } from "./button";
 import type { AppDialogProps } from "./app-dialog.types";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 

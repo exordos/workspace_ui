@@ -1,7 +1,7 @@
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { t } from "~/i18n/i18n";
+import { Button } from "~/shared/ui/button";
 import { AppTooltip } from "./app-tooltip.ui";
-import { Button } from "./button";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta = {
