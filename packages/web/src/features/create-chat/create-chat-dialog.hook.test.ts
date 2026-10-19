@@ -208,13 +208,17 @@ describe("useCreateChatDialog", () => {
     expect(onChannelCreated).toHaveBeenCalledTimes(1);
   });
 
-  it("does not offer the system user as a direct chat candidate", () => {
+  it("offers the zero UUID as a direct chat candidate while excluding the current user", () => {
     seedWorkspaceSession();
     useUsersStore.getState().replaceUsers([
       createUser({
         uuid: "00000000-0000-0000-0000-000000000000",
-        username: "system-00000000-0000-0000-0000-000000000000",
-        displayName: "system-00000000-0000-0000-0000-000000000000",
+        username: "admin",
+        displayName: "admin",
+      }),
+      createUser({
+        uuid: "current-user",
+        username: "current-user",
       }),
       createUser({
         uuid: "alice-user",
@@ -227,6 +231,7 @@ describe("useCreateChatDialog", () => {
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     expect(result.current.filteredUsers.map((user) => user.workspaceUserUuid)).toEqual([
+      "00000000-0000-0000-0000-000000000000",
       "alice-user",
     ]);
   });

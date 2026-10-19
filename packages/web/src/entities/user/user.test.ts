@@ -1063,23 +1063,22 @@ describe("user selectors", () => {
     ]);
   });
 
-  it("keeps system users available for rendering but excludes them from action candidates", () => {
-    const systemUuid = "00000000-0000-0000-0000-000000000000";
-    const systemUser = createUser({ uuid: systemUuid, username: `system-${systemUuid}` });
+  it("includes the zero UUID in action candidates while excluding missing users", () => {
+    const adminUuid = "00000000-0000-0000-0000-000000000000";
+    const adminUser = createUser({ uuid: adminUuid, username: "admin" });
     const regularUser = createUser({ uuid: USER_A_UUID });
     const usersById = {
-      [systemUuid]: systemUser,
+      [adminUuid]: adminUser,
       [USER_A_UUID]: regularUser,
     };
 
-    expect(selectUsersByIds(usersById, [systemUuid, USER_A_UUID])).toEqual([
-      systemUser,
-      regularUser,
-    ]);
-    expect(isSelectableWorkspaceUser(systemUser)).toBe(false);
-    expect(selectSelectableWorkspaceUsers(usersById, [systemUuid, USER_A_UUID])).toEqual([
-      regularUser,
-    ]);
+    expect(selectUsersByIds(usersById, [adminUuid, USER_A_UUID])).toEqual([adminUser, regularUser]);
+    expect(isSelectableWorkspaceUser(adminUser)).toBe(true);
+    expect(isSelectableWorkspaceUser(null)).toBe(false);
+    expect(isSelectableWorkspaceUser(undefined)).toBe(false);
+    expect(
+      selectSelectableWorkspaceUsers(usersById, [adminUuid, USER_C_UUID, USER_A_UUID]),
+    ).toEqual([adminUser, regularUser]);
   });
 
   it("counts only active users as online", () => {

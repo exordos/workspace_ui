@@ -1,7 +1,8 @@
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { MessengerConversationId, MessengerUuid } from "./messenger.types";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Workspace uses fixed UUIDs too, so version and variant bits are not constrained.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Conversation ids are frontend ids built from backend UUIDs, never Zulip narrows.
 export type ParsedMessengerConversationId =
