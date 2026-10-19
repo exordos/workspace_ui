@@ -135,34 +135,37 @@ describe("useWorkspaceVisibleMessageRead", () => {
     );
   });
 
-  it("sends an older own unread boundary after a later boundary was already applied", async () => {
-    const ownUnread = {
-      ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
-      authorUuid: runtimeContext.userUuid,
-      isOwn: true,
-    };
-    const later = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
-    seedWorkspaceMessageBody(ownUnread);
-    seedWorkspaceMessageBody(later);
-    const { result } = renderHook(() =>
-      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
-    );
+  it.each([false, true])(
+    "sends a fresh unread boundary after a later read was applied (own: %s)",
+    async (isOwn) => {
+      const freshUnread = {
+        ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
+        ...(isOwn ? { authorUuid: runtimeContext.userUuid } : {}),
+        isOwn,
+      };
+      const later = message(MESSAGE_B_UUID, TOPIC_A_UUID, "2026-08-07T10:01:00Z");
+      seedWorkspaceMessageBody(freshUnread);
+      seedWorkspaceMessageBody(later);
+      const { result } = renderHook(() =>
+        useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+      );
 
-    act(() => {
-      result.current.scheduleReadBatch([later.uuid]);
-      vi.advanceTimersByTime(250);
-    });
-    await act(settlePromiseCallbacks);
-    expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
+      act(() => {
+        result.current.scheduleReadBatch([later.uuid]);
+        vi.advanceTimersByTime(250);
+      });
+      await act(settlePromiseCallbacks);
+      expect(captured.markReadUpTo).toHaveBeenCalledTimes(1);
 
-    act(() => {
-      result.current.scheduleReadBatch([ownUnread.uuid]);
-      vi.advanceTimersByTime(250);
-    });
+      act(() => {
+        result.current.scheduleReadBatch([freshUnread.uuid]);
+        vi.advanceTimersByTime(250);
+      });
 
-    expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
-    expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(ownUnread.uuid);
-  });
+      expect(captured.markReadUpTo).toHaveBeenCalledTimes(2);
+      expect(captured.markReadUpTo.mock.calls[1]?.[0].messageUuid).toBe(freshUnread.uuid);
+    },
+  );
 
   it("does not queue an older own unread message covered by an in-flight boundary", async () => {
     const ownUnread = {

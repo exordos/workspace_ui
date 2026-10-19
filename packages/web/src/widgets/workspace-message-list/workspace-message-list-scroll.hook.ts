@@ -319,40 +319,41 @@ export function useWorkspaceMessageListScroll<TMessage>({
   );
 
   const dispatchUnreadAtBottom = useCallback(() => {
-    if (!initialPositionReady || !isInitialPositionApplied()) {
-      return;
+    if (!initialPositionReady || !isInitialPositionApplied() || !isWindowActive()) {
+      return false;
     }
 
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) {
-      return;
+      return false;
     }
 
     if (hasNewerMessages || isLoadingNewer) {
-      return;
+      return false;
     }
 
     const root = scrollContainerRef.current;
 
     if (root == null) {
-      return;
+      return false;
     }
 
     const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
 
     if (visibleKeys.length === 0 && onUnreadMessagesAtBottom == null) {
-      return;
+      return false;
     }
 
     const orderedKeys = sortKeysByMessageOrder(visibleKeys);
     const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${tailOutsideWindow}:${orderedKeys.join(",")}`;
 
     if (bottomUnreadDispatchKeyRef.current === dispatchKey) {
-      return;
+      return true;
     }
 
     bottomUnreadDispatchKeyRef.current = dispatchKey;
     if (orderedKeys.length > 0) onUnreadMessagesVisible?.(orderedKeys);
     if (!tailOutsideWindow) onUnreadMessagesAtBottom?.(orderedKeys);
+    return true;
   }, [
     hasNewerMessages,
     initialPositionReady,
@@ -406,6 +407,12 @@ export function useWorkspaceMessageListScroll<TMessage>({
         return;
       }
 
+      if (isWorkspaceScrollAtBottom(root, SCROLL_AT_BOTTOM_THRESHOLD)) {
+        // An earlier attempt may have been skipped while the window was inactive.
+        bottomUnreadDispatchKeyRef.current = null;
+        if (dispatchUnreadAtBottom()) return;
+      }
+
       const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
 
       if (visibleKeys.length > 0) {
@@ -422,6 +429,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     };
   }, [
     anchorHandoffPending,
+    dispatchUnreadAtBottom,
     initialPositionReady,
     isInitialPositionApplied,
     onUnreadMessagesVisible,

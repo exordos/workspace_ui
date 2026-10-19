@@ -49,6 +49,12 @@ export function restoreMessengerReadBoundaries(rows: readonly MessengerReadBound
   for (const row of rows) advanceMessengerReadBoundary(row);
 }
 
+export function discardMessengerReadBoundary(expected: MessengerReadBoundary): boolean {
+  const key = boundaryKey(expected.ownerKey, expected.streamUuid, expected.topicUuid);
+  if (boundaries.get(key) !== expected) return false;
+  return boundaries.delete(key);
+}
+
 export function clearMessengerReadBoundariesForOwner(ownerKey: string): void {
   for (const [key, boundary] of boundaries) {
     if (boundary.ownerKey === ownerKey) boundaries.delete(key);

@@ -3,6 +3,7 @@ import {
   advanceMessengerReadBoundary,
   applyMessengerReadBoundary,
   clearMessengerReadBoundariesForOwner,
+  discardMessengerReadBoundary,
   readMessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
 import type { MessengerMessage } from "./messenger.types";
@@ -36,6 +37,23 @@ function message(uuid: string, createdAt: string, topicUuid = TOPIC_A): Messenge
 }
 
 describe("messenger read boundary", () => {
+  it("discards only the captured boundary and preserves a newer read", () => {
+    clearMessengerReadBoundariesForOwner(OWNER_A);
+    const first = advanceMessengerReadBoundary({
+      ownerKey: OWNER_A,
+      streamUuid: STREAM,
+      topicUuid: TOPIC_A,
+      createdAt: "2026-08-01T10:00:00Z",
+      messageUuid: "a",
+    });
+    const newer = advanceMessengerReadBoundary({ ...first, messageUuid: "b" });
+
+    expect(discardMessengerReadBoundary(first)).toBe(false);
+    expect(readMessengerReadBoundary(OWNER_A, STREAM, TOPIC_A)).toBe(newer);
+    expect(discardMessengerReadBoundary(newer)).toBe(true);
+    expect(readMessengerReadBoundary(OWNER_A, STREAM, TOPIC_A)).toBeNull();
+  });
+
   it("is a monotonic max including uuid for equal createdAt", () => {
     clearMessengerReadBoundariesForOwner(OWNER_A);
     advanceMessengerReadBoundary({
