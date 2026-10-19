@@ -13,27 +13,27 @@ export type ExternalAccountLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface ExternalAccountSettings {
   kind: "zulip";
-  serverUrl: string;
-  email: string;
-  selectionMode: ExternalAccountSelectionMode;
-  historyDepth: ExternalAccountHistoryDepth;
-  defaultProjectId: string;
+  serverUrl?: string;
+  email?: string;
+  selectionMode?: ExternalAccountSelectionMode;
+  historyDepth?: ExternalAccountHistoryDepth;
+  defaultProjectId?: string;
 }
 
 export interface ExternalAccount {
   uuid: ExternalAccountUuid;
   provider: ExternalAccountProvider;
   settings: ExternalAccountSettings;
-  credentialPresent: boolean;
+  credentialPresent?: boolean;
   status: ExternalAccountStatus;
-  liveReady: boolean;
-  capabilities: Readonly<Record<string, unknown>>;
+  liveReady?: boolean;
+  capabilities?: Readonly<Record<string, unknown>>;
   safeError: string | null;
-  desiredGeneration: number;
-  appliedGeneration: number;
-  lastProgressAt: string | null;
-  revision: number;
+  desiredGeneration?: number;
+  appliedGeneration?: number;
+  lastProgressAt?: string | null;
+  revision?: number;
   createdAt: string;
   updatedAt: string;
-  etag: string;
+  etag?: string;
 }

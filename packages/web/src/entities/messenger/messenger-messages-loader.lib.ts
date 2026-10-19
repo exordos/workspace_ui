@@ -21,6 +21,7 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   readMessengerConversationWindowCache as defaultReadMessengerConversationWindowCache,
   readMessengerCachedReadBoundaries as defaultReadMessengerCachedReadBoundaries,
+  deleteMessengerCachedReadBoundary as defaultDeleteMessengerCachedReadBoundary,
   writeMessengerConversationWindowCache as defaultWriteMessengerConversationWindowCache,
   type MessengerConversationCacheWindow,
 } from "./messenger-cache.lib";
@@ -38,7 +39,10 @@ import { settleMessengerOutgoingMessages } from "./messenger-outbox.model";
 import {
   applyMessengerReadBoundaries,
   compareMessengerMessageOrder,
+  discardMessengerReadBoundary,
+  readMessengerReadBoundary,
   restoreMessengerReadBoundaries,
+  type MessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
 import {
   buildMessengerRequestOptions,
@@ -73,6 +77,7 @@ export interface MessengerMessagesCacheDeps {
   readReadBoundaries?: (
     ownerKey: string,
   ) => ReturnType<typeof defaultReadMessengerCachedReadBoundaries>;
+  deleteReadBoundary?: typeof defaultDeleteMessengerCachedReadBoundary;
   readConversationMessageWindow?: (
     ownerKey: string,
     conversationId: MessengerConversationId,
@@ -1060,6 +1065,12 @@ async function loadConversationMessagesFromServer({
     pageMarker == null &&
     retainCurrentWindow?.() === true &&
     (store.getState().conversationWindowsById[conversationId]?.messageUuids.length ?? 0) > 0;
+  interface RejectedUnreadBoundary {
+    messageUuid: MessengerUuid;
+    boundary: MessengerReadBoundary;
+    mutationRevision: number;
+  }
+  const retryState: { rejectedUnreadBoundary?: RejectedUnreadBoundary } = {};
   try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const requestStoreState = store.getState();
@@ -1078,6 +1089,34 @@ async function loadConversationMessagesFromServer({
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
 
+      const unreadDto = unreadPage?.items[0];
+      const rejected = retryState.rejectedUnreadBoundary;
+      const canDiscardBoundary = (): boolean => {
+        if (rejected == null || isRequestStale()) return false;
+        if (store.getState().messageMutationRevision !== rejected.mutationRevision) return false;
+        return (
+          readMessengerReadBoundary(
+            ownerKey,
+            rejected.boundary.streamUuid,
+            rejected.boundary.topicUuid,
+          ) === rejected.boundary
+        );
+      };
+      if (
+        rejected != null &&
+        unreadDto?.uuid === rejected.messageUuid &&
+        unreadDto.read === false &&
+        canDiscardBoundary()
+      ) {
+        // A repeated server-unread frontier overrides only the unchanged local cursor.
+        await (cache.deleteReadBoundary ?? defaultDeleteMessengerCachedReadBoundary)(
+          rejected.boundary,
+          canDiscardBoundary,
+        );
+        if (isRequestStale()) return { status: "skipped", ownerKey, reason: "stale-owner" };
+        if (canDiscardBoundary()) discardMessengerReadBoundary(rejected.boundary);
+      }
+
       const resolved = await resolveOpeningMessageWindow({
         page,
         unreadPage,
@@ -1094,7 +1133,26 @@ async function loadConversationMessagesFromServer({
       if (isRequestStale() || resolved.status === "stale")
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       if (resolved.status === "retry") {
-        if (attempt === 0) continue;
+        if (attempt === 0) {
+          if (
+            unreadDto?.read === false &&
+            applyMessengerReadBoundaries([adaptMessengerMessage(unreadDto)], ownerKey)[0]?.read
+          ) {
+            const boundary = readMessengerReadBoundary(
+              ownerKey,
+              unreadDto.stream_uuid,
+              unreadDto.topic_uuid,
+            );
+            if (boundary != null) {
+              retryState.rejectedUnreadBoundary = {
+                messageUuid: unreadDto.uuid,
+                boundary,
+                mutationRevision: store.getState().messageMutationRevision,
+              };
+            }
+          }
+          continue;
+        }
         throw new Error("Unread boundary changed while opening the conversation");
       }
       const applied = applyResolvedConversationWindow({

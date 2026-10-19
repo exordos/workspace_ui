@@ -58,6 +58,22 @@ function externalAccountEvent(
 }
 
 describe("external account realtime transport", () => {
+  it("accepts an updated registry model without lifecycle fields or revision", () => {
+    const dto = externalAccountEvent("external_account.updated");
+    const payload = dto.payload as WorkspaceMessengerExternalAccountEventPayloadDto;
+    const current = accountSnapshot();
+    const snapshot = {
+      uuid: current.uuid,
+      provider: "zulip" as const,
+      settings: { server_url: "https://zulip.example.com", email: "user@example.com" },
+      status: "new" as const,
+      created_at: current.created_at,
+      updated_at: current.updated_at,
+    };
+    dto.payload = { ...payload, snapshot };
+    expect(isWorkspaceMessengerEventDto(dto)).toBe(true);
+    expect(normalizeWorkspaceRestEvent(dto)).toMatchObject({ external_account: snapshot });
+  });
   it.each([
     "external_account.created",
     "external_account.updated",

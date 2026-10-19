@@ -5,7 +5,6 @@ import { useExternalAccountStore } from "~/entities/external-account/external-ac
 import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { removeMessengerStreamProjections } from "~/entities/messenger/messenger-stream-projection-cleanup.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -37,19 +36,6 @@ export interface UseDeleteExternalAccountResult {
   error: boolean;
   remove: () => void;
   reset: () => void;
-}
-
-function removeKnownStreamProjections(
-  ownerKey: string,
-  streamUuids: readonly string[],
-  isOwnerCurrent: () => boolean,
-): Promise<void> {
-  return removeMessengerStreamProjections({
-    ownerKey,
-    streamUuids,
-    removeActiveProjection: true,
-    isOwnerCurrent,
-  });
 }
 
 export function useDeleteExternalAccount({
@@ -93,18 +79,6 @@ export function useDeleteExternalAccount({
     const isInvalidated = () =>
       isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal);
     const chatScopeKey = externalChatScopeKey(runtimeContext, accountUuid);
-    const externalChatsState = useExternalChatsStore.getState();
-    const knownProjectionStreamUuids =
-      externalChatsState.scopeKey === chatScopeKey &&
-      externalChatsState.externalAccountUuid === accountUuid
-        ? externalChatsState.chats
-            .filter(
-              (chat) =>
-                chat.projectId === runtimeContext.projectId && chat.projectionStreamUuid != null,
-            )
-            .map((chat) => chat.projectionStreamUuid)
-            .filter((streamUuid): streamUuid is string => streamUuid != null)
-        : [];
 
     void (async () => {
       try {
@@ -118,12 +92,6 @@ export function useDeleteExternalAccount({
         const accountStore = useExternalAccountStore.getState();
         accountStore.removeAccountForOwner(ownerKey, accountUuid);
         useExternalChatsStore.getState().clearAccount(chatScopeKey, accountUuid);
-        await removeKnownStreamProjections(
-          ownerKey,
-          knownProjectionStreamUuids,
-          () => !isInvalidated(),
-        );
-        if (isInvalidated()) return;
 
         const nextAccountState = useExternalAccountStore.getState();
         if (nextAccountState.ownerKey === ownerKey) {

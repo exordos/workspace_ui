@@ -52,35 +52,31 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
     onOpenChange,
     runtimeContext,
     reconnectAccount = null,
-    renderChatsStep,
+    editAccount = null,
   }) {
     const handleCompleted = useCallback(() => onOpenChange(false), [onOpenChange]);
     const vm = useConnectExternalAccount({
       open,
       runtimeContext,
       reconnectAccount,
-      hasChatsStep: renderChatsStep != null,
+      editAccount,
       onCompleted: handleCompleted,
     });
     const showForm =
       vm.phase === "credentials" &&
       (vm.lifecycleAccount == null || vm.lifecycleAccount.status === "auth_required");
-    const showLifecycle =
-      vm.lifecycleAccount != null && vm.phase !== "chats" && vm.phase !== "automaticDone";
-    const title =
-      vm.phase === "chats"
-        ? t("connectExternalAccount.chatsStep.title")
-        : vm.phase === "automaticDone"
-          ? t("connectExternalAccount.done.title")
-          : vm.reconnecting
-            ? t("connectExternalAccount.reconnectTitle")
-            : t("connectExternalAccount.title");
-    const description =
-      vm.phase === "chats"
-        ? t("connectExternalAccount.chatsStep.description")
-        : vm.phase === "automaticDone"
-          ? t("connectExternalAccount.done.description")
-          : t("connectExternalAccount.description");
+    const showLifecycle = vm.lifecycleAccount != null && vm.phase !== "automaticDone";
+    let title = t("connectExternalAccount.title");
+    let description = t("connectExternalAccount.description");
+    if (vm.phase === "automaticDone") {
+      title = t("connectExternalAccount.done.title");
+      description = t("connectExternalAccount.done.description");
+    } else if (editAccount != null) {
+      title = t("connectExternalAccount.edit.title");
+      description = t("connectExternalAccount.edit.description");
+    } else if (vm.reconnecting) {
+      title = t("connectExternalAccount.reconnectTitle");
+    }
 
     return (
       <AppDialog
@@ -89,7 +85,7 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
         title={title}
         description={description}
         positionClassName="top-1/2 -translate-y-1/2"
-        maxWidthClassName={vm.phase === "chats" ? "max-w-2xl" : "max-w-lg"}
+        maxWidthClassName="max-w-lg"
         footer={
           vm.phase === "automaticDone" ? (
             <DialogCancelButton onClick={() => onOpenChange(false)}>
@@ -108,28 +104,27 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
             className="rounded-lg border border-border-subtle bg-bg px-3 py-3 text-sm text-text-primary"
             role="status"
           >
-            {t("connectExternalAccount.status.connecting")}
+            {t(
+              vm.reconnecting
+                ? "connectExternalAccount.status.connecting"
+                : "connectExternalAccount.status.saving",
+            )}
           </div>
         ) : null}
         {showForm ? (
           <ConnectExternalAccountForm
+            editing={editAccount != null}
             draft={vm.draft}
             duplicateZulip={vm.duplicateZulip}
             submitting={vm.submitting}
             error={vm.error}
-            showSyncSettings={!vm.reconnecting}
             onProviderChange={vm.setProvider}
             onServerUrlChange={vm.setServerUrl}
             onEmailChange={vm.setEmail}
             onApiKeyChange={vm.setApiKey}
-            onSelectionModeChange={vm.setSelectionMode}
-            onHistoryDepthChange={vm.setHistoryDepth}
             onSubmit={vm.submit}
           />
         ) : null}
-        {vm.phase === "chats" && runtimeContext != null && vm.lifecycleAccount != null
-          ? renderChatsStep?.(runtimeContext, vm.lifecycleAccount)
-          : null}
         {vm.phase === "automaticDone" ? (
           <div
             className="border-accent/30 rounded-lg border bg-accent-soft px-4 py-4 text-sm text-text-primary"

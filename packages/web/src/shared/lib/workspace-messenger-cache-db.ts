@@ -2630,6 +2630,39 @@ function mergeReadBoundaryRows(
     : { ...previous, epochVersion };
 }
 
+export async function deleteMessengerReadBoundaryCache(
+  expected: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+  isWriteCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.readBoundaries,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.readBoundaries);
+    const id = readBoundaryRowId(expected.ownerKey, expected.streamUuid, expected.topicUuid);
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const row = request.result as WorkspaceMessengerReadBoundaryCacheRow | undefined;
+      if (
+        isWriteCurrent() &&
+        row?.createdAt === expected.createdAt &&
+        row.messageUuid === expected.messageUuid &&
+        row.epochVersion === expected.epochVersion
+      ) {
+        store.delete(id);
+      }
+    };
+    await transactionDone(transaction);
+  } catch (error) {
+    logCacheWriteFailure("delete-read-boundary", error);
+  }
+}
+
 export async function advanceMessengerReadBoundaryCache(
   boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
 ): Promise<void> {

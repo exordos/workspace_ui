@@ -1,5 +1,4 @@
 import React, { useCallback } from "react";
-import type { ExternalAccountHistoryDepth } from "~/entities/external-account/external-account.types";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
@@ -8,14 +7,6 @@ import type {
   ConnectExternalAccountError,
   ConnectExternalAccountFormProps,
 } from "./connect-external-account.types";
-
-const HISTORY_DEPTH_OPTIONS: readonly ExternalAccountHistoryDepth[] = [
-  "new",
-  "7_days",
-  "30_days",
-  "90_days",
-  "all",
-];
 
 function errorText(error: ConnectExternalAccountError | null, providerName: string): string | null {
   if (error === "fill") return t("connectExternalAccount.errors.allFields");
@@ -33,6 +24,7 @@ function errorText(error: ConnectExternalAccountError | null, providerName: stri
 
 export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormProps>(
   function ConnectExternalAccountForm({
+    editing = false,
     draft,
     duplicateZulip,
     submitting,
@@ -41,9 +33,6 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
     onServerUrlChange,
     onEmailChange,
     onApiKeyChange,
-    onSelectionModeChange,
-    onHistoryDepthChange,
-    showSyncSettings,
     onSubmit,
   }) {
     const handleSubmit = useCallback(
@@ -55,13 +44,16 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
     );
     const providerName = t(`connectExternalAccount.providers.${draft.provider}`);
     const visibleError = errorText(error, providerName);
+    const submitLabel = t(
+      editing ? "connectExternalAccount.edit.save" : "connectExternalAccount.connect",
+    );
     const providerField = (
       <FormField label={t("connectExternalAccount.provider")} htmlFor="external-account-provider">
         <Select
           id="external-account-provider"
           value={draft.provider}
           onValueChange={() => onProviderChange("zulip")}
-          disabled={submitting}
+          disabled={submitting || editing}
           options={[{ value: "zulip", label: t("connectExternalAccount.providers.zulip") }]}
         />
       </FormField>
@@ -124,83 +116,21 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
           <input
             id="external-account-api-key"
             type="password"
-            required
+            required={!editing}
             autoComplete="new-password"
             placeholder={t("connectExternalAccount.apiKeyHint")}
+            aria-describedby={editing ? "external-account-api-key-hint" : undefined}
             value={draft.apiKey}
             onChange={(event) => onApiKeyChange(event.target.value)}
             disabled={submitting}
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
+          {editing ? (
+            <p id="external-account-api-key-hint" className="mt-1 text-xs text-text-muted">
+              {t("connectExternalAccount.edit.apiKeyHint")}
+            </p>
+          ) : null}
         </FormField>
-        {showSyncSettings ? (
-          <>
-            <fieldset disabled={submitting}>
-              <legend className="text-sm font-medium text-text-primary">
-                {t("connectExternalAccount.selectionMode.title")}
-              </legend>
-              <p className="mt-1 text-xs text-text-muted">
-                {t("connectExternalAccount.selectionMode.description")}
-              </p>
-              <div className="mt-2 grid gap-2">
-                {(["explicit", "all"] as const).map((value) => (
-                  <label
-                    key={value}
-                    className={`focus-within:ring-accent/40 cursor-pointer rounded-lg border px-3 py-2 text-sm focus-within:ring-2 ${
-                      draft.selectionMode === value
-                        ? "border-accent/50 bg-accent-soft text-accent"
-                        : "border-border-subtle bg-bg text-text-primary"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="external-account-selection-mode"
-                      value={value}
-                      checked={draft.selectionMode === value}
-                      onChange={() => onSelectionModeChange(value)}
-                      className="mr-2"
-                    />
-                    {t(`connectExternalAccount.selectionMode.options.${value}`)}
-                  </label>
-                ))}
-              </div>
-              {/* Always reserve hint space so switching modes does not jump the form. */}
-              <p className="mt-2 min-h-8 text-xs text-text-muted">
-                {draft.selectionMode === "all"
-                  ? t("connectExternalAccount.selectionMode.allHint")
-                  : t("connectExternalAccount.selectionMode.explicitHint")}
-              </p>
-            </fieldset>
-
-            <fieldset disabled={submitting}>
-              <legend className="text-sm font-medium text-text-primary">
-                {t("connectExternalAccount.historyDepth.title")}
-              </legend>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {HISTORY_DEPTH_OPTIONS.map((value) => (
-                  <label
-                    key={value}
-                    className={`focus-within:ring-accent/40 cursor-pointer rounded-md border px-2 py-2 text-center text-xs focus-within:ring-2 ${
-                      draft.historyDepth === value
-                        ? "border-accent/50 bg-accent-soft text-accent"
-                        : "border-border-subtle bg-bg text-text-muted"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="external-account-history-depth"
-                      value={value}
-                      checked={draft.historyDepth === value}
-                      onChange={() => onHistoryDepthChange(value)}
-                      className="sr-only"
-                    />
-                    {t(`configureExternalChats.historyDepth.options.${value}`)}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </>
-        ) : null}
         {visibleError != null ? (
           <div
             className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base"
@@ -210,9 +140,7 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
           </div>
         ) : null}
         <Button type="submit" disabled={submitting} className="w-full">
-          {submitting
-            ? t("connectExternalAccount.status.sending")
-            : t("connectExternalAccount.connect")}
+          {submitting ? t("connectExternalAccount.status.sending") : submitLabel}
         </Button>
       </form>
     );

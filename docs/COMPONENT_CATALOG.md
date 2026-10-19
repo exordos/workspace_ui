@@ -21,6 +21,8 @@ This map identifies entry points rather than enumerating every component or dupl
 
 ## Reuse and boundaries
 
+The [external account dialog](../packages/web/src/features/connect-external-account/connect-external-account-dialog.ui.tsx) collects only the provider and credentials. New connections always synchronize all chats and full history, with no manual chat selection step or chat configuration action in the right panel. The account row menu also opens this dialog for editing the server URL, email and optional API key. Editing reads the latest settings before PUT so an empty key field preserves the existing credential; raw credentials stay outside the domain store and durable cache.
+
 Look in [shared/ui](../packages/web/src/shared/ui) for existing primitives before creating one. Shared components receive data and callbacks; they must not import entity stores. Domain-specific presentation belongs in an entity, an interaction in a feature, and composed screens in widgets/pages.
 
 [AppTooltip](../packages/web/src/shared/ui/app-tooltip.ui.tsx) wraps a focusable trigger and accepts React content for reusable hover/focus explanations. It uses a rounded theme surface in a portal, stays inside the viewport, and dismisses with Escape. Chat-specific copy belongs in the header, not in the shared tooltip.

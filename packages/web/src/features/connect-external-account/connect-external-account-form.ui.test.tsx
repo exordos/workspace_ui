@@ -8,8 +8,6 @@ const draft = {
   serverUrl: "",
   email: "",
   apiKey: "",
-  selectionMode: "explicit" as const,
-  historyDepth: "30_days" as const,
 };
 
 const account = {
@@ -19,8 +17,6 @@ const account = {
     kind: "zulip" as const,
     serverUrl: "https://zulip.example.com",
     email: "user@example.com",
-    selectionMode: "explicit" as const,
-    historyDepth: "30_days" as const,
     defaultProjectId: "project-1",
   },
   credentialPresent: true,
@@ -47,9 +43,6 @@ function renderForm(overrides: Partial<ConnectExternalAccountFormProps> = {}) {
     onServerUrlChange: vi.fn(),
     onEmailChange: vi.fn(),
     onApiKeyChange: vi.fn(),
-    onSelectionModeChange: vi.fn(),
-    onHistoryDepthChange: vi.fn(),
-    showSyncSettings: true,
     onSubmit: vi.fn(),
     ...overrides,
   };
@@ -65,17 +58,8 @@ describe("ConnectExternalAccountForm", () => {
     expect(screen.getByLabelText("Server URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
-    expect(
-      screen.getByRole("group", { name: "Which chats should be connected?" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Choose manually" })).toBeChecked();
-    expect(
-      screen.getByText(/After connecting, choose the chats you need from the list yourself/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("group", { name: "How much history should be loaded?" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
+    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
 
     fireEvent.submit(screen.getByRole("button", { name: /connect/i }).closest("form")!);
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
@@ -91,60 +75,5 @@ describe("ConnectExternalAccountForm", () => {
     expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /connect/i })).not.toBeInTheDocument();
-  });
-
-  it("does not expose synchronization settings while reconnecting credentials", () => {
-    renderForm({ showSyncSettings: false });
-
-    expect(
-      screen.queryByRole("group", { name: "Which chats should be connected?" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("group", { name: "How much history should be loaded?" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps a mode hint visible for both selection modes", () => {
-    const { rerender } = render(
-      <ConnectExternalAccountForm
-        draft={draft}
-        duplicateZulip={false}
-        submitting={false}
-        error={null}
-        onProviderChange={vi.fn()}
-        onServerUrlChange={vi.fn()}
-        onEmailChange={vi.fn()}
-        onApiKeyChange={vi.fn()}
-        onSelectionModeChange={vi.fn()}
-        onHistoryDepthChange={vi.fn()}
-        showSyncSettings
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.getByText(/After connecting, choose the chats you need from the list yourself/i),
-    ).toBeInTheDocument();
-
-    rerender(
-      <ConnectExternalAccountForm
-        draft={{ ...draft, selectionMode: "all" }}
-        duplicateZulip={false}
-        submitting={false}
-        error={null}
-        onProviderChange={vi.fn()}
-        onServerUrlChange={vi.fn()}
-        onEmailChange={vi.fn()}
-        onApiKeyChange={vi.fn()}
-        onSelectionModeChange={vi.fn()}
-        onHistoryDepthChange={vi.fn()}
-        showSyncSettings
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.getByText(/Chats will be connected automatically within the limit/i),
-    ).toBeInTheDocument();
   });
 });

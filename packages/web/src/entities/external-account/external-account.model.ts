@@ -30,6 +30,17 @@ export interface ExternalAccountsStoreState {
 
 const EMPTY_ACCOUNTS: ExternalAccount[] = [];
 
+export function isExternalAccountSnapshotOlder(
+  incoming: ExternalAccount,
+  current: ExternalAccount,
+): boolean {
+  if (incoming.revision != null && current.revision != null) {
+    return incoming.revision < current.revision;
+  }
+  // Registry models expose updated_at instead of a revision.
+  return Date.parse(incoming.updatedAt) < Date.parse(current.updatedAt);
+}
+
 export const useExternalAccountsStore = create<ExternalAccountsStoreState>((set) => ({
   ownerKey: null,
   accounts: EMPTY_ACCOUNTS,
@@ -82,7 +93,7 @@ export const useExternalAccountsStore = create<ExternalAccountsStoreState>((set)
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       const current = state.accounts.find((item) => item.uuid === account.uuid);
-      if (current != null && current.revision > account.revision) return state;
+      if (current != null && isExternalAccountSnapshotOlder(account, current)) return state;
       applied = true;
       return {
         accounts:

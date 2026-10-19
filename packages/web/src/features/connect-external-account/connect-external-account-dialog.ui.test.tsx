@@ -41,8 +41,6 @@ function hookResult(): UseConnectExternalAccountResult {
       serverUrl: "",
       email: "",
       apiKey: "",
-      selectionMode: "explicit",
-      historyDepth: "30_days",
     },
     accounts: [],
     lifecycleAccount: baseAccount,
@@ -56,8 +54,6 @@ function hookResult(): UseConnectExternalAccountResult {
     setServerUrl: vi.fn(),
     setEmail: vi.fn(),
     setApiKey: vi.fn(),
-    setSelectionMode: vi.fn(),
-    setHistoryDepth: vi.fn(),
     submit: vi.fn(),
     resetCredentials: vi.fn(),
   };
@@ -79,7 +75,7 @@ describe("ConnectExternalAccountDialog", () => {
     expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 
-  it("shows connection checking while POST has not returned a snapshot yet", () => {
+  it("shows saving while POST has not returned a snapshot yet", () => {
     vi.mocked(useConnectExternalAccount).mockReturnValue({
       ...hookResult(),
       lifecycleAccount: null,
@@ -90,7 +86,7 @@ describe("ConnectExternalAccountDialog", () => {
       <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("Checking connection");
+    expect(screen.getByRole("status")).toHaveTextContent("Saving account");
   });
 
   it("allows credentials to be entered again for auth_required", () => {
@@ -135,44 +131,6 @@ describe("ConnectExternalAccountDialog", () => {
     expect(resetCredentials).toHaveBeenCalledOnce();
   });
 
-  it("shows the shared chat catalog inside the same dialog for explicit onboarding", () => {
-    vi.mocked(useConnectExternalAccount).mockReturnValue({
-      ...hookResult(),
-      phase: "chats",
-      lifecycleAccount: {
-        ...baseAccount,
-        status: "backfill",
-        appliedGeneration: 1,
-      },
-    });
-    const renderChatsStep = vi.fn(() => <div>Shared chat catalog</div>);
-
-    renderWithProviders(
-      <ConnectExternalAccountDialog
-        open
-        onOpenChange={vi.fn()}
-        runtimeContext={{
-          accountId: "account",
-          instanceId: "instance",
-          organizationId: "organization",
-          projectId: "project-1",
-          userUuid: "user",
-          organizationOrigin: "https://workspace.example.com",
-          accessToken: "token",
-          runtimeGeneration: 1,
-        }}
-        renderChatsStep={renderChatsStep}
-      />,
-    );
-
-    expect(screen.getByRole("dialog")).toHaveTextContent("Choose Zulip chats");
-    expect(screen.getByText("Shared chat catalog")).toBeInTheDocument();
-    expect(renderChatsStep).toHaveBeenCalledOnce();
-    expect(useConnectExternalAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ hasChatsStep: true }),
-    );
-  });
-
   it("shows automatic completion without mounting the catalog", () => {
     vi.mocked(useConnectExternalAccount).mockReturnValue({
       ...hookResult(),
@@ -190,11 +148,8 @@ describe("ConnectExternalAccountDialog", () => {
     );
 
     expect(
-      screen.getByText(/available chats will be connected automatically/i),
+      screen.getByText(/all chats and their full history will be synchronized automatically/i),
     ).toBeInTheDocument();
-    expect(useConnectExternalAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ hasChatsStep: false }),
-    );
   });
 
   it("dismisses from the AppDialog header close control instead of a footer Close", () => {

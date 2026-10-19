@@ -28,10 +28,20 @@ function Harness({
   conversationId,
   items = messages,
   initialPositionReady = true,
+  hasNewerMessages = false,
+  isLoadingNewer = false,
+  tailOutsideWindow = false,
+  onUnreadMessagesVisible,
+  onUnreadMessagesAtBottom,
 }: {
   readonly conversationId: MessengerConversationId;
   readonly items?: Message[];
   readonly initialPositionReady?: boolean;
+  readonly hasNewerMessages?: boolean;
+  readonly isLoadingNewer?: boolean;
+  readonly tailOutsideWindow?: boolean;
+  readonly onUnreadMessagesVisible?: (messageKeys: string[]) => void;
+  readonly onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }) {
   const [control, setControl] = useState({ conversationId, cancelled: false });
   if (control.conversationId !== conversationId) {
@@ -49,6 +59,11 @@ function Harness({
       scrollToBottomKey: conversationId,
       firstUnreadKey: items.find(isUnreadCandidate)?.key,
       unreadCount: items.filter(isUnreadCandidate).length,
+      hasNewerMessages,
+      isLoadingNewer,
+      tailOutsideWindow,
+      onUnreadMessagesVisible,
+      onUnreadMessagesAtBottom,
     });
   return (
     <div
@@ -63,6 +78,7 @@ function Harness({
           key={message.key}
           data-message-uuid={message.key}
           data-message-render-key={message.key}
+          data-message-read-boundary={message.key}
           data-index={index}
         />
       ))}
@@ -79,6 +95,7 @@ const originalScrollIntoView = Object.getOwnPropertyDescriptor(
 
 beforeEach(() => {
   generation += 1;
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
   vi.spyOn(useWorkspaceAuthStore.getState(), "getCurrentRuntimeContext").mockReturnValue({
     accountId: "account",
     instanceId: "instance",
@@ -137,6 +154,112 @@ function saveScroll(top: number) {
   fireEvent.scroll(root);
   return root;
 }
+
+describe("read receipts after focus", () => {
+  it.each(["focus", "visibilitychange"])(
+    "retries topic reads at the tail after %s when loaded messages are already read",
+    (eventName) => {
+      const hasFocus = vi.mocked(document.hasFocus).mockReturnValue(false);
+      const onUnreadMessagesAtBottom = vi.fn();
+      render(
+        <Harness
+          conversationId={conversationA}
+          items={messages.map((message) => ({ ...message, read: true }))}
+          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        />,
+      );
+      onUnreadMessagesAtBottom.mockClear();
+
+      hasFocus.mockReturnValue(true);
+      fireEvent(eventName === "focus" ? window : document, new Event(eventName));
+
+      expect(onUnreadMessagesAtBottom).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not consume the bottom read attempt while the window is inactive", () => {
+    const hasFocus = vi.mocked(document.hasFocus).mockReturnValue(false);
+    const onUnreadMessagesAtBottom = vi.fn();
+    render(
+      <Harness
+        conversationId={conversationA}
+        items={messages.map((message) => ({ ...message, read: true }))}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />,
+    );
+
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+    hasFocus.mockReturnValue(true);
+    saveScroll(800);
+    expect(onUnreadMessagesAtBottom).toHaveBeenCalledOnce();
+  });
+
+  it("retries an unchanged tail when focus returns after a previous attempt", () => {
+    const hasFocus = vi.mocked(document.hasFocus);
+    const onUnreadMessagesAtBottom = vi.fn();
+    render(
+      <Harness
+        conversationId={conversationA}
+        items={messages.map((message) => ({ ...message, read: true }))}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />,
+    );
+    expect(onUnreadMessagesAtBottom).toHaveBeenCalledOnce();
+    onUnreadMessagesAtBottom.mockClear();
+    hasFocus.mockReturnValue(false);
+    fireEvent.blur(window);
+
+    hasFocus.mockReturnValue(true);
+    fireEvent.focus(window);
+
+    expect(onUnreadMessagesAtBottom).toHaveBeenCalledOnce();
+  });
+
+  it("only reports visible unread messages when focus returns in history", () => {
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    render(
+      <Harness
+        conversationId={conversationA}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />,
+    );
+    saveScroll(300);
+    onUnreadMessagesVisible.mockClear();
+    onUnreadMessagesAtBottom.mockClear();
+
+    fireEvent.focus(window);
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledExactlyOnceWith(["message-3", "message-4"]);
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+  });
+
+  it.each([{ hasNewerMessages: true }, { isLoadingNewer: true }, { tailOutsideWindow: true }])(
+    "keeps unread receipts within the loaded viewport with %j",
+    (pagination) => {
+      const onUnreadMessagesVisible = vi.fn();
+      const onUnreadMessagesAtBottom = vi.fn();
+      render(
+        <Harness
+          conversationId={conversationA}
+          items={messages.map((message, index) => ({ ...message, read: index !== 9 }))}
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+          {...pagination}
+        />,
+      );
+      saveScroll(800);
+      onUnreadMessagesVisible.mockClear();
+      onUnreadMessagesAtBottom.mockClear();
+
+      fireEvent.focus(window);
+
+      expect(onUnreadMessagesVisible).toHaveBeenCalledExactlyOnceWith(["message-9"]);
+      expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe("session conversation position", () => {
   it.each(["wheel", "touch"] as const)(

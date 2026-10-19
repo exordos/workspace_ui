@@ -2,10 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Vite: Web App",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "program": "${workspaceFolder}/node_modules/vite/bin/vite.js",
+      "args": ["--host", "127.0.0.1", "--port", "5173", "--strictPort"],
+      "cwd": "${workspaceFolder}/packages/web",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
       "name": "Chrome: Web App",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:5173",
+      "url": "http://localhost:21080",
       "webRoot": "${workspaceFolder}/packages/web",
       "sourceMaps": true,
       "sourceMapPathOverrides": {
@@ -19,7 +30,7 @@
       "name": "Edge: Web App",
       "type": "msedge",
       "request": "launch",
-      "url": "http://localhost:5173",
+      "url": "http://localhost:21080",
       "webRoot": "${workspaceFolder}/packages/web",
       "sourceMaps": true
     },
@@ -56,7 +67,9 @@
       "args": ["${workspaceFolder}/packages/electron/dist/main.js"],
       "sourceMaps": true,
       "outFiles": ["${workspaceFolder}/packages/electron/dist/**/*.js"],
-      "env": { "NODE_ENV": "development" },
+      "env": {
+        "NODE_ENV": "development"
+      },
       "preLaunchTask": ""
     },
     {

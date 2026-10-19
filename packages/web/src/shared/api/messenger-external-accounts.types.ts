@@ -4,6 +4,10 @@ export type WorkspaceExternalAccountProvider = "zulip";
 export type WorkspaceExternalAccountSelectionMode = "explicit" | "all";
 export type WorkspaceExternalAccountHistoryDepth = "new" | "7_days" | "30_days" | "90_days" | "all";
 export type WorkspaceExternalAccountStatus =
+  | "new"
+  | "fast_backfill"
+  | "active"
+  | "error"
   | "connecting"
   | "backfill"
   | "live"
@@ -21,7 +25,18 @@ export interface WorkspaceZulipExternalAccountSettingsDto {
   default_project_id: WorkspaceMessengerUuid;
 }
 
-export interface WorkspaceExternalAccountDto {
+export interface WorkspaceExternalAccountRegistryDto {
+  uuid: WorkspaceMessengerUuid;
+  provider: WorkspaceExternalAccountProvider;
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto>;
+  status: "new" | "backfill" | "fast_backfill" | "active" | "error";
+  error_description?: string | null;
+  revision?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceExternalAccountLifecycleDto {
   uuid: WorkspaceMessengerUuid;
   settings: WorkspaceZulipExternalAccountSettingsDto;
   credential_present: boolean;
@@ -37,18 +52,20 @@ export interface WorkspaceExternalAccountDto {
   updated_at: string;
 }
 
+export type WorkspaceExternalAccountDto =
+  | WorkspaceExternalAccountRegistryDto
+  | WorkspaceExternalAccountLifecycleDto;
+
 export interface WorkspaceExternalAccountCreateRequestBody {
   uuid: WorkspaceMessengerUuid;
+  provider: WorkspaceExternalAccountProvider;
   settings: WorkspaceZulipExternalAccountSettingsDto & {
     api_key: string;
   };
 }
 
 export interface WorkspaceExternalAccountUpdateRequestBody {
-  settings: Pick<
-    WorkspaceZulipExternalAccountSettingsDto,
-    "kind" | "selection_mode" | "history_depth" | "default_project_id"
-  >;
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto> & { api_key?: string };
 }
 
 export interface WorkspaceExternalAccountReconnectRequestBody {
@@ -103,6 +120,21 @@ function isStatus(value: unknown): value is WorkspaceExternalAccountStatus {
   );
 }
 
+// Registry settings are a dictionary, not the legacy lifecycle configuration.
+function isRegistrySettings(
+  value: unknown,
+): value is Partial<WorkspaceZulipExternalAccountSettingsDto> {
+  return (
+    isRecord(value) &&
+    (value.kind === undefined || value.kind === "zulip") &&
+    (value.server_url === undefined || typeof value.server_url === "string") &&
+    (value.email === undefined || typeof value.email === "string") &&
+    (value.selection_mode === undefined || isSelectionMode(value.selection_mode)) &&
+    (value.history_depth === undefined || isHistoryDepth(value.history_depth)) &&
+    (value.default_project_id === undefined || typeof value.default_project_id === "string")
+  );
+}
+
 function isSettings(value: unknown): value is WorkspaceZulipExternalAccountSettingsDto {
   return (
     isRecord(value) &&
@@ -118,6 +150,22 @@ function isSettings(value: unknown): value is WorkspaceZulipExternalAccountSetti
 export function isWorkspaceExternalAccountDto(
   value: unknown,
 ): value is WorkspaceExternalAccountDto {
+  if (isRecord(value) && "provider" in value) {
+    return (
+      isNonEmptyString(value.uuid) &&
+      value.provider === "zulip" &&
+      isRegistrySettings(value.settings) &&
+      (value.status === "new" ||
+        value.status === "backfill" ||
+        value.status === "fast_backfill" ||
+        value.status === "active" ||
+        value.status === "error") &&
+      (value.error_description == null || typeof value.error_description === "string") &&
+      (value.revision === undefined || isPositiveInteger(value.revision)) &&
+      isNonEmptyString(value.created_at) &&
+      isNonEmptyString(value.updated_at)
+    );
+  }
   return (
     isRecord(value) &&
     isNonEmptyString(value.uuid) &&

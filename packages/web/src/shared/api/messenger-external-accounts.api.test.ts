@@ -4,10 +4,12 @@ import {
   deleteExternalAccount,
   disconnectExternalAccount,
   getExternalAccount,
+  getExternalAccounts,
   getExternalAccountsPage,
   reconnectExternalAccount,
   updateExternalAccount,
 } from "./messenger-external-accounts.api";
+import type { WorkspaceExternalAccountCreateRequestBody } from "./messenger-external-accounts.types";
 
 const accountDto = {
   uuid: "33333333-3333-4333-8333-333333333333",
@@ -50,6 +52,44 @@ function firstCall(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("messenger external accounts API", () => {
+  it("loads a mixed list and an account without legacy settings", async () => {
+    const registry = {
+      uuid: "44444444-4444-4444-8444-444444444444",
+      provider: "zulip",
+      settings: { server_url: "https://zulip.example.com", email: "user@example.com" },
+      status: "active",
+      created_at: accountDto.created_at,
+      updated_at: accountDto.updated_at,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse([accountDto, registry]))
+      .mockResolvedValueOnce(jsonResponse(registry));
+    await expect(getExternalAccounts(options(fetchMock))).resolves.toEqual([accountDto, registry]);
+    await expect(getExternalAccount(options(fetchMock), registry.uuid)).resolves.toEqual({
+      account: registry,
+      etag: undefined,
+    });
+  });
+
+  it("accepts the saved model returned by the backend after creating an account", async () => {
+    const saved = {
+      uuid: accountDto.uuid,
+      provider: "zulip",
+      settings: accountDto.settings,
+      status: "new",
+      created_at: accountDto.created_at,
+      updated_at: accountDto.updated_at,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(saved, 201));
+    await expect(
+      createExternalAccount(options(fetchMock), {
+        uuid: saved.uuid,
+        provider: "zulip",
+        settings: { ...accountDto.settings, api_key: "test" },
+      }),
+    ).resolves.toEqual({ account: saved, etag: undefined });
+  });
   it("loads the paginated sanitized contract", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse([accountDto], 200, {
@@ -74,8 +114,9 @@ describe("messenger external accounts API", () => {
     const createMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse(accountDto, 201, { ETag: '"server-etag"' }));
-    const body = {
+    const body: WorkspaceExternalAccountCreateRequestBody = {
       uuid: accountDto.uuid,
+      provider: "zulip",
       settings: { ...accountDto.settings, api_key: "secret" },
     };
     await expect(createExternalAccount(options(createMock), body)).resolves.toMatchObject({

@@ -158,6 +158,27 @@ describe("messenger stream member actions", () => {
     );
   });
 
+  it("sends the nil UUID for admin and applies the returned membership", async () => {
+    const adminUuid = "00000000-0000-0000-0000-000000000000";
+    const addStreamUsers = vi.fn(() =>
+      Promise.resolve([createStreamBindingDto({ user_uuid: adminUuid })]),
+    );
+
+    await expect(
+      addWorkspaceStreamMembers({
+        runtimeContext,
+        streamUuid: STREAM_UUID,
+        userUuids: [adminUuid],
+        client: { addStreamUsers },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+
+    expect(addStreamUsers).toHaveBeenCalledWith(expect.anything(), STREAM_UUID, {
+      member: [adminUuid],
+    });
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_UUID]?.userUuid).toBe(adminUuid);
+  });
+
   it.each(["member", "administrator", "owner"] as const)(
     "rejects member addition by a non-owner even with the %s binding role",
     async (role) => {

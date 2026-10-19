@@ -238,6 +238,129 @@ async function installThread(
 }
 
 test.describe("Thread unread badge after scroll read @mock", () => {
+  test("opening a thread reconciles a persisted read cursor with server-unread messages", async ({
+    authenticatedMocked: page,
+  }) => {
+    const readUpToCalls: string[] = [];
+    const gate = createReadUpToGate();
+    gate.release();
+    await installRealtime(page, []);
+    const thread = await installThread(page, readUpToCalls, gate, 0);
+    const unreadIndex = REAL_CONVERSATION_SAMPLE.findLastIndex((message) => !message.is_own);
+    const unreadMessage = REAL_CONVERSATION_SAMPLE[unreadIndex];
+    const tail = REAL_CONVERSATION_SAMPLE.at(-1);
+    if (unreadMessage == null || tail == null) throw new Error("Missing conversation sample");
+    thread.markEarlierUnread(unreadIndex);
+
+    await page.evaluate(
+      async ({ streamUuid, topicUuid, messageUuid, createdAt }) => {
+        const { useWorkspaceMessageStore } = await import("/src/entities/message/message.model.ts");
+        const { advanceMessengerCachedReadBoundary } =
+          await import("/src/entities/messenger/messenger-cache.lib.ts");
+        const ownerKey = useWorkspaceMessageStore.getState().ownerKey;
+        if (ownerKey == null) throw new Error("Missing messenger owner");
+        await advanceMessengerCachedReadBoundary({
+          ownerKey,
+          streamUuid,
+          topicUuid,
+          messageUuid,
+          createdAt,
+        });
+      },
+      {
+        streamUuid: E2E_STREAM_UUID,
+        topicUuid: THREAD_UUID,
+        messageUuid: tail.uuid,
+        createdAt: tail.created_at,
+      },
+    );
+    let unreadRequests = 0;
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.searchParams.get("read") === "false" &&
+        url.searchParams.get("topic_uuid") === THREAD_UUID
+      ) {
+        unreadRequests += 1;
+      }
+    });
+
+    // Full navigation forces the loader to restore the conflicting cursor from IndexedDB.
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
+    await expect(page.locator(`[data-message-uuid='${unreadMessage.uuid}']`)).toBeVisible();
+    await expect.poll(() => unreadRequests).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => readUpToCalls.length).toBeGreaterThan(0);
+    await expect(
+      page.getByText("Could not refresh messages. You may be seeing cached content."),
+    ).toBeHidden();
+
+    const streamRow = page.locator("a", { hasText: "#General" }).first();
+    await streamRow.hover();
+    await page.getByTestId("sidebar-stream-expand-chevron").first().click();
+    const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
+    await expect(threadRow).toBeVisible();
+    await expect(threadRow.getByTestId("sidebar-chat-row-unread-badge")).toBeHidden();
+  });
+
+  test("returning focus reads an older unread message through the already read tail", async ({
+    authenticatedMocked: page,
+  }) => {
+    const sockets: WebSocketRoute[] = [];
+    const readUpToCalls: string[] = [];
+    const gate = createReadUpToGate();
+    gate.release();
+    await installRealtime(page, sockets);
+    const thread = await installThread(page, readUpToCalls, gate, 0);
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
+    const scroller = page.locator("[data-workspace-scroll-controller='true']");
+    await expect(page.locator(`[data-message-uuid='${LAST_MESSAGE_UUID}']`)).toBeVisible();
+    await scroller.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    const streamRow = page.locator("a", { hasText: "#General" }).first();
+    await streamRow.hover();
+    await page.getByTestId("sidebar-stream-expand-chevron").first().click();
+    const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
+    await expect(threadRow).toBeVisible();
+    const badge = threadRow.getByTestId("sidebar-chat-row-unread-badge");
+    await expect(badge).toBeHidden();
+    await expect.poll(() => sockets.length).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(1_000);
+
+    // Headless shell does not blur the original page when another tab is activated.
+    const setFocused = (focused: boolean) =>
+      page.evaluate((focused) => {
+        Object.defineProperty(document, "hasFocus", {
+          configurable: true,
+          value: () => focused,
+        });
+        window.dispatchEvent(new FocusEvent(focused ? "focus" : "blur"));
+      }, focused);
+    try {
+      await setFocused(false);
+      await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+      await expect(page.locator("html")).toHaveAttribute("data-window-activity", "visible");
+      thread.markEarlierUnread(REAL_CONVERSATION_SAMPLE.length - 12);
+      const socket = sockets.at(-1);
+      if (socket == null) throw new Error("no realtime socket");
+      socket.send(JSON.stringify(topicUpdatedFrame(2, 1)));
+      await expect(badge).toHaveText("1");
+      // Let the read batch delay elapse before returning focus.
+      await page.waitForTimeout(500);
+      expect(readUpToCalls).toHaveLength(0);
+
+      await setFocused(true);
+      await expect(page.locator("html")).toHaveAttribute("data-window-activity", "active");
+      await expect.poll(() => readUpToCalls).toContain(LAST_MESSAGE_UUID);
+      await expect(badge).toBeHidden();
+      expect(readUpToCalls.filter((uuid) => uuid === LAST_MESSAGE_UUID)).toHaveLength(1);
+    } finally {
+      await page.evaluate(() => Reflect.deleteProperty(document, "hasFocus"));
+    }
+  });
+
   test("read_up_to uses an already read tail when an older message becomes unread", async ({
     authenticatedMocked: page,
   }) => {

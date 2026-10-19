@@ -339,6 +339,25 @@ describe("messenger-streams api", () => {
     expect(url).toBe("/api/workspace/v1/messenger/streams/?page_limit=25&page_marker=after-stream");
   });
 
+  it.each([false, true])(
+    "loads Zulip streams without provider identifiers (private=%s)",
+    async (privateStream) => {
+      const zulipStream = {
+        ...streamDto,
+        uuid: BINDING_UUID,
+        source_name: "zulip",
+        source: { kind: "zulip" },
+        private: privateStream,
+        direct_user_uuid: privateStream ? OTHER_USER_UUID : null,
+      };
+      const streams = [streamDto, zulipStream];
+
+      await expect(
+        getStreamsPage({ accessToken: "access-token", fetchImpl: createFetchMock(streams) }),
+      ).resolves.toMatchObject({ items: streams });
+    },
+  );
+
   it("supports binding list, page, singleton, update, and delete", async () => {
     const listFetchMock = createFetchMock([streamBindingDto]);
     const pageFetchMock = createFetchMock([streamBindingDto], 200, {

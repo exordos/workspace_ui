@@ -12,14 +12,18 @@ export interface WorkspaceExternalAccountCacheProfile {
   provider: "zulip";
   settings: {
     kind: "zulip";
-    serverUrl: string;
-    email: string;
-    selectionMode: "explicit" | "all";
-    historyDepth: "new" | "7_days" | "30_days" | "90_days" | "all";
-    defaultProjectId: string;
+    serverUrl?: string;
+    email?: string;
+    selectionMode?: "explicit" | "all";
+    historyDepth?: "new" | "7_days" | "30_days" | "90_days" | "all";
+    defaultProjectId?: string;
   };
-  credentialPresent: boolean;
+  credentialPresent?: boolean;
   status:
+    | "new"
+    | "fast_backfill"
+    | "active"
+    | "error"
     | "connecting"
     | "backfill"
     | "live"
@@ -27,16 +31,16 @@ export interface WorkspaceExternalAccountCacheProfile {
     | "auth_required"
     | "disconnected"
     | "suspended";
-  liveReady: boolean;
-  capabilities: Readonly<Record<string, unknown>>;
+  liveReady?: boolean;
+  capabilities?: Readonly<Record<string, unknown>>;
   safeError: string | null;
-  desiredGeneration: number;
-  appliedGeneration: number;
-  lastProgressAt: string | null;
-  revision: number;
+  desiredGeneration?: number;
+  appliedGeneration?: number;
+  lastProgressAt?: string | null;
+  revision?: number;
   createdAt: string;
   updatedAt: string;
-  etag: string;
+  etag?: string;
 }
 
 interface WorkspaceExternalAccountCacheRow {

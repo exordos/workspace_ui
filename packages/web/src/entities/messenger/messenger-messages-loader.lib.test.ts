@@ -28,6 +28,8 @@ import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import {
   advanceMessengerReadBoundary,
   clearMessengerReadBoundariesForOwner,
+  readMessengerReadBoundary,
+  type MessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerMessagePayload } from "./messenger.types";
@@ -201,6 +203,127 @@ describe("messenger conversation messages loader", () => {
     useMessengerOutboxStore.getState().clear();
     clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
   });
+
+  it("accepts a repeated server-unread frontier that contradicts an unchanged cached cursor", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const frontier = createMessageDto({ read: false, is_own: false });
+    const boundary = {
+      ownerKey,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      createdAt: DATE_LATER,
+      messageUuid: MESSAGE_B,
+    };
+    const deleteReadBoundary = vi.fn(
+      (_boundary: MessengerReadBoundary, isCurrent: () => boolean) => {
+        expect(isCurrent()).toBe(true);
+        return Promise.resolve();
+      },
+    );
+    const getMessagesPage = vi.fn(() => Promise.resolve(createMessagesPage([frontier])));
+    const onServerWindowApplied = vi.fn();
+
+    const result = await loadMessengerConversationMessages({
+      runtimeContext,
+      conversationId,
+      resolveUnreadBoundary: true,
+      onServerWindowApplied,
+      cache: {
+        readReadBoundaries: () => Promise.resolve([boundary]),
+        deleteReadBoundary,
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [adaptMessengerMessage(frontier)],
+            nextPageMarker: null,
+            hasMore: false,
+          }),
+        writeConversationMessagePage: vi.fn(),
+      },
+      client: { getMessagesPage },
+    });
+
+    expect(result.status).toBe("applied");
+    expect(getMessagesPage).toHaveBeenCalledTimes(4);
+    expect(deleteReadBoundary).toHaveBeenCalledExactlyOnceWith(boundary, expect.any(Function));
+    expect(readMessengerReadBoundary(ownerKey, STREAM_A, TOPIC_A)).toBeNull();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(false);
+    expect(
+      useWorkspaceMessageStore.getState().messagesErrorByConversationId[conversationId],
+    ).toBeNull();
+    expect(onServerWindowApplied).toHaveBeenCalledOnce();
+  });
+
+  it.each(["new-read", "same-boundary-read", "owner-switch"] as const)(
+    "preserves newer state during unread cursor reconciliation after %s",
+    async (transition) => {
+      const runtimeContext = createRuntimeContext();
+      let activeRuntime = runtimeContext;
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const frontier = createMessageDto({ read: false, is_own: false });
+      const boundary = advanceMessengerReadBoundary({
+        ownerKey,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        createdAt: DATE_LATER,
+        messageUuid: MESSAGE_B,
+      });
+      const pending = createDeferred<void>();
+      const deleteReadBoundary = vi.fn(
+        (_boundary: MessengerReadBoundary, _isCurrent: () => boolean) => pending.promise,
+      );
+      const onServerWindowApplied = vi.fn();
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        getRuntimeContext: () => activeRuntime,
+        conversationId,
+        resolveUnreadBoundary: true,
+        onServerWindowApplied,
+        cache: {
+          readReadBoundaries: () => Promise.resolve([]),
+          deleteReadBoundary,
+          readConversationMessageWindow: () =>
+            Promise.resolve({
+              messages: [],
+              nextPageMarker: null,
+              hasMore: false,
+            }),
+          writeConversationMessagePage: vi.fn(),
+        },
+        client: { getMessagesPage: () => Promise.resolve(createMessagesPage([frontier])) },
+      });
+      await vi.waitFor(() => expect(deleteReadBoundary).toHaveBeenCalledOnce());
+      if (transition === "new-read") {
+        advanceMessengerReadBoundary({
+          ...boundary,
+          createdAt: DATE_LATEST,
+          messageUuid: MESSAGE_C,
+        });
+      } else if (transition === "same-boundary-read") {
+        advanceMessengerReadBoundary({ ...boundary });
+        useWorkspaceMessageStore
+          .getState()
+          .applyLiveKnownBodyMutation(
+            adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER })),
+          );
+      } else {
+        activeRuntime = createRuntimeContext({ accountId: ACCOUNT_B, userUuid: USER_B });
+        prepareStoreOwner(activeRuntime);
+      }
+      expect(deleteReadBoundary.mock.calls[0]?.[1]()).toBe(false);
+      pending.resolve();
+
+      await expect(loading).resolves.toMatchObject({
+        status: transition === "owner-switch" ? "skipped" : "failed",
+      });
+      expect(readMessengerReadBoundary(ownerKey, STREAM_A, TOPIC_A)).toMatchObject({
+        messageUuid: transition === "new-read" ? MESSAGE_C : MESSAGE_B,
+      });
+      expect(onServerWindowApplied).not.toHaveBeenCalled();
+    },
+  );
 
   it("exposes a retryable opening error after two live window races and recovers on retry", async () => {
     const runtimeContext = createRuntimeContext();

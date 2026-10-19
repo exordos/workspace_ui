@@ -9,6 +9,7 @@ import {
   deleteMessengerFolderCatalogCache,
   deleteMessengerFolderItemCatalogCache,
   deleteMessengerStreamBindingCatalogCache,
+  deleteMessengerReadBoundaryCache,
   deleteOwnMessageReaction,
   deleteOwnMessageReactionsForMessage,
   deleteOwnMessageReactionsForMessages,
@@ -697,6 +698,13 @@ export async function advanceMessengerCachedReadBoundary(
   boundary: MessengerReadBoundary,
 ): Promise<void> {
   await advanceMessengerReadBoundaryCache(boundary);
+}
+
+export async function deleteMessengerCachedReadBoundary(
+  boundary: MessengerReadBoundary,
+  isWriteCurrent: () => boolean,
+): Promise<void> {
+  await deleteMessengerReadBoundaryCache(boundary, isWriteCurrent);
 }
 
 export async function deleteMessengerCachedMessage(

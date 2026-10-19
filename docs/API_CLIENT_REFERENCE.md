@@ -33,6 +33,10 @@ The transport defaults are `/api/workspace/v1` for Workspace and `/api/workspace
 
 DTO definitions and runtime guards live in [messenger.types.ts](../packages/web/src/shared/api/messenger.types.ts) and specialized adjacent `*.types.ts` modules. Do not duplicate those interfaces here. Convert DTOs through the existing [domain adapters](../packages/web/src/entities/messenger/messenger-adapters.lib.ts) before writing stores.
 
+Zulip provenance can contain only `{"kind":"zulip"}`. Provider identifiers such as `source.stream_id` are optional metadata; stream identity and navigation use Workspace UUIDs. The same source validation applies to REST snapshots and realtime events.
+
+External-account registry snapshots identify the provider at the top level and may omit legacy lifecycle settings (`kind`, `selection_mode`, `history_depth`, `default_project_id`). Parse registry settings separately from the lifecycle contract, preserve missing values in domain/cache profiles, and keep credentials out of both. Credential editing reads the latest settings before replacement so unknown provider options and an omitted API key survive. The v5 contract was checked against backend revision `83352b47cba8d086c0e4493b3b38a8b327e7edb0` (PR #194).
+
 ## Calling rules
 
 - Use the concrete domain API module and its typed options. `workspace-client.ts` is not a generic `request()` interface, and `shared/api/client.ts` is not the entry point for new Workspace requests.

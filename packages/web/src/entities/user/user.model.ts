@@ -121,8 +121,6 @@ function buildUpsertUserState(
   };
 }
 
-// This store intentionally includes system users for author and member rendering.
-// Action pickers must use selectSelectableWorkspaceUsers() from user-selectors.lib.ts.
 export const useUsersStore = create<UsersStoreState>((set, get) => ({
   ownerKey: null,
   usersById: EMPTY_USERS_BY_ID,

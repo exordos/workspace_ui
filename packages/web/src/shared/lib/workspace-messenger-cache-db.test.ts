@@ -15,6 +15,7 @@ import {
   deleteOwnMessageReactionsForMessage,
   deleteOwnMessageReactionsForMessages,
   deleteExpiredMessengerSearchResults,
+  deleteMessengerReadBoundaryCache,
   deleteWorkspaceMessengerCacheDatabase,
   deleteWorkspaceMessengerOwnerCache,
   markCachedMessagesRead,
@@ -1018,6 +1019,52 @@ describe("workspace-messenger-cache-db", () => {
     ]);
     expect(otherOwnerCatalog.realtimeCursor?.epochVersion).toBe(20);
   });
+
+  it("deletes only the captured owner and topic read boundary", async () => {
+    const boundary = {
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-07-01T08:01:00Z",
+      messageUuid: "msg-a",
+      epochVersion: 3,
+    };
+    await advanceMessengerReadBoundaryCache(boundary);
+    await advanceMessengerReadBoundaryCache({ ...boundary, topicUuid: "topic-b" });
+    await advanceMessengerReadBoundaryCache({ ...boundary, ownerKey: OTHER_OWNER });
+
+    await deleteMessengerReadBoundaryCache(boundary);
+
+    expect(await readMessengerReadBoundaries(OWNER)).toMatchObject([{ topicUuid: "topic-b" }]);
+    expect(await readMessengerReadBoundaries(OTHER_OWNER)).toHaveLength(1);
+  });
+
+  it.each(["newer-message", "newer-epoch", "stale-request"])(
+    "preserves the durable boundary after %s",
+    async (change) => {
+      const boundary = {
+        ownerKey: OWNER,
+        streamUuid: STREAM,
+        topicUuid: TOPIC,
+        createdAt: "2026-07-01T08:01:00Z",
+        messageUuid: "msg-a",
+        epochVersion: 3,
+      };
+      const current = {
+        ...boundary,
+        messageUuid: change === "newer-message" ? "msg-b" : boundary.messageUuid,
+        epochVersion: change === "newer-epoch" ? 4 : boundary.epochVersion,
+      };
+      await advanceMessengerReadBoundaryCache(current);
+      let checks = 0;
+      await deleteMessengerReadBoundaryCache(
+        boundary,
+        () => change !== "stale-request" || ++checks < 2,
+      );
+
+      expect(await readMessengerReadBoundaries(OWNER)).toMatchObject([current]);
+    },
+  );
 
   it("keeps the maximum topic boundary and updates only its cached prefix", async () => {
     await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {

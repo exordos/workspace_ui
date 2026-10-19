@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   conversationIdForStream,
   conversationIdForTopic,
+  isMessengerUuid,
   parseMessengerConversationId,
   selectMessengerConversationFromWorkspaceRoute,
 } from "./messenger-ids.lib";
@@ -11,6 +12,20 @@ const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 
 describe("messenger conversation ids", () => {
+  it("accepts canonical backend UUIDs including fixed and newer version identifiers", () => {
+    expect(isMessengerUuid("00000000-0000-0000-0000-000000000000")).toBe(true);
+    expect(isMessengerUuid("00000000-0000-0000-0000-000000000001")).toBe(true);
+    expect(isMessengerUuid("0195c3aa-3918-7000-8000-000000000001")).toBe(true);
+    expect(isMessengerUuid("75309057-419c-8b12-a7c1-3932429ec4a6")).toBe(true);
+  });
+
+  it("rejects incomplete and malformed backend UUIDs", () => {
+    expect(isMessengerUuid(null)).toBe(false);
+    expect(isMessengerUuid("123")).toBe(false);
+    expect(isMessengerUuid("00000000-0000-0000-0000-00000000000g")).toBe(false);
+    expect(isMessengerUuid(` ${STREAM_UUID}`)).toBe(false);
+  });
+
   it("builds and parses stream conversation ids from UUIDs", () => {
     const id = conversationIdForStream(STREAM_UUID);
 
