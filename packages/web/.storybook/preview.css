@@ -1,0 +1,7 @@
+/* The app owns a fixed viewport; the component catalog and Docs pages need to scroll. */
+html,
+body {
+  min-height: 100%;
+  height: auto;
+  overflow: auto;
+}

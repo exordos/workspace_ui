@@ -58,6 +58,8 @@ Run commands from the repository root unless stated otherwise.
 | Change or purpose             | Command                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------ |
 | Documentation                 | `npm run docs:check` and `git diff --check`                                                      |
+| Browse shared UI and themes   | `npm run storybook` (local catalog on port 6006)                                                 |
+| Storybook bundling            | `npm run build-storybook` (outputs `packages/web/storybook-static`)                              |
 | Focused web behavior          | `npm run test --workspace=web -- src/path/to/file.test.ts` (replace the path)                    |
 | Type/API/store contracts      | `npm run typecheck` (web and Electron)                                                           |
 | All unit tests                | `npm run test` (web Vitest and Electron script tests)                                            |
@@ -66,6 +68,8 @@ Run commands from the repository root unless stated otherwise.
 | User flow or route regression | Focused Playwright spec, e.g. `npm run e2e -- e2e/workspace-realtime.spec.ts --project=chromium` |
 
 `npm run check` is not a substitute for Electron tests/typecheck, E2E, or visual QA. [GitHub CI](../.github/workflows/ci.yml) and [GitLab CI](../.gitlab-ci.yml) define what automation currently executes; not every local gate is enabled in CI.
+
+Use the [component catalog](COMPONENT_CATALOG.md) to select UI before adding another implementation. Storybook configuration lives in [main.ts](../packages/web/.storybook/main.ts) and [preview.tsx](../packages/web/.storybook/preview.tsx); adjacent `*.stories.tsx` files demonstrate component states with application themes and synthetic fixtures. A static build does not run screenshot comparisons, accessibility audits or interaction tests, and does not validate backend integration. Report any browser/native visual checks separately.
 
 ## Git and releases
 

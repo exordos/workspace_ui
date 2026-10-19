@@ -7,6 +7,7 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - [Architecture](docs/fsd-architecture.md): ownership and imports.
 - [Async safety](docs/ORG_SCOPED_ASYNC_SAFETY.md): runtime ownership and stale writes.
 - [Integration guide](docs/INTEGRATION_GUIDE.md): workflow for feature changes.
+- [Component catalog](docs/COMPONENT_CATALOG.md): UI selection guide, concrete imports and Storybook examples.
 - [Documentation index](docs/README.md): topic-specific references.
 
 ## Scope and working tree
@@ -30,6 +31,8 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - TypeScript strict: no `any`, use type-only imports, handle missing indexed values.
 - Zustand: narrow selectors and stable derived results; keep DTO adaptation outside UI rendering.
 - UI text uses `~/i18n/i18n`; add keys to both locales. Use existing components, semantic theme tokens, and branding helpers.
+- Before adding or replacing UI, check the component catalog, adjacent stories, source and current callers. Reuse the existing primitive or feature flow when its responsibility fits; extend its contract before creating a parallel implementation. Similar appearance alone does not justify a shared abstraction, and domain UI stays in its FSD owner.
+- For new shared UI or changes to its public behavior/appearance, add or update adjacent stories for the affected states. Use the real application themes, localized labels and synthetic fixtures; stories demonstrate UI contracts, not backend capability or live integration.
 - Render untrusted content through the existing sanitize/render path. Preserve keyboard access, focus handling, and accessible names.
 - Use project logging helpers; never log credentials, tokens, PII, or message bodies.
 - Code comments use simple English and explain non-obvious reasons.

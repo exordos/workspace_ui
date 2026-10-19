@@ -1,6 +1,41 @@
-# Component responsibility map
+# Component catalog and responsibility map
 
 This map identifies entry points rather than enumerating every component or duplicating props. Follow [FSD architecture](fsd-architecture.md) and [PROJECT_FACTS.md](PROJECT_FACTS.md); the entries below point to current concrete files. Read the [module policy](fsd-architecture.md#files-and-imports) when selecting imports.
+
+## Choose existing UI first
+
+1. Find the responsibility below and inspect the component's stories, source, tests and current callers. Stories show representative use; source and tests own exact props and behavior.
+2. Reuse the existing component when its contract fits. Extend it when callers share the same responsibility; avoid adding another button, dialog or picker implementation for a single screen.
+3. Add a new component only when the existing contract cannot own the behavior cleanly, and explain that boundary. Similar appearance alone does not establish a shared responsibility. Domain presentation and workflows keep their FSD owner even when they have stories.
+
+## Shared primitives
+
+These are the existing defaults for the responsibilities listed. Import the named component from the concrete module shown; read its story for examples rather than copying its markup or prop signature into another catalog.
+
+| Component and concrete import                                        | Use for                                                                       | Boundary                                                                                                                          | Examples                                                                      |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `Button` — `~/shared/ui/button`                                      | Standard actions, including loading, disabled and leading-icon states.        | Keep navigation as links and use existing specialized action flows where applicable.                                              | [Stories](../packages/web/src/shared/ui/button.stories.tsx)                   |
+| `Avatar` — `~/shared/ui/avatar`                                      | Provided images, initials, channel avatars, presence and deactivated display. | Workspace user URNs/authenticated image loading belong to `WorkspaceAvatar` in `~/features/workspace-avatar/workspace-avatar.ui`. | [Stories](../packages/web/src/shared/ui/avatar.stories.tsx)                   |
+| `Badge` — `~/shared/ui/badge`                                        | Compact count badges and their shared visual variants.                        | Use `UnreadCountBadge` for the existing unread-pill sizing; keep domain unread rules outside `Badge`.                             | [Stories](../packages/web/src/shared/ui/badge.stories.tsx)                    |
+| `FormField` — `~/shared/ui/form-field.ui`                            | A label, supplied input/control and an error message.                         | Caller owns validation, input semantics and error associations; this is not a form state manager.                                 | [Stories](../packages/web/src/shared/ui/form-field.stories.tsx)               |
+| `SearchInput` — `~/shared/ui/search-input`                           | Controlled search text, search icon and clear action.                         | Search execution, debouncing and result data remain with the caller.                                                              | [Stories](../packages/web/src/shared/ui/search-input.stories.tsx)             |
+| `Select` — `~/shared/ui/select.ui`                                   | A controlled single selection with keyboard navigation and form integration.  | Use a checkbox list for multiple selections; this primitive does not load or search remote data.                                  | [Stories](../packages/web/src/shared/ui/select.stories.tsx)                   |
+| `AppTooltip` — `~/shared/ui/app-tooltip.ui`                          | Hover/focus explanation for a single focusable trigger.                       | Content must not contain controls; use an existing popover or dialog for interactive content.                                     | [Stories](../packages/web/src/shared/ui/app-tooltip.stories.tsx)              |
+| `AppDialog` — `~/shared/ui/app-dialog.ui`                            | Modal layout with shared focus, close, header and footer behavior.            | Feature code owns submit/data/capabilities. Inspect the same module's shell/footer primitives before building a custom modal.     | [Stories](../packages/web/src/shared/ui/app-dialog.stories.tsx)               |
+| `DropdownMenu` — `~/shared/ui/dropdown-menu`                         | Action, checkbox and submenu items from trigger or context menu sources.      | Caller owns action availability and permissions; preserve the existing domain action menu when it already fits.                   | [Stories](../packages/web/src/shared/ui/dropdown-menu.stories.tsx)            |
+| `SelectableRow` — `~/shared/ui/selectable-row.ui`                    | Shared row appearance with an optional active state.                          | Use `as="button"` for actions; the default `div` does not establish keyboard interaction or listbox semantics.                    | [Stories](../packages/web/src/shared/ui/selectable-row.stories.tsx)           |
+| `SearchableCheckboxList` — `~/shared/ui/searchable-checkbox-list.ui` | A controlled, filterable multi-selection over supplied options.               | Filtering only changes visibility; caller retains the full selection and submits from the full option set.                        | [Stories](../packages/web/src/shared/ui/searchable-checkbox-list.stories.tsx) |
+| `UserPickerList` — `~/shared/ui/user-picker-list.ui`                 | User multi-selection with presence and name/username/email search.            | Caller supplies candidates and complete selection; domain member loading, permissions and submission stay outside shared UI.      | [Stories](../packages/web/src/shared/ui/user-picker-list.stories.tsx)         |
+
+## Run and maintain Storybook
+
+From the repository root, run `npm run storybook` to open the local catalog on port 6006. Use `npm run build-storybook` to create the static catalog in `packages/web/storybook-static`.
+
+The [preview](../packages/web/.storybook/preview.tsx) uses application CSS and the real [theme engine](../packages/web/src/shared/lib/themes/engine.ts). The toolbar selects a palette from the [theme registry](../packages/web/src/shared/lib/themes/registry.ts), light/dark mode and English/Russian locale. Inspect affected states in the relevant themes and locales, including portal content such as dialogs and menus.
+
+Stories use local, synthetic fixtures and callbacks. They do not start the app, authenticate, or prove backend integration. Keep visible labels on the existing i18n path. For a new shared component or a change to its public behavior/appearance, add or update the adjacent story and revise this selection guide when its responsibility changes. Domain components can have stories in their own FSD layer; this catalog is an initial shared set, not an exhaustive UI inventory.
+
+A static build checks bundling. Visual comparison, accessibility checks and interaction execution are separate checks; do not infer they ran from a successful build. See [verification commands](PROJECT_FACTS.md#verification) and the [integration guide](INTEGRATION_GUIDE.md).
 
 ## Current Workspace composition
 

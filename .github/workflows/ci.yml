@@ -50,6 +50,9 @@ jobs:
       - name: Tests
         run: npm run test
 
+      - name: Build Storybook
+        run: npm run build-storybook
+
       - name: Knip (dead code report)
         continue-on-error: true
         run: npm run knip --workspace=web
