@@ -27,6 +27,10 @@ import type {
 
 export type WorkspaceRealtimeSurface = "active" | "background";
 
+const MAX_PENDING_WEBSOCKET_FRAMES = 256;
+const MAX_PENDING_WEBSOCKET_BYTES = 4 * 1024 * 1024;
+const WEBSOCKET_FRAMES_PER_TASK = 32;
+
 // Runtime mode is diagnostic state; UI can use it later to see where realtime is stuck.
 export type WorkspaceRealtimeRuntimeMode =
   | "idle"
@@ -113,7 +117,8 @@ export interface WorkspaceRealtimeDiagnostic {
     | "auth_refresh_failed"
     | "cursor_expired"
     | "snapshot_recovery_failed"
-    | "epoch_check_failed";
+    | "epoch_check_failed"
+    | "websocket_backpressure";
   error?: unknown;
 }
 
@@ -330,7 +335,7 @@ export function createWorkspaceRealtimeTransportCore(
   let lastAuthRefreshToken: string | null = null;
   let lastAuthFailure: { reason: string; error?: unknown } | null = null;
   let cursorRecoveryPromise: Promise<void> | null = null;
-  let frameQueue: Promise<void> = Promise.resolve();
+  let disposeFrameQueue: (() => void) | null = null;
   let transportMode: WorkspaceRealtimeRuntimeMode = "idle";
   let lastWebSocketFrameAt: number | null = null;
   let epochWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
@@ -530,7 +535,10 @@ export function createWorkspaceRealtimeTransportCore(
     return nextEpochVersion > previousEpochVersion;
   }
 
-  async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<boolean> {
+  async function handleNormalizedEvent(
+    event: WorkspaceRealtimeEvent,
+    isFrameCurrent: () => boolean,
+  ): Promise<boolean> {
     if (context == null) return false;
     if (!isCurrentRuntime()) {
       // Do not apply stale socket events or move the cursor; the new runtime will catch up.
@@ -541,20 +549,24 @@ export function createWorkspaceRealtimeTransportCore(
     const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
     if (currentCursor != null && event.epoch_version <= currentCursor.epochVersion) {
       await skipEvent(event, "duplicate_epoch", "websocket");
+      if (!isFrameCurrent()) return false;
       advanceCursor(event.epoch_version);
       return false;
     }
 
     await options.applier.applyEvent(event, {
       ...context,
+      signal: activeSignal(),
       source: "websocket",
       notificationsEnabled,
     });
+    if (!isFrameCurrent()) return false;
     return advanceCursor(event.epoch_version);
   }
 
   async function handleUnsupportedFrame(
     frame: WorkspaceMessengerWebSocketFrameDto,
+    isFrameCurrent: () => boolean,
   ): Promise<boolean> {
     if (context == null) return false;
     if ("epoch_version" in frame && typeof frame.epoch_version === "number") {
@@ -566,6 +578,7 @@ export function createWorkspaceRealtimeTransportCore(
           : "unsupported_event";
       // Service or unsupported frames with an epoch still participate in event ordering.
       await skipEvent(skippedEvent, reason, "websocket");
+      if (!isFrameCurrent()) return false;
       return advanceCursor(frame.epoch_version);
     }
 
@@ -796,7 +809,7 @@ export function createWorkspaceRealtimeTransportCore(
     }
   }
 
-  async function handleRawFrame(raw: unknown): Promise<void> {
+  async function handleRawFrame(raw: unknown, isFrameCurrent: () => boolean): Promise<void> {
     try {
       const frame = parseWorkspaceWebSocketFrame(raw);
       if ("type" in frame && frame.type === "ready") {
@@ -812,11 +825,12 @@ export function createWorkspaceRealtimeTransportCore(
       }
       const event = normalizeWorkspaceWebSocketFrame(frame);
       if (event == null) {
-        await handleUnsupportedFrame(frame);
+        await handleUnsupportedFrame(frame, isFrameCurrent);
         return;
       }
-      await handleNormalizedEvent(event);
+      await handleNormalizedEvent(event, isFrameCurrent);
     } catch (error) {
+      if (!isFrameCurrent()) return;
       await handleInvalidFrame(error);
     }
   }
@@ -898,21 +912,81 @@ export function createWorkspaceRealtimeTransportCore(
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);
     const activeSocket = socket;
+    const pendingFrames: { data: unknown; bytes: number }[] = [];
+    let pendingBytes = 0;
+    let draining = false;
+    let disposed = false;
+    let accepting = true;
+    let reconnectAfterDrain = false;
+    const isFrameCurrent = (): boolean =>
+      !disposed && context === activeContext && socket === activeSocket && isCurrentRuntime();
+    disposeFrameQueue = () => {
+      disposed = true;
+      accepting = false;
+      reconnectAfterDrain = false;
+      pendingFrames.length = 0;
+      pendingBytes = 0;
+    };
+
+    const drainFrames = async (): Promise<void> => {
+      if (draining) return;
+      draining = true;
+      let processed = 0;
+      try {
+        while (isFrameCurrent()) {
+          const frame = pendingFrames.shift();
+          if (frame == null) break;
+          pendingBytes -= frame.bytes;
+          try {
+            await handleRawFrame(frame.data, isFrameCurrent);
+          } catch (error) {
+            if (isFrameCurrent()) reportDiagnostic("websocket_error", error);
+          }
+          processed += 1;
+          if (processed === WEBSOCKET_FRAMES_PER_TASK && pendingFrames.length > 0) {
+            // Let rendering, IPC and garbage collection run during a replay burst.
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 0);
+            });
+            processed = 0;
+          }
+        }
+      } finally {
+        draining = false;
+        if (reconnectAfterDrain && isFrameCurrent()) {
+          void reconnect("websocket_backpressure");
+        }
+      }
+    };
 
     activeSocket.onopen = () => {
       notificationsEnabled = false;
     };
     activeSocket.onmessage = (event) => {
+      if (!accepting || socket !== activeSocket) return;
+      if (!isCurrentRuntime()) {
+        reportDiagnostic("stale_owner");
+        return;
+      }
       recordIncomingWebSocketFrame(activeSocket);
-      frameQueue = frameQueue
-        .then(async () => {
-          // Preserve server epoch order and ignore frames left behind by an old socket.
-          if (stopped || socket !== activeSocket) return;
-          await handleRawFrame(event.data);
-        })
-        .catch((error: unknown) => {
-          reportDiagnostic("websocket_error", error);
-        });
+      const bytes = typeof event.data === "string" ? event.data.length * 2 : 0;
+      if (
+        pendingFrames.length >= MAX_PENDING_WEBSOCKET_FRAMES ||
+        pendingBytes + bytes > MAX_PENDING_WEBSOCKET_BYTES
+      ) {
+        // Discard only the socket backlog; REST replays it from the last applied cursor.
+        accepting = false;
+        pendingFrames.length = 0;
+        pendingBytes = 0;
+        reconnectAfterDrain = true;
+        reportDiagnostic("websocket_backpressure");
+        // Finish the current cache write before REST starts replaying its successor.
+        if (!draining) void reconnect("websocket_backpressure");
+        return;
+      }
+      pendingFrames.push({ data: event.data, bytes });
+      pendingBytes += bytes;
+      void drainFrames();
     };
     activeSocket.onerror = (event) => {
       reportDiagnostic("websocket_error", event);
@@ -927,6 +1001,8 @@ export function createWorkspaceRealtimeTransportCore(
     };
     activeSocket.onclose = (event) => {
       if (socket !== activeSocket) return;
+      disposeFrameQueue?.();
+      disposeFrameQueue = null;
       socket = null;
       if (!stopped) {
         const closeCode = getWebSocketCloseCode(event);
@@ -997,9 +1073,11 @@ export function createWorkspaceRealtimeTransportCore(
   async function disconnect(reason = "disconnect"): Promise<void> {
     clearEpochWatchdogTimers();
     notificationsEnabled = false;
-    await emitState("disconnecting", reason);
+    disposeFrameQueue?.();
+    disposeFrameQueue = null;
     const activeSocket = socket;
     socket = null;
+    await emitState("disconnecting", reason);
     if (activeSocket != null) {
       activeSocket.onopen = null;
       activeSocket.onmessage = null;

@@ -234,7 +234,7 @@ function createFolderDto(
   };
 }
 
-function applyStreamAndTopicSnapshot(
+async function applyStreamAndTopicSnapshot(
   applier: ReturnType<typeof createMessengerRealtimeActiveApplier>,
   context: WorkspaceRealtimeEventContext,
   options: {
@@ -243,8 +243,8 @@ function applyStreamAndTopicSnapshot(
     streamEpoch?: number;
     topicEpoch?: number;
   } = {},
-): void {
-  applier.applyEvent(
+): Promise<void> {
+  await applier.applyEvent(
     {
       epoch_version: options.streamEpoch ?? 1,
       type: "stream",
@@ -253,7 +253,7 @@ function applyStreamAndTopicSnapshot(
     },
     context,
   );
-  applier.applyEvent(
+  await applier.applyEvent(
     {
       epoch_version: options.topicEpoch ?? 2,
       type: "topic",
@@ -382,6 +382,112 @@ describe("messenger realtime active applier", () => {
       expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 12 }),
     );
     expect(onMessageCreated).not.toHaveBeenCalled();
+  });
+
+  it("waits for message cache writes and the durable cursor before completing an event", async () => {
+    const context = createContext();
+    let releaseMessages: (() => void) | undefined;
+    let releaseCursor: (() => void) | undefined;
+    const messages = new Promise<void>((resolve) => {
+      releaseMessages = resolve;
+    });
+    const cursor = new Promise<void>((resolve) => {
+      releaseCursor = resolve;
+    });
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => messages),
+      writeRealtimeCursor: vi.fn(() => cursor),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    let completed = false;
+    const application = Promise.resolve(
+      applier.applyEvent(
+        {
+          epoch_version: 12,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto(),
+        },
+        context,
+      ),
+    ).then(() => {
+      completed = true;
+    });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeDefined();
+    expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+    expect(completed).toBe(false);
+    releaseMessages?.();
+    await vi.waitFor(() =>
+      expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 12),
+    );
+    expect(completed).toBe(false);
+    releaseCursor?.();
+    await application;
+    expect(completed).toBe(true);
+  });
+
+  it.each(["abort", "owner-change"] as const)(
+    "does not publish an event after pending cache writes outlive an %s",
+    async (reason) => {
+      const controller = new AbortController();
+      const context = createContext(createOwner(), { signal: controller.signal });
+      let current = true;
+      let release: (() => void) | undefined;
+      const cacheWrite = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const cache = {
+        writeConversationMessagePage: vi.fn(() => cacheWrite),
+        writeRealtimeCursor: vi.fn(),
+      };
+      const applier = createMessengerRealtimeActiveApplier({
+        cache,
+        isOwnerCurrent: () => current,
+      });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      const application = applier.applyEvent(
+        {
+          epoch_version: 12,
+          type: "message",
+          kind: "message.created",
+          message: createMessageDto(),
+        },
+        context,
+      );
+      if (reason === "abort") controller.abort();
+      else current = false;
+      release?.();
+      await application;
+      expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+      expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+      expect(
+        useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+      ).toBeUndefined();
+    },
+  );
+
+  it("keeps cache failures best effort while awaiting rejected writes", async () => {
+    const context = createContext();
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => Promise.reject(new Error("cache unavailable"))),
+      writeRealtimeCursor: vi.fn(() => Promise.reject(new Error("cursor unavailable"))),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    await applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto(),
+      },
+      context,
+    );
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(12);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 12);
   });
 
   it("does not publish the applied epoch before the read boundary is durable", async () => {
@@ -924,7 +1030,7 @@ describe("messenger realtime active applier", () => {
         }),
     });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: { last_message_uuid: MESSAGE_B, updated_at: DATE_LATER },
       topic: { last_message_uuid: MESSAGE_B, updated_at: DATE_LATER },
     });
@@ -1032,7 +1138,7 @@ describe("messenger realtime active applier", () => {
     };
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
     useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
 
     const window = {
@@ -1084,11 +1190,11 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_C);
   });
 
-  it("does not move last-message pointers when an older message is edited", () => {
+  it("does not move last-message pointers when an older message is edited", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: { last_message_uuid: MESSAGE_B },
       topic: { last_message_uuid: MESSAGE_B },
     });
@@ -1116,7 +1222,7 @@ describe("messenger realtime active applier", () => {
     );
   });
 
-  it("updates message reaction aggregate without dropping own projection", () => {
+  it("updates message reaction aggregate without dropping own projection", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const onMessageReactionAggregateUpdated = vi.fn();
@@ -1129,7 +1235,7 @@ describe("messenger realtime active applier", () => {
       onMessageReactionAggregateUpdated,
     });
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
 
     applier.applyEvent(
       {
@@ -1186,7 +1292,7 @@ describe("messenger realtime active applier", () => {
     );
   });
 
-  it("notifies reaction aggregate hook when the last reaction is removed", () => {
+  it("notifies reaction aggregate hook when the last reaction is removed", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const onMessageReactionAggregateUpdated = vi.fn();
@@ -1194,7 +1300,7 @@ describe("messenger realtime active applier", () => {
       onMessageReactionAggregateUpdated,
     });
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
 
     applier.applyEvent(
       {
@@ -1229,12 +1335,12 @@ describe("messenger realtime active applier", () => {
     );
   });
 
-  it("keeps repeated created events outside an unloaded visible window", () => {
+  it("keeps repeated created events outside an unloaded visible window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
 
     const event = {
       epoch_version: 11,
@@ -1255,12 +1361,12 @@ describe("messenger realtime active applier", () => {
     expect(messengerState.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
   });
 
-  it("stores an incoming message body without inventing stream or topic membership", () => {
+  it("stores an incoming message body without inventing stream or topic membership", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
 
     applier.applyEvent(
       {
@@ -1337,13 +1443,13 @@ describe("messenger realtime active applier", () => {
     },
   );
 
-  it("emits message created callback with stream context for incoming DM call detection", () => {
+  it("emits message created callback with stream context for incoming DM call detection", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const onMessageCreated = vi.fn();
     const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: {
         private: true,
         invite_only: true,
@@ -1492,12 +1598,12 @@ describe("messenger realtime active applier", () => {
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
 
-  it("stores delayed live message bodies without extending an unloaded window", () => {
+  it("stores delayed live message bodies without extending an unloaded window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
 
     applier.applyEvent(
       {
@@ -1544,16 +1650,16 @@ describe("messenger realtime active applier", () => {
     );
   });
 
-  it("updates inactive conversation sidebar preview and ordering from a fresh message event", () => {
+  it("updates inactive conversation sidebar preview and ordering from a fresh message event", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: { updated_at: DATE },
       topic: { updated_at: DATE },
     });
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: {
         uuid: STREAM_B,
         name: "Support",
@@ -1656,12 +1762,12 @@ describe("messenger realtime active applier", () => {
     });
   });
 
-  it("updates and deletes known message bodies outside an unloaded window", () => {
+  it("updates and deletes known message bodies outside an unloaded window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
     applier.applyEvent(
       {
         epoch_version: 11,
@@ -1730,12 +1836,12 @@ describe("messenger realtime active applier", () => {
     expect(state.messagesById[MESSAGE_A]).toBeUndefined();
   });
 
-  it("removes topic messages from the stream bucket when a topic is deleted", () => {
+  it("removes topic messages from the stream bucket when a topic is deleted", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
-    applyStreamAndTopicSnapshot(applier, context);
+    await applyStreamAndTopicSnapshot(applier, context);
     applier.applyEvent(
       {
         epoch_version: 11,
@@ -2038,7 +2144,7 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
-  it("accepts a lawful stream.created after deleting the same stream UUID", () => {
+  it("accepts a lawful stream.created after deleting the same stream UUID", async () => {
     const context = createContext();
     const applier = createMessengerRealtimeActiveApplier({
       cache: {
@@ -2048,7 +2154,7 @@ describe("messenger realtime active applier", () => {
     });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 44,
         type: "stream",
@@ -2057,7 +2163,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 45,
         type: "stream",
@@ -2070,13 +2176,13 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Recreated");
   });
 
-  it("projects active owner realtime messages into the shared notification projection store", () => {
+  it("projects active owner realtime messages into the shared notification projection store", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    applyStreamAndTopicSnapshot(applier, context, {
+    await applyStreamAndTopicSnapshot(applier, context, {
       stream: {
         private: true,
         notification_mode: "mentions_only",
@@ -2087,7 +2193,7 @@ describe("messenger realtime active applier", () => {
       },
     });
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 3,
         type: "message",
@@ -2152,13 +2258,13 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
-  it("applies stream, binding, topic, folder, and delete skeleton mappings", () => {
+  it("applies stream, binding, topic, folder, and delete skeleton mappings", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const applier = createMessengerRealtimeActiveApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 51,
         type: "stream",
@@ -2167,7 +2273,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 52,
         type: "stream_binding",
@@ -2177,7 +2283,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 53,
         type: "topic",
@@ -2186,7 +2292,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 54,
         type: "folder",
@@ -2196,7 +2302,7 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 55,
         type: "stream",
@@ -2211,7 +2317,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 56,
         type: "topic",
@@ -2228,7 +2334,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 57,
         type: "folder",
@@ -2266,7 +2372,7 @@ describe("messenger realtime active applier", () => {
       }),
     ]);
 
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 58,
         type: "folder_item",
@@ -2275,7 +2381,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 59,
         type: "topic",
@@ -2284,7 +2390,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 60,
         type: "stream",
@@ -2293,7 +2399,7 @@ describe("messenger realtime active applier", () => {
       },
       context,
     );
-    applier.applyEvent(
+    await applier.applyEvent(
       {
         epoch_version: 61,
         type: "folder",

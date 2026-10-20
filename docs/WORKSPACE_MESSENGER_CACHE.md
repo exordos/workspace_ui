@@ -25,6 +25,14 @@ The Workspace cache is implemented. Its original [July plan](archive/WORKSPACE_M
 - Retention and logout/account cleanup are owner-scoped. Do not clear another owner's cache as a shortcut.
 - Existing schema upgrades are part of the current contract. Historical permission to drop Zulip cache compatibility is not permission to discard current Workspace data.
 
+## Realtime memory bounds
+
+The active messenger applier awaits its event cache writes and cursor write before transport advances to the next event. Cache failures remain best effort; persistence work must not accumulate as detached promises during catch-up or live delivery.
+
+Each socket queues at most 256 pending frames or 4 MiB of estimated string storage. On overflow, transport releases the queued frames, waits for the current event to complete, then reconnects through REST catch-up from the completed cursor. Closing a socket or replacing its owner releases its pending queue; stale completions cannot advance the replacement transport cursor. A synchronous frame burst yields to browser tasks every 32 frames.
+
+Conversation selector memoization uses weak message-map keys so visiting another conversation cannot keep an obsolete full message map alive.
+
 ## Capability limits
 
 Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.

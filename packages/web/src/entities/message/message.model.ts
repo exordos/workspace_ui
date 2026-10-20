@@ -1128,13 +1128,13 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
 
 interface ConversationMessagesCacheEntry {
   ids: MessengerUuid[];
-  messagesById: Record<MessengerUuid, MessengerMessage>;
   result: MessengerMessage[];
 }
 
-const conversationMessagesCache = new Map<
-  MessengerConversationId,
-  ConversationMessagesCacheEntry
+// Historical snapshots must become collectible when the store replaces its message map.
+const conversationMessagesCache = new WeakMap<
+  WorkspaceMessageStoreState["messagesById"],
+  Map<MessengerConversationId, ConversationMessagesCacheEntry>
 >();
 
 export function selectWorkspaceMessagesForConversation(
@@ -1145,8 +1145,9 @@ export function selectWorkspaceMessagesForConversation(
     state.conversationWindowsById[conversationId]?.messageUuids ?? EMPTY_WORKSPACE_MESSAGE_IDS;
   if (messageIds.length === 0) return EMPTY_WORKSPACE_MESSAGES;
 
-  const cached = conversationMessagesCache.get(conversationId);
-  if (cached?.ids === messageIds && cached.messagesById === state.messagesById) {
+  let snapshotCache = conversationMessagesCache.get(state.messagesById);
+  const cached = snapshotCache?.get(conversationId);
+  if (cached?.ids === messageIds) {
     return cached.result;
   }
 
@@ -1154,9 +1155,12 @@ export function selectWorkspaceMessagesForConversation(
     .map((messageId) => state.messagesById[messageId])
     .filter((message): message is MessengerMessage => message != null);
 
-  conversationMessagesCache.set(conversationId, {
+  if (snapshotCache == null) {
+    snapshotCache = new Map();
+    conversationMessagesCache.set(state.messagesById, snapshotCache);
+  }
+  snapshotCache.set(conversationId, {
     ids: messageIds,
-    messagesById: state.messagesById,
     result: messages,
   });
   return messages;
