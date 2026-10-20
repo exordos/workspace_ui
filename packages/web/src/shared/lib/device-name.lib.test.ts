@@ -54,6 +54,69 @@ describe("getDeviceName", () => {
     expect(await getDeviceName()).toBe("iPad · Safari — Web");
   });
 
+  it.each([
+    ["YaBrowser", "Yandex Browser"],
+    ["Yandex Browser", "Yandex Browser"],
+    ["Microsoft Edge", "Edge"],
+    ["Opera", "Opera"],
+    ["Samsung Internet", "Samsung Internet"],
+    ["Brave", "Brave"],
+    ["Vivaldi", "Vivaldi"],
+  ])("prefers the specific %s brand regardless of its position", async (brand, expected) => {
+    const entries = [
+      { brand: "Google Chrome", version: "130" },
+      { brand: "Not/A)Brand", version: "99" },
+      { brand: "Chromium", version: "130" },
+    ];
+    for (const position of [0, 1, 3]) {
+      const brands = [...entries];
+      brands.splice(position, 0, { brand, version: "130" });
+      browser("Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/130 Safari/537.36", {
+        userAgentData: { platform: "macOS", brands },
+      });
+      expect(await getDeviceName()).toBe(`Mac · ${expected} — Web`);
+    }
+  });
+
+  it.each([
+    ["YaBrowser/24.10", "Yandex Browser"],
+    ["Edg/130", "Edge"],
+    ["SamsungBrowser/25", "Samsung Internet"],
+    ["OPR/130", "Opera"],
+    ["Brave/1.80", "Brave"],
+    ["Brave", "Brave"],
+    ["Vivaldi/7.9", "Vivaldi"],
+    ["VivaiOS/VivaldiVersion/7.9", "Vivaldi"],
+    ["Firefox/130", "Firefox"],
+  ])("prefers the %s marker over generic Chrome hints", async (marker, expected) => {
+    for (const withHints of [false, true]) {
+      browser(`Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/130 Safari/537.36 ${marker}`, {
+        ...(withHints
+          ? {
+              userAgentData: {
+                platform: "macOS",
+                brands: [
+                  { brand: "Google Chrome", version: "130" },
+                  { brand: "Chromium", version: "130" },
+                ],
+              },
+            }
+          : {}),
+      });
+      expect(await getDeviceName()).toBe(`Mac · ${expected} — Web`);
+    }
+  });
+
+  it.each([
+    ["Chrome/130 Safari/537.36", [{ brand: "Future Browser", version: "1" }], "Chrome"],
+    ["", [{ brand: "Chromium", version: "130" }], "Chromium"],
+    ["", [{ brand: "Not/A)Brand", version: "99" }], null],
+    ["Chrome/130 Safari/537.36", [{ brand: "Chromium", version: "130" }], "Chrome"],
+  ])("preserves fallback for undisclosed or unknown products (%s)", async (ua, brands, name) => {
+    browser(ua, { userAgentData: { platform: "macOS", brands } });
+    expect(await getDeviceName()).toBe(name ? `Mac · ${name} — Web` : "Mac — Web");
+  });
+
   it("prefers a supplied model and ignores synthetic brands", async () => {
     const getHighEntropyValues = vi.fn().mockResolvedValue({ model: "Pixel 8" });
     browser("", {

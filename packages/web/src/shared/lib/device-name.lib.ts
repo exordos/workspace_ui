@@ -67,26 +67,37 @@ function getBrowser(nav: NavigatorWithClientHints): string {
   // Client Hints include synthetic brands; only use known product names.
   const brands = nav.userAgentData?.brands ?? [];
   const products: readonly [string, string][] = [
+    ["YaBrowser", "Yandex Browser"],
+    ["Yandex Browser", "Yandex Browser"],
+    ["Brave", "Brave"],
+    ["Vivaldi", "Vivaldi"],
     ["Microsoft Edge", "Edge"],
     ["Samsung Internet", "Samsung Internet"],
     ["Opera", "Opera"],
-    ["Google Chrome", "Chrome"],
   ];
   const product = products.find(([brand]) => brands.some((entry) => entry.brand === brand));
   if (product) return product[1];
 
   const patterns: readonly [RegExp, string][] = [
+    [/YaBrowser\//i, "Yandex Browser"],
+    [/\bBrave(?:\/|\s|$)/i, "Brave"],
+    [/Vivaldi\/|VivaiOS\/VivaldiVersion\//i, "Vivaldi"],
     [/Edg(?:e|A|iOS)?\//i, "Edge"],
     [/SamsungBrowser\//i, "Samsung Internet"],
     [/OPR\/|OPiOS\//i, "Opera"],
     [/Firefox\/|FxiOS\//i, "Firefox"],
-    [/Chrome\/|CriOS\//i, "Chrome"],
-    [/Safari\//i, "Safari"],
   ];
-  return (
-    patterns.find(([pattern]) => pattern.test(nav.userAgent))?.[1] ??
-    (brands.some((entry) => entry.brand === "Chromium") ? "Chromium" : "")
-  );
+  const specificBrowser = patterns.find(([pattern]) => pattern.test(nav.userAgent))?.[1];
+  if (specificBrowser) return specificBrowser;
+
+  // Derivatives may also report Chrome; use it only after checking specific product markers.
+  if (
+    brands.some((entry) => entry.brand === "Google Chrome") ||
+    /Chrome\/|CriOS\//i.test(nav.userAgent)
+  )
+    return "Chrome";
+  if (/Safari\//i.test(nav.userAgent)) return "Safari";
+  return brands.some((entry) => entry.brand === "Chromium") ? "Chromium" : "";
 }
 
 function getDesktopDevice(platform: string | undefined): string {
