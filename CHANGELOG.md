@@ -6,6 +6,46 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-10-20
+
+### Added
+
+- A themed Storybook catalog for shared UI components, with English and Russian
+  examples.
+
+### Changed
+
+- New Zulip connections synchronize all chats and full history. Account settings
+  can be edited while preserving an unchanged API key and provider options.
+- Realtime processing bounds pending persistence and socket backlog, recovering
+  overflow through REST replay. Sidebar updates reuse previews and projections
+  and defer hidden-tab rendering.
+- Encryption service messages are grouped into expandable sections with status
+  indicators. Key requests show descriptive device names.
+
+### Fixed
+
+- Conversations recover when a persisted read cursor conflicts with the
+  server's unread state, and read delivery retries when focus returns.
+- External-account handling accepts current registry responses and legacy
+  lifecycle responses. Unlinking an account preserves imported conversations.
+- Key responses for other devices no longer affect the current device's
+  encryption controller. Recovered sessions clear transient ingestion errors.
+- Message quick actions, reactions, and scroll position remain stable during
+  interaction and service-message expansion.
+
+### Requirements and compatibility
+
+- Requirements remain unchanged: Exordos Core `0.2.3` or newer, and Workspace
+  backend `1.3.0` or newer for encrypted chats.
+- The messenger cache remains at schema version 7. No client storage schema
+  migration is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.2`. No manual client migration is required.
+- New Zulip connections import all chats and full history automatically.
+
 ## [0.9.1] — 2026-10-17
 
 ### Changed
