@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
+import {
+  selectWorkspaceMessageById,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -29,6 +34,9 @@ import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-me
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
 import { WorkspaceMessageSelectionControl } from "./workspace-message-selection-control.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
+import { useServiceMessageExpansion } from "./workspace-service-message-expansion.hook";
+import { getWorkspaceServiceGroupStatus } from "./workspace-service-message-group.lib";
+import { WorkspaceServiceMessageGroup } from "./workspace-service-message-group.ui";
 import type {
   WorkspaceMessageAuthorGroup,
   WorkspaceMessageDayGroup,
@@ -77,6 +85,7 @@ interface WorkspaceAuthorGroupRenderKeyRecord {
   messageKeys: ReadonlySet<string>;
   messageKindsByKey: ReadonlyMap<string, WorkspaceMessageListItem["kind"]>;
   renderKey: string;
+  serviceGroup: boolean;
 }
 
 interface WorkspaceAuthorGroupRenderKeyCalculation {
@@ -178,7 +187,10 @@ function findReusableAuthorGroupRecord({
         candidate != null &&
         !unavailableRecords.has(candidate) &&
         candidate.dateKey === dateKey &&
-        candidate.authorUuid === group.authorUuid &&
+        (candidate.authorUuid === group.authorUuid ||
+          (candidate.serviceGroup &&
+            group.messages[0] != null &&
+            isWorkspaceServiceMessage(group.messages[0]))) &&
         candidate.topicUuid === group.topicUuid,
     );
 }
@@ -195,6 +207,7 @@ function createAuthorGroupRenderKeyRecord(
     messageKeys: new Set(group.messages.map((message) => message.key)),
     messageKindsByKey: new Map(group.messages.map((message) => [message.key, message.kind])),
     renderKey,
+    serviceGroup: group.messages[0] != null && isWorkspaceServiceMessage(group.messages[0]),
   };
 }
 
@@ -410,6 +423,7 @@ interface WorkspaceMessageListRowProps {
   quickActions?: WorkspaceMessageListPresentation["quickActions"];
   actions?: WorkspaceMessageListProps["actions"];
   passiveLoadersEnabled: boolean;
+  collapsedService?: boolean;
 }
 
 const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
@@ -429,6 +443,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   quickActions,
   actions,
   passiveLoadersEnabled,
+  collapsedService = false,
 }: WorkspaceMessageListRowProps): React.ReactElement {
   const serverMessage = message.kind === "server" ? message.message : null;
   const service = isWorkspaceServiceMessage(message);
@@ -438,6 +453,35 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
     serverMessageUuid == null
       ? undefined
       : workspaceMessengerMessageAnchor(serverMessageUuid).slice(1);
+  const identityProps = {
+    id: messageAnchorId,
+    "data-message-uuid": messageUuid,
+    "data-message-render-key": message.key,
+    "data-server-message-uuid": serverMessageUuid,
+    "data-author-uuid": message.authorUuid,
+    "data-message-owner": owner,
+    "data-message-kind": message.kind,
+  };
+  const readBoundary = (
+    <span
+      key="read-boundary"
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+      data-message-read-boundary={messageUuid}
+    />
+  );
+  if (collapsedService) {
+    // Keep scroll and read anchors at the divider without mounting hidden actions or loaders.
+    return (
+      <article
+        {...identityProps}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+      >
+        {readBoundary}
+      </article>
+    );
+  }
   const rendersSelectionControl = selectionMode && serverMessage != null;
   const handleRowSelectionClick = (event: React.MouseEvent<HTMLElement>): void => {
     if (
@@ -456,7 +500,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   /* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- The article contains links and buttons, so it cannot expose button semantics. Keyboard selection stays on the native checkbox. */
   return (
     <article
-      id={messageAnchorId}
+      {...identityProps}
       className={`${service ? "relative flex w-full justify-center self-stretch" : owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME} ${
         selectionMode ? "items-end" : ""
       } ${
@@ -464,15 +508,9 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
           ? "cursor-pointer rounded-lg transition-colors hover:bg-card-bg-active"
           : ""
       }`}
-      data-message-uuid={messageUuid}
-      data-message-render-key={message.key}
-      data-server-message-uuid={serverMessageUuid}
       data-outgoing-message-id={
         message.kind === "outgoing" ? message.message.placementUuid : undefined
       }
-      data-author-uuid={message.authorUuid}
-      data-message-owner={owner}
-      data-message-kind={message.kind}
       data-workspace-message-selectable-row={rendersSelectionControl ? "true" : undefined}
       onClick={rendersSelectionControl ? handleRowSelectionClick : undefined}
     >
@@ -528,11 +566,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
           <time dateTime={message.createdAt}>{selectionContext.timeLabel}</time>
         </span>
       ) : null}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
-        data-message-read-boundary={messageUuid}
-      />
+      {readBoundary}
     </article>
   );
   /* eslint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */
@@ -540,6 +574,8 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
 
 interface WorkspaceMessageAuthorGroupViewProps {
   group: WorkspaceMessageAuthorGroup;
+  serviceExpanded: boolean;
+  onToggleService: (group: WorkspaceMessageAuthorGroup) => void;
   currentUserUuid: MessengerUuid;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   resolveTopicLabel?: (topicUuid: MessengerUuid) => string | null | undefined;
@@ -557,6 +593,8 @@ interface WorkspaceMessageAuthorGroupViewProps {
 
 const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuthorGroupView({
   group,
+  serviceExpanded,
+  onToggleService,
   currentUserUuid,
   resolveAuthorLabel,
   resolveTopicLabel,
@@ -616,6 +654,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       quickActions={quickActions}
       actions={actions}
       passiveLoadersEnabled={passiveLoadersEnabled}
+      collapsedService={serviceGroup && !serviceExpanded && !selectionMode}
     />
   ));
 
@@ -657,7 +696,19 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       <div
         className={serviceGroup ? "flex w-full flex-col items-center" : authorGroupContentClassName}
       >
-        {messageRows}
+        {serviceGroup ? (
+          <WorkspaceServiceMessageGroup
+            count={group.messages.length}
+            expanded={serviceExpanded || selectionMode}
+            status={getWorkspaceServiceGroupStatus(group.messages, currentUserUuid, actions)}
+            onToggle={() => onToggleService(group)}
+            toggleDisabled={selectionMode}
+          >
+            {messageRows}
+          </WorkspaceServiceMessageGroup>
+        ) : (
+          messageRows
+        )}
       </div>
     </section>
   );
@@ -782,6 +833,32 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   const dayGroups = useMemo(() => {
     return groupWorkspaceMessagesByDayAndAuthor(listItems);
   }, [listItems]);
+  const requestUuids = useMemo(
+    () => [
+      ...new Set(
+        messages.flatMap(({ payload }) =>
+          payload.kind === "key_grant" || payload.kind === "key_reject"
+            ? [payload.requestMessageUuid]
+            : [],
+        ),
+      ),
+    ],
+    [messages],
+  );
+  const storedRequests = useWorkspaceMessageStore(
+    useShallow((state) => requestUuids.map((uuid) => selectWorkspaceMessageById(state, uuid))),
+  );
+  const requestsByUuid = useMemo(() => {
+    const requests = new Map<MessengerUuid, MessengerMessage>();
+    for (const message of messages)
+      if (message.payload.kind === "key_request") requests.set(message.uuid, message);
+    for (const message of storedRequests) if (message != null) requests.set(message.uuid, message);
+    return requests;
+  }, [messages, storedRequests]);
+  const resolveKeyRequestMessage = useCallback(
+    (uuid: MessengerUuid) => requestsByUuid.get(uuid) ?? null,
+    [requestsByUuid],
+  );
   const authorGroupRenderKeys = useWorkspaceAuthorGroupRenderKeys(dayGroups, conversationId);
   const dayLabelsByDateKey = useMemo(() => {
     return new Map(
@@ -823,15 +900,14 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     [actions, workspaceMediaGallery],
   );
   const messageActions = useMemo(() => {
-    if (actions?.onOpenWorkspaceMedia == null) {
-      return actions;
-    }
-
     return {
       ...actions,
-      onOpenWorkspaceMedia: handleOpenWorkspaceMedia,
+      resolveKeyRequestMessage,
+      ...(actions?.onOpenWorkspaceMedia != null
+        ? { onOpenWorkspaceMedia: handleOpenWorkspaceMedia }
+        : {}),
     };
-  }, [actions, handleOpenWorkspaceMedia]);
+  }, [actions, handleOpenWorkspaceMedia, resolveKeyRequestMessage]);
   const scrollRequestKey = useMemo(() => {
     return `${conversationId}:${scrollToBottomKey ?? ""}`;
   }, [conversationId, scrollToBottomKey]);
@@ -873,6 +949,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     scrollToBottom,
     isAtBottom,
     isUnreadDividerDismissed,
+    refreshMessageLayout,
+    preserveMessageLayout,
   } = useWorkspaceMessageListScroll({
     messages: renderedMessages,
     conversationId,
@@ -901,6 +979,41 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
   });
+  const {
+    isExpanded: isServiceExpanded,
+    toggle: toggleServiceGroup,
+    layoutKey: expandedServiceKeys,
+  } = useServiceMessageExpansion({
+    dayGroups,
+    items: renderedMessages,
+    scope: `${currentUserUuid}:${conversationId}`,
+    ready: initialPositionReady,
+    liveEnabled:
+      initialPositionReady &&
+      !anchorHandoffPending &&
+      !anchorNavigationActive &&
+      !isLoadingNewer &&
+      !hasNewerMessages &&
+      !isKnownTailOutsideWindow,
+    collapseEnabled:
+      !anchorHandoffPending && !anchorNavigationActive && !isLoadingOlder && !isLoadingNewer,
+    selectionMode,
+    focusedMessageTarget,
+    currentUserUuid,
+    actions: messageActions,
+    scrollContainerRef,
+    preserveMessageLayout,
+  });
+  const handleToggleServiceGroup = useCallback(
+    (group: WorkspaceMessageAuthorGroup) => {
+      handleUserScrollInput();
+      toggleServiceGroup(group);
+    },
+    [handleUserScrollInput, toggleServiceGroup],
+  );
+  useLayoutEffect(() => {
+    refreshMessageLayout();
+  }, [refreshMessageLayout, expandedServiceKeys, selectionMode]);
   const requestLatestWindow = useCallback(
     (targetUuid: MessengerUuid): void => {
       if (
@@ -1081,6 +1194,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                 ) : null}
                 <WorkspaceMessageAuthorGroupView
                   group={authorGroup}
+                  serviceExpanded={isServiceExpanded(authorGroup)}
+                  onToggleService={handleToggleServiceGroup}
                   currentUserUuid={currentUserUuid}
                   resolveAuthorLabel={effectiveResolveAuthorLabel}
                   resolveTopicLabel={resolveTopicLabel}

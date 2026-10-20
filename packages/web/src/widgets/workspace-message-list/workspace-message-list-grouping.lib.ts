@@ -44,7 +44,7 @@ function formatLocalDateKey(date: Date): string {
   return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
 }
 
-function compareMessagesByCreatedAtThenKey(
+export function compareMessagesByCreatedAtThenKey(
   firstMessage: WorkspaceMessageListItem,
   secondMessage: WorkspaceMessageListItem,
 ): number {
@@ -139,11 +139,13 @@ export function groupWorkspaceMessagesByDayAndAuthor(
     const startsTopicRun = previousTopicUuid != null && previousTopicUuid !== topicUuid;
 
     const previousMessage = authorGroup?.messages[authorGroup.messages.length - 1];
+    const serviceMessage = isWorkspaceServiceMessage(message);
+    const previousServiceMessage =
+      previousMessage != null && isWorkspaceServiceMessage(previousMessage);
     if (
-      authorGroup?.authorUuid !== message.authorUuid ||
-      authorGroup.topicUuid !== topicUuid ||
-      isWorkspaceServiceMessage(message) ||
-      (previousMessage != null && isWorkspaceServiceMessage(previousMessage))
+      authorGroup?.topicUuid !== topicUuid ||
+      previousServiceMessage !== serviceMessage ||
+      (!serviceMessage && authorGroup.authorUuid !== message.authorUuid)
     ) {
       authorGroup = {
         authorUuid: message.authorUuid,
@@ -154,8 +156,7 @@ export function groupWorkspaceMessagesByDayAndAuthor(
       dayGroup.authorGroups.push(authorGroup);
     }
 
-    // Only neighboring messages from the same author and topic share a group.
-    // A repeated author after another group must start a new visual sequence.
+    // Service runs span authors; ordinary messages keep their author grouping.
     authorGroup.messages.push(message);
     previousTopicUuid = topicUuid;
   }
