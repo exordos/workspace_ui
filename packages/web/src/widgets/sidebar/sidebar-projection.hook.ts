@@ -9,6 +9,7 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 const PROJECTION_INTERVAL_MS = 100;
 const CATALOG_FIELDS = [
@@ -24,10 +25,11 @@ const CATALOG_FIELDS = [
   "folderIds",
   "foldersById",
   "conversationsById",
+  "conversationIds",
 ] as const;
 
 interface SidebarProjectionSnapshot {
-  messenger: MessengerStoreState;
+  messenger: Readonly<Pick<MessengerStoreState, (typeof CATALOG_FIELDS)[number]>>;
   messagesById: ReturnType<typeof useWorkspaceMessageStore.getState>["messagesById"];
   usersById: UsersById;
 }
@@ -87,7 +89,6 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
     let timer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
     let interactionPending = false;
-    const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
     const cancel = () => {
       if (timer != null) clearTimeout(timer);
       timer = null;
@@ -104,10 +105,10 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
         flush();
         return;
       }
-      if (!visible() || timer != null) return;
+      if (!isTabVisible() || timer != null) return;
       timer = setTimeout(() => {
         timer = null;
-        if (visible()) flush();
+        if (isTabVisible()) flush();
       }, PROJECTION_INTERVAL_MS);
     };
     const unsubscribers = [
@@ -123,23 +124,22 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
         changed(state.ownerKey !== previous.ownerKey),
       ),
       useUsersStore.subscribe((state, previous) => changed(state.ownerKey !== previous.ownerKey)),
+      onVisibilityChange((visible) => {
+        if (visible) flush();
+        else cancel();
+      }),
     ];
-    const onVisibility = () => {
-      if (visible()) flush();
-      else cancel();
-    };
     const onInteraction = () => {
       if (interactionPending) return;
       interactionPending = true;
       // React and native event handlers must finish their synchronous store writes first.
       queueMicrotask(() => {
         interactionPending = false;
-        if (!closed && visible()) flush();
+        if (!closed && isTabVisible()) flush();
       });
     };
     const interactions = ["click", "keydown", "input"] as const;
     if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisibility);
       for (const event of interactions) document.addEventListener(event, onInteraction);
     }
     if (readSnapshot() !== published) flush();
@@ -148,7 +148,6 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
       cancel();
       for (const unsubscribe of unsubscribers) unsubscribe();
       if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisibility);
         for (const event of interactions) document.removeEventListener(event, onInteraction);
       }
     };

@@ -7,6 +7,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";
 
 const RUNTIME: WorkspaceRuntimeContext = {
@@ -56,7 +57,9 @@ function add(name: string, owner = OWNER) {
   useMessengerStore.getState().upsertStream(owner, stream(id(name)));
 }
 
+let stopVisibilityTracking: () => void;
 beforeEach(() => {
+  stopVisibilityTracking = initVisibilityTracking();
   vi.useFakeTimers();
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   useWorkspaceAuthStore.getState().clear();
@@ -66,6 +69,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  stopVisibilityTracking();
   vi.restoreAllMocks();
   useMessengerStore.getState().clear();
   useWorkspaceMessageStore.getState().setOwner(null, false);

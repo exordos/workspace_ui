@@ -24,6 +24,7 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import {
   parseWorkspaceMessengerRoute,
   workspaceMessengerStreamRoute,
@@ -72,22 +73,22 @@ function useSidebarCalendarDay(): number {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
       clearTimeout(timer);
-      if (document.visibilityState === "hidden") return;
+      if (!isTabVisible()) return;
       const now = new Date();
       const midnight = new Date(now);
       midnight.setHours(24, 0, 0, 0);
       timer = setTimeout(refresh, midnight.getTime() - now.getTime());
     };
     const refresh = () => {
-      if (document.visibilityState !== "hidden") setDay((previous) => previous + 1);
+      if (isTabVisible()) setDay((previous) => previous + 1);
       schedule();
     };
     // One clock for the entire sidebar, including memoized stream and topic rows.
     schedule();
-    document.addEventListener("visibilitychange", refresh);
+    const unsubscribeVisibility = onVisibilityChange(refresh);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener("visibilitychange", refresh);
+      unsubscribeVisibility();
     };
   }, []);
   return day;

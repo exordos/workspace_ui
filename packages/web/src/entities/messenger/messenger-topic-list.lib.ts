@@ -50,11 +50,13 @@ const previewTextCache = new Map<
 >();
 let previewTextBytes = 0;
 
-useWorkspaceMessageStore.subscribe((state, previous) => {
+const unsubscribeMessages = useWorkspaceMessageStore.subscribe((state, previous) => {
   if (state.ownerKey === previous.ownerKey) return;
   previewTextCache.clear();
   previewTextBytes = 0;
 });
+
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeMessages);
 
 function messagePreviewText(message: MessengerMessage, organizationId: string): string {
   if (message.payload.kind !== "markdown") return "";

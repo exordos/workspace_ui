@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adaptMessengerFolder } from "~/entities/messenger/messenger-adapters.lib";
 import {
   MESSENGER_ALL_CHATS_FOLDER_UUID,
@@ -13,6 +13,7 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { getLocale, setLocale, t } from "~/i18n/i18n";
 import * as datetime from "~/shared/lib/datetime.lib";
+import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
@@ -345,8 +346,13 @@ describe("sidebar row memoization", () => {
 });
 
 describe("sidebar calendar refresh", () => {
+  let stopVisibilityTracking: () => void;
+  beforeEach(() => {
+    stopVisibilityTracking = initVisibilityTracking();
+  });
   afterEach(() => {
     cleanup();
+    stopVisibilityTracking();
     vi.restoreAllMocks();
     vi.useRealTimers();
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });

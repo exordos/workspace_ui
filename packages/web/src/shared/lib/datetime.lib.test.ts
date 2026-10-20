@@ -7,6 +7,7 @@ import {
   formatMessageTimeShort,
   formatMessageTimeWithDate,
 } from "./datetime.lib";
+import { initVisibilityTracking } from "./visibility";
 
 describe("formatMessageTimeShort", () => {
   it("formats unix seconds as HH:MM", () => {
@@ -16,13 +17,16 @@ describe("formatMessageTimeShort", () => {
 
 describe("cached calendar formatters", () => {
   let locale = getLocale();
+  let stopVisibilityTracking: () => void;
   beforeEach(() => {
+    stopVisibilityTracking = initVisibilityTracking();
     locale = getLocale();
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 20, 12));
     window.dispatchEvent(new Event("languagechange"));
   });
   afterEach(() => {
+    stopVisibilityTracking();
     vi.restoreAllMocks();
     setLocale(locale);
     vi.useRealTimers();

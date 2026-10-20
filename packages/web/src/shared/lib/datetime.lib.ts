@@ -8,6 +8,7 @@
  * - `formatDateJoined` — profile "joined" dates
  */
 import { t, getLocale } from "~/i18n/i18n";
+import { onVisibilityChange } from "./visibility";
 
 const DATE_STYLES = {
   compact: { day: "numeric", month: "short" },
@@ -31,11 +32,17 @@ function formatCalendarDate(date: Date, style: keyof typeof DATE_STYLES, locale?
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("languagechange", () => dateFormatters.clear());
-  document.addEventListener("visibilitychange", () => {
+  const clearFormatters = () => dateFormatters.clear();
+  window.addEventListener("languagechange", clearFormatters);
+  const unsubscribeVisibility = onVisibilityChange((visible) => {
     // Returning to the app must pick up OS timezone changes, including equal offsets.
-    if (document.visibilityState !== "hidden") dateFormatters.clear();
+    if (visible) clearFormatters();
   });
+  if (import.meta.hot)
+    import.meta.hot.dispose(() => {
+      window.removeEventListener("languagechange", clearFormatters);
+      unsubscribeVisibility();
+    });
 }
 
 function localeTag(): string {

@@ -112,7 +112,7 @@ const sidebarStreamsCache = new Map<string | null, SidebarStreamsCacheEntry>();
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
 let sidebarActivityCountsCache: SidebarActivityCountsCacheEntry | null = null;
 
-useMessengerStore.subscribe((state, previous) => {
+const unsubscribeMessenger = useMessengerStore.subscribe((state, previous) => {
   if (
     state.ownerKey === previous.ownerKey &&
     state.bootstrapRequestVersion === previous.bootstrapRequestVersion
@@ -122,6 +122,8 @@ useMessengerStore.subscribe((state, previous) => {
   sidebarFoldersCache = null;
   sidebarActivityCountsCache = null;
 });
+
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeMessenger);
 
 function reuseProjection<T extends object>(previous: T | undefined, next: T): T {
   if (previous == null) return next;
@@ -654,7 +656,7 @@ export function selectMessengerSidebarStreams(
 }
 
 export function selectMessengerSidebarFolders(
-  state: MessengerStoreState,
+  state: Pick<MessengerStoreState, "folderIds" | "foldersById">,
 ): MessengerSidebarFolderView[] {
   if (
     sidebarFoldersCache?.folderIds === state.folderIds &&
@@ -685,7 +687,7 @@ export function selectMessengerSidebarFolders(
 }
 
 export function selectMessengerSidebarActivityCounts(
-  state: MessengerStoreState,
+  state: Pick<MessengerStoreState, "folderIds" | "foldersById">,
 ): MessengerSidebarActivityCounts {
   if (
     sidebarActivityCountsCache?.folderIds === state.folderIds &&
