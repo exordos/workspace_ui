@@ -35,6 +35,8 @@ export interface PendingChatKeyRequest {
   readonly localRequestId: string;
   // Public placement UUID used by grants; null until a response or own history binds it.
   readonly requestMessageUuid: string | null;
+  // Snapshot the name for identical POST retries; older requests use the saved device label.
+  readonly deviceName?: string;
   readonly publicKey: ChatCryptoPublicKey;
   readonly privateKey: Uint8Array;
   readonly createdAt: number;

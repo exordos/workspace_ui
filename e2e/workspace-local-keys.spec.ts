@@ -12,77 +12,97 @@ import {
   usersSuccess,
 } from "./mocks/workspace-default-responses";
 
-test("first key request sends the automatically named browser identity stored locally", async ({
-  authenticated: page,
-}) => {
-  const readIdentity = () =>
-    page.evaluate(async () => {
-      const { useWorkspaceAuthStore } =
-        await import("/src/entities/workspace-auth/workspace-auth.model.ts");
-      const { realChatKeyStorage } =
-        await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
-      const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-      if (!runtime) throw new Error("Missing test runtime");
-      return realChatKeyStorage.readDeviceIdentity(runtime);
-    });
-  expect(await readIdentity()).toBeNull();
-  const keyUuid = crypto.randomUUID();
-  const stream = {
-    ...streamsSuccess()[0],
-    encryption: true,
-    current_encryption_key_uuid: keyUuid,
-  };
-  type TestMessage = Omit<ReturnType<typeof messageSuccess>, "payload"> & {
-    payload: Record<string, string>;
-  };
-  const history: TestMessage[] = [
-    { ...messageSuccess(""), payload: { kind: "key_announced", key_uuid: keyUuid } },
-  ];
-  const requests: Record<string, string>[] = [];
-  await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
-    await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
-  });
-  await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
-    if (route.request().method() === "GET") {
-      const unreadOnly = new URL(route.request().url()).searchParams.get("read") === "false";
-      return route.fulfill({ json: unreadOnly ? [] : history });
-    }
-    if (route.request().method() !== "POST") return route.fallback();
-    const body = route.request().postDataJSON() as {
-      uuid: string;
+for (const savedDeviceName of [null, "Workspace browser"] as const) {
+  test(`new key request resolves the browser name with ${savedDeviceName ? "a legacy" : "a fresh"} identity`, async ({
+    authenticated: page,
+  }) => {
+    const readIdentity = () =>
+      page.evaluate(async () => {
+        const { useWorkspaceAuthStore } =
+          await import("/src/entities/workspace-auth/workspace-auth.model.ts");
+        const { realChatKeyStorage } =
+          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+        if (!runtime) throw new Error("Missing test runtime");
+        return realChatKeyStorage.readDeviceIdentity(runtime);
+      });
+    expect(await readIdentity()).toBeNull();
+    const expectedDeviceName = await page.evaluate(async (savedDeviceName) => {
+      const { getDeviceName } = await import("/src/shared/lib/device-name.lib.ts");
+      if (savedDeviceName) {
+        const { useWorkspaceAuthStore } =
+          await import("/src/entities/workspace-auth/workspace-auth.model.ts");
+        const { realChatKeyStorage } =
+          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+        if (!runtime) throw new Error("Missing test runtime");
+        await realChatKeyStorage.writeDeviceIdentity(runtime, {
+          deviceId: crypto.randomUUID(),
+          deviceName: savedDeviceName,
+        });
+      }
+      return getDeviceName();
+    }, savedDeviceName);
+    const previousIdentity = await readIdentity();
+    const keyUuid = crypto.randomUUID();
+    const stream = {
+      ...streamsSuccess()[0],
+      encryption: true,
+      current_encryption_key_uuid: keyUuid,
+    };
+    type TestMessage = Omit<ReturnType<typeof messageSuccess>, "payload"> & {
       payload: Record<string, string>;
     };
-    if (body.payload.kind === "key_request") requests.push(body.payload);
-    const created = {
-      ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
-      payload: body.payload,
-    };
-    history.push(created);
-    await route.fulfill({ status: 201, json: created });
+    const history: TestMessage[] = [
+      { ...messageSuccess(""), payload: { kind: "key_announced", key_uuid: keyUuid } },
+    ];
+    const requests: Record<string, string>[] = [];
+    await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+      await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+    });
+    await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
+      if (route.request().method() === "GET") {
+        const unreadOnly = new URL(route.request().url()).searchParams.get("read") === "false";
+        return route.fulfill({ json: unreadOnly ? [] : history });
+      }
+      if (route.request().method() !== "POST") return route.fallback();
+      const body = route.request().postDataJSON() as {
+        uuid: string;
+        payload: Record<string, string>;
+      };
+      if (body.payload.kind === "key_request") requests.push(body.payload);
+      const created = {
+        ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+        payload: body.payload,
+      };
+      history.push(created);
+      await route.fulfill({ status: 201, json: created });
+    });
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+    await page
+      .getByRole("button", { name: /^(channel info|информация о канале)$/i })
+      .first()
+      .click();
+    await page.getByRole("button", { name: /^(settings|настройки)$/i }).click();
+    await page.getByRole("button", { name: /^(encryption keys|ключи шифрования)$/i }).click();
+    await page
+      .getByRole("button", { name: /^(request current key|запросить актуальный ключ)$/i })
+      .click();
+    await expect.poll(() => requests).toHaveLength(1);
+    const identity = await readIdentity();
+    expect(identity?.deviceId).toMatch(/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i);
+    expect(expectedDeviceName).toMatch(/ · (?:Chrome|Chromium|Edge|Firefox|Safari) — Web$/);
+    if (previousIdentity) expect(identity).toEqual(previousIdentity);
+    expect(requests[0]).toMatchObject({
+      kind: "key_request",
+      key_uuid: keyUuid,
+      device_id: identity?.deviceId,
+      device_name: expectedDeviceName,
+    });
   });
-  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
-  await page
-    .getByRole("button", { name: /^(channel info|информация о канале)$/i })
-    .first()
-    .click();
-  await page.getByRole("button", { name: /^(settings|настройки)$/i }).click();
-  await page.getByRole("button", { name: /^(encryption keys|ключи шифрования)$/i }).click();
-  await page
-    .getByRole("button", { name: /^(request current key|запросить актуальный ключ)$/i })
-    .click();
-  await expect.poll(() => requests).toHaveLength(1);
-  const identity = await readIdentity();
-  expect(identity?.deviceId).toMatch(/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i);
-  expect(identity?.deviceName).toMatch(/ · (?:Chrome|Chromium|Edge|Firefox|Safari) — Web$/);
-  expect(requests[0]).toMatchObject({
-    kind: "key_request",
-    key_uuid: keyUuid,
-    device_id: identity?.deviceId,
-    device_name: identity?.deviceName,
-  });
-});
+}
 
 for (const role of ["owner", "member"] as const) {
   test(`one ${role} account on two devices keeps device-specific key rendering and existing grant rights`, async ({
@@ -107,6 +127,7 @@ for (const role of ["owner", "member"] as const) {
       };
       let encryptedContent = "";
       const deviceIds: string[] = [];
+      let targetDeviceName = "";
       for (const [page, deviceName, hasKey] of [
         [source, "MacBook", true],
         [target, "iPhone", false],
@@ -117,12 +138,19 @@ for (const role of ["owner", "member"] as const) {
               await import("/src/entities/workspace-auth/workspace-auth.model.ts");
             const { realChatKeyStorage, realChatCryptoProvider } =
               await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+            const { getDeviceName } = await import("/src/shared/lib/device-name.lib.ts");
             const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
             if (!runtime) throw new Error("Missing test runtime");
             const previous = await realChatKeyStorage.readDeviceIdentity(runtime);
             const deviceId = previous?.deviceId ?? crypto.randomUUID();
             await realChatKeyStorage.writeDeviceIdentity(runtime, { deviceId, deviceName });
-            if (!hasKey) return { deviceId, content: "", userUuid: runtime.userUuid };
+            if (!hasKey)
+              return {
+                deviceId,
+                content: "",
+                userUuid: runtime.userUuid,
+                requestDeviceName: await getDeviceName(),
+              };
             const key = await realChatCryptoProvider.createGroupKey();
             if (!key.ok) throw new Error("Key creation failed");
             await realChatKeyStorage.writeChatKey(
@@ -139,6 +167,7 @@ for (const role of ["owner", "member"] as const) {
               deviceId,
               content: btoa(String.fromCharCode(...encrypted.value.bytes)),
               userUuid: runtime.userUuid,
+              requestDeviceName: await getDeviceName(),
             };
           },
           { deviceName, hasKey, keyUuid, streamUuid: E2E_STREAM_UUID },
@@ -146,6 +175,7 @@ for (const role of ["owner", "member"] as const) {
         expect(seeded.userUuid).toBe(E2E_USER_UUID);
         deviceIds.push(seeded.deviceId);
         if (hasKey) encryptedContent = seeded.content;
+        else targetDeviceName = seeded.requestDeviceName;
       }
       expect(deviceIds[0]).not.toBe(deviceIds[1]);
       type TestMessage = Omit<ReturnType<typeof messageSuccess>, "payload"> & {
@@ -229,7 +259,8 @@ for (const role of ["owner", "member"] as const) {
       );
       await target.getByRole("button", { name: /^(request key|запросить ключ)$/i }).click();
       const targetRequest = target.locator('[data-encrypted-service-message="key_request"]');
-      await expect(targetRequest).toContainText(/You requested.*iPhone|Вы запросили.*iPhone/);
+      await expect(targetRequest).toContainText(/You requested|Вы запросили/);
+      await expect(targetRequest).toContainText(targetDeviceName);
       await expect(targetRequest.getByRole("button")).toHaveCount(0);
       if (role === "owner")
         await expect(targetRequest).toContainText(
@@ -243,7 +274,8 @@ for (const role of ["owner", "member"] as const) {
       }
       await source.reload();
       const sourceRequest = source.locator('[data-encrypted-service-message="key_request"]');
-      await expect(sourceRequest).toContainText(/You requested.*iPhone|Вы запросили.*iPhone/);
+      await expect(sourceRequest).toContainText(/You requested|Вы запросили/);
+      await expect(sourceRequest).toContainText(targetDeviceName);
       const transfer = sourceRequest.getByRole("button", { name: /^(send key|передать ключ)$/i });
       if (role === "member") {
         await expect(transfer).toHaveCount(0);
@@ -266,7 +298,8 @@ for (const role of ["owner", "member"] as const) {
         recipient_device_id: deviceIds[1],
       });
       const sourceGrant = source.locator('[data-encrypted-service-message="key_grant"]');
-      await expect(sourceGrant).toContainText(/You sent.*iPhone|Вы передали.*iPhone/);
+      await expect(sourceGrant).toContainText(/You sent|Вы передали/);
+      await expect(sourceGrant).toContainText(targetDeviceName);
       await expect(sourceGrant.getByRole("status")).toHaveCount(0);
       await target.reload();
       await expect(

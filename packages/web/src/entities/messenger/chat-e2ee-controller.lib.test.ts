@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import type { ChatCryptoProvider, ChatCryptoResult } from "./chat-crypto-provider.types";
 import type {
@@ -16,6 +17,12 @@ import type {
   PendingChatKeyRequest,
   ChatKeyRequestCompletion,
 } from "./chat-key-storage.types";
+
+vi.mock("~/shared/lib/device-name.lib", () => ({ getDeviceName: vi.fn() }));
+
+beforeEach(() => {
+  vi.mocked(getDeviceName).mockReset().mockResolvedValue("MacBook");
+});
 
 const ok = <T>(value: T): ChatCryptoResult<T> => ({ ok: true, value });
 const devicePair = { publicKey: { bytes: new Uint8Array([1]) }, privateKey: new Uint8Array([1]) };
@@ -638,7 +645,72 @@ describe("ChatE2eeController", () => {
       "key_reject",
     ]);
     expect(f.readKey()?.groupKey).toBeNull();
+    expect(getDeviceName).not.toHaveBeenCalled();
+    expect(f.sendPayload.mock.calls[0]?.[0]).toMatchObject({ deviceName: "MacBook" });
   });
+
+  it("resolves the current name for each new request without changing device identity or stored keys", async () => {
+    const f = fixture(chatPair);
+    f.pending.clear();
+    vi.mocked(getDeviceName)
+      .mockResolvedValueOnce("Mac · Chrome — Web")
+      .mockResolvedValueOnce("Renamed Mac — Desktop");
+
+    const first = await f.controller.requestKey();
+    expect(first.ok).toBe(true);
+    const uuid = [...f.pending.values()][0]?.requestMessageUuid;
+    if (!uuid) throw new Error("missing pending");
+    await f.controller.ingestKeyMessage({
+      ...f.grant,
+      payload: {
+        kind: "key_reject",
+        keyUuid: f.scope.keyUuid,
+        requestMessageUuid: uuid,
+        senderDeviceId: "issuer-device",
+        recipientDeviceId: f.scope.deviceId,
+      },
+    });
+    const second = await f.controller.requestKey();
+    expect(second.ok).toBe(true);
+
+    expect(getDeviceName).toHaveBeenCalledTimes(2);
+    expect(f.sendPayload.mock.calls.map(([payload]) => payload)).toMatchObject([
+      { deviceId: "device", deviceName: "Mac · Chrome — Web" },
+      { deviceId: "device", deviceName: "Renamed Mac — Desktop" },
+    ]);
+    expect(f.readKey()).toEqual(chatPair);
+    expect(f.storage.writeDeviceIdentity).not.toHaveBeenCalled();
+    expect(f.storage.writeChatKey).not.toHaveBeenCalled();
+    expect(f.storage.removeChatKey).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "generation", "logout", "rights"] as const)(
+    "does not prepare or send a request after %s changes while resolving the name",
+    async (change) => {
+      const f = fixture();
+      f.pending.clear();
+      const name = deferred<string>();
+      vi.mocked(getDeviceName).mockReturnValueOnce(name.promise);
+      const requested = f.controller.requestKey();
+      await vi.waitFor(() => expect(getDeviceName).toHaveBeenCalledOnce());
+      if (change === "owner")
+        f.setCurrent({ ...f.scope, owner: { ...f.scope.owner, accountId: "other" } });
+      if (change === "generation") f.setCurrent({ ...f.scope, runtimeGeneration: 2 });
+      if (change === "logout") f.setCurrent(null);
+      if (change === "rights") f.setRights({ canRequest: false });
+      name.resolve("Mac · Chrome — Web");
+
+      expect(await requested).toEqual({
+        ok: false,
+        reason: change === "rights" ? "forbidden" : "stale",
+      });
+      expect(f.provider.createRequestKeyPair).not.toHaveBeenCalled();
+      expect(f.storage.writePendingRequest).not.toHaveBeenCalled();
+      expect(f.sendPayload).not.toHaveBeenCalled();
+      expect(f.storage.writeDeviceIdentity).not.toHaveBeenCalled();
+      expect(f.storage.writeChatKey).not.toHaveBeenCalled();
+    },
+  );
 
   it("requires the symmetric group secret for grants and messages", async () => {
     const f = fixture();
@@ -676,17 +748,22 @@ describe("ChatE2eeController", () => {
   it("persists a fresh request pair before dispatch and reuses it after an ambiguous POST failure", async () => {
     const f = fixture();
     f.pending.clear();
+    vi.mocked(getDeviceName).mockResolvedValueOnce("Mac · Chrome — Web");
     f.sendPayload.mockImplementationOnce((_payload, _guard, uuid) => {
       const pending = [...f.pending.values()][0];
       expect(pending?.localRequestId).toBe(uuid);
       expect(pending?.requestMessageUuid).toBeNull();
       expect(pending?.privateKey).toEqual(devicePair.privateKey);
+      expect(pending?.deviceName).toBe("Mac · Chrome — Web");
       throw new Error("response lost");
     });
     expect(await f.controller.requestKey()).toEqual({ ok: false, reason: "send-failed" });
     const first = [...f.pending.values()][0];
     expect(first).toBeDefined();
+    vi.mocked(getDeviceName).mockResolvedValue("Changed name — Desktop");
     expect((await f.controller.requestKey()).ok).toBe(true);
+    expect(getDeviceName).toHaveBeenCalledOnce();
+    expect(f.sendPayload.mock.calls[0]?.[0]).toEqual(f.sendPayload.mock.calls[1]?.[0]);
     expect(f.provider.createRequestKeyPair).toHaveBeenCalledTimes(1);
     expect(f.sendPayload.mock.calls[0]?.[2]).toBe(f.sendPayload.mock.calls[1]?.[2]);
     expect(f.pending.size).toBe(1);

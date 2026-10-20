@@ -401,6 +401,24 @@ describe("durable chat key storage", () => {
     expect(await reopened.readChatKey(address)).toBeNull();
   });
 
+  it("restores the request name snapshot without changing the device identity or group key", async () => {
+    const { storage, name } = setup();
+    const identity = { deviceId: address.deviceId, deviceName: "Workspace browser" };
+    const request = { ...pending, requestMessageUuid: null, deviceName: "Mac · Chrome — Web" };
+    await storage.writeDeviceIdentity(address.owner, identity);
+    await storage.writeChatKey(address, key);
+    await storage.writePendingRequest(address, request);
+    await storage.bindPendingRequest(address, request.localRequestId, "public-request");
+    storage.close();
+
+    const reopened = openStorage(name);
+    expect(await reopened.listPendingRequests(address)).toEqual([
+      { ...request, requestMessageUuid: "public-request" },
+    ]);
+    expect(await reopened.readDeviceIdentity(address.owner)).toEqual(identity);
+    expect(await reopened.readChatKey(address)).toEqual(key);
+  });
+
   it("preserves the first device identity when two connections initialize concurrently", async () => {
     const { storage, name } = setup();
     const other = openStorage(name);
