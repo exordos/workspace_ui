@@ -117,8 +117,7 @@ function getDesktopDevice(platform: string | undefined): string {
 export async function getDeviceName(): Promise<string> {
   const desktop = typeof window === "undefined" ? null : getElectronAPI();
   if (desktop) {
-    const systemName = await readOptionalName(async () => desktop.app?.getDeviceName?.(), 1500);
-    return `${systemName || getDesktopDevice(desktop.platform)} — ${t("deviceName.desktop")}`;
+    return `${getDesktopDevice(desktop.platform)} — ${t("deviceName.desktop")}`;
   }
 
   const nav = typeof navigator === "undefined" ? null : (navigator as NavigatorWithClientHints);

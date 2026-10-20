@@ -25,7 +25,6 @@ import {
 } from "./app-identity.lib";
 import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
-import { getDeviceNameForRequest } from "./device-name.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
   getTrayMenuLabels,
@@ -1027,13 +1026,6 @@ function registerIpcHandlers(): void {
   // App info
   ipcMain.handle("app:getVersion", () => app.getVersion());
   ipcMain.handle("app:getPlatform", () => process.platform);
-  ipcMain.handle("app:getDeviceName", (event) =>
-    getDeviceNameForRequest(
-      event,
-      mainWindow?.webContents ?? null,
-      IS_DEV ? DEV_SERVER_URL : pathToFileURL(path.join(getWebRoot(), "index.html")).href,
-    ),
-  );
 
   // Clipboard
   ipcMain.handle("clipboard:writeText", (_event, text: unknown) => {

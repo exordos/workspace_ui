@@ -22,7 +22,7 @@ function browser(userAgent: string, extra: Record<string, unknown> = {}) {
   vi.stubGlobal("navigator", { userAgent, maxTouchPoints: 0, ...extra });
 }
 
-function desktop(platform: string, app: Partial<ElectronAPI["app"]> = {}) {
+function desktop(platform: string, app: Record<string, unknown> = {}) {
   (window as unknown as { electronAPI: unknown }).electronAPI = { platform, app };
 }
 
@@ -180,11 +180,13 @@ describe("getDeviceName", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("uses the native name in Desktop without browser hints", async () => {
+  it("ignores host names exposed by older Desktop shells and browser hints", async () => {
     const getHighEntropyValues = vi.fn();
+    const getSystemName = vi.fn().mockResolvedValue("Ноутбук Адама");
     browser("Chrome/130", { userAgentData: { getHighEntropyValues } });
-    desktop("darwin", { getDeviceName: vi.fn().mockResolvedValue("Ноутбук Адама") });
-    expect(await getDeviceName()).toBe("Ноутбук Адама — Desktop");
+    desktop("darwin", { getDeviceName: getSystemName });
+    expect(await getDeviceName()).toBe("Mac — Desktop");
+    expect(getSystemName).not.toHaveBeenCalled();
     expect(getHighEntropyValues).not.toHaveBeenCalled();
   });
 
@@ -193,30 +195,9 @@ describe("getDeviceName", () => {
     ["win32", "Windows — Desktop"],
     ["linux", "Linux — Desktop"],
     ["unknown", "Device — Desktop"],
-  ])("supports older shells without a naming bridge on %s", async (platform, expected) => {
+  ])("uses only the OS and Desktop suffix on %s", async (platform, expected) => {
     desktop(platform);
     expect(await getDeviceName()).toBe(expected);
-  });
-
-  it("falls back when native discovery fails", async () => {
-    desktop("linux", { getDeviceName: vi.fn().mockRejectedValue(new Error("IPC unavailable")) });
-    expect(await getDeviceName()).toBe("Linux — Desktop");
-  });
-
-  it("bounds the wait for a stalled native bridge", async () => {
-    vi.useFakeTimers();
-    desktop("win32", { getDeviceName: () => new Promise(() => {}) });
-    const result = getDeviceName();
-    await vi.advanceTimersByTimeAsync(1500);
-    expect(await result).toBe("Windows — Desktop");
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("normalizes and bounds environment-provided names", async () => {
-    desktop("darwin", { getDeviceName: vi.fn().mockResolvedValue("  Рабочий\n\u202e Mac\t ") });
-    expect(await getDeviceName()).toBe("Рабочий Mac — Desktop");
-    desktop("darwin", { getDeviceName: vi.fn().mockResolvedValue("a".repeat(1000)) });
-    expect(await getDeviceName()).toBe(`${"a".repeat(120)} — Desktop`);
   });
 
   it("localizes the unknown-device label", async () => {
