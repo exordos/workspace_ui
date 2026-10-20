@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "~/entities/messenger/messenger-folder-system-type.lib";
 import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
 import {
@@ -8,18 +7,18 @@ import {
   selectMessengerSidebarStreams,
   type MessengerSidebarStreamsState,
 } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerSidebarStreamItem } from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTranslation } from "~/i18n/i18n";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
+import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
@@ -35,9 +34,12 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   sidebarResizeControl,
   pathname = "",
 }) => {
+  const { locale } = useTranslation();
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
+  const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
+  const workspaceSearchQuery = useSidebarConfigStore((s) => s.searchQuery);
   const workspaceRoute = useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -58,18 +60,34 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     }
     return null;
   }, [workspaceRoute, workspaceRuntimeContext]);
-  const workspaceFolders = useMessengerStore(selectMessengerSidebarFolders);
-  const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
-  const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
-  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
-  const workspaceTopicIds = useMessengerStore((state) => state.topicIds);
-  const workspaceTopicsById = useMessengerStore((state) => state.topicsById);
-  const workspaceFoldersById = useMessengerStore((state) => state.foldersById);
-  const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
-  const workspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
-  const workspaceUsersById = useUsersStore((state) => state.usersById);
+  const snapshot = useSidebarProjectionSnapshot(
+    workspaceRuntimeContext,
+    JSON.stringify([
+      pathname,
+      locale,
+      workspaceSelectedFolderId,
+      messengerSidebarSortMode,
+      workspaceSearchQuery,
+    ]),
+  );
+  const messenger = snapshot.messenger;
+  const workspaceOwnerKey = messenger.ownerKey;
+  const workspaceFolders = useMemo(() => selectMessengerSidebarFolders(messenger), [messenger]);
+  const workspaceActivityCounts = useMemo(
+    () => selectMessengerSidebarActivityCounts(messenger),
+    [messenger],
+  );
+  const workspaceStreamIds = messenger.streamIds;
+  const workspaceStreamsById = messenger.streamsById;
+  const workspaceTopicIds = messenger.topicIds;
+  const workspaceTopicsById = messenger.topicsById;
+  const workspaceFoldersById = messenger.foldersById;
+  const workspaceConversationsById = messenger.conversationsById;
+  const workspaceMessagesById = snapshot.messagesById;
+  const workspaceUsersById = snapshot.usersById;
   const workspaceSidebarState = useMemo<MessengerSidebarStreamsState>(
     () => ({
+      ownerKey: workspaceOwnerKey,
       streamIds: workspaceStreamIds,
       streamsById: workspaceStreamsById,
       topicIds: workspaceTopicIds,
@@ -78,6 +96,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       conversationsById: workspaceConversationsById,
     }),
     [
+      workspaceOwnerKey,
       workspaceConversationsById,
       workspaceFoldersById,
       workspaceStreamIds,
@@ -86,7 +105,6 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceTopicsById,
     ],
   );
-  const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
   const workspaceEffectiveFolder = workspaceFolders.some(
     (folder) => folder.folderUuid === workspaceSelectedFolderId,
   )
@@ -95,9 +113,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceFolders[0] ??
       null);
   const workspaceEffectiveFolderId = workspaceEffectiveFolder?.folderUuid ?? null;
-  const workspaceSearchActive = useSidebarConfigStore(
-    (state) => normalizeSidebarSearchQuery(state.searchQuery).length > 0,
-  );
+  const workspaceSearchActive = normalizeSidebarSearchQuery(workspaceSearchQuery).length > 0;
   const workspaceAllFolderId =
     workspaceFolders.find((folder) => folder.folderUuid === MESSENGER_ALL_CHATS_FOLDER_UUID)
       ?.folderUuid ?? null;
@@ -118,7 +134,10 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
             usersById: workspaceUsersById,
           })
         : EMPTY_WORKSPACE_STREAMS,
+    // The selector resolves translated previews from the current locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      locale,
       currentUserUuid,
       sidebarWorkspaceIdentity,
       workspaceEffectiveFolderId,
@@ -144,7 +163,10 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           usersById: workspaceUsersById,
         })
       : EMPTY_WORKSPACE_STREAMS;
+    // The selector resolves translated previews from the current locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    locale,
     currentUserUuid,
     messengerSidebarSortMode,
     sidebarWorkspaceIdentity,
@@ -156,16 +178,14 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     workspaceStreams,
     workspaceUsersById,
   ]);
-  const workspaceLoadingRaw = useMessengerStore((state) => state.isLoading);
-  const workspaceError = useMessengerStore((state) => state.error);
-  const workspaceCatalogLoaded = useMessengerStore(
-    (state) =>
-      state.lastLoadedAt != null ||
-      state.streamIds.length > 0 ||
-      state.topicIds.length > 0 ||
-      state.folderIds.length > 0 ||
-      state.conversationIds.length > 0,
-  );
+  const workspaceLoadingRaw = messenger.isLoading;
+  const workspaceError = messenger.error;
+  const workspaceCatalogLoaded =
+    messenger.lastLoadedAt != null ||
+    messenger.streamIds.length > 0 ||
+    messenger.topicIds.length > 0 ||
+    messenger.folderIds.length > 0 ||
+    messenger.conversationIds.length > 0;
   const workspaceLoading =
     workspaceLoadingRaw || (!workspaceCatalogLoaded && workspaceError == null);
   const workspaceRailFolders = workspaceFolders.map((folder) => ({

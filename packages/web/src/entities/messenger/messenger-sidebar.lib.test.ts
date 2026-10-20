@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { User, UsersById } from "~/entities/user/user.types";
-import { t } from "~/i18n/i18n";
+import { getLocale, setLocale, t } from "~/i18n/i18n";
+import * as messageSummary from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import {
   workspaceMessengerRootRoute,
   workspaceMessengerTopicRoute,
@@ -11,6 +13,10 @@ import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
+import {
+  createMessengerTopicMessagePreview,
+  selectMessengerTopicsForStream,
+} from "./messenger-topic-list.lib";
 import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
 import type {
   MessengerConversation,
@@ -278,9 +284,292 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
   };
 }
 
+describe("topic catalog indexing", () => {
+  function selectTopics(
+    state: Pick<MessengerStoreState, "topicIds" | "topicsById">,
+    streamUuid: string,
+    streamNotificationMode: MessengerStream["notificationMode"] = "all_messages",
+  ) {
+    return selectMessengerTopicsForStream({
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      state,
+      streamUuid,
+      streamNotificationMode,
+      messagesById: {},
+      usersById: {},
+      currentUserUuid: null,
+      sortMode: "unread_first",
+    });
+  }
+
+  it("reads each topic once across stream selections and ignores missing catalog IDs", () => {
+    const get = vi.fn((target: Record<string, MessengerTopic>, key: string) => target[key]);
+    const topicsById = new Proxy(
+      {
+        [TOPIC_A]: topic(),
+        [TOPIC_B]: topic({ uuid: TOPIC_B, streamUuid: STREAM_B }),
+      },
+      { get },
+    );
+    const state = { topicIds: [TOPIC_A, TOPIC_B, "missing"], topicsById };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_A]);
+    expect(selectTopics(state, STREAM_B).map((item) => item.topicUuid)).toEqual([TOPIC_B]);
+    expect(selectTopics(state, STREAM_C)).toEqual([]);
+    expect(get).toHaveBeenCalledTimes(3);
+  });
+
+  it("rebuilds after membership, ordering or immutable topic changes", () => {
+    const first = topic({ unreadCount: 0 });
+    const second = topic({ uuid: TOPIC_B, unreadCount: 0 });
+    const state = {
+      topicIds: [TOPIC_A, TOPIC_B],
+      topicsById: { [TOPIC_A]: first, [TOPIC_B]: second },
+    };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_A, TOPIC_B]);
+    const reordered = { ...state, topicIds: [TOPIC_B, TOPIC_A] };
+    expect(selectTopics(reordered, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+    ]);
+    expect(
+      selectTopics({ ...state, topicIds: [TOPIC_B] }, STREAM_A).map((item) => item.topicUuid),
+    ).toEqual([TOPIC_B]);
+    const moved = {
+      ...state,
+      topicsById: {
+        ...state.topicsById,
+        [TOPIC_A]: { ...first, streamUuid: STREAM_B, name: "Moved" },
+      },
+    };
+    expect(selectTopics(moved, STREAM_A).map((item) => item.topicUuid)).toEqual([TOPIC_B]);
+    expect(selectTopics(moved, STREAM_B)[0]?.title).toBe("Moved");
+    const changed = {
+      ...state,
+      topicsById: { ...state.topicsById, [TOPIC_B]: { ...second, unreadCount: 4 } },
+    };
+    expect(selectTopics(changed, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+    ]);
+  });
+
+  it("applies current stream mute and topic completion rules to indexed topics", () => {
+    const state = {
+      topicIds: [TOPIC_A, TOPIC_B, TOPIC_C],
+      topicsById: {
+        [TOPIC_A]: topic({ notificationMode: "default", updatedAt: DATE_B }),
+        [TOPIC_B]: topic({ uuid: TOPIC_B, notificationMode: "unmute" }),
+        [TOPIC_C]: topic({ uuid: TOPIC_C, isDone: true }),
+      },
+    };
+    expect(selectTopics(state, STREAM_A).map((item) => item.topicUuid)).toEqual([
+      TOPIC_A,
+      TOPIC_B,
+      TOPIC_C,
+    ]);
+    expect(selectTopics(state, STREAM_A, "muted").map((item) => item.topicUuid)).toEqual([
+      TOPIC_B,
+      TOPIC_A,
+      TOPIC_C,
+    ]);
+  });
+});
+
+describe("messenger preview text cache", () => {
+  const initialLocale = getLocale();
+  beforeEach(() => useWorkspaceMessageStore.getState().setOwner("preview-owner-a", false));
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setLocale(initialLocale);
+    useWorkspaceMessageStore.getState().setOwner(null, false);
+  });
+  const preview = (item: MessengerMessage, usersById = createUsersById()) =>
+    createMessengerTopicMessagePreview({
+      messageUuid: item.uuid,
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [item.uuid]: item },
+      usersById,
+      currentUserUuid: null,
+    });
+
+  it("reuses summary text across read/reaction snapshots while refreshing the sender", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const original = message({ markdown: "**unchanged** preview" });
+    expect(preview(original)?.text).toBe("unchanged preview");
+    const renamed = createUsersById({ [AUTHOR_UUID]: user({ displayName: "Renamed" }) });
+    expect(preview({ ...original, read: false, reactions: { like: 2 } }, renamed)?.senderName).toBe(
+      "Renamed",
+    );
+    expect(summarize).toHaveBeenCalledTimes(1);
+    expect(preview({ ...original, payload: { kind: "markdown", content: "edited" } })?.text).toBe(
+      "edited",
+    );
+    expect(summarize).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates text on locale and runtime owner changes", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const item = message();
+    preview(item);
+    setLocale(getLocale() === "en" ? "ru" : "en");
+    preview(item);
+    useWorkspaceMessageStore.getState().setOwner("preview-owner-b", false);
+    preview(item);
+    useWorkspaceMessageStore.getState().setOwner("preview-owner-a", false);
+    preview(item);
+    expect(summarize).toHaveBeenCalledTimes(4);
+  });
+
+  it("bounds entries and preserves recently used summaries", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const items = Array.from({ length: 513 }, (_, i) => message({ uuid: `preview-${i}` }));
+    for (const item of items.slice(0, 512)) preview(item);
+    preview(items[0]!);
+    preview(items[512]!);
+    preview(items[0]!);
+    expect(summarize).toHaveBeenCalledTimes(513);
+    preview(items[1]!);
+    expect(summarize).toHaveBeenCalledTimes(514);
+  });
+
+  it("evicts by text size and does not cache oversized Markdown", () => {
+    const summarize = vi.spyOn(messageSummary, "summarizeWorkspaceMessageMarkdown");
+    const items = Array.from({ length: 3 }, (_, i) =>
+      message({ uuid: `large-${i}`, markdown: "x".repeat(200_000) }),
+    );
+    for (const item of items) preview(item);
+    preview(items[0]!);
+    expect(summarize).toHaveBeenCalledTimes(4);
+    const oversized = message({ markdown: "x".repeat(600_000) });
+    preview(oversized);
+    preview(oversized);
+    expect(summarize).toHaveBeenCalledTimes(6);
+  });
+});
+
 describe("messenger sidebar selectors", () => {
   afterEach(() => {
     useMessengerStore.getState().clear();
+  });
+
+  it("keeps unchanged rows and previews stable when unrelated messages or read state change", () => {
+    const catalog = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({ uuid: STREAM_B }),
+      },
+      topicsById: { [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }) },
+      topicIds: [TOPIC_A],
+    });
+    const firstMessage = message();
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_A]: firstMessage },
+      usersById: createUsersById(),
+    };
+    const first = selectMessengerSidebarStreams(catalog, options);
+    const unrelated = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: { ...options.messagesById, [MESSAGE_B]: message({ uuid: MESSAGE_B }) },
+    });
+    expect(unrelated).toBe(first);
+    const read = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: { [MESSAGE_A]: { ...firstMessage, read: false } },
+    });
+    expect(read).toBe(first);
+    const edited = selectMessengerSidebarStreams(catalog, {
+      ...options,
+      messagesById: {
+        [MESSAGE_A]: { ...firstMessage, payload: { kind: "markdown", content: "edited preview" } },
+      },
+    });
+    expect(edited.find((row) => row.streamUuid === STREAM_B)).toBe(
+      first.find((row) => row.streamUuid === STREAM_B),
+    );
+    expect(edited.find((row) => row.streamUuid === STREAM_A)?.topics[0]?.preview?.text).toBe(
+      "edited preview",
+    );
+    expect(edited.find((row) => row.streamUuid === STREAM_A)).not.toBe(
+      first.find((row) => row.streamUuid === STREAM_A),
+    );
+    expect(
+      selectMessengerSidebarStreams(catalog, { ...options, messagesById: {} }).find(
+        (row) => row.streamUuid === STREAM_A,
+      )?.preview,
+    ).toBeNull();
+  });
+
+  it("refreshes only affected sender/presence views and separates runtime owners", () => {
+    const catalog = state({
+      streamsById: {
+        [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+        [STREAM_B]: stream({
+          uuid: STREAM_B,
+          audience: "private",
+          isPrivate: true,
+          directUserUuid: "alice",
+        }),
+      },
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      messagesById: { [MESSAGE_A]: message() },
+      usersById: createUsersById(),
+    };
+    const first = selectMessengerSidebarStreams({ ...catalog, ownerKey: "a" }, options);
+    const renamed = selectMessengerSidebarStreams(
+      { ...catalog, ownerKey: "a" },
+      {
+        ...options,
+        usersById: { ...options.usersById, [AUTHOR_UUID]: user({ displayName: "Renamed" }) },
+      },
+    );
+    expect(renamed.find((row) => row.streamUuid === STREAM_B)).toBe(
+      first.find((row) => row.streamUuid === STREAM_B),
+    );
+    expect(renamed.find((row) => row.streamUuid === STREAM_A)?.preview?.senderName).toBe("Renamed");
+    const presence = selectMessengerSidebarStreams(
+      { ...catalog, ownerKey: "a" },
+      {
+        ...options,
+        usersById: { ...options.usersById, alice: user({ uuid: "alice", status: "idle" }) },
+      },
+    );
+    expect(presence.find((row) => row.streamUuid === STREAM_B)?.presence).toBe("idle");
+    const otherOwner = selectMessengerSidebarStreams({ ...catalog, ownerKey: "b" }, options);
+    expect(otherOwner).not.toBe(first);
+    expect(otherOwner.find((row) => row.streamUuid === STREAM_A)).not.toBe(
+      first.find((row) => row.streamUuid === STREAM_A),
+    );
+  });
+
+  it("invalidates a cached self preview when the language changes", () => {
+    const originalLocale = getLocale();
+    const catalog = state({
+      streamsById: { [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }) },
+      streamIds: [STREAM_A],
+    });
+    const options = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      currentUserUuid: AUTHOR_UUID,
+      messagesById: { [MESSAGE_A]: message() },
+    };
+    try {
+      setLocale("en");
+      const first = selectMessengerSidebarStreams(catalog, options);
+      setLocale("ru");
+      const second = selectMessengerSidebarStreams(catalog, options);
+      expect(second[0]?.preview?.senderName).toBe(t("common.you"));
+      expect(second[0]?.preview?.senderName).not.toBe(first[0]?.preview?.senderName);
+    } finally {
+      setLocale(originalLocale);
+    }
   });
 
   it("builds nested stream topic rows without DM identities", () => {

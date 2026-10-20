@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MESSENGER_ALL_CHATS_FOLDER_UUID,
   MESSENGER_CHANNELS_FOLDER_UUID,
@@ -13,6 +13,7 @@ import type {
   MessengerStream,
 } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarShell } from "./sidebar-shell.ui";
@@ -64,7 +65,13 @@ vi.mock("./sidebar-workspace.ui", () => ({
   },
 }));
 
-const OWNER_KEY = "owner:sidebar-shell";
+const OWNER_KEY = workspaceRuntimeOwnerKey({
+  accountId: "account-a",
+  instanceId: "instance-a",
+  organizationId: "acme",
+  projectId: "project-a",
+  userUuid: "user-a",
+});
 const PROJECT_ID = "project-a";
 const ORG_ID = "acme";
 const STREAM_UUID = "stream-engineering";
@@ -152,7 +159,28 @@ function bootstrapMessengerSidebar(
 }
 
 describe("SidebarShell", () => {
+  beforeEach(() => {
+    useWorkspaceAuthStore.getState().setSession({
+      accountId: "account-a",
+      instanceId: "instance-a",
+      organizationId: ORG_ID,
+      organizationOrigin: "https://acme.test",
+      projectId: PROJECT_ID,
+      userUuid: "user-a",
+      accessToken: "token-a",
+      login: "user-a",
+      profile: {
+        uuid: "user-a",
+        username: "user-a",
+        firstName: "Ada",
+        lastName: null,
+        email: null,
+      },
+    });
+  });
+
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
@@ -429,23 +457,6 @@ describe("SidebarShell", () => {
 
   it("renders from active workspace session when pathname is empty", () => {
     bootstrapMessengerSidebar();
-    useWorkspaceAuthStore.getState().setSession({
-      accountId: "account-a",
-      instanceId: "instance-a",
-      organizationId: ORG_ID,
-      organizationOrigin: "https://acme.test",
-      projectId: PROJECT_ID,
-      userUuid: "user-a",
-      accessToken: "token-a",
-      login: "user-a",
-      profile: {
-        uuid: "user-a",
-        username: "user-a",
-        firstName: "Ada",
-        lastName: null,
-        email: null,
-      },
-    });
 
     render(<SidebarShell />);
 

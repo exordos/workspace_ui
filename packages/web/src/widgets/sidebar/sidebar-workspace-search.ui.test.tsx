@@ -1,5 +1,5 @@
-import { act, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adaptMessengerFolder } from "~/entities/messenger/messenger-adapters.lib";
 import {
   MESSENGER_ALL_CHATS_FOLDER_UUID,
@@ -11,7 +11,9 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
-import { t } from "~/i18n/i18n";
+import { getLocale, setLocale, t } from "~/i18n/i18n";
+import * as datetime from "~/shared/lib/datetime.lib";
+import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
@@ -317,5 +319,105 @@ describe("WorkspaceSidebar search mode", () => {
 
     expect(screen.getAllByText(t("sidebar.emptySearch"))).toHaveLength(1);
     expect(screen.queryByText(t("sidebar.noMatchesInFolder"))).not.toBeInTheDocument();
+  });
+});
+
+describe("sidebar row memoization", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("formats only changed rows and refreshes memoized labels on locale changes", () => {
+    const format = vi.spyOn(datetime, "formatMessageTimeRelative");
+    const first = { ...stream("stream-a", "Alpha"), lastMessageCreatedAt: DATE };
+    const second = { ...stream("stream-b", "Beta"), lastMessageCreatedAt: DATE };
+    const props = {
+      loading: false,
+      error: null,
+      activityCounts: { inboxCount: null, mentionsCount: null },
+      workspaceStreamCount: 2,
+    };
+    const view = renderWithProviders(<WorkspaceSidebar {...props} streams={[first, second]} />);
+    expect(format).toHaveBeenCalledTimes(2);
+    view.rerender(<WorkspaceSidebar {...props} streams={[first, { ...second, unreadCount: 1 }]} />);
+    expect(format).toHaveBeenCalledTimes(3);
+    const locale = getLocale();
+    act(() => setLocale(locale === "en" ? "ru" : "en"));
+    expect(format).toHaveBeenCalledTimes(5);
+    act(() => setLocale(locale));
+  });
+});
+
+describe("sidebar calendar refresh", () => {
+  let stopVisibilityTracking: () => void;
+  beforeEach(() => {
+    stopVisibilityTracking = initVisibilityTracking();
+  });
+  afterEach(() => {
+    cleanup();
+    stopVisibilityTracking();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
+  });
+
+  it("refreshes memoized chat and topic labels at midnight with one shared timer", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 23, 59, 59));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const createdAt = new Date(2026, 9, 20, 12).toISOString();
+    const release = { ...topic("stream-a", "topic-a", "Release"), lastMessageCreatedAt: createdAt };
+    const engineering = {
+      ...stream("stream-a", "Engineering", [release]),
+      lastMessageCreatedAt: createdAt,
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: ["stream-a"] });
+    // Flush jsdom's queued storage event before counting the sidebar clock.
+    vi.advanceTimersByTime(0);
+    renderSidebar({ streams: [engineering] });
+    expect(screen.getAllByText("12:00")).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getAllByText(t("chat.yesterday"))).toHaveLength(2);
+    expect(screen.queryByText("12:00")).not.toBeInTheDocument();
+    cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("defers the calendar while hidden and refreshes labels on return", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const engineering = {
+      ...stream("stream-a", "Engineering"),
+      lastMessageCreatedAt: new Date(2026, 9, 20, 9).toISOString(),
+    };
+    renderSidebar({ streams: [engineering] });
+    expect(screen.getByText("09:00")).toBeInTheDocument();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.setSystemTime(new Date(2026, 9, 21, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(screen.getByText(t("chat.yesterday"))).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("refreshes formatting on visibility return even within the same day and offset", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 20, 12));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const format = vi.spyOn(datetime, "formatMessageTimeRelative");
+    const engineering = { ...stream("stream-a", "Engineering"), lastMessageCreatedAt: DATE };
+    renderSidebar({ streams: [engineering] });
+    expect(format).toHaveBeenCalledTimes(1);
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(format).toHaveBeenCalledTimes(2);
   });
 });
