@@ -168,6 +168,8 @@ interface ElectronAPI {
   app: {
     getVersion: () => Promise<string>;
     getPlatform: () => Promise<string>;
+    /** Absent in older desktop shells. Returns the system name without a client suffix. */
+    getDeviceName?: () => Promise<string | null>;
   };
   clipboard: {
     writeText: (text: string) => Promise<boolean>;
