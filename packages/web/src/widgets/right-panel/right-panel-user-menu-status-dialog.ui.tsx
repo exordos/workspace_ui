@@ -6,7 +6,7 @@ import {
   APP_DIALOG_CONTENT_BASE_CLASS,
   DialogCancelButton,
   DialogPrimaryButton,
-} from "~/shared/ui/app-dialog.ui";
+} from "~/shared/ui/app-dialog";
 import { STATUS_EMOJI_PRESETS } from "./right-panel-user-menu-constants.lib";
 import type { ComponentProps } from "react";
 

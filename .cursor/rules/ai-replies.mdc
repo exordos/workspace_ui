@@ -13,4 +13,4 @@ Source: `packages/web/src/features/ai-reply/ai-reply.api.ts`, `ai-reply.model.ts
 - Keep generated text as a preview or draft until the user accepts it; do not turn suggestion acceptance into automatic sending without an explicit product requirement.
 - Preserve abort and stale-result protection when the draft, chat, or runtime changes.
 - Send only the context needed for the requested action. Do not send messages to third-party services without explicit consent, or place message content and suggestions in analytics.
-- Import concrete files. Keep this reply foundation separate from any independently implemented topic-summary flow.
+- Keep this reply foundation separate from any independently implemented topic-summary flow.

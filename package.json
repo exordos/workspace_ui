@@ -13,6 +13,8 @@
     "bootstrap": "lerna bootstrap",
     "dev": "lerna run dev --parallel --ignore workspace",
     "dev:web": "lerna run dev --scope web --stream",
+    "storybook": "npm run storybook --workspace=web",
+    "build-storybook": "npm run build-storybook --workspace=web",
     "docs:check": "node scripts/check-docs.mjs",
     "lint": "npm run lint --workspace=web",
     "lint:cc": "node scripts/count-cognitive-complexity.mjs",

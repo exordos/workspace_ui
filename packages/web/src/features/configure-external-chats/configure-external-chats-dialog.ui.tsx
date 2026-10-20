@@ -2,7 +2,7 @@ import React from "react";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
-import { AppDialog } from "~/shared/ui/app-dialog.ui";
+import { AppDialog } from "~/shared/ui/app-dialog";
 import {
   ExternalChatCatalogActions,
   ExternalChatCatalogContent,

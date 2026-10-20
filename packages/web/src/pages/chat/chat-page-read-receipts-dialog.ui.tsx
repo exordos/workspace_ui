@@ -1,7 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialog } from "~/shared/ui/app-dialog.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { AppDialog } from "~/shared/ui/app-dialog";
+import { Spinner } from "~/shared/ui/loading";
 import type { ChatPageReadReceiptsDialogProps } from "./chat-page-read-receipts-dialog.types";
 
 export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProps> = ({

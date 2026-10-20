@@ -11,7 +11,7 @@ Start with [AGENTS.md](../AGENTS.md) and [Project Facts](PROJECT_FACTS.md). Read
 | [Async safety](ORG_SCOPED_ASYNC_SAFETY.md)        | Runtime owner/generation and stale writes                |
 | [Integration guide](INTEGRATION_GUIDE.md)         | Adding or changing behavior                              |
 | [Store map](STORES_REFERENCE.md)                  | Domain state ownership                                   |
-| [Component map](COMPONENT_CATALOG.md)             | UI composition and reusable primitives                   |
+| [Component catalog](COMPONENT_CATALOG.md)         | UI selection, concrete imports, Storybook and ownership  |
 | [API map](API_CLIENT_REFERENCE.md)                | Workspace transport and API entrypoints                  |
 | [Security architecture](SECURITY_ARCHITECTURE.md) | Implemented boundaries and their limits                  |
 | [Use cases](USE_CASES.md)                         | Product paths and explicit implementation limits         |

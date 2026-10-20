@@ -15,6 +15,41 @@ export interface EncryptedChatServiceState {
   readonly requestStatus: "pending" | "granted" | "rejected" | null;
 }
 
+/** Response actions and labels share the same scoped request correlation. */
+export function resolveEncryptedChatKeyResponse({
+  message,
+  request,
+  currentUserUuid,
+  state,
+}: {
+  readonly message: MessengerMessage;
+  readonly request: MessengerMessage | null;
+  readonly currentUserUuid: string;
+  readonly state: EncryptedChatServiceState | null | undefined;
+}): {
+  readonly recipient: { readonly userUuid: string; readonly deviceName: string } | undefined;
+  readonly ownResponse: boolean;
+} {
+  const response = message.payload;
+  const recipient =
+    (response.kind === "key_grant" || response.kind === "key_reject") &&
+    request?.projectId === message.projectId &&
+    request.uuid === response.requestMessageUuid &&
+    request.streamUuid === message.streamUuid &&
+    request.payload.kind === "key_request" &&
+    request.payload.keyUuid === response.keyUuid &&
+    request.payload.deviceId === response.recipientDeviceId
+      ? { userUuid: request.authorUuid, deviceName: request.payload.deviceName }
+      : undefined;
+  return {
+    recipient,
+    ownResponse:
+      recipient?.userUuid === currentUserUuid &&
+      (response.kind === "key_grant" || response.kind === "key_reject") &&
+      state?.deviceId === response.recipientDeviceId,
+  };
+}
+
 /** Read only public presentation state from the existing scoped session. */
 export function getEncryptedChatServiceState({
   message,

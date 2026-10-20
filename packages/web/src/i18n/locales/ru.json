@@ -26,6 +26,11 @@
     "reloadApp": "Обновить страницу",
     "retryIn": "Повтор через {{seconds}} с"
   },
+  "deviceName": {
+    "unknown": "Устройство",
+    "desktop": "Desktop",
+    "web": "Web"
+  },
   "auth": {
     "server": "Сервер",
     "organization": "Организация",
@@ -444,6 +449,15 @@
     "typingUsers": "{{names}} печатают…",
     "unreadMessages": "Непрочитанные сообщения",
     "unreadMessagesWithCount": "Непрочитанные сообщения • {{count}}",
+    "serviceEvents_one": "{{count}} событие",
+    "serviceEvents_few": "{{count}} события",
+    "serviceEvents_many": "{{count}} событий",
+    "serviceEvents_other": "{{count}} события",
+    "serviceEventsActionRequired": "Требуется действие",
+    "serviceEventsWaiting": "Ожидается ответ",
+    "serviceEventsUnavailable": "Статус недоступен",
+    "serviceEventsDemoNewChain": "Добавить новую цепочку событий",
+    "serviceEventsDemoContinue": "Продолжить разговор",
     "today": "Сегодня",
     "yesterday": "Вчера"
   },

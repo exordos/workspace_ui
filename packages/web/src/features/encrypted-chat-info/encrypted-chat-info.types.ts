@@ -1,4 +1,4 @@
-import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import type { ReactNode } from "react";
 
 export type EncryptedChatInfoScreen = "info" | "settings" | "key" | "local-key";

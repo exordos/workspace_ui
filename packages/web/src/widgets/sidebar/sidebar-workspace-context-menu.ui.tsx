@@ -22,13 +22,13 @@ import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
+import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
 import {
   useDropdownContextMenuAnchor,
   wrapChildWithContextMenuHandlers,
-} from "~/shared/ui/dropdown-context-menu.lib";
+} from "~/shared/ui/dropdown-menu";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
-import { STREAM_NOTIFICATION_LEVEL_OPTIONS } from "~/shared/ui/notification-level-switch.lib";
+import { STREAM_NOTIFICATION_LEVEL_OPTIONS } from "~/shared/ui/notification-level-switch";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =

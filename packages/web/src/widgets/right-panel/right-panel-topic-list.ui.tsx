@@ -8,10 +8,9 @@ import type { MessengerStream, MessengerTopicListItem } from "~/entities/messeng
 import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
-import { Badge } from "~/shared/ui/badge";
+import { Badge, MentionBadge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
-import { MentionBadge } from "~/shared/ui/mention-badge";
-import { getTopicVisibilityLevelOption } from "~/shared/ui/notification-level-switch.lib";
+import { getTopicVisibilityLevelOption } from "~/shared/ui/notification-level-switch";
 import {
   RIGHT_PANEL_OPTION_INTERACTION_CLASS,
   RightPanelOptionList,

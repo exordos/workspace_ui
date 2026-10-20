@@ -1,6 +1,6 @@
 import { useTranslation } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
-import { Select } from "~/shared/ui/select.ui";
+import { Select } from "~/shared/ui/select";
 import {
   ERROR_NOTICE_CLASS,
   INPUT_CLASS,

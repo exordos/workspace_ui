@@ -19,7 +19,7 @@ import { playNotificationSound } from "~/shared/lib/notification-sound";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
 import { Icon } from "~/shared/ui/icon";
-import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelOptionButton, RightPanelOptionList } from "./right-panel-option-list.ui";
 import {

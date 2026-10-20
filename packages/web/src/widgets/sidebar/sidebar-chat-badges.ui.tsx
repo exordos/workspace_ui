@@ -1,7 +1,6 @@
 import React from "react";
-import { Badge } from "~/shared/ui/badge";
-import type { BadgeSize } from "~/shared/ui/badge.types";
-import { MentionBadge } from "~/shared/ui/mention-badge";
+import type { BadgeSize } from "~/shared/ui/badge";
+import { Badge, MentionBadge } from "~/shared/ui/badge";
 
 export interface SidebarChatBadgesProps {
   unreadCount?: number;

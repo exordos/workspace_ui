@@ -1,12 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/loading";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { Select } from "~/shared/ui/select.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
-import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
+import { Select } from "~/shared/ui/select";
+import { UserPickerList } from "~/shared/ui/user-picker-list";
 import {
   useCreateChatDialog,
   type BrowseChannelSubscriptionFilter,

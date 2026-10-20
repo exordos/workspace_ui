@@ -27,8 +27,8 @@ request does not require another approval after routine planning.
 ## Implement the smallest complete change
 
 Extend existing slices and helpers where they own the behavior. Create types, store, API,
-UI, or route files only when the feature needs them. Import concrete segment files;
-do not create barrel-only `index.ts` files.
+UI, or route files only when the feature needs them. Read the
+[module boundary policy](../../../docs/fsd-architecture.md#files-and-imports) before changing module APIs or imports.
 
 Adapt API DTOs before writing domain state. Use narrow Zustand selectors and stable derived
 values where needed. Prefer existing cache-first loading with a background refresh when

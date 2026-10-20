@@ -10,7 +10,7 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
-import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";
 import { MAX_USER_RESULTS, UserResultItem } from "./search-modal-result-items.ui";

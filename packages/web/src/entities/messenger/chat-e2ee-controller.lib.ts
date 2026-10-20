@@ -1,4 +1,5 @@
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse, resolveChatGenerationAccess } from "./chat-e2ee.lib";
 import type { ChatCryptoEnvelope } from "./chat-crypto-provider.types";
@@ -242,6 +243,9 @@ export class ChatE2eeController {
             )[0];
           if (oldest) pending = oldest;
           else {
+            const deviceName = await getDeviceName();
+            if (!this.isCurrent()) return failure("stale");
+            if (!allowed()) return failure("forbidden");
             const pair = await this.deps.provider.createRequestKeyPair();
             if (!this.isCurrent()) return failure("stale");
             if (!pair.ok) return pair;
@@ -250,6 +254,7 @@ export class ChatE2eeController {
             pending = {
               localRequestId: uuid,
               requestMessageUuid: null,
+              deviceName,
               publicKey: pair.value.publicKey,
               privateKey: pair.value.privateKey,
               createdAt: Date.now(),
@@ -277,7 +282,7 @@ export class ChatE2eeController {
             kind: "key_request",
             keyUuid: this.deps.scope.keyUuid,
             deviceId: this.deps.device.deviceId,
-            deviceName: this.deps.device.deviceName,
+            deviceName: pending.deviceName ?? this.deps.device.deviceName,
             publicKey: pending.publicKey,
           },
           allowed,

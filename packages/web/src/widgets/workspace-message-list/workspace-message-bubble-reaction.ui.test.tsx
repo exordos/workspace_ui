@@ -45,16 +45,14 @@ describe("WorkspaceMessageBubbleReaction", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("uses the first configured reaction as its only collapsed preview", () => {
-    render(<WorkspaceMessageBubbleReaction action={createReaction()} isOwn />);
+    render(<WorkspaceMessageBubbleReaction action={createReaction()} />);
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "React with thumbs up" })).toHaveTextContent("👍");
     expect(screen.queryByRole("button", { name: "React with heart" })).not.toBeInTheDocument();
   });
 
   it("expands every reaction into the same scroll area in configured order without duplicates", async () => {
-    const { container } = render(
-      <WorkspaceMessageBubbleReaction action={createReaction()} isOwn />,
-    );
+    const { container } = render(<WorkspaceMessageBubbleReaction action={createReaction()} />);
     const preview = screen.getByRole("button", { name: "React with thumbs up" });
     await hoverReactions(container);
 
@@ -70,15 +68,29 @@ describe("WorkspaceMessageBubbleReaction", () => {
 
     scroll.scrollTop = 64;
     fireEvent.mouseLeave(screen.getByRole("group"));
-    expect(getCapsule(container)).toHaveAttribute("data-expanded", "false");
+    expect(getCapsule(container)).toHaveAttribute("data-expanded", "true");
+    await waitFor(() => expect(getCapsule(container)).toHaveAttribute("data-expanded", "false"));
     expect(scroll.scrollTop).toBe(0);
     expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("cancels delayed collapse when the pointer returns to the reaction capsule", async () => {
+    const { container } = render(<WorkspaceMessageBubbleReaction action={createReaction()} />);
+    await hoverReactions(container);
+    const group = screen.getByRole("group");
+    fireEvent.mouseLeave(group);
+    fireEvent.mouseEnter(group);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+    expect(getCapsule(container)).toHaveAttribute("data-expanded", "true");
+    expect(screen.getAllByRole("button")).toHaveLength(3);
   });
 
   it("dispatches a cold mouse click before hover expansion can move the first button", async () => {
     const user = userEvent.setup();
     const action = createReaction();
-    const { container } = render(<WorkspaceMessageBubbleReaction action={action} isOwn />);
+    const { container } = render(<WorkspaceMessageBubbleReaction action={action} />);
     await user.click(screen.getByRole("button", { name: "React with thumbs up" }));
     expect(action.reactions?.[0]?.onSelect).toHaveBeenCalledExactlyOnceWith();
     expect(getCapsule(container)).toHaveAttribute("data-expanded", "false");
@@ -91,7 +103,7 @@ describe("WorkspaceMessageBubbleReaction", () => {
   it("dispatches the configured first reaction and alternatives without bubbling", async () => {
     const action = createReaction();
     const bubbleClick = vi.fn();
-    const { container } = render(<WorkspaceMessageBubbleReaction action={action} isOwn={false} />);
+    const { container } = render(<WorkspaceMessageBubbleReaction action={action} />);
     document.body.addEventListener("click", bubbleClick);
     fireEvent.click(screen.getByRole("button", { name: "React with thumbs up" }));
     expect(action.reactions?.[0]?.onSelect).toHaveBeenCalledExactlyOnceWith();
@@ -108,9 +120,7 @@ describe("WorkspaceMessageBubbleReaction", () => {
 
   it("closes with Escape, restores the persistent first button and stays closed", async () => {
     const user = userEvent.setup();
-    const { container } = render(
-      <WorkspaceMessageBubbleReaction action={createReaction()} isOwn />,
-    );
+    const { container } = render(<WorkspaceMessageBubbleReaction action={createReaction()} />);
     const trigger = screen.getByRole("button", { name: "React with thumbs up" });
 
     await user.tab();
@@ -130,7 +140,7 @@ describe("WorkspaceMessageBubbleReaction", () => {
   it("allows keyboard navigation and selection in the shared order", async () => {
     const user = userEvent.setup();
     const action = createReaction();
-    const { container } = render(<WorkspaceMessageBubbleReaction action={action} isOwn />);
+    const { container } = render(<WorkspaceMessageBubbleReaction action={action} />);
 
     await user.tab();
     await user.keyboard("{ArrowDown}{Enter}");
@@ -157,7 +167,6 @@ describe("WorkspaceMessageBubbleReaction", () => {
     const { container } = render(
       <WorkspaceMessageBubbleReaction
         action={{ ...createReaction(), reactions: [pending, disabled] }}
-        isOwn
       />,
     );
     const preview = screen.getByRole("button", { name: "Pending" });
@@ -174,7 +183,7 @@ describe("WorkspaceMessageBubbleReaction", () => {
   it("limits expansion using the stable anchor within its scroll viewport", async () => {
     const { container } = render(
       <div style={{ overflowY: "auto" }}>
-        <WorkspaceMessageBubbleReaction action={createReaction()} isOwn />
+        <WorkspaceMessageBubbleReaction action={createReaction()} />
       </div>,
     );
     const viewport = container.firstElementChild;

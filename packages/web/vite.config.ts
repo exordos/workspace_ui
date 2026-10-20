@@ -366,6 +366,7 @@ export default defineConfig(({ mode }) => {
         include: ["src/**/*.{ts,tsx}"],
         exclude: [
           "src/**/*.test.{ts,tsx}",
+          "src/**/*.stories.{ts,tsx}",
           "src/test/**",
           "src/vite-env.d.ts",
           "src/main.tsx",

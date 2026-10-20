@@ -71,6 +71,60 @@ function createIsoStringFromLocalTime(
 }
 
 describe("groupWorkspaceMessagesByDayAndAuthor", () => {
+  it("groups adjacent service events across authors and separates them from text and encrypted text", () => {
+    const payloads: MessengerMessage["payload"][] = [
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "markdown", content: "A reply" },
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "e2ee", keyUuid: "generation", content: "ciphertext" },
+      { kind: "key_announced", keyUuid: "generation" },
+    ];
+    const groups = groupWorkspaceMessagesByDayAndAuthor(
+      payloads.map((payload, index) =>
+        createWorkspaceMessageListServerItem(
+          createWorkspaceMessage({
+            uuid: `message-${index}`,
+            authorUuid: `author-${index}`,
+            payload,
+          }),
+        ),
+      ),
+    );
+    expect(
+      groups[0]?.authorGroups.map((group) => group.messages.map((message) => message.key)),
+    ).toEqual([
+      ["message-0", "message-1"],
+      ["message-2"],
+      ["message-3"],
+      ["message-4"],
+      ["message-5"],
+    ]);
+  });
+
+  it("splits service runs at topic and day boundaries", () => {
+    const groups = groupWorkspaceMessagesByDayAndAuthor(
+      [
+        { uuid: "first", topicUuid: "topic-a", createdAt: "2026-07-03T12:00:00Z" },
+        { uuid: "second", topicUuid: "topic-b", createdAt: "2026-07-03T13:00:00Z" },
+        { uuid: "third", topicUuid: "topic-b", createdAt: "2026-07-04T12:00:00Z" },
+      ].map((overrides) =>
+        createWorkspaceMessageListServerItem(
+          createWorkspaceMessage({
+            ...overrides,
+            payload: { kind: "key_announced", keyUuid: "generation" },
+          }),
+        ),
+      ),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.authorGroups.map((group) => group.messages.map((item) => item.key))).toEqual([
+      ["first"],
+      ["second"],
+    ]);
+    expect(groups[1]?.authorGroups[0]?.messages.map((item) => item.key)).toEqual(["third"]);
+  });
+
   it("uses the placement UUID as the outgoing render key", () => {
     const item = createWorkspaceMessageListOutgoingItem(
       createOutgoingMessage({ placementUuid: "stable-placement-uuid" }),

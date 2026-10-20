@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderFormModal } from "~/shared/ui/folder-form-modal.ui";
+import { FolderFormModal } from "~/shared/ui/folder-form-modal";
 import type { UpdateFolderModalProps } from "./update-folder-modal.types";
 
 export const UpdateFolderModal: React.FC<UpdateFolderModalProps> = ({

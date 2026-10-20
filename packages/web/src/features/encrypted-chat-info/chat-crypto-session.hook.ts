@@ -147,13 +147,31 @@ export function useChatCryptoSession(streamUuid: string | null) {
   useEffect(() => {
     const active = current?.session;
     if (active === null || active === undefined) return;
-    void current?.lease?.ingest(messages).catch(() => {
-      setView((previous) =>
-        previous?.scopeKey === scopeKey && previous.session === active
-          ? { ...previous, error: true }
-          : previous,
-      );
-    });
+    let disposed = false;
+    void current?.lease?.ingest(messages).then(
+      () => {
+        if (disposed) return;
+        setView((previous) =>
+          previous?.scopeKey === scopeKey &&
+          previous.session === active &&
+          previous.error &&
+          previous.errorMessage === undefined
+            ? { ...previous, error: false }
+            : previous,
+        );
+      },
+      () => {
+        if (disposed) return;
+        setView((previous) =>
+          previous?.scopeKey === scopeKey && previous.session === active
+            ? { ...previous, error: true }
+            : previous,
+        );
+      },
+    );
+    return () => {
+      disposed = true;
+    };
   }, [current?.session, current?.lease, messages, scopeKey]);
 
   const clearActionError = useCallback(

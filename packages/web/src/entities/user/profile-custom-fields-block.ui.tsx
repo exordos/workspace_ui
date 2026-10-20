@@ -6,7 +6,7 @@ import {
   type CustomProfileFieldLine,
   type ZulipCustomProfileDataMap,
 } from "~/shared/lib/user-profile-fields.lib";
-import { SectionLabel } from "~/shared/ui/section-label.ui";
+import { SectionLabel } from "~/shared/ui/section-label";
 
 export interface ProfileCustomFieldsBlockProps {
   profileData?: ZulipCustomProfileDataMap | null;

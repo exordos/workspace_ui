@@ -1,6 +1,9 @@
 import { useResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import {
+  type EncryptedChatServiceState,
+  resolveEncryptedChatKeyResponse,
+} from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
@@ -68,32 +71,26 @@ type KeyResponsePayload = Extract<
   { kind: "key_grant" | "key_reject" }
 >;
 
-function resolveKeyResponseRecipient(
-  request: MessengerMessage | null,
-  message: MessengerMessage,
-  response: KeyResponsePayload,
-): { userUuid: string; deviceName: string } | undefined {
-  return request?.projectId === message.projectId &&
-    request.uuid === response.requestMessageUuid &&
-    request.streamUuid === message.streamUuid &&
-    request.payload.kind === "key_request" &&
-    request.payload.keyUuid === response.keyUuid &&
-    request.payload.deviceId === response.recipientDeviceId
-    ? { userUuid: request.authorUuid, deviceName: request.payload.deviceName }
-    : undefined;
-}
-
 function KeyResponseServiceMessage({
   response,
   ...props
 }: Readonly<WorkspaceEncryptedMessageBubbleProps & { response: KeyResponsePayload }>) {
   const { message, currentUserUuid, resolveAuthorLabel, actions } = props;
-  const { message: request } = useResolvedMessengerQuoteMessage(response.requestMessageUuid);
-  const recipient = resolveKeyResponseRecipient(request, message, response);
+  const suppliedRequest = actions?.resolveKeyRequestMessage?.(response.requestMessageUuid);
+  const { message: resolvedRequest } = useResolvedMessengerQuoteMessage(
+    response.requestMessageUuid,
+    suppliedRequest == null,
+  );
+  const request = suppliedRequest ?? resolvedRequest;
   const state = actions?.getKeyServiceState?.(message);
+  const { recipient, ownResponse } = resolveEncryptedChatKeyResponse({
+    message,
+    request,
+    currentUserUuid,
+    state,
+  });
   const granted = response.kind === "key_grant";
   const ownRecipient = recipient?.userUuid === currentUserUuid;
-  const ownResponse = ownRecipient && state?.deviceId === response.recipientDeviceId;
   const userLabel = (uuid: string) => resolveAuthorLabel?.(uuid) ?? `#${uuid.slice(0, 8)}`;
   const author = userLabel(message.authorUuid);
   let title = t(granted ? "e2ee.serviceGrant" : "e2ee.serviceRejected", { name: author });

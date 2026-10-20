@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
+import { MESSAGE_MEDIA_THUMBNAIL_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
 interface WorkspaceMessageMediaThumbnailProps {
@@ -136,7 +137,7 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
         />
       ) : (
         <img
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          className={`${MESSAGE_MEDIA_THUMBNAIL_CLASS_NAME} pointer-events-none absolute inset-0 h-full w-full object-cover`}
           src={preview.url}
           alt=""
           draggable={false}

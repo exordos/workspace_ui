@@ -8,7 +8,7 @@ import {
   APP_DIALOG_CONTENT_BASE_CLASS,
   AppDialogShell,
   DialogCloseIconButton,
-} from "~/shared/ui/app-dialog.ui";
+} from "~/shared/ui/app-dialog";
 import { EndpointsSettingsSection } from "./topic-summary-endpoints-section.ui";
 import { useTopicSummaryEndpoints } from "./topic-summary-endpoints.hook";
 import { GatesSettingsSection } from "./topic-summary-gates-section.ui";

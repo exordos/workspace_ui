@@ -11,7 +11,7 @@ import {
   getTopicVisibilityLevelOption,
   type NotificationLevelOption,
   type TopicVisibilityLevelOption,
-} from "~/shared/ui/notification-level-switch.lib";
+} from "~/shared/ui/notification-level-switch";
 
 function NotificationModeIndicator({
   option,

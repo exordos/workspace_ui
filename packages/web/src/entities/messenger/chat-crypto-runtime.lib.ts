@@ -302,6 +302,12 @@ export async function openRealChatSession({
     return controller;
   };
   const ingestKeyMessage = async (message: ChatE2eeMessage) => {
+    // Keep other devices' responses in history without applying them to this device's controller.
+    if (
+      (message.payload.kind === "key_grant" || message.payload.kind === "key_reject") &&
+      message.payload.recipientDeviceId !== device.deviceId
+    )
+      return;
     // Incoming generation UUIDs are untrusted; only explicit local actions create metadata.
     const controller = await generationController(message.payload.keyUuid, false);
     const address = scopeFor(message.payload.keyUuid);

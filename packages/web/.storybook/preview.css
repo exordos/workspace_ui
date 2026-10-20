@@ -1,0 +1,16 @@
+/* The app owns a fixed viewport; the component catalog and Docs pages need to scroll. */
+html,
+body {
+  min-height: 100%;
+  height: auto;
+  overscroll-behavior: auto;
+}
+
+html {
+  overflow: auto;
+}
+
+/* Keep one viewport scroll owner; a second body scroller traps wheel and keyboard input. */
+body {
+  overflow: visible;
+}

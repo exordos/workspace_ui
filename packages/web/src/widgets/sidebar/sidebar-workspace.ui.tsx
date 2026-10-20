@@ -32,9 +32,9 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/loading";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { SectionLabel } from "~/shared/ui/section-label.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { SectionLabel } from "~/shared/ui/section-label";
 import {
   SIDEBAR_STREAM_GROUP_CLASS,
   SIDEBAR_STREAM_PREVIEW_LINK_CLASS,

@@ -7,6 +7,7 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - [Architecture](docs/fsd-architecture.md): ownership and imports.
 - [Async safety](docs/ORG_SCOPED_ASYNC_SAFETY.md): runtime ownership and stale writes.
 - [Integration guide](docs/INTEGRATION_GUIDE.md): workflow for feature changes.
+- [Component catalog](docs/COMPONENT_CATALOG.md): UI selection guide, concrete imports and Storybook examples.
 - [Documentation index](docs/README.md): topic-specific references.
 
 ## Scope and working tree
@@ -22,7 +23,7 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - Check the backend contract before declaring a capability unsupported. If it is unsupported, expose that state explicitly.
 - `entities/messenger` owns catalogs and domain actions; `entities/message` owns the Workspace message store. Session and request ownership belong to `entities/workspace-auth` and `entities/workspace-runtime`.
 - Dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Keep routes thin; compose workflows in their owning layer.
-- Import concrete module files. Do not add barrel-only `index.ts` re-exports.
+- Before defining or changing module boundaries, imports or re-exports, read the [module policy](docs/fsd-architecture.md#files-and-imports). Use established public entries outside a module and direct concrete imports inside. Optional cohesive-module indexes use explicit exports; broad category barrels are prohibited.
 - Restore durable cache first where appropriate, refresh from the server, and update store and cache consistently. Scope data by runtime owner and reject stale async writes. Explain stricter loading when stale data would be unsafe.
 
 ## Code requirements
@@ -30,10 +31,12 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - TypeScript strict: no `any`, use type-only imports, handle missing indexed values.
 - Zustand: narrow selectors and stable derived results; keep DTO adaptation outside UI rendering.
 - UI text uses `~/i18n/i18n`; add keys to both locales. Use existing components, semantic theme tokens, and branding helpers.
+- Before adding or replacing UI, check the component catalog, adjacent stories, source and current callers. Reuse the existing primitive or feature flow when its responsibility fits; extend its contract before creating a parallel implementation. Similar appearance alone does not justify a shared abstraction, and domain UI stays in its FSD owner.
+- For new shared UI or changes to its public behavior/appearance, add or update adjacent stories for the affected states. Use the real application themes, localized labels and synthetic fixtures; stories demonstrate UI contracts, not backend capability or live integration.
 - Render untrusted content through the existing sanitize/render path. Preserve keyboard access, focus handling, and accessible names.
 - Use project logging helpers; never log credentials, tokens, PII, or message bodies.
 - Code comments use simple English and explain non-obvious reasons.
 
 ## Verification
 
-Use the command table in [Project Facts](docs/PROJECT_FACTS.md#verification). Run focused tests for changed behavior, typecheck for type/API/store changes, and broader checks when scope warrants them. Documentation-only work needs link/consistency checks, not the app test suite. Report actual commands and any gaps; do not claim manual or platform QA from unit tests.
+Use the command table in [Project Facts](docs/PROJECT_FACTS.md#verification). Run focused existing tests for relevant changed behavior, typecheck for type/API/store changes, and broader checks when scope warrants them. Add or update tests only for meaningful behavior, contracts, invariants, or plausible regressions; do not add one for every small edit. See the [Integration Guide](docs/INTEGRATION_GUIDE.md#5-verify-the-changed-behavior) for test sizing guidance. Documentation-only work needs link/consistency checks, not the app test suite. Report actual commands and any gaps; do not claim manual or platform QA from unit tests.

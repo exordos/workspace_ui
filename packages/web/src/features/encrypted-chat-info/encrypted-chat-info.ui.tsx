@@ -4,11 +4,11 @@ import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
-import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
+import { Spinner } from "~/shared/ui/loading";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { SelectableRow } from "~/shared/ui/selectable-row.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
-import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
+import { SelectableRow } from "~/shared/ui/selectable-row";
+import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card";
 import cachedUrl from "./assets/cached.svg";
 import settingsUrl from "./assets/instant-mix.svg";
 import type {
@@ -49,36 +49,32 @@ const KeyRequestRow = ({
         </p>
         <p className="truncate text-xs leading-5 text-text-secondary">{request.deviceName}</p>
       </div>
-      {!completed ? (
-        <>
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            className={ICON_BUTTON_CLASS}
-            aria-label={t("e2ee.grantRequest", { name: request.name })}
-            disabled={
-              !request.canGrant || onGrant == null || request.pending === true || actionsPending
-            }
-            aria-busy={request.pending}
-            onClick={() => onGrant?.(request.requestMessageUuid)}
-          >
-            {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
-          </Button>
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            className={ICON_BUTTON_CLASS}
-            aria-label={t("e2ee.rejectRequest", { name: request.name })}
-            disabled={
-              !request.canReject || onReject == null || request.pending === true || actionsPending
-            }
-            onClick={() => onReject?.(request.requestMessageUuid)}
-          >
-            <Icon name="close" size={24} />
-          </Button>
-        </>
+      {!completed && request.canGrant ? (
+        <Button
+          appearance="ghost"
+          variant="neutral"
+          type="button"
+          className={ICON_BUTTON_CLASS}
+          aria-label={t("e2ee.grantRequest", { name: request.name })}
+          disabled={onGrant == null || request.pending === true || actionsPending}
+          aria-busy={request.pending}
+          onClick={() => onGrant?.(request.requestMessageUuid)}
+        >
+          {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
+        </Button>
+      ) : null}
+      {!completed && request.canReject ? (
+        <Button
+          appearance="ghost"
+          variant="neutral"
+          type="button"
+          className={ICON_BUTTON_CLASS}
+          aria-label={t("e2ee.rejectRequest", { name: request.name })}
+          disabled={onReject == null || request.pending === true || actionsPending}
+          onClick={() => onReject?.(request.requestMessageUuid)}
+        >
+          <Icon name="close" size={24} />
+        </Button>
       ) : null}
     </SelectableRow>
     {request.error ? (
@@ -328,6 +324,7 @@ function RequestList({
   );
 }
 function GrantAllButton(props: EncryptedChatInfoProps) {
+  if (props.canGrantAll !== true) return null;
   return (
     <div className="flex justify-end px-4">
       <Button
@@ -336,7 +333,6 @@ function GrantAllButton(props: EncryptedChatInfoProps) {
         type="button"
         className="h-auto p-0 text-sm text-accent underline underline-offset-4"
         disabled={
-          !props.canGrantAll ||
           props.onGrantAll == null ||
           props.loading === true ||
           props.actionsPending === true ||

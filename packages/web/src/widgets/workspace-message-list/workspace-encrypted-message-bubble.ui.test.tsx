@@ -434,12 +434,19 @@ describe("key response service messages", () => {
       ...props.actions,
       getKeyRequestActions: () => [{ label: "Request key", onClick: retry }],
     };
-    const { rerender } = render(
-      <WorkspaceEncryptedMessageBubble {...props} currentUserUuid="recipient" actions={actions} />,
-    );
+    const listProps = {
+      messages: [props.message],
+      conversationId: props.message.conversationId,
+      currentUserUuid: "recipient",
+      resolveAuthorLabel: props.resolveAuthorLabel,
+      actions,
+    };
+    const { rerender } = render(<WorkspaceMessageList {...listProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event.*Status unavailable/ }));
     expect(screen.getByText("Recipient information is unavailable.")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request" })).toBeNull();
     act(() => useWorkspaceMessageStore.getState().applyLiveCreatedMessage(request));
+    expect(screen.getByRole("status")).toHaveTextContent("Action required");
     const title = screen.getByText(
       "Алексей rejected your security key request for device “iPhone”",
     );
@@ -450,17 +457,17 @@ describe("key response service messages", () => {
     fireEvent.click(button);
     expect(retry).toHaveBeenCalledOnce();
     rerender(
-      <WorkspaceEncryptedMessageBubble
-        {...props}
-        currentUserUuid="recipient"
+      <WorkspaceMessageList
+        {...listProps}
         actions={{
           ...actions,
           getKeyServiceState: () => ({ ...state, deviceId: "another-device" }),
         }}
       />,
     );
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request" })).toBeNull();
     expect(screen.queryByText("You can request the key again")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("keeps pending retry disabled and uses the short Russian action label", () => {

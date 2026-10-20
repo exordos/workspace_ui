@@ -1,7 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
-import { AnchoredPopover } from "~/shared/ui/anchored-popover.ui";
+import { AnchoredPopover } from "~/shared/ui/anchored-popover";
 import { SavedSnippetRow } from "./message-composer-saved-snippet-row.ui";
 import type { MessageComposerSavedSnippetsDialogProps } from "./message-composer-saved-snippets-dialog.types";
 

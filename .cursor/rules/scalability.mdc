@@ -8,6 +8,6 @@ alwaysApply: false
 - Follow `docs/fsd-architecture.md` and solve the current responsibility with the smallest coherent change.
 - Prefer existing contracts and helpers over a new framework. Do not generate APIs, stores, pages, or generic layers for hypothetical future needs.
 - Split by responsibility when it improves the change, not to satisfy an arbitrary file-length threshold.
-- Import concrete modules; do not introduce barrel exports for a supposed public API.
+- Read the [module policy](../../docs/fsd-architecture.md#files-and-imports) before proposing entrypoint or import changes.
 - Record a consequential architectural decision where maintainers will look for it. Routine implementation choices do not need a new ADR or rule.
 - Use `AGENTS.md` for verification scope and `performance.mdc` for measured optimization.

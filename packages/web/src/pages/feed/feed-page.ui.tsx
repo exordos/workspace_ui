@@ -26,9 +26,9 @@ import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
-import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
+import { FloatingLoadingOverlay } from "~/shared/ui/loading";
 import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
 

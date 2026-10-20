@@ -1,5 +1,5 @@
 import React from "react";
-import { Skeleton } from "~/shared/ui/skeleton.ui";
+import { Skeleton } from "~/shared/ui/loading";
 
 export const WorkspaceMessageBubbleSkeleton = React.memo(function WorkspaceMessageBubbleSkeleton({
   align = "start",

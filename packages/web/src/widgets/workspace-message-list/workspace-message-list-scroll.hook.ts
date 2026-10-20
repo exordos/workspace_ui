@@ -73,6 +73,8 @@ interface WorkspaceMessageListScrollResult {
   handleTouchMove: () => void;
   scrollToBottom: () => void;
   isUnreadDividerDismissed: boolean;
+  refreshMessageLayout: () => void;
+  preserveMessageLayout: () => boolean;
 }
 
 function scrollToBottom(root: HTMLElement): void {
@@ -1235,6 +1237,45 @@ export function useWorkspaceMessageListScroll<TMessage>({
     dispatchUnreadAtBottom();
   }, [anchorHandoffPending, dispatchUnreadAtBottom, pinTailToBottom, scrollToBottomKey]);
 
+  const refreshMessageLayout = useCallback(() => {
+    if (anchorHandoffPending) return;
+    const root = scrollContainerRef.current;
+    if (root != null) {
+      // Layout geometry must not cancel an explicit upward scroll gesture.
+      syncAtBottomFromElement(root);
+    }
+  }, [anchorHandoffPending, syncAtBottomFromElement]);
+
+  const messageLayoutSnapshotRef = useRef<{
+    root: HTMLElement;
+    scrollToBottomKey: string | undefined;
+    anchor: WorkspaceScrollAnchor;
+  } | null>(null);
+  const preserveMessageLayout = useCallback(() => {
+    const root = scrollContainerRef.current;
+    if (root == null || anchorHandoffPending) return false;
+    const anchor = resolveVisibleWorkspaceMessageRenderAnchor(root);
+    if (anchor == null) return false;
+    messageLayoutSnapshotRef.current = { root, scrollToBottomKey, anchor };
+    return true;
+  }, [anchorHandoffPending, scrollToBottomKey]);
+  useLayoutEffect(() => {
+    const snapshot = messageLayoutSnapshotRef.current;
+    messageLayoutSnapshotRef.current = null;
+    if (
+      snapshot?.root !== scrollContainerRef.current ||
+      snapshot.scrollToBottomKey !== scrollToBottomKey ||
+      anchorHandoffPending
+    )
+      return;
+    const nextScrollTop = computeWorkspaceScrollTopFromRenderAnchor(snapshot.root, snapshot.anchor);
+    if (nextScrollTop != null)
+      runProgrammaticScroll(() => {
+        snapshot.root.scrollTop = nextScrollTop;
+        syncAtBottomFromElement(snapshot.root);
+      });
+  });
+
   return {
     scrollContainerRef,
     isAtBottom,
@@ -1243,5 +1284,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     handleTouchMove,
     scrollToBottom: handleScrollToBottom,
     isUnreadDividerDismissed,
+    refreshMessageLayout,
+    preserveMessageLayout,
   };
 }

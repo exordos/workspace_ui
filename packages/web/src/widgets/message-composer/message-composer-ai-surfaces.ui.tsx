@@ -1,7 +1,7 @@
 import React from "react";
 import { SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
 import { t } from "~/i18n/i18n";
-import { AnchoredPopover } from "~/shared/ui/anchored-popover.ui";
+import { AnchoredPopover } from "~/shared/ui/anchored-popover";
 import type {
   MessageComposerAiActionMenuLayerProps,
   MessageComposerSmartReplyStripProps,

@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
-import { Select } from "~/shared/ui/select.ui";
+import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
+import { Select } from "~/shared/ui/select";
 
 export interface MoveTopicToStreamDialogProps {
   open: boolean;

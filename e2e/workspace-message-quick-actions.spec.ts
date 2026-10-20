@@ -482,14 +482,11 @@ test.describe("Workspace message quick actions @mock", () => {
       await expect(chip).toContainText("👍");
     });
 
-    test(`keeps ${owner} quick actions inside a narrow chat without covering the preceding message`, async ({
+    test(`keeps ${owner} quick actions centered on the bubble edges in a narrow chat`, async ({
       authenticated,
     }, testInfo) => {
       await installNarrowMessages(authenticated, owner, "ку");
       await openStreamChatWithComposer(authenticated);
-      const previousBubble = authenticated.locator(
-        `[data-message-uuid='${PREVIOUS_MESSAGE_UUID}'] [data-workspace-message-bubble='true']`,
-      );
       const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
       const bubble = row.locator("[data-workspace-message-bubble='true']");
       await bubble.hover();
@@ -507,28 +504,25 @@ test.describe("Workspace message quick actions @mock", () => {
       const replyBounds = await reply.boundingBox();
       const reactionBounds = await reaction.boundingBox();
       const bubbleBounds = await bubble.boundingBox();
-      const previousBounds = await previousBubble.boundingBox();
       const mainBounds = await authenticated.locator("main").boundingBox();
       if (
         replyBounds == null ||
         reactionBounds == null ||
         bubbleBounds == null ||
-        previousBounds == null ||
         mainBounds == null
       )
         throw new Error("Message bounds are unavailable");
       for (const bounds of [replyBounds, reactionBounds]) {
         expect(bounds.x).toBeGreaterThanOrEqual(mainBounds.x);
-        expect(bounds.x + bounds.width).toBeLessThanOrEqual(mainBounds.x + mainBounds.width);
-        expect(bounds.y).toBeGreaterThanOrEqual(previousBounds.y + previousBounds.height);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(mainBounds.x + mainBounds.width + 1);
       }
       expect(replyBounds.y).toBeLessThan(bubbleBounds.y);
-      expect(replyBounds.y + replyBounds.height).toBeLessThanOrEqual(bubbleBounds.y + 8);
+      expect(replyBounds.y + replyBounds.height / 2).toBeCloseTo(bubbleBounds.y, 0);
       expect(reactionBounds.y + reactionBounds.height / 2).toBeGreaterThan(
         bubbleBounds.y + bubbleBounds.height / 2,
       );
       expect(reactionBounds.y).toBeLessThanOrEqual(bubbleBounds.y + bubbleBounds.height);
-      expect(reactionBounds.height).toBeLessThan(replyBounds.height);
+      expect(replyBounds.height).toBe(24);
       expect(bubbleBounds.width).toBeLessThan(112);
       const textToTimeGap = await bubble.evaluate((element) => {
         const paragraph = element.querySelector("[data-message-body] p");
@@ -542,19 +536,54 @@ test.describe("Workspace message quick actions @mock", () => {
       expect(textToTimeGap).toBeLessThanOrEqual(12);
       const reactionCenter = reactionBounds.x + reactionBounds.width / 2;
       if (owner === "own") {
+        expect(replyBounds.x).toBeCloseTo(bubbleBounds.x + 12, 0);
+        expect(reactionCenter).toBeCloseTo(bubbleBounds.x, 0);
+      } else {
         expect(replyBounds.x + replyBounds.width).toBeCloseTo(
           bubbleBounds.x + bubbleBounds.width - 12,
           0,
         );
-        expect(replyBounds.x).toBeLessThan(bubbleBounds.x);
-        expect(reactionCenter).toBeLessThanOrEqual(bubbleBounds.x);
-      } else {
-        expect(replyBounds.x).toBeCloseTo(bubbleBounds.x + 12, 0);
-        expect(replyBounds.x + replyBounds.width).toBeGreaterThan(
-          bubbleBounds.x + bubbleBounds.width,
-        );
-        expect(reactionCenter).toBeGreaterThanOrEqual(bubbleBounds.x + bubbleBounds.width);
+        expect(reactionCenter).toBeCloseTo(bubbleBounds.x + bubbleBounds.width, 0);
       }
+    });
+
+    test(`keeps ${owner} reactions interactive during a brief pointer detour`, async ({
+      authenticated: page,
+    }) => {
+      await installNarrowMessages(page, owner);
+      await openStreamChatWithComposer(page);
+      const row = page.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
+      const bubble = row.locator("[data-workspace-message-bubble='true']");
+      const actions = row.locator(QUICK_ACTIONS);
+      const reaction = row.locator(REACTION_ACTION);
+      const panel = row.locator("[data-workspace-message-quick-reactions='true']");
+      await bubble.hover();
+      await expect(actions).toHaveCSS("opacity", "1");
+      await page.clock.install({ time: new Date("2026-10-20T00:00:00Z") });
+      await page.clock.pauseAt(new Date("2026-10-20T00:00:01Z"));
+      await page.mouse.move(0, 0);
+      await page.clock.runFor(100);
+      await expect(actions).toHaveCSS("opacity", "1");
+      await expect(reaction).toHaveCSS("pointer-events", "auto");
+      await reaction.hover();
+      await page.clock.runFor(400);
+      await expect(panel).toHaveAttribute("data-expanded", "true");
+      const panelBounds = await panel.boundingBox();
+      if (panelBounds == null) throw new Error("Reaction panel bounds are unavailable");
+      await page.mouse.move(0, 0);
+      await page.clock.runFor(100);
+      await expect(panel).toHaveAttribute("data-expanded", "true");
+      await page.mouse.move(
+        panelBounds.x + panelBounds.width / 2,
+        panelBounds.y + panelBounds.height / 2,
+      );
+      await page.clock.runFor(250);
+      await expect(actions).toHaveCSS("opacity", "1");
+      await expect(panel).toHaveAttribute("data-expanded", "true");
+      await page.mouse.move(0, 0);
+      await page.clock.runFor(400);
+      await expectActionsHidden(actions);
+      await expect(panel).toHaveAttribute("data-expanded", "false");
     });
   }
 });

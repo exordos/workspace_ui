@@ -11,10 +11,11 @@ const MESSAGE_BODY_RICH_TEXT_BASE_SEGMENTS = [
   "[&_a]:text-accent",
   "[&_a]:underline",
   "hover:[&_a]:opacity-90",
-  "[&_img]:my-1",
-  "[&_img]:h-auto",
-  "[&_img]:max-w-full",
-  "[&_img]:rounded",
+  // Thumbnails own their box; :where keeps the rich-text defaults at their original specificity.
+  "[&_img:not(:where(.message-media-thumbnail))]:my-1",
+  "[&_img:not(:where(.message-media-thumbnail))]:h-auto",
+  "[&_img:not(:where(.message-media-thumbnail))]:max-w-full",
+  "[&_img:not(:where(.message-media-thumbnail))]:rounded",
   "[&_ol]:my-1",
   "[&_ol]:list-decimal",
   "[&_ol]:list-outside",
@@ -118,12 +119,15 @@ export const MESSAGE_BODY_RICH_TEXT_BASE_CLASS_NAME =
 /** Applied to protected inline image previews in message bubbles (fixed 240×160 box). */
 export const MESSAGE_MEDIA_PREVIEW_CLASS_NAME = "message-media-preview";
 
+/** Image inside a separately sized media thumbnail, including nested quote cards. */
+export const MESSAGE_MEDIA_THUMBNAIL_CLASS_NAME = "message-media-thumbnail";
+
 export const MESSAGE_BUBBLE_BODY_CLASS_NAME = [
   MESSAGE_BODY_RICH_TEXT_BASE_CLASS_NAME,
   "select-text",
-  "[&_img:not(.message-media-preview)]:max-h-[160px]",
-  "[&_img:not(.message-media-preview)]:w-auto",
-  "[&_img:not(.message-media-preview)]:object-contain",
+  "[&_img:not(.message-media-preview):not(:where(.message-media-thumbnail))]:max-h-[160px]",
+  "[&_img:not(.message-media-preview):not(:where(.message-media-thumbnail))]:w-auto",
+  "[&_img:not(.message-media-preview):not(:where(.message-media-thumbnail))]:object-contain",
   "[&_img.message-media-preview]:block",
   "[&_img.message-media-preview]:h-40",
   "[&_img.message-media-preview]:w-60",

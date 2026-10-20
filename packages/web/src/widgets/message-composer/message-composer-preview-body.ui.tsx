@@ -7,7 +7,7 @@ import {
   formatAttachmentSize,
   getAttachmentExtensionLabel,
 } from "~/shared/lib/attachment-card-meta.lib";
-import { AttachmentCardList } from "~/shared/ui/attachment-card.ui";
+import { AttachmentCardList } from "~/shared/ui/attachment-card";
 import { Icon } from "~/shared/ui/icon";
 import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";
 import type { MessageComposerPreviewBodyProps } from "./message-composer-preview-body.types";

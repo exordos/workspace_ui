@@ -53,12 +53,12 @@ import {
   APP_DIALOG_CONTENT_BASE_CLASS,
   DialogCancelButton,
   DialogPrimaryButton,
-} from "~/shared/ui/app-dialog.ui";
+} from "~/shared/ui/app-dialog";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
-import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card.ui";
+import { UserPickerList } from "~/shared/ui/user-picker-list";
+import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card";
 import { RightPanelTopicList } from "./right-panel-topic-list.ui";
 import { RightPanelTopicSummary } from "./right-panel-topic-summary.ui";
 import { RightPanelUserProfile } from "./right-panel-user-profile.ui";

@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { t } from "~/i18n/i18n";
-import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog.ui";
+import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog";
 import { Button } from "~/shared/ui/button";
 import { ConnectExternalAccountForm } from "./connect-external-account-form.ui";
 import { useConnectExternalAccount } from "./connect-external-account.hook";

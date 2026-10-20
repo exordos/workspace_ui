@@ -5,7 +5,7 @@ import { sanitizeHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import { AttachmentReadyCard } from "~/shared/ui/attachment-card.ui";
+import { AttachmentReadyCard } from "~/shared/ui/attachment-card";
 import type { WorkspaceMessageBodyProps } from "./messenger-workspace-message-body.types";
 
 const bodyLog = createLogger("workspace-message-body");

@@ -36,6 +36,7 @@ export interface WorkspaceMessageListActions {
     message: MessengerMessage,
   ) => readonly { label: string; onClick: () => void; disabled?: boolean }[];
   getKeyServiceState?: (message: MessengerMessage) => EncryptedChatServiceState | null;
+  resolveKeyRequestMessage?: (messageUuid: MessengerUuid) => MessengerMessage | null;
   onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
   requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

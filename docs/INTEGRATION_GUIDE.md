@@ -6,7 +6,7 @@ Start with [AGENTS.md](../AGENTS.md), [PROJECT_FACTS.md](PROJECT_FACTS.md) and [
 
 Trace the current UI entry point to its feature, entity and API module. Use the [component map](COMPONENT_CATALOG.md), [state map](STORES_REFERENCE.md) and [API map](API_CLIENT_REFERENCE.md) for navigation, then read the actual code. Identify which layer owns the change before creating files.
 
-Dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Keep new route/page wiring thin. Extend existing helpers and models where they own the behavior; do not create a store, API wrapper, type file or page merely to complete a template. Import from concrete files, without barrel-only `index.ts` files.
+Dependency direction is `app -> pages -> widgets -> features -> entities -> shared`. Keep new route/page wiring thin. Extend existing helpers and models where they own the behavior; do not create a store, API wrapper, type file or page merely to complete a template. Read the [module boundary policy](fsd-architecture.md#files-and-imports) before choosing imports or defining a module API.
 
 Check the backend contract links in `PROJECT_FACTS.md` before relying on an endpoint, mutation or event. Keep Workspace identifiers UUID-native. If an action is not supported by the available contract/integration, expose an explicit unsupported, read-only or error state. Never substitute a hidden Zulip request or fake successful result.
 
@@ -28,14 +28,22 @@ Preserve REST catch-up ordering, epoch generation/version cursor semantics, dedu
 
 ## 4. Wire UI and explicit capabilities
 
-Reuse existing primitives and feature components. Keep visible text in both English and Russian [i18n files](../packages/web/src/i18n). Use the established keyboard, focus and accessible-name patterns.
+Before writing UI, find candidates in the [component catalog](COMPONENT_CATALOG.md), inspect their adjacent stories, source, tests and current callers. Reuse existing primitives and feature components when their responsibility matches. Extend an existing contract for a shared need; create a new component only after checking that the existing one cannot own it cleanly. Record the reason when introducing a replacement or a new shared primitive. Similar markup alone is not a reason to extract a common component or add screen-specific flags.
+
+Keep domain presentation in entities/features and composition in widgets/pages; appearing in Storybook does not move a component into `shared`. Respect those module boundaries and use semantic theme tokens. Keep visible text in both English and Russian [i18n files](../packages/web/src/i18n). Preserve the chosen component's keyboard, focus and accessible-name patterns.
+
+For new shared UI or changed public behavior/appearance, add or update adjacent `*.stories.tsx` examples and the catalog entry when selection guidance changes. Include relevant default, disabled/loading/error, empty/long-content and interactive states rather than every possible prop combination. Use the application themes and localized labels; use synthetic local fixtures rather than private data, credentials or production API calls. Source and tests define the implementation; stories document representative contracts and are not evidence of backend support.
 
 The [composer](../packages/web/src/widgets/message-composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
 
 ## 5. Verify the changed behavior
 
-Use the commands and working directories in [PROJECT_FACTS.md](PROJECT_FACTS.md). Run focused existing tests for a narrow behavior change, typecheck for a type/API/store contract change, and the broader project check for broad changes. Use E2E when user flow or route behavior changes. Add tests for meaningful new behavior or regressions, not to mirror a trivial implementation.
+Use the commands and working directories in [PROJECT_FACTS.md](PROJECT_FACTS.md). Run focused existing tests for a narrow behavior change, typecheck for a type/API/store contract change, and the broader project check for broad changes. Use E2E when user flow or route behavior changes. Running an existing relevant test does not mean adding a new test for every code change.
+
+Add or update tests when they protect meaningful behavior, a contract or invariant, or a plausible regression. Do not add tests just to mirror straightforward implementation details or to accompany each small edit. Treat tests as code that also needs maintenance: prefer a few behavior-focused cases that cover distinct outcomes or failure modes; avoid redundant cases, oversized fixture setup, and assertions coupled to private implementation details. Add another case only when it covers a materially different outcome or risk. For shared UI, apply the same rule to stories: demonstrate representative states, not every combination of props.
 
 For async changes, exercise an owner switch or reset while the request is pending and verify both store and cache boundaries. For UI changes, report whether browser/native visual interaction was actually checked; unit tests do not replace it. Documentation-only maintenance needs link/source checks and `git diff --check`, not a claim that the app was tested.
+
+For Storybook changes, use the commands in Project Facts and inspect affected stories in the relevant themes and locales. A successful static build proves bundling, not visual correctness, accessibility or interaction behavior. Agent reuse rules require review; a build or lint pass does not prove the right component was chosen. Report separately which checks actually ran.
 
 Inspect `git status --short` and the relevant diff before reporting. Preserve unrelated work. Update the affected canonical document when a responsibility or contract changes; avoid copying the same instructions into multiple catalogs or creating a new rule for each fix. Analysis/review requests remain read-only unless the user authorizes edits.

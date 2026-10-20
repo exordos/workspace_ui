@@ -25,9 +25,9 @@ import {
   APP_DIALOG_CONTENT_BASE_CLASS,
   DialogCancelButton,
   DialogPrimaryButton,
-} from "~/shared/ui/app-dialog.ui";
+} from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
-import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
+import { UserPickerList } from "~/shared/ui/user-picker-list";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
 const ADD_STREAM_MEMBERS_INPUT_CLASS =

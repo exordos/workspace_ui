@@ -9,10 +9,12 @@ import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-ou
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
 
 vi.mock("emoji-picker-react", () => ({
   default: (props: {
@@ -85,6 +87,36 @@ function createWorkspaceUser(overrides: Partial<User> = {}): User {
     lastPingAt: "2026-07-03T09:00:00.000Z",
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createServiceMessage(index: number, overrides: MessageOverrides = {}): MessengerMessage {
+  return createWorkspaceMessage({
+    uuid: `service-${index}`,
+    authorUuid: `author-${index}`,
+    createdAt: new Date(Date.parse("2026-07-03T09:00:00.000Z") + index * 60_000).toISOString(),
+    payload: { kind: "key_announced", keyUuid: "generation" },
+    ...overrides,
+  });
+}
+
+const SERVICE_REQUEST = {
+  kind: "key_request",
+  keyUuid: "generation",
+  deviceId: "requesting-device",
+  deviceName: "Test laptop",
+  publicKey: "synthetic-public-key",
+} as const;
+
+function createServiceState(
+  overrides: Partial<EncryptedChatServiceState> = {},
+): EncryptedChatServiceState {
+  return {
+    deviceId: "current-device",
+    canManageKeys: true,
+    hasKey: true,
+    requestStatus: null,
     ...overrides,
   };
 }
@@ -200,6 +232,245 @@ describe("WorkspaceMessageList", () => {
     vi.unstubAllGlobals();
   });
 
+  it("collapses a continuous service run across authors and preserves its DOM read anchors on keyboard expansion", async () => {
+    const messages = Array.from({ length: 5 }, (_, index) => createServiceMessage(index));
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /5 events/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll("[data-service-message-group]")).toHaveLength(1);
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+    const anchors = [...container.querySelectorAll("[data-message-read-boundary]")];
+    expect(anchors).toHaveLength(5);
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelectorAll("[data-encrypted-service-message]")).toHaveLength(5);
+    expect([...container.querySelectorAll("[data-message-read-boundary]")]).toEqual(anchors);
+    anchors.forEach((anchor) => expect(anchor.isConnected).toBe(true));
+    await userEvent.keyboard(" ");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+  });
+
+  it.each([
+    [1, "1 событие"],
+    [2, "2 события"],
+    [5, "5 событий"],
+  ] as const)("localizes a collapsed run of %i events", (count, label) => {
+    setLocale("ru");
+    render(
+      <WorkspaceMessageList
+        messages={Array.from({ length: count }, (_, index) => createServiceMessage(index))}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    expect(screen.getByRole("button", { name: new RegExp(label) })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps an expanded run open through completion, appended events and older history from another author", () => {
+    const request = createServiceMessage(1, { payload: SERVICE_REQUEST });
+    const props: WorkspaceMessageListProps = {
+      messages: [request],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "pending" }),
+        getKeyRequestActions: () => [{ label: "Approve", onClick: vi.fn() }],
+      },
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    const toggle = screen.getByRole("button", { name: /1 event.*Action required/ });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    const completed: WorkspaceMessageListProps = {
+      ...props,
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "granted" }),
+        getKeyRequestActions: () => [],
+      },
+    };
+    rerender(<WorkspaceMessageList {...completed} />);
+    expect(screen.getByRole("button", { name: "1 event" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Key sent")).toBeInTheDocument();
+    const newer = createServiceMessage(2);
+    rerender(<WorkspaceMessageList {...completed} messages={[request, newer]} />);
+    const twoEvents = screen.getByRole("button", { name: "2 events" });
+    expect(screen.getByRole("button", { name: "2 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    rerender(
+      <WorkspaceMessageList {...completed} messages={[createServiceMessage(0), request, newer]} />,
+    );
+    expect(screen.getByRole("button", { name: "3 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "3 events" }));
+    expect(screen.getByRole("button", { name: "3 events" })).toBe(twoEvents);
+    rerender(
+      <WorkspaceMessageList {...props} messages={[createServiceMessage(0), request, newer]} />,
+    );
+    expect(screen.getByRole("button", { name: /3 events.*Action required/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it.each([
+    ["pending", false, "Awaiting response"],
+    [null, false, "Status unavailable"],
+    ["pending", true, "Awaiting response"],
+  ] as const)(
+    "shows unresolved request status %s with disabled action %s",
+    (requestStatus, disabledAction, label) => {
+      render(
+        <WorkspaceMessageList
+          messages={[createServiceMessage(0, { payload: SERVICE_REQUEST })]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{
+            getKeyServiceState: () => createServiceState({ requestStatus }),
+            getKeyRequestActions: () =>
+              disabledAction ? [{ label: "Approve", disabled: true, onClick: vi.fn() }] : [],
+          }}
+        />,
+      );
+      expect(screen.getByRole("button", { name: new RegExp(`1 event.*${label}`) })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    },
+  );
+
+  it("does not show a retry action for a rejection addressed to another device", () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createServiceMessage(0, {
+            payload: {
+              kind: "key_reject",
+              keyUuid: "generation",
+              requestMessageUuid: "request",
+              senderDeviceId: "sender",
+              recipientDeviceId: "another-device",
+            },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          getKeyServiceState: () => createServiceState(),
+          getKeyRequestActions: () => [{ label: "Retry", onClick: vi.fn() }],
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "1 event" })).toBeInTheDocument();
+  });
+
+  it("resets expansion on returning to a conversation", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    rerender(<WorkspaceMessageList {...props} conversationId="topic:stream-uuid-2:topic-uuid-2" />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    rerender(<WorkspaceMessageList {...props} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps newly appended events expanded when a sliding window drops the original event", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        messages={[createServiceMessage(0), createServiceMessage(1)]}
+      />,
+    );
+    rerender(<WorkspaceMessageList {...props} messages={[createServiceMessage(1)]} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("reveals a focused service target and permits manual collapse after navigation", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    const target = { intentId: 1, messageUuid: "service-0", focusAttempt: 0 };
+    rerender(<WorkspaceMessageList {...props} focusedMessageTarget={target} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    rerender(
+      <WorkspaceMessageList {...props} focusedMessageTarget={{ ...target, focusAttempt: 1 }} />,
+    );
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it.each([false, true])(
+    "restores the manual service disclosure (%s) after selection",
+    (expanded) => {
+      const props: WorkspaceMessageListProps = {
+        messages: [createServiceMessage(0)],
+        currentUserUuid: "current-user-uuid",
+        conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      };
+      const { rerender } = render(<WorkspaceMessageList {...props} />);
+      fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+      if (!expanded) fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+      rerender(<WorkspaceMessageList {...props} selectionMode />);
+      expect(screen.getByRole("checkbox")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /1 event/ })).toBeDisabled();
+      rerender(<WorkspaceMessageList {...props} />);
+      expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+        "aria-expanded",
+        String(expanded),
+      );
+    },
+  );
+
   it("renders encrypted and key-service history without exposing encoded content or loading files", () => {
     const encoded =
       "<img src=secret-key-material onerror=alert(1)> [asset](urn:file:11111111-1111-4111-8111-111111111111)";
@@ -241,6 +512,8 @@ describe("WorkspaceMessageList", () => {
       />,
     );
     expect(screen.getByText("Key required")).toBeInTheDocument();
+    expect(screen.queryByText(/requested a security key/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /4 events/ }));
     expect(screen.getByText(/requested a security key/)).toBeInTheDocument();
     expect(screen.getByText(/sent an encrypted security key/)).toBeInTheDocument();
     expect(screen.getByText("The security key was updated")).toBeInTheDocument();

@@ -44,45 +44,68 @@ function Harness({
   readonly onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }) {
   const [control, setControl] = useState({ conversationId, cancelled: false });
+  const [layoutRevision, setLayoutRevision] = useState(0);
   if (control.conversationId !== conversationId) {
     setControl({ conversationId, cancelled: false });
   }
-  const { scrollContainerRef, handleScroll, handleWheel, handleTouchMove } =
-    useWorkspaceMessageListScroll({
-      initialPositionReady,
-      initialPositionCancelled: control.conversationId === conversationId && control.cancelled,
-      onUserScrollInput: () => setControl({ conversationId, cancelled: true }),
-      conversationId,
-      messages: items,
-      getMessageKey,
-      isUnreadCandidate,
-      scrollToBottomKey: conversationId,
-      firstUnreadKey: items.find(isUnreadCandidate)?.key,
-      unreadCount: items.filter(isUnreadCandidate).length,
-      hasNewerMessages,
-      isLoadingNewer,
-      tailOutsideWindow,
-      onUnreadMessagesVisible,
-      onUnreadMessagesAtBottom,
-    });
+  const {
+    scrollContainerRef,
+    handleScroll,
+    handleWheel,
+    handleTouchMove,
+    isAtBottom,
+    refreshMessageLayout,
+    preserveMessageLayout,
+  } = useWorkspaceMessageListScroll({
+    initialPositionReady,
+    initialPositionCancelled: control.conversationId === conversationId && control.cancelled,
+    onUserScrollInput: () => setControl({ conversationId, cancelled: true }),
+    conversationId,
+    messages: items,
+    getMessageKey,
+    isUnreadCandidate,
+    scrollToBottomKey: conversationId,
+    firstUnreadKey: items.find(isUnreadCandidate)?.key,
+    unreadCount: items.filter(isUnreadCandidate).length,
+    hasNewerMessages,
+    isLoadingNewer,
+    tailOutsideWindow,
+    onUnreadMessagesVisible,
+    onUnreadMessagesAtBottom,
+  });
   return (
-    <div
-      ref={scrollContainerRef}
-      onScroll={handleScroll}
-      onWheel={handleWheel}
-      onTouchMove={handleTouchMove}
-      data-testid="viewport"
-    >
-      {items.map((message, index) => (
-        <div
-          key={message.key}
-          data-message-uuid={message.key}
-          data-message-render-key={message.key}
-          data-message-read-boundary={message.key}
-          data-index={index}
-        />
-      ))}
-    </div>
+    <>
+      <button type="button" onClick={refreshMessageLayout} data-at-bottom={String(isAtBottom)}>
+        Refresh layout
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          preserveMessageLayout();
+          setLayoutRevision((current) => current + 1);
+        }}
+      >
+        Collapse history
+      </button>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        data-testid="viewport"
+        data-layout-revision={layoutRevision}
+      >
+        {items.map((message, index) => (
+          <div
+            key={message.key}
+            data-message-uuid={message.key}
+            data-message-render-key={message.key}
+            data-message-read-boundary={message.key}
+            data-index={index}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -154,6 +177,70 @@ function saveScroll(top: number) {
   fireEvent.scroll(root);
   return root;
 }
+
+it("preserves upward scroll intent when a short new group refreshes the layout near the tail", () => {
+  const items = messages.map((message) => ({ ...message, read: true }));
+  const view = render(<Harness conversationId={conversationA} items={items} />);
+  const root = screen.getByTestId("viewport");
+  root.scrollTop = 800;
+
+  // Wheel intent arrives before the browser changes scrollTop.
+  fireEvent.wheel(root, { deltaY: -1 });
+  const withServiceGroup = [...items, { key: "new-service-group", read: true }];
+  const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1040);
+  view.rerender(<Harness conversationId={conversationA} items={withServiceGroup} />);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh layout" }));
+  expect(root.scrollTop).toBe(800);
+  expect(
+    screen.getByRole("button", { name: "Refresh layout" }).getAttribute("data-at-bottom"),
+  ).toBe("true");
+
+  scrollHeight.mockReturnValue(1140);
+  view.rerender(
+    <Harness
+      conversationId={conversationA}
+      items={[...withServiceGroup, { key: "next-message", read: true }]}
+    />,
+  );
+  expect(root.scrollTop).toBe(800);
+});
+
+it("preserves the visible message offset when completed history shrinks above the viewport", () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const isRoot = this.dataset.testid === "viewport";
+    const reduction = this.parentElement?.dataset.layoutRevision === "1" ? 300 : 0;
+    const top = isRoot
+      ? 0
+      : Number(this.dataset.index) * 100 - (this.parentElement?.scrollTop ?? 0) - reduction;
+    const height = isRoot ? 200 : 100;
+    return {
+      x: 0,
+      y: top,
+      top,
+      bottom: top + height,
+      left: 0,
+      right: 100,
+      width: 100,
+      height,
+      toJSON: () => ({}),
+    };
+  });
+  render(
+    <Harness
+      conversationId={conversationA}
+      items={messages.map((message) => ({ ...message, read: true }))}
+    />,
+  );
+  const root = saveScroll(325);
+  const anchor = root.querySelector<HTMLElement>("[data-message-render-key='message-3']");
+  if (anchor == null) throw new Error("Expected visible anchor");
+  const before = anchor.getBoundingClientRect().top;
+  fireEvent.click(screen.getByRole("button", { name: "Collapse history" }));
+  expect(root.scrollTop).toBe(25);
+  expect(anchor.getBoundingClientRect().top).toBe(before);
+});
 
 describe("read receipts after focus", () => {
   it.each(["focus", "visibilitychange"])(

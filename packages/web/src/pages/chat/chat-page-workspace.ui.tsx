@@ -160,7 +160,7 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { Spinner } from "~/shared/ui/loading";
 import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { ChatDirectHeader } from "~/widgets/chat-view/chat-header-direct.ui";
 import { ChatFavoritesHeader } from "~/widgets/chat-view/chat-header-favorites.ui";

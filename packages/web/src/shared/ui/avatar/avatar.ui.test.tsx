@@ -1,0 +1,112 @@
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { Avatar } from "./avatar";
+
+describe("Avatar", () => {
+  it("renders the supplied image URL directly", () => {
+    const { container } = render(<Avatar src="https://example.test/avatar.png">A</Avatar>);
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "https://example.test/avatar.png",
+    );
+  });
+
+  it("renders fallback content without an image", () => {
+    const { container } = render(<Avatar>A</Avatar>);
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("A");
+  });
+
+  it("renders fallback content when the image fails to load", () => {
+    const { container } = render(<Avatar src="https://example.test/unavailable.png">A</Avatar>);
+    const image = container.querySelector("img");
+
+    expect(image).not.toBeNull();
+    fireEvent.error(image!);
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("A");
+  });
+
+  it("retries with a new source after the previous image failed", () => {
+    const { container, rerender } = render(
+      <Avatar src="https://example.test/unavailable.png">A</Avatar>,
+    );
+    fireEvent.error(container.querySelector("img")!);
+
+    rerender(<Avatar src="https://example.test/available.png">A</Avatar>);
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "https://example.test/available.png",
+    );
+  });
+
+  it("applies xl size classes for the 64px profile avatar", () => {
+    const { container } = render(<Avatar size="xl">A</Avatar>);
+    const el = container.firstElementChild;
+
+    expect(el?.className).toContain("w-16");
+    expect(el?.className).toContain("h-16");
+  });
+
+  it("adds group-hover ring and pointer cursor only when interactive is enabled", () => {
+    const { container, rerender } = render(<Avatar>A</Avatar>);
+    const staticAvatar = container.firstElementChild;
+
+    expect(staticAvatar?.className).not.toContain("group-hover:ring-2");
+    expect(staticAvatar?.className).not.toContain("cursor-pointer");
+
+    rerender(<Avatar interactive>A</Avatar>);
+    const interactiveAvatar = container.firstElementChild;
+
+    expect(interactiveAvatar?.className).toContain("group-hover:ring-2");
+    expect(interactiveAvatar?.className).toContain("group-hover:ring-accent-soft");
+    // interactive = кликабельный аватар (профиль и т.п.) → курсор «пальчик»
+    expect(interactiveAvatar?.className).toContain("cursor-pointer");
+  });
+
+  it("places the same orange away badge on avatars of different sizes", () => {
+    const { container, rerender } = render(
+      <Avatar size="sm" presence="idle">
+        A
+      </Avatar>,
+    );
+    const smallBadge = container.querySelector('[data-presence="idle"]');
+    expect(smallBadge).toHaveClass("bg-indicator-orange", "h-2", "w-2");
+    expect(smallBadge).toHaveClass(
+      "absolute",
+      "bottom-[calc(14.65%-4px)]",
+      "right-[calc(14.65%-4px)]",
+    );
+
+    rerender(
+      <Avatar size="xl" presence="idle">
+        A
+      </Avatar>,
+    );
+    expect(container.querySelector('[data-presence="idle"]')).toHaveClass(
+      "bg-indicator-orange",
+      "h-2",
+      "w-2",
+      "bottom-[calc(14.65%-4px)]",
+      "right-[calc(14.65%-4px)]",
+    );
+  });
+
+  it("distinguishes an absent badge, offline, and a deactivated account", () => {
+    const { container, rerender } = render(<Avatar presence={null}>A</Avatar>);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+
+    rerender(<Avatar presence="offline">A</Avatar>);
+    expect(container.querySelector('[data-presence="offline"]')).toHaveClass("bg-text-muted");
+
+    rerender(
+      <Avatar presence="offline" deactivated>
+        A
+      </Avatar>,
+    );
+    expect(container.querySelector('[data-presence="offline"]')).toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
+});

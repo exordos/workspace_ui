@@ -6,7 +6,7 @@ import {
   CHAT_BOTTOM_COMPOSER_CONTENT_INSET_X,
   chatBottomNoticeBarClassName,
 } from "~/shared/lib/chat-bottom-notice-bar.lib";
-import { AttachmentCard, AttachmentCardList } from "~/shared/ui/attachment-card.ui";
+import { AttachmentCard, AttachmentCardList } from "~/shared/ui/attachment-card";
 import { Icon } from "~/shared/ui/icon";
 import { formatScheduledTimestamp } from "./message-composer-body.lib";
 import { MessageComposerControlledAttachmentCards } from "./message-composer-controlled-attachments.ui";

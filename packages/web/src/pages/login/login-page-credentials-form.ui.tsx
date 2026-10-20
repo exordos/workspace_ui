@@ -1,7 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
-import { FormField } from "~/shared/ui/form-field.ui";
+import { FormField } from "~/shared/ui/form-field";
 
 export interface LoginPageCredentialsFormProps {
   username: string;

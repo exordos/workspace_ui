@@ -24,7 +24,7 @@ import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-me
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
-import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame.ui";
+import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame";
 import {
   DEFAULT_WORKSPACE_QUOTE_MAX_DEPTH,
   DEFAULT_WORKSPACE_QUOTE_RENDER_MODE,
@@ -355,6 +355,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     <WorkspaceMessageQuoteFrame
       header={isForwardSnapshot ? header : headerLabel}
       headerMuted={!isForwardSnapshot && resolved.status === "unavailable"}
+      fullWidthBody={visibleSegments.some((segment) => segment.kind === "quote")}
       leading={
         !isForwardSnapshot &&
         sourceDocument?.mediaReference != null &&

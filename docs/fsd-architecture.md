@@ -1,6 +1,6 @@
 # Frontend architecture
 
-The project uses Feature-Sliced Design with concrete module imports. Current entrypoints are listed in [Project Facts](PROJECT_FACTS.md), not duplicated as a full filesystem inventory here.
+The project uses Feature-Sliced Design with explicit module boundaries. Current entrypoints are listed in [Project Facts](PROJECT_FACTS.md), not duplicated as a full filesystem inventory here.
 
 ## Ownership
 
@@ -23,15 +23,35 @@ Use descriptive kebab-case filenames and existing segment conventions: `.model.t
 
 Create only the files required by the change. A small component does not require a separate types file, store, API module, or new directory hierarchy.
 
-Import concrete modules:
+A standalone module has one cohesive responsibility, an owner in the appropriate FSD layer, and an explicit, bounded consumer API. Its internals can be reorganized while preserving that contract. File count and number of consumers do not define the boundary: one consumer is sufficient, and a subfolder or helper is not automatically a separate module.
+
+Such a module may use an `index.ts` containing only explicit named re-exports and `export type`:
+
+```ts
+// Illustrative shared/ui/button/index.ts; no relocation is required.
+export { Button } from "./button";
+export type { ButtonProps } from "./button.types";
+```
+
+Export only symbols deliberately included in the public contract. A helper may be public when it is deliberately part of that contract; implementation helpers, tests, stories and fixtures stay out of the production API. Do not use `export *`, aggregate unrelated modules, or hide initialization and side effects in an index. Do not create layer/category mega-barrels such as `shared/index.ts`, `shared/ui/index.ts`, `shared/lib/index.ts` or `features/index.ts`.
+
+Import according to the boundary:
+
+- Outside a module, use its established public index, including when calling another module in a nearby folder. This does not grant new same-layer imports or relax FSD dependency rules.
+- Inside the same module, use direct relative imports to concrete files, never its own index. Importing through an index that re-exports the caller can create a cycle. Module-owned tests and stories may directly import internals they exercise.
+- Where no module public entrypoint is established, existing concrete implementation/type imports remain valid:
 
 ```ts
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { Avatar } from "~/shared/ui/avatar";
+import { writeText } from "~/shared/lib/clipboard";
 ```
 
-`~/` resolves to `packages/web/src/`. Do not create barrel-only `index.ts` exports. See the [import rule](../.cursor/rules/no-barrel-index.mdc).
+`~/` resolves to `packages/web/src/`. Indexes are optional: do not create one for every helper or folder, scaffold module trees, or retroactively migrate working imports merely for consistency. Existing indexes with real implementation may remain natural entrypoints. An index alone does not enforce encapsulation; the module contract and FSD rules still apply.
+
+For example, inside `button.tsx`, import types from `./button.types`; avoid importing them from `.` if that resolves to the index exporting `Button`. Outside the module, use its public index when one exists. A global `shared/ui/index.ts` collecting every component is not a substitute for these module boundaries.
+
+Do not infer a performance defect from an index alone. Development loading and production tree-shaking depend on the dependency graph, side effects and tooling.
 
 ## Workspace data flow
 

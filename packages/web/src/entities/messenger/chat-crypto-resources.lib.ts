@@ -1,4 +1,5 @@
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { IndexedDbChatKeyStorage } from "./chat-key-storage-idb.lib";
 import { createRealChatCryptoProvider } from "./chat-real-crypto-provider.lib";
 import type { ChatDeviceIdentity, ChatKeyStorage } from "./chat-key-storage.types";
@@ -15,7 +16,9 @@ export async function ensureChatDeviceIdentity(
   let identity = await storage.readDeviceIdentity(runtime);
   if (!isCurrent()) throw new Error("stale");
   if (identity) return identity;
-  identity = { deviceId: crypto.randomUUID(), deviceName: "Workspace browser" };
+  const deviceName = await getDeviceName();
+  if (!isCurrent()) throw new Error("stale");
+  identity = { deviceId: crypto.randomUUID(), deviceName };
   await storage.writeDeviceIdentity(runtime, identity, { isCurrent });
   if (!isCurrent()) throw new Error("stale");
   const persisted = await storage.readDeviceIdentity(runtime);

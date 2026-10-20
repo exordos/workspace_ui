@@ -26,6 +26,11 @@
     "queueRegistrationError": "Queue registration error",
     "invalidRegisterResponse": "Invalid register response: missing queue_id or last_event_id"
   },
+  "deviceName": {
+    "unknown": "Device",
+    "desktop": "Desktop",
+    "web": "Web"
+  },
   "auth": {
     "server": "Server",
     "organization": "Organization",
@@ -443,6 +448,13 @@
     "typingUsers": "{{names}} are typing…",
     "unreadMessages": "Unread messages",
     "unreadMessagesWithCount": "Unread messages • {{count}}",
+    "serviceEvents_one": "{{count}} event",
+    "serviceEvents_other": "{{count}} events",
+    "serviceEventsActionRequired": "Action required",
+    "serviceEventsWaiting": "Awaiting response",
+    "serviceEventsUnavailable": "Status unavailable",
+    "serviceEventsDemoNewChain": "Add a new event chain",
+    "serviceEventsDemoContinue": "Continue the conversation",
     "today": "Today",
     "yesterday": "Yesterday",
     "loadNewer": "Load newer messages"

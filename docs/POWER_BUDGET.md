@@ -45,7 +45,7 @@ every desktop.
 | Scheduled sends                      | `widgets/message-composer/message-composer.ui.tsx`      | Wait for the deadline rather than polling every second                           |
 | OS suspend, resume and battery state | `packages/electron/src/main.ts`, `shared/lib/power.ts`  | Forwarded in: reconnect on wake, stretch the cadence on battery                  |
 
-The presence dot is static (`shared/ui/presence-indicator.tsx`): it renders once per
+The presence dot is static (`shared/ui/presence-indicator/presence-indicator.tsx`): it renders once per
 roster row, per message author and per mention candidate, so an infinite animation
 on it kept the compositor busy for as long as the app was open.
 

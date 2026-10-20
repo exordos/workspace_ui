@@ -1,0 +1,156 @@
+import { useEffect, useRef } from "react";
+import { useArgs } from "storybook/preview-api";
+import { expect, userEvent, waitFor, within } from "storybook/test";
+import { t } from "~/i18n/i18n";
+import { Button } from "~/shared/ui/button";
+import { AppDialog, AppDialogFormFooter } from "./app-dialog.ui";
+import type { AppDialogProps } from "./app-dialog.types";
+import type { DocsPreviewParameters } from "../../../../.storybook/docs-preview.types";
+import type { Meta, StoryObj } from "@storybook/react-vite";
+
+function useLauncherFocus(open: boolean) {
+  const launcher = useRef<HTMLSpanElement>(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) launcher.current?.querySelector("button")?.focus();
+    wasOpen.current = open;
+  }, [open]);
+  return launcher;
+}
+
+function DialogExample(args: Readonly<AppDialogProps>) {
+  const [{ open }, updateArgs] = useArgs<AppDialogProps>();
+  const setOpen = (open: boolean) => updateArgs({ open });
+  const launcher = useLauncherFocus(open);
+  return (
+    <>
+      <span ref={launcher}>
+        <Button onClick={() => setOpen(true)}>{t("common.open")}</Button>
+      </span>
+      <AppDialog
+        {...args}
+        open={open}
+        onOpenChange={setOpen}
+        title={t("settings.editProfile")}
+        description={t("settings.profileDisplayNameHint")}
+        footer={
+          <AppDialogFormFooter
+            cancelLabel={t("common.cancel")}
+            submitLabel={t("common.save")}
+            onCancel={() => setOpen(false)}
+            onSubmit={() => setOpen(false)}
+          />
+        }
+      >
+        <div className="space-y-4 text-sm text-text-primary">
+          {Array.from({ length: args.scrollBody ? 20 : 1 }, (_, index) => (
+            <p key={index}>{t("settings.statusDialogHint")}</p>
+          ))}
+        </div>
+      </AppDialog>
+    </>
+  );
+}
+
+const meta = {
+  title: "Shared/Overlays/AppDialog",
+  component: AppDialog,
+  args: { open: false, onOpenChange: () => {}, title: "Edit profile", children: null },
+  render: DialogExample,
+  argTypes: {
+    title: { control: false },
+    description: { control: false },
+    children: { control: false },
+    footer: { control: false },
+    onOpenChange: { control: false },
+  },
+  parameters: {
+    layout: "centered",
+    docsPreview: { mode: "on-demand" } satisfies DocsPreviewParameters,
+  },
+} satisfies Meta<typeof AppDialog>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {};
+export const Open: Story = { args: { open: true } };
+export const ScrollableBody: Story = { args: { open: true, scrollBody: true } };
+
+function DialogWithFooterState({
+  args,
+  submitting,
+}: Readonly<{ args: AppDialogProps; submitting: boolean }>) {
+  const close = () => args.onOpenChange(false);
+  const launcher = useLauncherFocus(args.open);
+  return (
+    <>
+      <span ref={launcher}>
+        <Button onClick={() => args.onOpenChange(true)}>{t("common.open")}</Button>
+      </span>
+      <AppDialog
+        {...args}
+        open={args.open}
+        onOpenChange={args.onOpenChange}
+        title={t("settings.editProfile")}
+        description={t("settings.profileDisplayNameHint")}
+        footer={
+          <AppDialogFormFooter
+            cancelLabel={t("common.cancel")}
+            submitLabel={t("common.save")}
+            onCancel={close}
+            onSubmit={close}
+            isSubmitting={submitting}
+            submitDisabled={!submitting}
+          />
+        }
+      >
+        <p className="text-sm text-text-primary">{t("settings.statusDialogHint")}</p>
+      </AppDialog>
+    </>
+  );
+}
+
+export const SubmittingFooter: Story = {
+  args: { open: true },
+  render: function Render(args) {
+    const [{ open }, updateArgs] = useArgs<AppDialogProps>();
+    return (
+      <DialogWithFooterState
+        args={{ ...args, open, onOpenChange: (open) => updateArgs({ open }) }}
+        submitting
+      />
+    );
+  },
+};
+export const DisabledSubmitFooter: Story = {
+  args: { open: true },
+  render: function Render(args) {
+    const [{ open }, updateArgs] = useArgs<AppDialogProps>();
+    return (
+      <DialogWithFooterState
+        args={{ ...args, open, onOpenChange: (open) => updateArgs({ open }) }}
+        submitting={false}
+      />
+    );
+  },
+};
+
+export const OpenAndDismiss: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: t("common.open") }));
+    const dialog = await page.findByRole("dialog", { name: t("settings.editProfile") });
+    await expect(dialog).toBeVisible();
+    await userEvent.click(within(dialog).getByRole("button", { name: t("common.cancel") }));
+    await waitFor(() => expect(page.queryByRole("dialog")).not.toBeInTheDocument());
+    const launcher = canvas.getByRole("button", { name: t("common.open") });
+    await expect(launcher).toHaveFocus();
+    await userEvent.click(launcher);
+    await expect(await page.findByRole("dialog")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(page.queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(launcher).toHaveFocus();
+  },
+};

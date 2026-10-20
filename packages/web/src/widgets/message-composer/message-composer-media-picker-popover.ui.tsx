@@ -3,7 +3,7 @@ import React from "react";
 import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
 import { StickerPicker } from "~/features/sticker-picker/sticker-picker.ui";
 import { t } from "~/i18n/i18n";
-import { AnchoredPopover } from "~/shared/ui/anchored-popover.ui";
+import { AnchoredPopover } from "~/shared/ui/anchored-popover";
 import { Icon } from "~/shared/ui/icon";
 import { EMOJI_PICKER_WIDTH, MEDIA_PICKER_CONTENT_HEIGHT } from "./message-composer-constants.lib";
 import type { MessageComposerMediaPickerPopoverProps } from "./message-composer-media-picker-popover.types";

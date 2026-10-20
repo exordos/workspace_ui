@@ -5,7 +5,7 @@ import type { StoredChatKeyMetadata } from "~/entities/messenger/chat-key-storag
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
+import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
 import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";
 import { EncryptedChatInfo } from "./encrypted-chat-info.ui";

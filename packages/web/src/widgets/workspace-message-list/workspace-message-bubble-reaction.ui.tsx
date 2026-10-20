@@ -5,7 +5,6 @@ import type { KeyboardEvent, ReactElement } from "react";
 
 interface WorkspaceMessageBubbleReactionProps {
   readonly action: WorkspaceMessageBubbleQuickAction;
-  readonly isOwn: boolean;
 }
 
 function availableCapsuleHeight(anchor: HTMLDivElement): number {
@@ -23,7 +22,6 @@ function availableCapsuleHeight(anchor: HTMLDivElement): number {
 
 export function WorkspaceMessageBubbleReaction({
   action,
-  isOwn,
 }: Readonly<WorkspaceMessageBubbleReactionProps>): ReactElement {
   const [open, setOpen] = useState(false);
   const [capsuleHeight, setCapsuleHeight] = useState(176);
@@ -112,15 +110,19 @@ export function WorkspaceMessageBubbleReaction({
   return (
     <div
       ref={anchorRef}
-      className="relative h-6 w-6 shrink-0"
+      className="relative h-0 w-0"
       role="group"
       onMouseEnter={() => {
         cancelHover();
+        if (open) return;
         hoverTimer.current = setTimeout(showReactions, 150);
       }}
       onMouseLeave={() => {
         cancelHover();
-        setOpen(false);
+        hoverTimer.current = setTimeout(() => {
+          hoverTimer.current = null;
+          setOpen(false);
+        }, 200);
       }}
       onFocus={() => {
         if (!suppressFocusOpen.current && !mouseFocus.current) showReactions();
@@ -138,7 +140,7 @@ export function WorkspaceMessageBubbleReaction({
       }}
     >
       <div
-        className={`absolute bottom-0 z-10 w-10 overflow-hidden rounded-full border border-border-subtle bg-card-bg p-px shadow-md transition-transform motion-reduce:transition-none ${isOwn ? "right-0 origin-bottom-right" : "left-0 origin-bottom-left"} ${open ? "scale-100" : "scale-[0.6]"}`}
+        className={`absolute bottom-0 left-0 z-10 w-10 origin-bottom -translate-x-1/2 overflow-hidden rounded-full border border-border-subtle bg-card-bg p-px shadow-md transition-transform motion-reduce:transition-none ${open ? "scale-100" : "scale-[0.6]"}`}
         data-workspace-message-quick-reactions="true"
         data-expanded={open ? "true" : "false"}
         style={{ maxHeight: open ? capsuleHeight : 40 }}

@@ -18,9 +18,9 @@ import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
 import { Icon } from "~/shared/ui/icon";
-import { PanelMenuRow } from "~/shared/ui/panel-menu-row.ui";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { SectionLabel } from "~/shared/ui/section-label.ui";
+import { SectionLabel } from "~/shared/ui/section-label";
 import {
   RightPanelConnectExternalAccountDialog,
   RightPanelExternalAccountsList,

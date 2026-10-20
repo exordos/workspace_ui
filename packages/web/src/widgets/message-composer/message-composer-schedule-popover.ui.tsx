@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import { AnchoredPopover } from "~/shared/ui/anchored-popover.ui";
+import { AnchoredPopover } from "~/shared/ui/anchored-popover";
 import { Icon } from "~/shared/ui/icon";
 import type { MessageComposerSchedulePopoverProps } from "./message-composer-schedule-popover.types";
 

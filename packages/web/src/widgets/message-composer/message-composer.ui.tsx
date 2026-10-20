@@ -20,7 +20,7 @@ import ScheduleSvg from "~/shared/assets/icons/composer-schedule.svg?react";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
-import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
+import { WidgetErrorBoundary } from "~/shared/ui/error-boundary";
 import {
   MessageComposerAiActionMenuLayer,
   MessageComposerSmartReplyStrip,

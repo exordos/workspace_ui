@@ -13,8 +13,8 @@ import {
 import { guard } from "~/shared/lib/guards";
 import { formatUserFacingError } from "~/shared/lib/toast/format-user-error.lib";
 import { toast } from "~/shared/lib/toast/toast";
-import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog.ui";
-import { Spinner } from "~/shared/ui/spinner.ui";
+import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog";
+import { Spinner } from "~/shared/ui/loading";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "~/widgets/sidebar/sidebar-folder.constants";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
