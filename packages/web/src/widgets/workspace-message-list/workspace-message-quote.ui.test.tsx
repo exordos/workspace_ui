@@ -289,6 +289,43 @@ describe("WorkspaceMessageQuote", () => {
     });
   });
 
+  it("keeps nested image quotes outside the parent thumbnail column", async () => {
+    const imageA = "55555555-5555-4555-8555-555555555555";
+    const imageB = "66666666-6666-4666-8666-666666666666";
+    const messages: Record<string, MessengerMessage> = {
+      [MESSAGE_A]: message(MESSAGE_A, AUTHOR_A, `![first.png](urn:image:${imageA})`),
+      [MESSAGE_B]: message(
+        MESSAGE_B,
+        AUTHOR_B,
+        `[Alice](urn:quote:${MESSAGE_A})\n\n![second.png](urn:image:${imageB})\n\nCaption`,
+      ),
+    };
+    mocked.resolve.mockImplementation((uuid) => ({
+      status: "ready",
+      message: messages[uuid] ?? null,
+    }));
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:nested-image");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { container } = render(
+      <WorkspaceMessageQuote
+        reference={{ messageUuid: MESSAGE_B, fallbackAuthorLabel: "Bob" }}
+        onLoadWorkspaceFilePreview={vi.fn().mockResolvedValue(new Blob(["image"]))}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelectorAll("img")).toHaveLength(2));
+
+    const parentQuote = container.firstElementChild;
+    const thumbnail = parentQuote?.querySelector("[data-workspace-quote-media-thumbnail]");
+    const mediaRow = thumbnail?.parentElement;
+    const nestedQuote = container.querySelector<HTMLElement>(
+      `[data-workspace-quote-message-uuid='${MESSAGE_A}']`,
+    );
+    expect(mediaRow).not.toContainElement(nestedQuote);
+    expect(mediaRow?.nextElementSibling).toContainElement(nestedQuote);
+    expect(mediaRow?.nextElementSibling).toContainElement(screen.getByText("Caption"));
+  });
+
   it("keeps the media label when a thumbnail cannot be loaded", () => {
     const imageUuid = "55555555-5555-4555-8555-555555555555";
     mocked.resolve.mockReturnValue({

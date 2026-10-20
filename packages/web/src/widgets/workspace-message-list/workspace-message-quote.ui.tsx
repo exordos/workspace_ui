@@ -355,6 +355,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     <WorkspaceMessageQuoteFrame
       header={isForwardSnapshot ? header : headerLabel}
       headerMuted={!isForwardSnapshot && resolved.status === "unavailable"}
+      fullWidthBody={visibleSegments.some((segment) => segment.kind === "quote")}
       leading={
         !isForwardSnapshot &&
         sourceDocument?.mediaReference != null &&

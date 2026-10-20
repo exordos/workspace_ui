@@ -28,6 +28,7 @@ export const WorkspaceMessageQuoteFrame = React.memo(function WorkspaceMessageQu
   headerMuted = false,
   surface = "message",
   leading,
+  fullWidthBody = false,
   children,
   className = "",
   headerProps,
@@ -44,7 +45,7 @@ export const WorkspaceMessageQuoteFrame = React.memo(function WorkspaceMessageQu
       >
         {header}
       </span>
-      {children}
+      {fullWidthBody ? null : children}
     </>
   );
 
@@ -61,6 +62,7 @@ export const WorkspaceMessageQuoteFrame = React.memo(function WorkspaceMessageQu
           <div className="min-w-0 flex-1">{content}</div>
         </div>
       )}
+      {fullWidthBody ? children : null}
     </div>
   );
 });

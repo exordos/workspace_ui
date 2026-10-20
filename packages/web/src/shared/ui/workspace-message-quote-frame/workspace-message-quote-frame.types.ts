@@ -20,6 +20,8 @@ export interface WorkspaceMessageQuoteFrameProps extends Omit<
   surface?: WorkspaceMessageQuoteFrameSurface;
   /** Optional media shown before both the header and quoted body. */
   leading?: ReactNode;
+  /** Place wide content below the media/header row instead of beside the media. */
+  fullWidthBody?: boolean;
   children?: ReactNode;
   /** Extra props for the header `<span>` (open-quote marker attrs, etc.). */
   headerProps?: HTMLAttributes<HTMLSpanElement> & DataAttrProps;
