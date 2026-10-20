@@ -20,7 +20,7 @@ describe("EncryptedChatPreview", () => {
     ).toBeInTheDocument();
   });
 
-  it("disables grants without a private key while preserving permitted rejection", () => {
+  it("hides grants without a private key while preserving permitted rejection", () => {
     render(<EncryptedChatPreview />);
     fireEvent.click(screen.getByRole("checkbox", { name: t("e2ee.previewKey") }));
     const panel = within(screen.getByRole("complementary"));
@@ -28,13 +28,13 @@ describe("EncryptedChatPreview", () => {
     fireEvent.click(panel.getByRole("button", { name: t("e2ee.keyTitle") }));
     expect(panel.getByRole("heading", { name: t("e2ee.keyTitle"), level: 2 })).toBeInTheDocument();
     fireEvent.click(panel.getByRole("button", { name: t("e2ee.incomingTitle", { count: 4 }) }));
-    for (const grant of panel.getAllByRole("button", {
-      name: t("e2ee.grantRequest", { name: t("e2ee.previewPerson") }),
-    })) {
-      expect(grant).toBeDisabled();
-    }
+    expect(
+      panel.queryByRole("button", {
+        name: t("e2ee.grantRequest", { name: t("e2ee.previewPerson") }),
+      }),
+    ).not.toBeInTheDocument();
     expect(panel.queryByRole("button", { name: t("e2ee.rotateKey") })).not.toBeInTheDocument();
-    expect(panel.getByRole("button", { name: t("e2ee.grantAll") })).toBeDisabled();
+    expect(panel.queryByRole("button", { name: t("e2ee.grantAll") })).not.toBeInTheDocument();
     expect(
       panel.getAllByRole("button", {
         name: t("e2ee.rejectRequest", { name: t("e2ee.previewPerson") }),

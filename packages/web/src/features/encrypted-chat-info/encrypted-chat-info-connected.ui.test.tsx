@@ -50,7 +50,7 @@ function fixture() {
       { request: { uuid: "rejected" }, status: "rejected" },
     ],
     canGrantKey: (uuid: string): boolean => uuid === "old",
-    canRejectKey: (uuid: string) => uuid === "old",
+    canRejectKey: (uuid: string): boolean => uuid === "old",
   };
   const crypto = {
     session,
@@ -339,11 +339,49 @@ describe("encrypted chat sidebar actions", () => {
       });
       if (activeScreen === "key")
         fireEvent.click(screen.getByRole("button", { name: "Incoming requests (1)" }));
-      expect(screen.getByRole("button", { name: "Grant access to Old epoch" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Grant all" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Grant access to Old epoch" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Grant all" })).toBeNull();
       expect(screen.getByRole("button", { name: "Reject request from Old epoch" })).toBeEnabled();
     },
   );
+  it.each(["info", "key"] as const)(
+    "keeps requests read-only when no request actions are available on the %s screen",
+    async (activeScreen) => {
+      const { crypto } = fixture();
+      crypto.session.canGrantKey = () => false;
+      crypto.session.canRejectKey = () => false;
+      await act(async () => {
+        render(<EncryptedChatInfoConnected streamUuid="stream" screen={activeScreen} />);
+        await Promise.resolve();
+      });
+      if (activeScreen === "key")
+        fireEvent.click(screen.getByRole("button", { name: "Incoming requests (1)" }));
+      expect(screen.getByText("Old epoch device")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Grant access to|Reject request from|Grant all/ }),
+      ).toBeNull();
+      expect(crypto.grantKey).not.toHaveBeenCalled();
+      expect(crypto.rejectKey).not.toHaveBeenCalled();
+      expect(crypto.grantAllKeys).not.toHaveBeenCalled();
+    },
+  );
+  it("keeps permitted request actions disabled during an operation", () => {
+    const { crypto } = fixture();
+    crypto.state.pending = true;
+    render(<EncryptedChatInfoConnected streamUuid="stream" />);
+    for (const name of [
+      "Grant access to Old epoch",
+      "Reject request from Old epoch",
+      "Grant all",
+    ]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(crypto.grantKey).not.toHaveBeenCalled();
+    expect(crypto.rejectKey).not.toHaveBeenCalled();
+    expect(crypto.grantAllKeys).not.toHaveBeenCalled();
+  });
   it("reports settings/key navigation to its drawer owner and renders only the active body", async () => {
     fixture();
     const navigate = vi.fn();

@@ -49,36 +49,32 @@ const KeyRequestRow = ({
         </p>
         <p className="truncate text-xs leading-5 text-text-secondary">{request.deviceName}</p>
       </div>
-      {!completed ? (
-        <>
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            className={ICON_BUTTON_CLASS}
-            aria-label={t("e2ee.grantRequest", { name: request.name })}
-            disabled={
-              !request.canGrant || onGrant == null || request.pending === true || actionsPending
-            }
-            aria-busy={request.pending}
-            onClick={() => onGrant?.(request.requestMessageUuid)}
-          >
-            {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
-          </Button>
-          <Button
-            appearance="ghost"
-            variant="neutral"
-            type="button"
-            className={ICON_BUTTON_CLASS}
-            aria-label={t("e2ee.rejectRequest", { name: request.name })}
-            disabled={
-              !request.canReject || onReject == null || request.pending === true || actionsPending
-            }
-            onClick={() => onReject?.(request.requestMessageUuid)}
-          >
-            <Icon name="close" size={24} />
-          </Button>
-        </>
+      {!completed && request.canGrant ? (
+        <Button
+          appearance="ghost"
+          variant="neutral"
+          type="button"
+          className={ICON_BUTTON_CLASS}
+          aria-label={t("e2ee.grantRequest", { name: request.name })}
+          disabled={onGrant == null || request.pending === true || actionsPending}
+          aria-busy={request.pending}
+          onClick={() => onGrant?.(request.requestMessageUuid)}
+        >
+          {request.pending ? <Spinner size="sm" /> : <Icon name="check" size={24} />}
+        </Button>
+      ) : null}
+      {!completed && request.canReject ? (
+        <Button
+          appearance="ghost"
+          variant="neutral"
+          type="button"
+          className={ICON_BUTTON_CLASS}
+          aria-label={t("e2ee.rejectRequest", { name: request.name })}
+          disabled={onReject == null || request.pending === true || actionsPending}
+          onClick={() => onReject?.(request.requestMessageUuid)}
+        >
+          <Icon name="close" size={24} />
+        </Button>
       ) : null}
     </SelectableRow>
     {request.error ? (
@@ -328,6 +324,7 @@ function RequestList({
   );
 }
 function GrantAllButton(props: EncryptedChatInfoProps) {
+  if (props.canGrantAll !== true) return null;
   return (
     <div className="flex justify-end px-4">
       <Button
@@ -336,7 +333,6 @@ function GrantAllButton(props: EncryptedChatInfoProps) {
         type="button"
         className="h-auto p-0 text-sm text-accent underline underline-offset-4"
         disabled={
-          !props.canGrantAll ||
           props.onGrantAll == null ||
           props.loading === true ||
           props.actionsPending === true ||
