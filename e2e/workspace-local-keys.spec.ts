@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
@@ -11,6 +12,15 @@ import {
   streamsSuccess,
   usersSuccess,
 } from "./mocks/workspace-default-responses";
+
+async function expandKeyEvents(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", {
+    name: /^\d+ (?:events?|событи[еяй])(?:\s|$)/,
+  });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
 
 for (const savedDeviceName of [null, "Workspace browser"] as const) {
   test(`new key request resolves the browser name with ${savedDeviceName ? "a legacy" : "a fresh"} identity`, async ({
@@ -232,8 +242,14 @@ for (const role of ["owner", "member"] as const) {
             uuid: string;
             payload: Record<string, string>;
           };
+          // Keep server order deterministic when service events are grouped.
+          const createdAt = new Date(
+            Date.parse(history.at(-1)?.created_at ?? stream.created_at) + 1_000,
+          ).toISOString();
           const created = {
             ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+            created_at: createdAt,
+            updated_at: createdAt,
             payload: body.payload,
           };
           history.push(created);
@@ -258,6 +274,7 @@ for (const role of ["owner", "member"] as const) {
         /Нужен ключ|Key required/,
       );
       await target.getByRole("button", { name: /^(request key|запросить ключ)$/i }).click();
+      await expandKeyEvents(target);
       const targetRequest = target.locator('[data-encrypted-service-message="key_request"]');
       await expect(targetRequest).toContainText(/You requested|Вы запросили/);
       await expect(targetRequest).toContainText(targetDeviceName);
@@ -273,6 +290,7 @@ for (const role of ["owner", "member"] as const) {
         await expect(targetRequest).not.toContainText(/Approve the request|Подтвердите запрос/);
       }
       await source.reload();
+      await expandKeyEvents(source);
       const sourceRequest = source.locator('[data-encrypted-service-message="key_request"]');
       await expect(sourceRequest).toContainText(/You requested|Вы запросили/);
       await expect(sourceRequest).toContainText(targetDeviceName);
@@ -302,6 +320,7 @@ for (const role of ["owner", "member"] as const) {
       await expect(sourceGrant).toContainText(targetDeviceName);
       await expect(sourceGrant.getByRole("status")).toHaveCount(0);
       await target.reload();
+      await expandKeyEvents(target);
       await expect(
         target
           .locator("[data-workspace-message-bubble]")
@@ -334,6 +353,7 @@ for (const role of ["owner", "member"] as const) {
       expect(edits[0]).toMatchObject({ payload: { kind: "e2ee", key_uuid: keyUuid } });
       expect(JSON.stringify(edits)).not.toContain("Edited on MacBook");
       await target.reload();
+      await expandKeyEvents(target);
       await expect(
         target
           .locator("[data-workspace-message-bubble]")
