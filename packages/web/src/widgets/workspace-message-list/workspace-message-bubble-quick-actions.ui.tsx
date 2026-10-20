@@ -50,7 +50,7 @@ export function WorkspaceMessageBubbleQuickActions({
 
   const renderAction = (action: WorkspaceMessageBubbleQuickAction) => {
     if (action.placement === "corner" && action.reactions != null) {
-      return <WorkspaceMessageBubbleReaction key={action.key} action={action} isOwn={isOwn} />;
+      return <WorkspaceMessageBubbleReaction key={action.key} action={action} />;
     }
     return (
       <Button
@@ -58,7 +58,7 @@ export function WorkspaceMessageBubbleQuickActions({
         type="button"
         size="sm"
         variant="neutral"
-        className={`min-w-0 !rounded-full shadow-md aria-pressed:bg-accent-soft aria-pressed:text-accent ${action.placement === "corner" ? "!h-6 !w-6 shrink-0 !px-0" : "!h-6 !px-2.5"}`}
+        className={`min-w-0 !rounded-full shadow-md aria-pressed:bg-accent-soft aria-pressed:text-accent ${action.placement === "corner" ? "!h-6 !w-6 shrink-0 -translate-x-1/2 !px-0" : "!h-6 !px-2.5"}`}
         aria-label={action.label}
         aria-pressed={action.pressed}
         data-workspace-message-quick-action={action.key}
@@ -95,7 +95,7 @@ export function WorkspaceMessageBubbleQuickActions({
         {actions.filter((action) => action.placement !== "corner").map(renderAction)}
       </div>
       <div
-        className={`absolute -bottom-1 top-0 flex items-end gap-1 ${isOwn ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"} ${waitingForHover ? HOVER_INTERACTIVITY : "pointer-events-auto"}`}
+        className={`absolute -bottom-1 h-0 w-0 ${isOwn ? "left-0" : "right-0"} ${waitingForHover ? HOVER_INTERACTIVITY : "pointer-events-auto"}`}
       >
         {actions.filter((action) => action.placement === "corner").map(renderAction)}
       </div>
