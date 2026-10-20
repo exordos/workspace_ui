@@ -39,4 +39,4 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 
 ## Verification
 
-Use the command table in [Project Facts](docs/PROJECT_FACTS.md#verification). Run focused tests for changed behavior, typecheck for type/API/store changes, and broader checks when scope warrants them. Documentation-only work needs link/consistency checks, not the app test suite. Report actual commands and any gaps; do not claim manual or platform QA from unit tests.
+Use the command table in [Project Facts](docs/PROJECT_FACTS.md#verification). Run focused existing tests for relevant changed behavior, typecheck for type/API/store changes, and broader checks when scope warrants them. Add or update tests only for meaningful behavior, contracts, invariants, or plausible regressions; do not add one for every small edit. See the [Integration Guide](docs/INTEGRATION_GUIDE.md#5-verify-the-changed-behavior) for test sizing guidance. Documentation-only work needs link/consistency checks, not the app test suite. Report actual commands and any gaps; do not claim manual or platform QA from unit tests.

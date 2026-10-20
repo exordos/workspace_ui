@@ -38,7 +38,9 @@ The [composer](../packages/web/src/widgets/message-composer/message-composer.ui.
 
 ## 5. Verify the changed behavior
 
-Use the commands and working directories in [PROJECT_FACTS.md](PROJECT_FACTS.md). Run focused existing tests for a narrow behavior change, typecheck for a type/API/store contract change, and the broader project check for broad changes. Use E2E when user flow or route behavior changes. Add tests for meaningful new behavior or regressions, not to mirror a trivial implementation.
+Use the commands and working directories in [PROJECT_FACTS.md](PROJECT_FACTS.md). Run focused existing tests for a narrow behavior change, typecheck for a type/API/store contract change, and the broader project check for broad changes. Use E2E when user flow or route behavior changes. Running an existing relevant test does not mean adding a new test for every code change.
+
+Add or update tests when they protect meaningful behavior, a contract or invariant, or a plausible regression. Do not add tests just to mirror straightforward implementation details or to accompany each small edit. Treat tests as code that also needs maintenance: prefer a few behavior-focused cases that cover distinct outcomes or failure modes; avoid redundant cases, oversized fixture setup, and assertions coupled to private implementation details. Add another case only when it covers a materially different outcome or risk. For shared UI, apply the same rule to stories: demonstrate representative states, not every combination of props.
 
 For async changes, exercise an owner switch or reset while the request is pending and verify both store and cache boundaries. For UI changes, report whether browser/native visual interaction was actually checked; unit tests do not replace it. Documentation-only maintenance needs link/source checks and `git diff --check`, not a claim that the app was tested.
 
