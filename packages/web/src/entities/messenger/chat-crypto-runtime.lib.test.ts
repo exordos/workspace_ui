@@ -493,6 +493,26 @@ describe("real ordinary chat orchestration", () => {
     expect(createMessage).not.toHaveBeenCalled();
   });
 
+  it.each(["grantKey", "rejectKey"] as const)(
+    "keeps a %s response for another device in history without a session error",
+    async (action) => {
+      const f = await setup();
+      const issuer = await openSessionFor(f.admin);
+      const recipient = await openSessionFor(f.member);
+      await issuer.load();
+      await recipient.load();
+      await recipient.requestKey();
+      const request = f.wire.at(-1)!;
+      await issuer.ingest(f.wire.map(adaptMessengerMessage));
+      await issuer[action](request.uuid);
+      await issuer.ingest(f.wire.map(adaptMessengerMessage));
+      expect(issuer.getState().error).toBeNull();
+      expect(issuer.getKeyRequestOutcome(request.uuid)?.status).toBe(
+        action === "grantKey" ? "granted" : "rejected",
+      );
+    },
+  );
+
   it("publishes scoped bootstrap keys once and keeps state-only operations local", async () => {
     const f = await setup();
     const session = await openSessionFor(f.admin);

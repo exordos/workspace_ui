@@ -192,7 +192,8 @@ describe("real chat session ownership", () => {
       const active = session();
       if (source === "opening") open.mockRejectedValue(new Error("unavailable"));
       else open.mockResolvedValue(active);
-      if (source === "ingestion") active.ingest.mockRejectedValue(new Error("background error"));
+      if (source === "ingestion")
+        active.ingest.mockRejectedValueOnce(new Error("background error"));
       const view = renderHook(() => useChatCryptoSession(streamUuid));
       if (source === "state") {
         await waitFor(() => expect(view.result.current.session).toBe(active));
@@ -203,6 +204,16 @@ describe("real chat session ownership", () => {
         act(() => active.emit());
       }
       await waitFor(() => expect(view.result.current.error).not.toBeNull());
+      if (source === "ingestion") {
+        act(() => active.emit());
+        expect(view.result.current.error).not.toBeNull();
+        await act(async () => {
+          useWorkspaceMessageStore.setState({ messagesById: {} });
+          await Promise.resolve();
+        });
+        expect(active.ingest).toHaveBeenCalledTimes(2);
+        expect(view.result.current.error).toBeNull();
+      }
       expect(toast.error).not.toHaveBeenCalled();
     },
   );
