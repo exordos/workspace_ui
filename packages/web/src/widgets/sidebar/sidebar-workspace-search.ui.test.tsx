@@ -363,6 +363,8 @@ describe("sidebar calendar refresh", () => {
       lastMessageCreatedAt: createdAt,
     };
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: ["stream-a"] });
+    // Flush jsdom's queued storage event before counting the sidebar clock.
+    vi.advanceTimersByTime(0);
     renderSidebar({ streams: [engineering] });
     expect(screen.getAllByText("12:00")).toHaveLength(2);
     expect(vi.getTimerCount()).toBe(1);
