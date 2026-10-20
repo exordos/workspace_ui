@@ -70,9 +70,25 @@ describe("WorkspaceMessageBubbleReaction", () => {
 
     scroll.scrollTop = 64;
     fireEvent.mouseLeave(screen.getByRole("group"));
-    expect(getCapsule(container)).toHaveAttribute("data-expanded", "false");
+    expect(getCapsule(container)).toHaveAttribute("data-expanded", "true");
+    await waitFor(() => expect(getCapsule(container)).toHaveAttribute("data-expanded", "false"));
     expect(scroll.scrollTop).toBe(0);
     expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("cancels delayed collapse when the pointer returns to the reaction capsule", async () => {
+    const { container } = render(
+      <WorkspaceMessageBubbleReaction action={createReaction()} isOwn />,
+    );
+    await hoverReactions(container);
+    const group = screen.getByRole("group");
+    fireEvent.mouseLeave(group);
+    fireEvent.mouseEnter(group);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+    expect(getCapsule(container)).toHaveAttribute("data-expanded", "true");
+    expect(screen.getAllByRole("button")).toHaveLength(3);
   });
 
   it("dispatches a cold mouse click before hover expansion can move the first button", async () => {

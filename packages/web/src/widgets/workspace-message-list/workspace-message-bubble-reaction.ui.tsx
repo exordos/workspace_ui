@@ -116,11 +116,15 @@ export function WorkspaceMessageBubbleReaction({
       role="group"
       onMouseEnter={() => {
         cancelHover();
+        if (open) return;
         hoverTimer.current = setTimeout(showReactions, 150);
       }}
       onMouseLeave={() => {
         cancelHover();
-        setOpen(false);
+        hoverTimer.current = setTimeout(() => {
+          hoverTimer.current = null;
+          setOpen(false);
+        }, 200);
       }}
       onFocus={() => {
         if (!suppressFocusOpen.current && !mouseFocus.current) showReactions();

@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
@@ -460,6 +460,18 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     authorOutside = false,
     requestMessageKeyAvailable = false,
   }): React.ReactElement {
+    const [quickActionsHovered, setQuickActionsHovered] = useState(false);
+    const quickActionsHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelQuickActionsHide = () => {
+      if (quickActionsHideTimer.current != null) clearTimeout(quickActionsHideTimer.current);
+      quickActionsHideTimer.current = null;
+    };
+    useEffect(
+      () => () => {
+        if (quickActionsHideTimer.current != null) clearTimeout(quickActionsHideTimer.current);
+      },
+      [],
+    );
     const isPreview = presentationMode === "preview";
     const interactiveActions = isPreview ? undefined : actions;
     const owner = resolveMessageOwner(message, currentUserUuid);
@@ -703,20 +715,17 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       : (quickActions?.message ?? "hover");
     const hasQuickActions =
       quickActionItems.length > 0 && quickActionsVisibility !== "disabled" && !isPreview;
-    const hasTopQuickActions =
-      hasQuickActions && quickActionItems.some((action) => action.placement !== "corner");
-    // Reserve the text pill's upper edge and the smaller reaction's outer corner before hover.
+    // Reserve horizontal room for the reaction outside the bubble's corner.
     const quickActionsMaxWidth = hasQuickActions ? "min(88%, calc(100% - 3rem))" : undefined;
 
     const bubble = (
-      // Focus keeps Shift+F10 context-menu access. A button role would falsely imply primary-click behavior.
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Hover reveals controls; focus keeps context-menu access without a primary click action.
       <div
         className={`group/workspace-message-bubble relative ${bubbleClassName} ${authorOutside ? "!max-w-full" : ""} transition-colors ${readRequestBubbleClassName(
           effectiveReadRequestPending,
         )}`}
         style={{
           maxWidth: authorOutside ? undefined : quickActionsMaxWidth,
-          marginTop: hasTopQuickActions ? "1.25rem" : undefined,
         }}
         data-workspace-message-bubble="true"
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
@@ -730,6 +739,25 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         aria-busy={effectiveReadRequestPending ? true : undefined}
         onContextMenu={isPreview ? undefined : handleContextMenu}
         onKeyDown={isPreview ? undefined : handleKeyDown}
+        onMouseEnter={
+          hasQuickActions
+            ? () => {
+                cancelQuickActionsHide();
+                setQuickActionsHovered(true);
+              }
+            : undefined
+        }
+        onMouseLeave={
+          hasQuickActions
+            ? () => {
+                cancelQuickActionsHide();
+                quickActionsHideTimer.current = setTimeout(() => {
+                  quickActionsHideTimer.current = null;
+                  setQuickActionsHovered(false);
+                }, 200);
+              }
+            : undefined
+        }
         tabIndex={isPreview || containsInteractiveBody ? undefined : 0}
       >
         <WorkspaceMessageBubbleQuickActions
@@ -737,6 +765,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           visibility={quickActionsVisibility}
           condition={!isPreview && !menuOpen}
           isOwn={isOwn}
+          hoverRetained={quickActionsHovered}
         />
         {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu
