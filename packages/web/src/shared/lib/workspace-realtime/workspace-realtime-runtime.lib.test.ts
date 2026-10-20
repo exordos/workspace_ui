@@ -1658,4 +1658,41 @@ describe("workspace-realtime transport runtime", () => {
       expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
     );
   });
+  it("awaits catch-up batches before opening a socket and advances only the completed cursor", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    applier.applyEvents = vi.fn(() => pending);
+    const webSocketFactory = vi.fn(
+      (url: string, protocols: string[]) => new FakeWebSocket(url, protocols),
+    );
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      webSocketFactory,
+      getEventsPage: () =>
+        Promise.resolve(createPage([createRestEventDto(12), createRestEventDto(11)])),
+    });
+    const starting = runtime.start(context);
+    await vi.waitFor(() => expect(applier.applyEvents).toHaveBeenCalledOnce());
+    expect(webSocketFactory).not.toHaveBeenCalled();
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
+    release?.();
+    await starting;
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
+    expect(webSocketFactory).toHaveBeenCalledOnce();
+    expect(applier.applyEvents).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ epoch_version: 11 }),
+        expect.objectContaining({ epoch_version: 12 }),
+      ]),
+      expect.objectContaining({ source: "catch_up", notificationsEnabled: false }),
+    );
+    await runtime.stop();
+  });
 });

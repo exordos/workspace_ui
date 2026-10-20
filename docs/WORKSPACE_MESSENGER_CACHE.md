@@ -27,7 +27,15 @@ The Workspace cache is implemented. Its original [July plan](archive/WORKSPACE_M
 
 ## Realtime memory bounds
 
-The active messenger applier awaits its event cache writes and cursor write before transport advances to the next event. Cache failures remain best effort; persistence work must not accumulate as detached promises during catch-up or live delivery.
+REST catch-up delegates sorted event runs to batch-capable appliers. Adjacent `message.created` events are applied in groups of at most 100; edits, reads, deletes, catalog changes, duplicates and unsupported envelopes preserve their ordering barriers. Active message and pointer maps are copied once per group. Both active and background owners use the batch cache writer; background application never writes active message stores.
+
+Each created group writes bodies once, stream/topic buckets, window bounds, monotonic activity pointers and its IndexedDB cursor in one transaction. Live WebSocket events remain individually awaited, including their cursor write. Transport advances its durable cursor only after every applier completes and the owner/generation is still current. Cache failures remain best effort; persistence work must not accumulate as detached promises.
+
+Retention uses the existing `byConversationOrder` index to count rows, read the first/last retained entries and fetch only the entries to evict. All affected conversation views are trimmed atomically; body and own-reaction cleanup checks remaining references in that transaction. Historical imports cannot leave bodies behind after both stream and topic references are removed by retention. No schema upgrade or cache reset is required.
+
+Read-boundary updates read only the newly covered interval. Every body insertion path applies the durable boundary, including late history/snapshot writes. Boundaries from older clients materialize their full prefix once before incremental reads are enabled.
+
+See the [dated cache performance report](MESSENGER_CACHE_PERFORMANCE.md) for the reproducible synthetic benchmark and its limits.
 
 Each socket queues at most 256 pending frames or 4 MiB of estimated string storage. On overflow, transport releases the queued frames, waits for the current event to complete, then reconnects through REST catch-up from the completed cursor. Closing a socket or replacing its owner releases its pending queue; stale completions cannot advance the replacement transport cursor. A synchronous frame burst yields to browser tasks every 32 frames.
 

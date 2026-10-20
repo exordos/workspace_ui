@@ -45,6 +45,10 @@ export interface WorkspaceRealtimeCatchUpSkippedEvent {
 
 export interface WorkspaceRealtimeCatchUpApplier {
   applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeCatchUpContext): unknown;
+  applyEvents?(
+    events: readonly WorkspaceRealtimeEvent[],
+    context: WorkspaceRealtimeCatchUpContext,
+  ): unknown;
   skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeCatchUpSkippedEvent,
     reason: WorkspaceRealtimeCatchUpSkipReason,
@@ -170,7 +174,10 @@ export async function catchUpWorkspaceRealtime(
       pageMarker,
     });
 
-    for (const eventDto of [...page.items].sort(compareEventsByEpochVersion)) {
+    const items = [...page.items].sort(compareEventsByEpochVersion);
+    for (let index = 0; index < items.length; index += 1) {
+      const eventDto = items[index];
+      if (eventDto == null) continue;
       // Сервер может вернуть страницу не в нужном порядке, а cursor должен двигаться строго вперёд.
       if (!isCatchUpOwnerCurrent(options)) {
         return {
@@ -208,11 +215,30 @@ export async function catchUpWorkspaceRealtime(
         continue;
       }
 
-      await options.applier.applyEvent(event, context);
-      appliedCount += 1;
+      const events = [event];
+      let lastEpochVersion = event.epoch_version;
+      if (options.applier.applyEvents != null) {
+        while (index + 1 < items.length) {
+          const next = items[index + 1];
+          if (next == null || next.epoch_version <= lastEpochVersion) break;
+          const normalized = normalizeRestEvent(next);
+          if (normalized == null) break;
+          events.push(normalized);
+          lastEpochVersion = next.epoch_version;
+          index += 1;
+        }
+        await options.applier.applyEvents(events, context);
+      } else {
+        await options.applier.applyEvent(event, context);
+      }
+      // A completed batch from an old runtime cannot advance its durable cursor.
+      if (!isCatchUpOwnerCurrent(options)) {
+        return { startedFrom: startCursor, lastCursor, appliedCount, skippedCount, isStale: true };
+      }
+      appliedCount += events.length;
       lastCursor = advanceCursor(options, {
         epochGeneration: startCursor.epochGeneration,
-        epochVersion: event.epoch_version,
+        epochVersion: lastEpochVersion,
       });
     }
 

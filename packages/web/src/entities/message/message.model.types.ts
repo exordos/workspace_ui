@@ -93,6 +93,7 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   replaceConversationWindow: (input: WorkspaceConversationWindowReplaceInput) => number | null;
   mergeConversationWindowPage: (input: WorkspaceConversationWindowPageMergeInput) => number | null;
   applyLiveCreatedMessage: (message: MessengerMessage) => void;
+  applyLiveCreatedMessages: (messages: readonly MessengerMessage[]) => void;
   applyLiveKnownBodyMutation: (
     message: MessengerMessage,
     capturedMutationRevision?: number,

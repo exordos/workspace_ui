@@ -326,4 +326,60 @@ describe("workspace-realtime catch-up", () => {
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(13));
     expect(result).toMatchObject({ lastCursor: cursor(13), appliedCount: 3 });
   });
+  it("batches sorted events without crossing duplicate or unsupported envelopes", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(5));
+    const { applier } = createApplier();
+    const batches: number[][] = [];
+    applier.applyEvents = vi.fn((events: readonly WorkspaceRealtimeEvent[]) => {
+      batches.push(events.map((event) => event.epoch_version));
+    });
+    const result = await catchUpWorkspaceRealtime(
+      createOptions({
+        cursorStorage,
+        applier,
+        getEventsPage: () =>
+          Promise.resolve(
+            createPage([
+              createEventDto(9),
+              createEventDto(6),
+              createEventDto(6),
+              createEventDto(8),
+              createEventDto(7),
+            ]),
+          ),
+        normalizeRestEvent: (event) =>
+          event.epoch_version === 8 ? null : createRealtimeEvent(event.epoch_version),
+      }),
+    );
+    expect(batches).toEqual([[6], [7], [9]]);
+    expect(applier.applyEvent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ appliedCount: 3, skippedCount: 2, lastCursor: cursor(9) });
+  });
+
+  it("waits for a batch and rejects its cursor if its owner changes while writing", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(5));
+    const { applier } = createApplier();
+    let current = true;
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    applier.applyEvents = vi.fn(() => pending);
+    const application = catchUpWorkspaceRealtime(
+      createOptions({
+        cursorStorage,
+        applier,
+        isOwnerCurrent: () => current,
+        getEventsPage: () => Promise.resolve(createPage([createEventDto(6), createEventDto(7)])),
+      }),
+    );
+    await vi.waitFor(() => expect(applier.applyEvents).toHaveBeenCalledOnce());
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(5));
+    current = false;
+    release?.();
+    expect(await application).toMatchObject({ isStale: true, lastCursor: cursor(5) });
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(5));
+  });
 });

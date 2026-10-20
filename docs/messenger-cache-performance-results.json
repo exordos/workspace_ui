@@ -1,0 +1,301 @@
+{
+  "capturedAt": "2026-10-20",
+  "scope": "Synthetic cache persistence only; excludes network, Zustand and rendering.",
+  "baseline": {
+    "sourceRef": "eb800080e4a4d6cb4a7442b8baa97636d952317e",
+    "sourceSha256": "e76f6947c9d23ae49718de920a75bd9899fd354070008109884d20fd9ef0bddd",
+    "runtime": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "repeats": 5,
+    "results": [
+      {
+        "name": "fresh-catch-up",
+        "operations": {
+          "transactions": 1300,
+          "bucketRows": 180000,
+          "messageGets": 200,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          1347.0999999940395, 1280.9000000059605, 1312.5, 1169.9000000059605, 1281.9000000059605
+        ],
+        "medianMs": 1281.9000000059605,
+        "minMs": 1169.9000000059605,
+        "maxMs": 1347.0999999940395
+      },
+      {
+        "name": "historical-catch-up",
+        "operations": {
+          "transactions": 1700,
+          "bucketRows": 200600,
+          "messageGets": 200,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 600,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          1788.7999999970198, 1382.7000000029802, 1485.5, 1415.199999988079, 1309.6000000089407
+        ],
+        "medianMs": 1415.199999988079,
+        "minMs": 1309.6000000089407,
+        "maxMs": 1788.7999999970198
+      },
+      {
+        "name": "fresh-live",
+        "operations": {
+          "transactions": 1300,
+          "bucketRows": 180000,
+          "messageGets": 200,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          1313.5, 1267.4000000059605, 1183.0999999940395, 1396.7999999970198, 1206.7000000029802
+        ],
+        "medianMs": 1267.4000000059605,
+        "minMs": 1183.0999999940395,
+        "maxMs": 1396.7999999970198
+      },
+      {
+        "name": "historical-live",
+        "operations": {
+          "transactions": 1700,
+          "bucketRows": 200600,
+          "messageGets": 200,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 600,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          1316.2999999970198, 1397.2999999970198, 1337.2999999970198, 1341.5999999940395,
+          1670.5999999940395
+        ],
+        "medianMs": 1341.5999999940395,
+        "minMs": 1316.2999999970198,
+        "maxMs": 1670.5999999940395
+      },
+      {
+        "name": "read-boundary",
+        "operations": {
+          "transactions": 100,
+          "bucketRows": 45050,
+          "messageGets": 45050,
+          "cursorPuts": 0
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": null
+        },
+        "samplesMs": [
+          901.5999999940395, 905.1999999880791, 830.7000000029802, 953.4000000059605,
+          804.9000000059605
+        ],
+        "medianMs": 901.5999999940395,
+        "minMs": 804.9000000059605,
+        "maxMs": 953.4000000059605
+      },
+      {
+        "name": "cold-catch-up",
+        "operations": {
+          "transactions": 1300,
+          "bucketRows": 20000,
+          "messageGets": 200,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 100,
+          "windowSizes": [100, 100],
+          "cursor": 100
+        },
+        "samplesMs": [236.5, 228.20000000298023, 252.5, 225.40000000596046, 272.20000000298023],
+        "medianMs": 236.5,
+        "minMs": 225.40000000596046,
+        "maxMs": 272.20000000298023
+      },
+      {
+        "name": "single-live",
+        "operations": {
+          "transactions": 17,
+          "bucketRows": 2006,
+          "messageGets": 2,
+          "cursorPuts": 1
+        },
+        "final": {
+          "bodies": 501,
+          "windowSizes": [500, 500],
+          "cursor": 1
+        },
+        "samplesMs": [
+          12.900000005960464, 12.700000002980232, 12, 14.900000005960464, 18.200000002980232
+        ],
+        "medianMs": 12.900000005960464,
+        "minMs": 12,
+        "maxMs": 18.200000002980232
+      }
+    ]
+  },
+  "updated": {
+    "sourceRef": "working-tree",
+    "sourceSha256": "76c0af37d7fc2cc939ac3eb284139cc469f6b29cc002478cf5d20fff22890360",
+    "runtime": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "repeats": 5,
+    "results": [
+      {
+        "name": "fresh-catch-up",
+        "operations": {
+          "transactions": 1,
+          "bucketRows": 2,
+          "messageGets": 100,
+          "cursorPuts": 1
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          11.200000002980232, 9.100000008940697, 8.900000005960464, 9.899999991059303, 11
+        ],
+        "medianMs": 9.899999991059303,
+        "minMs": 8.900000005960464,
+        "maxMs": 11.200000002980232
+      },
+      {
+        "name": "historical-catch-up",
+        "operations": {
+          "transactions": 1,
+          "bucketRows": 202,
+          "messageGets": 100,
+          "cursorPuts": 1
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          19.700000002980232, 21.100000008940697, 22.599999994039536, 21.900000005960464,
+          21.799999997019768
+        ],
+        "medianMs": 21.799999997019768,
+        "minMs": 19.700000002980232,
+        "maxMs": 22.599999994039536
+      },
+      {
+        "name": "fresh-live",
+        "operations": {
+          "transactions": 200,
+          "bucketRows": 200,
+          "messageGets": 100,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          89, 109.79999999701977, 83.79999999701977, 93.09999999403954, 105.20000000298023
+        ],
+        "medianMs": 93.09999999403954,
+        "minMs": 83.79999999701977,
+        "maxMs": 109.79999999701977
+      },
+      {
+        "name": "historical-live",
+        "operations": {
+          "transactions": 200,
+          "bucketRows": 400,
+          "messageGets": 100,
+          "cursorPuts": 100
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 100
+        },
+        "samplesMs": [
+          153, 149.3999999910593, 165.79999999701977, 169.40000000596046, 116.6000000089407
+        ],
+        "medianMs": 153,
+        "minMs": 116.6000000089407,
+        "maxMs": 169.40000000596046
+      },
+      {
+        "name": "read-boundary",
+        "operations": {
+          "transactions": 100,
+          "bucketRows": 500,
+          "messageGets": 500,
+          "cursorPuts": 0
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": null
+        },
+        "samplesMs": [
+          57.5, 46.8999999910593, 63.29999999701977, 51.20000000298023, 40.30000001192093
+        ],
+        "medianMs": 51.20000000298023,
+        "minMs": 40.30000001192093,
+        "maxMs": 63.29999999701977
+      },
+      {
+        "name": "cold-catch-up",
+        "operations": {
+          "transactions": 1,
+          "bucketRows": 2,
+          "messageGets": 100,
+          "cursorPuts": 1
+        },
+        "final": {
+          "bodies": 100,
+          "windowSizes": [100, 100],
+          "cursor": 100
+        },
+        "samplesMs": [
+          9.900000005960464, 13.599999994039536, 8, 8.899999991059303, 8.299999997019768
+        ],
+        "medianMs": 8.899999991059303,
+        "minMs": 8,
+        "maxMs": 13.599999994039536
+      },
+      {
+        "name": "single-live",
+        "operations": {
+          "transactions": 2,
+          "bucketRows": 4,
+          "messageGets": 1,
+          "cursorPuts": 1
+        },
+        "final": {
+          "bodies": 500,
+          "windowSizes": [500, 500],
+          "cursor": 1
+        },
+        "samplesMs": [
+          2.8999999910593033, 1.5, 1.7999999970197678, 2.7999999970197678, 1.7999999970197678
+        ],
+        "medianMs": 1.7999999970197678,
+        "minMs": 1.5,
+        "maxMs": 2.8999999910593033
+      }
+    ]
+  }
+}
