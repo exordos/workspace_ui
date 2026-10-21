@@ -6,6 +6,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-10-21
+
+### Changed
+
+- Realtime catch-up persists adjacent message creations in batches of up to 100,
+  reducing local cache work while preserving event order.
+- Cache retention and read-state updates use indexed ranges instead of
+  repeatedly scanning entire conversations.
+
+### Fixed
+
+- Concurrent stream and topic retention no longer leaves newly evicted message
+  bodies and reaction records behind.
+- Late history and snapshot writes preserve previously confirmed read state.
+- Session changes during cache writes prevent stale batches and their cursors
+  from being committed.
+
+### Requirements and compatibility
+
+- Requirements remain unchanged: Exordos Core `0.2.3` or newer, and Workspace
+  backend `1.3.0` or newer for encrypted chats.
+- The messenger cache remains at schema version 7. Existing caches remain usable.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.3`. No manual migration or cache reset is required.
+
 ## [0.9.2] — 2026-10-20
 
 ### Added
