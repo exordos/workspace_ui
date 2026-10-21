@@ -59,6 +59,61 @@ const LOCAL_SEARCH_FOLDER_CASES: readonly [string, MessengerFolder["systemType"]
 ];
 
 describe("projectWorkspaceSidebarSearch", () => {
+  it.each(["петров", "иван петров", "ivan_dev", "ivan@example.test"])(
+    "finds direct chats by profile fields in local and global results: %s",
+    (query) => {
+      const direct = {
+        ...stream("direct-a", "Ваня"),
+        uiKind: "directPrivate" as const,
+        directUserUuid: "ivan",
+        directUserSearchText: "Ваня\nИван Петров\nivan_dev\nivan@example.test",
+      };
+      const global = { ...direct, id: "stream:direct-b", streamUuid: "direct-b" };
+      const result = projectWorkspaceSidebarSearch({
+        localStreams: [direct],
+        allStreams: [direct, global],
+        normalizedQuery: normalizeSidebarSearchQuery(`  ${query.toUpperCase()}  `),
+        selectedFolderSystemType: "personal",
+      });
+
+      expect(result.localStreams).toEqual([direct]);
+      expect(result.globalStreams).toEqual([global]);
+    },
+  );
+
+  it("keeps a direct chat searchable by title when its user profile is unavailable", () => {
+    const direct = {
+      ...stream("direct-a", "Иван Петров"),
+      uiKind: "directPrivate" as const,
+      directUserUuid: "ivan",
+    };
+    const search = (normalizedQuery: string) =>
+      projectWorkspaceSidebarSearch({
+        localStreams: [],
+        allStreams: [direct],
+        normalizedQuery,
+        selectedFolderSystemType: "all",
+      });
+
+    expect(search("петров").globalStreams).toEqual([direct]);
+    expect(search("ivan_dev").globalStreams).toEqual([]);
+  });
+
+  it("does not search user profile fields on group streams", () => {
+    const group = {
+      ...stream("group-a", "Engineering", [topic("Release", "topic-a")]),
+      directUserSearchText: "ivan_dev\nivan@example.test",
+    };
+    const result = projectWorkspaceSidebarSearch({
+      localStreams: [group],
+      allStreams: [group],
+      normalizedQuery: "ivan_dev",
+      selectedFolderSystemType: "all",
+    });
+
+    expect(result.globalStreams).toEqual([]);
+  });
+
   it("keeps local and global sections ordered while removing local duplicates", () => {
     const local = stream("stream-a", "Engineering", [topic("Release plan", "topic-a")]);
     const global = stream("stream-b", "Product release");

@@ -613,6 +613,58 @@ describe("messenger sidebar selectors", () => {
     expect(rows.some((row) => row.id.startsWith("dm:"))).toBe(false);
   });
 
+  it.each(["stream", "conversation"] as const)(
+    "refreshes direct-chat search fields from the user profile for a %s row",
+    (source) => {
+      const catalog =
+        source === "stream"
+          ? state()
+          : state({
+              streamsById: { [STREAM_A]: stream() },
+              streamIds: [STREAM_A],
+              conversationsById: { [conversation().id]: conversation() },
+              conversationIds: [conversation().id],
+            });
+      const directUser = user({
+        uuid: "alice",
+        displayName: "Alice",
+        firstName: "Alice",
+        lastName: "Adams",
+        username: "hidden-login",
+        email: null,
+      });
+      const options = {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        usersById: createUsersById({ alice: directUser }),
+      };
+      const first = selectMessengerSidebarStreams(catalog, options);
+      const firstDirect = first.find((row) => row.streamUuid === STREAM_B);
+      expect(firstDirect?.title).toBe("Alice");
+      expect(firstDirect?.directUserSearchText).toBe("Alice\nAlice Adams\nhidden-login");
+      expect(
+        first.find((row) => row.streamUuid === STREAM_A)?.directUserSearchText,
+      ).toBeUndefined();
+
+      const updated = selectMessengerSidebarStreams(catalog, {
+        ...options,
+        usersById: createUsersById({
+          alice: { ...directUser, username: "new-login", email: "alice@example.test" },
+        }),
+      });
+      const updatedDirect = updated.find((row) => row.streamUuid === STREAM_B);
+      expect(updatedDirect?.title).toBe("Alice");
+      expect(updatedDirect?.directUserSearchText).toBe(
+        "Alice\nAlice Adams\nnew-login\nalice@example.test",
+      );
+      expect(updatedDirect).not.toBe(firstDirect);
+      expect(updated.find((row) => row.streamUuid === STREAM_A)).toBe(
+        first.find((row) => row.streamUuid === STREAM_A),
+      );
+    },
+  );
+
   it("maps direct private do not disturb status to idle presence", () => {
     const rows = selectMessengerSidebarStreams(state(), {
       organizationId: ORGANIZATION_ID,

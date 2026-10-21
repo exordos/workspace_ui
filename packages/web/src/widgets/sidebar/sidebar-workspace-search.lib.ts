@@ -12,7 +12,10 @@ function projectMatchingStream(
   stream: MessengerSidebarStreamItem,
   normalizedQuery: string,
 ): MessengerSidebarStreamItem | null {
-  const streamMatches = stream.title.toLowerCase().includes(normalizedQuery);
+  const streamMatches =
+    stream.title.toLowerCase().includes(normalizedQuery) ||
+    (stream.uiKind === "directPrivate" &&
+      (stream.directUserSearchText?.toLowerCase().includes(normalizedQuery) ?? false));
   const matchingTopics = stream.topics.filter((topic) =>
     topic.title.toLowerCase().includes(normalizedQuery),
   );
