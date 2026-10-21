@@ -1473,6 +1473,7 @@
     "surprised": "Удивление",
     "crying": "Грусть",
     "clap": "Аплодисменты",
+    "quickReaction": "Поставить реакцию {{emoji}}",
     "moreReactions": "Ещё реакции",
     "newWindow": "Новый чат",
     "messageComposer": "Поле ввода сообщения",

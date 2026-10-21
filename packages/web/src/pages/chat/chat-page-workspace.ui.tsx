@@ -176,6 +176,7 @@ import type {
 import { MessageComposer } from "~/widgets/message-composer/message-composer.ui";
 import { WorkspaceMessageAnchorTransition } from "~/widgets/workspace-message-list/workspace-message-anchor-transition.ui";
 import type { WorkspaceMessageConversationReference } from "~/widgets/workspace-message-list/workspace-message-list.types";
+import { recordWorkspaceMessageQuickReactionUse } from "~/widgets/workspace-message-list/workspace-message-quick-reaction-history.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import {
   hasConversationBeenViewed,
@@ -2866,7 +2867,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [openWorkspaceForward, selectedMessageUuids]);
 
   const handleToggleMessageReaction = useCallback(
-    (messageUuid: string, emojiName: string) => {
+    async (messageUuid: string, emojiName: string) => {
       setActionError(null);
       if (runtimeContext == null) {
         setActionError(t("workspaceMessenger.runtimeUnavailable"));
@@ -2874,19 +2875,24 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const isUiActionCurrent = captureWorkspaceChatUiAction();
-      void runMessengerRuntimeMutation(runtimeContext, (signal) =>
-        toggleMessengerMessageReaction({
-          runtimeContext,
-          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          signal,
-          messageUuid,
-          emojiName,
-        }),
-      ).catch((error) => {
+      try {
+        const result = await runMessengerRuntimeMutation(runtimeContext, (signal) =>
+          toggleMessengerMessageReaction({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+            messageUuid,
+            emojiName,
+          }),
+        );
+        if (result.status === "applied" && result.operation === "added") {
+          recordWorkspaceMessageQuickReactionUse(result.emojiName);
+        }
+      } catch (error) {
         if (isUiActionCurrent()) {
           setActionError(normalizeWorkspaceActionError(error, t("message.reactionError")));
         }
-      });
+      }
     },
     [captureWorkspaceChatUiAction, runtimeContext],
   );

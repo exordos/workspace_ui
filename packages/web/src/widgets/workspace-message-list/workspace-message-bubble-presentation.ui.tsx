@@ -7,10 +7,6 @@ import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import {
-  normalizeEmojiShortcodeName,
-  resolveShortcodeToUnicode,
-} from "~/shared/lib/emoji-shortcodes.lib";
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import type {
@@ -34,7 +30,13 @@ import {
   type WorkspaceMessageBubbleQuickAction,
 } from "./workspace-message-bubble-quick-actions.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
-import { WORKSPACE_MESSAGE_QUICK_REACTIONS } from "./workspace-message-quick-reactions.lib";
+import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
+import {
+  getWorkspaceMessageQuickReactions,
+  getWorkspaceMessageQuickReactionsServerSnapshot,
+  resolveWorkspaceReactionDisplayChar,
+  type WorkspaceMessageQuickReaction,
+} from "./workspace-message-quick-reactions.lib";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
@@ -68,6 +70,7 @@ const WORKSPACE_MESSAGE_PREVIEW_RENDER_OPTIONS = {
   enableGallery: false,
 } as const;
 const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
+const subscribeToNoQuickReactionUpdates = () => () => {};
 
 const BASE_BUBBLE_CLASS_NAME =
   "max-w-[88%] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
@@ -162,15 +165,6 @@ function readRequestBubbleClassName(pending: boolean): string {
 
 function hasWorkspaceReactions(message: MessengerMessage): boolean {
   return Object.values(message.reactions).some((count) => count > 0);
-}
-
-function resolveWorkspaceReactionDisplayChar(emojiName: string): string {
-  const normalizedEmojiName = normalizeEmojiShortcodeName(emojiName);
-  if (normalizedEmojiName.length === 0) {
-    return emojiName;
-  }
-
-  return resolveShortcodeToUnicode(normalizedEmojiName) ?? `:${normalizedEmojiName}:`;
 }
 
 function getWorkspaceReactionChips(message: MessengerMessage): WorkspaceMessageReactionChip[] {
@@ -367,6 +361,7 @@ function getWorkspaceMessageQuickActions(
   requestMessageKeyAvailable: boolean,
   readable: boolean,
   getSelectedText: () => string | undefined,
+  quickReactions: readonly WorkspaceMessageQuickReaction[],
 ): WorkspaceMessageBubbleQuickAction[] {
   const quickActionItems: WorkspaceMessageBubbleQuickAction[] = [];
   if (message != null) {
@@ -395,24 +390,22 @@ function getWorkspaceMessageQuickActions(
         });
       }
       if (actions?.onToggleMessageReaction != null) {
-        const reactions = WORKSPACE_MESSAGE_QUICK_REACTIONS.map(
-          ({ emojiName, labelKey, glyph }) => {
-            const pending = message.pendingOwnReactionsByEmojiName?.[glyph];
-            return {
-              key: emojiName,
-              label: t(labelKey),
-              glyph,
-              pressed:
-                pending?.operation === "add" ||
-                (pending?.operation !== "remove" &&
-                  message.ownReactionUuidsByEmojiName[glyph] != null),
-              pending: pending != null,
-              onSelect: () => {
-                void actions.onToggleMessageReaction?.(messageUuid, glyph);
-              },
-            };
-          },
-        );
+        const reactions = quickReactions.map(({ emojiName, labelKey, glyph }) => {
+          const pending = message.pendingOwnReactionsByEmojiName?.[glyph];
+          return {
+            key: emojiName,
+            label: t(labelKey, { emoji: glyph }),
+            glyph,
+            pressed:
+              pending?.operation === "add" ||
+              (pending?.operation !== "remove" &&
+                message.ownReactionUuidsByEmojiName[glyph] != null),
+            pending: pending != null,
+            onSelect: () => {
+              void actions.onToggleMessageReaction?.(messageUuid, glyph);
+            },
+          };
+        });
         const firstReaction = reactions[0];
         if (firstReaction != null) {
           quickActionItems.push({
@@ -481,6 +474,21 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const passiveContentEnabled = !isPreview && !locked && passiveLoadersEnabled;
     const interactiveServerMessage = isPreview ? null : serverMessage;
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
+    const canShowQuickReactions =
+      !isPreview &&
+      !locked &&
+      !requestMessageKeyAvailable &&
+      interactiveServerMessage != null &&
+      (interactiveServerMessage.payload.kind === "markdown" ||
+        interactiveServerMessage.payload.kind === "e2ee") &&
+      interactiveActions?.onToggleMessageReaction != null;
+    const quickReactions = React.useSyncExternalStore(
+      canShowQuickReactions
+        ? subscribeWorkspaceMessageQuickReactionUsage
+        : subscribeToNoQuickReactionUpdates,
+      getWorkspaceMessageQuickReactions,
+      getWorkspaceMessageQuickReactionsServerSnapshot,
+    );
     const effectiveReadRequestPending =
       !isPreview && serverMessage != null && !serverMessage.read && readRequestPending;
     const displayMessage = serverMessage ?? outgoingMessage;
@@ -709,6 +717,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       requestMessageKeyAvailable,
       !locked,
       getSelectedText,
+      quickReactions,
     );
     const quickActionsVisibility = requestMessageKeyAvailable
       ? (quickActions?.missingKey ?? "always")

@@ -147,13 +147,13 @@ export function WorkspaceMessageBubbleReaction({
       >
         <div
           ref={scrollRef}
-          className="flex flex-col items-center overflow-y-auto overscroll-contain scrollbar-none"
+          className="flex flex-col-reverse items-center overflow-y-auto overscroll-contain scrollbar-none"
           data-workspace-message-quick-reaction-scroll="true"
           style={{ maxHeight: open ? capsuleHeight - 4 : 36 }}
         >
           {(open ? reactions : reactions.slice(0, 1)).map((reaction, index) => (
             <Button
-              key={reaction.key}
+              key={index === 0 ? "quick-reaction-trigger-slot" : `reaction-${reaction.key}`}
               ref={(element) => {
                 if (index === 0) triggerRef.current = element;
                 if (element == null) reactionRefs.current.delete(reaction.key);

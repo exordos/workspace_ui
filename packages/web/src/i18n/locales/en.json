@@ -1460,6 +1460,7 @@
     "surprised": "Surprised",
     "crying": "Crying",
     "clap": "Clap",
+    "quickReaction": "React with {{emoji}}",
     "moreReactions": "More reactions",
     "newWindow": "New chat",
     "messageComposer": "Message composer",
