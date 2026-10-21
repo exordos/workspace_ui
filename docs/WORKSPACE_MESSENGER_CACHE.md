@@ -35,8 +35,6 @@ Retention uses the existing `byConversationOrder` index to count rows, read the 
 
 Read-boundary updates read only the newly covered interval. Every body insertion path applies the durable boundary, including late history/snapshot writes. Boundaries from older clients materialize their full prefix once before incremental reads are enabled.
 
-See the [dated cache performance report](MESSENGER_CACHE_PERFORMANCE.md) for the reproducible synthetic benchmark and its limits.
-
 Each socket queues at most 256 pending frames or 4 MiB of estimated string storage. On overflow, transport releases the queued frames, waits for the current event to complete, then reconnects through REST catch-up from the completed cursor. Closing a socket or replacing its owner releases its pending queue; stale completions cannot advance the replacement transport cursor. A synchronous frame burst yields to browser tasks every 32 frames.
 
 Conversation selector memoization uses weak message-map keys so visiting another conversation cannot keep an obsolete full message map alive.
