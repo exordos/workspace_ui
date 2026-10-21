@@ -270,6 +270,7 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     upsertTopic: () => undefined,
     removeTopic: () => undefined,
     applyMessagePointer: () => undefined,
+    applyMessagePointers: () => undefined,
     clearMessagePointer: () => undefined,
     applyFolderSnapshot: () => undefined,
     removeFolder: () => undefined,

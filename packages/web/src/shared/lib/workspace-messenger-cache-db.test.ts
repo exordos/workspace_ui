@@ -3,7 +3,7 @@ import type {
   WorkspaceMessengerComposerDraftCacheRow,
 } from "./workspace-messenger-cache-db";
 import "fake-indexeddb/auto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   advanceMessengerReadBoundaryCache,
   clearMessengerMessagePointerCache,
@@ -42,6 +42,7 @@ import {
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
   writeRealtimeCursor,
+  writeRealtimeMessages,
 } from "./workspace-messenger-cache-db";
 
 const OWNER = "account:a:org:o:project:p:user:u";
@@ -1166,4 +1167,149 @@ it("restores every encrypted payload without plaintext projection and isolates o
       messages.map((item) => item.uuid),
     ),
   ).toEqual([]);
+});
+
+describe("realtime cache batching", () => {
+  it("atomically retains both conversation views during concurrent historical page writes", async () => {
+    const recent = [
+      message("recent-a", "2026-10-20T08:01:00Z"),
+      message("recent-b", "2026-10-20T08:02:00Z"),
+    ];
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: recent,
+      retentionLimit: 2,
+    });
+    await writeConversationMessagePage(OTHER_OWNER, TOPIC_CONVERSATION, { messages: recent });
+    await upsertOwnMessageReaction(OWNER, ownReaction("old", "thumbs_up", "reaction-old"));
+    const page = { messages: [message("old", "2026-01-01T08:00:00Z")], retentionLimit: 2 };
+    await Promise.all([
+      writeConversationMessagePage(OWNER, STREAM_CONVERSATION, page),
+      writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, page),
+    ]);
+    for (const conversationId of [STREAM_CONVERSATION, TOPIC_CONVERSATION]) {
+      const window = await readConversationMessageWindow(OWNER, conversationId);
+      expect(window.messages.map((row) => row.uuid)).toEqual(["recent-a", "recent-b"]);
+      expect(window.window?.windowSize).toBe(2);
+    }
+    expect(await readCachedMessagesByUuids(OWNER, ["old"])).toEqual([]);
+    expect(await readOwnMessageReactions(OWNER, ["old"])).toEqual([]);
+    expect(await readCachedMessagesByUuids(OTHER_OWNER, ["recent-a", "recent-b"])).toHaveLength(2);
+  });
+
+  it("writes a realtime batch, both windows and its cursor in one bounded transaction", async () => {
+    const messages = Array.from({ length: 100 }, (_, i) =>
+      message(`batch-${String(i).padStart(3, "0")}`, "2026-10-20T08:00:00Z"),
+    );
+    const db = await openWorkspaceMessengerCacheDb();
+    const transactions = vi.spyOn(db, "transaction");
+    const reads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await writeRealtimeMessages(OWNER, messages, 100);
+      expect(transactions).toHaveBeenCalledTimes(1);
+      expect(reads.mock.calls.every((args) => args[1] === 1)).toBe(true);
+    } finally {
+      transactions.mockRestore();
+      reads.mockRestore();
+    }
+    const topic = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const stream = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    expect(topic.messages.map((row) => row.uuid)).toEqual(messages.map((row) => row.uuid));
+    expect(stream.messages).toEqual(topic.messages);
+    expect((await readMessengerCatalogCache(OWNER)).realtimeCursor?.epochVersion).toBe(100);
+  });
+
+  it("rolls back messages, windows and cursor when the runtime changes inside a write", async () => {
+    let checks = 0;
+    await writeRealtimeMessages(
+      OWNER,
+      [message("stale", "2026-10-20T08:00:00Z")],
+      100,
+      () => ++checks < 2,
+    );
+    expect(await readCachedMessagesByUuids(OWNER, ["stale"])).toEqual([]);
+    expect(await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION)).toEqual({
+      messages: [],
+      window: null,
+    });
+    expect((await readMessengerCatalogCache(OWNER)).realtimeCursor).toBeNull();
+  });
+
+  it("reads only the newly read interval and does not re-read a repeated boundary", async () => {
+    const messages = ["a", "b", "c", "d"].map((uuid) => ({
+      ...message(uuid, "2026-10-20T08:00:00Z"),
+      read: false,
+    }));
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages });
+    const boundary = {
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: messages[0]!.createdAt,
+      messageUuid: "b",
+      epochVersion: 1,
+    };
+    await advanceMessengerReadBoundaryCache(boundary);
+    const reads = vi.spyOn(IDBObjectStore.prototype, "get");
+    try {
+      await advanceMessengerReadBoundaryCache({ ...boundary, messageUuid: "c", epochVersion: 2 });
+      await advanceMessengerReadBoundaryCache({ ...boundary, epochVersion: 3 });
+      const messageReads = reads.mock.contexts.filter(
+        (store) => (store as IDBObjectStore).name === "messages",
+      );
+      expect(messageReads).toHaveLength(1);
+    } finally {
+      reads.mockRestore();
+    }
+    const cached = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    expect(cached.messages.map((row) => [row.uuid, row.read])).toEqual([
+      ["a", true],
+      ["b", true],
+      ["c", true],
+      ["d", false],
+    ]);
+  });
+
+  it.each(["page", "realtime", "body", "patch"])(
+    "applies a durable read boundary to a late %s write",
+    async (kind) => {
+      const incoming = { ...message("late", "2026-01-01T08:00:00Z"), read: false };
+      await advanceMessengerReadBoundaryCache({
+        ownerKey: OWNER,
+        streamUuid: STREAM,
+        topicUuid: TOPIC,
+        createdAt: "2026-10-20T08:00:00Z",
+        messageUuid: "new",
+        epochVersion: 5,
+      });
+      if (kind === "page")
+        await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [incoming] });
+      if (kind === "realtime") await writeRealtimeMessages(OWNER, [incoming], 6);
+      if (kind === "body") await upsertCachedMessages(OWNER, [incoming]);
+      if (kind === "patch") await patchCachedMessage(OWNER, incoming);
+      expect(await readCachedMessagesByUuids(OWNER, ["late"])).toMatchObject([{ read: true }]);
+      expect(await readCachedMessagesByUuids(OTHER_OWNER, ["late"])).toEqual([]);
+    },
+  );
+  it("materializes an older client's existing read boundary before using incremental ranges", async () => {
+    const incoming = { ...message("old", "2026-01-01T08:00:00Z"), read: false };
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [incoming] });
+    const boundary = {
+      ownerKey: OWNER,
+      streamUuid: STREAM,
+      topicUuid: TOPIC,
+      createdAt: "2026-10-20T08:00:00Z",
+      messageUuid: "new",
+      epochVersion: 5,
+    };
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction("readBoundaries", "readwrite");
+    transaction
+      .objectStore("readBoundaries")
+      .put({ ...boundary, id: `${OWNER}:${STREAM}:${TOPIC}` });
+    await new Promise<void>((resolve) => {
+      transaction.addEventListener("complete", () => resolve());
+    });
+    await advanceMessengerReadBoundaryCache(boundary);
+    expect(await readCachedMessagesByUuids(OWNER, ["old"])).toMatchObject([{ read: true }]);
+  });
 });

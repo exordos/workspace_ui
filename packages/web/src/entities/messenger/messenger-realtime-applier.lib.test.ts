@@ -2834,4 +2834,184 @@ describe("messenger realtime active applier", () => {
       }),
     ]);
   });
+  it("batches adjacent creates and flushes before edit, read and delete events", async () => {
+    const context = createContext(createOwner(), {
+      source: "catch_up",
+      notificationsEnabled: false,
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+    const calls: string[] = [];
+    const cache = {
+      writeCreatedMessages: vi.fn((_owner: string, messages: readonly { uuid: string }[]) => {
+        calls.push(`create:${messages.map((message) => message.uuid).join(",")}`);
+      }),
+      patchCachedMessage: vi.fn(() => {
+        calls.push("patch");
+      }),
+      advanceReadBoundary: vi.fn(() => {
+        calls.push("read");
+      }),
+      deleteCachedMessage: vi.fn(() => {
+        calls.push("delete");
+      }),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const events: WorkspaceRealtimeEvent[] = [
+      { type: "message", kind: "message.created", epoch_version: 1, message: createMessageDto() },
+      {
+        type: "message",
+        kind: "message.created",
+        epoch_version: 2,
+        message: createMessageDto({ uuid: MESSAGE_B }),
+      },
+      {
+        type: "message",
+        kind: "message.updated",
+        epoch_version: 3,
+        message: createMessageDto({ payload: { kind: "markdown", content: "edited" } }),
+      },
+      { type: "message", kind: "message.read", epoch_version: 4, message: createMessageDto() },
+      {
+        type: "message",
+        kind: "message.deleted",
+        epoch_version: 5,
+        message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+      },
+      {
+        type: "message",
+        kind: "message.created",
+        epoch_version: 6,
+        message: createMessageDto({ uuid: MESSAGE_C }),
+      },
+    ];
+    await applier.applyEvents?.(events, context);
+    expect(calls).toEqual([
+      `create:${MESSAGE_A},${MESSAGE_B}`,
+      "patch",
+      "read",
+      "patch",
+      "delete",
+      `create:${MESSAGE_C}`,
+    ]);
+    expect(cache.writeCreatedMessages).toHaveBeenCalledTimes(2);
+    expect(cache.writeCreatedMessages.mock.calls[0]?.[1]).toHaveLength(2);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(6);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["stale", "abort"])(
+    "does not publish a created batch after %s invalidation",
+    async (change) => {
+      const controller = new AbortController();
+      const context = createContext(createOwner(), {
+        source: "catch_up",
+        signal: controller.signal,
+      });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+      let current = true;
+      let release: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const writeCreatedMessages = vi.fn(() => pending);
+      const applier = createMessengerRealtimeActiveApplier({
+        cache: { writeCreatedMessages },
+        isOwnerCurrent: () => current,
+      });
+      const application = applier.applyEvents?.(
+        [
+          {
+            type: "message",
+            kind: "message.created",
+            epoch_version: 1,
+            message: createMessageDto(),
+          },
+        ],
+        context,
+      );
+      await vi.waitFor(() => expect(writeCreatedMessages).toHaveBeenCalledOnce());
+      if (change === "abort") controller.abort();
+      else current = false;
+      release?.();
+      await application;
+      expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+      expect(
+        useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+      ).toBeUndefined();
+    },
+  );
+  it("batches background creates without writing into the active owner's stores", async () => {
+    const active = createContext();
+    useMessengerStore.getState().startBootstrap(active.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(active.ownerKey, false);
+    const background = createContext(createOwner({ projectId: "background-project" }), {
+      surface: "background",
+      source: "catch_up",
+      notificationsEnabled: false,
+    });
+    const writeCreatedMessages = vi.fn();
+    const applier = createMessengerRealtimeBackgroundApplier({ cache: { writeCreatedMessages } });
+    const events: WorkspaceRealtimeEvent[] = [
+      { type: "message", kind: "message.created", epoch_version: 1, message: createMessageDto() },
+      {
+        type: "message",
+        kind: "message.created",
+        epoch_version: 2,
+        message: createMessageDto({ uuid: MESSAGE_B }),
+      },
+    ];
+    await applier.applyEvents?.(events, background);
+    expect(writeCreatedMessages).toHaveBeenCalledOnce();
+    expect(writeCreatedMessages).toHaveBeenCalledWith(
+      background.ownerKey,
+      expect.arrayContaining([
+        expect.objectContaining({ uuid: MESSAGE_A }),
+        expect.objectContaining({ uuid: MESSAGE_B }),
+      ]),
+      2,
+      expect.any(Function),
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[background.ownerKey]
+        ?.lastEpochVersion,
+    ).toBe(2);
+  });
+  it("bounds created batches when a catch-up page contains more than 100 events", async () => {
+    const context = createContext(createOwner(), {
+      source: "catch_up",
+      notificationsEnabled: false,
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+    const writeCreatedMessages = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ cache: { writeCreatedMessages } });
+    const events: WorkspaceRealtimeEvent[] = Array.from({ length: 105 }, (_, index) => ({
+      type: "message",
+      kind: "message.created",
+      epoch_version: index + 1,
+      message: createMessageDto(),
+    }));
+    await applier.applyEvents?.(events, context);
+    expect(writeCreatedMessages).toHaveBeenCalledTimes(2);
+    expect(writeCreatedMessages).toHaveBeenNthCalledWith(
+      1,
+      context.ownerKey,
+      expect.any(Array),
+      100,
+      expect.any(Function),
+    );
+    expect(writeCreatedMessages).toHaveBeenNthCalledWith(
+      2,
+      context.ownerKey,
+      expect.any(Array),
+      105,
+      expect.any(Function),
+    );
+  });
 });

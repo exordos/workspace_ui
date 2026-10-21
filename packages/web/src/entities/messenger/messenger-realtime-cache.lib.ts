@@ -24,6 +24,12 @@ export interface MessengerRealtimeCacheConversationPage {
 }
 
 export interface MessengerRealtimeCacheWriter {
+  writeCreatedMessages?: (
+    ownerKey: string,
+    messages: readonly MessengerMessage[],
+    epochVersion: number | undefined,
+    isWriteCurrent: () => boolean,
+  ) => Promise<void> | void;
   advanceReadBoundary: (boundary: MessengerReadBoundary) => Promise<void> | void;
   markCachedMessagesRead: (
     ownerKey: string,
@@ -105,6 +111,10 @@ async function applyMessageEvent(
     return isWriteCurrent() ? "applied" : "deferred";
   }
 
+  if (writer.writeCreatedMessages != null) {
+    await writer.writeCreatedMessages(ownerKey, [message], undefined, isWriteCurrent);
+    return isWriteCurrent() ? "applied" : "deferred";
+  }
   const page: MessengerRealtimeCacheConversationPage = {
     messages: [message],
     source: "realtime",
