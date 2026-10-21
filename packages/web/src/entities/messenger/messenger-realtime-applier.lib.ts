@@ -394,7 +394,7 @@ function applyMessageRealtimeEvent(
 
   messageStore.applyLiveCreatedMessage(message);
   settleMessengerOutgoingMessage(ownerKey, message);
-  store.applyMessagePointer(ownerKey, message);
+  store.applyMessagePointer(ownerKey, message, messageStore.messagesById);
   const cacheWrite = writeRealtimeMessagePageCache(activeCache, ownerKey, message);
   if (
     context.notificationsEnabled === true &&

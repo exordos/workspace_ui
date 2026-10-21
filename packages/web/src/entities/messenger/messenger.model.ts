@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import { normalizeMessengerFolderSystemType } from "./messenger-folder-system-type.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
-import { clearMessengerReadBoundariesForOwner } from "./messenger-read-boundary.lib";
+import {
+  clearMessengerReadBoundariesForOwner,
+  compareMessengerMessageOrder,
+} from "./messenger-read-boundary.lib";
 import type {
   MessengerBootstrapPayload,
   MessengerConversation,
@@ -101,7 +104,11 @@ export interface MessengerStoreState extends MessengerDomainData {
   ) => void;
   upsertTopic: (ownerKey: string, topic: MessengerTopic) => void;
   removeTopic: (ownerKey: string, topic: MessengerDeletedTopic) => void;
-  applyMessagePointer: (ownerKey: string, message: MessengerMessage) => void;
+  applyMessagePointer: (
+    ownerKey: string,
+    message: MessengerMessage,
+    messagesById: Readonly<Record<MessengerUuid, MessengerMessage>>,
+  ) => void;
   clearMessagePointer: (ownerKey: string, message: MessengerDeletedMessage) => void;
   applyFolderSnapshot: (ownerKey: string, folder: MessengerFolder) => void;
   removeFolder: (ownerKey: string, folder: MessengerDeletedFolder) => void;
@@ -304,28 +311,32 @@ function compareIsoDateStrings(a: string | null | undefined, b: string | null | 
 function isMessageFreshForContainer(
   message: MessengerMessage,
   currentLastMessageUuid: MessengerUuid | null | undefined,
-  containerUpdatedAt?: string,
+  messagesById: Readonly<Record<MessengerUuid, MessengerMessage>>,
 ): boolean {
   if (currentLastMessageUuid == null) return true;
-  if (currentLastMessageUuid === message.uuid) return true;
+  if (currentLastMessageUuid === message.uuid) return false;
+  const currentLastMessage = messagesById[currentLastMessageUuid];
+  // A known UUID without a local body cannot establish message chronology.
   return (
-    containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) >= 0
+    currentLastMessage != null &&
+    compareMessengerMessageOrder(
+      { createdAt: message.createdAt, messageUuid: message.uuid },
+      { createdAt: currentLastMessage.createdAt, messageUuid: currentLastMessage.uuid },
+    ) > 0
   );
 }
 
 function applyMessageFreshness(
   state: MessengerFreshnessState,
   message: MessengerMessage,
+  messagesById: Readonly<Record<MessengerUuid, MessengerMessage>>,
 ): MessengerFreshnessState {
   let nextStreamsById = state.streamsById;
   let nextTopicsById = state.topicsById;
   let nextConversationsById = state.conversationsById;
 
   const stream = state.streamsById[message.streamUuid];
-  if (
-    stream != null &&
-    isMessageFreshForContainer(message, stream.lastMessageUuid, stream.updatedAt)
-  ) {
+  if (stream != null && isMessageFreshForContainer(message, stream.lastMessageUuid, messagesById)) {
     nextStreamsById = {
       ...nextStreamsById,
       [stream.uuid]: {
@@ -340,10 +351,7 @@ function applyMessageFreshness(
   }
 
   const topic = state.topicsById[message.topicUuid];
-  if (
-    topic != null &&
-    isMessageFreshForContainer(message, topic.lastMessageUuid, topic.updatedAt)
-  ) {
+  if (topic != null && isMessageFreshForContainer(message, topic.lastMessageUuid, messagesById)) {
     nextTopicsById = {
       ...nextTopicsById,
       [topic.uuid]: {
@@ -361,7 +369,7 @@ function applyMessageFreshness(
   const streamConversation = state.conversationsById[streamConversationId];
   if (
     streamConversation != null &&
-    isMessageFreshForContainer(message, streamConversation.lastMessageUuid)
+    isMessageFreshForContainer(message, streamConversation.lastMessageUuid, messagesById)
   ) {
     nextConversationsById = {
       ...nextConversationsById,
@@ -375,7 +383,7 @@ function applyMessageFreshness(
   const topicConversation = state.conversationsById[message.conversationId];
   if (
     topicConversation != null &&
-    isMessageFreshForContainer(message, topicConversation.lastMessageUuid)
+    isMessageFreshForContainer(message, topicConversation.lastMessageUuid, messagesById)
   ) {
     nextConversationsById = {
       ...nextConversationsById,
@@ -386,6 +394,12 @@ function applyMessageFreshness(
     };
   }
 
+  if (
+    nextStreamsById === state.streamsById &&
+    nextTopicsById === state.topicsById &&
+    nextConversationsById === state.conversationsById
+  )
+    return state;
   return {
     streamsById: nextStreamsById,
     topicsById: nextTopicsById,
@@ -1076,12 +1090,12 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  applyMessagePointer(ownerKey, message) {
+  applyMessagePointer(ownerKey, message, messagesById) {
     logStoreAction("messenger", "applyMessagePointer", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
       if (removedStreamsForOwner(ownerKey).has(message.streamUuid)) return state;
-      return applyMessageFreshness(state, message);
+      return applyMessageFreshness(state, message, messagesById);
     });
   },
 

@@ -35,6 +35,7 @@ import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import * as messengerRequestOptions from "./messenger-request-options.lib";
+import { selectMessengerSidebarStreams } from "./messenger-sidebar.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { ChatE2eePayload } from "./chat-e2ee.types";
 import type { MessengerMessagePayload, MessengerConversationId } from "./messenger.types";
@@ -790,6 +791,142 @@ describe("messenger message actions", () => {
     );
   });
 
+  it.each([
+    ["markMessengerMessageRead", markMessengerMessageRead],
+    ["markMessengerMessagesReadUpTo", markMessengerMessagesReadUpTo],
+  ] as const)(
+    "%s preserves last-message pointers during partial reads and a concurrent new message",
+    async (_name, markRead) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const messageDto = (number: number) =>
+        createMessageDto({
+          uuid: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+          is_own: false,
+          created_at: new Date(Date.UTC(2026, 5, 22, 10, number)).toISOString(),
+        });
+      const latest = adaptMessengerMessage(messageDto(70));
+      const streamDto = createStreamDto({
+        last_message_uuid: latest.uuid,
+        unread_count: 70,
+        active_unread_count: 70,
+      });
+      const topicDto = createTopicDto({
+        last_message_uuid: latest.uuid,
+        unread_count: 70,
+        active_unread_count: 70,
+      });
+      const peerStreamUuid = "37a28696-153d-431e-a5fb-36f0c0209765";
+      const peer = adaptMessengerMessage(
+        createMessageDto({
+          uuid: MESSAGE_C,
+          stream_uuid: peerStreamUuid,
+          topic_uuid: "ed25f944-8106-4386-b2f9-65e9db32d465",
+          created_at: "2026-06-22T10:50:00Z",
+        }),
+      );
+      useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+        streams: [
+          adaptMessengerStream(streamDto),
+          adaptMessengerStream(
+            createStreamDto({ uuid: peerStreamUuid, last_message_uuid: peer.uuid }),
+          ),
+        ],
+        streamBindings: [],
+        topics: [adaptMessengerTopic(topicDto)],
+        conversations: [
+          adaptStreamToMessengerConversation(streamDto),
+          adaptTopicToMessengerConversation(topicDto, streamDto),
+        ],
+        folders: [],
+      });
+      replaceTailWindow(
+        latest.conversationId,
+        Array.from({ length: 70 }, (_, index) => adaptMessengerMessage(messageDto(index + 1))),
+      );
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(peer);
+
+      const sidebarActivity = () =>
+        selectMessengerSidebarStreams(useMessengerStore.getState(), {
+          organizationId: ORGANIZATION_A,
+          projectId: PROJECT_A,
+          messagesById: useWorkspaceMessageStore.getState().messagesById,
+        }).map((stream) => ({
+          id: stream.id,
+          preview: stream.preview,
+          createdAt: stream.lastMessageCreatedAt,
+          topics: stream.topics.map((topic) => ({
+            id: topic.id,
+            preview: topic.preview,
+            createdAt: topic.lastMessageCreatedAt,
+          })),
+        }));
+      const expectPointers = (uuid: string) => {
+        const state = useMessengerStore.getState();
+        expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(uuid);
+        expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(uuid);
+        expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(uuid);
+        expect(state.conversationsById[latest.conversationId]?.lastMessageUuid).toBe(uuid);
+      };
+      const before = sidebarActivity();
+      for (const number of [20, 30]) {
+        const dto = messageDto(number);
+        await markRead({
+          runtimeContext,
+          messageUuid: dto.uuid,
+          client: { markMessagesReadUpTo: () => Promise.resolve({ ...dto, read: true }) },
+          cache: {},
+        });
+        expectPointers(latest.uuid);
+        expect(sidebarActivity()).toEqual(before);
+        expect(useWorkspaceMessageStore.getState().messagesById[dto.uuid]?.read).toBe(true);
+        expect(useWorkspaceMessageStore.getState().messagesById[latest.uuid]?.read).toBe(false);
+        expect(readMessengerReadBoundary(ownerKey, STREAM_A, TOPIC_A)?.messageUuid).toBe(dto.uuid);
+        if (markRead === markMessengerMessagesReadUpTo) {
+          expect(useMessengerStore.getState().topicsById[TOPIC_A]?.unreadCount).toBe(70 - number);
+          expect(useMessengerStore.getState().streamsById[STREAM_A]?.unreadCount).toBe(70 - number);
+        }
+      }
+
+      const response = createDeferred<WorkspaceMessengerMessageDto>();
+      const anchor = messageDto(40);
+      const action = markRead({
+        runtimeContext,
+        messageUuid: anchor.uuid,
+        client: { markMessagesReadUpTo: () => response.promise },
+        cache: {},
+      });
+      const incoming = adaptMessengerMessage(messageDto(71));
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(incoming);
+      useMessengerStore
+        .getState()
+        .applyMessagePointer(ownerKey, incoming, useWorkspaceMessageStore.getState().messagesById);
+      const afterIncoming = sidebarActivity();
+      response.resolve({ ...anchor, read: true });
+      await action;
+
+      expectPointers(incoming.uuid);
+      expect(sidebarActivity()).toEqual(afterIncoming);
+      expect(useWorkspaceMessageStore.getState().messagesById[anchor.uuid]?.read).toBe(true);
+      expect(useWorkspaceMessageStore.getState().messagesById[incoming.uuid]?.read).toBe(false);
+
+      const catalog = useMessengerStore.getState();
+      const stream = catalog.streamsById[STREAM_A];
+      const topic = catalog.topicsById[TOPIC_A];
+      if (stream == null || topic == null) throw new Error("Missing read fixture catalog");
+      catalog.upsertStream(ownerKey, { ...stream, lastMessageUuid: latest.uuid });
+      catalog.upsertTopic(ownerKey, { ...topic, lastMessageUuid: latest.uuid });
+      await markRead({
+        runtimeContext,
+        messageUuid: incoming.uuid,
+        client: { markMessagesReadUpTo: () => Promise.resolve({ ...messageDto(71), read: true }) },
+        cache: {},
+      });
+      expectPointers(incoming.uuid);
+      expect(sidebarActivity()).toEqual(afterIncoming);
+    },
+  );
+
   function bootstrapCountersForReadUpTo(ownerKey: string, topicLastMessageUuid: string): void {
     const streamDto = createStreamDto({
       unread_count: 5,
@@ -1338,6 +1475,7 @@ describe("encrypted payload local dispatch guards", () => {
     expect(applyMessagePointer).toHaveBeenCalledWith(
       f.ownerKey,
       expect.objectContaining({ uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_B) }),
+      useWorkspaceMessageStore.getState().messagesById,
     );
     expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
     expect(f.getStream).not.toHaveBeenCalled();
