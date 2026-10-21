@@ -181,11 +181,59 @@ function compareNullableStringsDesc(a: string | null, b: string | null): number 
   return b.localeCompare(a);
 }
 
+export interface MessengerSidebarStreamSortActivity {
+  lastMessageCreatedAt: string | null;
+  hasActiveUnreadTopics: boolean;
+}
+
+export function selectMessengerSidebarStreamSortActivity(
+  stream: MessengerSidebarStreamItem,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+): MessengerSidebarStreamSortActivity {
+  return {
+    lastMessageCreatedAt: streamSortMessageCreatedAt(stream, streamsById),
+    hasActiveUnreadTopics: streamHasActiveUnreadTopics(stream),
+  };
+}
+
+function streamSortMessageCreatedAt(
+  stream: MessengerSidebarStreamItem,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+): string | null {
+  const source = streamsById[stream.streamUuid];
+  // A known last-message UUID may still be waiting for hydration; that stream is not empty.
+  return source != null && source.lastMessageUuid == null
+    ? source.createdAt
+    : stream.lastMessageCreatedAt;
+}
+
+/** Apply temporary presentation activity without changing row data or pin/mute priorities. */
+export function sortMessengerSidebarStreams(
+  streams: MessengerSidebarStreamItem[],
+  sortMode: MessengerSidebarSortMode,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+  activityOverrides: ReadonlyMap<MessengerUuid, MessengerSidebarStreamSortActivity>,
+  previousStreams: readonly MessengerSidebarStreamItem[],
+): MessengerSidebarStreamItem[] {
+  if (activityOverrides.size === 0) return streams;
+  const previousOrder = new Map(previousStreams.map((stream, index) => [stream.id, index]));
+  return [...streams].sort((a, b) => {
+    const comparison = compareSidebarStreams(a, b, sortMode, streamsById, activityOverrides);
+    if (comparison !== 0) return comparison;
+    // Canonical activity may already have reversed equal rows before the override is applied.
+    return (
+      (previousOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (previousOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    );
+  });
+}
+
 function compareSidebarStreams(
   a: MessengerSidebarStreamItem,
   b: MessengerSidebarStreamItem,
   sortMode: MessengerSidebarSortMode,
   streamsById: MessengerSidebarStreamsState["streamsById"],
+  activityOverrides?: ReadonlyMap<MessengerUuid, MessengerSidebarStreamSortActivity>,
 ): number {
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
@@ -193,18 +241,22 @@ function compareSidebarStreams(
   const groupCompare = streamGroupRank(a) - streamGroupRank(b);
   if (groupCompare !== 0) return groupCompare;
 
+  const activityA = activityOverrides?.get(a.streamUuid);
+  const activityB = activityOverrides?.get(b.streamUuid);
   if (sortMode === "unread_first" && streamGroupRank(a) === 0) {
     const unreadCompare =
-      Number(streamHasActiveUnreadTopics(b)) - Number(streamHasActiveUnreadTopics(a));
+      Number(activityB?.hasActiveUnreadTopics ?? streamHasActiveUnreadTopics(b)) -
+      Number(activityA?.hasActiveUnreadTopics ?? streamHasActiveUnreadTopics(a));
     if (unreadCompare !== 0) return unreadCompare;
   }
 
-  const streamA = streamsById[a.streamUuid];
-  const streamB = streamsById[b.streamUuid];
-  // A known last-message UUID may still be waiting for hydration; that stream is not empty.
   const activityCompare = compareNullableStringsDesc(
-    streamA != null && streamA.lastMessageUuid == null ? streamA.createdAt : a.lastMessageCreatedAt,
-    streamB != null && streamB.lastMessageUuid == null ? streamB.createdAt : b.lastMessageCreatedAt,
+    activityA === undefined
+      ? streamSortMessageCreatedAt(a, streamsById)
+      : activityA.lastMessageCreatedAt,
+    activityB === undefined
+      ? streamSortMessageCreatedAt(b, streamsById)
+      : activityB.lastMessageCreatedAt,
   );
   if (activityCompare !== 0) return activityCompare;
 
