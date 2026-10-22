@@ -6603,6 +6603,70 @@ describe("WorkspaceMessageList", () => {
     expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "👍");
   });
 
+  it.each(["native", "zulip"] as const)(
+    "switches %s reaction avatars to a count and back as server snapshots cross five users",
+    (sourceName) => {
+      const users = Array.from({ length: 6 }, (_, index) =>
+        createWorkspaceUser({
+          uuid: `reaction-user-${index}`,
+          username: `reactor-${index}`,
+          displayName: `Reactor ${index}`,
+        }),
+      );
+      useUsersStore.getState().replaceUsers(users);
+      const onToggleMessageReaction = vi.fn();
+      const message = createWorkspaceMessage({
+        uuid: "bounded-reaction-message",
+        sourceName,
+        source: { kind: sourceName },
+        provider: sourceName === "zulip" ? { kind: "zulip", external_id: "42" } : null,
+        reactions: { heart: 5, eyes: 1 },
+        reactionUserUuidsByEmojiName: {
+          heart: users.slice(0, 5).map((user) => user.uuid),
+          eyes: [users[0]!.uuid],
+        },
+        ownReactionUuidsByEmojiName: { heart: "own-heart-reaction" },
+      });
+      const renderList = (snapshot: MessengerMessage) => (
+        <WorkspaceMessageList
+          messages={[snapshot]}
+          currentUserUuid={users[0]!.uuid}
+          conversationId={message.conversationId}
+          actions={{ onToggleMessageReaction }}
+        />
+      );
+      const { container, rerender } = render(renderList(message));
+      const getHeartChip = () =>
+        screen
+          .getAllByRole("button")
+          .find((button) => button.getAttribute("aria-label")?.startsWith("❤️ "))!;
+
+      expect(getHeartChip().querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(5);
+      expect(getHeartChip()).toHaveAttribute("aria-pressed", "true");
+
+      rerender(
+        renderList({
+          ...message,
+          reactions: { heart: 6, eyes: 1 },
+          reactionUserUuidsByEmojiName: { eyes: [users[0]!.uuid] },
+        }),
+      );
+      expect(getHeartChip()).toHaveTextContent("6");
+      expect(getHeartChip().querySelector("[data-workspace-reaction-user-list]")).toBeNull();
+      expect(getHeartChip()).toHaveAttribute("aria-label", "❤️ 6");
+      expect(container.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(1);
+      fireEvent.click(getHeartChip());
+      expect(onToggleMessageReaction).toHaveBeenCalledWith(message.uuid, "heart");
+
+      rerender(renderList(message));
+      expect(getHeartChip().querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(5);
+      expect(getHeartChip()).toHaveAttribute(
+        "aria-label",
+        "❤️ Reactor 0, Reactor 1, Reactor 2, Reactor 3, Reactor 4",
+      );
+    },
+  );
+
   it("optimistically adds the current user avatar until the backend replaces the list", () => {
     useUsersStore.getState().replaceUsers([
       createWorkspaceUser(),
