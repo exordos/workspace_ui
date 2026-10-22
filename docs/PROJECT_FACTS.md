@@ -41,6 +41,12 @@ Quote and forward content enable the same user profile links when the enclosing 
 
 ## Backend contracts
 
+A topic lookup can return a different canonical UUID and stream after a rename,
+merge or move. Missing selected topics and unresolved topic URNs use the normal
+Workspace topic endpoint under the current runtime. Navigation follows the
+returned metadata and ignores stale or cancelled responses. Known topic
+references continue to use the catalog without an extra request.
+
 Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.
 
 Local paths, when the sibling checkout exists:

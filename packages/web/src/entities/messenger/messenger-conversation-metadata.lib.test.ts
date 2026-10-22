@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceMessengerTopicDto } from "~/shared/api/messenger.types";
 import {
   clearWorkspaceConversationMetadataMemo,
   resolveWorkspaceConversationMetadata,
+  resolveMessengerTopic,
 } from "./messenger-conversation-metadata.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStream, MessengerTopic } from "./messenger.types";
@@ -60,6 +63,72 @@ function createTopic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
 }
 
 const conversation = { ownerKey: "owner-1", streamUuid: "stream-1", topicUuid: "topic-1" };
+
+describe("canonical topic resolution", () => {
+  const runtime: WorkspaceRuntimeContext = {
+    accountId: "account",
+    instanceId: "instance",
+    organizationId: "org",
+    organizationOrigin: "https://example.test",
+    projectId: "project",
+    userUuid: "user-1",
+    accessToken: "test",
+    runtimeGeneration: 1,
+  };
+  const dto: WorkspaceMessengerTopicDto = {
+    uuid: "new-topic",
+    project_id: "project",
+    stream_uuid: "new-stream",
+    user_uuid: "user-1",
+    name: "Renamed",
+    unread_count: 0,
+    active_unread_count: 0,
+    passive_unread_count: 0,
+    is_default: false,
+    is_done: false,
+    notification_mode: "default",
+    created_at: "2026-07-07T10:00:00Z",
+    updated_at: "2026-07-07T10:00:00Z",
+  };
+  it("accepts the canonical UUID and stream returned for an old topic link", async () => {
+    const getTopic = vi.fn().mockResolvedValue(dto);
+    await expect(
+      resolveMessengerTopic({
+        runtimeContext: runtime,
+        getRuntimeContext: () => runtime,
+        topicUuid: "old-topic",
+        getTopic,
+      }),
+    ).resolves.toMatchObject({ uuid: "new-topic", streamUuid: "new-stream" });
+    expect(getTopic).toHaveBeenCalledWith(expect.any(Object), "old-topic");
+  });
+  it("discards a response after leaving and returning to the same runtime owner", async () => {
+    let current = runtime;
+    let finish = (_value: WorkspaceMessengerTopicDto) => {};
+    const pending = resolveMessengerTopic({
+      runtimeContext: runtime,
+      getRuntimeContext: () => current,
+      topicUuid: "old-topic",
+      getTopic: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    current = { ...runtime, runtimeGeneration: 2 };
+    finish(dto);
+    await expect(pending).resolves.toBeNull();
+  });
+  it("rejects metadata for a different project", async () => {
+    await expect(
+      resolveMessengerTopic({
+        runtimeContext: runtime,
+        getRuntimeContext: () => runtime,
+        topicUuid: "old-topic",
+        getTopic: () => Promise.resolve({ ...dto, project_id: "other-project" }),
+      }),
+    ).resolves.toBeNull();
+  });
+});
 
 describe("resolveWorkspaceConversationMetadata", () => {
   beforeEach(() => {
