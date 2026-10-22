@@ -407,7 +407,7 @@ function applyMessageRealtimeEvent(
 
   messageStore.applyLiveCreatedMessage(message);
   settleMessengerOutgoingMessage(ownerKey, message);
-  store.applyMessagePointer(ownerKey, message);
+  store.applyMessagePointer(ownerKey, message, messageStore.messagesById);
   const cacheWrite = writeRealtimeMessagePageCache(activeCache, ownerKey, message, () =>
     isActiveCurrentOwner(context, options),
   );
@@ -732,7 +732,13 @@ export function createMessengerRealtimeActiveApplier(
             applyMessengerReadBoundary(adaptMessengerMessage(event.message), context.ownerKey),
           );
           useWorkspaceMessageStore.getState().applyLiveCreatedMessages(messages);
-          useMessengerStore.getState().applyMessagePointers(context.ownerKey, messages);
+          useMessengerStore
+            .getState()
+            .applyMessagePointers(
+              context.ownerKey,
+              messages,
+              useWorkspaceMessageStore.getState().messagesById,
+            );
           for (const message of messages) settleMessengerOutgoingMessage(context.ownerKey, message);
           await writeRealtimeCacheBestEffort(() =>
             writeCreatedMessages(context.ownerKey, messages, epochVersion, isCurrent),

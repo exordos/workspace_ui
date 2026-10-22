@@ -7,13 +7,13 @@ import { ChatChannelHeader } from "./chat-header-channel.ui";
 describe("ChatChannelHeader", () => {
   it("keeps the encrypted header avatar in sync with the stream color", () => {
     const { container, rerender } = renderWithProviders(
-      <ChatChannelHeader channelName="#engineering" encrypted color={0x2563eb} />,
+      <ChatChannelHeader channelName="engineering" encrypted color={0x2563eb} />,
     );
     const avatar = () => container.querySelector('[aria-hidden="true"] .rounded-full');
     expect(avatar()).toHaveStyle({ backgroundColor: "#2563eb" });
-    rerender(<ChatChannelHeader channelName="#engineering" encrypted color={0} />);
+    rerender(<ChatChannelHeader channelName="engineering" encrypted color={0} />);
     expect(avatar()).toHaveStyle({ backgroundColor: "#000000" });
-    rerender(<ChatChannelHeader channelName="#engineering" encrypted color={null} />);
+    rerender(<ChatChannelHeader channelName="engineering" encrypted color={null} />);
     expect(avatar()).toHaveClass("bg-bg");
     expect(avatar()).not.toHaveStyle({ backgroundColor: "#000000" });
   });
@@ -21,7 +21,7 @@ describe("ChatChannelHeader", () => {
   it("shows encrypted chat information on the protected label without a separate header action", async () => {
     const togglePanel = vi.fn();
     renderWithProviders(
-      <ChatChannelHeader channelName="#engineering" encrypted onToggleRightPanel={togglePanel} />,
+      <ChatChannelHeader channelName="engineering" encrypted onToggleRightPanel={togglePanel} />,
     );
     const information = screen.getByRole("button", { name: t("e2ee.chatFeatures") });
     expect(information.closest("h1")).not.toBeNull();
@@ -45,14 +45,14 @@ describe("ChatChannelHeader", () => {
   });
 
   it("keeps the encryption information action absent from ordinary chats", () => {
-    renderWithProviders(<ChatChannelHeader channelName="#engineering" />);
+    renderWithProviders(<ChatChannelHeader channelName="engineering" />);
     expect(screen.queryByRole("button", { name: t("e2ee.chatFeatures") })).not.toBeInTheDocument();
   });
 
   it("shows stream topic as primary heading with channel muted when topic is visible", () => {
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="sprint-planning"
         hideTopic={false}
         hideParticipants
@@ -60,7 +60,7 @@ describe("ChatChannelHeader", () => {
     );
 
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent("sprint-planning · #engineering");
+    expect(heading).toHaveTextContent("sprint-planning · engineering");
     expect(heading.querySelector(".font-semibold")).toHaveTextContent("sprint-planning");
     expect(heading.closest("button")).toBeNull();
   });
@@ -68,7 +68,7 @@ describe("ChatChannelHeader", () => {
   it("places the protected-chat label after the channel name in the heading", () => {
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="sprint-planning"
         encrypted
         hideTopic={false}
@@ -82,14 +82,14 @@ describe("ChatChannelHeader", () => {
 
     expect(protectedLabel.closest("h1")).toBe(heading);
     expect(headingText.indexOf(protectedLabel.textContent ?? "")).toBeGreaterThan(
-      headingText.indexOf("#engineering"),
+      headingText.indexOf("engineering"),
     );
   });
 
   it("renders the system general-chat topic in italic", () => {
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="General Chat"
         systemTopic
         hideTopic={false}
@@ -98,14 +98,14 @@ describe("ChatChannelHeader", () => {
     );
 
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent("General Chat · #engineering");
+    expect(heading).toHaveTextContent("General Chat · engineering");
     expect(heading.querySelector(".font-semibold")).toHaveClass("italic");
   });
 
   it("shows participant and online counters", () => {
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         hideTopic
         participantsCount={2}
         onlineCount={1}
@@ -131,7 +131,7 @@ describe("ChatChannelHeader", () => {
 
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="sprint-planning"
         hideTopic={false}
         hideParticipants={false}
@@ -152,7 +152,7 @@ describe("ChatChannelHeader", () => {
 
     renderWithProviders(
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="sprint-planning"
         hideTopic={false}
         hideParticipants={false}

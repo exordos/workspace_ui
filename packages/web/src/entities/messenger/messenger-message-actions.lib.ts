@@ -305,7 +305,9 @@ export async function sendMessengerMessage({
   const message = adaptMessengerMessage(dto);
   store.getState().applyLiveCreatedMessage(message);
   settleMessengerOutgoingMessage(action.ownerKey, message);
-  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  useMessengerStore
+    .getState()
+    .applyMessagePointer(action.ownerKey, message, store.getState().messagesById);
   // Cache persistence must not delay the successful send transition in the UI.
   void writeMessagePageCacheBestEffort(
     cache,
@@ -430,7 +432,9 @@ export async function sendMessengerE2eePayload({
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   store.getState().applyLiveCreatedMessage(message);
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  messengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  messengerStore
+    .getState()
+    .applyMessagePointer(action.ownerKey, message, store.getState().messagesById);
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   void writeMessagePageCacheBestEffort(
     cache,
@@ -550,7 +554,9 @@ export async function editMessengerMessage({
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
-    messengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+    messengerStore
+      .getState()
+      .applyMessagePointer(action.ownerKey, effectiveMessage, store.getState().messagesById);
   }
   if (cache?.patchCachedMessage != null && effectiveMessage != null) {
     await writeActionCacheBestEffort(() =>
@@ -649,7 +655,9 @@ export async function markMessengerMessageRead({
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
-    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(action.ownerKey, effectiveMessage, store.getState().messagesById);
     store.getState().markMessagesReadUpTo(message.uuid, {
       conversationIds: conversationIds ?? [
         message.conversationId,
@@ -827,7 +835,9 @@ export async function markMessengerMessagesReadUpTo({
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
-    useMessengerStore.getState().applyMessagePointer(action.ownerKey, effectiveMessage);
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(action.ownerKey, effectiveMessage, store.getState().messagesById);
   }
   const scope = conversationIds ?? [
     message.conversationId,

@@ -1989,10 +1989,10 @@ describe("ChatPage Workspace route", () => {
     );
     expect(screen.getByTestId("old-composer-section")).toBeInTheDocument();
     expect(screen.getByText("workspace message")).toBeInTheDocument();
-    expect(screen.getByText("#general")).toBeInTheDocument();
+    expect(screen.getByText("general")).toBeInTheDocument();
     expect(screen.getByText("Roadmap")).toBeInTheDocument();
     expect(captured.channelHeaderProps).toMatchObject({
-      channelName: "#general",
+      channelName: "general",
       topic: "Roadmap",
       hideTopic: false,
       participantsCount: 2,
@@ -2132,7 +2132,13 @@ describe("ChatPage Workspace route", () => {
   it("loads one latest window from the active topic last-message pointer", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
@@ -2166,7 +2172,13 @@ describe("ChatPage Workspace route", () => {
   it("uses the stream last-message pointer and falls back to its conversation projection", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
 
     renderWorkspaceChatPageWithShellContexts(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
     await screen.findByTestId("workspace-message-list-section");
@@ -2208,7 +2220,13 @@ describe("ChatPage Workspace route", () => {
     useMessengerStore
       .getState()
       .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createDirectMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createDirectMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
@@ -2221,7 +2239,13 @@ describe("ChatPage Workspace route", () => {
   it("queues the latest-window intent while another message request is busy", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, true);
 
@@ -2248,7 +2272,13 @@ describe("ChatPage Workspace route", () => {
   it("cancels a queued latest-window intent before the busy request finishes", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     useWorkspaceMessageStore.getState().setMessagesLoading(conversationId, true);
 
@@ -2271,7 +2301,13 @@ describe("ChatPage Workspace route", () => {
   it("deduplicates repeated latest-window clicks for the same message", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
 
@@ -2298,7 +2334,13 @@ describe("ChatPage Workspace route", () => {
   it("does not classify an unfinished tail request as boundary pagination", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
@@ -2362,7 +2404,13 @@ describe("ChatPage Workspace route", () => {
     }>();
     captured.loadWorkspaceMessages.mockReturnValueOnce(initial.promise);
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -2519,7 +2567,13 @@ describe("ChatPage Workspace route", () => {
   it("aborts an in-flight latest-window request when scrolling cancels the intent", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
 
@@ -2545,7 +2599,15 @@ describe("ChatPage Workspace route", () => {
   it("replaces an in-flight tail request when the last-message pointer advances", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    const messages = useWorkspaceMessageStore.getState();
+    messages.upsertMessageBodyFromSnapshot(createSecondMessage(), messages.messageMutationRevision);
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const oldWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     const latestWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage
@@ -2564,7 +2626,13 @@ describe("ChatPage Workspace route", () => {
     const oldSignal = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0].signal;
 
     act(() => {
-      useMessengerStore.getState().applyMessagePointer(ownerKey, createThirdMessage());
+      useMessengerStore
+        .getState()
+        .applyMessagePointer(
+          ownerKey,
+          createThirdMessage(),
+          useWorkspaceMessageStore.getState().messagesById,
+        );
     });
     await waitFor(() =>
       expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
@@ -2592,7 +2660,13 @@ describe("ChatPage Workspace route", () => {
   it("settles a failed tail request so the same click can retry", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     captured.loadWorkspaceMessageWindowAroundMessage
       .mockResolvedValueOnce({
         status: "failed",
@@ -2624,7 +2698,13 @@ describe("ChatPage Workspace route", () => {
   it("does not let cleanup from the previous conversation abort a new tail request", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const topicWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     const streamWindowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage
@@ -5850,7 +5930,13 @@ describe("ChatPage Workspace route", () => {
   it("keeps a quote anchor when an earlier tail request resolves", async () => {
     const ownerKey = useMessengerStore.getState().ownerKey;
     if (ownerKey == null) throw new Error("Expected messenger owner");
-    useMessengerStore.getState().applyMessagePointer(ownerKey, createSecondMessage());
+    useMessengerStore
+      .getState()
+      .applyMessagePointer(
+        ownerKey,
+        createSecondMessage(),
+        useWorkspaceMessageStore.getState().messagesById,
+      );
     const tailRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(tailRequest.promise);
 

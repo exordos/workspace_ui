@@ -8,7 +8,10 @@ import type {
   MessengerFolder,
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
+  MessengerStream,
 } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
@@ -16,6 +19,7 @@ import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
+import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
 
 const runWorkspaceStreamNotificationUpdateMock = vi.fn();
@@ -27,10 +31,12 @@ const runWorkspaceStreamRenameRequestMock = vi.fn();
 const runWorkspaceTopicRenameRequestMock = vi.fn();
 const runWorkspaceTopicDoneToggleMock = vi.fn();
 const runWorkspaceStreamReadMock = vi.fn();
+const runWorkspaceStreamArchiveMock = vi.fn();
 const runWorkspaceTopicReadMock = vi.fn();
 const reportUnexpectedErrorMock = vi.fn();
 
 vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
+  runWorkspaceStreamArchive: (...args: unknown[]) => runWorkspaceStreamArchiveMock(...args),
   runWorkspaceStreamNotificationUpdate: (...args: unknown[]) =>
     runWorkspaceStreamNotificationUpdateMock(...args),
   runWorkspaceTopicNotificationUpdate: (...args: unknown[]) =>
@@ -121,6 +127,53 @@ function createNamedTopic(title: string, index: number, isDone = false): Messeng
   });
 }
 
+function seedArchiveContext(accountId = "archive-account-a", isArchived = false): void {
+  useWorkspaceAuthStore.getState().setSession({
+    accountId,
+    instanceId: "archive-instance",
+    organizationId: "archive-organization",
+    projectId: "project-a",
+    userUuid: "archive-user",
+    organizationOrigin: "https://archive.example.com",
+    accessToken: "test-token",
+    login: "archive-user@example.com",
+    profile: {
+      uuid: "archive-user",
+      username: "Archive user",
+      firstName: null,
+      lastName: null,
+      email: null,
+    },
+  });
+  const context = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+  const stream: MessengerStream = {
+    uuid: STREAM_UUID,
+    projectId: context.projectId,
+    userUuid: context.userUuid,
+    ownerUuid: context.userUuid,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Engineering",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+  };
+  useMessengerStore.setState({
+    ownerKey: workspaceRuntimeOwnerKey(context),
+    streamsById: { [STREAM_UUID]: stream },
+  });
+}
+
 function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
   return {
     uuid: FOLDER_UUID,
@@ -171,11 +224,24 @@ function expectNoWorkspaceActionRequests(): void {
   expect(runWorkspaceTopicRenameRequestMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicDoneToggleMock).not.toHaveBeenCalled();
   expect(runWorkspaceStreamReadMock).not.toHaveBeenCalled();
+  expect(runWorkspaceStreamArchiveMock).not.toHaveBeenCalled();
   expect(runWorkspaceTopicReadMock).not.toHaveBeenCalled();
 }
 
 function CurrentPath(): ReactElement {
   return <span data-testid="current-path">{useLocation().pathname}</span>;
+}
+
+function renderArchiveMenu(stream: MessengerSidebarStreamItem): void {
+  renderWithProviders(
+    <>
+      <WorkspaceStreamContextMenu stream={stream}>
+        <a href={stream.route}>{stream.title}</a>
+      </WorkspaceStreamContextMenu>
+      <CurrentPath />
+    </>,
+    { route: `/org/acme/project/project-a/stream/${STREAM_UUID}` },
+  );
 }
 
 function renderWorkspaceSidebar(
@@ -213,6 +279,7 @@ function renderWorkspaceSidebar(
 
 describe("WorkspaceSidebar context menu", () => {
   afterEach(() => {
+    act(() => useWorkspaceAuthStore.getState().clear());
     useMessengerStore.getState().clear();
     useSidebarConfigStore.getState().setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
     useSidebarConfigStore.getState().setCreateChatOpen(false);
@@ -227,14 +294,154 @@ describe("WorkspaceSidebar context menu", () => {
     runWorkspaceTopicRenameRequestMock.mockReset();
     runWorkspaceTopicDoneToggleMock.mockReset();
     runWorkspaceStreamReadMock.mockReset();
+    runWorkspaceStreamArchiveMock.mockReset();
     runWorkspaceTopicReadMock.mockReset();
     reportUnexpectedErrorMock.mockReset();
   });
 
-  it("uses the stream color as the channel avatar background", () => {
+  it.each(["directPrivate", "channel"] as const)(
+    "confirms archiving a %s for all participants and cancels without a request",
+    async (uiKind) => {
+      seedArchiveContext();
+      renderArchiveMenu(createStream({ uiKind }));
+      const streamLink = screen.getByRole("link", { name: /engineering/i });
+      fireEvent.contextMenu(streamLink);
+      fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+      const dialog = await screen.findByRole("dialog", { name: t("sidebar.archiveChatTitle") });
+      expect(
+        within(dialog).getByText(
+          t(
+            uiKind === "directPrivate"
+              ? "sidebar.archiveDirectChatDescription"
+              : "sidebar.archiveChatDescription",
+            { name: "Engineering" },
+          ),
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText(t("sidebar.archiveChatHistoryHint"))).toBeInTheDocument();
+      expect(runWorkspaceStreamArchiveMock).not.toHaveBeenCalled();
+      fireEvent.click(within(dialog).getByRole("button", { name: t("common.cancel") }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(runWorkspaceStreamArchiveMock).not.toHaveBeenCalled();
+      expect(streamLink).toHaveFocus();
+    },
+  );
+
+  it("keeps archive failures inline and retries once while blocking duplicate submission and dismissal", async () => {
+    seedArchiveContext();
+    const request = deferred<{ status: string }>();
+    runWorkspaceStreamArchiveMock
+      .mockRejectedValueOnce(new Error("sensitive server response"))
+      .mockReturnValueOnce(request.promise);
+    renderArchiveMenu(createStream());
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+    const dialog = await screen.findByRole("dialog", { name: t("sidebar.archiveChatTitle") });
+    const submit = within(dialog).getByRole("button", { name: t("sidebar.archiveChat") });
+    fireEvent.click(submit);
+    expect(await screen.findByRole("alert")).toHaveTextContent(t("sidebar.archiveChatFailed"));
+    expect(screen.queryByText(/sensitive server response/)).not.toBeInTheDocument();
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(submit).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: t("common.cancel") })).toBeDisabled();
+    expect(
+      within(dialog).queryByRole("button", { name: t("common.close") }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(runWorkspaceStreamArchiveMock).toHaveBeenCalledTimes(2);
+    expect(runWorkspaceStreamArchiveMock).toHaveBeenLastCalledWith({ streamUuid: STREAM_UUID });
+    await act(async () => {
+      request.resolve({ status: "applied" });
+      await request.promise;
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("current-path")).toHaveTextContent(
+      `/org/acme/project/project-a/stream/${STREAM_UUID}`,
+    );
+    expect(reportUnexpectedErrorMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["account-b", "archive-account-a"])(
+    "invalidates an old confirmation after runtime switches to %s",
+    async (accountId) => {
+      seedArchiveContext();
+      renderArchiveMenu(createStream());
+      fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+      const dialog = await screen.findByRole("dialog");
+      const submit = within(dialog).getByRole("button", { name: t("sidebar.archiveChat") });
+      act(() => seedArchiveContext(accountId));
+      fireEvent.click(submit);
+      expect(runWorkspaceStreamArchiveMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    },
+  );
+
+  it.each(["success", "failure"] as const)(
+    "ignores an old archive %s after opening a new runtime confirmation",
+    async (outcome) => {
+      seedArchiveContext();
+      const request = deferred<{ status: string }>();
+      runWorkspaceStreamArchiveMock.mockReturnValueOnce(
+        request.promise.then((result) => {
+          if (outcome === "failure") throw new Error("old server failure");
+          return result;
+        }),
+      );
+      renderArchiveMenu(createStream());
+      const streamLink = screen.getByRole("link", { name: /engineering/i });
+      fireEvent.contextMenu(streamLink);
+      fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: t("sidebar.archiveChat"),
+        }),
+      );
+      act(() => seedArchiveContext("account-b"));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      fireEvent.contextMenu(streamLink);
+      fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+      const newDialog = await screen.findByRole("dialog");
+      await act(async () => {
+        request.resolve({ status: "applied" });
+        await request.promise;
+      });
+      expect(newDialog).toBeInTheDocument();
+      expect(
+        within(newDialog).getByRole("button", { name: t("sidebar.archiveChat") }),
+      ).toBeEnabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps a skipped archive confirmation available for retry", async () => {
+    seedArchiveContext();
+    runWorkspaceStreamArchiveMock.mockResolvedValue({ status: "skipped", reason: "stale-owner" });
+    renderArchiveMenu(createStream());
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: t("sidebar.archiveChat") }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: t("sidebar.archiveChat") }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(t("sidebar.archiveChatFailed"));
+    expect(within(dialog).getByRole("button", { name: t("sidebar.archiveChat") })).toBeEnabled();
+  });
+
+  it("hides archive for an already archived chat", async () => {
+    renderArchiveMenu(createStream({ isArchived: true }));
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    await screen.findByRole("menuitem", { name: /new topic/i });
+    expect(
+      screen.queryByRole("menuitem", { name: t("sidebar.archiveChat") }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses the channel initial and stream color for the avatar", () => {
     renderWorkspaceSidebar([createStream({ color: 0x2563eb })]);
 
-    expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.getByText("E")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.queryByText("#")).not.toBeInTheDocument();
   });
 
   it("keeps the stream color when a lock replaces the channel placeholder", () => {
@@ -1023,7 +1230,7 @@ describe("WorkspaceSidebar context menu", () => {
       }),
     ]);
 
-    fireEvent.contextMenu(screen.getByRole("link", { name: /#private room/i }));
+    fireEvent.contextMenu(screen.getByRole("link", { name: /private room/i }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /add to folder/i }));
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /projects/i }));
 

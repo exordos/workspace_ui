@@ -52,7 +52,7 @@ export const SIDEBAR_TOPIC_BAR_SPACER_CLASS = "w-[3px] shrink-0 self-stretch";
 export const SIDEBAR_TOPIC_TITLE_CLASS = "truncate text-sm font-medium leading-5 text-text-primary";
 
 /**
- * Ensure topic labels show a leading `#` like stream rows (`#engineering`).
+ * Ensure topic labels show a leading `#`.
  * Does not double-prefix when the backend name already starts with `#`.
  */
 export function formatSidebarTopicTitle(title: string): string {

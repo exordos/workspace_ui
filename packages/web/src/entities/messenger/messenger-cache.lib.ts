@@ -371,10 +371,11 @@ export async function replaceMessengerFolderSnapshotsCache(
 export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
-  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
+  if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
-  if (isStreamCacheRemoved(ownerKey, stream.uuid)) return;
+  if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
   const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
   const projectedFolders = projectStreamUnreadIntoCachedFolders(cachedFolders, stream);
@@ -382,22 +383,27 @@ export async function upsertMessengerStreamCache(
     (folder, index) => folder !== cachedFolders[index],
   );
   await Promise.all([
-    upsertMessengerStreamsCache(ownerKey, [stream]),
-    upsertMessengerConversationsCache(ownerKey, [
-      cachedConversation(conversationFromStream(stream), stream.updatedAt),
-      ...topics.map((topic) =>
-        cachedConversation(
-          conversationFromTopic(topic as unknown as MessengerTopic, stream),
-          topic.updatedAt ?? stream.updatedAt,
+    upsertMessengerStreamsCache(ownerKey, [stream], options),
+    upsertMessengerConversationsCache(
+      ownerKey,
+      [
+        cachedConversation(conversationFromStream(stream), stream.updatedAt),
+        ...topics.map((topic) =>
+          cachedConversation(
+            conversationFromTopic(topic as unknown as MessengerTopic, stream),
+            topic.updatedAt ?? stream.updatedAt,
+          ),
         ),
-      ),
-    ]),
+      ],
+      options,
+    ),
     changedFolders.length === 0
       ? Promise.resolve()
       : upsertMessengerFolderSnapshotsCache(
           ownerKey,
           changedFolders,
           changedFolders.flatMap((folder) => folder.items),
+          options,
         ),
   ]);
   await purgeRemovedStreamCaches(ownerKey, [stream.uuid]);

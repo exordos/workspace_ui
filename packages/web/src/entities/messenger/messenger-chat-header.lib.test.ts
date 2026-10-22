@@ -158,7 +158,7 @@ describe("selectWorkspaceChatHeaderView", () => {
 
     expect(view).toEqual({
       kind: "channel",
-      channelName: "#general",
+      channelName: "general",
       color: null,
       hideTopic: true,
       participantsCount: 2,
@@ -189,6 +189,28 @@ describe("selectWorkspaceChatHeaderView", () => {
     expect(view).toMatchObject({ kind: "channel", color: 0x2563eb });
   });
 
+  it("preserves a hash that is part of the stored channel name", () => {
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(
+        OWNER_KEY,
+        createBootstrapPayload({ streams: [createStream({ name: "#release" })] }),
+      );
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      usersById: createUsersById(),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Unavailable",
+    });
+
+    expect(view).toMatchObject({ kind: "channel", channelName: "#release" });
+  });
+
   it("projects topic title while keeping stream binding counts", () => {
     const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route: {
@@ -205,7 +227,7 @@ describe("selectWorkspaceChatHeaderView", () => {
 
     expect(view).toEqual({
       kind: "channel",
-      channelName: "#general",
+      channelName: "general",
       color: null,
       hideTopic: false,
       participantsCount: 2,
@@ -335,7 +357,7 @@ describe("selectWorkspaceChatHeaderView", () => {
 
     expect(view).toEqual({
       kind: "channel",
-      channelName: "#private-room",
+      channelName: "private-room",
       color: null,
       hideTopic: true,
       participantsCount: 0,
@@ -360,7 +382,7 @@ describe("selectWorkspaceChatHeaderView", () => {
 
     expect(view).toEqual({
       kind: "channel",
-      channelName: "#general",
+      channelName: "general",
       color: null,
       hideTopic: true,
       participantsCount: 2,

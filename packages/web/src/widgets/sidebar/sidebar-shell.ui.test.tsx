@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   MESSENGER_ALL_CHATS_FOLDER_UUID,
   MESSENGER_CHANNELS_FOLDER_UUID,
@@ -10,7 +11,9 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
   MessengerFolder,
+  MessengerMessage,
   MessengerStream,
+  MessengerTopic,
 } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -183,6 +186,7 @@ describe("SidebarShell", () => {
     cleanup();
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().setOwner(null, false);
     useWorkspaceAuthStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
     useSidebarConfigStore.getState().setSelectedFolderId("all");
@@ -218,6 +222,116 @@ describe("SidebarShell", () => {
     expect(lastWorkspaceSidebarCall?.streams).toEqual([
       expect.objectContaining({ title: "Engineering", streamUuid: STREAM_UUID }),
     ]);
+  });
+
+  it("holds a completed topic's stream across chat navigation, then resets on folder exit", async () => {
+    const engineeringUuid = "75309057-419c-4b12-a7c1-3932429ec4a6";
+    const productUuid = "37a28696-153d-431e-a5fb-36f0c0209765";
+    const latest: MessengerTopic = {
+      uuid: "4ec0b996-b778-45f8-8ef4-ef863be0c047",
+      projectId: PROJECT_ID,
+      streamUuid: engineeringUuid,
+      userUuid: "user-a",
+      name: "Latest",
+      unreadCount: 0,
+      isDefault: false,
+      isDone: false,
+      notificationMode: "default",
+      lastMessageUuid: "latest-message",
+      createdAt: DATE,
+      updatedAt: DATE,
+    };
+    const older = {
+      ...latest,
+      uuid: "ed25f944-8106-4386-b2f9-65e9db32d465",
+      name: "Older",
+      lastMessageUuid: "older-message",
+    };
+    const peer = {
+      ...latest,
+      uuid: "a5bde5af-8228-4b88-8e6d-e8dfe59e9b56",
+      streamUuid: productUuid,
+      lastMessageUuid: "peer-message",
+    };
+    const items = [
+      {
+        ...createFolder().items[0]!,
+        streamUuid: engineeringUuid,
+        conversationId: `stream:${engineeringUuid}`,
+      },
+      {
+        ...createFolder().items[0]!,
+        uuid: "product-item",
+        streamUuid: productUuid,
+        conversationId: `stream:${productUuid}`,
+      },
+    ];
+    bootstrapMessengerSidebar({
+      streams: [
+        createStream({ uuid: engineeringUuid, lastMessageUuid: "latest-message" }),
+        createStream({
+          uuid: productUuid,
+          name: "Product",
+          lastMessageUuid: "peer-message",
+        }),
+      ],
+      topics: [latest, older, peer],
+      folders: [
+        createFolder({ items }),
+        createFolder({
+          uuid: TEAM_FOLDER_UUID,
+          title: "Team",
+          items: items.map((item) => ({ ...item, folderUuid: TEAM_FOLDER_UUID })),
+        }),
+      ],
+    });
+    const messages = [latest, older, peer].map(
+      (item, index): MessengerMessage => ({
+        uuid: item.lastMessageUuid ?? "",
+        conversationId: `topic:${item.streamUuid}:${item.uuid}`,
+        projectId: PROJECT_ID,
+        streamUuid: item.streamUuid,
+        topicUuid: item.uuid,
+        authorUuid: "user-a",
+        userUuid: "user-a",
+        payload: { kind: "markdown", content: "Synthetic message" },
+        read: true,
+        pinned: false,
+        starred: false,
+        isOwn: false,
+        reactions: {},
+        reactionUserUuidsByEmojiName: {},
+        ownReactionUuidsByEmojiName: {},
+        createdAt: `2026-06-30T${[13, 10, 12][index]}:00:00Z`,
+        updatedAt: DATE,
+      }),
+    );
+    useWorkspaceMessageStore.setState({
+      ownerKey: OWNER_KEY,
+      messagesById: Object.fromEntries(messages.map((message) => [message.uuid, message])),
+    });
+    useSidebarConfigStore.getState().setSelectedFolderId(ALL_FOLDER_UUID);
+    const path = (uuid: string) => `/org/${ORG_ID}/project/${PROJECT_ID}/stream/${uuid}`;
+    const view = render(<SidebarShell pathname={path(engineeringUuid)} />);
+    const renderedTitles = () =>
+      [...screen.getByTestId("workspace-sidebar").querySelectorAll("span")].map(
+        (element) => element.textContent,
+      );
+    expect(renderedTitles()).toEqual(["Engineering", "Product"]);
+
+    act(() => useMessengerStore.getState().upsertTopic(OWNER_KEY, { ...latest, isDone: true }));
+    await waitFor(() =>
+      expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams[0]?.topics).toEqual(
+        expect.arrayContaining([expect.objectContaining({ topicUuid: latest.uuid, isDone: true })]),
+      ),
+    );
+    expect(renderedTitles()).toEqual(["Engineering", "Product"]);
+    view.rerender(<SidebarShell pathname={path(productUuid)} />);
+    expect(renderedTitles()).toEqual(["Engineering", "Product"]);
+    act(() => useSidebarConfigStore.getState().setSelectedFolderId(TEAM_FOLDER_UUID));
+    expect(renderedTitles()).toEqual(["Product", "Engineering"]);
+    act(() => useSidebarConfigStore.getState().setSelectedFolderId(ALL_FOLDER_UUID));
+    expect(renderedTitles()).toEqual(["Product", "Engineering"]);
   });
 
   it("updates selected folder through sidebar config only", () => {

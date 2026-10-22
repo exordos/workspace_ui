@@ -5,7 +5,11 @@ import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
-import { WORKSPACE_MESSAGE_QUICK_REACTIONS } from "./workspace-message-quick-reactions.lib";
+import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
+import {
+  getWorkspaceMessageQuickReactions,
+  getWorkspaceMessageQuickReactionsServerSnapshot,
+} from "./workspace-message-quick-reactions.lib";
 import type {
   WorkspaceMessageBubbleMenuProps,
   WorkspaceReactionEmojiPickerProps,
@@ -19,6 +23,7 @@ const REACTION_EMOJI_PICKER_WIDTH = 320;
 const REACTION_EMOJI_PICKER_HEIGHT = 360;
 const REACTION_EMOJI_PICKER_MARGIN = 8;
 const REACTION_EMOJI_PICKER_GAP = 8;
+const subscribeToNoQuickReactionUpdates = () => () => {};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(min, value), max);
@@ -101,7 +106,7 @@ const WorkspaceReactionEmojiPicker = React.memo(function WorkspaceReactionEmojiP
       : Theme.DARK;
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         ref={triggerRef}
         type="button"
@@ -167,6 +172,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onLoadWorkspaceFilePreview,
   getSelectedText,
 }: WorkspaceMessageBubbleMenuProps): React.ReactElement | null {
+  const quickReactions = React.useSyncExternalStore(
+    open ? subscribeWorkspaceMessageQuickReactionUsage : subscribeToNoQuickReactionUpdates,
+    getWorkspaceMessageQuickReactions,
+    getWorkspaceMessageQuickReactionsServerSnapshot,
+  );
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   const closeMenu = useCallback(() => {
@@ -220,22 +230,26 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         type: "custom",
         key: "quick-reactions",
         render: () => (
-          <div className="flex items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-            {WORKSPACE_MESSAGE_QUICK_REACTIONS.map((reaction) => (
-              <button
-                key={reaction.emojiName}
-                type="button"
-                className={`${REACTION_BUTTON_CLASS_NAME} text-current`}
-                aria-label={t(reaction.labelKey)}
-                data-workspace-message-quick-reaction={reaction.glyph}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleReaction(reaction.glyph);
-                }}
-              >
-                <span className="text-[15px] leading-none">{reaction.glyph}</span>
-              </button>
-            ))}
+          <div className="flex w-60 max-w-[calc(100vw-2rem)] items-center gap-0.5 border-b border-border-subtle px-3 py-2">
+            <div className="min-w-0 flex-1 overflow-x-auto">
+              <div className="flex w-max items-center gap-0.5">
+                {quickReactions.map((reaction) => (
+                  <button
+                    key={reaction.emojiName}
+                    type="button"
+                    className={`${REACTION_BUTTON_CLASS_NAME} shrink-0 text-current`}
+                    aria-label={t(reaction.labelKey, { emoji: reaction.glyph })}
+                    data-workspace-message-quick-reaction={reaction.glyph}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleReaction(reaction.glyph);
+                    }}
+                  >
+                    <span className="text-[15px] leading-none">{reaction.glyph}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <WorkspaceReactionEmojiPicker
               open={emojiPickerOpen}
               onOpenChange={setEmojiPickerOpen}
@@ -408,6 +422,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onRequestDeleteMessage,
     onToggleMessageSelection,
     onToggleMessageReaction,
+    quickReactions,
   ]);
 
   if (menuItems.length === 0) return null;

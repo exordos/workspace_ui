@@ -291,7 +291,7 @@ describe("WorkspaceMessageAnchorTransition", () => {
       "Forwarded preview body",
     );
     expect(screen.getByTitle("A very long source channel and topic")).toHaveTextContent(
-      "# A very long source channel and topic",
+      "A very long source channel and topic",
     );
     expect(screen.getByText(/2020/)).toBeInTheDocument();
   });

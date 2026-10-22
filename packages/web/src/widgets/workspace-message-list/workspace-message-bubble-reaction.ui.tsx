@@ -51,11 +51,11 @@ export function WorkspaceMessageBubbleReaction({
     setOpen(true);
   };
 
-  const closeAndFocusTrigger = () => {
+  const closeReactions = (restoreFocus: boolean) => {
     cancelHover();
-    suppressFocusOpen.current = true;
+    suppressFocusOpen.current = restoreFocus;
     setOpen(false);
-    triggerRef.current?.focus();
+    if (restoreFocus) triggerRef.current?.focus();
   };
 
   useEffect(
@@ -86,7 +86,7 @@ export function WorkspaceMessageBubbleReaction({
       if (!open) return;
       event.preventDefault();
       event.stopPropagation();
-      closeAndFocusTrigger();
+      closeReactions(true);
       return;
     }
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
@@ -147,13 +147,13 @@ export function WorkspaceMessageBubbleReaction({
       >
         <div
           ref={scrollRef}
-          className="flex flex-col items-center overflow-y-auto overscroll-contain scrollbar-none"
+          className="flex flex-col-reverse items-center overflow-y-auto overscroll-contain scrollbar-none"
           data-workspace-message-quick-reaction-scroll="true"
           style={{ maxHeight: open ? capsuleHeight - 4 : 36 }}
         >
           {(open ? reactions : reactions.slice(0, 1)).map((reaction, index) => (
             <Button
-              key={reaction.key}
+              key={index === 0 ? "quick-reaction-trigger-slot" : `reaction-${reaction.key}`}
               ref={(element) => {
                 if (index === 0) triggerRef.current = element;
                 if (element == null) reactionRefs.current.delete(reaction.key);
@@ -191,7 +191,7 @@ export function WorkspaceMessageBubbleReaction({
                   touchPreview.current = false;
                   return;
                 }
-                closeAndFocusTrigger();
+                closeReactions(event.detail === 0);
                 reaction.onSelect();
               }}
             >

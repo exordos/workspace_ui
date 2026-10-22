@@ -33,7 +33,7 @@ export const RenameStreamTopicDialog = React.memo(function RenameStreamTopicDial
       open={open}
       onOpenChange={onOpenChange}
       title={t("channel.renameTopicTitle")}
-      description={`#${channelName}`}
+      description={channelName}
       positionClassName="top-1/2 -translate-y-1/2"
       footer={
         <AppDialogFormFooter

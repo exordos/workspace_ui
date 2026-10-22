@@ -93,7 +93,7 @@ function DraftCard({
         <span className="rounded bg-bg-elevated px-1.5 py-0.5">
           {isDirect ? t("workspaceDrafts.direct") : t("workspaceDrafts.channel")}
         </span>
-        <span className="truncate">{isDirect ? streamName : `#${streamName}`}</span>
+        <span className="truncate">{streamName}</span>
         <span>·</span>
         <span className="truncate">{topicName}</span>
         <span className="ml-auto shrink-0">{draftTime(draft.updatedAt)}</span>
@@ -111,7 +111,7 @@ function DraftCard({
     <li className="bg-bg-elevated/40 group relative flex gap-3 rounded-xl border border-border-subtle p-3 transition-colors hover:bg-card-bg">
       <div className="pt-0.5">
         <WorkspaceAvatar size="sm" avatarUrn={avatarUrn} style={avatarStyle}>
-          {isDirect ? streamName.slice(0, 1) : "#"}
+          {streamName.slice(0, 1)}
         </WorkspaceAvatar>
       </div>
       {canOpen ? (

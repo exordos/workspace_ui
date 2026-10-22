@@ -132,7 +132,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain("#Engineering");
+    expect(html).toContain("Engineering");
     expect(html).not.toContain("<a");
   });
 
@@ -141,7 +141,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain("#Engineering&gt;Bugs");
+    expect(html).toContain("Engineering&gt;Bugs");
     expect(html).not.toContain("<a");
   });
 
@@ -150,7 +150,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain("#Engineering&gt;Bugs@12345");
+    expect(html).toContain("Engineering&gt;Bugs@12345");
     expect(html).not.toContain("<a");
   });
 
@@ -158,7 +158,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs@12345**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain("#Unknown&gt;Bugs@12345");
+    expect(html).toContain("Unknown&gt;Bugs@12345");
     expect(html).not.toContain("<a");
   });
 
@@ -166,7 +166,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain("#Unknown");
+    expect(html).toContain("Unknown");
     expect(html).not.toContain("<a");
   });
 
@@ -174,7 +174,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain("#Unknown&gt;Bugs");
+    expect(html).toContain("Unknown&gt;Bugs");
     expect(html).not.toContain("<a");
   });
 });

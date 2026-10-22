@@ -2834,6 +2834,64 @@ describe("messenger realtime active applier", () => {
       }),
     ]);
   });
+  it.each(["loaded", "missing", "empty"] as const)(
+    "preserves message chronology and previous snapshots with a %s tail during catch-up",
+    async (tail) => {
+      const context = createContext(createOwner(), {
+        source: "catch_up",
+        notificationsEnabled: false,
+      });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+      const applier = createMessengerRealtimeActiveApplier({
+        cache: { writeCreatedMessages: vi.fn() },
+      });
+      const lastMessageUuid = tail === "empty" ? null : MESSAGE_A;
+      const metadataUpdatedAt = "2026-06-22T12:00:00Z";
+      await applyStreamAndTopicSnapshot(applier, context, {
+        stream: { last_message_uuid: lastMessageUuid, updated_at: metadataUpdatedAt },
+        topic: { last_message_uuid: lastMessageUuid, updated_at: metadataUpdatedAt },
+      });
+      if (tail === "loaded") {
+        useWorkspaceMessageStore
+          .getState()
+          .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
+      }
+      const before = useMessengerStore.getState();
+
+      await applier.applyEvents?.(
+        [
+          {
+            type: "message",
+            kind: "message.created",
+            epoch_version: 3,
+            message: createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATER }),
+          },
+          {
+            type: "message",
+            kind: "message.created",
+            epoch_version: 4,
+            message: createMessageDto({ uuid: MESSAGE_B, created_at: DATE_MIDDLE }),
+          },
+        ],
+        context,
+      );
+
+      const after = useMessengerStore.getState();
+      const expected = tail === "missing" ? MESSAGE_A : MESSAGE_C;
+      expect(after.streamsById[STREAM_A]?.lastMessageUuid).toBe(expected);
+      expect(after.topicsById[TOPIC_A]?.lastMessageUuid).toBe(expected);
+      for (const id of [`stream:${STREAM_A}`, `topic:${STREAM_A}:${TOPIC_A}`]) {
+        expect(after.conversationsById[id]?.lastMessageUuid).toBe(expected);
+        expect(before.conversationsById[id]?.lastMessageUuid).toBe(lastMessageUuid);
+      }
+      expect(after.streamsById[STREAM_A]?.updatedAt).toBe(metadataUpdatedAt);
+      expect(after.topicsById[TOPIC_A]?.updatedAt).toBe(metadataUpdatedAt);
+      expect(before.streamsById[STREAM_A]?.lastMessageUuid).toBe(lastMessageUuid);
+      expect(before.topicsById[TOPIC_A]?.lastMessageUuid).toBe(lastMessageUuid);
+    },
+  );
+
   it("batches adjacent creates and flushes before edit, read and delete events", async () => {
     const context = createContext(createOwner(), {
       source: "catch_up",

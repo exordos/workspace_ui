@@ -327,9 +327,30 @@ test.describe("Workspace message quick actions @mock", () => {
 
     await authenticated.mouse.move(0, 0);
     await expectActionsHidden(actions);
-    await actions.locator(REPLY_ACTION).focus();
+    await bubble.locator("[data-message-body] p").first().click();
+    await authenticated.mouse.move(0, 0);
+    await expect(bubble).toBeFocused();
+    await expectActionsHidden(actions);
+
+    // The same focused bubble must reveal its actions when keyboard navigation resumes.
+    await authenticated.keyboard.press("Shift+Tab");
+    await authenticated.keyboard.press("Tab");
+    await expect(bubble).toBeFocused();
+    await expect(actions).toHaveCSS("opacity", "1");
+    await authenticated.keyboard.press("Tab");
     await expect(actions.locator(REPLY_ACTION)).toBeFocused();
     await expect(actions).toHaveCSS("opacity", "1");
+    await authenticated.keyboard.press("Tab");
+    await expect(actions.locator(REACTION_ACTION)).toBeFocused();
+    const panel = row.locator("[data-workspace-message-quick-reactions='true']");
+    await expect(panel).toHaveAttribute("data-expanded", "true");
+    await authenticated.keyboard.press("ArrowUp");
+    await authenticated.keyboard.press("Escape");
+    await expect(panel).toHaveAttribute("data-expanded", "false");
+    await expect(actions.locator(REACTION_ACTION)).toBeFocused();
+    await expect(actions).toHaveCSS("opacity", "1");
+    await authenticated.keyboard.press("Shift+Tab");
+    await expect(actions.locator(REPLY_ACTION)).toBeFocused();
     await authenticated.keyboard.press("Enter");
 
     const quote = authenticated.locator("[data-composer-reply-quote='true']");
@@ -446,19 +467,19 @@ test.describe("Workspace message quick actions @mock", () => {
       expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
       expect(metrics.scrollbarHidden).toBe(true);
       await scroll.hover();
-      await authenticated.mouse.wheel(0, 600);
-      await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await authenticated.mouse.wheel(0, -600);
+      await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeLessThan(0);
       await expect
         .poll(() =>
           first.evaluate((element) => {
             const viewport = element.closest("[data-workspace-message-quick-reaction-scroll]");
             return (
-              element.getBoundingClientRect().bottom - (viewport?.getBoundingClientRect().top ?? 0)
+              element.getBoundingClientRect().top - (viewport?.getBoundingClientRect().bottom ?? 0)
             );
           }),
         )
-        .toBeLessThanOrEqual(0);
-      await authenticated.mouse.wheel(0, -600);
+        .toBeGreaterThanOrEqual(0);
+      await authenticated.mouse.wheel(0, 600);
       await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(first).toBeInViewport({ ratio: 1 });
       const screenshotPath = testInfo.outputPath(`message-reaction-list-${owner}.png`);
@@ -557,9 +578,9 @@ test.describe("Workspace message quick actions @mock", () => {
       const actions = row.locator(QUICK_ACTIONS);
       const reaction = row.locator(REACTION_ACTION);
       const panel = row.locator("[data-workspace-message-quick-reactions='true']");
+      await page.clock.install({ time: new Date("2026-10-20T00:00:00Z") });
       await bubble.hover();
       await expect(actions).toHaveCSS("opacity", "1");
-      await page.clock.install({ time: new Date("2026-10-20T00:00:00Z") });
       await page.clock.pauseAt(new Date("2026-10-20T00:00:01Z"));
       await page.mouse.move(0, 0);
       await page.clock.runFor(100);

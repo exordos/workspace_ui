@@ -118,7 +118,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                   { value: "", label: t("channel.selectChannel") },
                   ...streamOptions.map((streamOption) => ({
                     value: streamOption.streamUuid,
-                    label: `#${streamOption.name}`,
+                    label: streamOption.name,
                   })),
                 ]}
               />

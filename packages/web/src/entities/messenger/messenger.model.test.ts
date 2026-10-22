@@ -176,6 +176,87 @@ describe("messenger store", () => {
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
   });
 
+  it.each([
+    ["older message", DELETED_MESSAGE, "2026-06-22T10:00:00Z", "2026-06-22T09:00:00Z", true, false],
+    [
+      "newer message after metadata edit",
+      STREAM_TAIL_MESSAGE,
+      "2026-06-22T10:20:00Z",
+      "2026-06-22T12:00:00Z",
+      true,
+      true,
+    ],
+    ["same UUID", TOPIC_REPLACEMENT_MESSAGE, DATE, DATE, true, false],
+    ["missing local tail", STREAM_TAIL_MESSAGE, "2026-06-22T10:20:00Z", DATE, false, false],
+    ["equal time and higher UUID", STREAM_TAIL_MESSAGE, DATE, DATE, true, true],
+    ["equal time and lower UUID", DELETED_MESSAGE, DATE, DATE, true, false],
+  ] as const)(
+    "advances pointers only for newer local chronology: %s",
+    (_name, uuid, createdAt, updatedAt, loaded, advances) => {
+      const current = createMessage();
+      useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+        streams: [createStream({ lastMessageUuid: current.uuid, updatedAt })],
+        streamBindings: [],
+        topics: [createTopic({ lastMessageUuid: current.uuid, updatedAt })],
+        conversations: [
+          createConversation({ lastMessageUuid: current.uuid }),
+          createConversation({
+            id: current.conversationId,
+            topicUuid: TOPIC_A,
+            lastMessageUuid: current.uuid,
+          }),
+        ],
+        folders: [],
+      });
+      const before = useMessengerStore.getState();
+      before.applyMessagePointer(
+        OWNER_KEY,
+        createMessage({ uuid, createdAt }),
+        loaded ? { [current.uuid]: current } : {},
+      );
+      const after = useMessengerStore.getState();
+      const expected = advances ? uuid : current.uuid;
+      expect(after.streamsById[STREAM_A]?.lastMessageUuid).toBe(expected);
+      expect(after.topicsById[TOPIC_A]?.lastMessageUuid).toBe(expected);
+      expect(after.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(expected);
+      expect(after.conversationsById[current.conversationId]?.lastMessageUuid).toBe(expected);
+      if (!advances) expect(after).toBe(before);
+    },
+  );
+
+  it("compares stream and topic tails independently", () => {
+    const streamTail = createMessage({
+      uuid: STREAM_TAIL_MESSAGE,
+      topicUuid: TOPIC_B,
+      createdAt: "2026-06-22T12:00:00Z",
+    });
+    const topicTail = createMessage();
+    const incoming = createMessage({ uuid: DELETED_MESSAGE, createdAt: "2026-06-22T11:00:00Z" });
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      streams: [createStream({ lastMessageUuid: streamTail.uuid })],
+      streamBindings: [],
+      topics: [createTopic({ lastMessageUuid: topicTail.uuid })],
+      conversations: [
+        createConversation({ lastMessageUuid: streamTail.uuid }),
+        createConversation({
+          id: topicTail.conversationId,
+          topicUuid: TOPIC_A,
+          lastMessageUuid: topicTail.uuid,
+        }),
+      ],
+      folders: [],
+    });
+    useMessengerStore.getState().applyMessagePointer(OWNER_KEY, incoming, {
+      [streamTail.uuid]: streamTail,
+      [topicTail.uuid]: topicTail,
+    });
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(streamTail.uuid);
+    expect(state.conversationsById[`stream:${STREAM_A}`]?.lastMessageUuid).toBe(streamTail.uuid);
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(incoming.uuid);
+    expect(state.conversationsById[topicTail.conversationId]?.lastMessageUuid).toBe(incoming.uuid);
+  });
+
   it("preserves realtime readiness published before bootstrap for the same owner", () => {
     useMessengerStore.getState().clear();
     useMessengerStore.getState().setRealtimeInitialSyncReady(OWNER_KEY, 7, true);
@@ -295,7 +376,7 @@ describe("messenger store", () => {
     const newerMessage = createMessage({ uuid: STREAM_TAIL_MESSAGE });
 
     useMessengerStore.getState().clearMessagePointer(OWNER_KEY, deletedMessage);
-    useMessengerStore.getState().applyMessagePointer(OWNER_KEY, newerMessage);
+    useMessengerStore.getState().applyMessagePointer(OWNER_KEY, newerMessage, {});
     applyDeletedMessagePointerRepair(OWNER_KEY, deletedMessage, targets, {
       stream: createMessage(),
       topic: createMessage(),

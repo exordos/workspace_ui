@@ -187,7 +187,7 @@ describe("useLayoutRightPanelShell", () => {
     );
 
     expect(result.current.rightDrawerTitle).toBe("Channel info");
-    expect(result.current.rightPanelTitleResolved).toBe("#general");
+    expect(result.current.rightPanelTitleResolved).toBe("general");
     expect(result.current.participantsCount).toBe(1);
     expect(result.current.onlineCount).toBe(1);
     expect(result.current.workspaceRightPanelInfo?.kind).toBe("channel");
@@ -341,14 +341,14 @@ describe("useLayoutRightPanelShell", () => {
       ),
     );
 
-    expect(result.current.rightPanelTitleResolved).toBe("#General Chat");
+    expect(result.current.rightPanelTitleResolved).toBe("General Chat");
     expect(result.current.participantsCount).toBe(0);
     expect(result.current.onlineCount).toBe(0);
     expect(result.current.workspaceRightPanelInfo).toEqual(
       expect.objectContaining({
         kind: "channel",
         streamUuid: null,
-        title: "#General Chat",
+        title: "General Chat",
       }),
     );
   });

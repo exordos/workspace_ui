@@ -78,7 +78,7 @@ export function selectWorkspaceChatHeaderView(
   if (selection.status !== "conversation") {
     return {
       kind: "channel",
-      channelName: `#${fallbackTitle}`,
+      channelName: fallbackTitle,
       color: null,
       hideTopic: true,
       participantsCount: 0,
@@ -131,7 +131,7 @@ export function selectWorkspaceChatHeaderView(
 
   return {
     kind: "channel",
-    channelName: `#${title}`,
+    channelName: title,
     color: stream?.color ?? null,
     topic: selection.kind === "topic" ? (topic?.name ?? conversation?.title) : undefined,
     hideTopic: selection.kind !== "topic",

@@ -9,7 +9,7 @@ describe("resolveZulipStreamReference", () => {
 
     expect(result).toEqual({
       htmlClass: "stream",
-      text: "#Engineering",
+      text: "Engineering",
     });
   });
 
@@ -18,7 +18,7 @@ describe("resolveZulipStreamReference", () => {
 
     expect(result).toEqual({
       htmlClass: "stream-topic",
-      text: "#Unknown>Bugs",
+      text: "Unknown>Bugs",
     });
   });
 
@@ -27,7 +27,7 @@ describe("resolveZulipStreamReference", () => {
 
     expect(result).toEqual({
       htmlClass: "message-link",
-      text: "#Unknown>Bugs@12345",
+      text: "Unknown>Bugs@12345",
     });
   });
 
@@ -38,7 +38,7 @@ describe("resolveZulipStreamReference", () => {
 
     expect(result).toEqual({
       htmlClass: "message-link",
-      text: "#Engineering>Bugs@12345",
+      text: "Engineering>Bugs@12345",
     });
   });
 });

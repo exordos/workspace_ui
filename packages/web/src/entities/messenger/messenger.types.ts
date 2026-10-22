@@ -313,6 +313,8 @@ export interface MessengerSidebarStreamItem {
   streamUuid: MessengerUuid;
   directUserUuid: MessengerUuid | null;
   title: string;
+  /** Additional profile fields for direct-chat search, never displayed as the title. */
+  directUserSearchText?: string;
   audience: MessengerAudience;
   isPrivate: boolean;
   encryption?: boolean;

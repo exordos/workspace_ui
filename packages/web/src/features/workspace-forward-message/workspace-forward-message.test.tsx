@@ -365,7 +365,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
 
     await waitForForwardMessageInStore();
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -419,7 +419,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
 
     await waitForForwardMessageInStore();
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -455,7 +455,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
       expect(useWorkspaceMessageStore.getState().messagesById[SECOND_MESSAGE_UUID]).toBeDefined();
     });
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -499,7 +499,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
 
     await waitForForwardMessageInStore();
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -535,7 +535,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
 
     await waitForForwardMessageInStore();
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -672,7 +672,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
 
     await waitForForwardMessageInStore();
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),
@@ -697,7 +697,7 @@ describe("WorkspaceForwardMessageDialog contract", () => {
       expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeDefined();
     });
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#General" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "General" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(
       within(screen.getByRole("listbox")).getByRole("option", { name: "General topic" }),

@@ -160,7 +160,7 @@ describe("WorkspaceSidebar search mode", () => {
 
     renderSidebar({ streams: [engineering], allStreams: [engineering, product] });
 
-    expect(screen.getAllByText("#Engineering")).toHaveLength(1);
+    expect(screen.getAllByText("Engineering")).toHaveLength(1);
     expect(screen.getByText("#Release plan")).toBeInTheDocument();
     expect(screen.queryByText("#Unrelated")).not.toBeInTheDocument();
     const showMoreTopics = screen.getByRole("button", {
@@ -176,7 +176,7 @@ describe("WorkspaceSidebar search mode", () => {
     expect(
       screen.getByRole("separator", { name: t("sidebar.allFoldersResults") }),
     ).toBeInTheDocument();
-    expect(screen.getByText("#Product")).toBeInTheDocument();
+    expect(screen.getByText("Product")).toBeInTheDocument();
     expect(screen.getByText("#Release operations")).toBeInTheDocument();
   });
 
@@ -214,11 +214,11 @@ describe("WorkspaceSidebar search mode", () => {
         selectedFolderSystemType,
       });
 
-      expect(screen.getByText("#Release planning")).toBeInTheDocument();
+      expect(screen.getByText("Release planning")).toBeInTheDocument();
       expect(
         screen.getByRole("separator", { name: t("sidebar.allFoldersResults") }),
       ).toBeInTheDocument();
-      expect(screen.getByText("#Release operations")).toBeInTheDocument();
+      expect(screen.getByText("Release operations")).toBeInTheDocument();
     },
   );
 
@@ -235,7 +235,7 @@ describe("WorkspaceSidebar search mode", () => {
     expect(
       screen.queryByRole("separator", { name: t("sidebar.allFoldersResults") }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("#Product")).toBeInTheDocument();
+    expect(screen.getByText("Product")).toBeInTheDocument();
     expect(screen.getByText("#Launch plan")).toBeInTheDocument();
   });
 
@@ -278,7 +278,7 @@ describe("WorkspaceSidebar search mode", () => {
       { route: "/org/acme/project/project-a" },
     );
 
-    expect(screen.getByText("#Product")).toBeInTheDocument();
+    expect(screen.getByText("Product")).toBeInTheDocument();
     expect(screen.getByText("#Launch plan")).toBeInTheDocument();
     expect(screen.queryByText(t("sidebar.noMatchesInFolder"))).not.toBeInTheDocument();
     expect(
@@ -303,7 +303,7 @@ describe("WorkspaceSidebar search mode", () => {
       { route: "/org/acme/project/project-a/stream/stream-a" },
     );
 
-    expect(screen.getByText("#Engineering")).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
     expect(screen.queryByText(t("sidebar.noMatchesInFolder"))).not.toBeInTheDocument();
     expect(
       screen.queryByRole("separator", { name: t("sidebar.allFoldersResults") }),

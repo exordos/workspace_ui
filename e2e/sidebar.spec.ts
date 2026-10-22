@@ -2,6 +2,13 @@
  * E2E tests for the sidebar — chat list, folders, activity section.
  */
 import { test, expect } from "./fixtures";
+import { e2eOrgBasePath } from "./helpers/navigate-messenger";
+import {
+  E2E_STREAM_UUID,
+  E2E_TOPIC_UUID,
+  streamsSuccess,
+  usersSuccess,
+} from "./mocks/workspace-default-responses";
 
 test.describe("Sidebar", () => {
   test("shows sidebar navigation when authenticated", async ({ authenticated }) => {
@@ -14,6 +21,61 @@ test.describe("Sidebar", () => {
     await expect(
       authenticated.getByRole("searchbox", { name: /поиск|search/i }),
     ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("finds direct streams by name, username and email while preserving group and topic search", async ({
+    authenticated: page,
+  }) => {
+    const userUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const directUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    await page.route(/\/users\/?(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: [
+          ...usersSuccess(),
+          {
+            ...usersSuccess()[0]!,
+            uuid: userUuid,
+            username: "hidden-login",
+            first_name: "Alice",
+            last_name: "Adams",
+            email: "alice@example.test",
+          },
+        ],
+      }),
+    );
+    await page.route(/\/streams\/?(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: [
+          ...streamsSuccess(),
+          {
+            ...streamsSuccess()[0]!,
+            uuid: directUuid,
+            name: "Personal stream",
+            private: true,
+            direct_user_uuid: userUuid,
+            last_message_uuid: null,
+          },
+        ],
+      }),
+    );
+    await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+
+    const sidebar = page.getByRole("navigation", { name: "Chat list" });
+    const search = sidebar.getByRole("searchbox");
+    const direct = sidebar.getByRole("link", { name: /Alice Adams/ });
+    const group = sidebar.getByRole("link", { name: "General", exact: true });
+    await expect(direct).toBeVisible();
+    for (const query of ["Adams", " HIDDEN-LOGIN ", "alice@example.test"]) {
+      await search.fill(query);
+      await expect(direct).toBeVisible();
+      await expect(group).toHaveCount(0);
+    }
+    await expect(sidebar.getByText("hidden-login", { exact: true })).toHaveCount(0);
+    await search.fill("General");
+    await expect(group.first()).toBeVisible();
+    await expect(direct).toHaveCount(0);
+    await search.fill("");
+    await expect(direct).toBeVisible();
   });
 
   test("shows activity section with links", async ({ authenticated }) => {

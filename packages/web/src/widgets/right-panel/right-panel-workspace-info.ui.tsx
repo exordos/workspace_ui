@@ -738,7 +738,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
         <RightPanelTopicList
           topics={info.topics}
-          streamTitle={info.title.startsWith("#") ? info.title.slice(1) : info.title}
+          streamTitle={info.title}
           streamNotificationMode={notificationMode}
           onOpenTopic={handleOpenTopic}
         />

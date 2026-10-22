@@ -58,12 +58,10 @@ function resolveQuoteAuthorLabel(options: {
 const ForwardSnapshotHeader = React.memo(function ForwardSnapshotHeader({
   authorLabel,
   sourceLabel,
-  sourceKind,
   sourceCreatedAt,
 }: {
   authorLabel: string;
   sourceLabel?: string;
-  sourceKind?: "direct";
   sourceCreatedAt?: string;
 }): React.ReactElement {
   const sourceTime = useMemo(() => {
@@ -82,7 +80,7 @@ const ForwardSnapshotHeader = React.memo(function ForwardSnapshotHeader({
           className="min-w-0 truncate border-l-2 border-accent pl-1 text-text-muted"
           title={sourceLabel}
         >
-          {sourceKind === "direct" ? sourceLabel : `# ${sourceLabel}`}
+          {sourceLabel}
         </span>
       ) : null}
       {sourceTime != null ? (
@@ -196,7 +194,6 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     <ForwardSnapshotHeader
       authorLabel={authorLabel}
       sourceLabel={reference.sourceLabel}
-      sourceKind={reference.sourceKind}
       sourceCreatedAt={reference.sourceCreatedAt}
     />
   ) : (

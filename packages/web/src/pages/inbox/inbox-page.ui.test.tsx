@@ -192,8 +192,8 @@ describe("InboxPage workspace data", () => {
     expect(screen.getByText("Channels")).toBeInTheDocument();
     expect(screen.getByText("Alice Reed")).toBeInTheDocument();
     expect(screen.getByText("Alice Reed · Planning")).toBeInTheDocument();
-    expect(screen.getByText("#Engineering")).toBeInTheDocument();
-    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
+    expect(screen.getByText("Engineering · Releases")).toBeInTheDocument();
   });
 
   it("hides streams and topics without unread counters", () => {
@@ -217,8 +217,8 @@ describe("InboxPage workspace data", () => {
 
     renderInbox();
 
-    expect(screen.queryByText("#Read channel")).not.toBeInTheDocument();
-    expect(screen.queryByText("#Read channel · Read topic")).not.toBeInTheDocument();
+    expect(screen.queryByText("Read channel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Read channel · Read topic")).not.toBeInTheDocument();
     expect(screen.getByText("No unread messages")).toBeInTheDocument();
   });
 
@@ -262,10 +262,10 @@ describe("InboxPage workspace data", () => {
 
     renderInbox();
 
-    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
+    expect(screen.getByText("Engineering · Releases")).toBeInTheDocument();
     expect(screen.getAllByText("2")).toHaveLength(2);
-    expect(screen.queryByText("#Muted channel")).not.toBeInTheDocument();
-    expect(screen.queryByText("#Muted channel · Muted topic")).not.toBeInTheDocument();
+    expect(screen.queryByText("Muted channel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Muted channel · Muted topic")).not.toBeInTheDocument();
     expect(screen.queryByText("7")).not.toBeInTheDocument();
     expect(screen.queryByText("6")).not.toBeInTheDocument();
   });
@@ -281,8 +281,8 @@ describe("InboxPage workspace data", () => {
 
     renderInbox();
 
-    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
-    expect(screen.queryByText("#Engineering · Archive")).not.toBeInTheDocument();
+    expect(screen.getByText("Engineering · Releases")).toBeInTheDocument();
+    expect(screen.queryByText("Engineering · Archive")).not.toBeInTheDocument();
   });
 
   it("navigates topic rows to the prepared Workspace topic route", () => {
@@ -293,7 +293,7 @@ describe("InboxPage workspace data", () => {
 
     renderInbox();
 
-    const button = screen.getByText("#Engineering · Releases").closest("button");
+    const button = screen.getByText("Engineering · Releases").closest("button");
     expect(button).not.toBeNull();
     fireEvent.click(button!);
 
@@ -315,7 +315,7 @@ describe("InboxPage workspace data", () => {
 
     renderInbox();
 
-    const button = screen.getByRole("button", { name: /#Engineering/ });
+    const button = screen.getByRole("button", { name: /Engineering/ });
     expect(button).not.toBeNull();
     fireEvent.click(button);
 

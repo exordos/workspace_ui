@@ -2,7 +2,7 @@ import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
+import type { User, UsersById } from "~/entities/user/user.types";
 import { getLocale, type Locale } from "~/i18n/i18n";
 import { workspaceMessengerStreamRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
@@ -181,11 +181,59 @@ function compareNullableStringsDesc(a: string | null, b: string | null): number 
   return b.localeCompare(a);
 }
 
+export interface MessengerSidebarStreamSortActivity {
+  lastMessageCreatedAt: string | null;
+  hasActiveUnreadTopics: boolean;
+}
+
+export function selectMessengerSidebarStreamSortActivity(
+  stream: MessengerSidebarStreamItem,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+): MessengerSidebarStreamSortActivity {
+  return {
+    lastMessageCreatedAt: streamSortMessageCreatedAt(stream, streamsById),
+    hasActiveUnreadTopics: streamHasActiveUnreadTopics(stream),
+  };
+}
+
+function streamSortMessageCreatedAt(
+  stream: MessengerSidebarStreamItem,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+): string | null {
+  const source = streamsById[stream.streamUuid];
+  // A known last-message UUID may still be waiting for hydration; that stream is not empty.
+  return source != null && source.lastMessageUuid == null
+    ? source.createdAt
+    : stream.lastMessageCreatedAt;
+}
+
+/** Apply temporary presentation activity without changing row data or pin/mute priorities. */
+export function sortMessengerSidebarStreams(
+  streams: MessengerSidebarStreamItem[],
+  sortMode: MessengerSidebarSortMode,
+  streamsById: MessengerSidebarStreamsState["streamsById"],
+  activityOverrides: ReadonlyMap<MessengerUuid, MessengerSidebarStreamSortActivity>,
+  previousStreams: readonly MessengerSidebarStreamItem[],
+): MessengerSidebarStreamItem[] {
+  if (activityOverrides.size === 0) return streams;
+  const previousOrder = new Map(previousStreams.map((stream, index) => [stream.id, index]));
+  return [...streams].sort((a, b) => {
+    const comparison = compareSidebarStreams(a, b, sortMode, streamsById, activityOverrides);
+    if (comparison !== 0) return comparison;
+    // Canonical activity may already have reversed equal rows before the override is applied.
+    return (
+      (previousOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (previousOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    );
+  });
+}
+
 function compareSidebarStreams(
   a: MessengerSidebarStreamItem,
   b: MessengerSidebarStreamItem,
   sortMode: MessengerSidebarSortMode,
   streamsById: MessengerSidebarStreamsState["streamsById"],
+  activityOverrides?: ReadonlyMap<MessengerUuid, MessengerSidebarStreamSortActivity>,
 ): number {
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
@@ -193,18 +241,22 @@ function compareSidebarStreams(
   const groupCompare = streamGroupRank(a) - streamGroupRank(b);
   if (groupCompare !== 0) return groupCompare;
 
+  const activityA = activityOverrides?.get(a.streamUuid);
+  const activityB = activityOverrides?.get(b.streamUuid);
   if (sortMode === "unread_first" && streamGroupRank(a) === 0) {
     const unreadCompare =
-      Number(streamHasActiveUnreadTopics(b)) - Number(streamHasActiveUnreadTopics(a));
+      Number(activityB?.hasActiveUnreadTopics ?? streamHasActiveUnreadTopics(b)) -
+      Number(activityA?.hasActiveUnreadTopics ?? streamHasActiveUnreadTopics(a));
     if (unreadCompare !== 0) return unreadCompare;
   }
 
-  const streamA = streamsById[a.streamUuid];
-  const streamB = streamsById[b.streamUuid];
-  // A known last-message UUID may still be waiting for hydration; that stream is not empty.
   const activityCompare = compareNullableStringsDesc(
-    streamA != null && streamA.lastMessageUuid == null ? streamA.createdAt : a.lastMessageCreatedAt,
-    streamB != null && streamB.lastMessageUuid == null ? streamB.createdAt : b.lastMessageCreatedAt,
+    activityA === undefined
+      ? streamSortMessageCreatedAt(a, streamsById)
+      : activityA.lastMessageCreatedAt,
+    activityB === undefined
+      ? streamSortMessageCreatedAt(b, streamsById)
+      : activityB.lastMessageCreatedAt,
   );
   if (activityCompare !== 0) return activityCompare;
 
@@ -257,6 +309,12 @@ export function createMessengerSidebarUnreadMentionIndex(input: {
   return createMessengerTopicUnreadMentionIndex(input);
 }
 
+function resolveDirectUserSearchText(user: User | undefined): string | undefined {
+  if (user == null) return undefined;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+  return [user.displayName, fullName, user.username, user.email].filter(Boolean).join("\n");
+}
+
 function streamItemFromStream(input: {
   organizationId: string;
   projectId: string;
@@ -306,6 +364,7 @@ function streamItemFromStream(input: {
     id: `stream:${input.stream.uuid}`,
     streamUuid: input.stream.uuid,
     directUserUuid: input.stream.directUserUuid,
+    directUserSearchText: resolveDirectUserSearchText(directUser),
     title:
       uiKind === "directPrivate" && input.stream.directUserUuid != null
         ? selectUserDisplayName(directUser, input.stream.name)
@@ -379,6 +438,7 @@ function streamItemFromConversation(input: {
     id: input.conversation.id,
     streamUuid: input.conversation.streamUuid,
     directUserUuid: input.conversation.directUserUuid ?? null,
+    directUserSearchText: resolveDirectUserSearchText(directUser),
     title:
       uiKind === "directPrivate" && input.conversation.directUserUuid != null
         ? selectUserDisplayName(directUser, input.conversation.title)
@@ -484,13 +544,13 @@ export function selectMessengerSidebarStreams(
 
   const selectedFolder = selectedFolderUuid != null ? state.foldersById[selectedFolderUuid] : null;
   // If a folder is selected, order and counters come from folder.items.
-  // If no folder is selected, all streams are shown as a general list.
+  // Archived rows stay in the catalog for the Archive tab, even before folder refresh.
   const streams = selectedFolder
     ? selectedFolder.items
         .map((item) => {
           const stream = state.streamsById[item.streamUuid];
           if (stream != null) {
-            if (isWorkspaceSelfChat(stream, currentUserUuid)) return null;
+            if (stream.isArchived || isWorkspaceSelfChat(stream, currentUserUuid)) return null;
             return streamItemFromStream({
               organizationId: options.organizationId,
               projectId: options.projectId,
@@ -522,7 +582,8 @@ export function selectMessengerSidebarStreams(
 
           const conversation = state.conversationsById[item.conversationId];
           if (conversation == null) return null;
-          if (isWorkspaceSelfChat(conversation, currentUserUuid)) return null;
+          if (conversation.isArchived || isWorkspaceSelfChat(conversation, currentUserUuid))
+            return null;
           return streamItemFromConversation({
             organizationId: options.organizationId,
             projectId: options.projectId,
@@ -545,7 +606,7 @@ export function selectMessengerSidebarStreams(
         .map((streamId) => state.streamsById[streamId])
         .filter(
           (stream): stream is MessengerStream =>
-            stream != null && !isWorkspaceSelfChat(stream, currentUserUuid),
+            stream != null && !stream.isArchived && !isWorkspaceSelfChat(stream, currentUserUuid),
         )
         .map((stream) =>
           streamItemFromStream({

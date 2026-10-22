@@ -294,7 +294,7 @@ test.describe("Thread unread badge after scroll read @mock", () => {
       page.getByText("Could not refresh messages. You may be seeing cached content."),
     ).toBeHidden();
 
-    const streamRow = page.locator("a", { hasText: "#General" }).first();
+    const streamRow = page.locator("a", { hasText: "General" }).first();
     await streamRow.hover();
     await page.getByTestId("sidebar-stream-expand-chevron").first().click();
     const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
@@ -319,7 +319,7 @@ test.describe("Thread unread badge after scroll read @mock", () => {
       node.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
 
-    const streamRow = page.locator("a", { hasText: "#General" }).first();
+    const streamRow = page.locator("a", { hasText: "General" }).first();
     await streamRow.hover();
     await page.getByTestId("sidebar-stream-expand-chevron").first().click();
     const threadRow = page.locator("a", { hasText: THREAD_NAME }).first();
@@ -408,7 +408,7 @@ test.describe("Thread unread badge after scroll read @mock", () => {
         await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${THREAD_UUID}`);
         await page.locator("[data-message-uuid]").first().waitFor({ timeout: 20_000 });
 
-        const streamRow = page.locator("a", { hasText: "#General" }).first();
+        const streamRow = page.locator("a", { hasText: "General" }).first();
         await expect(streamRow).toBeVisible({ timeout: 15_000 });
         await streamRow.hover();
         await page.getByTestId("sidebar-stream-expand-chevron").first().click();

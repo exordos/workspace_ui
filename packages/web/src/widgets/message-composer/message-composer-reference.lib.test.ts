@@ -146,7 +146,7 @@ describe("message composer Workspace references", () => {
       `[Engineering](urn:stream:${STREAM_UUID})`,
     );
     expect(formatWorkspaceComposerReference(topicReference)).toBe(
-      `[#Engineering › Releases](urn:topic:${TOPIC_UUID})`,
+      `[Engineering › Releases](urn:topic:${TOPIC_UUID})`,
     );
   });
 
@@ -160,8 +160,8 @@ describe("message composer Workspace references", () => {
     });
 
     expect(result).toEqual({
-      value: `Ship [#Engineering › Releases](urn:topic:${TOPIC_UUID})  today`,
-      cursorPosition: `Ship [#Engineering › Releases](urn:topic:${TOPIC_UUID}) `.length,
+      value: `Ship [Engineering › Releases](urn:topic:${TOPIC_UUID})  today`,
+      cursorPosition: `Ship [Engineering › Releases](urn:topic:${TOPIC_UUID}) `.length,
     });
   });
 
@@ -175,7 +175,7 @@ describe("message composer Workspace references", () => {
       "https://chat.example.com",
     );
 
-    expect(converted).toContain(`[#Engineering › Releases](urn:topic:${TOPIC_UUID})`);
+    expect(converted).toContain(`[Engineering › Releases](urn:topic:${TOPIC_UUID})`);
     expect(converted).toContain("https://example.com/docs");
   });
 
@@ -198,6 +198,6 @@ describe("message composer Workspace references", () => {
         },
         null,
       ),
-    ).toBe(`[#Engineering › Releases](urn:topic:${TOPIC_UUID})`);
+    ).toBe(`[Engineering › Releases](urn:topic:${TOPIC_UUID})`);
   });
 });

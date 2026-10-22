@@ -176,7 +176,7 @@ describe("WorkspaceMessageQuote", () => {
 
     expect(mocked.resolve).toHaveBeenCalledWith(MESSAGE_B, false);
     expect(screen.getByText("Saved Bob")).toBeInTheDocument();
-    expect(screen.getByText("# Engineering · General")).toBeInTheDocument();
+    expect(screen.getByText("Engineering · General")).toBeInTheDocument();
     expect(container.querySelector("time")?.getAttribute("datetime")).toBe(
       "2026-07-06T09:00:00.000Z",
     );

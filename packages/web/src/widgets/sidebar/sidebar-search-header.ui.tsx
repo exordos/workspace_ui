@@ -10,7 +10,7 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
   onOpenCreateChat,
 }) => {
   return (
-    <div className="flex items-center gap-2 px-3 pb-3 pt-4">
+    <div className="flex shrink-0 items-center gap-2 px-3 pb-3 pt-4">
       <SearchInput
         value={searchQuery}
         onChange={onSearchQueryChange}

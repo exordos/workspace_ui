@@ -37,6 +37,9 @@ import {
   WORKSPACE_MESSENGER_CACHE_DB_VERSION,
   workspaceMessengerMessageOrderKey,
   upsertCachedMessages,
+  upsertMessengerConversationsCache,
+  upsertMessengerFolderSnapshotsCache,
+  upsertMessengerStreamsCache,
   upsertOwnMessageReaction,
   writeConversationMessagePage,
   writeMessengerCatalogCache,
@@ -115,6 +118,107 @@ afterEach(async () => {
 });
 
 describe("workspace-messenger-cache-db", () => {
+  it.each(["database-open", "row-read"] as const)(
+    "rejects catalog writes invalidated during %s",
+    async (phase) => {
+      const updatedAt = "2026-07-01T08:00:00.000Z";
+      const original = {
+        streams: [{ uuid: STREAM, color: 0x2563eb, updatedAt }],
+        conversations: [
+          {
+            id: STREAM_CONVERSATION,
+            streamUuid: STREAM,
+            title: "Original conversation",
+            updatedAt,
+          },
+        ],
+        folders: [{ uuid: "folder-a", updatedAt }],
+        folderItems: [
+          {
+            uuid: "item-a",
+            folderUuid: "folder-a",
+            conversationId: STREAM_CONVERSATION,
+            streamUuid: STREAM,
+            chatType: "stream" as const,
+            orderIndex: 1,
+            updatedAt,
+          },
+        ],
+      };
+      await writeMessengerCatalogCache(OWNER, original);
+      const guards = Array.from({ length: 3 }, () =>
+        vi
+          .fn()
+          .mockReturnValueOnce(phase === "row-read")
+          .mockReturnValue(false),
+      );
+
+      await Promise.all([
+        upsertMessengerStreamsCache(
+          OWNER,
+          [{ ...original.streams[0], uuid: STREAM, color: 0xff0000 }],
+          {
+            shouldApply: guards[0],
+          },
+        ),
+        upsertMessengerConversationsCache(
+          OWNER,
+          [
+            {
+              ...original.conversations[0],
+              id: STREAM_CONVERSATION,
+              streamUuid: STREAM,
+              title: "Stale",
+            },
+          ],
+          { shouldApply: guards[1] },
+        ),
+        upsertMessengerFolderSnapshotsCache(
+          OWNER,
+          [{ ...original.folders[0], uuid: "folder-a", updatedAt: "2026-07-01T09:00:00.000Z" }],
+          [
+            {
+              ...original.folderItems[0],
+              uuid: "item-a",
+              folderUuid: "folder-a",
+              conversationId: STREAM_CONVERSATION,
+              streamUuid: STREAM,
+              chatType: "stream",
+              orderIndex: 100,
+            },
+          ],
+          { shouldApply: guards[2] },
+        ),
+      ]);
+
+      const snapshot = await readMessengerCatalogCache(OWNER);
+      expect(snapshot.streams[0]?.color).toBe(0x2563eb);
+      expect(snapshot.conversations[0]?.title).toBe("Original conversation");
+      expect(snapshot.folders[0]?.updatedAt).toBe(updatedAt);
+      expect(snapshot.folderItems[0]?.orderIndex).toBe(1);
+      for (const guard of guards) {
+        expect(guard.mock.calls.length).toBeGreaterThanOrEqual(phase === "row-read" ? 2 : 1);
+      }
+    },
+  );
+
+  it("does not fill a missing stream color after its pending row write is invalidated", async () => {
+    await upsertMessengerStreamsCache(OWNER, [
+      { uuid: STREAM, color: null, updatedAt: "2026-07-01T09:00:00.000Z" },
+    ]);
+    const shouldApply = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+
+    await upsertMessengerStreamsCache(
+      OWNER,
+      [{ uuid: STREAM, color: 0x2563eb, updatedAt: "2026-07-01T08:00:00.000Z" }],
+      { shouldApply },
+    );
+
+    expect(shouldApply).toHaveBeenCalledTimes(2);
+    const cached = await readMessengerCatalogCache(OWNER);
+    expect(cached.streams[0]?.color).toBeNull();
+  });
+
   it("opens a new Workspace cache database with the current schema", async () => {
     const db = await openWorkspaceMessengerCacheDb();
 

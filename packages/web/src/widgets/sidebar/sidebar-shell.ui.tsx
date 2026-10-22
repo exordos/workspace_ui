@@ -19,6 +19,7 @@ import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";
+import { useSidebarStreamOrder } from "./sidebar-stream-order.hook";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
@@ -121,7 +122,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     const stream = workspaceStreamsById[streamUuid];
     return stream != null && !isWorkspaceSelfChat(stream, currentUserUuid);
   }).length;
-  const workspaceStreams = useMemo(
+  const workspaceStreamsRaw = useMemo(
     () =>
       sidebarWorkspaceIdentity != null
         ? selectMessengerSidebarStreams(workspaceSidebarState, {
@@ -147,10 +148,10 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceUsersById,
     ],
   );
-  const workspaceAllStreams = useMemo(() => {
+  const workspaceAllStreamsRaw = useMemo(() => {
     if (!workspaceSearchActive) return EMPTY_WORKSPACE_STREAMS;
     if (workspaceEffectiveFolderId === MESSENGER_ALL_CHATS_FOLDER_UUID) {
-      return workspaceStreams;
+      return workspaceStreamsRaw;
     }
     return sidebarWorkspaceIdentity != null && workspaceAllFolderId != null
       ? selectMessengerSidebarStreams(workspaceSidebarState, {
@@ -175,9 +176,42 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     workspaceMessagesById,
     workspaceSearchActive,
     workspaceSidebarState,
-    workspaceStreams,
+    workspaceStreamsRaw,
     workspaceUsersById,
   ]);
+  const isChatListRoute =
+    workspaceRoute != null && ["root", "stream", "topic", "message"].includes(workspaceRoute.kind);
+  const listRouteKey = isChatListRoute ? "chats" : (workspaceRoute?.kind ?? pathname);
+  const listKey = JSON.stringify([
+    workspaceOwnerKey,
+    workspaceRuntimeContext?.runtimeGeneration,
+    messenger.bootstrapRequestVersion,
+    sidebarWorkspaceIdentity?.organizationId,
+    sidebarWorkspaceIdentity?.projectId,
+    workspaceEffectiveFolderId,
+    messengerSidebarSortMode,
+    normalizeSidebarSearchQuery(workspaceSearchQuery),
+    listRouteKey,
+  ]);
+  const streamOrderInput = {
+    listKey,
+    streamsById: workspaceStreamsById,
+    topicsById: workspaceTopicsById,
+    messagesById: workspaceMessagesById,
+    sortMode: messengerSidebarSortMode,
+  };
+  const workspaceStreams = useSidebarStreamOrder({
+    ...streamOrderInput,
+    streams: workspaceStreamsRaw,
+  });
+  const workspaceAllStreamsOrdered = useSidebarStreamOrder({
+    ...streamOrderInput,
+    streams: workspaceAllStreamsRaw,
+  });
+  const workspaceAllStreams =
+    workspaceSearchActive && workspaceEffectiveFolderId === MESSENGER_ALL_CHATS_FOLDER_UUID
+      ? workspaceStreams
+      : workspaceAllStreamsOrdered;
   const workspaceLoadingRaw = messenger.isLoading;
   const workspaceError = messenger.error;
   const workspaceCatalogLoaded =

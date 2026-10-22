@@ -87,7 +87,7 @@ describe("ForwardMessageModalBody", () => {
     const { onForward } = renderForwardModal();
 
     fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "#general" }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "general" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Topic name" }));
     fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Roadmap" }));
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));

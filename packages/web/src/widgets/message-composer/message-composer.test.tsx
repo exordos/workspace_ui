@@ -1304,7 +1304,7 @@ describe("MessageComposer mention suggestions", () => {
 
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue(`[#Engineering › Releases](urn:topic:${COMPOSER_TOPIC_UUID}) `);
+    expect(textbox).toHaveValue(`[Engineering › Releases](urn:topic:${COMPOSER_TOPIC_UUID}) `);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(textbox).not.toHaveAttribute("aria-controls");
     expect(textbox).not.toHaveAttribute("aria-activedescendant");
@@ -1325,6 +1325,7 @@ describe("MessageComposer mention suggestions", () => {
       fireEvent.change(textbox, { target: { value: "#eng", selectionStart: 4 } });
       const options = await screen.findAllByRole("option");
       expect(options[0]).toHaveTextContent("Engineering");
+      expect(screen.getByText("E", { exact: true }).closest('[role="option"]')).toBe(options[0]);
 
       textbox.setSelectionRange(0, 0);
       fireEvent.keyUp(textbox, { key });
