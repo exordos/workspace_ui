@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
@@ -20,6 +20,7 @@ import {
   repairMessengerCachedMessagePointers,
   writeMessengerMessageBodyCache,
   restoreMessengerStreamCache,
+  upsertMessengerStreamCache,
   writeMessengerCatalogPayloadCache,
 } from "./messenger-cache.lib";
 import type {
@@ -222,6 +223,24 @@ describe("messenger cache", () => {
 
     const snapshot = await readMessengerCatalogCache(OWNER_KEY);
     expect(snapshot.streamBindings.map((binding) => binding.uuid)).toEqual([BINDING_UUID]);
+  });
+
+  it("does not persist a stream invalidated while reading its cached projection", async () => {
+    const original = createStream({ isArchived: true });
+    await upsertMessengerStreamCache(OWNER_KEY, original);
+    const shouldApply = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+
+    await upsertMessengerStreamCache(
+      OWNER_KEY,
+      { ...original, isArchived: false },
+      { shouldApply },
+    );
+
+    expect(shouldApply).toHaveBeenCalledTimes(2);
+    const cached = await readMessengerCatalogCache(OWNER_KEY);
+    expect(cached.streams[0]).toMatchObject({
+      isArchived: true,
+    });
   });
 
   it("reconciles a fresh topic name after a newer message pointer touched stale cache", async () => {

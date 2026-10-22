@@ -5,12 +5,16 @@ import {
   runWorkspaceChannelCreate,
   runWorkspaceDirectStreamCreate,
 } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import {
+  runWorkspaceCreateTopicRequest,
+  runWorkspaceStreamUnarchive,
+} from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 
 vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", () => ({
@@ -20,6 +24,7 @@ vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", () => ({
 
 vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
   runWorkspaceCreateTopicRequest: vi.fn(),
+  runWorkspaceStreamUnarchive: vi.fn(),
 }));
 
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
@@ -156,8 +161,188 @@ describe("useCreateChatDialog", () => {
 
     expect(result.current.visibleTabs).toEqual(["dm", "channels", "channel", "topic", "archived"]);
     expect(result.current.browseChannels).toEqual([]);
-    expect(result.current.archivedChannels).toEqual([]);
+    expect(result.current.archivedChats).toEqual([]);
   });
+
+  function seedArchive(streams: MessengerStream[]): string {
+    const context = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+    const ownerKey = workspaceRuntimeOwnerKey(context);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    for (const stream of streams) useMessengerStore.getState().upsertStream(ownerKey, stream);
+    useMessengerStore.setState({ isLoading: false });
+    return ownerKey;
+  }
+
+  it("lists archived direct chats and channels for the current owner, searches display names and opens history without restoring", () => {
+    seedWorkspaceSession();
+    const ownerKey = seedArchive([
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000001",
+        name: "old name",
+        directUserUuid: "alice-user",
+        isArchived: true,
+      }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000002",
+        name: "Engineering",
+        isArchived: true,
+      }),
+      createStream({ uuid: "10000000-0000-4000-8000-000000000003", name: "Active" }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000004",
+        projectId: "other",
+        isArchived: true,
+      }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000005",
+        userUuid: "other",
+        isArchived: true,
+      }),
+    ]);
+    useUsersStore.getState().startOwnerSync(ownerKey);
+    useUsersStore
+      .getState()
+      .replaceUsersForOwner(ownerKey, [createUser({ uuid: "alice-user", displayName: "Alice" })]);
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    expect(result.current.archivedChats).toEqual([
+      { streamUuid: "10000000-0000-4000-8000-000000000001", name: "Alice", isDirect: true },
+      { streamUuid: "10000000-0000-4000-8000-000000000002", name: "Engineering", isDirect: false },
+    ]);
+    act(() => result.current.setArchivedSearch("  ALIce  "));
+    expect(result.current.archivedChats.map((chat) => chat.streamUuid)).toEqual([
+      "10000000-0000-4000-8000-000000000001",
+    ]);
+    act(() => result.current.openArchivedChat("10000000-0000-4000-8000-000000000001"));
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("10000000-0000-4000-8000-000000000001");
+    expect(runWorkspaceStreamUnarchive).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+    act(() => useMessengerStore.setState({ ownerKey: "another-owner" }));
+    expect(result.current.archivedChats).toEqual([]);
+  });
+
+  it("does not reuse direct user names from another owner's user catalog", () => {
+    seedWorkspaceSession();
+    seedArchive([
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000001",
+        name: "Stored name",
+        directUserUuid: "alice-user",
+        isArchived: true,
+      }),
+    ]);
+    useUsersStore.getState().startOwnerSync("another-owner");
+    useUsersStore
+      .getState()
+      .replaceUsersForOwner("another-owner", [
+        createUser({ uuid: "alice-user", displayName: "Unrelated name" }),
+      ]);
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+    expect(result.current.archivedChats[0]?.name).toBe("Stored name");
+  });
+
+  it("deduplicates restore clicks, exposes retry after failure and lets the applied store update remove the row", async () => {
+    seedWorkspaceSession();
+    const stream = createStream({ uuid: "10000000-0000-4000-8000-000000000006", isArchived: true });
+    const ownerKey = seedArchive([stream]);
+    let rejectRequest: ((error: Error) => void) | undefined;
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+    const onNavigateWorkspaceStream = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream })),
+    );
+    let first: Promise<void> | undefined;
+    act(() => {
+      first = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      void result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+    });
+    expect(runWorkspaceStreamUnarchive).toHaveBeenCalledTimes(1);
+    expect(result.current.unarchivePendingStreamUuids).toEqual([
+      "10000000-0000-4000-8000-000000000006",
+    ]);
+    await act(async () => {
+      rejectRequest?.(new Error("network"));
+      await first;
+    });
+    expect(result.current.unarchivePendingStreamUuids).toEqual([]);
+    expect(result.current.unarchiveInlineError).toEqual({
+      streamUuid: "10000000-0000-4000-8000-000000000006",
+    });
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(() => {
+      const restored = { ...stream, isArchived: false };
+      useMessengerStore.getState().upsertStream(ownerKey, restored);
+      return Promise.resolve({ status: "applied", ownerKey, stream: restored });
+    });
+    await act(async () =>
+      result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006"),
+    );
+    expect(result.current.archivedChats).toEqual([]);
+    expect(result.current.unarchiveInlineError).toBeNull();
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+  });
+
+  it.each(["reopen", "runtime"] as const)(
+    "ignores old restore failures after modal %s changes and preserves a newer pending request",
+    async (transition) => {
+      seedWorkspaceSession();
+      seedArchive([
+        createStream({ uuid: "10000000-0000-4000-8000-000000000006", isArchived: true }),
+      ]);
+      const rejects: ((error: Error) => void)[] = [];
+      vi.mocked(runWorkspaceStreamUnarchive).mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejects.push(reject);
+          }),
+      );
+      const options = defaultHookOptions();
+      const { result, rerender } = renderHook(
+        ({ open }) => useCreateChatDialog({ ...options, open }),
+        { initialProps: { open: true } },
+      );
+      let oldRequest: Promise<void> | undefined;
+      act(() => {
+        oldRequest = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      });
+      if (transition === "reopen") {
+        rerender({ open: false });
+        rerender({ open: true });
+      } else {
+        act(() => seedWorkspaceSession());
+      }
+      let newRequest: Promise<void> | undefined;
+      act(() => {
+        newRequest = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      });
+      expect(result.current.unarchivePendingStreamUuids).toEqual([
+        "10000000-0000-4000-8000-000000000006",
+      ]);
+      await act(async () => {
+        rejects[0]?.(new Error("old request"));
+        await oldRequest;
+      });
+      expect(result.current.unarchiveInlineError).toBeNull();
+      expect(result.current.unarchivePendingStreamUuids).toEqual([
+        "10000000-0000-4000-8000-000000000006",
+      ]);
+      await act(async () => {
+        rejects[1]?.(new Error("new request"));
+        await newRequest;
+      });
+      expect(result.current.unarchivePendingStreamUuids).toEqual([]);
+      expect(result.current.unarchiveInlineError).toEqual({
+        streamUuid: "10000000-0000-4000-8000-000000000006",
+      });
+    },
+  );
 
   it("allows callers to limit visible tabs without changing Workspace behavior", () => {
     const { result } = renderHook(() =>
@@ -530,7 +715,7 @@ describe("useCreateChatDialog", () => {
     expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("new-stream");
     expect(onChannelCreated).toHaveBeenCalledOnce();
   });
-  it("keeps unsupported browse and archive actions inert", async () => {
+  it("keeps unsupported browse actions and unknown archive UUIDs inert", async () => {
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
@@ -543,7 +728,7 @@ describe("useCreateChatDialog", () => {
     await act(async () => {
       await result.current.onSubscribeToChannel(1, "design");
       await result.current.onUnsubscribeFromChannel(1, "design");
-      await result.current.onUnarchiveArchivedChannel(1);
+      await result.current.onUnarchiveArchivedChat("unknown");
     });
 
     expect(result.current.channelsLoading).toBe(false);

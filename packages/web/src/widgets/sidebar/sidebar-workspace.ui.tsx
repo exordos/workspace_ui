@@ -64,7 +64,7 @@ import {
   type WorkspaceSidebarSearchProjection,
 } from "./sidebar-workspace-search.lib";
 
-const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic"] as const;
+const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic", "archived"] as const;
 const SidebarCalendarContext = React.createContext(0);
 
 function useSidebarCalendarDay(): number {

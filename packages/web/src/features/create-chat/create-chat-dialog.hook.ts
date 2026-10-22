@@ -5,7 +5,10 @@ import {
   runWorkspaceDirectStreamCreate,
 } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import type { EncryptedChannelCreationAttempt } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import {
+  runWorkspaceCreateTopicRequest,
+  runWorkspaceStreamUnarchive,
+} from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import {
@@ -38,7 +41,6 @@ import {
 
 const log = createLogger("create-chat:dialog");
 
-const EMPTY_ARCHIVED_CHANNELS: ArchivedChannelOption[] = [];
 const EMPTY_BROWSE_CHANNELS: [] = [];
 
 export type BrowseChannelSubscriptionFilter = "unsubscribed" | "subscribed" | "all";
@@ -50,11 +52,10 @@ function resolveWorkspacePickerPresence(status: User["status"]): UserPickerOptio
   return "offline";
 }
 
-interface ArchivedChannelOption {
-  streamId: number;
+export interface ArchivedChatOption {
+  streamUuid: string;
   name: string;
-  lastMessage: string;
-  time: string;
+  isDirect: boolean;
 }
 
 export interface CreateChatUserOption extends UserPickerOption<string> {
@@ -67,10 +68,9 @@ export interface CreateChatWorkspaceStreamOption {
   name: string;
 }
 
-/** Archived tab is kept as a Workspace placeholder; no legacy API errors are produced. */
-export type UnarchiveInlineErrorState =
-  | { kind: "unsupported" }
-  | { kind: "failed"; message: string };
+export interface UnarchiveInlineErrorState {
+  streamUuid: string;
+}
 
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;
@@ -120,9 +120,12 @@ export interface UseCreateChatDialogResult {
 
   archivedSearch: string;
   setArchivedSearch: (v: string) => void;
-  archivedChannels: ArchivedChannelOption[];
-  onUnarchiveArchivedChannel: (streamId: number) => Promise<void>;
-  unarchivePendingStreamIds: readonly number[];
+  archivedChats: ArchivedChatOption[];
+  archivedLoading: boolean;
+  archivedError: boolean;
+  openArchivedChat: (streamUuid: string) => void;
+  onUnarchiveArchivedChat: (streamUuid: string) => Promise<void>;
+  unarchivePendingStreamUuids: readonly string[];
   unarchiveInlineError: UnarchiveInlineErrorState | null;
 
   channelsSearch: string;
@@ -243,6 +246,13 @@ export function useCreateChatDialog(options: {
   const [workspaceTopicStreamUuid, setWorkspaceTopicStreamUuid] = useState("");
   const [workspaceTopicName, setWorkspaceTopicName] = useState("");
 
+  const [unarchivePending, setUnarchivePending] = useState<readonly string[]>([]);
+  const [unarchiveInlineError, setUnarchiveInlineError] =
+    useState<UnarchiveInlineErrorState | null>(null);
+  const archiveScopeRef = useRef<object | null>(null);
+  const unarchiveRequestsRef = useRef(new Map<string, object>());
+
+  const usersOwnerKey = useUsersStore((s) => s.ownerKey);
   const usersById = useUsersStore((s) => s.usersById);
   const userIds = useUsersStore((s) => s.userIds);
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
@@ -263,6 +273,9 @@ export function useCreateChatDialog(options: {
     otherCreating ||
     (channelCreation != null &&
       isWorkspaceRuntimeRequestContextCurrent(channelCreation, () => workspaceRuntimeContext));
+  const messengerOwnerKey = useMessengerStore((state) => state.ownerKey);
+  const messengerLoading = useMessengerStore((state) => state.isLoading);
+  const messengerError = useMessengerStore((state) => state.error);
   const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
   const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
   const workspaceStreams = useMemo(
@@ -322,6 +335,116 @@ export function useCreateChatDialog(options: {
         .sort((left, right) => left.name.localeCompare(right.name)),
     [workspaceStreams],
   );
+  const archivedChats = useMemo<ArchivedChatOption[]>(() => {
+    if (workspaceRuntimeContext == null || messengerOwnerKey !== channelOwnerKey) return [];
+    const query = archivedSearch.trim().toLocaleLowerCase();
+    return workspaceStreams
+      .filter(
+        (stream) =>
+          stream.isArchived &&
+          stream.projectId === workspaceRuntimeContext.projectId &&
+          stream.userUuid === workspaceRuntimeContext.userUuid,
+      )
+      .map((stream) => {
+        const directUser =
+          usersOwnerKey === channelOwnerKey && stream.directUserUuid != null
+            ? usersById[stream.directUserUuid]
+            : undefined;
+        return {
+          streamUuid: stream.uuid,
+          name: directUser ? selectUserDisplayName(directUser, stream.name) : stream.name,
+          isDirect: stream.directUserUuid != null,
+        };
+      })
+      .filter((chat) => chat.name.toLocaleLowerCase().includes(query))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [
+    archivedSearch,
+    channelOwnerKey,
+    messengerOwnerKey,
+    usersById,
+    usersOwnerKey,
+    workspaceRuntimeContext,
+    workspaceStreams,
+  ]);
+  const archivedLoading =
+    workspaceRuntimeContext != null && (messengerOwnerKey !== channelOwnerKey || messengerLoading);
+  const archivedError = messengerOwnerKey === channelOwnerKey && messengerError != null;
+
+  useEffect(() => {
+    const scope = {};
+    archiveScopeRef.current = open ? scope : null;
+    unarchiveRequestsRef.current.clear();
+    void Promise.resolve().then(() => {
+      if (archiveScopeRef.current !== scope) return;
+      setUnarchivePending([...unarchiveRequestsRef.current.keys()]);
+      if (unarchiveRequestsRef.current.size === 0) setUnarchiveInlineError(null);
+    });
+    return () => {
+      if (archiveScopeRef.current === scope) archiveScopeRef.current = null;
+    };
+  }, [open, channelOwnerKey, workspaceRuntimeContext?.runtimeGeneration]);
+
+  const openArchivedChat = useCallback(
+    (streamUuid: string) => {
+      if (!open || !archivedChats.some((chat) => chat.streamUuid === streamUuid)) return;
+      const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
+      if (
+        requestContext == null ||
+        !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        )
+      )
+        return;
+      onNavigateWorkspaceStream?.(streamUuid);
+    },
+    [archivedChats, onNavigateWorkspaceStream, open, workspaceRuntimeContext],
+  );
+
+  const onUnarchiveArchivedChat = useCallback(
+    async (streamUuid: string) => {
+      const scope = archiveScopeRef.current;
+      if (
+        !open ||
+        scope == null ||
+        unarchiveRequestsRef.current.has(streamUuid) ||
+        !archivedChats.some((chat) => chat.streamUuid === streamUuid)
+      )
+        return;
+      const requestContext = captureWorkspaceRuntimeRequestContext(() => workspaceRuntimeContext);
+      if (
+        requestContext == null ||
+        !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        )
+      )
+        return;
+      const isCurrent = () =>
+        archiveScopeRef.current === scope &&
+        unarchiveRequestsRef.current.get(streamUuid) === scope &&
+        isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        );
+      unarchiveRequestsRef.current.set(streamUuid, scope);
+      setUnarchivePending([...unarchiveRequestsRef.current.keys()]);
+      setUnarchiveInlineError(null);
+      try {
+        const result = await runWorkspaceStreamUnarchive({ streamUuid });
+        if (result.status !== "applied" && isCurrent()) {
+          setUnarchiveInlineError({ streamUuid });
+        }
+      } catch {
+        if (isCurrent()) setUnarchiveInlineError({ streamUuid });
+      } finally {
+        if (isCurrent()) {
+          unarchiveRequestsRef.current.delete(streamUuid);
+          setUnarchivePending((pending) => pending.filter((uuid) => uuid !== streamUuid));
+        }
+      }
+    },
+    [archivedChats, open, workspaceRuntimeContext],
+  );
+
   const selectedWorkspaceTopicStreamUuid = workspaceTopicStreams.some(
     (stream) => stream.streamUuid === workspaceTopicStreamUuid,
   )
@@ -627,10 +750,13 @@ export function useCreateChatDialog(options: {
     createWorkspaceTopic,
     archivedSearch,
     setArchivedSearch,
-    archivedChannels: EMPTY_ARCHIVED_CHANNELS,
-    onUnarchiveArchivedChannel: onUnsupportedAsyncAction,
-    unarchivePendingStreamIds: [],
-    unarchiveInlineError: null,
+    archivedChats,
+    archivedLoading,
+    archivedError,
+    openArchivedChat,
+    onUnarchiveArchivedChat,
+    unarchivePendingStreamUuids: unarchivePending,
+    unarchiveInlineError,
     channelsSearch,
     setChannelsSearch,
     channelsSubscriptionFilter,

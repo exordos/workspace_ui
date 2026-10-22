@@ -1029,6 +1029,7 @@ function buildWindowRow(
 interface CatalogUpsertOptions {
   force?: boolean;
   reconcileFence?: number;
+  shouldApply?: () => boolean;
 }
 
 function shouldUpsertCatalogRow(
@@ -1169,6 +1170,7 @@ async function upsertStreams(
     stores.streams,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
         store.put({
           ...row,
@@ -1234,6 +1236,7 @@ async function upsertConversations(
     stores.conversations,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (!shouldUpsertCatalogRow(previous, row.conversation.updatedAt, options)) return;
       store.put({
         ...row,
@@ -1262,6 +1265,7 @@ async function upsertFolders(
     stores.folders,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) store.put(row);
     },
   );
@@ -1285,6 +1289,7 @@ async function upsertFolderItems(
     stores.folderItems,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) store.put(row);
     },
   );
@@ -1501,12 +1506,14 @@ export async function writeMessengerCatalogCache(
 export async function upsertMessengerStreamsCache(
   ownerKey: string,
   streams: readonly WorkspaceMessengerCachedStream[],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertStreams(db, ownerKey, streams);
+    if (options.shouldApply?.() === false) return;
+    await upsertStreams(db, ownerKey, streams, options);
   } catch (error) {
     logCacheWriteFailure("upsert-streams", error);
   }
@@ -1529,12 +1536,14 @@ export async function upsertMessengerTopicsCache(
 export async function upsertMessengerConversationsCache(
   ownerKey: string,
   conversations: readonly WorkspaceMessengerCachedConversation[],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertConversations(db, ownerKey, conversations);
+    if (options.shouldApply?.() === false) return;
+    await upsertConversations(db, ownerKey, conversations, options);
   } catch (error) {
     logCacheWriteFailure("upsert-conversations", error);
   }
@@ -1544,14 +1553,16 @@ export async function upsertMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: readonly WorkspaceMessengerCachedFolder[],
   folderItems: readonly WorkspaceMessengerCachedFolderItem[] = [],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (options.shouldApply?.() === false) return;
     await Promise.all([
-      upsertFolders(db, ownerKey, folders),
-      upsertFolderItems(db, ownerKey, folderItems),
+      upsertFolders(db, ownerKey, folders, options),
+      upsertFolderItems(db, ownerKey, folderItems, options),
     ]);
   } catch {
     return;

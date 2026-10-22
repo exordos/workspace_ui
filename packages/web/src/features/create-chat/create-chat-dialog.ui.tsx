@@ -9,6 +9,7 @@ import { Select } from "~/shared/ui/select";
 import { UserPickerList } from "~/shared/ui/user-picker-list";
 import {
   useCreateChatDialog,
+  type ArchivedChatOption,
   type BrowseChannelSubscriptionFilter,
   type CreateChatUserOption,
   type UseCreateChatDialogResult,
@@ -45,7 +46,7 @@ const createChatTabLabelKey: Record<CreateChatTab, string> = {
   channels: "channel.browseChannels",
   channel: "channel.createChannel",
   topic: "channel.createTopic",
-  archived: "channel.archivedChannels",
+  archived: "channel.archive",
 };
 
 interface CreateChatTabsProps {
@@ -55,7 +56,7 @@ interface CreateChatTabsProps {
 const CreateChatTabs = React.memo<CreateChatTabsProps>(function CreateChatTabs({ vm }) {
   return (
     <div
-      className="flex border-b border-border-subtle"
+      className="flex overflow-x-auto border-b border-border-subtle"
       role="tablist"
       aria-label={t("nav.newChat")}
     >
@@ -86,7 +87,7 @@ const CreateChatTabButton = React.memo<CreateChatTabButtonProps>(function Create
       aria-selected={selected}
       aria-controls={vm.panelIds[tab]}
       tabIndex={selected ? 0 : -1}
-      className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
+      className={`flex-1 whitespace-nowrap px-2 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${
         selected
           ? "border-b-2 border-accent text-accent"
           : "text-text-muted hover:text-text-primary"
@@ -486,27 +487,25 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 value={vm.archivedSearch}
                 onChange={(e) => vm.setArchivedSearch(e.target.value)}
                 className={CREATE_CHAT_TEXT_INPUT_CLASS}
-                placeholder={t("channel.searchArchivedChannels")}
+                placeholder={t("channel.searchArchivedChats")}
+                aria-label={t("channel.searchArchivedChats")}
               />
               {vm.unarchiveInlineError != null && (
                 <div
                   role="alert"
+                  id={`${vm.panelIds.archived}-unarchive-error`}
                   className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-notice-base"
                 >
-                  {vm.unarchiveInlineError.kind === "unsupported"
-                    ? t("channel.unarchiveUnsupported")
-                    : t("channel.unarchiveFailed", {
-                        message: vm.unarchiveInlineError.message,
-                      })}
+                  {t("channel.unarchiveChatFailed")}
                 </div>
               )}
-              <div className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-muted">
-                {t("channel.workspaceArchivedChannelsUnsupported")}
-              </div>
-              <div className={CREATE_CHAT_USER_LIST_CLASS}>
-                <p className="px-3 py-4 text-center text-sm text-text-muted">
-                  {t("channel.noArchivedChannels")}
+              {vm.archivedError && (
+                <p role="alert" className="text-sm text-notice-base">
+                  {t("channel.archiveLoadFailed")}
                 </p>
+              )}
+              <div className={CREATE_CHAT_USER_LIST_CLASS} aria-busy={vm.archivedLoading}>
+                <ArchivedChatsListContent vm={vm} />
               </div>
             </div>
           )}
@@ -568,3 +567,89 @@ const BrowseChannelSubscriptionToggle = React.memo<BrowseChannelSubscriptionTogg
     );
   },
 );
+
+const ArchivedChatsListContent = React.memo<CreateChatTabsProps>(function ArchivedChatsListContent({
+  vm,
+}) {
+  if (vm.archivedLoading && vm.archivedChats.length === 0) {
+    return (
+      <div
+        role="status"
+        className="flex items-center justify-center gap-2 py-8 text-sm text-text-muted"
+      >
+        <Spinner size="sm" />
+        {t("app.loading")}
+      </div>
+    );
+  }
+  if (vm.archivedChats.length === 0 && !vm.archivedError) {
+    return <EmptyCreateChatList label={t("channel.noArchivedChats")} />;
+  }
+  return (
+    <>
+      {vm.archivedChats.map((chat) => (
+        <ArchivedChatRow
+          key={chat.streamUuid}
+          chat={chat}
+          isPending={vm.unarchivePendingStreamUuids.includes(chat.streamUuid)}
+          errorId={
+            vm.unarchiveInlineError?.streamUuid === chat.streamUuid
+              ? `${vm.panelIds.archived}-unarchive-error`
+              : undefined
+          }
+          onOpen={vm.openArchivedChat}
+          onUnarchive={vm.onUnarchiveArchivedChat}
+        />
+      ))}
+    </>
+  );
+});
+
+interface ArchivedChatRowProps {
+  chat: ArchivedChatOption;
+  isPending: boolean;
+  errorId?: string;
+  onOpen: (streamUuid: string) => void;
+  onUnarchive: (streamUuid: string) => Promise<void>;
+}
+
+const ArchivedChatRow = React.memo<ArchivedChatRowProps>(function ArchivedChatRow({
+  chat,
+  isPending,
+  errorId,
+  onOpen,
+  onUnarchive,
+}) {
+  return (
+    <div className="flex items-center transition-colors hover:bg-sidebar-hover">
+      <button
+        type="button"
+        onClick={() => onOpen(chat.streamUuid)}
+        aria-label={t("channel.openArchivedChat", { name: chat.name })}
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-text-primary focus-visible:outline-accent"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">{chat.name}</span>
+          <span className="block truncate text-[11px] text-text-secondary">
+            {t(chat.isDirect ? "workspaceDrafts.direct" : "workspaceDrafts.channel")}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => void onUnarchive(chat.streamUuid)}
+        disabled={isPending}
+        aria-busy={isPending}
+        aria-describedby={errorId}
+        aria-label={`${t(isPending ? "channel.unarchiveInProgress" : "channel.unarchiveChannel")}: ${chat.name}`}
+        className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-bg focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isPending ? (
+          <Spinner size="sm" />
+        ) : (
+          <Icon name="logout" size={16} className="text-accent" />
+        )}
+      </button>
+    </div>
+  );
+});

@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import "fake-indexeddb/auto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
@@ -13,7 +15,14 @@ import type {
   WorkspaceMessengerTopicNotificationRequestBody,
   WorkspaceMessengerUpdateTopicRequestBody,
 } from "~/shared/api/messenger.types";
+import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
+import {
+  deleteWorkspaceMessengerCacheDatabase,
+  readMessengerCatalogCache,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+} from "~/shared/lib/workspace-messenger-cache-db";
 import { adaptMessengerFolder, adaptMessengerStream } from "./messenger-adapters.lib";
+import { upsertMessengerStreamCache } from "./messenger-cache.lib";
 import {
   createMessengerFolderItem,
   createMessengerTopic,
@@ -23,6 +32,7 @@ import {
   renameMessengerTopic,
   setMessengerTopicNotificationMode,
   toggleMessengerTopicDone,
+  unarchiveMessengerStream,
   unpinMessengerFolderItem,
   updateMessengerStreamNotificationMode,
 } from "./messenger-sidebar-actions.lib";
@@ -190,6 +200,318 @@ describe("messenger sidebar actions", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
   });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await deleteWorkspaceMessengerCacheDatabase();
+    resetWorkspaceMessengerCacheDbSingletonForTests();
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+  });
+
+  it.each([null, USER_B])(
+    "unarchives a channel or direct chat through the Workspace endpoint and persists it (%s)",
+    async (directUserUuid) => {
+      const runtimeContext = createRuntimeContext();
+      useWorkspaceAuthStore.setState({
+        sessions: [
+          {
+            ...runtimeContext,
+            login: "user@example.com",
+            profile: {
+              uuid: USER_A,
+              username: "User A",
+              firstName: null,
+              lastName: null,
+              email: "user@example.com",
+            },
+          },
+        ],
+      });
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(
+        ownerKey,
+        createStreamDto({ is_archived: true, direct_user_uuid: directUserUuid }),
+      );
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify(createStreamDto({ direct_user_uuid: directUserUuid })), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      await expect(
+        unarchiveMessengerStream({
+          runtimeContext,
+          getRuntimeContext: () => runtimeContext,
+          streamUuid: STREAM_A,
+          clientOptions: { fetchImpl },
+        }),
+      ).resolves.toMatchObject({ status: "applied", ownerKey, stream: { isArchived: false } });
+
+      expect(fetchImpl).toHaveBeenCalledWith(
+        expect.stringContaining(`/streams/${STREAM_A}/actions/unarchive/invoke`),
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(
+        "Bearer access-token-a",
+      );
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toMatchObject({
+        isArchived: false,
+        directUserUuid,
+      });
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams).toEqual([
+        expect.objectContaining({ uuid: STREAM_A, isArchived: false, directUserUuid }),
+      ]);
+      expect(cached.conversations).toEqual([
+        expect.objectContaining({ id: `stream:${STREAM_A}`, streamUuid: STREAM_A }),
+      ]);
+    },
+  );
+
+  it.each(["success", "failure"] as const)(
+    "skips stale unarchive %s after leaving and returning to the same runtime owner",
+    async (outcome) => {
+      const runtimeContext = createRuntimeContext();
+      let currentRuntime = runtimeContext;
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(ownerKey, createStreamDto({ is_archived: true }));
+      const deferred = createDeferred<WorkspaceMessengerStreamDto>();
+      const action = unarchiveMessengerStream({
+        runtimeContext,
+        getRuntimeContext: () => currentRuntime,
+        streamUuid: STREAM_A,
+        client: { unarchiveStream: () => deferred.promise },
+      });
+      currentRuntime = createRuntimeContext({ runtimeGeneration: 3 });
+      if (outcome === "success") deferred.resolve(createStreamDto());
+      else deferred.reject(new Error("Request failed"));
+
+      await expect(action).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-owner" });
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.isArchived).toBe(true);
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams).toEqual([]);
+    },
+  );
+
+  it.each(["success", "failure", "newer-realtime"] as const)(
+    "reconciles only notification-owned cache replacements during its cache read (%s)",
+    async (outcome) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const initial = adaptMessengerStream(createStreamDto({ is_archived: true }));
+      useMessengerStore.getState().upsertStream(ownerKey, initial);
+      await upsertMessengerStreamCache(ownerKey, initial);
+      const notificationResponse = createDeferred<WorkspaceMessengerStreamDto>();
+      const notificationAction = updateMessengerStreamNotificationMode({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        notificationMode: "muted",
+        client: { updateStreamNotifications: () => notificationResponse.promise },
+      });
+      const cacheReadStarted = createDeferred<void>();
+      const releaseCacheRead = createDeferred<void>();
+      const originalReadCatalog = messengerCacheDb.readMessengerCatalogCache;
+      vi.spyOn(messengerCacheDb, "readMessengerCatalogCache").mockImplementationOnce(
+        async (key) => {
+          const snapshot = await originalReadCatalog(key);
+          cacheReadStarted.resolve();
+          await releaseCacheRead.promise;
+          return snapshot;
+        },
+      );
+      const unarchiveAction = unarchiveMessengerStream({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        client: { unarchiveStream: () => Promise.resolve(createStreamDto()) },
+      });
+      await cacheReadStarted.promise;
+
+      if (outcome === "newer-realtime") {
+        const authoritativeStream = adaptMessengerStream(
+          createStreamDto({ is_archived: true, updated_at: "2026-06-22T10:15:00Z" }),
+        );
+        useMessengerStore.getState().upsertStream(ownerKey, authoritativeStream);
+        await upsertMessengerStreamCache(ownerKey, authoritativeStream);
+      }
+      if (outcome === "success") {
+        notificationResponse.resolve(
+          createStreamDto({ is_archived: true, notification_mode: "muted" }),
+        );
+        await expect(notificationAction).resolves.toMatchObject({ status: "applied" });
+      } else {
+        notificationResponse.reject(new Error("Notification update failed"));
+        await expect(notificationAction).rejects.toThrow("Notification update failed");
+      }
+      releaseCacheRead.resolve();
+      await expect(unarchiveAction).resolves.toMatchObject({ status: "applied" });
+
+      const notificationMode = outcome === "success" ? "muted" : "all_messages";
+      const isArchived = outcome === "newer-realtime";
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toMatchObject({
+        isArchived,
+        notificationMode,
+      });
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams[0]).toMatchObject({ isArchived, notificationMode });
+    },
+  );
+
+  it("skips an unarchive when the catalog belongs to another runtime owner", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(createRuntimeContext({ projectId: PROJECT_B }));
+    const unarchiveStream = vi.fn();
+
+    await expect(
+      unarchiveMessengerStream({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        client: { unarchiveStream },
+      }),
+    ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+    expect(unarchiveStream).not.toHaveBeenCalled();
+  });
+
+  it("keeps newer catalog fields while applying the unarchive response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ is_archived: true }));
+    const deferred = createDeferred<WorkspaceMessengerStreamDto>();
+    const action = unarchiveMessengerStream({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { unarchiveStream: () => deferred.promise },
+    });
+    seedStream(
+      ownerKey,
+      createStreamDto({
+        is_archived: false,
+        name: "Renamed",
+        unread_count: 20,
+        updated_at: "2026-06-22T10:15:00Z",
+      }),
+    );
+    deferred.resolve(createStreamDto());
+
+    await expect(action).resolves.toMatchObject({
+      status: "applied",
+      stream: {
+        isArchived: false,
+        name: "Renamed",
+        unreadCount: 20,
+        updatedAt: "2026-06-22T10:15:00Z",
+      },
+    });
+    const cached = await readMessengerCatalogCache(ownerKey);
+    expect(cached.streams[0]).toMatchObject({
+      isArchived: false,
+      name: "Renamed",
+      unreadCount: 20,
+    });
+  });
+
+  it("preserves a newer rearchive event over the earlier unarchive response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ is_archived: true }));
+    const deferred = createDeferred<WorkspaceMessengerStreamDto>();
+    const action = unarchiveMessengerStream({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      client: { unarchiveStream: () => deferred.promise },
+    });
+    seedStream(
+      ownerKey,
+      createStreamDto({ is_archived: true, updated_at: "2026-06-22T10:15:00Z" }),
+    );
+    const newerSnapshot = useMessengerStore.getState().streamsById[STREAM_A];
+    deferred.resolve(createStreamDto());
+
+    await expect(action).resolves.toMatchObject({
+      status: "applied",
+      stream: { isArchived: true, updatedAt: "2026-06-22T10:15:00Z" },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toBe(newerSnapshot);
+    const cached = await readMessengerCatalogCache(ownerKey);
+    expect(cached.streams[0]).toMatchObject({
+      isArchived: true,
+      updatedAt: "2026-06-22T10:15:00Z",
+    });
+  });
+
+  it.each(["success", "failure"] as const)(
+    "persists confirmed notifications while unarchiving a pending notification %s",
+    async (outcome) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(ownerKey, createStreamDto({ is_archived: true }));
+      const deferred = createDeferred<WorkspaceMessengerStreamDto>();
+      const notificationAction = updateMessengerStreamNotificationMode({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        notificationMode: "muted",
+        client: { updateStreamNotifications: () => deferred.promise },
+      });
+
+      await unarchiveMessengerStream({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        client: { unarchiveStream: () => Promise.resolve(createStreamDto()) },
+      });
+
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toMatchObject({
+        isArchived: false,
+        notificationMode: "muted",
+      });
+      const cachedWhilePending = await readMessengerCatalogCache(ownerKey);
+      expect(cachedWhilePending.streams[0]).toMatchObject({
+        isArchived: false,
+        notificationMode: "all_messages",
+      });
+
+      if (outcome === "success") {
+        deferred.resolve(createStreamDto({ is_archived: true, notification_mode: "muted" }));
+        await expect(notificationAction).resolves.toMatchObject({ status: "applied" });
+      } else {
+        deferred.reject(new Error("Notification update failed"));
+        await expect(notificationAction).rejects.toThrow("Notification update failed");
+      }
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toMatchObject({
+        isArchived: false,
+        notificationMode: outcome === "success" ? "muted" : "all_messages",
+      });
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams[0]).toMatchObject({ isArchived: false });
+      if (outcome === "failure") {
+        expect(cached.streams[0]).toMatchObject({ notificationMode: "all_messages" });
+      }
+    },
+  );
+
+  it.each([
+    { uuid: TOPIC_A },
+    { project_id: PROJECT_B },
+    { user_uuid: USER_B },
+    { is_archived: true },
+  ])(
+    "rejects an invalid unarchive response without changing the catalog (%j)",
+    async (overrides) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(ownerKey, createStreamDto({ is_archived: true }));
+
+      await expect(
+        unarchiveMessengerStream({
+          runtimeContext,
+          streamUuid: STREAM_A,
+          client: { unarchiveStream: () => Promise.resolve(createStreamDto(overrides)) },
+        }),
+      ).rejects.toThrow("Invalid unarchived stream response");
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.isArchived).toBe(true);
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams).toEqual([]);
+    },
+  );
 
   it("updates stream notification mode and upserts the adapted stream", async () => {
     const runtimeContext = createRuntimeContext();

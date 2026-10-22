@@ -1,10 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runWorkspaceStreamUnarchive } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { CreateChatDialog } from "./create-chat-dialog.ui";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
+
+vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
+  runWorkspaceCreateTopicRequest: vi.fn(),
+  runWorkspaceStreamUnarchive: vi.fn(),
+}));
 
 function createUser(overrides: Partial<User> & { uuid: string }): User {
   return {
@@ -61,6 +70,7 @@ function renderDialog(props: Partial<CreateChatDialogProps> = {}): void {
 describe("CreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
     useUsersStore.getState().replaceUsers([
@@ -82,6 +92,7 @@ describe("CreateChatDialog", () => {
   });
 
   afterEach(() => {
+    useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
@@ -105,7 +116,7 @@ describe("CreateChatDialog", () => {
     renderDialog();
 
     const startChatTab = screen.getByRole("tab", { name: "Start chat" });
-    const archivedTab = screen.getByRole("tab", { name: "Archived channels" });
+    const archivedTab = screen.getByRole("tab", { name: "Archive" });
 
     expect(screen.getByRole("tab", { name: "Channels" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Create channel" })).toBeInTheDocument();
@@ -128,7 +139,7 @@ describe("CreateChatDialog", () => {
     expect(screen.getByRole("tab", { name: "Create channel" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Channels" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Create topic" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Archived channels" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Archive" })).not.toBeInTheDocument();
   });
 
   it("renders channels tab as a Workspace placeholder without subscribe actions", () => {
@@ -147,19 +158,100 @@ describe("CreateChatDialog", () => {
     expect(screen.queryByRole("button", { name: "Subscribe" })).not.toBeInTheDocument();
   });
 
-  it("renders archived channels tab as a Workspace placeholder", () => {
-    renderDialog();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-
+  it("renders archived direct chats and channels with separate history and retryable restore buttons", async () => {
+    seedWorkspaceSession();
+    const ownerKey = workspaceRuntimeOwnerKey(
+      useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!,
+    );
+    const stream: MessengerStream = {
+      uuid: "10000000-0000-4000-8000-000000000001",
+      projectId: "project",
+      ownerUuid: "current-user",
+      userUuid: "current-user",
+      role: "member",
+      notificationMode: "all_messages",
+      name: "Alice",
+      description: "",
+      unreadCount: 0,
+      sourceName: "native",
+      source: { kind: "native" },
+      audience: "private",
+      isPrivate: true,
+      inviteOnly: true,
+      announce: false,
+      isArchived: true,
+      directUserUuid: "alice-user",
+      lastMessageUuid: null,
+      createdAt: "2026-06-30T09:00:00.000Z",
+      updatedAt: "2026-06-30T09:00:00.000Z",
+    };
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().upsertStream(ownerKey, stream);
+    useMessengerStore.getState().upsertStream(ownerKey, {
+      ...stream,
+      uuid: "10000000-0000-4000-8000-000000000002",
+      name: "Engineering",
+      directUserUuid: null,
+      audience: "channel",
+    });
+    useMessengerStore.setState({ isLoading: false });
+    const onNavigateWorkspaceStream = vi.fn();
+    renderDialog({ onNavigateWorkspaceStream });
+    fireEvent.click(screen.getByRole("tab", { name: "Archive" }));
+    expect(screen.getByText("Direct chat")).toBeInTheDocument();
+    expect(screen.getByText("Channel")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open history: Engineering" }));
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("10000000-0000-4000-8000-000000000002");
+    expect(runWorkspaceStreamUnarchive).not.toHaveBeenCalled();
+    onNavigateWorkspaceStream.mockClear();
+    fireEvent.change(screen.getByPlaceholderText("Search archived chats…"), {
+      target: { value: "alice" },
+    });
     expect(
-      screen.getByText(
-        "Workspace archived channels are not connected yet. The tab is kept as a placeholder.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Search archived channels…")).toBeInTheDocument();
-    expect(screen.getByText("No archived channels found")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Unarchive/i })).not.toBeInTheDocument();
+      screen.queryByRole("button", { name: "Open history: Engineering" }),
+    ).not.toBeInTheDocument();
+    let rejectRequest: ((error: Error) => void) | undefined;
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Unarchive: Alice" }));
+    expect(screen.getByRole("button", { name: "Unarchiving: Alice" })).toBeDisabled();
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+    await act(async () => {
+      rejectRequest?.(new Error("network"));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not unarchive the chat. Try again.");
+    expect(screen.getByRole("button", { name: "Unarchive: Alice" })).toBeEnabled();
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(() => {
+      const restored = { ...stream, isArchived: false };
+      useMessengerStore.getState().upsertStream(ownerKey, restored);
+      return Promise.resolve({ status: "applied", ownerKey, stream: restored });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Unarchive: Alice" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("No archived chats found")).toBeInTheDocument();
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+  });
+
+  it("shows bootstrap loading and failure instead of an empty archive", () => {
+    seedWorkspaceSession();
+    const ownerKey = workspaceRuntimeOwnerKey(
+      useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!,
+    );
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Archive" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading");
+    expect(screen.queryByText("No archived chats found")).not.toBeInTheDocument();
+    act(() => useMessengerStore.setState({ isLoading: false, error: "network" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load the archive.");
+    expect(screen.queryByText("No archived chats found")).not.toBeInTheDocument();
   });
 
   it("clears and disables conflicting options when encrypted creation is selected", () => {
