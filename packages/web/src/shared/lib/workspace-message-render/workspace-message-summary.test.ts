@@ -50,6 +50,16 @@ describe("workspace message summary core", () => {
     expect(summary.text).not.toContain("urn:image:");
   });
 
+  it("keeps silent user names without @ in compact and quoted summaries", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const markdown = `[Admin Example](urn:user:${userUuid} "silent") and [Alice](urn:user:${userUuid})`;
+
+    expect(summarizeWorkspaceMessageMarkdown(markdown).text).toBe("Admin Example and @Alice");
+    expect(summarizeWorkspaceMessageMarkdown(`> ${markdown}`).text).toBe(
+      "Цитата: Admin Example and @Alice",
+    );
+  });
+
   it("keeps unsupported image alt text when Workspace media labels are hidden", () => {
     const document = parseWorkspaceMessageBody(
       "![External diagram](https://example.com/diagram.png)",

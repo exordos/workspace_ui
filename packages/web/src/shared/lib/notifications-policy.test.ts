@@ -47,6 +47,39 @@ describe("notifications-policy", () => {
       topicNotificationMode: "default" as const,
     };
 
+    it.each([
+      ["", ""],
+      ["> ", ""],
+      ["```quote\n", "\n```"],
+      ["- ", ""],
+    ])("does not trigger mention notifications for silent user links in %s", (prefix, suffix) => {
+      const currentUserUuid = "11111111-1111-4111-8111-111111111111";
+      const message = { ...baseStreamMessage, currentUserUuid };
+      const link = `[Admin Example](urn:user:${currentUserUuid}`;
+
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: { ...message, markdown: `${prefix}${link} "silent")${suffix}` },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: false, trigger: "stream" });
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: { ...message, markdown: `${prefix}${link})${suffix}` },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: true, trigger: "mention" });
+      expect(
+        shouldWorkspaceDesktopNotify({
+          message: {
+            ...message,
+            markdown: `${prefix}${link} "silent") and ${link})${suffix}`,
+          },
+          viewport: baseViewport,
+        }),
+      ).toEqual({ notify: true, trigger: "mention" });
+    });
+
     it("allows a generic notification without guessing the conversation trigger", () => {
       expect(
         shouldWorkspaceDesktopNotify({

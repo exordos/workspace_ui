@@ -36,6 +36,7 @@ export interface WorkspaceMentionMarkedToken extends Tokens.Generic {
   displayText: string;
   userUuid?: string;
   unresolved?: boolean;
+  silent?: boolean;
 }
 
 export interface WorkspaceEmojiMarkedToken extends Tokens.Generic {
@@ -105,12 +106,13 @@ function resolveMention(
   displayText: string,
   sourceUserUuid: string | undefined,
   options: WorkspaceMessageParseOptions,
+  silent = false,
 ): WorkspaceMentionMarkedToken {
   const normalizedDisplayText = normalizeMentionDisplayText(displayText);
   const resolution: WorkspaceMessageMentionResolution | null | undefined =
     options.resolveMention?.(normalizedDisplayText);
   const resolvedDisplayText = normalizeMentionDisplayText(
-    resolution?.displayText ?? normalizedDisplayText,
+    silent ? normalizedDisplayText : (resolution?.displayText ?? normalizedDisplayText),
   );
   const normalizedSourceUserUuid = sourceUserUuid?.trim();
   const resolvedUserUuid = resolution?.userUuid?.trim();
@@ -123,6 +125,7 @@ function resolveMention(
     displayText: resolvedDisplayText.length > 0 ? resolvedDisplayText : normalizedDisplayText,
     ...(userUuid == null ? {} : { userUuid }),
     ...(!mentionIsResolved ? { unresolved: true } : {}),
+    ...(silent ? { silent: true } : {}),
   };
 }
 
@@ -307,7 +310,14 @@ function prepareInlineTokens(
         token.tokens = prepareInlineTokens(token.tokens ?? [], options);
         const workspaceReference = parseWorkspaceReferenceUrn(token.href);
         if (workspaceReference?.kind === "user") {
-          return [resolveMention(token.text, workspaceReference.userUuid, options)];
+          return [
+            resolveMention(
+              token.text,
+              workspaceReference.userUuid,
+              options,
+              token.title === "silent",
+            ),
+          ];
         }
         const fileReference = parseWorkspaceMessageFileHref(token.href, token.text);
         if (fileReference != null) {
