@@ -19,7 +19,7 @@ const CHANNEL_TOPIC_UUID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const DIRECT_MESSAGE_UUID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const CHANNEL_MESSAGE_UUID = "99999999-9999-4999-8999-999999999999";
 
-test("archive opens direct and channel history without restoring, then restores through Workspace", async ({
+test("direct and channel archives open history, confirm archiving for everyone, and restore through Workspace", async ({
   page,
 }) => {
   const template = streamsSuccess()[0]!;
@@ -42,6 +42,7 @@ test("archive opens direct and channel history without restoring, then restores 
     },
   ];
   const restored: string[] = [];
+  const archived: string[] = [];
   await page.route(/\/streams\/?(?:\?.*)?$/, (route) =>
     route.fulfill({ json: [...streamsSuccess(), ...archivedStreams] }),
   );
@@ -104,7 +105,19 @@ test("archive opens direct and channel history without restoring, then restores 
     expect(route.request().method()).toBe("POST");
     expect(stream).toBeDefined();
     restored.push(uuid);
-    return route.fulfill({ json: { ...stream!, is_archived: false } });
+    stream!.is_archived = false;
+    return route.fulfill({ json: stream });
+  });
+  await page.route(/\/streams\/[^/]+\/actions\/archive\/invoke$/, (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const uuid = pathname.split("/").at(-4)!;
+    const stream = archivedStreams.find((candidate) => candidate.uuid === uuid);
+    expect(pathname).toBe(`/api/workspace/v1/messenger/streams/${uuid}/actions/archive/invoke`);
+    expect(route.request().method()).toBe("POST");
+    expect(stream).toBeDefined();
+    archived.push(uuid);
+    stream!.is_archived = true;
+    return route.fulfill({ json: stream });
   });
 
   await seedAuthStorage(page);
@@ -169,4 +182,55 @@ test("archive opens direct and channel history without restoring, then restores 
   await dialog.getByRole("button", { name: /^(cancel|отмена)$/i }).click();
   await expect(sidebar.getByRole("link", { name: "Alice Adams", exact: true })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "Archived planning", exact: true })).toBeVisible();
+
+  for (const [name, uuid] of [
+    ["Alice Adams", DIRECT_UUID],
+    ["Archived planning", CHANNEL_UUID],
+  ] as const) {
+    const row = sidebar.getByRole("link", { name, exact: true });
+    const confirmation = page.getByRole("dialog", {
+      name: /^(archive chat\?|архивировать чат\?)$/i,
+    });
+    const openConfirmation = async () => {
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: /^(archive|архивировать)$/i }).click();
+      await expect(confirmation).toBeVisible();
+      await expect(confirmation).toContainText(name);
+      await expect(confirmation).toContainText(
+        uuid === DIRECT_UUID
+          ? /for both of you|у вас обоих/i
+          : /for all participants|для всех участников/i,
+      );
+    };
+
+    const archivedBeforeCancel = [...archived];
+    await openConfirmation();
+    await confirmation.getByRole("button", { name: /^(cancel|отмена)$/i }).click();
+    await expect(confirmation).toBeHidden();
+    await expect(row).toBeVisible();
+    await expect(sidebar.locator("a:focus")).toHaveAttribute(
+      "href",
+      new RegExp(`/stream/${uuid}(?:/|$)`),
+    );
+    expect(archived).toEqual(archivedBeforeCancel);
+
+    await openConfirmation();
+    await confirmation.getByRole("button", { name: /^(archive|архивировать)$/i }).click();
+    await expect(confirmation).toBeHidden();
+    await expect(row).toHaveCount(0);
+    expect(archived).toEqual([...archivedBeforeCancel, uuid]);
+
+    await openArchive();
+    await expect(historyButton(name)).toBeVisible();
+    await dialog
+      .getByRole("button", {
+        name: new RegExp(`^(?:Unarchive|Разархивировать): ${name}$`, "i"),
+      })
+      .click();
+    await expect(historyButton(name)).toHaveCount(0);
+    await dialog.getByRole("button", { name: /^(cancel|отмена)$/i }).click();
+    await expect(row).toBeVisible();
+  }
+  expect(archived).toEqual([DIRECT_UUID, CHANNEL_UUID]);
+  expect(restored).toEqual([DIRECT_UUID, CHANNEL_UUID, DIRECT_UUID, CHANNEL_UUID]);
 });

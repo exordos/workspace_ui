@@ -1342,6 +1342,12 @@
     "retry": "Retry"
   },
   "sidebar": {
+    "archiveChat": "Archive",
+    "archiveChatTitle": "Archive chat?",
+    "archiveChatDescription": "Archive “{{name}}” for all participants?",
+    "archiveDirectChatDescription": "Archive your conversation with “{{name}}”? The chat will be archived for both of you.",
+    "archiveChatHistoryHint": "The history will remain available in New chat → Archive. You can restore the chat there.",
+    "archiveChatFailed": "Could not archive the chat. Try again.",
     "emptyAllChats": "No chats yet",
     "emptyAllChatsHint": "When you have conversations, they will show up here.",
     "emptyPersonalChats": "No direct messages yet",

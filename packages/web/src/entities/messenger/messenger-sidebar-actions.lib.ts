@@ -14,6 +14,7 @@ import {
   unpinFolderItem as defaultUnpinFolderItem,
 } from "~/shared/api/messenger-folders.api";
 import {
+  archiveStream as defaultArchiveStream,
   unarchiveStream as defaultUnarchiveStream,
   updateStream as defaultUpdateStream,
   updateStreamNotifications as defaultUpdateStreamNotifications,
@@ -60,6 +61,10 @@ import type {
 const log = createLogger("messenger-sidebar-actions");
 
 export interface MessengerSidebarActionClientDeps {
+  archiveStream?: (
+    options: MessengerClientOptions,
+    streamUuid: string,
+  ) => Promise<WorkspaceMessengerStreamDto>;
   unarchiveStream?: (
     options: MessengerClientOptions,
     streamUuid: string,
@@ -156,6 +161,10 @@ export interface RenameMessengerStreamOptions extends MessengerSidebarActionBase
   name: string;
 }
 
+export interface ArchiveMessengerStreamOptions extends MessengerSidebarActionBaseOptions {
+  streamUuid: MessengerUuid;
+}
+
 export interface UnarchiveMessengerStreamOptions extends MessengerSidebarActionBaseOptions {
   streamUuid: MessengerUuid;
 }
@@ -202,6 +211,10 @@ export interface RunWorkspaceStreamNotificationUpdateOptions {
 export interface RunWorkspaceStreamRenameRequestOptions {
   streamUuid: MessengerUuid;
   name?: string;
+}
+
+export interface RunWorkspaceStreamArchiveOptions {
+  streamUuid: MessengerUuid;
 }
 
 export interface RunWorkspaceStreamUnarchiveOptions {
@@ -549,15 +562,30 @@ export async function renameMessengerStream({
   return { status: "applied", ownerKey: action.ownerKey, stream };
 }
 
-export async function unarchiveMessengerStream({
-  runtimeContext,
-  getRuntimeContext = () => runtimeContext,
-  clientOptions,
-  client = {},
-  signal,
-  store = useMessengerStore,
-  streamUuid,
-}: UnarchiveMessengerStreamOptions): Promise<MessengerStreamActionResult> {
+export function archiveMessengerStream(
+  options: ArchiveMessengerStreamOptions,
+): Promise<MessengerStreamActionResult> {
+  return setMessengerStreamArchived(options, true);
+}
+
+export function unarchiveMessengerStream(
+  options: UnarchiveMessengerStreamOptions,
+): Promise<MessengerStreamActionResult> {
+  return setMessengerStreamArchived(options, false);
+}
+
+async function setMessengerStreamArchived(
+  {
+    runtimeContext,
+    getRuntimeContext = () => runtimeContext,
+    clientOptions,
+    client = {},
+    signal,
+    store = useMessengerStore,
+    streamUuid,
+  }: ArchiveMessengerStreamOptions,
+  isArchived: boolean,
+): Promise<MessengerStreamActionResult> {
   const action = captureSidebarAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null) return skippedMissingContext();
   const ownerKey = action.ownerKey;
@@ -571,7 +599,10 @@ export async function unarchiveMessengerStream({
 
   let dto: WorkspaceMessengerStreamDto;
   try {
-    dto = await (client.unarchiveStream ?? defaultUnarchiveStream)(
+    const updateArchiveState = isArchived
+      ? (client.archiveStream ?? defaultArchiveStream)
+      : (client.unarchiveStream ?? defaultUnarchiveStream);
+    dto = await updateArchiveState(
       buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
       streamUuid,
     );
@@ -584,9 +615,9 @@ export async function unarchiveMessengerStream({
     dto.uuid !== streamUuid ||
     dto.project_id !== runtimeContext.projectId ||
     dto.user_uuid !== runtimeContext.userUuid ||
-    dto.is_archived
+    dto.is_archived !== isArchived
   ) {
-    throw new Error("Invalid unarchived stream response");
+    throw new Error(`Invalid ${isArchived ? "archived" : "unarchived"} stream response`);
   }
 
   const responseStream = adaptMessengerStream(dto);
@@ -594,12 +625,12 @@ export async function unarchiveMessengerStream({
   const hasNewerSnapshot =
     currentStream != null &&
     Date.parse(currentStream.updatedAt) > Date.parse(responseStream.updatedAt);
-  // A newer archive event wins over this request; equal snapshots retain local projections.
+  // A newer stream event wins over this request; equal snapshots retain local projections.
   let stream = responseStream;
   if (currentStream != null) {
     stream = hasNewerSnapshot
       ? currentStream
-      : { ...currentStream, isArchived: false, updatedAt: responseStream.updatedAt };
+      : { ...currentStream, isArchived, updatedAt: responseStream.updatedAt };
   }
   const notificationEntry = streamNotificationOptimisticEntries.get(
     streamNotificationOptimisticKey(ownerKey, streamUuid),
@@ -611,7 +642,7 @@ export async function unarchiveMessengerStream({
   ) {
     notificationEntry.confirmedStream = {
       ...notificationEntry.confirmedStream,
-      isArchived: false,
+      isArchived,
       updatedAt: stream.updatedAt,
     };
     notificationEntry.latestProjectedStream = stream;
@@ -627,7 +658,7 @@ export async function unarchiveMessengerStream({
     try {
       await upsertMessengerStreamCache(ownerKey, snapshot, { shouldApply });
     } catch (error) {
-      log.warn("Could not persist unarchived stream", {
+      log.warn("Could not persist stream archive state", {
         error: error instanceof Error ? error.name : "unknown",
       });
     }
@@ -907,6 +938,14 @@ export async function runWorkspaceStreamRenameRequest(
     streamUuid: options.streamUuid,
     name,
   });
+}
+
+export async function runWorkspaceStreamArchive(
+  options: RunWorkspaceStreamArchiveOptions,
+): Promise<MessengerStreamActionResult> {
+  const runtimeOptions = currentRuntimeActionOptions();
+  if (runtimeOptions == null) return skippedMissingContext();
+  return archiveMessengerStream({ ...runtimeOptions, streamUuid: options.streamUuid });
 }
 
 export async function runWorkspaceStreamUnarchive(

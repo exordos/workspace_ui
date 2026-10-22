@@ -777,7 +777,53 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
-  it("keeps active streams above muted and archived streams", () => {
+  it.each([null, FOLDER_A, "custom-folder"])(
+    "hides archived streams before folder snapshots refresh (%s)",
+    (selectedFolderUuid) => {
+      const existingFolder = folder({
+        uuid: selectedFolderUuid ?? FOLDER_A,
+        systemType: selectedFolderUuid === "custom-folder" ? null : "all",
+      });
+      const catalog = state({ foldersById: { [existingFolder.uuid]: existingFolder } });
+      const options = {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid,
+      };
+      expect(
+        selectMessengerSidebarStreams(catalog, options).map((row) => row.streamUuid),
+      ).toContain(STREAM_A);
+
+      const archivedStream = stream({ isArchived: true });
+      const updatedCatalog = {
+        ...catalog,
+        streamsById: { ...catalog.streamsById, [STREAM_A]: archivedStream },
+      };
+      const rows = selectMessengerSidebarStreams(updatedCatalog, options);
+      expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B]);
+      expect(updatedCatalog.streamsById[STREAM_A]).toBe(archivedStream);
+      expect(updatedCatalog.foldersById).toBe(catalog.foldersById);
+    },
+  );
+
+  it("hides archived conversation-only rows from stale folder snapshots", () => {
+    const archivedConversation = conversation({ isArchived: true });
+    const catalog = state({
+      streamsById: { [STREAM_A]: stream() },
+      streamIds: [STREAM_A],
+      conversationsById: { [archivedConversation.id]: archivedConversation },
+      conversationIds: [archivedConversation.id],
+    });
+    const rows = selectMessengerSidebarStreams(catalog, {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      selectedFolderUuid: FOLDER_A,
+    });
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A]);
+    expect(catalog.conversationsById[archivedConversation.id]).toBe(archivedConversation);
+  });
+
+  it("excludes archived folder rows and keeps active streams above muted streams", () => {
     const archivedMessageAt = "2026-06-22T12:10:00Z";
     const rows = selectMessengerSidebarStreams(
       state({
@@ -830,7 +876,7 @@ describe("messenger sidebar selectors", () => {
       },
     );
 
-    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B, STREAM_C]);
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
   });
 
   it("returns a muted stream with an explicitly active topic to the active group", () => {
@@ -1029,7 +1075,7 @@ describe("messenger sidebar selectors", () => {
     expect(after[0]?.lastMessageCreatedAt).toBe(firstMessageAt);
   });
 
-  it.each(["muted", "archived", "unread_first"] as const)(
+  it.each(["muted", "unread_first"] as const)(
     "keeps %s priority ahead of a newer empty stream's creation time",
     (priority) => {
       const rows = selectMessengerSidebarStreams(
@@ -1040,7 +1086,6 @@ describe("messenger sidebar selectors", () => {
               uuid: STREAM_B,
               createdAt: DATE_B,
               notificationMode: priority === "muted" ? "muted" : "all_messages",
-              isArchived: priority === "archived",
             }),
           },
           topicIds: [TOPIC_A],

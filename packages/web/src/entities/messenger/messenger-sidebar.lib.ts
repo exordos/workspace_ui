@@ -544,13 +544,13 @@ export function selectMessengerSidebarStreams(
 
   const selectedFolder = selectedFolderUuid != null ? state.foldersById[selectedFolderUuid] : null;
   // If a folder is selected, order and counters come from folder.items.
-  // If no folder is selected, all streams are shown as a general list.
+  // Archived rows stay in the catalog for the Archive tab, even before folder refresh.
   const streams = selectedFolder
     ? selectedFolder.items
         .map((item) => {
           const stream = state.streamsById[item.streamUuid];
           if (stream != null) {
-            if (isWorkspaceSelfChat(stream, currentUserUuid)) return null;
+            if (stream.isArchived || isWorkspaceSelfChat(stream, currentUserUuid)) return null;
             return streamItemFromStream({
               organizationId: options.organizationId,
               projectId: options.projectId,
@@ -582,7 +582,8 @@ export function selectMessengerSidebarStreams(
 
           const conversation = state.conversationsById[item.conversationId];
           if (conversation == null) return null;
-          if (isWorkspaceSelfChat(conversation, currentUserUuid)) return null;
+          if (conversation.isArchived || isWorkspaceSelfChat(conversation, currentUserUuid))
+            return null;
           return streamItemFromConversation({
             organizationId: options.organizationId,
             projectId: options.projectId,
@@ -605,7 +606,7 @@ export function selectMessengerSidebarStreams(
         .map((streamId) => state.streamsById[streamId])
         .filter(
           (stream): stream is MessengerStream =>
-            stream != null && !isWorkspaceSelfChat(stream, currentUserUuid),
+            stream != null && !stream.isArchived && !isWorkspaceSelfChat(stream, currentUserUuid),
         )
         .map((stream) =>
           streamItemFromStream({

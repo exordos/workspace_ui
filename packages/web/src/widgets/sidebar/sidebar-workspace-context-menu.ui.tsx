@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
@@ -8,6 +8,7 @@ import {
   runWorkspaceCreateTopicRequest,
   runWorkspaceFolderAssignmentToggle,
   runWorkspaceFolderItemPinToggle,
+  runWorkspaceStreamArchive,
   runWorkspaceStreamNotificationUpdate,
   runWorkspaceStreamRenameRequest,
 } from "~/entities/messenger/messenger-sidebar-actions.lib";
@@ -17,12 +18,24 @@ import type {
   MessengerFolderItem,
   MessengerSidebarStreamItem,
 } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
+import {
+  AppDialog,
+  AppDialogFormFooter,
+  DialogCancelButton,
+  DialogPrimaryButton,
+} from "~/shared/ui/app-dialog";
 import {
   useDropdownContextMenuAnchor,
   wrapChildWithContextMenuHandlers,
@@ -37,6 +50,117 @@ const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =
 const DIRECT_PRIVATE_STREAM_NOTIFICATION_OPTIONS = STREAM_NOTIFICATION_LEVEL_OPTIONS.filter(
   (option) => option.level !== "default",
 );
+
+interface ArchiveConfirmation {
+  streamUuid: string;
+  title: string;
+  context: WorkspaceRuntimeRequestContext;
+}
+
+function isArchiveConfirmationCurrent(confirmation: ArchiveConfirmation): boolean {
+  const store = useMessengerStore.getState();
+  return (
+    isWorkspaceRuntimeRequestContextCurrent(
+      confirmation.context,
+      useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+    ) &&
+    store.ownerKey === workspaceRuntimeOwnerKey(confirmation.context) &&
+    store.streamsById[confirmation.streamUuid]?.isArchived === false
+  );
+}
+
+function useWorkspaceArchiveConfirmation(stream: MessengerSidebarStreamItem) {
+  const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
+  const ownerKey = useMessengerStore((state) => state.ownerKey);
+  const targetAvailable = useMessengerStore(
+    (state) => state.streamsById[stream.streamUuid]?.isArchived === false,
+  );
+  const [confirmation, setConfirmation] = useState<ArchiveConfirmation | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState(false);
+  const currentConfirmation = useRef<ArchiveConfirmation | null>(null);
+  const pendingConfirmation = useRef<ArchiveConfirmation | null>(null);
+
+  const dismiss = useCallback(() => {
+    currentConfirmation.current = null;
+    pendingConfirmation.current = null;
+    setConfirmation(null);
+    setPending(false);
+    setError(false);
+  }, []);
+
+  useEffect(() => {
+    const current = currentConfirmation.current;
+    if (
+      current != null &&
+      (current.streamUuid !== stream.streamUuid || !isArchiveConfirmationCurrent(current))
+    ) {
+      dismiss();
+    }
+  }, [dismiss, ownerKey, runtimeGeneration, stream.streamUuid, targetAvailable]);
+
+  useEffect(
+    () => () => {
+      currentConfirmation.current = null;
+      pendingConfirmation.current = null;
+    },
+    [],
+  );
+
+  const open = useCallback(() => {
+    if (pendingConfirmation.current != null || stream.isArchived) return;
+    const context = captureWorkspaceRuntimeRequestContext(
+      useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+    );
+    if (context == null) return;
+    const next = { context, streamUuid: stream.streamUuid, title: stream.title };
+    if (!isArchiveConfirmationCurrent(next)) return;
+    currentConfirmation.current = next;
+    setConfirmation(next);
+    setPending(false);
+    setError(false);
+  }, [stream.isArchived, stream.streamUuid, stream.title]);
+
+  const changeOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && pendingConfirmation.current == null) dismiss();
+    },
+    [dismiss],
+  );
+
+  const submit = useCallback(() => {
+    const current = currentConfirmation.current;
+    if (current == null || pendingConfirmation.current != null) return;
+    if (current.streamUuid !== stream.streamUuid || !isArchiveConfirmationCurrent(current)) {
+      dismiss();
+      return;
+    }
+    // The ref prevents repeated confirmation before React renders the pending state.
+    pendingConfirmation.current = current;
+    setPending(true);
+    setError(false);
+    void runWorkspaceStreamArchive({ streamUuid: current.streamUuid })
+      .then((result) => {
+        if (currentConfirmation.current === current && isArchiveConfirmationCurrent(current)) {
+          if (result.status === "applied") dismiss();
+          else setError(true);
+        }
+      })
+      .catch(() => {
+        if (currentConfirmation.current === current && isArchiveConfirmationCurrent(current)) {
+          setError(true);
+        }
+      })
+      .finally(() => {
+        if (currentConfirmation.current === current && isArchiveConfirmationCurrent(current)) {
+          pendingConfirmation.current = null;
+          setPending(false);
+        }
+      });
+  }, [dismiss, stream.streamUuid]);
+
+  return { confirmation, pending, error, open, changeOpen, submit };
+}
 
 function reportWorkspaceMenuActionError(action: string, error: unknown): void {
   reportUnexpectedError("workspace-sidebar-menu", error, { action });
@@ -198,6 +322,9 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     folderScope,
   );
   const rightDrawer = useRightDrawer();
+  const archive = useWorkspaceArchiveConfirmation(stream);
+  const { open: openArchiveConfirmation, pending: archivePending } = archive;
+  const rowRef = useRef<HTMLDivElement>(null);
   const [notificationPending, setNotificationPending] = useState(false);
   const [readPending, setReadPending] = useState(false);
   const [pinPending, setPinPending] = useState(false);
@@ -458,20 +585,40 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         onSelect: handleCreateTopic,
       },
     );
+    if (!stream.isArchived) {
+      items.push(
+        { type: "separator", key: "archive-separator" },
+        {
+          type: "action",
+          key: "archive-stream",
+          icon: "folder",
+          label: t("sidebar.archiveChat"),
+          disabled: archivePending,
+          onSelect: () => {
+            handleMenuOpenChange(false);
+            openArchiveConfirmation();
+          },
+        },
+      );
+    }
     return items;
   }, [
+    openArchiveConfirmation,
+    archivePending,
     folderAssignmentsItem,
     handleCreateTopic,
     handleMarkRead,
     handleOpenMembers,
     handlePinToggle,
     handleRename,
+    handleMenuOpenChange,
     notificationPickerItem,
     pinPending,
     readPending,
     selectedFolderItem,
     stream.unreadCount,
     stream.uiKind,
+    stream.isArchived,
   ]);
 
   const contentWithContextMenu = useMemo(
@@ -484,7 +631,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   );
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rowRef}>
       {contentWithContextMenu}
       {below?.({ onCreateTopic: handleCreateTopic })}
       <DropdownMenu
@@ -525,6 +672,43 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         onOpenChange={setCreateTopicDialogOpen}
         onSubmit={handleSubmitCreateTopic}
       />
+      <AppDialog
+        open={archive.confirmation != null}
+        onOpenChange={archive.changeOpen}
+        title={t("sidebar.archiveChatTitle")}
+        description={t(
+          isDirectPrivate
+            ? "sidebar.archiveDirectChatDescription"
+            : "sidebar.archiveChatDescription",
+          { name: archive.confirmation?.title ?? stream.title },
+        )}
+        positionClassName="top-1/2 -translate-y-1/2"
+        showCloseButton={!archive.pending}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          rowRef.current?.querySelector<HTMLElement>("a, button")?.focus();
+        }}
+        footer={
+          <>
+            <DialogCancelButton
+              onClick={() => archive.changeOpen(false)}
+              disabled={archive.pending}
+            >
+              {t("common.cancel")}
+            </DialogCancelButton>
+            <DialogPrimaryButton onClick={archive.submit} isSubmitting={archive.pending}>
+              {t("sidebar.archiveChat")}
+            </DialogPrimaryButton>
+          </>
+        }
+      >
+        <p className="text-sm text-text-secondary">{t("sidebar.archiveChatHistoryHint")}</p>
+        {archive.error ? (
+          <p role="alert" className="mt-3 text-sm text-danger">
+            {t("sidebar.archiveChatFailed")}
+          </p>
+        ) : null}
+      </AppDialog>
     </div>
   );
 });
