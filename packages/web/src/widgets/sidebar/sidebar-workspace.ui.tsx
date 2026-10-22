@@ -414,13 +414,11 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
   // Highlight only the active route — never “expanded”.
   const rowSurfaceClass = sidebarRowClass(isActive);
-  const avatarSize = compact ? "sm" : "md";
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
-  const lockSize = compact && !isDirectPrivate ? 20 : 24;
   const avatarContent = stream.encryption ? (
     <span role="img" aria-label={t("e2ee.protectedChat")}>
-      <Icon name="chatLock" size={lockSize} className="text-text-primary" />
+      <Icon name="chatLock" size={24} className="text-text-primary" />
     </span>
   ) : (
     avatarLabel
@@ -473,28 +471,30 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
         }
       >
         <div className={`${rowClass} w-full ${rowSurfaceClass} ${isMuted ? "opacity-70" : ""}`}>
-          <Link
-            to={stream.route}
-            className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
-            onClick={handleStreamLinkClick}
-          >
-            {isDirectPrivate ? (
-              <WorkspaceAvatar
-                size={avatarSize}
-                avatarUrn={stream.avatarUrl}
-                presence={stream.presence ?? null}
-              >
-                {avatarContent}
-              </WorkspaceAvatar>
-            ) : (
-              <Avatar
-                size={avatarSize}
-                style={{ backgroundColor: resolveAvatarBackgroundColor(stream.color) }}
-              >
-                {avatarContent}
-              </Avatar>
-            )}
-          </Link>
+          {!compact && (
+            <Link
+              to={stream.route}
+              className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
+              onClick={handleStreamLinkClick}
+            >
+              {isDirectPrivate ? (
+                <WorkspaceAvatar
+                  size="md"
+                  avatarUrn={stream.avatarUrl}
+                  presence={stream.presence ?? null}
+                >
+                  {avatarContent}
+                </WorkspaceAvatar>
+              ) : (
+                <Avatar
+                  size="md"
+                  style={{ backgroundColor: resolveAvatarBackgroundColor(stream.color) }}
+                >
+                  {avatarContent}
+                </Avatar>
+              )}
+            </Link>
+          )}
           <div className={sidebarChatRowBodyClass(compact)}>
             <Link
               to={stream.route}
