@@ -990,6 +990,86 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain(`urn:message:${messageUuid}`);
   });
 
+  it("preserves a silent user link label and UUID in both native parse representations", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(`[Admin Example](urn:user:${userUuid} "silent")`, {
+      resolveMention: () => ({
+        userUuid: "22222222-2222-4222-8222-222222222222",
+        displayText: "Updated catalog name",
+      }),
+    });
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [{ kind: "mention", displayText: "Admin Example", userUuid, silent: true }],
+      },
+    ]);
+    expect(document.markdownTokens[0]).toMatchObject({
+      type: "paragraph",
+      tokens: [{ type: "workspace_mention", displayText: "Admin Example", userUuid, silent: true }],
+    });
+    expect(document.safeTextPreview).toBe("Admin Example");
+    expect(document.metadata.textPreview).toBe("Admin Example");
+  });
+
+  it.each([
+    ["paragraph", "", ""],
+    ["emphasis", "**", "**"],
+    ["heading", "## ", ""],
+    ["list", "- ", ""],
+    ["table", "| User |\n| --- |\n| ", " |"],
+    ["blockquote", "> ", ""],
+    ["historical quote", "```quote\n", "\n```"],
+    ["spoiler", "```spoiler Details\n", "\n```"],
+  ])("renders silent user links without @ in a %s", (_kind, prefix, suffix) => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(
+      `${prefix}[Admin Example](urn:user:${userUuid} "silent")${suffix}`,
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      enableMentions: true,
+    });
+
+    expect(result.html).toContain(
+      `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${userUuid}">Admin Example</button>`,
+    );
+    expect(result.html).not.toContain("@Admin Example");
+    expect(result.html).not.toContain("urn:user:");
+  });
+
+  it("keeps silent labels readable when interactive mentions are disabled", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(`[Admin Example](urn:user:${userUuid} "silent")`);
+
+    expect(renderWorkspaceMessageBody(document).html).toBe("<p>Admin Example</p>");
+  });
+
+  it.each(["", ' "profile"', ' "Silent"'])(
+    "keeps ordinary user links unchanged for title suffix %s",
+    (title) => {
+      const userUuid = "11111111-1111-4111-8111-111111111111";
+      const document = parseWorkspaceMessageBody(`[Admin Example](urn:user:${userUuid}${title})`, {
+        resolveMention: () => ({ userUuid, displayText: "Updated catalog name" }),
+      });
+
+      expect(document.blocks).toEqual([
+        {
+          kind: "paragraph",
+          children: [{ kind: "mention", displayText: "Updated catalog name", userUuid }],
+        },
+      ]);
+      expect(
+        renderWorkspaceMessageBody(document, {
+          ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+          enableMentions: true,
+        }).html,
+      ).toContain(">@Updated catalog name</button>");
+      expect(document.safeTextPreview).toBe("@Updated catalog name");
+    },
+  );
+
   it("parses a standalone quote URN as a dedicated render segment", () => {
     const messageUuid = "22222222-2222-4222-8222-222222222222";
     const selectedText = "точный фрагмент & следующая строка";

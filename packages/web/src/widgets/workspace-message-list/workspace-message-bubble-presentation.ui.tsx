@@ -653,6 +653,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             visitedMessageUuids={serverMessage == null ? undefined : new Set([serverMessage.uuid])}
             resolveMention={resolveMention}
             onOpenMessage={interactiveActions?.onOpenMessageInChat}
+            enableMentions={interactiveActions?.onOpenMentionUser != null}
             onLoadWorkspaceFilePreview={
               passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
@@ -661,6 +662,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         ),
       [
         interactiveActions?.onOpenMessageInChat,
+        interactiveActions?.onOpenMentionUser,
         interactiveActions?.onLoadWorkspaceFilePreview,
         isPreview,
         quoteRenderMode,

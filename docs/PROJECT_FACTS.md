@@ -35,6 +35,10 @@ All paths below are relative to `packages/web/src`.
 
 Do not infer a module's backend from its old name. In particular, `entities/message` is Workspace-native. Remaining `zulip-*` helpers are not the default integration path for new messenger work.
 
+User references use `[Name](urn:user:UUID)`. The exact Markdown title `"silent"`, as in `[Name](urn:user:UUID "silent")`, keeps the link label without an `@` prefix in message bodies and previews. It uses the same UUID profile action and does not count as a mention in the local desktop notification fallback. Other notification reasons, such as a direct message or a followed topic, retain their existing policy.
+
+Quote and forward content enable the same user profile links when the enclosing message exposes its UUID profile callback, including nested snapshots. Without that callback they remain text. Opening a user profile does not activate the quote's message navigation.
+
 ## Backend contracts
 
 Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.

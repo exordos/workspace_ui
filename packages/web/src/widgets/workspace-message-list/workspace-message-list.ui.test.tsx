@@ -4557,6 +4557,96 @@ describe("WorkspaceMessageList", () => {
     expect(onOpenMessageInChat).toHaveBeenCalledWith(messageUuid);
   });
 
+  it.each([
+    ["paragraph", (markdown: string) => markdown],
+    ["blockquote", (markdown: string) => `> ${markdown}`],
+    ["historical quote", (markdown: string) => `\`\`\`quote\n${markdown}\n\`\`\``],
+    [
+      "forward snapshot",
+      (markdown: string) =>
+        `[Saved author](${buildWorkspaceForwardUrn("22222222-2222-4222-8222-222222222222", markdown)})`,
+    ],
+    [
+      "nested forward snapshot",
+      (markdown: string) => {
+        const nested = buildWorkspaceForwardUrn("33333333-3333-4333-8333-333333333333", markdown);
+        const nestedMarkdown = `[Nested author](${nested})`;
+        const snapshot = buildWorkspaceForwardUrn(
+          "22222222-2222-4222-8222-222222222222",
+          nestedMarkdown,
+        );
+        return `[Saved author](${snapshot})`;
+      },
+    ],
+  ])("opens silent user links from a %s through the existing UUID callback", async (kind, wrap) => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const onOpenMentionUser = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "silent-user-link-message",
+            markdown: wrap(
+              `[Admin Example](urn:user:${userUuid} "silent") and [Alice](urn:user:${userUuid})`,
+            ),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenMentionUser, onOpenMessageInChat }}
+      />,
+    );
+
+    const mentions = container.querySelectorAll<HTMLButtonElement>(
+      "[data-workspace-mention='true']",
+    );
+    expect(mentions).toHaveLength(2);
+    const silent = mentions[0]!;
+    expect(silent).toHaveTextContent(/^Admin Example$/);
+    expect(silent).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(mentions[1]).toHaveTextContent(/^@Alice$/);
+
+    fireEvent.click(silent);
+    expect(onOpenMentionUser).toHaveBeenCalledExactlyOnceWith(userUuid);
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
+
+    silent.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenMentionUser).toHaveBeenCalledTimes(2);
+    expect(onOpenMentionUser).toHaveBeenLastCalledWith(userUuid);
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
+
+    const quoteHeader = container.querySelector<HTMLElement>("[data-workspace-quote-open='true']");
+    if (kind.includes("snapshot")) {
+      expect(quoteHeader).not.toBeNull();
+      fireEvent.click(quoteHeader!);
+      expect(onOpenMessageInChat).toHaveBeenCalledExactlyOnceWith(
+        "22222222-2222-4222-8222-222222222222",
+      );
+    }
+  });
+
+  it("keeps silent user names in a forward snapshot as text without a profile callback", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const forwardUrn = buildWorkspaceForwardUrn(
+      "22222222-2222-4222-8222-222222222222",
+      `[Admin Example](urn:user:${userUuid} "silent") and [Alice](urn:user:${userUuid})`,
+    );
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[Saved author](${forwardUrn})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-workspace-mention='true']")).toBeNull();
+    expect(container.querySelector("[data-workspace-quote='true']")).toHaveTextContent(
+      "Admin Example and @Alice",
+    );
+  });
+
   it("opens stream and topic URNs through the Workspace reference callback", () => {
     const streamUuid = "33333333-3333-4333-8333-333333333333";
     const topicUuid = "44444444-4444-4444-8444-444444444444";

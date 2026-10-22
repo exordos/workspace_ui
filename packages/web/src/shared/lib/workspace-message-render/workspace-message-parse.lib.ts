@@ -139,7 +139,7 @@ function summarizeInlineForPreview(children: readonly WorkspaceMessageInline[]):
             }
             return child.reference.name != null ? `Файл: ${child.reference.name}` : "Файл";
           case "mention":
-            return `@${child.displayText}`;
+            return child.silent ? child.displayText : `@${child.displayText}`;
           case "emoji":
             return child.unicode;
           case "link": {
@@ -243,11 +243,12 @@ function createMentionInline(
   displayText: string,
   context: WorkspaceMessageParseContext,
   sourceUserUuid?: string,
+  silent = false,
 ): WorkspaceMessageInline {
   const normalizedDisplayText = normalizeMentionDisplayText(displayText);
   const resolution = context.options.resolveMention?.(normalizedDisplayText);
   const resolvedDisplayText = normalizeMentionDisplayText(
-    resolution?.displayText ?? normalizedDisplayText,
+    silent ? normalizedDisplayText : (resolution?.displayText ?? normalizedDisplayText),
   );
   const resolvedUserUuid = resolution?.userUuid?.trim();
   const normalizedSourceUserUuid = sourceUserUuid?.trim();
@@ -268,6 +269,7 @@ function createMentionInline(
       kind: "mention",
       displayText: resolvedDisplayText.length > 0 ? resolvedDisplayText : normalizedDisplayText,
       userUuid,
+      ...(silent ? { silent: true } : {}),
     };
   }
 
@@ -276,6 +278,7 @@ function createMentionInline(
     displayText: resolvedDisplayText.length > 0 ? resolvedDisplayText : normalizedDisplayText,
     ...(sourceUserUuidIsValid ? { userUuid: normalizedSourceUserUuid } : {}),
     unresolved: true,
+    ...(silent ? { silent: true } : {}),
   };
 }
 
@@ -623,7 +626,14 @@ function parseInlineTokens(
 
           const workspaceReference = parseWorkspaceReferenceUrn(link.href);
           if (workspaceReference?.kind === "user") {
-            return [createMentionInline(link.text, context, workspaceReference.userUuid)];
+            return [
+              createMentionInline(
+                link.text,
+                context,
+                workspaceReference.userUuid,
+                link.title === "silent",
+              ),
+            ];
           }
 
           if (workspaceReference?.kind === "message") {

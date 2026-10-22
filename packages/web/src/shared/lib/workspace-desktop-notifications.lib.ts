@@ -68,7 +68,7 @@ function hasMentionForCurrentUserInInlines(
   for (const child of children) {
     switch (child.kind) {
       case "mention":
-        if (child.userUuid?.trim() === currentUserUuid) {
+        if (child.silent !== true && child.userUuid?.trim() === currentUserUuid) {
           return true;
         }
         break;

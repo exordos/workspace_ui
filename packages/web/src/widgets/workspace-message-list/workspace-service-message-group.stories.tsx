@@ -4,6 +4,7 @@ import { fn } from "storybook/test";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { t } from "~/i18n/i18n";
+import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { Button } from "~/shared/ui/button";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 import { WorkspaceServiceMessageGroup } from "./workspace-service-message-group.ui";
@@ -192,3 +193,27 @@ function AutomaticCollapsePreview() {
 }
 
 export const AutomaticCollapse: Story = { render: () => <AutomaticCollapsePreview /> };
+
+export const SilentUserReferences: Story = {
+  render: () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const content = `[Alex Example](urn:user:${userUuid} "silent") · [Alex Example](urn:user:${userUuid})`;
+    const forwardUrn = buildWorkspaceForwardUrn("22222222-2222-4222-8222-222222222222", content, {
+      sourceLabel: t("chat.generalChat"),
+    });
+    return (
+      <div className="bg-bg-primary flex h-[420px] w-full max-w-2xl flex-col">
+        <WorkspaceMessageList
+          messages={[
+            previewMessage(0, { kind: "markdown", content }),
+            previewMessage(1, { kind: "markdown", content: `[Sam Lee](${forwardUrn})` }),
+          ]}
+          currentUserUuid="preview-manager"
+          conversationId="topic:preview-stream:preview-topic"
+          resolveAuthorLabel={() => "Sam Lee"}
+          actions={{ onOpenMentionUser: fn(), onOpenMessageInChat: fn() }}
+        />
+      </div>
+    );
+  },
+};

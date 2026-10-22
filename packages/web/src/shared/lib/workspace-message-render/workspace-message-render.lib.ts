@@ -337,7 +337,7 @@ function renderMentionToken(
   token: WorkspaceMentionMarkedToken,
   options: WorkspaceMessageRenderOptions,
 ): string {
-  const mentionText = `@${token.displayText}`;
+  const mentionText = token.silent ? token.displayText : `@${token.displayText}`;
   if (!options.enableMentions || token.userUuid == null || token.userUuid.trim().length === 0) {
     return escapeHtmlText(mentionText);
   }
@@ -395,6 +395,7 @@ function renderLinkToken(
         raw: token.raw,
         displayText: token.text,
         userUuid: reference.userUuid,
+        ...(token.title === "silent" ? { silent: true } : {}),
       },
       options,
     );

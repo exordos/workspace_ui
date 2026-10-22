@@ -85,6 +85,7 @@ export interface WorkspaceMessageMentionInline {
   displayText: string;
   userUuid?: string;
   unresolved?: boolean;
+  silent?: boolean;
 }
 
 export interface WorkspaceMessageEmojiInline {

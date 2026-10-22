@@ -161,6 +161,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   maxDepth = DEFAULT_WORKSPACE_QUOTE_MAX_DEPTH,
   visitedMessageUuids = new Set<string>(),
   resolveMention,
+  enableMentions = false,
   onOpenMessage,
   onLoadWorkspaceFilePreview,
   loadEnabled = true,
@@ -241,8 +242,8 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
       onLoadWorkspaceFilePreview != null
         ? { ...QUOTE_RENDER_OPTIONS, hiddenWorkspaceMediaFileUuids: mediaFileUuids }
         : QUOTE_RENDER_OPTIONS;
-    return renderWorkspaceMessageBodySegments(document, renderOptions);
-  }, [onLoadWorkspaceFilePreview, readyMediaFileUuid, sourceDocument]);
+    return renderWorkspaceMessageBodySegments(document, { ...renderOptions, enableMentions });
+  }, [enableMentions, onLoadWorkspaceFilePreview, readyMediaFileUuid, sourceDocument]);
   const isCycle = visitedMessageUuids.has(reference.messageUuid);
   const canExpandNestedQuotes =
     mode === "full-history" && !isCycle && depth < Math.max(0, maxDepth);
@@ -275,6 +276,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
         maxDepth={maxDepth}
         visitedMessageUuids={nextVisitedMessageUuids}
         resolveMention={resolveMention}
+        enableMentions={enableMentions}
         onOpenMessage={onOpenMessage}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         loadEnabled={loadEnabled}
@@ -282,6 +284,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     ),
     [
       depth,
+      enableMentions,
       loadEnabled,
       maxDepth,
       mode,

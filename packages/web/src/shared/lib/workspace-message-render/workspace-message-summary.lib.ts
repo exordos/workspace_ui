@@ -123,7 +123,10 @@ function summarizeInline(
     case "spoiler":
       return summarizeInlineChildren(inline.children, options);
     case "mention":
-      return { text: `@${inline.displayText}`, leadingKind: "text" };
+      return {
+        text: inline.silent ? inline.displayText : `@${inline.displayText}`,
+        leadingKind: "text",
+      };
     case "emoji":
       return { text: inline.unicode, leadingKind: "text" };
     case "unsupported-media":
