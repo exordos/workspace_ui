@@ -40,7 +40,7 @@ export const MoveTopicToStreamDialog = React.memo(function MoveTopicToStreamDial
       open={open}
       onOpenChange={onOpenChange}
       title={t("channel.moveTopicToChannelTitle")}
-      description={`#${sourceChannelName}`}
+      description={sourceChannelName}
       positionClassName="top-1/2 -translate-y-1/2"
       footer={
         <AppDialogFormFooter
@@ -65,7 +65,7 @@ export const MoveTopicToStreamDialog = React.memo(function MoveTopicToStreamDial
               { value: "", label: t("channel.selectChannel") },
               ...targetStreamOptions.map((stream) => ({
                 value: String(stream.streamId),
-                label: `#${stream.name}`,
+                label: stream.name,
               })),
             ]}
           />

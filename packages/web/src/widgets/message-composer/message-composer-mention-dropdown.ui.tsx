@@ -56,7 +56,7 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
                 onMouseEnter={() => onHoverIndex(index)}
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg text-xs text-text-secondary">
-                  {suggestion.kind === "stream" ? "#" : "›"}
+                  {suggestion.kind === "stream" ? suggestion.streamName.slice(0, 1) : "›"}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{label}</span>

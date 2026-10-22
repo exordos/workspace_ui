@@ -45,7 +45,7 @@ export function getWorkspaceComposerReferenceLabel(reference: WorkspaceComposerR
   if (reference.kind === "stream") {
     return reference.streamName;
   }
-  return `#${reference.streamName} › ${reference.topicName}`;
+  return `${reference.streamName} › ${reference.topicName}`;
 }
 
 export function getWorkspaceComposerReferenceSuggestions({

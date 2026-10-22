@@ -67,7 +67,7 @@ const RenameWorkspaceTopicDialog = React.memo(function RenameWorkspaceTopicDialo
       open={open}
       onOpenChange={onOpenChange}
       title={t("channel.renameTopicTitle")}
-      description={`#${streamTitle}`}
+      description={streamTitle}
       positionClassName="top-1/2 -translate-y-1/2"
       footer={
         <AppDialogFormFooter

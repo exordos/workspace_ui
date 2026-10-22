@@ -1989,10 +1989,10 @@ describe("ChatPage Workspace route", () => {
     );
     expect(screen.getByTestId("old-composer-section")).toBeInTheDocument();
     expect(screen.getByText("workspace message")).toBeInTheDocument();
-    expect(screen.getByText("#general")).toBeInTheDocument();
+    expect(screen.getByText("general")).toBeInTheDocument();
     expect(screen.getByText("Roadmap")).toBeInTheDocument();
     expect(captured.channelHeaderProps).toMatchObject({
-      channelName: "#general",
+      channelName: "general",
       topic: "Roadmap",
       hideTopic: false,
       participantsCount: 2,

@@ -71,7 +71,7 @@ function createInfo(
     kind: "channel",
     streamUuid: STREAM_UUID,
     notificationMode: "all_messages",
-    title: "#general",
+    title: "general",
     color: 0x336699,
     description: null,
     participantsCount: 2,
@@ -800,7 +800,7 @@ describe("RightPanelWorkspaceInfo", () => {
         info={createInfo({
           streamUuid: SECOND_STREAM_UUID,
           notificationMode: "mentions_only",
-          title: "#random",
+          title: "random",
         })}
       />,
     );
@@ -849,7 +849,7 @@ describe("RightPanelWorkspaceInfo", () => {
 
     renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
 
-    const channelTitle = screen.getByText("#general");
+    const channelTitle = screen.getByText("general");
     const channelAvatar = channelTitle.parentElement?.previousElementSibling;
     expect(channelAvatar).toHaveStyle({ backgroundColor: "#336699" });
   });
@@ -1041,7 +1041,7 @@ describe("RightPanelWorkspaceInfo", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Add members")).toBeInTheDocument();
-    expect(within(dialog).getByText("#general")).toBeInTheDocument();
+    expect(within(dialog).getByText("general")).toBeInTheDocument();
     expect(within(dialog).getByText("Bob Baker")).toBeInTheDocument();
     expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
   });

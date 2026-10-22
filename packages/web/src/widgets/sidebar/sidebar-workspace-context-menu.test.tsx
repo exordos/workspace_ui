@@ -231,10 +231,11 @@ describe("WorkspaceSidebar context menu", () => {
     reportUnexpectedErrorMock.mockReset();
   });
 
-  it("uses the stream color as the channel avatar background", () => {
+  it("uses the channel initial and stream color for the avatar", () => {
     renderWorkspaceSidebar([createStream({ color: 0x2563eb })]);
 
-    expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.getByText("E")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.queryByText("#")).not.toBeInTheDocument();
   });
 
   it("keeps the stream color when a lock replaces the channel placeholder", () => {
@@ -1023,7 +1024,7 @@ describe("WorkspaceSidebar context menu", () => {
       }),
     ]);
 
-    fireEvent.contextMenu(screen.getByRole("link", { name: /#private room/i }));
+    fireEvent.contextMenu(screen.getByRole("link", { name: /private room/i }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /add to folder/i }));
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /projects/i }));
 

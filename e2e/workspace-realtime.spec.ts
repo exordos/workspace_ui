@@ -186,7 +186,7 @@ test.describe("Workspace realtime @mock", () => {
       expect(eventCursors).toEqual([String(BOOTSTRAP_CURSOR.epochVersion)]);
       expect(new URL(sockets[0]!.url()).searchParams.get("last_epoch_version")).toBe("101");
       await expect(
-        page.getByRole("link", { name: "#Synced after bootstrap", exact: true }),
+        page.getByRole("link", { name: "Synced after bootstrap", exact: true }),
       ).toBeVisible();
 
       const epochRequestsBeforeReconnect = epochRequests;

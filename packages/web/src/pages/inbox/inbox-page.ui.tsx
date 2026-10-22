@@ -61,7 +61,7 @@ function topicRow(
   topic: MessengerSidebarTopicItem,
 ): InboxDisplayRow {
   const topicTitle = topic.title.trim().length > 0 ? topic.title.trim() : t("inbox.allMessages");
-  const streamTitle = stream.uiKind === "directPrivate" ? stream.title : `#${stream.title}`;
+  const streamTitle = stream.title;
   return {
     id: topic.id,
     title: `${streamTitle} · ${topicTitle}`,
@@ -75,7 +75,7 @@ function topicRow(
 function fallbackStreamRow(stream: MessengerSidebarStreamItem): InboxDisplayRow {
   return {
     id: stream.id,
-    title: stream.uiKind === "directPrivate" ? stream.title : `#${stream.title}`,
+    title: stream.title,
     unreadCount: resolveWorkspaceActiveUnreadCount(stream),
     route: stream.route,
     updatedAt: stream.updatedAt,
@@ -131,7 +131,7 @@ const InboxStreamCard = React.memo<{
 }>(({ group, onNavigate }) => {
   const { stream, rows } = group;
   const isDirect = stream.uiKind === "directPrivate";
-  const title = isDirect ? stream.title : `#${stream.title}`;
+  const title = stream.title;
 
   return (
     <div className="bg-bg-elevated/45 rounded-xl border border-border-subtle p-2">

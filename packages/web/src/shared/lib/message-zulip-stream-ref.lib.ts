@@ -53,7 +53,7 @@ export function resolveZulipStreamReference(
     }
     return {
       htmlClass: "message-link",
-      text: `#${streamName}>${topic}@${messageIdRaw}`,
+      text: `${streamName}>${topic}@${messageIdRaw}`,
     };
   }
 
@@ -66,7 +66,7 @@ export function resolveZulipStreamReference(
     }
     return {
       htmlClass: "stream-topic",
-      text: `#${streamName}>${topic}`,
+      text: `${streamName}>${topic}`,
     };
   }
 
@@ -78,7 +78,7 @@ export function resolveZulipStreamReference(
     }
     return {
       htmlClass: "stream",
-      text: `#${streamName}`,
+      text: streamName,
     };
   }
 

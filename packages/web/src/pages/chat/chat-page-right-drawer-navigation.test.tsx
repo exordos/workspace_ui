@@ -32,7 +32,7 @@ const RightDrawerHeaderHarness: React.FC = () => {
       }}
     >
       <ChatChannelHeader
-        channelName="#engineering"
+        channelName="engineering"
         topic="sprint-planning"
         hideTopic={false}
         hideParticipants={false}

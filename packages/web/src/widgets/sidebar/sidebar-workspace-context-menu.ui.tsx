@@ -516,7 +516,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
       <WorkspaceNameDialog
         open={createTopicDialogOpen}
         title={t("channel.createTopic")}
-        description={`#${stream.title}`}
+        description={stream.title}
         inputLabel={t("channel.topicName")}
         name={newTopicName}
         pending={createTopicPending}

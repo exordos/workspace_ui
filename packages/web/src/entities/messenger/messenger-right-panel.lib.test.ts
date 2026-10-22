@@ -295,7 +295,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(headerView).toEqual(
       expect.objectContaining({
         kind: "channel",
-        channelName: "#general",
+        channelName: "general",
         hideTopic: true,
         participantsCount: 2,
         onlineCount: 1,
@@ -306,7 +306,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       kind: "channel",
       streamUuid: STREAM_UUID,
       notificationMode: "all_messages",
-      title: "#general",
+      title: "general",
       color: null,
       description: "Team updates",
       participantsCount: 2,
@@ -368,7 +368,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
 
     expect(view?.kind).toBe("channel");
     if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
-    expect(view?.title).toBe("#general");
+    expect(view?.title).toBe("general");
     expect(view?.streamUuid).toBe(STREAM_UUID);
     expect(view?.notificationMode).toBe("all_messages");
     expect(headerView.kind).toBe("channel");
@@ -745,7 +745,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), { ...options, route }),
       ),
     ).toEqual([
-      expect.objectContaining({ kind: "channel", title: "#general" }),
+      expect.objectContaining({ kind: "channel", title: "general" }),
       expect.objectContaining({ kind: "directPrivate", directUserUuid: DIRECT_USER_UUID }),
     ]);
     for (const route of routes) {
@@ -900,13 +900,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(headerView).toEqual(
       expect.objectContaining({
         kind: "channel",
-        channelName: "#private-channel",
+        channelName: "private-channel",
         hideTopic: true,
       }),
     );
     expect(view?.kind).toBe("channel");
     if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
-    expect(view?.title).toBe("#private-channel");
+    expect(view?.title).toBe("private-channel");
   });
 
   it("uses direct private stream title while user profile fields are still loading", () => {

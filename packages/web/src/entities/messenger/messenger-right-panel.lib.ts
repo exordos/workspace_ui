@@ -369,7 +369,7 @@ export function selectWorkspaceRightPanelInfoView(
     kind: "channel",
     streamUuid: stream?.uuid ?? null,
     notificationMode: stream?.notificationMode ?? null,
-    title: `#${title}`,
+    title,
     color: stream?.color ?? null,
     description: rawDescription != null && rawDescription.length > 0 ? rawDescription : null,
     participantsCount,

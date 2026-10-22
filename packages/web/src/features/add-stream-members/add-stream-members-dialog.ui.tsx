@@ -205,7 +205,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
             {t("channel.addMembers")}
           </Dialog.Title>
           <Dialog.Description className="truncate text-xs text-text-secondary">
-            #{streamName}
+            {streamName}
           </Dialog.Description>
         </div>
         <Dialog.Close asChild>

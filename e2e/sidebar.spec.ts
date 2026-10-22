@@ -63,7 +63,7 @@ test.describe("Sidebar", () => {
     const sidebar = page.getByRole("navigation", { name: "Chat list" });
     const search = sidebar.getByRole("searchbox");
     const direct = sidebar.getByRole("link", { name: /Alice Adams/ });
-    const group = sidebar.getByRole("link", { name: /#General/ });
+    const group = sidebar.getByRole("link", { name: "General", exact: true });
     await expect(direct).toBeVisible();
     for (const query of ["Adams", " HIDDEN-LOGIN ", "alice@example.test"]) {
       await search.fill(query);

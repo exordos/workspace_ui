@@ -892,10 +892,11 @@ describe("ActivityPage", () => {
       );
     });
     expect(screen.getByText("Channel")).toBeInTheDocument();
-    expect(screen.getByText("#engineering")).toBeInTheDocument();
+    expect(screen.getByText("engineering")).toBeInTheDocument();
     expect(screen.getByText("bugs")).toBeInTheDocument();
     expect(screen.getByText("Review the release notes")).toBeInTheDocument();
-    expect(screen.getByText("#")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.getByText("e")).toHaveAttribute("style", "background-color: rgb(37, 99, 235);");
+    expect(screen.queryByText("#")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit draft" })).toBeInTheDocument();
   });
 

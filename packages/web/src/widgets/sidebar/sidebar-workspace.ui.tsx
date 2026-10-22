@@ -415,7 +415,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
   // Highlight only the active route — never “expanded”.
   const rowSurfaceClass = sidebarRowClass(isActive);
   const isDirectPrivate = stream.uiKind === "directPrivate";
-  const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
+  const avatarLabel = stream.title.slice(0, 1);
   const avatarContent = stream.encryption ? (
     <span role="img" aria-label={t("e2ee.protectedChat")}>
       <Icon name="chatLock" size={24} className="text-text-primary" />
@@ -423,7 +423,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
   ) : (
     avatarLabel
   );
-  const title = isDirectPrivate ? stream.title : `#${stream.title}`;
+  const title = stream.title;
   const statusEmoji = isDirectPrivate ? (stream.statusEmoji ?? null) : null;
   const statusText =
     isDirectPrivate && stream.statusText != null && stream.statusText.trim().length > 0

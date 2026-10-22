@@ -86,7 +86,7 @@ export function ActivityMessageCard({
           </span>
           {streamName.length > 0 && !isPrivate ? (
             <span className="truncate text-[11px] text-text-muted">
-              <span>{`#${streamName}`}</span>
+              <span>{streamName}</span>
               {topicName.length > 0 ? <span>{` · ${topicName}`}</span> : null}
             </span>
           ) : null}

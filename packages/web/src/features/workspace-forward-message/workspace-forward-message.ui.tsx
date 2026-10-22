@@ -198,7 +198,7 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
                   { value: "", label: t("channel.selectChannel") },
                   ...streamOptions.map((streamOption) => ({
                     value: streamOption.streamUuid,
-                    label: `#${streamOption.label}`,
+                    label: streamOption.label,
                   })),
                 ]}
               />

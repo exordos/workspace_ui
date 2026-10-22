@@ -126,7 +126,7 @@ export function useLayoutRightDrawerContext(
       return resolveDmTitle(dmChat?.name);
     }
     if (activeStreamName && activeStreamName.trim().length > 0) {
-      return `#${activeStreamName}`;
+      return activeStreamName;
     }
     // Note: we intentionally don’t try to guess topic title here; window title handles topic separately.
     void activeTopic;

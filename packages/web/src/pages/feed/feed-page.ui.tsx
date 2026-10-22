@@ -364,7 +364,7 @@ export const FeedPage: React.FC = () => {
                 const streamName = streamsById[m.streamUuid]?.name ?? m.streamUuid;
                 const topic = topicsById[m.topicUuid]?.name.trim();
                 const contextTopic = topic != null && topic.length > 0 ? topic : m.topicUuid;
-                const context = `#${streamName} · ${contextTopic}`;
+                const context = `${streamName} · ${contextTopic}`;
                 // Feed uses the same Workspace summary path as the sidebar:
                 // previews stay textual and do not expose protected file URLs.
                 const summaryText =
