@@ -771,12 +771,12 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
         aria-label="Chat list"
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <SidebarSearchHeader
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
+          />
           <ScrollArea className="flex-1" data-sidebar-scroll>
-            <SidebarSearchHeader
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
-              onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
-            />
             {!searchMode && (
               <WorkspaceSidebarActivity
                 open={activityOpen}
