@@ -94,6 +94,10 @@ export interface WorkspaceRealtimeSkippedEvent {
 export interface WorkspaceRealtimeEventApplier {
   // Transport does not know about Zustand or UI. Applier is the only domain write boundary.
   applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext): unknown;
+  applyEvents?(
+    events: readonly WorkspaceRealtimeEvent[],
+    context: WorkspaceRealtimeEventContext,
+  ): unknown;
   skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
     reason: WorkspaceRealtimeSkipReason,
@@ -840,6 +844,7 @@ export function createWorkspaceRealtimeTransportCore(
     await emitState("catching_up");
 
     // Catch-up sends events to the same applier but marks the source for diagnostics.
+    const applyEvents = options.applier.applyEvents;
     const catchUpApplier: WorkspaceRealtimeCatchUpApplier = {
       applyEvent: (event, catchUpContext) =>
         options.applier.applyEvent(event, {
@@ -850,6 +855,18 @@ export function createWorkspaceRealtimeTransportCore(
           source: "catch_up",
           notificationsEnabled: false,
         }),
+      ...(applyEvents == null
+        ? {}
+        : {
+            applyEvents: (
+              events: readonly WorkspaceRealtimeEvent[],
+              catchUpContext: Parameters<WorkspaceRealtimeCatchUpApplier["applyEvent"]>[1],
+            ) =>
+              applyEvents(events, {
+                ...catchUpContext,
+                notificationsEnabled: false,
+              }),
+          }),
       skipEvent: (event, reason, catchUpContext) =>
         options.applier.skipEvent(event, reason, {
           owner: catchUpContext.owner,

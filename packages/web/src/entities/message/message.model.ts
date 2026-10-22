@@ -355,7 +355,7 @@ function readMessagesUpTo(
   return change;
 }
 
-export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set) => ({
+export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set, get) => ({
   ...createEmptyWorkspaceMessageData(),
 
   setOwner(ownerKey, preserveExisting) {
@@ -491,49 +491,50 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
   },
 
   applyLiveCreatedMessage(message) {
-    if (removedStreamUuids.has(message.streamUuid)) return;
-    logStoreAction("workspaceMessage", "applyLiveCreatedMessage", { messageUuid: message.uuid });
+    get().applyLiveCreatedMessages([message]);
+  },
+
+  applyLiveCreatedMessages(messages) {
+    const accepted = keepMessagesOutsideRemovedStreams(messages);
+    if (accepted.length === 0) return;
+    logStoreAction("workspaceMessage", "applyLiveCreatedMessages", { count: accepted.length });
     set((state) => {
-      const mutationRevision = state.messageMutationRevision + 1;
-      const messagesById = {
-        ...state.messagesById,
-        [message.uuid]: mergeWorkspaceMessageSnapshot(state.messagesById[message.uuid], message),
-      };
-      let conversationWindowsById = state.conversationWindowsById;
-      for (const conversationId of conversationBucketsForWorkspaceMessage(message, {
-        includeStreamConversation: true,
-      })) {
-        const window = state.conversationWindowsById[conversationId];
-        if (
-          window == null ||
-          !shouldInsertLiveMessageIntoWindow(window, message, state.messagesById)
-        ) {
-          continue;
-        }
-        if (conversationWindowsById === state.conversationWindowsById) {
-          conversationWindowsById = { ...state.conversationWindowsById };
-        }
-        conversationWindowsById[conversationId] = {
-          ...window,
-          messageUuids: insertSortedWorkspaceMessageId(
-            window.messageUuids,
-            message,
-            messagesById,
-            state.messagesById[message.uuid],
-          ),
-          revision: nextWindowRevision(window),
-        };
-      }
+      const messagesById = { ...state.messagesById };
+      const messageMutationRevisionById = { ...state.messageMutationRevisionById };
       const deletedMessageRevisionById = { ...state.deletedMessageRevisionById };
-      delete deletedMessageRevisionById[message.uuid];
+      let conversationWindowsById = state.conversationWindowsById;
+      let mutationRevision = state.messageMutationRevision;
+      for (const message of accepted) {
+        const previous = messagesById[message.uuid];
+        messagesById[message.uuid] = mergeWorkspaceMessageSnapshot(previous, message);
+        mutationRevision += 1;
+        messageMutationRevisionById[message.uuid] = mutationRevision;
+        delete deletedMessageRevisionById[message.uuid];
+        for (const conversationId of conversationBucketsForWorkspaceMessage(message, {
+          includeStreamConversation: true,
+        })) {
+          const window = conversationWindowsById[conversationId];
+          if (window == null || !shouldInsertLiveMessageIntoWindow(window, message, messagesById))
+            continue;
+          if (conversationWindowsById === state.conversationWindowsById)
+            conversationWindowsById = { ...state.conversationWindowsById };
+          conversationWindowsById[conversationId] = {
+            ...window,
+            messageUuids: insertSortedWorkspaceMessageId(
+              window.messageUuids,
+              message,
+              messagesById,
+              previous,
+            ),
+            revision: nextWindowRevision(window),
+          };
+        }
+      }
       return {
         messagesById,
         conversationWindowsById,
         messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: {
-          ...state.messageMutationRevisionById,
-          [message.uuid]: mutationRevision,
-        },
+        messageMutationRevisionById,
         deletedMessageRevisionById,
       };
     });

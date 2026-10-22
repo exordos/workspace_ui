@@ -72,6 +72,12 @@ export interface MessengerRealtimeCacheConversationPage {
 }
 
 export interface MessengerRealtimeActiveCacheWriter {
+  writeCreatedMessages?: (
+    ownerKey: string,
+    messages: readonly MessengerMessage[],
+    epochVersion: number | undefined,
+    isWriteCurrent: () => boolean,
+  ) => Promise<void> | void;
   advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
   markCachedMessagesRead?: (
     ownerKey: string,
@@ -148,6 +154,8 @@ export interface MessengerRealtimeBackgroundApplierOptions {
 export type MessengerRealtimeBackgroundCacheWriter = Partial<MessengerRealtimeCacheWriter>;
 
 const log = createLogger("realtime:workspace-messenger");
+// Bound transactions even when a caller requests larger REST pages.
+const MAX_CREATED_MESSAGES_PER_BATCH = 100;
 
 function isActiveCurrentOwner(
   context: WorkspaceRealtimeRuntimeContext,
@@ -262,10 +270,15 @@ function writeRealtimeMessagePageCache(
   cache: MessengerRealtimeActiveCacheWriter | undefined,
   ownerKey: string,
   message: MessengerMessage,
+  isWriteCurrent: () => boolean,
 ): Promise<void> | void {
   const writeConversationMessagePage = cache?.writeConversationMessagePage;
+  if (cache?.writeCreatedMessages != null) {
+    return writeRealtimeCacheBestEffort(() =>
+      cache.writeCreatedMessages?.(ownerKey, [message], undefined, isWriteCurrent),
+    );
+  }
   if (writeConversationMessagePage == null) return;
-
   return settleRealtimeCacheWrites(
     conversationIdsForRealtimeMessage(message).map((conversationId) =>
       writeRealtimeCacheBestEffort(() =>
@@ -395,7 +408,9 @@ function applyMessageRealtimeEvent(
   messageStore.applyLiveCreatedMessage(message);
   settleMessengerOutgoingMessage(ownerKey, message);
   store.applyMessagePointer(ownerKey, message, messageStore.messagesById);
-  const cacheWrite = writeRealtimeMessagePageCache(activeCache, ownerKey, message);
+  const cacheWrite = writeRealtimeMessagePageCache(activeCache, ownerKey, message, () =>
+    isActiveCurrentOwner(context, options),
+  );
   if (
     context.notificationsEnabled === true &&
     options.onMessageCreated != null &&
@@ -622,11 +637,43 @@ function applyLightweightProjectionEvent(
     .recordAppliedEvent(context.ownerKey, event, context);
 }
 
+async function applyRealtimeEventBatch(
+  applier: WorkspaceRealtimeEventApplier,
+  events: readonly WorkspaceRealtimeEvent[],
+  context: WorkspaceRealtimeEventContext,
+  applyCreated: (
+    events: readonly Exclude<MessengerMessageRealtimeEvent, { kind: "message.deleted" }>[],
+    epochVersion: number,
+  ) => Promise<void>,
+  isCurrent: () => boolean,
+): Promise<void> {
+  let created: Exclude<MessengerMessageRealtimeEvent, { kind: "message.deleted" }>[] = [];
+  const flush = async (): Promise<void> => {
+    const last = created.at(-1);
+    if (last == null || !isCurrent()) return;
+    const batch = created;
+    created = [];
+    await applyCreated(batch, last.epoch_version);
+  };
+  for (const event of events) {
+    if (!isCurrent()) return;
+    if (event.type === "message" && event.kind === "message.created") {
+      created.push(event);
+      if (created.length >= MAX_CREATED_MESSAGES_PER_BATCH) await flush();
+    } else {
+      await flush();
+      if (!isCurrent()) return;
+      await applier.applyEvent(event, context);
+    }
+  }
+  await flush();
+}
+
 export function createMessengerRealtimeActiveApplier(
   options: MessengerRealtimeActiveApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
   const activeCache = options.cache ?? messengerRealtimeActiveCache;
-  return {
+  const applier: WorkspaceRealtimeEventApplier = {
     applyEvent(event, context) {
       if (!isActiveCurrentOwner(context, options)) return;
 
@@ -660,6 +707,48 @@ export function createMessengerRealtimeActiveApplier(
         return cacheWrite.then(finishApplication);
       }
       return finishApplication();
+    },
+
+    async applyEvents(events, context) {
+      const writeCreatedMessages = activeCache.writeCreatedMessages;
+      const isCurrent = () => isActiveCurrentOwner(context, options);
+      if (
+        writeCreatedMessages == null ||
+        context.source !== "catch_up" ||
+        context.notificationsEnabled === true
+      ) {
+        for (const event of events) {
+          if (!isActiveCurrentOwner(context, options)) return;
+          await applier.applyEvent(event, context);
+        }
+        return;
+      }
+      await applyRealtimeEventBatch(
+        applier,
+        events,
+        context,
+        async (created, epochVersion) => {
+          const messages = created.map((event) =>
+            applyMessengerReadBoundary(adaptMessengerMessage(event.message), context.ownerKey),
+          );
+          useWorkspaceMessageStore.getState().applyLiveCreatedMessages(messages);
+          useMessengerStore
+            .getState()
+            .applyMessagePointers(
+              context.ownerKey,
+              messages,
+              useWorkspaceMessageStore.getState().messagesById,
+            );
+          for (const message of messages) settleMessengerOutgoingMessage(context.ownerKey, message);
+          await writeRealtimeCacheBestEffort(() =>
+            writeCreatedMessages(context.ownerKey, messages, epochVersion, isCurrent),
+          );
+          if (!isActiveCurrentOwner(context, options)) return;
+          for (const event of created) applyLightweightProjectionEvent(event, context);
+          useMessengerStore.getState().setRealtimeCursor(context.ownerKey, epochVersion);
+        },
+        isCurrent,
+      );
     },
 
     skipEvent(event, reason: WorkspaceRealtimeSkipReason, context) {
@@ -704,6 +793,7 @@ export function createMessengerRealtimeActiveApplier(
       }
     },
   };
+  return applier;
 }
 
 export function createMessengerRealtimeBackgroundApplier(
@@ -712,8 +802,12 @@ export function createMessengerRealtimeBackgroundApplier(
   const backgroundCache: MessengerRealtimeCacheWriter = {
     ...messengerRealtimeBackgroundCache,
     ...options.cache,
+    writeCreatedMessages:
+      options.cache == null
+        ? messengerRealtimeBackgroundCache.writeCreatedMessages
+        : options.cache.writeCreatedMessages,
   };
-  return {
+  const applier: WorkspaceRealtimeEventApplier = {
     async applyEvent(event, context) {
       if (!isBackgroundCurrentOwner(context, options)) return;
 
@@ -778,6 +872,38 @@ export function createMessengerRealtimeBackgroundApplier(
       }
     },
 
+    async applyEvents(events, context) {
+      const writeCreatedMessages = backgroundCache.writeCreatedMessages;
+      if (writeCreatedMessages == null) {
+        for (const event of events) {
+          if (!isBackgroundCurrentOwner(context, options)) return;
+          await applier.applyEvent(event, context);
+        }
+        return;
+      }
+      await applyRealtimeEventBatch(
+        applier,
+        events,
+        context,
+        async (created, epochVersion) => {
+          const messages = created.map((event) =>
+            applyMessengerReadBoundary(adaptMessengerMessage(event.message), context.ownerKey),
+          );
+          await writeCreatedMessages(context.ownerKey, messages, epochVersion, () =>
+            isBackgroundCurrentOwner(context, options),
+          );
+          if (!isBackgroundCurrentOwner(context, options)) return;
+          for (const event of created) {
+            settleMessengerOutgoingMessage(context.ownerKey, adaptMessengerMessage(event.message));
+            useMessengerBackgroundProjectionStore
+              .getState()
+              .recordAppliedEvent(context.ownerKey, event, context);
+          }
+        },
+        () => isBackgroundCurrentOwner(context, options),
+      );
+    },
+
     skipEvent(event, reason, context) {
       if (!isBackgroundCurrentOwner(context, options)) return;
 
@@ -794,4 +920,5 @@ export function createMessengerRealtimeBackgroundApplier(
       useMessengerBackgroundProjectionStore.getState().recordTransportState(state);
     },
   };
+  return applier;
 }

@@ -308,6 +308,7 @@ export interface WorkspaceMessengerReadBoundaryCacheRow {
   createdAt: string;
   messageUuid: string;
   epochVersion?: number;
+  materialized?: boolean;
 }
 
 export interface WorkspaceMessengerSearchResultRow {
@@ -925,7 +926,7 @@ async function readConversationBuckets(
   const rows = (await requestToPromise(
     index.getAll(range),
   )) as WorkspaceMessengerMessageBucketRow[];
-  return sortBucketsAscending(rows);
+  return rows;
 }
 
 async function readMessageBucketsByMessage(
@@ -979,17 +980,6 @@ async function readMessageRowsByUuid(
   return map;
 }
 
-async function readMessageRow(
-  db: IDBDatabase,
-  ownerKey: string,
-  messageUuid: string,
-): Promise<WorkspaceMessengerMessageCacheRow | undefined> {
-  const rows = await readMessageRowsByUuid(db, ownerKey, [messageUuid]);
-  return rows.get(messageUuid);
-}
-
-// Чтение своих реакций идет через compound index, потому что будущий runtime
-// будет гидрировать видимое окно пачкой UUID сообщений, не делая full scan owner-а.
 async function readOwnMessageReactionRowsByMessage(
   db: IDBDatabase,
   ownerKey: string,
@@ -1948,6 +1938,55 @@ export async function deleteCachedStreamMessageBuckets(
   }
 }
 
+async function updateMessagePointers(
+  transaction: IDBTransaction,
+  ownerKey: string,
+  messages: readonly WorkspaceMessengerCachedMessage[],
+): Promise<void> {
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const targets = new Map<
+    string,
+    { storeName: string; id: string; message: WorkspaceMessengerCachedMessage }
+  >();
+  for (const message of messages) {
+    const entries: [string, string][] = [
+      [stores.streams, message.streamUuid],
+      [stores.topics, message.topicUuid],
+      ...bucketConversationIdsForMessage(message).map((id): [string, string] => [
+        stores.conversations,
+        id,
+      ]),
+    ];
+    for (const [storeName, uuid] of entries) {
+      const id = cacheRowId(ownerKey, uuid);
+      const key = `${storeName}:${id}`;
+      const previous = targets.get(key);
+      if (previous == null || message.createdAt >= previous.message.createdAt) {
+        targets.set(key, { storeName, id, message });
+      }
+    }
+  }
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  await Promise.all(
+    [...targets.values()].map(async ({ storeName, id, message }) => {
+      const store = transaction.objectStore(storeName);
+      const row = await requestToPromise<
+        | WorkspaceMessengerStreamCacheRow
+        | WorkspaceMessengerTopicCacheRow
+        | WorkspaceMessengerConversationCacheRow
+        | undefined
+      >(store.get(id));
+      if (row == null || !shouldApplyMessagePointer(row, message.createdAt)) return;
+      const activity = { lastMessageUuid: message.uuid };
+      const updated = { ...row, lastMessageCreatedAt: message.createdAt, cacheUpdatedAt };
+      if ("stream" in row) store.put({ ...updated, stream: { ...row.stream, ...activity } });
+      else if ("topic" in row) store.put({ ...updated, topic: { ...row.topic, ...activity } });
+      else
+        store.put({ ...updated, conversation: { ...row.conversation, ...activity }, ...activity });
+    }),
+  );
+}
+
 export async function applyMessengerMessagePointerCache(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
@@ -1957,62 +1996,11 @@ export async function applyMessengerMessagePointerCache(
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const streamId = cacheRowId(ownerKey, message.streamUuid);
-    const topicId = cacheRowId(ownerKey, message.topicUuid);
-    const streamConversation = streamConversationId(message.streamUuid);
-    const conversationIds = [
-      streamConversation,
-      message.conversationId,
-      topicConversationId(message.streamUuid, message.topicUuid),
-    ];
     const transaction = db.transaction(
       [stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
-    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
-    updateRowById<WorkspaceMessengerStreamCacheRow>(
-      transaction.objectStore(stores.streams),
-      streamId,
-      (row) =>
-        shouldApplyMessagePointer(row, message.createdAt)
-          ? {
-              ...row,
-              stream: { ...row.stream, lastMessageUuid: message.uuid },
-              lastMessageCreatedAt: message.createdAt,
-              cacheUpdatedAt,
-            }
-          : null,
-    );
-    updateRowById<WorkspaceMessengerTopicCacheRow>(
-      transaction.objectStore(stores.topics),
-      topicId,
-      (row) =>
-        shouldApplyMessagePointer(row, message.createdAt)
-          ? {
-              ...row,
-              topic: { ...row.topic, lastMessageUuid: message.uuid },
-              lastMessageCreatedAt: message.createdAt,
-              cacheUpdatedAt,
-            }
-          : null,
-    );
-    const conversationStore = transaction.objectStore(stores.conversations);
-    for (const conversationId of new Set(conversationIds)) {
-      updateRowById<WorkspaceMessengerConversationCacheRow>(
-        conversationStore,
-        cacheRowId(ownerKey, conversationId),
-        (row) =>
-          shouldApplyMessagePointer(row, message.createdAt)
-            ? {
-                ...row,
-                conversation: { ...row.conversation, lastMessageUuid: message.uuid },
-                lastMessageUuid: message.uuid,
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
-      );
-    }
+    await updateMessagePointers(transaction, ownerKey, [message]);
     await transactionDone(transaction);
   } catch {
     return;
@@ -2416,20 +2404,204 @@ export async function upsertCachedMessages(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    const previousRows = await readMessageRowsByUuid(
-      db,
-      ownerKey,
-      messages.map((message) => message.uuid),
-    );
-    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messages, "readwrite");
-    const messageStore = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messages);
-    for (const message of messages) {
-      messageStore.put(toMessageRow(ownerKey, message, previousRows.get(message.uuid)));
-    }
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction([stores.messages, stores.readBoundaries], "readwrite");
+    await putMessageRows(transaction, ownerKey, messages);
     await transactionDone(transaction);
   } catch {
     return;
   }
+}
+
+function conversationBucketRange(ownerKey: string, conversationId: string): IDBKeyRange {
+  return IDBKeyRange.bound([ownerKey, conversationId, ""], [ownerKey, conversationId, "\uffff"]);
+}
+
+async function putMessageRows(
+  transaction: IDBTransaction,
+  ownerKey: string,
+  messages: readonly WorkspaceMessengerCachedMessage[],
+): Promise<WorkspaceMessengerCachedMessage[]> {
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const messageStore = transaction.objectStore(stores.messages);
+  const boundaries = new Map<string, WorkspaceMessengerReadBoundaryCacheRow | undefined>();
+  await Promise.all(
+    [
+      ...new Map(
+        messages.map((message) => [
+          readBoundaryRowId(ownerKey, message.streamUuid, message.topicUuid),
+          message,
+        ]),
+      ).values(),
+    ].map(async (message) => {
+      boundaries.set(
+        readBoundaryRowId(ownerKey, message.streamUuid, message.topicUuid),
+        await requestToPromise<WorkspaceMessengerReadBoundaryCacheRow | undefined>(
+          transaction
+            .objectStore(stores.readBoundaries)
+            .get(readBoundaryRowId(ownerKey, message.streamUuid, message.topicUuid)),
+        ),
+      );
+    }),
+  );
+  const previousRows = await Promise.all(
+    messages.map((message) =>
+      requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+        messageStore.get(cacheRowId(ownerKey, message.uuid)),
+      ),
+    ),
+  );
+  return messages.map((incoming, index) => {
+    const boundary = boundaries.get(
+      readBoundaryRowId(ownerKey, incoming.streamUuid, incoming.topicUuid),
+    );
+    const message =
+      boundary != null &&
+      workspaceMessengerMessageOrderKey(incoming) <=
+        workspaceMessengerMessageOrderKey({
+          createdAt: boundary.createdAt,
+          uuid: boundary.messageUuid,
+        })
+        ? { ...incoming, read: true }
+        : incoming;
+    messageStore.put(toMessageRow(ownerKey, message, previousRows[index]));
+    return message;
+  });
+}
+
+async function retainConversationMessages(
+  transaction: IDBTransaction,
+  ownerKey: string,
+  conversationId: string,
+  maxMessages: number,
+  page: WorkspaceMessengerConversationMessagePage = { messages: [] },
+): Promise<string[]> {
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const bucketStore = transaction.objectStore(stores.messageBuckets);
+  const index = bucketStore.index("byConversationOrder");
+  const range = conversationBucketRange(ownerKey, conversationId);
+  const count = await requestToPromise(index.count(range));
+  const overflow = maxMessages > 0 ? Math.max(0, count - maxMessages) : 0;
+  const removed =
+    overflow > 0
+      ? await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(index.getAll(range, overflow))
+      : [];
+  for (const bucket of removed) bucketStore.delete(bucket.id);
+  const [oldest, newest, previous] = await Promise.all([
+    requestToPromise<WorkspaceMessengerMessageBucketRow[]>(index.getAll(range, 1)),
+    requestToPromise(index.openCursor(range, "prev")),
+    requestToPromise<WorkspaceMessengerMessageWindowRow | undefined>(
+      transaction.objectStore(stores.messageWindows).get(cacheRowId(ownerKey, conversationId)),
+    ),
+  ]);
+  const window = buildWindowRow(
+    ownerKey,
+    conversationId,
+    [...oldest, ...(newest == null ? [] : [newest.value as WorkspaceMessengerMessageBucketRow])],
+    { ...page, windowSize: page.windowSize ?? count - overflow },
+    previous ?? null,
+  );
+  if (overflow > 0) {
+    Object.assign(window, {
+      windowSize: count - overflow,
+      nextPageMarker: null,
+      hasMore: true,
+      reachedOldest: false,
+      reachedNewest: true,
+      hasGaps: true,
+    });
+  }
+  transaction.objectStore(stores.messageWindows).put(window);
+  return removed.map((bucket) => bucket.messageUuid);
+}
+
+async function deleteUnreferencedMessages(
+  transaction: IDBTransaction,
+  ownerKey: string,
+  messageUuids: readonly string[],
+): Promise<void> {
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const index = transaction.objectStore(stores.messageBuckets).index("byMessage");
+  await Promise.all(
+    [...new Set(messageUuids)].map(async (uuid) => {
+      // Count after every bucket deletion, in the same transaction. Parallel windows
+      // must not both observe a reference that the other window is about to remove.
+      if ((await requestToPromise(index.count([ownerKey, uuid]))) > 0) return;
+      transaction.objectStore(stores.messages).delete(cacheRowId(ownerKey, uuid));
+      const request = transaction
+        .objectStore(stores.ownMessageReactions)
+        .index("byOwnerMessage")
+        .openKeyCursor(IDBKeyRange.only([ownerKey, uuid]));
+      await new Promise<void>((resolve, reject) => {
+        request.onerror = () => reject(idbError(request.error));
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (cursor == null) {
+            resolve();
+            return;
+          }
+          transaction.objectStore(stores.ownMessageReactions).delete(cursor.primaryKey);
+          cursor.continue();
+        };
+      });
+    }),
+  );
+}
+
+async function writeMessageCache(
+  ownerKey: string,
+  page: WorkspaceMessengerConversationMessagePage,
+  options: {
+    conversationId?: string;
+    realtime?: boolean;
+    epochVersion?: number;
+    isWriteCurrent: () => boolean;
+  },
+): Promise<void> {
+  const db = await openWorkspaceMessengerCacheDb();
+  if (!options.isWriteCurrent()) return;
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const names: string[] = [
+    stores.messages,
+    stores.messageBuckets,
+    stores.messageWindows,
+    stores.readBoundaries,
+    stores.ownMessageReactions,
+  ];
+  if (options.realtime) names.push(stores.streams, stores.topics, stores.conversations);
+  if (options.epochVersion != null) names.push(stores.realtimeCursor);
+  const transaction = db.transaction(names, "readwrite");
+  const messages = await putMessageRows(transaction, ownerKey, page.messages);
+  const conversationIds = new Set(options.conversationId == null ? [] : [options.conversationId]);
+  const bucketStore = transaction.objectStore(stores.messageBuckets);
+  for (const message of messages) {
+    for (const conversationId of bucketConversationIdsForMessage(message, page.conversationIds)) {
+      conversationIds.add(conversationId);
+      bucketStore.put(toBucketRow(ownerKey, conversationId, message));
+    }
+  }
+  const removed = await Promise.all(
+    [...conversationIds].map((conversationId) =>
+      retainConversationMessages(
+        transaction,
+        ownerKey,
+        conversationId,
+        page.retentionLimit ?? DEFAULT_MESSAGE_BUCKET_RETENTION,
+        conversationId === options.conversationId ? page : { messages: [] },
+      ),
+    ),
+  );
+  await deleteUnreferencedMessages(transaction, ownerKey, removed.flat());
+  if (options.realtime) await updateMessagePointers(transaction, ownerKey, messages);
+  if (options.epochVersion != null)
+    transaction.objectStore(stores.realtimeCursor).put({
+      ownerKey,
+      epochVersion: options.epochVersion,
+      updatedAt: Date.now(),
+    } satisfies WorkspaceMessengerRealtimeCursorRow);
+  // Owner changes during IndexedDB callbacks must not commit a stale generation.
+  if (!options.isWriteCurrent()) transaction.abort();
+  await transactionDone(transaction);
 }
 
 export async function writeConversationMessagePage(
@@ -2439,66 +2611,28 @@ export async function writeConversationMessagePage(
   isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
-
   try {
-    const db = await openWorkspaceMessengerCacheDb();
-    const [existingBuckets, previousWindow] = await Promise.all([
-      readConversationBuckets(db, ownerKey, conversationId),
-      readMessageWindowRow(db, ownerKey, conversationId),
-    ]);
-    const previousRows = await readMessageRowsByUuid(
-      db,
+    await writeMessageCache(ownerKey, page, { conversationId, isWriteCurrent });
+  } catch (error) {
+    logCacheWriteFailure("write-message-page", error);
+  }
+}
+
+export async function writeRealtimeMessages(
+  ownerKey: string,
+  messages: readonly WorkspaceMessengerCachedMessage[],
+  epochVersion?: number,
+  isWriteCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+  try {
+    await writeMessageCache(
       ownerKey,
-      page.messages.map((message) => message.uuid),
+      { messages },
+      { realtime: true, epochVersion, isWriteCurrent },
     );
-    const nextBucketsById = new Map<string, WorkspaceMessengerMessageBucketRow>();
-    for (const bucket of existingBuckets) {
-      nextBucketsById.set(bucket.id, bucket);
-    }
-
-    if (!isWriteCurrent()) return;
-
-    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const transaction = db.transaction(
-      [stores.messages, stores.messageBuckets, stores.messageWindows],
-      "readwrite",
-    );
-    const messageStore = transaction.objectStore(stores.messages);
-    const bucketStore = transaction.objectStore(stores.messageBuckets);
-
-    for (const message of page.messages) {
-      const previousRow = previousRows.get(message.uuid);
-      messageStore.put(toMessageRow(ownerKey, message, previousRow));
-
-      for (const bucketConversationId of bucketConversationIdsForMessage(
-        message,
-        page.conversationIds ?? [conversationId],
-      )) {
-        const bucketRow = toBucketRow(ownerKey, bucketConversationId, message);
-        bucketStore.put(bucketRow);
-        if (bucketConversationId === conversationId) {
-          nextBucketsById.set(bucketRow.id, bucketRow);
-        }
-      }
-    }
-
-    const windowRow = buildWindowRow(
-      ownerKey,
-      conversationId,
-      [...nextBucketsById.values()],
-      page,
-      previousWindow,
-    );
-    transaction.objectStore(stores.messageWindows).put(windowRow);
-    await transactionDone(transaction);
-
-    await applyConversationMessageRetention(
-      ownerKey,
-      conversationId,
-      page.retentionLimit ?? DEFAULT_MESSAGE_BUCKET_RETENTION,
-    );
-  } catch {
-    return;
+  } catch (error) {
+    logCacheWriteFailure("write-realtime-messages", error);
   }
 }
 
@@ -2510,18 +2644,22 @@ export async function patchCachedMessage(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    const [previousRow, existingBuckets] = await Promise.all([
-      readMessageRow(db, ownerKey, message.uuid),
-      readMessageBucketsByMessage(db, ownerKey, message.uuid),
-    ]);
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      [stores.messages, stores.messageBuckets, stores.readBoundaries],
+      "readwrite",
+    );
+    const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
+      transaction
+        .objectStore(stores.messageBuckets)
+        .index("byMessage")
+        .getAll([ownerKey, message.uuid]),
+    );
     const targetConversationIds =
       existingBuckets.length > 0
         ? existingBuckets.map((bucket) => bucket.conversationId)
         : bucketConversationIdsForMessage(message);
-    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
-
-    transaction.objectStore(stores.messages).put(toMessageRow(ownerKey, message, previousRow));
+    await putMessageRows(transaction, ownerKey, [message]);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
     for (const bucketConversationId of targetConversationIds) {
       bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
@@ -2681,8 +2819,12 @@ export async function advanceMessengerReadBoundaryCache(
       boundaryStore.get(id),
     );
     const effective = mergeReadBoundaryRows(previous, { ...boundary, id });
-    boundaryStore.put(effective);
+    boundaryStore.put({ ...effective, materialized: true });
 
+    if (previous?.materialized === true && compareReadBoundaryOrder(previous, effective) >= 0) {
+      await transactionDone(transaction);
+      return;
+    }
     const conversationId = topicConversationId(effective.streamUuid, effective.topicUuid);
     const orderKey = workspaceMessengerMessageOrderKey({
       createdAt: effective.createdAt,
@@ -2694,8 +2836,18 @@ export async function advanceMessengerReadBoundaryCache(
         .index("byConversationOrder")
         .getAll(
           IDBKeyRange.bound(
-            [effective.ownerKey, conversationId, ""],
+            [
+              effective.ownerKey,
+              conversationId,
+              previous?.materialized !== true
+                ? ""
+                : workspaceMessengerMessageOrderKey({
+                    createdAt: previous.createdAt,
+                    uuid: previous.messageUuid,
+                  }),
+            ],
             [effective.ownerKey, conversationId, orderKey],
+            previous?.materialized === true,
           ),
         ),
     );
@@ -3042,56 +3194,22 @@ export async function applyConversationMessageRetention(
   maxMessages: number,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || maxMessages < 1) return;
-
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    const buckets = await readConversationBuckets(db, ownerKey, conversationId);
-    if (buckets.length <= maxMessages) return;
-
-    const bucketsToDelete = buckets.slice(0, buckets.length - maxMessages);
-    const allBucketsByMessage = new Map<string, WorkspaceMessengerMessageBucketRow[]>();
-    await Promise.all(
-      bucketsToDelete.map(async (bucket) => {
-        allBucketsByMessage.set(
-          bucket.messageUuid,
-          await readMessageBucketsByMessage(db, ownerKey, bucket.messageUuid),
-        );
-      }),
-    );
-
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
-      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      [stores.messages, stores.messageBuckets, stores.messageWindows, stores.ownMessageReactions],
       "readwrite",
     );
-    const bucketStore = transaction.objectStore(stores.messageBuckets);
-    const messageStore = transaction.objectStore(stores.messages);
-
-    for (const bucket of bucketsToDelete) {
-      bucketStore.delete(bucket.id);
-      const messageBuckets = allBucketsByMessage.get(bucket.messageUuid) ?? [];
-      if (messageBuckets.length === 1 && messageBuckets[0]?.id === bucket.id) {
-        messageStore.delete(cacheRowId(ownerKey, bucket.messageUuid));
-      }
-    }
-
-    const remainingBuckets = buckets.slice(buckets.length - maxMessages);
-    transaction.objectStore(stores.messageWindows).put({
-      id: cacheRowId(ownerKey, conversationId),
+    const removed = await retainConversationMessages(
+      transaction,
       ownerKey,
       conversationId,
-      oldestMessageUuid: remainingBuckets[0]?.messageUuid ?? null,
-      newestMessageUuid: remainingBuckets[remainingBuckets.length - 1]?.messageUuid ?? null,
-      nextPageMarker: null,
-      hasMore: true,
-      reachedOldest: false,
-      reachedNewest: true,
-      hasGaps: true,
-      windowSize: remainingBuckets.length,
-      lastSyncedAt: Date.now(),
-    } satisfies WorkspaceMessengerMessageWindowRow);
+      maxMessages,
+    );
+    await deleteUnreferencedMessages(transaction, ownerKey, removed);
     await transactionDone(transaction);
-  } catch {
-    return;
+  } catch (error) {
+    logCacheWriteFailure("retain-messages", error);
   }
 }

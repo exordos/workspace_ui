@@ -1,5 +1,4 @@
 import {
-  applyMessengerMessagePointerCache,
   advanceMessengerReadBoundaryCache,
   clearMessengerMessagePointerCache,
   createMessengerCatalogCacheReconcileFence,
@@ -36,6 +35,7 @@ import {
   writeConversationMessagePage,
   writeMessengerCatalogCache,
   writeRealtimeCursor,
+  writeRealtimeMessages,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import type {
   WorkspaceMessengerCatalogCacheSnapshot,
@@ -560,15 +560,27 @@ export async function writeMessengerLiveMessageCache(
 ): Promise<void> {
   const parsed = parseMessengerConversationId(conversationId);
   if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
-  const messages = page.messages
-    .filter((message) => keepCachedMessage(ownerKey, message))
-    .map(withoutRuntimeReactionState);
-  await writeConversationMessagePage(ownerKey, conversationId, { messages });
-  await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
-  const message = messages.at(-1);
-  if (message != null) {
-    await applyMessengerMessagePointerCache(ownerKey, message);
-  }
+  await writeMessengerRealtimeMessagesCache(ownerKey, page.messages);
+}
+
+export async function writeMessengerRealtimeMessagesCache(
+  ownerKey: string,
+  messages: readonly MessengerMessage[],
+  epochVersion?: number,
+  isWriteCurrent: () => boolean = () => true,
+): Promise<void> {
+  await writeRealtimeMessages(
+    ownerKey,
+    messages
+      .filter((message) => keepCachedMessage(ownerKey, message))
+      .map(withoutRuntimeReactionState),
+    epochVersion,
+    isWriteCurrent,
+  );
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    messages.map((message) => message.streamUuid),
+  );
 }
 
 export async function patchMessengerCachedMessage(
@@ -808,6 +820,7 @@ export const messengerMessageActionCache = {
   markCachedMessagesRead: markMessengerCachedMessagesRead,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
+  writeCreatedMessages: writeMessengerRealtimeMessagesCache,
 };
 
 export const messengerRealtimeActiveCache = {
@@ -817,6 +830,7 @@ export const messengerRealtimeActiveCache = {
   repairMessagePointers: repairMessengerCachedMessagePointers,
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
+  writeCreatedMessages: writeMessengerRealtimeMessagesCache,
   upsertCachedStream: upsertMessengerStreamCache,
   deleteCachedStream: deleteMessengerStreamCache,
   upsertCachedStreamBindings: upsertMessengerStreamBindingsCache,

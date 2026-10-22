@@ -721,6 +721,44 @@ describe("workspace message store", () => {
       selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), MESSAGE_B),
     ).not.toBeNull();
   });
+  it("batches created bodies with the same revisions, reactions and windows as sequential events", () => {
+    const seed = createMessage({
+      uuid: MESSAGE_A,
+      ownReactionUuidsByEmojiName: { smile: "reaction-a" },
+    });
+    const incoming = [
+      createMessage({ uuid: MESSAGE_B, createdAt: DATE_LATER }),
+      createMessage({ uuid: MESSAGE_C, createdAt: DATE_EARLIER }),
+      createMessage({ uuid: MESSAGE_A, markdown: "replacement" }),
+    ];
+    const setup = () => {
+      useWorkspaceMessageStore.getState().clear();
+      useWorkspaceMessageStore.getState().setOwner(OWNER_A, false);
+      replaceWindow(TOPIC_CONVERSATION_ID, [seed]);
+      replaceWindow(STREAM_CONVERSATION_ID, [seed]);
+    };
+    setup();
+    for (const message of incoming)
+      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(message);
+    const expected = useWorkspaceMessageStore.getState();
+    setup();
+    const original = useWorkspaceMessageStore.getState();
+    const snapshots: unknown[] = [];
+    const unsubscribe = useWorkspaceMessageStore.subscribe((state) => snapshots.push(state));
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessages(incoming);
+    unsubscribe();
+    const actual = useWorkspaceMessageStore.getState();
+    for (const key of [
+      "messagesById",
+      "conversationWindowsById",
+      "messageMutationRevision",
+      "messageMutationRevisionById",
+      "deletedMessageRevisionById",
+    ] as const)
+      expect(actual[key]).toEqual(expected[key]);
+    expect(snapshots).toHaveLength(1);
+    expect(original.messagesById).toEqual({ [MESSAGE_A]: seed });
+  });
 });
 
 function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
