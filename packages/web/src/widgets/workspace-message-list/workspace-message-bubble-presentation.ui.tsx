@@ -453,11 +453,21 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     authorOutside = false,
     requestMessageKeyAvailable = false,
   }): React.ReactElement {
-    const [quickActionsHovered, setQuickActionsHovered] = useState(false);
+    const [quickActionsHoverRetained, setQuickActionsHoverRetained] = useState(false);
     const quickActionsHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const cancelQuickActionsHide = () => {
       if (quickActionsHideTimer.current != null) clearTimeout(quickActionsHideTimer.current);
       quickActionsHideTimer.current = null;
+    };
+    const retainQuickActionsHover = () => {
+      cancelQuickActionsHide();
+      setQuickActionsHoverRetained(true);
+      // A reaction can replace the pointer target before its leave event reaches the bubble.
+      // CSS hover keeps controls visible inside; this grace period must always expire.
+      quickActionsHideTimer.current = setTimeout(() => {
+        quickActionsHideTimer.current = null;
+        setQuickActionsHoverRetained(false);
+      }, 200);
     };
     useEffect(
       () => () => {
@@ -748,25 +758,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         aria-busy={effectiveReadRequestPending ? true : undefined}
         onContextMenu={isPreview ? undefined : handleContextMenu}
         onKeyDown={isPreview ? undefined : handleKeyDown}
-        onMouseEnter={
-          hasQuickActions
-            ? () => {
-                cancelQuickActionsHide();
-                setQuickActionsHovered(true);
-              }
-            : undefined
-        }
-        onMouseLeave={
-          hasQuickActions
-            ? () => {
-                cancelQuickActionsHide();
-                quickActionsHideTimer.current = setTimeout(() => {
-                  quickActionsHideTimer.current = null;
-                  setQuickActionsHovered(false);
-                }, 200);
-              }
-            : undefined
-        }
+        onMouseEnter={hasQuickActions ? retainQuickActionsHover : undefined}
+        onMouseLeave={hasQuickActions ? retainQuickActionsHover : undefined}
         tabIndex={isPreview || containsInteractiveBody ? undefined : 0}
       >
         <WorkspaceMessageBubbleQuickActions
@@ -774,7 +767,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           visibility={quickActionsVisibility}
           condition={!isPreview && !menuOpen}
           isOwn={isOwn}
-          hoverRetained={quickActionsHovered}
+          hoverRetained={quickActionsHoverRetained}
         />
         {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu

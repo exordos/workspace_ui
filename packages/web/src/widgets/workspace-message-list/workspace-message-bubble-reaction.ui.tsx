@@ -51,11 +51,11 @@ export function WorkspaceMessageBubbleReaction({
     setOpen(true);
   };
 
-  const closeAndFocusTrigger = () => {
+  const closeReactions = (restoreFocus: boolean) => {
     cancelHover();
-    suppressFocusOpen.current = true;
+    suppressFocusOpen.current = restoreFocus;
     setOpen(false);
-    triggerRef.current?.focus();
+    if (restoreFocus) triggerRef.current?.focus();
   };
 
   useEffect(
@@ -86,7 +86,7 @@ export function WorkspaceMessageBubbleReaction({
       if (!open) return;
       event.preventDefault();
       event.stopPropagation();
-      closeAndFocusTrigger();
+      closeReactions(true);
       return;
     }
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
@@ -191,7 +191,7 @@ export function WorkspaceMessageBubbleReaction({
                   touchPreview.current = false;
                   return;
                 }
-                closeAndFocusTrigger();
+                closeReactions(event.detail === 0);
                 reaction.onSelect();
               }}
             >

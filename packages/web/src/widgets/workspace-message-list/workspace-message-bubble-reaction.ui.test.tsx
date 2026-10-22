@@ -101,21 +101,22 @@ describe("WorkspaceMessageBubbleReaction", () => {
   });
 
   it("dispatches the configured first reaction and alternatives without bubbling", async () => {
+    const user = userEvent.setup();
     const action = createReaction();
     const bubbleClick = vi.fn();
     const { container } = render(<WorkspaceMessageBubbleReaction action={action} />);
     document.body.addEventListener("click", bubbleClick);
-    fireEvent.click(screen.getByRole("button", { name: "React with thumbs up" }));
+    await user.click(screen.getByRole("button", { name: "React with thumbs up" }));
     expect(action.reactions?.[0]?.onSelect).toHaveBeenCalledExactlyOnceWith();
     expect(action.onSelect).not.toHaveBeenCalled();
 
     await hoverReactions(container);
-    fireEvent.click(screen.getByRole("button", { name: "React with heart" }));
+    await user.click(screen.getByRole("button", { name: "React with heart" }));
     document.body.removeEventListener("click", bubbleClick);
     expect(action.reactions?.[1]?.onSelect).toHaveBeenCalledExactlyOnceWith();
     expect(bubbleClick).not.toHaveBeenCalled();
     expect(getCapsule(container)).toHaveAttribute("data-expanded", "false");
-    expect(screen.getByRole("button", { name: "React with thumbs up" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "React with thumbs up" })).not.toHaveFocus();
   });
 
   it("closes with Escape, restores the persistent first button and stays closed", async () => {
@@ -147,6 +148,7 @@ describe("WorkspaceMessageBubbleReaction", () => {
     expect(action.reactions?.[1]?.onSelect).toHaveBeenCalledExactlyOnceWith();
     expect(action.reactions?.[0]?.onSelect).not.toHaveBeenCalled();
     expect(getCapsule(container)).toHaveAttribute("data-expanded", "false");
+    expect(screen.getByRole("button", { name: "React with thumbs up" })).toHaveFocus();
   });
 
   it("prevents pending or disabled selections and exposes pending state", async () => {

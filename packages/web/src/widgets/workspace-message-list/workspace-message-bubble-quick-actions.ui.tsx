@@ -33,10 +33,11 @@ export interface WorkspaceMessageBubbleQuickActionsProps {
   readonly hoverRetained?: boolean;
 }
 
+// Mouse focus must not pin hover controls after the pointer leaves the message.
 const HOVER_VISIBILITY =
-  "opacity-0 group-hover/workspace-message-bubble:opacity-100 group-focus-within/workspace-message-bubble:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100";
+  "opacity-0 group-hover/workspace-message-bubble:opacity-100 group-focus-visible/workspace-message-bubble:opacity-100 group-has-[:focus-visible]/workspace-message-bubble:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100";
 const HOVER_INTERACTIVITY =
-  "pointer-events-none group-hover/workspace-message-bubble:pointer-events-auto group-focus-within/workspace-message-bubble:pointer-events-auto focus-within:pointer-events-auto [@media(hover:none)]:pointer-events-auto";
+  "pointer-events-none group-hover/workspace-message-bubble:pointer-events-auto group-focus-visible/workspace-message-bubble:pointer-events-auto group-has-[:focus-visible]/workspace-message-bubble:pointer-events-auto has-[:focus-visible]:pointer-events-auto [@media(hover:none)]:pointer-events-auto";
 
 export function WorkspaceMessageBubbleQuickActions({
   actions,
