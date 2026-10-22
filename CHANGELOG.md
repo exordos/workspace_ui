@@ -6,6 +6,39 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-10-22
+
+### Added
+
+- Archive chats from the sidebar and restore them from New chat → Archive.
+  Archived history remains accessible; archiving affects all participants.
+- Quick reactions adapt to locally recorded emoji usage over the last seven
+  days and include frequently used emoji alongside the default choices.
+
+### Changed
+
+- Sidebar rows, conversation headers, message actions, and quotes use updated
+  layouts and cleaner chat names.
+
+### Fixed
+
+- Completing a topic keeps its stream in place during the current list visit;
+  new active messages can move it normally.
+- Older or delayed message updates no longer replace newer sidebar activity
+  pointers.
+- Archive and restore actions preserve notification settings and reject stale
+  responses after the active account or session changes.
+
+### Requirements and compatibility
+
+- Requirements remain unchanged: Exordos Core `0.2.3` or newer, and Workspace
+  backend `1.3.0` or newer for encrypted chats.
+- The messenger cache remains at schema version 7. Dependencies are unchanged.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.4`. No manual migration or cache reset is required.
+
 ## [0.9.3] — 2026-10-21
 
 ### Changed
