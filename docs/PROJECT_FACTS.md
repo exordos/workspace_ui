@@ -46,6 +46,7 @@ merge or move. Missing selected topics and unresolved topic URNs use the normal
 Workspace topic endpoint under the current runtime. Navigation follows the
 returned metadata and ignores stale or cancelled responses. Known topic
 references continue to use the catalog without an extra request.
+Topic lookup runs only for an explicit topic route, preserving ownership of staged message-anchor navigation.
 
 When `message.updated` changes a known message's stream or topic, the message
 store moves its membership only between the affected loaded conversations,

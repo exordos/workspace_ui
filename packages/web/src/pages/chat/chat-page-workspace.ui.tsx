@@ -1171,7 +1171,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   useWorkspaceTopicResolution({
     runtimeContext,
-    topicUuid,
+    topicUuid: route?.kind === "topic" ? route.topicUuid : null,
     topicKnown: topic != null,
     onResolved: handleResolvedTopic,
   });
