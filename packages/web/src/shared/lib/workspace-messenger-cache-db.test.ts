@@ -769,6 +769,40 @@ describe("workspace-messenger-cache-db", () => {
     expect(topicWindow.messages.map((item) => item.uuid)).toEqual(["msg-b", "msg-a"]);
   });
 
+  it.each([STREAM, "stream-b"])(
+    "moves cached topic membership within its owner (%s)",
+    async (stream) => {
+      const original = message("msg-moved", "2026-07-01T08:01:00.000Z");
+      const destination = `topic:${stream}:topic-b`;
+      await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
+      await writeConversationMessagePage(OTHER_OWNER, TOPIC_CONVERSATION, { messages: [original] });
+      await patchCachedMessage(OWNER, {
+        ...original,
+        streamUuid: stream,
+        topicUuid: "topic-b",
+        conversationId: destination,
+      });
+      const source = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+      expect(source.messages).toEqual([]);
+      expect(source.window?.windowSize).toBe(0);
+      expect((await readConversationMessageWindow(OWNER, destination)).window?.windowSize).toBe(1);
+      expect((await readConversationMessageWindow(OWNER, destination)).messages).toEqual([
+        expect.objectContaining({ uuid: original.uuid, topicUuid: "topic-b" }),
+      ]);
+      expect(
+        (await readConversationMessageWindow(OTHER_OWNER, TOPIC_CONVERSATION)).messages,
+      ).toEqual([original]);
+      expect(
+        (await readConversationMessageWindow(OWNER, `stream:${stream}`)).messages,
+      ).toHaveLength(1);
+      if (stream !== STREAM) {
+        expect((await readConversationMessageWindow(OWNER, STREAM_CONVERSATION)).messages).toEqual(
+          [],
+        );
+      }
+    },
+  );
+
   it("marks cached messages read in one owner without changing bucket membership", async () => {
     await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
       messages: [

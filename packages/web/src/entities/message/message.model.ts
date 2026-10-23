@@ -556,8 +556,52 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       }
       const mutationRevision = state.messageMutationRevision + 1;
       const previousMessage = state.messagesById[message.uuid];
+      let conversationWindowsById = state.conversationWindowsById;
+      if (
+        previousMessage != null &&
+        (previousMessage.streamUuid !== message.streamUuid ||
+          previousMessage.topicUuid !== message.topicUuid)
+      ) {
+        const destinations = new Set(
+          conversationBucketsForWorkspaceMessage(message, {
+            includeStreamConversation: true,
+          }),
+        );
+        const messagesById = { ...state.messagesById, [message.uuid]: message };
+        const affected = new Set([
+          ...conversationBucketsForWorkspaceMessage(previousMessage, {
+            includeStreamConversation: true,
+          }),
+          ...destinations,
+        ]);
+        for (const id of affected) {
+          const window = state.conversationWindowsById[id];
+          if (window == null) continue;
+          const messageUuids = destinations.has(id)
+            ? shouldInsertLiveMessageIntoWindow(window, message, messagesById)
+              ? insertSortedWorkspaceMessageId(
+                  window.messageUuids,
+                  message,
+                  messagesById,
+                  previousMessage,
+                )
+              : window.messageUuids
+            : window.messageUuids.includes(message.uuid)
+              ? removeWorkspaceMessageId(window.messageUuids, message.uuid)
+              : window.messageUuids;
+          if (messageUuids === window.messageUuids) continue;
+          if (conversationWindowsById === state.conversationWindowsById)
+            conversationWindowsById = { ...state.conversationWindowsById };
+          conversationWindowsById[id] = {
+            ...window,
+            messageUuids,
+            revision: nextWindowRevision(window),
+          };
+        }
+      }
       applied = true;
       return {
+        conversationWindowsById,
         messagesById:
           previousMessage == null
             ? state.messagesById

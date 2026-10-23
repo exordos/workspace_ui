@@ -47,6 +47,11 @@ Workspace topic endpoint under the current runtime. Navigation follows the
 returned metadata and ignores stale or cancelled responses. Known topic
 references continue to use the catalog without an extra request.
 
+When `message.updated` changes a known message's stream or topic, the message
+store moves its membership only between the affected loaded conversations,
+respecting pagination boundaries. The owner-scoped IndexedDB cache removes old
+placement buckets and updates destination buckets. Body edits keep membership.
+
 Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.
 
 Local paths, when the sibling checkout exists:

@@ -590,6 +590,58 @@ describe("workspace message store", () => {
     ).toBe(revision);
   });
 
+  it.each([STREAM_UUID, "75309057-419c-4b12-a7c1-3932429ec4a7"])(
+    "moves a known message between loaded topic and stream windows (%s)",
+    (destinationStream) => {
+      const destinationTopic = "4ec0b996-b778-45f8-8ef4-ef863be0c048";
+      const destination = conversationIdForTopic(destinationStream, destinationTopic);
+      const destinationStreamId = conversationIdForStream(destinationStream);
+      const original = createMessage({ uuid: MESSAGE_A });
+      replaceWindow(TOPIC_CONVERSATION_ID, [original]);
+      replaceWindow(STREAM_CONVERSATION_ID, [original]);
+      replaceWindow(destination, []);
+      const unrelated = conversationIdForTopic(STREAM_UUID, "4ec0b996-b778-45f8-8ef4-ef863be0c049");
+      replaceWindow(unrelated, []);
+      const unrelatedWindow =
+        useWorkspaceMessageStore.getState().conversationWindowsById[unrelated];
+      if (destinationStreamId !== STREAM_CONVERSATION_ID) replaceWindow(destinationStreamId, []);
+      useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation({
+        ...original,
+        streamUuid: destinationStream,
+        topicUuid: destinationTopic,
+        conversationId: destination,
+      });
+      expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([]);
+      expect(useWorkspaceMessageStore.getState().conversationWindowsById[unrelated]).toBe(
+        unrelatedWindow,
+      );
+      expect(selectMessages(destination).map((message) => message.uuid)).toEqual([MESSAGE_A]);
+      expect(selectMessages(destinationStreamId).map((message) => message.uuid)).toEqual([
+        MESSAGE_A,
+      ]);
+      if (destinationStreamId !== STREAM_CONVERSATION_ID) {
+        expect(selectMessages(STREAM_CONVERSATION_ID)).toEqual([]);
+      }
+    },
+  );
+
+  it("does not insert a moved message beyond a loaded window's pagination boundary", () => {
+    const destinationTopic = "4ec0b996-b778-45f8-8ef4-ef863be0c048";
+    const destination = conversationIdForTopic(STREAM_UUID, destinationTopic);
+    const original = createMessage({ uuid: MESSAGE_A, createdAt: DATE_EARLIER });
+    replaceWindow(TOPIC_CONVERSATION_ID, [original]);
+    replaceWindow(destination, [createMessage({ uuid: MESSAGE_B, createdAt: DATE_LATER })], {
+      beforePageMarker: "older-messages",
+    });
+    useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation({
+      ...original,
+      topicUuid: destinationTopic,
+      conversationId: destination,
+    });
+    expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([]);
+    expect(selectMessages(destination).map((message) => message.uuid)).toEqual([MESSAGE_B]);
+  });
+
   it("deletes the body and membership, records a tombstone, and advances touched windows", () => {
     replaceWindow(TOPIC_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_A })]);
     replaceWindow(STREAM_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_A })]);
