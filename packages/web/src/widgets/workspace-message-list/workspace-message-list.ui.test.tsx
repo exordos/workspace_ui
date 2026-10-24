@@ -6708,7 +6708,6 @@ describe("WorkspaceMessageList", () => {
       const message = createWorkspaceMessage({
         uuid: "bounded-reaction-message",
         sourceName,
-        source: { kind: sourceName },
         provider: sourceName === "zulip" ? { kind: "zulip", external_id: "42" } : null,
         reactions: { heart: 5, eyes: 1 },
         reactionUserUuidsByEmojiName: {

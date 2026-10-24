@@ -139,7 +139,6 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: overrides.audience ?? "channel",
     isPrivate: overrides.isPrivate ?? false,
     inviteOnly: false,

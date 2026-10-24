@@ -59,7 +59,6 @@ function stream(overrides: Partial<MessengerStream> = {}): MessengerStream {
     description: "",
     unreadCount: 3,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
