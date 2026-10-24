@@ -174,7 +174,6 @@ function createComposerStream(): MessengerStream {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,

@@ -64,7 +64,6 @@ function seedStream(overrides: Partial<MessengerStream> = {}): void {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,

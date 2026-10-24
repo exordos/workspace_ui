@@ -210,7 +210,6 @@ function nativeStreamBody(input: {
     name: input.name,
     description: input.description,
     source_name: "native",
-    source: { kind: "native" },
     ...(input.inviteOnly !== undefined ? { invite_only: input.inviteOnly } : {}),
     ...(input.announce !== undefined ? { announce: input.announce } : {}),
     ...(input.directUserUuid != null ? { direct_user_uuid: input.directUserUuid } : {}),
@@ -273,7 +272,6 @@ async function recoverEncryptedChannel(
         item.owner === runtime.userUuid &&
         item.user_uuid === runtime.userUuid &&
         item.source_name === "native" &&
-        item.source.kind === "native" &&
         item.direct_user_uuid == null &&
         item.encryption === true &&
         item.current_encryption_key_uuid === metadata.keyUuid,

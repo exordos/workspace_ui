@@ -62,7 +62,6 @@ async function seedPreview(plaintext = "Secret **preview**") {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: true,
     inviteOnly: true,
