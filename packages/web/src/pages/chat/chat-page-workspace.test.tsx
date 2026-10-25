@@ -493,7 +493,6 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         description: "",
         unreadCount: 1,
         sourceName: "native",
-        source: { kind: "native" },
         audience: "channel",
         isPrivate: false,
         inviteOnly: false,

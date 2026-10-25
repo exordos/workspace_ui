@@ -157,7 +157,6 @@ function seedArchiveContext(accountId = "archive-account-a", isArchived = false)
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,

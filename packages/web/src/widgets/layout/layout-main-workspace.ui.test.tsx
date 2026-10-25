@@ -179,7 +179,6 @@ describe("LayoutMainWorkspace", () => {
       description: "",
       unreadCount: 0,
       sourceName: "native",
-      source: { kind: "native" },
       audience: "channel",
       isPrivate: true,
       encryption: true,

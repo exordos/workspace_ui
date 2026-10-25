@@ -174,7 +174,6 @@ describe("CreateChatDialog", () => {
       description: "",
       unreadCount: 0,
       sourceName: "native",
-      source: { kind: "native" },
       audience: "private",
       isPrivate: true,
       inviteOnly: true,

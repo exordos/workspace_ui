@@ -27,22 +27,6 @@ export type WorkspaceMessengerFolderSystemType = "all" | "created" | "personal" 
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
-export interface WorkspaceMessengerNativeSourceDto {
-  kind: "native";
-}
-
-export interface WorkspaceMessengerZulipSourceDto {
-  kind: "zulip";
-  stream_id?: number;
-  server_url?: string | null;
-  topic_name?: string | null;
-  message_id?: number | null;
-}
-
-export type WorkspaceMessengerSourceDto =
-  | WorkspaceMessengerNativeSourceDto
-  | WorkspaceMessengerZulipSourceDto;
-
 export interface WorkspaceMessengerStreamDto {
   uuid: WorkspaceMessengerUuid;
   name: string;
@@ -56,7 +40,8 @@ export interface WorkspaceMessengerStreamDto {
   active_unread_count: number;
   passive_unread_count: number;
   source_name: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
+  provider_uuid?: WorkspaceMessengerUuid | null;
+  provider_identity?: string | null;
   invite_only: boolean;
   announce: boolean;
   private: boolean;
@@ -239,11 +224,13 @@ export interface WorkspaceMessengerMessageReactionEventPayloadDto {
   user_uuid: WorkspaceMessengerUuid;
   emoji_name: string;
   source_name: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
+  provider_uuid?: WorkspaceMessengerUuid | null;
+  provider_identity?: string | null;
   old_message_uuid?: WorkspaceMessengerUuid | null;
   old_emoji_name?: string | null;
   old_source_name?: WorkspaceMessengerSourceName | null;
-  old_source?: WorkspaceMessengerSourceDto | null;
+  old_provider_uuid?: WorkspaceMessengerUuid | null;
+  old_provider_identity?: string | null;
 }
 
 export interface WorkspaceMessengerMessagesReadPayloadDto {
@@ -264,10 +251,11 @@ export interface WorkspaceMessengerMessageDto {
   pinned: boolean;
   starred: boolean;
   is_own: boolean;
-  // The fields below stay optional for snapshots created before provenance became public.
+  // Optional backend projection metadata.
   mentioned?: boolean;
   source_name?: WorkspaceMessengerSourceName;
-  source?: WorkspaceMessengerSourceDto;
+  provider_uuid?: WorkspaceMessengerUuid | null;
+  provider_identity?: string | null;
   provider?: WorkspaceMessengerProviderDto | null;
   delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: WorkspaceMessengerReactionAggregate;
@@ -354,7 +342,6 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
   name: string;
   description: string;
   source_name: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
   invite_only?: boolean;
   announce?: boolean;
   direct_user_uuid?: WorkspaceMessengerUuid;
@@ -365,8 +352,6 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
 export interface WorkspaceMessengerUpdateStreamRequestBody {
   name?: string;
   description?: string;
-  source_name?: WorkspaceMessengerSourceName;
-  source?: WorkspaceMessengerSourceDto;
   invite_only?: boolean;
   announce?: boolean;
 }
@@ -1031,26 +1016,6 @@ function isOptionalStringArray(value: unknown): value is string[] | undefined {
   );
 }
 
-export function isWorkspaceMessengerSourceDto(
-  value: unknown,
-): value is WorkspaceMessengerSourceDto {
-  return (
-    (isRecord(value) && value.kind === "native") ||
-    (isRecord(value) &&
-      value.kind === "zulip" &&
-      (value.stream_id === undefined || isNonNegativeInteger(value.stream_id)) &&
-      (value.server_url === undefined ||
-        value.server_url === null ||
-        typeof value.server_url === "string") &&
-      (value.topic_name === undefined ||
-        value.topic_name === null ||
-        typeof value.topic_name === "string") &&
-      (value.message_id === undefined ||
-        value.message_id === null ||
-        isNonNegativeInteger(value.message_id)))
-  );
-}
-
 export function isWorkspaceMessengerProviderDto(
   value: unknown,
 ): value is WorkspaceMessengerProviderDto {
@@ -1194,7 +1159,8 @@ export function isWorkspaceMessengerStreamDto(
     isNonNegativeInteger(value.active_unread_count) &&
     isNonNegativeInteger(value.passive_unread_count) &&
     isSourceName(value.source_name) &&
-    isWorkspaceMessengerSourceDto(value.source) &&
+    (value.provider_uuid === undefined || isNullableUuid(value.provider_uuid)) &&
+    (value.provider_identity == null || typeof value.provider_identity === "string") &&
     typeof value.invite_only === "boolean" &&
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
@@ -1288,7 +1254,8 @@ export function isWorkspaceMessengerMessageDto(
     typeof value.is_own === "boolean" &&
     (value.mentioned === undefined || typeof value.mentioned === "boolean") &&
     (value.source_name === undefined || isSourceName(value.source_name)) &&
-    (value.source === undefined || isWorkspaceMessengerSourceDto(value.source)) &&
+    (value.provider_uuid === undefined || isNullableUuid(value.provider_uuid)) &&
+    (value.provider_identity == null || typeof value.provider_identity === "string") &&
     (value.provider === undefined ||
       value.provider === null ||
       isWorkspaceMessengerProviderDto(value.provider)) &&
@@ -1332,7 +1299,8 @@ function isWorkspaceMessengerMessageReactionEventPayloadDto(
     isUuid(record.user_uuid) &&
     isNonEmptyString(record.emoji_name) &&
     isSourceName(record.source_name) &&
-    isWorkspaceMessengerSourceDto(record.source) &&
+    (record.provider_uuid === undefined || isNullableUuid(record.provider_uuid)) &&
+    (record.provider_identity == null || typeof record.provider_identity === "string") &&
     (record.old_message_uuid === undefined || isNullableUuid(record.old_message_uuid)) &&
     (record.old_emoji_name === undefined ||
       record.old_emoji_name === null ||
@@ -1340,9 +1308,8 @@ function isWorkspaceMessengerMessageReactionEventPayloadDto(
     (record.old_source_name === undefined ||
       record.old_source_name === null ||
       isSourceName(record.old_source_name)) &&
-    (record.old_source === undefined ||
-      record.old_source === null ||
-      isWorkspaceMessengerSourceDto(record.old_source))
+    (record.old_provider_uuid === undefined || isNullableUuid(record.old_provider_uuid)) &&
+    (record.old_provider_identity == null || typeof record.old_provider_identity === "string")
   );
 }
 

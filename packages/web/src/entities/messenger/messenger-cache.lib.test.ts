@@ -80,7 +80,6 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
@@ -174,7 +173,6 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     isOwn: false,
     mentioned: false,
     sourceName: "native",
-    source: { kind: "native" },
     provider: null,
     delivery: null,
     reactions: {},
@@ -420,7 +418,6 @@ describe("messenger cache", () => {
       isOwn: false,
       mentioned: true,
       sourceName: "zulip",
-      source: { kind: "zulip", stream_id: 7, message_id: 42 },
       provider: {
         kind: "zulip",
         account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

@@ -32,7 +32,6 @@ const liveMentionMessage = (overrides: Partial<MessengerMessage> = {}): Messenge
   isOwn: false,
   mentioned: true,
   sourceName: "native",
-  source: { kind: "native" },
   provider: null,
   delivery: null,
   reactions: {},

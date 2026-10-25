@@ -123,7 +123,6 @@ const streamDto: WorkspaceMessengerStreamDto = {
   active_unread_count: 3,
   passive_unread_count: 0,
   source_name: "native",
-  source: { kind: "native" },
   invite_only: false,
   announce: false,
   private: false,
@@ -620,7 +619,6 @@ describe("messenger-realtime.api", () => {
       const stream: WorkspaceMessengerStreamDto = {
         ...streamDto,
         source_name: "zulip",
-        source: { kind: "zulip" },
       };
       const event = createEvent({ kind, ...stream });
       const expected = {
@@ -730,7 +728,6 @@ describe("messenger-realtime.api", () => {
           user_uuid: USER_UUID,
           emoji_name: "thumbs_up",
           source_name: "native",
-          source: { kind: "native" },
         }),
       ),
     ).toBeNull();

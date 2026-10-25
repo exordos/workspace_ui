@@ -50,7 +50,6 @@ function seed() {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: true,
     inviteOnly: false,
