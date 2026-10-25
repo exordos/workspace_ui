@@ -6,6 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-10-25
+
+### Changed
+
+- Messenger DTOs accept flat provider UUID and identity fields without requiring
+  nested source metadata. Native chat creation leaves source defaults to the server.
+
+### Fixed
+
+- Silent user references remain clickable in messages, quotes, and forwarded
+  content without adding an `@` prefix or triggering mention-only desktop alerts.
+
+### Requirements and compatibility
+
+- Deployment requirements and dependencies remain unchanged. The updated stream
+  DTO guard accepts Workspace backend `2.1.1` responses and the flat provider
+  fields used by the newer backend contract.
+- The messenger cache remains at schema version 7. No cache reset is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.5`. No manual migration is required.
+
 ## [0.9.4] — 2026-10-22
 
 ### Added
