@@ -208,6 +208,9 @@ export function adaptMessengerMessagePayload(
         deviceId: dto.device_id,
         deviceName: dto.device_name,
         publicKey: dto.public_key,
+        ...(dto.target_message_uuid === undefined
+          ? {}
+          : { targetMessageUuid: dto.target_message_uuid }),
       };
     case "key_announced":
       return { kind: dto.kind, keyUuid: dto.key_uuid };

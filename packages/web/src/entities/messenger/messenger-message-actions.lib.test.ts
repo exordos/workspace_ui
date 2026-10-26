@@ -1696,3 +1696,29 @@ describe("encrypted payload local dispatch guards", () => {
     expect(f.cache.writeConversationMessagePage).toHaveBeenCalledOnce();
   });
 });
+
+it("rejects editor-only secret fences before ordinary send or edit transport", async () => {
+  const runtimeContext = createRuntimeContext();
+  const createMessage = vi.fn();
+  const editMessage = vi.fn();
+  const markdown = "Public :::secret\nprivate\n:::";
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown,
+      client: { createMessage },
+    }),
+  ).rejects.toThrow("invalid-secret");
+  await expect(
+    editMessengerMessage({
+      runtimeContext,
+      messageUuid: MESSAGE_A,
+      markdown,
+      client: { editMessage },
+    }),
+  ).rejects.toThrow("invalid-secret");
+  expect(createMessage).not.toHaveBeenCalled();
+  expect(editMessage).not.toHaveBeenCalled();
+});

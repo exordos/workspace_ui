@@ -1,5 +1,11 @@
 import type { ChatCryptoFailure, ChatCryptoProvider } from "./chat-crypto-provider.types";
-import type { ChatE2eeMessage, ChatE2eePayload, ChatGenerationAccess } from "./chat-e2ee.types";
+import type {
+  ChatE2eeMessage,
+  ChatE2eePayload,
+  ChatGenerationAccess,
+  ChatKeyRequestContext,
+  ChatKeyRequestPayload,
+} from "./chat-e2ee.types";
 import type {
   ChatDeviceIdentity,
   ChatKeyStorage,
@@ -44,7 +50,11 @@ export interface ChatE2eeControllerDependencies {
   readonly storage: ChatKeyStorage;
   readonly getCurrentScope: () => ChatE2eeControllerScope | null;
   readonly getRights: () => ChatE2eeControllerRights;
-  readonly isIssuerAllowed: (authorUuid: string) => boolean;
+  readonly isIssuerAllowed: (authorUuid: string, context?: ChatKeyRequestContext) => boolean;
+  readonly canRespondToRequest?: (
+    request: ChatE2eeMessage<ChatKeyRequestPayload>,
+    action: "grant" | "reject",
+  ) => boolean;
   readonly isAnnouncerAllowed: (authorUuid: string) => boolean;
   // The adapter validates public placement identity and guards network/store commits.
   // Request retries reuse the canonical UUID; returned messages carry a different public UUID.

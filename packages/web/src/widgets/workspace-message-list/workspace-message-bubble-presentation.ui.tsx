@@ -5,6 +5,7 @@ import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
+import { EncryptedSecretFragment } from "~/features/encrypted-chat-message/encrypted-secret-fragment.ui";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { invariant } from "~/shared/lib/guards";
@@ -18,7 +19,12 @@ import {
   parseWorkspaceMessageBody,
 } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
-import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import {
+  collectWorkspaceMessageSecretReferences,
+  hasWorkspaceMessageSecretContent,
+  renderWorkspaceMessageBodySegments,
+} from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
@@ -574,6 +580,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           )
           .join("\u0000"),
         fileReferences: collectWorkspaceMessageFileReferences(document),
+        secretReferences: collectWorkspaceMessageSecretReferences(document),
+        hasSecrets: hasWorkspaceMessageSecretContent(document),
       };
     }, [interactiveActions?.onOpenMentionUser, isPreview, markdown, resolveMention]);
     const fileReferences = passiveContentEnabled
@@ -584,7 +592,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       contextMenuAnchor,
       contextLinkUrl,
       contextImageFile,
-      getSelectedText,
+      getSelectedText: getRawSelectedText,
       handleBodyClick,
       handleContextMenu,
       handleKeyDown,
@@ -602,6 +610,42 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       onOpenWorkspaceMedia: interactiveActions?.onOpenWorkspaceMedia,
       onOpenUnsupportedFilePreview: interactiveActions?.onOpenUnsupportedFilePreview,
     });
+    // DOM selection can contain revealed text. Domain actions keep canonical encrypted URNs.
+    const getSelectedText = useCallback(
+      () => (renderedBody.hasSecrets ? undefined : getRawSelectedText()),
+      [renderedBody.hasSecrets, getRawSelectedText],
+    );
+    const requestSecretKeys = useCallback(async () => {
+      if (serverMessage == null) return;
+      const seen = new Set<string>();
+      for (const reference of renderedBody.secretReferences) {
+        const scope = `${reference.streamUuid}:${reference.keyUuid}`;
+        if (seen.has(scope)) continue;
+        seen.add(scope);
+        await interactiveActions?.onRequestSecretKey?.(serverMessage.uuid, reference);
+      }
+    }, [interactiveActions, renderedBody.secretReferences, serverMessage]);
+    const renderSecret = useCallback(
+      (reference: WorkspaceSecretUrnReference) =>
+        !isPreview && serverMessage != null ? (
+          <EncryptedSecretFragment
+            message={serverMessage}
+            reference={reference}
+            requestPending={interactiveActions?.requestMessageKeyPending}
+            onRequestKey={
+              interactiveActions?.onRequestSecretKey == null
+                ? undefined
+                : (allowUsableKey) =>
+                    interactiveActions.onRequestSecretKey?.(
+                      serverMessage.uuid,
+                      reference,
+                      allowUsableKey,
+                    )
+            }
+          />
+        ) : null,
+      [isPreview, serverMessage, interactiveActions],
+    );
     useWorkspaceMessageFilePreviews({
       bodyRef,
       renderedHtml: renderedBody.html,
@@ -658,12 +702,17 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
             loadEnabled={passiveContentEnabled}
+            secretMessageUuid={serverMessage?.uuid}
+            onRequestSecretKey={interactiveActions?.onRequestSecretKey}
+            requestSecretKeyPending={interactiveActions?.requestMessageKeyPending}
           />
         ),
       [
         interactiveActions?.onOpenMessageInChat,
         interactiveActions?.onOpenMentionUser,
         interactiveActions?.onLoadWorkspaceFilePreview,
+        interactiveActions?.onRequestSecretKey,
+        interactiveActions?.requestMessageKeyPending,
         isPreview,
         quoteRenderMode,
         resolveMention,
@@ -780,7 +829,14 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             contextLinkUrl={contextLinkUrl}
             contextImageFile={contextImageFile}
             onOpenChange={handleMenuOpenChange}
-            onRequestMessageKey={locked ? interactiveActions?.onRequestMessageKey : undefined}
+            onRequestMessageKey={
+              locked
+                ? interactiveActions?.onRequestMessageKey
+                : renderedBody.secretReferences.length > 0 &&
+                    interactiveActions?.onRequestSecretKey != null
+                  ? requestSecretKeys
+                  : undefined
+            }
             requestMessageKeyPending={interactiveActions?.requestMessageKeyPending}
             onReplyMessage={locked ? undefined : interactiveActions?.onReplyMessage}
             onAddReplyMessage={encryptedPayload ? undefined : interactiveActions?.onAddReplyMessage}
@@ -829,6 +885,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               fileReferences={renderedBody.fileReferences}
               segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
               renderQuote={renderQuote}
+              renderSecret={!isPreview && serverMessage != null ? renderSecret : undefined}
               metadata={renderedBody.metadata}
               onBodyClick={isPreview ? undefined : handleBodyClick}
               useInlineMeta={useInlineMeta}

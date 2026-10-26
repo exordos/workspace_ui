@@ -20,6 +20,10 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import type { EncryptedChatServiceMessageProps } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { setLocale } from "~/i18n/i18n";
+import {
+  buildWorkspaceForwardUrn,
+  buildWorkspaceSecretUrn,
+} from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
@@ -1630,5 +1634,123 @@ describe("real encrypted message presentation", () => {
     expect(screen.queryByText("Key required")).not.toBeInTheDocument();
     expect(screen.queryByText("tampered fixture")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+});
+
+describe("partial encryption in ordinary messages", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    setLocale("en");
+  });
+  async function seedSecret() {
+    const seeded = await seedRealEncryptedMessage("**secret password**");
+    const { stored, owner, stream } = seeded;
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing envelope");
+    const bytes = Uint8Array.from(atob(stored.payload.content), (char) => char.charCodeAt(0));
+    const urn = buildWorkspaceSecretUrn(stream.uuid, stored.payload.keyUuid, { bytes });
+    const ordinary = {
+      ...stored,
+      payload: {
+        kind: "markdown" as const,
+        content: `Public before [Encrypted fragment](${urn}) public after`,
+      },
+    };
+    useMessengerStore.getState().upsertStream(owner, { ...stream, encryption: false });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(ordinary);
+    return { ...seeded, ordinary };
+  }
+  function secretList(stored: MessengerMessage, actions = {}) {
+    return (
+      <WorkspaceMessageList
+        messages={[stored]}
+        outgoingMessages={[]}
+        currentUserUuid="author"
+        conversationId={stored.conversationId}
+        actions={actions}
+      />
+    );
+  }
+  it("uses the same historical key and drops only decrypted text when that key is removed", async () => {
+    const { ordinary, owner, stream, runtime, device, stored } = await seedSecret();
+    const { container } = render(secretList(ordinary));
+    expect(await screen.findByText("secret password")).toBeInTheDocument();
+    expect(container.textContent).toContain("Public before");
+    expect(container.textContent).toContain("public after");
+    expect(container.querySelector("strong")).toHaveTextContent("secret password");
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing key");
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    await realChatKeyStorage.removeChatKey(address);
+    act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+    await waitFor(() => expect(screen.queryByText("secret password")).not.toBeInTheDocument());
+    expect(container.textContent).toContain("Public before");
+    expect(useWorkspaceMessageStore.getState().messagesById[ordinary.uuid]?.payload).toEqual(
+      ordinary.payload,
+    );
+  });
+  it("requests the exact fragment key and ignores selected revealed text in forwarding", async () => {
+    const { ordinary, owner, stream, runtime, device, stored } = await seedSecret();
+    const forward = vi.fn();
+    const request = vi.fn();
+    const { container } = render(
+      secretList(ordinary, { onForwardMessage: forward, onRequestSecretKey: request }),
+    );
+    const secret = await screen.findByText("secret password");
+    const range = document.createRange();
+    range.selectNodeContents(secret);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const bubble = container.querySelector("[data-workspace-message-bubble]");
+    if (!(bubble instanceof HTMLElement)) throw new Error("Missing bubble");
+    fireEvent.contextMenu(bubble, { clientX: 20, clientY: 20 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Forward" }));
+    expect(forward).toHaveBeenCalledWith(ordinary.uuid, undefined);
+    selection?.removeAllRanges();
+    if (stored.payload.kind !== "e2ee") throw new Error("Missing key");
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: stream.uuid,
+      keyUuid: stored.payload.keyUuid,
+    };
+    await realChatKeyStorage.removeChatKey(address);
+    act(() => notifyRealChatKeyChanges({ ...address, ownerKey: owner, kind: "removed" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Request key" }));
+    expect(request).toHaveBeenCalledWith(
+      ordinary.uuid,
+      expect.objectContaining({ streamUuid: stream.uuid, keyUuid: stored.payload.keyUuid }),
+      false,
+    );
+  });
+  it("reads a forwarded secret with its original chat key and locks when original chat becomes unavailable", async () => {
+    const { ordinary, owner, runtime } = await seedSecret();
+    if (ordinary.payload.kind !== "markdown") throw new Error("Missing markdown");
+    const destination = createStream({
+      uuid: "77777777-7777-4777-8777-777777777777",
+      userUuid: runtime.userUuid,
+      encryption: false,
+    });
+    useMessengerStore.getState().upsertStream(owner, destination);
+    const forwarded: MessengerMessage = {
+      ...ordinary,
+      uuid: "88888888-8888-4888-8888-888888888888",
+      streamUuid: destination.uuid,
+      payload: {
+        kind: "markdown",
+        content: `[Forwarded](${buildWorkspaceForwardUrn(ordinary.uuid, ordinary.payload.content)})`,
+      },
+    };
+    const { container } = render(secretList(forwarded));
+    expect(await screen.findByText("secret password")).toBeInTheDocument();
+    expect(container.textContent).toContain("Public before");
+    act(() => useMessengerStore.setState({ streamsById: { [destination.uuid]: destination } }));
+    await waitFor(() => expect(screen.queryByText("secret password")).not.toBeInTheDocument());
+    expect(container.textContent).toContain("Public before");
   });
 });

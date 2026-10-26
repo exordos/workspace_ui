@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createDraft = vi.hoisted(() => vi.fn());
 const updateDraft = vi.hoisted(() => vi.fn());
+const getDraftsPage = vi.hoisted(() => vi.fn());
 const deleteDraft = vi.hoisted(() => vi.fn());
 const writeWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 const deleteWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/messenger-drafts.api", () => ({
   createDraft,
+  getDraftsPage,
   updateDraft,
   deleteDraft,
 }));
@@ -23,6 +25,7 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { clearLogHistory, getLogHistory } from "~/shared/lib/logger";
 import {
+  protectWorkspaceComposerDraft,
   deleteWorkspaceComposerDraftFromServer,
   resetWorkspaceComposerDraftSyncForTests,
   resumeWorkspaceComposerDraftSync,
@@ -102,6 +105,7 @@ beforeEach(() => {
   resetWorkspaceComposerDraftStoreForTests();
   vi.clearAllMocks();
   clearLogHistory();
+  getDraftsPage.mockResolvedValue({ items: [], nextPageMarker: null, pageLimit: null });
   writeWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
   deleteWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
 });
@@ -748,5 +752,132 @@ describe("workspace composer draft remote queue", () => {
       syncStatus: "saved",
       content: { text: "B" },
     });
+  });
+});
+
+describe("private composer promotion", () => {
+  it("rejects protected plaintext in both the main draft and reply snapshots", () => {
+    const store = useWorkspaceComposerDraftStore.getState();
+    expect(
+      store.setDraft(OWNER, CONVERSATION, content(":::secret\nprivate\n:::"), TARGET),
+    ).toBeNull();
+    const protectedReply = content("public");
+    protectedReply.replySession = {
+      activeTabId: "reply",
+      tabs: [
+        {
+          id: "reply",
+          messageUuid: "message",
+          senderUuid: "sender",
+          senderName: "Test",
+          createdAt: "2026-10-23T00:00:00Z",
+          quotedContent: "quoted",
+          answer: ":::secret\nprivate\n:::",
+        },
+      ],
+    };
+    expect(store.setDraft(OWNER, CONVERSATION, protectedReply, TARGET)).toBeNull();
+    expect(Object.values(store.draftsByKey)).toHaveLength(0);
+  });
+
+  it("scrubs queued local/remote saves when a selection becomes private", async () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("private selection"), TARGET)!;
+    syncWorkspaceComposerDraft({ runtimeContext, getRuntimeContext: () => runtimeContext, draft });
+    protectWorkspaceComposerDraft({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      draft,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(createDraft).not.toHaveBeenCalled();
+    expect(updateDraft).not.toHaveBeenCalled();
+    expect(
+      writeWorkspaceComposerDraftRecord.mock.calls.every(
+        ([, value]) => !JSON.stringify(value).includes("private selection"),
+      ),
+    ).toBe(true);
+  });
+
+  it("deletes after an in-flight POST and follows a changed ETag without persisting server plaintext", async () => {
+    const deferred = createDeferred<ReturnType<typeof snapshot>>();
+    createDraft.mockReturnValueOnce(deferred.promise);
+    const conflict = snapshot("private selection", 2, "etag-2");
+    deleteDraft
+      .mockRejectedValueOnce(
+        new MessengerApiError("conflict", 412, conflict.draft, new Headers({ ETag: "etag-2" })),
+      )
+      .mockResolvedValueOnce(undefined);
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("private selection"), TARGET)!;
+    syncWorkspaceComposerDraft({ runtimeContext, getRuntimeContext: () => runtimeContext, draft });
+    await vi.advanceTimersByTimeAsync(1_000);
+    writeWorkspaceComposerDraftRecord.mockClear();
+    protectWorkspaceComposerDraft({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      draft,
+    });
+    deferred.resolve(snapshot("private selection", 1, "etag-1"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(deleteDraft.mock.calls.map((call) => call[2])).toEqual(["etag-1", "etag-2"]);
+    expect(Object.values(useWorkspaceComposerDraftStore.getState().draftsByKey)).toHaveLength(0);
+    expect(
+      writeWorkspaceComposerDraftRecord.mock.calls.every(
+        ([, value]) => !JSON.stringify(value).includes("private selection"),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps an uncertain create tombstone when the first remote list is empty", async () => {
+    createDraft.mockRejectedValueOnce(new Error("Request timed out"));
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("private selection"), TARGET)!;
+    syncWorkspaceComposerDraft({ runtimeContext, getRuntimeContext: () => runtimeContext, draft });
+    await vi.advanceTimersByTimeAsync(1_000);
+    protectWorkspaceComposerDraft({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      draft,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft.key]).toMatchObject({
+      privateDeletion: true,
+      privateCreateUncertain: true,
+      content: { text: "" },
+    });
+    const found = snapshot("private selection", 1, "etag-late");
+    found.draft.uuid = draft.draftUuid;
+    getDraftsPage.mockResolvedValueOnce({ items: [found], nextPageMarker: null, pageLimit: null });
+    deleteDraft.mockResolvedValueOnce(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft.draftUuid, "etag-late");
+    expect(Object.values(useWorkspaceComposerDraftStore.getState().draftsByKey)).toHaveLength(0);
+    expect(createDraft).toHaveBeenCalledOnce();
+  });
+
+  it("recovers the ETag after a lost create response without resending its old body", async () => {
+    createDraft.mockRejectedValueOnce(new Error("Response lost after commit"));
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("private selection"), TARGET)!;
+    syncWorkspaceComposerDraft({ runtimeContext, getRuntimeContext: () => runtimeContext, draft });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const found = snapshot("private selection", 1, "etag-found");
+    found.draft.uuid = draft.draftUuid;
+    getDraftsPage.mockResolvedValueOnce({ items: [found], nextPageMarker: null, pageLimit: null });
+    deleteDraft.mockResolvedValueOnce(undefined);
+    protectWorkspaceComposerDraft({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      draft,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(createDraft).toHaveBeenCalledOnce();
+    expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft.draftUuid, "etag-found");
+    expect(Object.values(useWorkspaceComposerDraftStore.getState().draftsByKey)).toHaveLength(0);
   });
 });

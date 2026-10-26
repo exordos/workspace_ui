@@ -111,4 +111,23 @@ describe("FormattingToolbar", () => {
 
     expect(onValueChange).toHaveBeenCalledWith("`message`");
   });
+  it("marks only the selected text and refuses delimiter collisions", () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = "Public private suffix";
+    textarea.setSelectionRange(7, 14);
+    const onValueChange = vi.fn();
+    render(
+      <FormattingToolbar
+        textareaRef={{ current: textarea }}
+        onValueChange={onValueChange}
+        secretFragmentsEnabled
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Encrypted spoiler" }));
+    expect(onValueChange).toHaveBeenLastCalledWith("Public :::secret\nprivate\n::: suffix");
+    textarea.value = "private\n::: suffix";
+    textarea.setSelectionRange(0, textarea.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "Encrypted spoiler" }));
+    expect(onValueChange).toHaveBeenLastCalledWith("private\n::: suffix");
+  });
 });

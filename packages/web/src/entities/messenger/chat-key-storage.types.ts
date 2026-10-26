@@ -4,6 +4,7 @@ import type {
   ChatCryptoGroupKey,
   ChatCryptoPublicKey,
 } from "./chat-crypto-provider.types";
+import type { ChatKeyRequestContext } from "./chat-e2ee.types";
 
 export interface ChatDeviceIdentity {
   readonly deviceId: string;
@@ -31,6 +32,7 @@ export interface StoredChatKeyMetadata {
 }
 
 export interface PendingChatKeyRequest {
+  readonly context?: ChatKeyRequestContext;
   // Stable canonical message UUID for idempotent POST retries.
   readonly localRequestId: string;
   // Public placement UUID used by grants; null until a response or own history binds it.
@@ -61,7 +63,7 @@ export interface StagedChatCreation extends StoredChatKey {
   // Rotation retries reuse both announcement UUIDs and never overwrite an old secret.
   readonly rotation?: {
     readonly streamUuid: string;
-    readonly previousKeyUuid: string;
+    readonly previousKeyUuid: string | null;
     readonly topicUuid: string;
   };
 }

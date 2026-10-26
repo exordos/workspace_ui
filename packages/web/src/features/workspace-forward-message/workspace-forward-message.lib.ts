@@ -1,5 +1,7 @@
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { buildWorkspaceForwardReference } from "~/shared/lib/workspace-message-quote.lib";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { hasWorkspaceMessageSecretContent } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import type {
   CreateWorkspaceDirectForwardStream,
   WorkspaceForwardDirectStreamAppliedResult,
@@ -73,7 +75,14 @@ export function buildWorkspaceForwardMarkdown(options: {
 }): string | null {
   if (options.messages.some((message) => message.payload.kind !== "markdown")) return null;
   const selectedText = normalizeSelectedForwardText(options.selectedText);
-  const shouldUseSelectedText = options.messages.length === 1 && selectedText != null;
+  const hasSecrets = options.messages.some(
+    (message) =>
+      message.payload.kind === "markdown" &&
+      hasWorkspaceMessageSecretContent(parseWorkspaceMessageBody(message.payload.content)),
+  );
+  // Selected DOM text may include a decrypted fragment; forward the encrypted source instead.
+  const shouldUseSelectedText =
+    options.messages.length === 1 && selectedText != null && !hasSecrets;
 
   const references = options.messages.map((message) => {
     const senderName =

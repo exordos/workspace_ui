@@ -11,6 +11,7 @@ import {
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { notifyRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
+import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import {
@@ -119,6 +120,7 @@ const captured = vi.hoisted(() => ({
   runWorkspaceTopicDoneToggle: vi.fn(),
   markMessengerMessagesReadUpTo: vi.fn(),
   streamBindingsForRoute: vi.fn(),
+  protectWorkspaceComposerDraft: vi.fn(),
   syncWorkspaceComposerDraft: vi.fn().mockResolvedValue(undefined),
   deleteWorkspaceComposerDraftFromServer: vi.fn().mockReturnValue(true),
 }));
@@ -381,6 +383,7 @@ vi.mock("~/entities/messenger/messenger-stream-bindings-loader.lib", () => ({
 }));
 
 vi.mock("~/entities/composer-draft/composer-draft-sync.lib", () => ({
+  protectWorkspaceComposerDraft: captured.protectWorkspaceComposerDraft,
   syncWorkspaceComposerDraft: captured.syncWorkspaceComposerDraft,
   deleteWorkspaceComposerDraftFromServer: captured.deleteWorkspaceComposerDraftFromServer,
 }));
@@ -960,6 +963,10 @@ describe("ChatPage Workspace route", () => {
     });
     captured.deleteWorkspaceFile.mockReset();
     captured.deleteWorkspaceFile.mockResolvedValue(undefined);
+    captured.protectWorkspaceComposerDraft.mockReset();
+    captured.protectWorkspaceComposerDraft.mockImplementation(({ draft }) =>
+      useWorkspaceComposerDraftStore.getState().protectDraft(draft.ownerKey, draft.draftUuid),
+    );
     captured.openRealChatSession.mockReset();
     captured.openRealChatSession.mockRejectedValue(new Error("unavailable"));
     vi.mocked(decryptRealChatMessage).mockReset().mockResolvedValue(null);
@@ -1408,6 +1415,184 @@ describe("ChatPage Workspace route", () => {
       expect(send).toHaveBeenCalledWith(expect.objectContaining({ text: "Existing answer" })),
     );
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "prepares ordinary fragment keys without channel rotation (initialize=%s) and retries by placement",
+    async (initialize) => {
+      const session = createSession();
+      useWorkspaceAuthStore.getState().setSession(session);
+      const owner = workspaceRuntimeOwnerKey(session);
+      const keyUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
+      let sendKeyUuid: string | null = initialize ? null : keyUuid;
+      const bootstrap = createBootstrapPayload();
+      useMessengerStore.getState().replaceBootstrapState(owner, {
+        ...bootstrap,
+        streams: bootstrap.streams.map((stream) => ({
+          ...stream,
+          encryption: false,
+          currentEncryptionKey: initialize ? null : { keyUuid },
+        })),
+      });
+      const prepareFragmentKey = vi.fn().mockImplementation(() => {
+        sendKeyUuid = keyUuid;
+        return Promise.resolve(keyUuid);
+      });
+      const reissueKey = vi.fn();
+      const uncertainDelivery = createDeferred<{ status: "skipped" }>();
+      const retryDelivery = createDeferred<{ status: "applied" }>();
+      let attempt = 0;
+      const send = vi
+        .fn()
+        .mockImplementation(async (input: Parameters<RealChatSession["send"]>[0]) => {
+          const fragments = input.secretFragments ?? [];
+          const payloads = fragments.map(
+            (fragment, index) =>
+              fragment.preparedPayload ?? {
+                kind: "e2ee" as const,
+                keyUuid,
+                content: { bytes: new Uint8Array([index + 1]) },
+              },
+          );
+          const markdown = input.buildMarkdown?.(payloads);
+          expect(markdown).toContain("Public ");
+          expect(markdown).toContain("urn:secret:v1:");
+          expect(markdown).not.toContain("private-one");
+          expect(markdown).not.toContain("private-two");
+          attempt += 1;
+          if (attempt === 1) return uncertainDelivery.promise;
+          return retryDelivery.promise;
+        });
+      captured.openRealChatSession.mockResolvedValue({
+        device: { deviceId: "mock-device", deviceName: "Test" },
+        load: vi.fn(),
+        ingest: vi.fn(),
+        subscribe: () => () => undefined,
+        dispose: vi.fn(),
+        getState: () => ({
+          access: sendKeyUuid == null ? "missing" : "ready",
+          sendKeyUuid,
+          pending: false,
+          requestStatus: "idle",
+          error: null,
+        }),
+        getRights: () => ({
+          canRequest: !initialize,
+          canGrant: true,
+          canReject: true,
+          canRotate: false,
+          canSend: true,
+        }),
+        prepareFragmentKey,
+        reissueKey,
+        send,
+      });
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await waitFor(() => expect(captured.composerProps?.secretFragments?.canRotate).toBe(true));
+      const content = "Public :::secret\nprivate-one\n::: middle :::secret\nprivate-two\n::: end";
+      act(() => captured.composerProps?.onComposerValueChange(content));
+      expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
+      const onSend = captured.composerProps?.onSend;
+      if (onSend == null) throw new Error("Expected composer");
+      await act(async () => {
+        await onSend(content);
+      });
+      expect(
+        Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid)[0]
+          ?.status,
+      ).toBe("sending");
+      await act(async () => {
+        await onSend(content, undefined, undefined, { createNewKey: true });
+      });
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+      expect(
+        Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid),
+      ).toHaveLength(2);
+      expect(send.mock.calls[1]?.[0].canonicalMessageUuid).not.toBe(
+        send.mock.calls[0]?.[0].canonicalMessageUuid,
+      );
+      act(() => {
+        uncertainDelivery.resolve({ status: "skipped" });
+      });
+      await waitFor(() =>
+        expect(
+          Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid)[0]
+            ?.status,
+        ).toBe("failed"),
+      );
+      const firstOutgoing = Object.values(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+      )[0];
+      expect(firstOutgoing?.encryption?.preparedMarkdown).toContain("urn:secret:v1:");
+      if (!firstOutgoing) throw new Error("Expected outgoing secret");
+      act(() => captured.messageListProps?.onRetryOutgoingMessage?.(firstOutgoing.placementUuid));
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+      await act(() => {
+        retryDelivery.resolve({ status: "applied" });
+        return retryDelivery.promise;
+      });
+      await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(prepareFragmentKey).toHaveBeenCalledTimes(2);
+      expect(prepareFragmentKey).toHaveBeenNthCalledWith(1, false);
+      expect(prepareFragmentKey).toHaveBeenLastCalledWith(true);
+      expect(reissueKey).not.toHaveBeenCalled();
+      expect(send.mock.calls[2]?.[0]).toMatchObject({
+        canonicalMessageUuid: send.mock.calls[0]?.[0].canonicalMessageUuid,
+        secretFragments: firstOutgoing?.encryption?.fragments?.map((preparedPayload, index) => ({
+          text: index === 0 ? "private-one" : "private-two",
+          preparedPayload,
+        })),
+      });
+      expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains uploaded attachments when async secret key preparation fails before enqueue", async () => {
+    const prepareFragmentKey = vi.fn().mockRejectedValue(new Error("storage-failed"));
+    captured.openRealChatSession.mockResolvedValue({
+      device: { deviceId: "mock-device", deviceName: "Test" },
+      load: vi.fn(),
+      ingest: vi.fn(),
+      subscribe: () => () => undefined,
+      dispose: vi.fn(),
+      getState: () => ({
+        access: "missing",
+        sendKeyUuid: null,
+        pending: false,
+        requestStatus: "idle",
+        error: null,
+      }),
+      getRights: () => ({
+        canRequest: true,
+        canGrant: false,
+        canReject: false,
+        canRotate: false,
+        canSend: true,
+      }),
+      prepareFragmentKey,
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.secretFragments?.canRotate).toBe(true));
+    act(() =>
+      captured.composerProps?.onAddAttachments?.([
+        new File(["file"], "retained.txt", { type: "text/plain" }),
+      ]),
+    );
+    await waitFor(() => expect(captured.composerProps?.attachments?.[0]?.status).toBe("ready"));
+    const onSend = captured.composerProps?.onSend;
+    if (!onSend) throw new Error("Expected composer");
+    await act(async () => {
+      await expect(onSend("Public :::secret\nprivate\n::: end")).rejects.toThrow();
+    });
+    expect(captured.composerProps?.attachments?.[0]?.fileName).toBe("retained.txt");
+    expect(captured.composerProps?.attachments?.[0]?.status).toBe("ready");
+    expect(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid).toEqual({});
+    expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
   });
 
   it("queues encrypted sends without blocking typing or persisting plaintext drafts", async () => {
@@ -5642,7 +5827,11 @@ describe("ChatPage Workspace route", () => {
     );
     const onSend = captured.composerProps?.onSend;
     if (onSend == null) throw new Error("Workspace composer send handler is missing");
-    expect(() => onSend("hello", "")).toThrow("Wait for all attachments to finish uploading.");
+    await act(async () => {
+      await expect(onSend("hello", "")).rejects.toThrow(
+        "Wait for all attachments to finish uploading.",
+      );
+    });
 
     expect(captured.messageListProps?.outgoingMessages ?? []).toEqual([]);
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
@@ -5728,9 +5917,11 @@ describe("ChatPage Workspace route", () => {
 
     const onSend = captured.composerProps?.onSend;
     if (onSend == null) throw new Error("Workspace composer send handler is missing");
-    expect(() => onSend("a".repeat(40_000), "")).toThrow(
-      "The message is too long (maximum 40,000 characters).",
-    );
+    await act(async () => {
+      await expect(onSend("a".repeat(40_000), "")).rejects.toThrow(
+        "The message is too long (maximum 40,000 characters).",
+      );
+    });
 
     expect(captured.composerProps?.attachments).toEqual([
       expect.objectContaining({ fileName: "report.pdf", status: "ready" }),

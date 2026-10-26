@@ -10,6 +10,11 @@ import BulletedListSvg from "~/shared/assets/icons/composer-list-bulleted.svg?re
 import NumberedListSvg from "~/shared/assets/icons/composer-list-numbered.svg?react";
 import StrikethroughSvg from "~/shared/assets/icons/composer-strikethrough.svg?react";
 import VisibilitySvg from "~/shared/assets/icons/composer-visibility.svg?react";
+import {
+  WORKSPACE_SECRET_DRAFT_OPEN,
+  WORKSPACE_SECRET_DRAFT_CLOSE,
+} from "~/shared/lib/workspace-secret-draft.lib";
+import { Icon } from "~/shared/ui/icon";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN, TOOLBAR_TEXT_STYLE_GROUP } from "./message-composer-styles.lib";
 import type { FormattingToolbarProps } from "./message-composer.types";
@@ -23,6 +28,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
   scheduleTrigger,
   snippetsTrigger,
   aiTrigger,
+  secretFragmentsEnabled = false,
 }) {
   const wrap = useCallback(
     (marker: string) => wrapSelection(textareaRef, marker, onValueChange),
@@ -271,6 +277,36 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
           <span className="absolute h-px w-7 rotate-[-35deg] bg-current" />
         </span>
       </button>
+      {secretFragmentsEnabled ? (
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          title={t("composer.secretSpoiler")}
+          aria-label={t("composer.secretSpoiler")}
+          onClick={() =>
+            mutateSelection(textareaRef, onValueChange, (selected) => {
+              if (
+                selected.length === 0 ||
+                selected.includes(":::secret") ||
+                selected.includes("\n:::")
+              )
+                return {
+                  text: selected,
+                  selectionStartOffset: 0,
+                  selectionEndOffset: selected.length,
+                };
+              const text = WORKSPACE_SECRET_DRAFT_OPEN + selected + WORKSPACE_SECRET_DRAFT_CLOSE;
+              return {
+                text,
+                selectionStartOffset: WORKSPACE_SECRET_DRAFT_OPEN.length,
+                selectionEndOffset: WORKSPACE_SECRET_DRAFT_OPEN.length + selected.length,
+              };
+            })
+          }
+        >
+          <Icon name="encrypted_spoiler" size={32} />
+        </button>
+      ) : null}
     </div>
   );
 });

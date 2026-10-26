@@ -56,6 +56,7 @@ import {
 } from "~/shared/ui/app-dialog";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { UserPickerList } from "~/shared/ui/user-picker-list";
 import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card";
@@ -826,6 +827,9 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   const encrypted = useMessengerStore(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
+  const native = useMessengerStore(
+    (state) => streamUuid != null && state.streamsById[streamUuid]?.sourceName === "native",
+  );
   const ownerKey = useWorkspaceAuthStore((state) => {
     const runtime = selectCurrentWorkspaceRuntimeContext(state);
     return runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
@@ -842,7 +846,10 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       ? call.invoke
       : undefined;
   });
-  if (encrypted && streamUuid != null) {
+  if (
+    streamUuid != null &&
+    (encrypted || (native && (chatScreen === "key" || chatScreen === "local-key")))
+  ) {
     const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
@@ -879,9 +886,23 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       renderEncryptedInfo()
     );
   }
-  if (info.kind === "directPrivate" || info.kind === "userProfile") {
-    return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
-  }
-
-  return <RightPanelWorkspaceChannelInfo info={info} />;
+  const ordinaryInfo =
+    info.kind === "directPrivate" || info.kind === "userProfile" ? (
+      <RightPanelWorkspaceDirectPrivateInfo info={info} />
+    ) : (
+      <RightPanelWorkspaceChannelInfo info={info} />
+    );
+  return native && onChatScreenChange != null ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PanelMenuRow
+        label={t("e2ee.keyTitle")}
+        icon="chatLock"
+        density="compact"
+        onClick={() => onChatScreenChange("key")}
+      />
+      {ordinaryInfo}
+    </div>
+  ) : (
+    ordinaryInfo
+  );
 };

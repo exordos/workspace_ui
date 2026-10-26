@@ -5,11 +5,20 @@ import { sanitizeHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import {
+  parseWorkspaceSecretUrn,
+  type WorkspaceSecretUrnReference,
+} from "~/shared/lib/workspace-reference-urn.lib";
 import { AttachmentReadyCard } from "~/shared/ui/attachment-card";
 import type { WorkspaceMessageBodyProps } from "./messenger-workspace-message-body.types";
 
 const bodyLog = createLogger("workspace-message-body");
 const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
+
+interface MountedSecret {
+  host: HTMLElement;
+  reference: WorkspaceSecretUrnReference;
+}
 
 interface MountedAttachmentCard {
   host: HTMLElement;
@@ -153,6 +162,7 @@ function areWorkspaceMessageBodyPropsEqual(
     prev.segments === next.segments &&
     prev.fileReferences === next.fileReferences &&
     prev.renderQuote === next.renderQuote &&
+    prev.renderSecret === next.renderSecret &&
     prev.useInlineMeta === next.useInlineMeta &&
     prev.bodyRef === next.bodyRef &&
     prev.onBodyClick === next.onBodyClick &&
@@ -192,6 +202,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     html,
     segments,
     renderQuote,
+    renderSecret,
     metadata,
     useInlineMeta,
     bodyRef,
@@ -205,6 +216,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     // segment rendering has to drop them by hand.
     const injectedNodesRef = useRef<ChildNode[]>([]);
     const [attachmentCards, setAttachmentCards] = useState<MountedAttachmentCard[]>([]);
+    const [secrets, setSecrets] = useState<MountedSecret[]>([]);
     const className = `${BASE_BODY_CLASS_NAME} ${
       useInlineMeta ? "workspace-message-bubble-inline-text" : ""
     }`;
@@ -315,6 +327,32 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
       );
     }, [fileReferences, hasStructuredSegments, onBodyClick, safeHtml, segments]);
 
+    useLayoutEffect(() => {
+      const body = containerRef.current;
+      if (body == null) return;
+      const next: MountedSecret[] = [];
+      for (const host of body.querySelectorAll<HTMLElement>(
+        ".workspace-message-secret-host[data-workspace-secret-urn]",
+      )) {
+        // Nested quotes and revealed fragments own their own hosts.
+        if (host.closest("[data-message-body='true']") !== body) continue;
+        const reference = parseWorkspaceSecretUrn(host.dataset.workspaceSecretUrn);
+        const fallback = host.querySelector<HTMLElement>("[data-workspace-secret-fallback]");
+        if (fallback != null) fallback.hidden = renderSecret != null && reference != null;
+        if (renderSecret != null && reference != null) next.push({ host, reference });
+      }
+      setSecrets((previous) =>
+        previous.length === next.length &&
+        previous.every(
+          (secret, index) =>
+            secret.host === next[index]?.host &&
+            secret.host.dataset.workspaceSecretUrn === next[index]?.host.dataset.workspaceSecretUrn,
+        )
+          ? previous
+          : next,
+      );
+    }, [safeHtml, segments, renderSecret]);
+
     return (
       <div
         ref={setContainerRef}
@@ -332,6 +370,9 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
               {renderQuote?.(segment, index)}
             </React.Fragment>
           ),
+        )}
+        {secrets.map(({ host, reference }, index) =>
+          createPortal(renderSecret?.(reference), host, `secret:${index}:${reference.keyUuid}`),
         )}
         {attachmentCards.map(({ host, reference }, index) =>
           createPortal(

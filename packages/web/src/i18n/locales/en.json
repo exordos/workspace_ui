@@ -1427,7 +1427,11 @@
     "paste": "Paste",
     "selectAll": "Select All",
     "messageTooLong": "The message is too long (maximum 40,000 characters).",
-    "mentionOutsideChannel": "not in channel"
+    "mentionOutsideChannel": "not in channel",
+    "secretSpoiler": "Encrypted spoiler",
+    "createSecretKey": "Create a new key",
+    "secretDraftMemoryOnly": "This draft stays in memory until sent.",
+    "invalidSecret": "Finish or remove the encrypted spoiler before sending."
   },
   "attachmentCard": {
     "unnamedFile": "File",
@@ -1616,7 +1620,9 @@
     "loadedHistoryHint": "Showing loaded history.",
     "incomingTitle": "Incoming requests ({{count}})",
     "grantedTitle": "Granted keys ({{count}})",
-    "rejectedTitle": "Rejected requests ({{count}})"
+    "rejectedTitle": "Rejected requests ({{count}})",
+    "secretFragment": "Encrypted fragment",
+    "requestSecretKey": "Request key"
   },
   "selector": {
     "placeholder": "Select an option",

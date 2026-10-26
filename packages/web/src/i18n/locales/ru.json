@@ -1439,7 +1439,11 @@
     "paste": "Вставить",
     "selectAll": "Выбрать всё",
     "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов).",
-    "mentionOutsideChannel": "не в канале"
+    "mentionOutsideChannel": "не в канале",
+    "secretSpoiler": "Шифрованный спойлер",
+    "createSecretKey": "Создать новый ключ",
+    "secretDraftMemoryOnly": "Этот черновик хранится только в памяти до отправки.",
+    "invalidSecret": "Завершите или удалите шифрованный спойлер перед отправкой."
   },
   "attachmentCard": {
     "unnamedFile": "Файл",
@@ -1629,7 +1633,9 @@
     "loadedHistoryHint": "Показаны данные из загруженной истории.",
     "incomingTitle": "Входящие запросы ({{count}})",
     "grantedTitle": "Выданные ключи ({{count}})",
-    "rejectedTitle": "Отклонённые запросы ({{count}})"
+    "rejectedTitle": "Отклонённые запросы ({{count}})",
+    "secretFragment": "Зашифрованный фрагмент",
+    "requestSecretKey": "Запросить ключ"
   },
   "selector": {
     "placeholder": "Выберите значение",

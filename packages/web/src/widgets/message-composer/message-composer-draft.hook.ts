@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MessageComposerProps } from "./message-composer.types";
 
 interface UseComposerDraftParams {
@@ -25,6 +25,10 @@ export function useComposerDraft({
   setMode,
 }: UseComposerDraftParams) {
   const [value, setRawValue] = useState(initialValue ?? "");
+  const valueRef = useRef(value);
+  useLayoutEffect(() => {
+    valueRef.current = value;
+  }, [value]);
   const isEditing = editSession != null;
   const editModeDraftSnapshotRef = useRef<string | null>(null);
   const activeEditSessionKeyRef = useRef<string | null>(null);
@@ -88,13 +92,14 @@ export function useComposerDraft({
 
   const setValue = useCallback(
     (next: string | ((prev: string) => string)) => {
-      setRawValue((prev) => {
-        const resolved = typeof next === "function" ? next(prev) : next;
-        if (!isEditing || editSession?.preserveWorkspaceReplyContext === true) {
-          onValueChange?.(resolved);
-        }
-        return resolved;
-      });
+      const resolved = typeof next === "function" ? next(valueRef.current) : next;
+      valueRef.current = resolved;
+      setRawValue(resolved);
+      // Controlled draft callbacks can update the parent or its stores. Keep
+      // those effects outside React's state updater/render phase.
+      if (!isEditing || editSession?.preserveWorkspaceReplyContext === true) {
+        onValueChange?.(resolved);
+      }
     },
     [editSession?.preserveWorkspaceReplyContext, isEditing, onValueChange],
   );

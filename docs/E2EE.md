@@ -1,6 +1,6 @@
 # Encrypted chats
 
-Current for the client implementation on this branch as of 2026-10-16. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
+Current for the client implementation on this branch as of 2026-10-23. This is a reference to implemented code, not a development plan or confirmation of production deployment. Related issue: [workspace_ui #177](https://github.com/exordos/workspace_ui/issues/177).
 
 ## Capabilities
 
@@ -19,11 +19,23 @@ Decrypted attachment references use the existing inline image/video previews and
 
 Successfully decrypted text uses the same segmented message renderer as ordinary Markdown, including quote components, mentions, code controls, and Jitsi cards. A referenced encrypted original is decrypted independently with its own exact key UUID, including historical generations. Without that key, the quote shows the decorative blurred placeholder; selected quote text does not bypass the key check. Removing the original's key clears its quote content and media while leaving a separately readable reply visible. Plaintext is never written back into the canonical message store or durable cache. Forward snapshots remain self-contained content of their enclosing message.
 
+## Protected fragments in ordinary native chats
+
+The ordinary native-chat composer can protect selected text using its encrypted-spoiler action. Public text stays ordinary Markdown; each protected range becomes a neutral-label link with `urn:secret:v1:<source-stream-uuid>:<key-uuid>:<base64url-envelope>`. Multiple ranges use the same existing chat sending key and independent envelopes. The source stream stays in the URN so forwarded ciphertext uses the original crypto context and key storage address. A missing key locks only the affected fragment; the remaining message remains readable. Reusing a key grants access to every fragment encrypted with that generation that the recipient can obtain.
+
+This uses the same session, controller, storage, requests, HPKE grants, history, and deletion notifications as an encrypted chat. Keys have no author or purpose classification. Any participant with send permission can prepare a key through the same provider and storage, reuse the last available local key (including a received key), or choose a new key with the optional composer checkbox. Fragment key creation does not announce or change the channel's current key. Ordinary messages without protected ranges do not require a key.
+
+The request optionally names its original message with `target_message_uuid`. The original API message must contain the exact stream/key/envelope, and its author alone may grant or reject that request, regardless of channel role. Forwarded snapshots retain original identity links, but never supply authority: the session resolves the original through canonical API messages. The durable pending request retains its target and expected issuer, so history replay or reload cannot turn it into a channel-authorized request. Untargeted encrypted-chat requests keep their existing owner/administrator policy. Sharing a reusable key does not give its recipient permission to answer a request for another author's message.
+
+Protected editor ranges use client-only `:::secret` fences. They are replaced before POST/PATCH; unfinished, nested, or ambiguous ranges block sending. While a draft contains a protected range, its text and reply state stay in the existing page-memory shadow and are not saved to IndexedDB or server drafts. Promoting a previously ordinary draft scrubs queued local content and deletes the remote draft using a metadata-only tombstone. A draft request already dispatched before the selection was marked private may have sent its earlier ordinary text; its response is followed by deletion, without restoring that body into the local draft. Uncertain creates recover only their ETag from the drafts list instead of repeating the previous plaintext POST.
+
+Partial sends use the common in-memory outbox. After key preparation and enqueueing, the composer clears and delivery continues in the outbox. The final Markdown and encrypted envelopes are retained before dispatch, so a lost response retries the same message UUID and ciphertext without another key rotation. Editing preserves existing encrypted URNs and encrypts newly marked ranges. Quotes and forwards preserve encrypted references rather than automatically persisting selected revealed plaintext. The ordinary 40,000-character limit applies to the final Markdown, including the URNs. File bytes remain outside this protection; selecting a Markdown file reference encrypts only its reference.
+
 ## Device-specific key requests
 
 Request titles name the requesting account and target device: "You requested a security key for device…" for the current account, or the other person's name. Device names come from the request; IDs determine device equality. Separate tabs sharing the same secrets database represent the same device. Blank names display "Unknown device"; existing installations default to "Workspace browser".
 
-The following rules apply to pending requests. "Manager" means an owner or administrator; having the key or sharing an account never grants this role.
+The following table describes untargeted encrypted-chat requests. "Manager" means an owner or administrator; having the key or sharing an account never grants this role. For a targeted fragment request, the same presentation and actions use the original message author as the authorized responder instead. The author needs the exact local key to grant; rejection does not require the key. Unrelated members and channel managers have no response actions.
 
 | Request author  | Viewing device    | Viewer role | Requested generation's local key | Presentation                                                                                     |
 | --------------- | ----------------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |

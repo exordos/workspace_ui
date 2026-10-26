@@ -47,6 +47,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onSubmitEdit,
   onCancelEdit,
   composerCapabilities,
+  secretFragments,
   resolveMention,
   onLoadWorkspaceFilePreview,
   aiMessagesContext,
@@ -95,6 +96,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
         editSession={null}
         onSubmitEdit={onSubmitEdit}
         onCancelEdit={onCancelEdit}
+        secretFragments={secretFragments}
         capabilities={effectiveComposerCapabilities}
         resolveMention={resolveMention}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
@@ -182,6 +184,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       editSession={editSession}
       onSubmitEdit={onSubmitEdit}
       onCancelEdit={onCancelEdit}
+      secretFragments={secretFragments}
       capabilities={effectiveComposerCapabilities}
       resolveMention={resolveMention}
       onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}

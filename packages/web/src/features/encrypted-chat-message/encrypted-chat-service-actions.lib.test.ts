@@ -63,6 +63,7 @@ function setup() {
         error: null,
       }),
       isIssuerAllowed: (uuid: string) => uuid === "admin",
+      canRespondToKeyRequest: vi.fn((_uuid: string) => true),
       canGrantKey: vi.fn((_uuid: string) => true),
       canRejectKey: vi.fn((_uuid: string) => true),
       getKeyRequestOutcome: vi.fn<RealChatSession["getKeyRequestOutcome"]>(() => null),
@@ -71,6 +72,21 @@ function setup() {
 }
 
 describe("encrypted service actions", () => {
+  it("uses original-message authorization for member request presentation", () => {
+    const opts = setup();
+    if (opts.message.payload.kind !== "key_request") throw new Error("Expected request");
+    opts.message.payload = { ...opts.message.payload, targetMessageUuid: "original" };
+    const state = getEncryptedChatServiceState({
+      ...opts,
+      session: {
+        ...opts.session,
+        getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+      },
+    });
+    expect(state?.canManageKeys).toBe(true);
+    expect(opts.session.canRespondToKeyRequest).toHaveBeenCalledWith("request");
+  });
+
   it("reads device, rights and the exact requested generation from the scoped session", () => {
     const opts = setup();
     const generation = vi.spyOn(opts.session, "getGenerationState");
@@ -87,6 +103,7 @@ describe("encrypted service actions", () => {
         session: {
           ...opts.session,
           getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+          canRespondToKeyRequest: () => false,
           getGenerationState: () => null,
         },
       }),

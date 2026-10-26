@@ -348,6 +348,8 @@ export interface WorkspaceMessengerComposerDraftRecordCacheRow<TContent = unknow
   conflictServerContent?: TContent;
   conflictServerEtag?: string;
   pendingCreatePayload?: string | null;
+  privateDeletion?: boolean;
+  privateCreateUncertain?: boolean;
 }
 
 export interface WorkspaceMessengerComposerDraftRecordCacheWrite<TContent> {
@@ -365,6 +367,8 @@ export interface WorkspaceMessengerComposerDraftRecordCacheWrite<TContent> {
   conflictServerContent?: TContent;
   conflictServerEtag?: string;
   pendingCreatePayload?: string | null;
+  privateDeletion?: boolean;
+  privateCreateUncertain?: boolean;
 }
 
 function normalizeComposerDraftDisposition(

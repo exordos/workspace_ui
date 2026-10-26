@@ -12,6 +12,10 @@ import type {
   WorkspaceMessengerStreamDto,
 } from "~/shared/api/messenger.types";
 import {
+  buildWorkspaceSecretUrn,
+  buildWorkspaceForwardUrn,
+} from "~/shared/lib/workspace-reference-urn.lib";
+import {
   realChatCryptoProvider,
   realChatKeyStorage,
   notifyRealChatKeyChanges,
@@ -22,6 +26,7 @@ import {
   openRealChatSession as openChatSession,
   decryptRealChatMessage,
   decryptRealChatMessageResult,
+  decryptRealChatEnvelopeResult,
 } from "./chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
@@ -211,13 +216,24 @@ function runtime(user = ADMIN): WorkspaceRuntimeContext {
   };
 }
 
-async function setup({ publishRotationUpdates = true } = {}) {
+async function setup({
+  publishRotationUpdates = true,
+  encrypted = true,
+  hasInitialKey = true,
+} = {}) {
   const admin = runtime();
   const member = runtime(MEMBER);
   const metadata = await realChatInitialKeyBootstrap.prepare({
     runtimeContext: admin,
     isCurrent: () => true,
   });
+  if (!encrypted && hasInitialKey)
+    await realChatInitialKeyBootstrap.finalize!({
+      runtimeContext: admin,
+      metadata,
+      streamUuid: STREAM,
+      isCurrent: () => true,
+    });
   let currentKey = { key_uuid: metadata.keyUuid };
   const stream = (user: string): WorkspaceMessengerStreamDto => ({
     uuid: STREAM,
@@ -237,8 +253,8 @@ async function setup({ publishRotationUpdates = true } = {}) {
     private: false,
     is_archived: false,
     direct_user_uuid: null,
-    encryption: true,
-    current_encryption_key_uuid: currentKey.key_uuid,
+    encryption: encrypted,
+    current_encryption_key_uuid: hasInitialKey ? currentKey.key_uuid : null,
     created_at: DATE,
     updated_at: DATE,
   });
@@ -2540,5 +2556,430 @@ describe("real ordinary chat orchestration", () => {
       "still a participant",
     );
     session.dispose();
+  });
+});
+
+describe("ordinary chat shared key sessions", () => {
+  const mixedInput = (fragments: readonly string[]) => ({
+    text: "",
+    topicUuid: TOPIC,
+    secretFragments: fragments.map((text) => ({ text })),
+    buildMarkdown: (payloads: readonly ChatEncryptedPayload[]) =>
+      "Public " +
+      payloads
+        .map(
+          (payload) =>
+            `[Secret](${buildWorkspaceSecretUrn(STREAM, payload.keyUuid, payload.content)})`,
+        )
+        .join(" "),
+  });
+
+  it("opens an ordinary chat without creating a key and lets any member initialize, reuse and rotate locally", async () => {
+    const f = await setup({
+      encrypted: false,
+      hasInitialKey: false,
+      publishRotationUpdates: false,
+    });
+    const create = vi.spyOn(realChatCryptoProvider, "createGroupKey");
+    const owner = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
+    await owner.load();
+    await member.load();
+    expect(create).not.toHaveBeenCalled();
+    expect(f.wire).toEqual([]);
+    expect(owner.getState()).toMatchObject({ access: "missing", sendKeyUuid: null });
+    const [keyUuid, concurrentKeyUuid] = await Promise.all([
+      member.prepareFragmentKey(),
+      member.prepareFragmentKey(),
+    ]);
+    expect(concurrentKeyUuid).toBe(keyUuid);
+    expect(await member.prepareFragmentKey()).toBe(keyUuid);
+    expect(member.getRights().canRotate).toBe(false);
+    expect(f.wire).toEqual([]);
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+    await owner.prepareFragmentKey();
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(f.catalog(f.admin).getState().streamsById[STREAM]?.encryption).toBe(false);
+    expect(owner.getState()).toMatchObject({ access: "ready", sendKeyUuid: owner.scope.keyUuid });
+    await owner.send(mixedInput(["first", "second"]));
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(f.wire.at(-1)?.payload.kind).toBe("markdown");
+    expect(JSON.stringify(f.wire)).not.toContain('"first"');
+    expect(JSON.stringify(f.wire)).not.toContain('"second"');
+  });
+
+  it("grants only as the source author, reuses received keys and opens all fragments after reload", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const resolveMessage = (uuid: string) => {
+      const dto = f.wire.find((message) => message.uuid === uuid);
+      return Promise.resolve(dto ? adaptMessengerMessage(dto) : null);
+    };
+    const author = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+      resolveMessage,
+    });
+    const recipient = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+      resolveMessage,
+    });
+    await author.load();
+    await recipient.load();
+    await author.prepareFragmentKey();
+    const payloads: ChatEncryptedPayload[] = [];
+    await author.send({
+      ...mixedInput(["secret A", "secret B"]),
+      onEncryptedFragment: (_, value) => payloads.push(value),
+    });
+    const source = f.wire.at(-1)!;
+    const keyUuid = payloads[0]!.keyUuid;
+    await author.prepareFragmentKey(true);
+    expect(
+      await recipient.resolveSecretKeyRequestTarget(source.uuid, {
+        kind: "secret",
+        streamUuid: STREAM,
+        keyUuid,
+        envelope: payloads[0]!.content,
+      }),
+    ).toBe(source.uuid);
+    await recipient.requestEnvelopeKey(keyUuid, payloads[0]!.content, false, source.uuid);
+    const request = f.wire.at(-1)!;
+    expect(request.payload).toMatchObject({ target_message_uuid: source.uuid });
+    await recipient.ingest([adaptMessengerMessage(request)]);
+    expect(recipient.canGrantKey(request.uuid)).toBe(false);
+    await expect(recipient.grantKey(request.uuid)).rejects.toThrow("forbidden");
+    await author.ingest([adaptMessengerMessage(request)]);
+    expect(author.canGrantKey(request.uuid)).toBe(true);
+    await author.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    const restored = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+      resolveMessage,
+    });
+    await restored.load();
+    await restored.ingest([
+      adaptMessengerMessage(request),
+      adaptMessengerMessage({ ...grant, author_uuid: ADMIN }),
+    ]);
+    expect(restored.getGenerationState(keyUuid)?.access).not.toBe("ready");
+    await restored.ingest([adaptMessengerMessage(grant)]);
+    expect(await restored.prepareFragmentKey()).toBe(keyUuid);
+    for (const [index, payload] of payloads.entries())
+      expect(
+        await decryptRealChatEnvelopeResult(
+          f.admin,
+          {
+            projectId: PROJECT,
+            streamUuid: STREAM,
+            keyUuid: payload.keyUuid,
+            envelope: payload.content,
+          },
+          () => true,
+        ),
+      ).toEqual({ status: "ready", plaintext: index === 0 ? "secret A" : "secret B" });
+    expect(f.catalog(f.admin).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+  });
+
+  it("resolves nested forwarded fragments against canonical originals and rejects forged snapshots", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const sources = new Map<string, ReturnType<typeof adaptMessengerMessage>>();
+    const resolveMessage = (uuid: string) => Promise.resolve(sources.get(uuid) ?? null);
+    const session = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+      resolveMessage,
+    });
+    await session.load();
+    await session.prepareFragmentKey();
+    let fragment: ChatEncryptedPayload | undefined;
+    await session.send({
+      ...mixedInput(["origin"]),
+      onEncryptedFragment: (_, payload) => {
+        fragment = payload;
+      },
+    });
+    const source = adaptMessengerMessage(f.wire.at(-1)!);
+    sources.set(source.uuid, source);
+    if (!fragment || source.payload.kind !== "markdown") throw new Error("missing source");
+    const reference = {
+      kind: "secret" as const,
+      streamUuid: STREAM,
+      keyUuid: fragment.keyUuid,
+      envelope: fragment.content,
+    };
+    const forwarded = {
+      ...source,
+      uuid: crypto.randomUUID(),
+      authorUuid: ADMIN,
+      payload: {
+        kind: "markdown" as const,
+        content: `[Forward](${buildWorkspaceForwardUrn(source.uuid, source.payload.content)})`,
+      },
+    };
+    const nested = {
+      ...forwarded,
+      uuid: crypto.randomUUID(),
+      payload: {
+        kind: "markdown" as const,
+        content: `[Again](${buildWorkspaceForwardUrn(forwarded.uuid, forwarded.payload.content)})`,
+      },
+    };
+    sources.set(forwarded.uuid, forwarded);
+    sources.set(nested.uuid, nested);
+    expect(await session.resolveSecretKeyRequestTarget(nested.uuid, reference)).toBe(source.uuid);
+    await expect(
+      session.requestEnvelopeKey(fragment.keyUuid, fragment.content, true, forwarded.uuid),
+    ).rejects.toThrow("invalid-message");
+    sources.set(source.uuid, { ...source, payload: { kind: "markdown", content: "No fragment" } });
+    await expect(session.resolveSecretKeyRequestTarget(nested.uuid, reference)).rejects.toThrow(
+      "invalid-message",
+    );
+  });
+
+  it("retries transient canonical reads for an identical batch without dropping other valid requests", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    let failNext = false;
+    const resolveMessage = (uuid: string) => {
+      if (failNext) {
+        failNext = false;
+        return Promise.reject(new Error("offline"));
+      }
+      const dto = f.wire.find((message) => message.uuid === uuid);
+      return Promise.resolve(dto ? adaptMessengerMessage(dto) : null);
+    };
+    const author = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+      resolveMessage,
+    });
+    const reader = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+      resolveMessage,
+    });
+    await author.load();
+    await reader.load();
+    await author.prepareFragmentKey();
+    let fragment: ChatEncryptedPayload | undefined;
+    await author.send({
+      ...mixedInput(["origin"]),
+      onEncryptedFragment: (_, value) => {
+        fragment = value;
+      },
+    });
+    const source = f.wire.at(-1)!;
+    if (!fragment) throw new Error("missing fragment");
+    await reader.requestEnvelopeKey(fragment.keyUuid, fragment.content, false, source.uuid);
+    const first = adaptMessengerMessage(f.wire.at(-1)!);
+    const second = { ...first, uuid: crypto.randomUUID() };
+    failNext = true;
+    await expect(author.ingest([first, second])).rejects.toThrow("offline");
+    expect(author.getKeyRequests().map((request) => request.uuid)).toEqual([second.uuid]);
+    expect(author.canGrantKey(second.uuid)).toBe(true);
+    await author.ingest([first, second]);
+    expect(author.canGrantKey(first.uuid)).toBe(true);
+    const invalid = {
+      ...first,
+      uuid: crypto.randomUUID(),
+      payload:
+        first.payload.kind === "key_request"
+          ? { ...first.payload, targetMessageUuid: crypto.randomUUID() }
+          : first.payload,
+    };
+    await expect(author.ingest([invalid])).resolves.toBeUndefined();
+    expect(author.canGrantKey(invalid.uuid)).toBe(false);
+  });
+
+  it("revokes cached response rights when the canonical target no longer contains its key", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const sources = new Map<string, ReturnType<typeof adaptMessengerMessage>>();
+    const resolveMessage = (uuid: string) => Promise.resolve(sources.get(uuid) ?? null);
+    const author = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+      resolveMessage,
+    });
+    const reader = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+      resolveMessage,
+    });
+    await author.load();
+    await reader.load();
+    await author.prepareFragmentKey();
+    let fragment: ChatEncryptedPayload | undefined;
+    await author.send({
+      ...mixedInput(["origin"]),
+      onEncryptedFragment: (_, value) => {
+        fragment = value;
+      },
+    });
+    const source = adaptMessengerMessage(f.wire.at(-1)!);
+    sources.set(source.uuid, source);
+    if (!fragment) throw new Error("missing fragment");
+    await reader.requestEnvelopeKey(fragment.keyUuid, fragment.content, false, source.uuid);
+    const request = adaptMessengerMessage(f.wire.at(-1)!);
+    await author.ingest([request]);
+    expect(author.canGrantKey(request.uuid)).toBe(true);
+    sources.delete(source.uuid);
+    await expect(author.grantKey(request.uuid)).rejects.toThrow("invalid-message");
+    expect(author.canGrantKey(request.uuid)).toBe(false);
+    expect(author.canRejectKey(request.uuid)).toBe(false);
+    expect(f.wire.at(-1)?.payload.kind).toBe("key_request");
+  });
+
+  it("retains every fragment and the canonical UUID after a lost mixed-message response", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (...args) => {
+      await create(...args);
+      throw new Error("lost-response");
+    });
+    const retained: ChatEncryptedPayload[] = [];
+    const input = {
+      ...mixedInput(["one", "two"]),
+      canonicalMessageUuid: crypto.randomUUID(),
+      onEncryptedFragment: (index: number, payload: ChatEncryptedPayload) => {
+        retained[index] = payload;
+      },
+    };
+    await expect(session.send(input)).rejects.toThrow("send-failed");
+    await session.send({
+      ...input,
+      secretFragments: input.secretFragments.map((fragment, index) => ({
+        ...fragment,
+        preparedPayload: retained[index],
+      })),
+    });
+    expect(f.wire[0]?.uuid).toBe(f.wire[1]?.uuid);
+    expect(f.wire[0]?.payload).toEqual(f.wire[1]?.payload);
+  });
+
+  it("rejects retained envelopes after same-UUID key material changes", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    let retained: ChatEncryptedPayload | undefined;
+    await session.send({
+      ...mixedInput(["secret"]),
+      onEncryptedFragment: (_, value) => {
+        retained = value;
+      },
+    });
+    const key = await realChatCryptoProvider.createGroupKey();
+    if (!key.ok) throw new Error(key.reason);
+    await realChatKeyStorage.removeChatKey(session.scope);
+    await realChatKeyStorage.writeChatKey(session.scope, { groupKey: key.value });
+    const count = f.wire.length;
+    await expect(
+      session.send({
+        ...mixedInput(["secret"]),
+        secretFragments: [{ text: "secret", preparedPayload: retained }],
+      }),
+    ).rejects.toThrow("invalid-key");
+    expect(f.wire).toHaveLength(count);
+  });
+
+  it("does not dispatch mixed Markdown if the key is removed between fragment preparation and dispatch", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await expect(
+      session.send({
+        ...mixedInput(["one", "two"]),
+        onEncryptedFragment: (index) => {
+          if (index === 1)
+            notifyRealChatKeyChanges({
+              kind: "removed",
+              ownerKey: workspaceRuntimeOwnerKey(f.admin),
+              deviceId: session.device.deviceId,
+              streamUuid: STREAM,
+              keyUuid: session.scope.keyUuid,
+            });
+        },
+      }),
+    ).rejects.toThrow("stale");
+    expect(f.wire).toEqual([]);
+  });
+
+  it("edits mixed Markdown through the same controller without sending the new secret plaintext", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send(mixedInput(["original"]));
+    const dto = f.wire.at(-1)!;
+    const source = adaptMessengerMessage(dto);
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(f.admin), false);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(source);
+    vi.mocked(editMessage).mockImplementation((_options, _uuid, body) =>
+      Promise.resolve({ ...dto, payload: body.payload }),
+    );
+    const result = await session.editMarkdown(source, mixedInput(["changed secret"]));
+    expect(result.status).toBe("applied");
+    expect(JSON.stringify(vi.mocked(editMessage).mock.calls)).not.toContain("changed secret");
+    if (result.status !== "applied") throw new Error("not applied");
+    expect(result.message?.payload.kind).toBe("markdown");
+  });
+});
+
+describe("ordinary first-key recovery", () => {
+  it("does not publish or replace the channel key when a fragment key is created", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const session = await openSessionFor(f.member);
+    await session.load();
+    const first = await session.prepareFragmentKey();
+    const next = await session.prepareFragmentKey(true);
+    expect(first).not.toBe(next);
+    expect(f.wire).toEqual([]);
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+    expect((await session.listLocalKeys()).map((key) => key.keyUuid)).toEqual(
+      expect.arrayContaining([first, next]),
+    );
+    expect(await session.prepareFragmentKey()).toBe(next);
+  });
+
+  it("drops a mixed-message receipt after runtime invalidation before it resolves", async () => {
+    const f = await setup({ encrypted: false });
+    let live: WorkspaceRuntimeContext | null = f.admin;
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => live,
+    });
+    await session.load();
+    const gate = deferred<void>();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (...args) => {
+      const dto = await create(...args);
+      await gate.promise;
+      return dto;
+    });
+    const cache = vi
+      .spyOn(messengerMessageActionCache, "writeConversationMessagePage")
+      .mockResolvedValue();
+    const pending = session.send({
+      text: "",
+      topicUuid: TOPIC,
+      secretFragments: [{ text: "secret" }],
+      buildMarkdown: (payloads) => JSON.stringify(encodeChatE2eePayload(payloads[0]!)),
+    });
+    await vi.waitFor(() => expect(f.wire).toHaveLength(1));
+    live = { ...f.admin, runtimeGeneration: f.admin.runtimeGeneration + 1 };
+    gate.resolve();
+    await expect(pending).rejects.toThrow("stale");
+    expect(cache).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[f.wire[0]!.uuid]).toBeUndefined();
   });
 });

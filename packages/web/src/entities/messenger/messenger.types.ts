@@ -54,6 +54,7 @@ export interface MessengerEncryptedPayload {
 }
 export interface MessengerKeyRequestPayload {
   kind: "key_request";
+  targetMessageUuid?: string;
   keyUuid: string;
   deviceId: string;
   deviceName: string;

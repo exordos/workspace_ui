@@ -8,6 +8,8 @@ import {
   writeWorkspaceComposerDraftRecord,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
+  EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+  hasWorkspaceComposerDraftSecret,
   createWorkspaceComposerDraftKey,
   createWorkspaceComposerDraftSnapshotId,
   createWorkspaceComposerDraftUuid,
@@ -119,6 +121,12 @@ async function persist(operation: ScheduledOperation): Promise<void> {
     return;
   }
   const draft = operation.draft;
+  if (
+    hasWorkspaceComposerDraftSecret(draft.content) ||
+    useWorkspaceComposerDraftStore.getState().draftsByKey[draft.key]?.snapshotId !==
+      draft.snapshotId
+  )
+    return;
   await writeWorkspaceComposerDraftRecord(draft.ownerKey, draft);
 }
 
@@ -160,6 +168,7 @@ export interface WorkspaceComposerDraftStoreState {
   activeDraftUuidByConversationKey: Record<string, string>;
   completedConversationVisits: Record<string, true>;
 
+  protectDraft: (ownerKey: string, draftUuid: string) => WorkspaceComposerDraft | null;
   setDraft: (
     ownerKey: string,
     conversationId: string,
@@ -257,6 +266,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
     setDraft(ownerKey, conversationId, content, target) {
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
       const normalizedContent = normalizeWorkspaceComposerDraftContent(content);
+      if (hasWorkspaceComposerDraftSecret(normalizedContent)) return null;
       const activeDraftUuid = get().activeDraftUuidByConversationKey[scopeKey];
       const activeDraft =
         activeDraftUuid == null ? null : get().draftsByKey[draftKey(ownerKey, activeDraftUuid)];
@@ -348,6 +358,8 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
                   ),
                 }),
             pendingCreatePayload: row.pendingCreatePayload ?? null,
+            ...(row.privateDeletion === true ? { privateDeletion: true } : {}),
+            ...(row.privateCreateUncertain === true ? { privateCreateUncertain: true } : {}),
           }));
         set((state) => ({
           draftsByKey: {
@@ -578,6 +590,34 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       set((state) => ({ draftsByKey: { ...state.draftsByKey, [key]: next } }));
       scheduleWrite(next);
       logStoreAction("workspaceComposerDraft", "deletePending", { ownerKey });
+      return next;
+    },
+
+    protectDraft(ownerKey, draftUuid) {
+      const key = draftKey(ownerKey, draftUuid);
+      const current = get().draftsByKey[key];
+      if (current == null) return null;
+      const next: WorkspaceComposerDraft = {
+        ...current,
+        content: EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+        pendingCreatePayload: null,
+        privateDeletion: true,
+        privateCreateUncertain:
+          current.etag == null &&
+          (current.pendingCreatePayload != null ||
+            current.syncStatus === "saving" ||
+            current.syncStatus === "failed" ||
+            current.privateCreateUncertain === true),
+        etag: current.conflictServerEtag ?? current.etag,
+        snapshotId: createWorkspaceComposerDraftSnapshotId(),
+        disposition: "consumed",
+        syncStatus: "deleting",
+      };
+      delete next.conflictServerContent;
+      delete next.conflictServerEtag;
+      set((state) => ({ draftsByKey: { ...state.draftsByKey, [key]: next } }));
+      scheduleWrite(next);
+      get().completeDraftVisit(ownerKey, current.conversationId, draftUuid);
       return next;
     },
 

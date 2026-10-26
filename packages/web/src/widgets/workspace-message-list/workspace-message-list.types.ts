@@ -10,7 +10,10 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import type { WorkspaceUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
+import type {
+  WorkspaceSecretUrnReference,
+  WorkspaceUrnReference,
+} from "~/shared/lib/workspace-reference-urn.lib";
 import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
 import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
 
@@ -38,6 +41,11 @@ export interface WorkspaceMessageListActions {
   getKeyServiceState?: (message: MessengerMessage) => EncryptedChatServiceState | null;
   resolveKeyRequestMessage?: (messageUuid: MessengerUuid) => MessengerMessage | null;
   onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  onRequestSecretKey?: (
+    messageUuid: MessengerUuid,
+    reference: WorkspaceSecretUrnReference,
+    allowUsableKey?: boolean,
+  ) => void | Promise<void>;
   requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
