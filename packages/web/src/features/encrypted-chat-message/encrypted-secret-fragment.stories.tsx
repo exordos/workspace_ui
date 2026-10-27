@@ -29,6 +29,12 @@ export const Readable: Story = {
     rendered: renderWorkspaceMessageBody(parseWorkspaceMessageBody("**Synthetic** `password-123`")),
   },
 };
+export const Revealed: Story = {
+  args: Readable.args,
+  play: ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>("button[aria-expanded='false']")?.click();
+  },
+};
 export const Failed: Story = {
   args: { status: "error", onRetry: () => undefined, onRequestKey: () => undefined },
 };

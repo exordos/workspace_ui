@@ -1429,6 +1429,7 @@
     "messageTooLong": "The message is too long (maximum 40,000 characters).",
     "mentionOutsideChannel": "not in channel",
     "secretSpoiler": "Encrypted spoiler",
+    "secretSpoilerHint": "Enable before entering secret text — otherwise the text may be saved in a server draft.",
     "createSecretKey": "Create a new key",
     "secretDraftMemoryOnly": "This draft stays in memory until sent.",
     "invalidSecret": "Finish or remove the encrypted spoiler before sending."
@@ -1622,7 +1623,26 @@
     "grantedTitle": "Granted keys ({{count}})",
     "rejectedTitle": "Rejected requests ({{count}})",
     "secretFragment": "Encrypted fragment",
-    "requestSecretKey": "Request key"
+    "requestSecretKey": "Request key",
+    "showSecretFragment": "Show spoiler",
+    "hideSecretFragment": "Hide spoiler",
+    "spoilerVariants": {
+      "title": "Encrypted spoiler · visual options",
+      "description": "The regular spoiler background, with an encryption indicator. Click any fragment to reveal or hide it. All text is synthetic.",
+      "reset": "Hide all",
+      "encrypted": "Encrypted",
+      "sampleSecret": "meeting code 4821",
+      "samplePublic": "Here is the code:",
+      "you": "You",
+      "inside": "Lock inside",
+      "insideHint": "One compact shape; the lock stays visible.",
+      "outside": "Lock beside",
+      "outsideHint": "The regular spoiler, with a separate small lock.",
+      "overlay": "Lock in the center",
+      "overlayHint": "A lock over the blurred text; moves left when revealed.",
+      "label": "Lock and label",
+      "labelHint": "An explicit encryption label beside the spoiler."
+    }
   },
   "selector": {
     "placeholder": "Select an option",

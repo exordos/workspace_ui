@@ -72,21 +72,6 @@ function setup() {
 }
 
 describe("encrypted service actions", () => {
-  it("uses original-message authorization for member request presentation", () => {
-    const opts = setup();
-    if (opts.message.payload.kind !== "key_request") throw new Error("Expected request");
-    opts.message.payload = { ...opts.message.payload, targetMessageUuid: "original" };
-    const state = getEncryptedChatServiceState({
-      ...opts,
-      session: {
-        ...opts.session,
-        getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
-      },
-    });
-    expect(state?.canManageKeys).toBe(true);
-    expect(opts.session.canRespondToKeyRequest).toHaveBeenCalledWith("request");
-  });
-
   it("reads device, rights and the exact requested generation from the scoped session", () => {
     const opts = setup();
     const generation = vi.spyOn(opts.session, "getGenerationState");
@@ -160,6 +145,27 @@ describe("encrypted service actions", () => {
     opts.session.canGrantKey.mockReturnValue(false);
     opts.session.canRejectKey.mockReturnValue(false);
     expect(getEncryptedChatServiceActions(opts)).toHaveLength(0);
+  });
+  it("shows fragment response actions for a member with generation-specific eligibility", () => {
+    const opts = setup();
+    opts.currentUserUuid = "fragment-author-member";
+    const session = {
+      ...opts.session,
+      getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+    };
+    expect(getEncryptedChatServiceState({ ...opts, session })).toMatchObject({
+      canManageKeys: true,
+      hasKey: true,
+    });
+    const actions = getEncryptedChatServiceActions({ ...opts, session });
+    expect(actions).toHaveLength(2);
+    actions[0]?.onClick();
+    expect(opts.onGrantKey).toHaveBeenCalledWith("request");
+    session.canRespondToKeyRequest.mockReturnValue(false);
+    session.canGrantKey.mockReturnValue(false);
+    session.canRejectKey.mockReturnValue(false);
+    expect(getEncryptedChatServiceState({ ...opts, session })?.canManageKeys).toBe(false);
+    expect(getEncryptedChatServiceActions({ ...opts, session })).toEqual([]);
   });
   it("allows manual approval for the same account on another device", () => {
     const opts = setup();

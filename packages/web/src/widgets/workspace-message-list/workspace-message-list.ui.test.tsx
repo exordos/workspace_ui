@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -230,6 +231,287 @@ describe("WorkspaceMessageList", () => {
     useUsersStore.getState().clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("hides unrelated service-only days even during selection and focused navigation", () => {
+    const messages = [
+      createServiceMessage(0, { authorUuid: "current-user-uuid" }),
+      createServiceMessage(1, {
+        payload: SERVICE_REQUEST,
+        createdAt: "2026-07-04T09:00:00.000Z",
+      }),
+      createServiceMessage(2, {
+        payload: {
+          kind: "key_grant",
+          keyUuid: "generation",
+          requestMessageUuid: "service-1",
+          senderDeviceId: "sender",
+          recipientDeviceId: SERVICE_REQUEST.deviceId,
+          content: "synthetic-ciphertext",
+        },
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+        selectionMode
+        focusedMessageTarget={{ intentId: 1, messageUuid: "service-0", focusAttempt: 0 }}
+      />,
+    );
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-service-message-group], [data-day-divider], article"),
+    ).toBeNull();
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "all" }}
+      />,
+    );
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+  });
+
+  it("keeps requests and responses for another device of the account in one disclosure", () => {
+    const request = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = {
+      keyUuid: "generation",
+      requestMessageUuid: request.uuid,
+      senderDeviceId: "sender",
+      recipientDeviceId: SERVICE_REQUEST.deviceId,
+    };
+    const messages = [
+      createServiceMessage(0, { createdAt: "2026-07-02T09:00:00.000Z" }),
+      request,
+      createServiceMessage(2),
+      createServiceMessage(3, { payload: { kind: "key_reject", ...response } }),
+      createServiceMessage(4, {
+        payload: { kind: "key_grant", ...response, content: "synthetic-ciphertext" },
+      }),
+      createServiceMessage(5, { payload: SERVICE_REQUEST }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /3 events/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll("[data-day-divider]")).toHaveLength(1);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(container.querySelectorAll("[data-encrypted-service-message]")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /Request access/ })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+  });
+
+  it("keeps actionable and completed incoming requests and the account's responses", () => {
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const response = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "current-device",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [
+        request,
+        response,
+        createServiceMessage(2),
+        createServiceMessage(3, {
+          authorUuid: "another-manager",
+          payload: { ...response.payload },
+        }),
+      ],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyRequestActions: (message) =>
+          message.uuid === request.uuid
+            ? [{ label: "Approve", disabled: true, onClick: vi.fn() }]
+            : [],
+      },
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /3 events/ }));
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ requestStatus: "rejected" }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "3 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Request rejected.")).toBeInTheDocument();
+  });
+
+  it("shows a fragment request to an eligible key holder and hides it after eligibility is lost", () => {
+    const grant = vi.fn();
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const props: WorkspaceMessageListProps = {
+      messages: [request],
+      currentUserUuid: "member-with-fragment-key",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "pending" }),
+        getKeyRequestActions: () => [{ label: "Send key", onClick: grant }],
+      },
+    };
+    const { rerender, container } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send key" }));
+    expect(grant).toHaveBeenCalledOnce();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false, hasKey: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(container.querySelector("[data-service-message-group]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send key" })).not.toBeInTheDocument();
+  });
+
+  it("updates response relevance when a request outside the window becomes available", () => {
+    const request = createServiceMessage(0, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = createServiceMessage(1, {
+      payload: {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "sender",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+        content: "synthetic-ciphertext",
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [response],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+    };
+    const { container, rerender } = render(<WorkspaceMessageList {...props} />);
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ messagesById: { [request.uuid]: request } }));
+    expect(screen.getByRole("button", { name: /1 event/ })).toBeInTheDocument();
+    expect(container.querySelector("article")).toHaveAttribute("data-message-uuid", response.uuid);
+    rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ messagesById: {} }));
+  });
+
+  it("does not split visible author or topic runs with hidden events", () => {
+    const messages = [
+      createWorkspaceMessage({ uuid: "before" }),
+      createServiceMessage(1, { topicUuid: "hidden-topic" }),
+      createWorkspaceMessage({ uuid: "after", createdAt: "2026-07-03T09:02:00.000Z" }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+      />,
+    );
+    expect(container.querySelectorAll("[data-author-group]")).toHaveLength(1);
+    expect(
+      container.querySelector("[data-topic-divider], [data-service-message-group]"),
+    ).toBeNull();
+    expect(container.querySelectorAll("article")).toHaveLength(2);
+  });
+
+  it.each(["older", "newer"] as const)(
+    "continues past hidden %s history pages without retrying the same boundary",
+    (direction) => {
+      const load = vi.fn();
+      const props: WorkspaceMessageListProps = {
+        messages: [createServiceMessage(0)],
+        currentUserUuid: "current-user-uuid",
+        conversationId: "topic:stream-uuid-1:topic-uuid-1",
+        presentation: { serviceMessages: "account" },
+        hasOlderMessages: direction === "older",
+        hasNewerMessages: direction === "newer",
+        initialPositionReady: true,
+        onLoadOlder: load,
+        onLoadNewer: load,
+      };
+      const { rerender } = render(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      rerender(<WorkspaceMessageList {...props} isLoadingOlder />);
+      rerender(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      const messages = [createServiceMessage(-1), ...props.messages];
+      rerender(<WorkspaceMessageList {...props} messages={messages} />);
+      expect(load).toHaveBeenCalledTimes(2);
+      rerender(
+        <WorkspaceMessageList
+          {...props}
+          messages={[createWorkspaceMessage({ uuid: "visible-message" }), ...messages]}
+        />,
+      );
+      expect(load).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("places the unread divider at the next visible message after a hidden event", () => {
+    const hiddenUnread = createServiceMessage(0);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "read-before",
+            read: true,
+            createdAt: "2026-07-02T09:00:00Z",
+          }),
+          hiddenUnread,
+          createWorkspaceMessage({ uuid: "visible-unread", createdAt: "2026-07-03T10:00:00Z" }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        firstUnreadUuid={hiddenUnread.uuid}
+        unreadCount={2}
+        initialPositionReady
+      />,
+    );
+    const divider = container.querySelector("[data-unread-divider='true']");
+    expect(divider).toBeInTheDocument();
+    expect(divider?.nextElementSibling).toContainElement(
+      container.querySelector("[data-message-uuid='visible-unread']"),
+    );
   });
 
   it("collapses a continuous service run across authors and preserves its DOM read anchors on keyboard expansion", async () => {

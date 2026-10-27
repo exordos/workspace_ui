@@ -67,6 +67,20 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   const chatUrl = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`;
   await page.goto(chatUrl);
   const textarea = await expectReadyMessageComposer(page);
+  await textarea.fill(":::");
+  await page.waitForTimeout(1_200);
+  expect(JSON.stringify(draftWrites)).not.toContain(":::");
+  await textarea.pressSequentially("unfinished private phrase");
+  await textarea.press("Enter");
+  await expect(
+    page.getByText(
+      /Finish or remove the encrypted spoiler|Завершите или удалите шифрованный спойлер/i,
+    ),
+  ).toBeVisible();
+  await expect(textarea).toHaveValue(":::unfinished private phrase");
+  expect(requests).toHaveLength(0);
+  expect(JSON.stringify(draftWrites)).not.toContain("unfinished private phrase");
+  await textarea.fill("");
   const selectSecret = async (text: string, privateText: string) => {
     const expand = page.getByRole("button", {
       name: /show formatting tools|показать.*формат|показать.*инструмент/i,
@@ -79,9 +93,34 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
       element.setSelectionRange(start, start + selected.length);
     }, privateText);
     await page.getByRole("button", { name: /^(encrypted spoiler|шифрованный спойлер)$/i }).click();
-    await expect(textarea).toHaveValue(text.replace(privateText, `:::secret\n${privateText}\n:::`));
+    await expect(textarea).toHaveValue(text.replace(privateText, `:::${privateText}:::`));
   };
-  await selectSecret(`Public before ${PROTECTED_TEXT} public after`, PROTECTED_TEXT);
+  const expand = page.getByRole("button", {
+    name: /show formatting tools|показать.*формат|показать.*инструмент/i,
+  });
+  if (await expand.isVisible()) await expand.click();
+  await textarea.fill("Public before  public after");
+  await textarea.evaluate((element) => {
+    element.focus();
+    const cursor = "Public before ".length;
+    element.setSelectionRange(cursor, cursor);
+  });
+  const spoiler = page.getByRole("button", { name: /^(encrypted spoiler|шифрованный спойлер)$/i });
+  await spoiler.hover();
+  await expect(page.getByRole("tooltip")).toContainText(/server draft|серверном черновике/i);
+  await spoiler.click();
+  await expect(textarea).toHaveValue("Public before :::::: public after");
+  await expect(textarea).toBeFocused();
+  await expect
+    .poll(() => textarea.evaluate((element) => [element.selectionStart, element.selectionEnd]))
+    .toEqual(["Public before :::".length, "Public before :::".length]);
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("tooltip")).not.toBeVisible();
+  // Even an empty block must stop draft persistence before any secret is typed.
+  await page.waitForTimeout(1_200);
+  expect(JSON.stringify(draftWrites)).not.toContain(":::");
+  await textarea.pressSequentially(PROTECTED_TEXT);
+  await expect(textarea).toHaveValue(`Public before :::${PROTECTED_TEXT}::: public after`);
   const checkbox = page.getByRole("checkbox", { name: /create a new key|создать новый ключ/i });
   await expect(checkbox).toBeVisible();
   await expect(checkbox).not.toBeChecked();
@@ -105,15 +144,25 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   expect(firstMarkdown.content).toContain("Public before");
   expect(firstMarkdown.content).toContain(`urn:secret:v1:${E2E_STREAM_UUID}:${firstKey}:`);
   expect(firstMarkdown.content).toContain("public after");
-  const ready = page.locator('[data-encrypted-secret-state="ready"]').filter({
-    hasText: PROTECTED_TEXT,
-  });
+  const ready = page
+    .locator("[data-workspace-message-bubble]")
+    .filter({ hasText: "Public before" })
+    .locator('[data-encrypted-secret-state="ready"]')
+    .first();
   await expect(ready).toBeVisible();
+  await expect(ready.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+  await ready.getByRole("button", { name: /show spoiler|показать спойлер/i }).click();
+  await expect(ready).toContainText(PROTECTED_TEXT);
   await page.screenshot({ path: testInfo.outputPath("secret-readable.png") });
+  await ready.getByRole("button", { name: /hide spoiler|скрыть спойлер/i }).click();
+  await expect(ready.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+  await page.screenshot({ path: testInfo.outputPath("secret-hidden.png") });
   await page.reload();
   await expectReadyMessageComposer(page);
   await expect(ready).toBeVisible();
-  await selectSecret("Second public another private phrase", "another private phrase");
+  await expect(ready.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+  const multilineSecret = "another private phrase\nsecond private line";
+  await selectSecret(`Second public ${multilineSecret}`, multilineSecret);
   await textarea.press("Enter");
   await expect
     .poll(() => requests.filter((request) => request.payload.kind === "markdown").length)
@@ -123,6 +172,14 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   expect(secondMarkdown?.kind === "markdown" ? secondMarkdown.content : "").toContain(
     `:${firstKey}:`,
   );
+  const secondReady = page
+    .locator("[data-workspace-message-bubble]")
+    .filter({ hasText: "Second public" })
+    .locator('[data-encrypted-secret-state="ready"]');
+  await secondReady.getByRole("button", { name: /show spoiler|показать спойлер/i }).click();
+  await expect(secondReady).toContainText("another private phrase");
+  await expect(secondReady).toContainText("second private line");
+  expect(JSON.stringify(requests)).not.toContain("second private line");
   expect(requests.filter((request) => request.payload.kind === "key_announced")).toHaveLength(0);
   await selectSecret("Third public rotated private phrase", "rotated private phrase");
   await checkbox.check();
@@ -203,7 +260,9 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   expect(requests.at(-1)?.payload).toMatchObject({
     kind: "key_request",
     key_uuid: firstKey,
-    target_message_uuid: history[0]?.uuid,
   });
+  expect(requests.at(-1)?.payload).not.toHaveProperty("target_message_uuid");
   expect(JSON.stringify(draftWrites)).not.toContain(PROTECTED_TEXT);
+  expect(JSON.stringify(draftWrites)).not.toContain("unfinished private phrase");
+  expect(JSON.stringify(draftWrites)).not.toContain("second private line");
 });

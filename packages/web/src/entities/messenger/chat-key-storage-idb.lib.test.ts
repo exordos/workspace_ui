@@ -61,41 +61,6 @@ const grant = {
 };
 
 describe("durable chat key storage", () => {
-  it("restores request target and expected issuer after reload and prevents rebinding either", async () => {
-    const { storage, name } = setup();
-    const context = { targetMessageUuid: "original", expectedIssuerUuid: "author" };
-    await storage.writePendingRequest(address, { ...pending, context });
-    storage.close();
-    const reopened = openStorage(name);
-    expect(await reopened.listPendingRequests(address)).toEqual([{ ...pending, context }]);
-    for (const nextContext of [
-      undefined,
-      { ...context, targetMessageUuid: "other" },
-      { ...context, expectedIssuerUuid: "other" },
-    ]) {
-      await expect(
-        reopened.writePendingRequest(address, {
-          ...pending,
-          ...(nextContext ? { context: nextContext } : {}),
-        }),
-      ).rejects.toMatchObject({ reason: "conflict" });
-    }
-    expect(await reopened.listPendingRequests(address)).toEqual([{ ...pending, context }]);
-  });
-
-  it("rejects an incomplete contextual request without changing legacy records", async () => {
-    const { storage } = setup();
-    await storage.writePendingRequest(address, pending);
-    await expect(
-      storage.writePendingRequest(address, {
-        ...pending,
-        localRequestId: "invalid",
-        context: { targetMessageUuid: "original", expectedIssuerUuid: "" },
-      }),
-    ).rejects.toMatchObject({ reason: "invalid-record" });
-    expect(await storage.listPendingRequests(address)).toEqual([pending]);
-  });
-
   it("lists only actual local keys scoped to the complete owner, device and stream, newest first", async () => {
     const { storage, name } = setup();
     const clock = vi.spyOn(Date, "now").mockReturnValue(100);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
@@ -80,19 +80,7 @@ export function EncryptedSecretFragmentPresentation({
   requestPending,
 }: EncryptedSecretFragmentPresentationProps) {
   if (status === "ready" && rendered != null) {
-    // Nested secrets remain closed: arbitrary decrypted Markdown cannot recurse.
-    return (
-      <span
-        className="bg-bg/40 inline-block max-w-full rounded border border-border-subtle px-1 align-middle"
-        data-encrypted-secret-state="ready"
-      >
-        <WorkspaceMessageBody
-          html={rendered.html}
-          metadata={rendered.metadata}
-          useInlineMeta={false}
-        />
-      </span>
-    );
+    return <ReadableSecretFragment key={rendered.html} rendered={rendered} />;
   }
   if (status === "missing-key" && onRequestKey != null) {
     return (
@@ -163,6 +151,51 @@ export function EncryptedSecretFragmentPresentation({
           {t("e2ee.messageDecryptRetry")}
         </Button>
       )}
+    </span>
+  );
+}
+
+function ReadableSecretFragment({
+  rendered,
+}: {
+  readonly rendered: NonNullable<EncryptedSecretFragmentPresentationProps["rendered"]>;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const contentId = useId();
+  const toggleLabel = t(revealed ? "e2ee.hideSecretFragment" : "e2ee.showSecretFragment");
+  return (
+    <span
+      className={`relative inline-flex max-w-full items-start gap-1 rounded px-1 align-middle ${revealed ? "bg-transparent" : "bg-border-subtle"}`}
+      data-encrypted-secret-state="ready"
+    >
+      <span className="inline-block h-5 w-4 shrink-0" aria-hidden="true" />
+      <Button
+        type="button"
+        size="sm"
+        appearance="ghost"
+        variant="neutral"
+        className={`!absolute inset-y-0 left-0 !h-auto !justify-start !rounded !bg-transparent !px-1 !py-0 !text-text-primary hover:!bg-transparent ${revealed ? "w-6" : "w-full"}`}
+        aria-label={toggleLabel}
+        aria-expanded={revealed}
+        aria-controls={contentId}
+        title={t("composer.secretSpoiler")}
+        onClick={() => setRevealed((previous) => !previous)}
+      >
+        <Icon name="chatLock" size={13} />
+      </Button>
+      <span
+        id={contentId}
+        aria-hidden={!revealed}
+        inert={!revealed}
+        className={`min-w-0 transition-[filter] duration-150 ${revealed ? "" : "pointer-events-none select-none blur-[0.22rem]"}`}
+      >
+        {/* Nested secrets remain closed: arbitrary decrypted Markdown cannot recurse. */}
+        <WorkspaceMessageBody
+          html={rendered.html}
+          metadata={rendered.metadata}
+          useInlineMeta={false}
+        />
+      </span>
     </span>
   );
 }

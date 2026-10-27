@@ -14,6 +14,7 @@ import {
   WORKSPACE_SECRET_DRAFT_OPEN,
   WORKSPACE_SECRET_DRAFT_CLOSE,
 } from "~/shared/lib/workspace-secret-draft.lib";
+import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Icon } from "~/shared/ui/icon";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN, TOOLBAR_TEXT_STYLE_GROUP } from "./message-composer-styles.lib";
@@ -278,34 +279,40 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         </span>
       </button>
       {secretFragmentsEnabled ? (
-        <button
-          type="button"
-          className={TOOLBAR_BTN}
-          title={t("composer.secretSpoiler")}
-          aria-label={t("composer.secretSpoiler")}
-          onClick={() =>
-            mutateSelection(textareaRef, onValueChange, (selected) => {
-              if (
-                selected.length === 0 ||
-                selected.includes(":::secret") ||
-                selected.includes("\n:::")
-              )
-                return {
-                  text: selected,
-                  selectionStartOffset: 0,
-                  selectionEndOffset: selected.length,
-                };
-              const text = WORKSPACE_SECRET_DRAFT_OPEN + selected + WORKSPACE_SECRET_DRAFT_CLOSE;
-              return {
-                text,
-                selectionStartOffset: WORKSPACE_SECRET_DRAFT_OPEN.length,
-                selectionEndOffset: WORKSPACE_SECRET_DRAFT_OPEN.length + selected.length,
-              };
-            })
+        <AppTooltip
+          side="top"
+          align="end"
+          content={
+            <div className="space-y-1">
+              <strong className="block text-text-primary">{t("composer.secretSpoiler")}</strong>
+              <p>{t("composer.secretSpoilerHint")}</p>
+            </div>
           }
         >
-          <Icon name="encrypted_spoiler" size={32} />
-        </button>
+          <button
+            type="button"
+            className={TOOLBAR_BTN}
+            aria-label={t("composer.secretSpoiler")}
+            onClick={() =>
+              mutateSelection(textareaRef, onValueChange, (selected) => {
+                if (selected.includes(WORKSPACE_SECRET_DRAFT_OPEN))
+                  return {
+                    text: selected,
+                    selectionStartOffset: 0,
+                    selectionEndOffset: selected.length,
+                  };
+                const text = WORKSPACE_SECRET_DRAFT_OPEN + selected + WORKSPACE_SECRET_DRAFT_CLOSE;
+                return {
+                  text,
+                  selectionStartOffset: WORKSPACE_SECRET_DRAFT_OPEN.length,
+                  selectionEndOffset: WORKSPACE_SECRET_DRAFT_OPEN.length + selected.length,
+                };
+              })
+            }
+          >
+            <Icon name="encrypted_spoiler" size={32} />
+          </button>
+        </AppTooltip>
       ) : null}
     </div>
   );

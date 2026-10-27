@@ -426,9 +426,7 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     if (
       pending.privateKey.length !== 32 ||
       pending.publicKey.bytes.length !== 32 ||
-      !Number.isFinite(pending.createdAt) ||
-      (pending.context !== undefined &&
-        (!pending.context.targetMessageUuid || !pending.context.expectedIssuerUuid))
+      !Number.isFinite(pending.createdAt)
     )
       return Promise.reject(new ChatKeyStorageError("invalid-record"));
     const scope = keyAddress(address);
@@ -455,9 +453,7 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
           (old !== undefined &&
             (!equalBytes(old.privateKey, capturedPending.privateKey) ||
               !equalBytes(old.publicKey.bytes, capturedPending.publicKey.bytes) ||
-              old.requestMessageUuid !== capturedPending.requestMessageUuid ||
-              old.context?.targetMessageUuid !== capturedPending.context?.targetMessageUuid ||
-              old.context?.expectedIssuerUuid !== capturedPending.context?.expectedIssuerUuid))
+              old.requestMessageUuid !== capturedPending.requestMessageUuid))
         ) {
           fail(new ChatKeyStorageError("conflict"));
           return;

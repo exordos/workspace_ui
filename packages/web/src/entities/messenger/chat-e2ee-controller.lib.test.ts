@@ -3,7 +3,6 @@ import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import type { ChatCryptoProvider, ChatCryptoResult } from "./chat-crypto-provider.types";
 import type {
-  ChatE2eeControllerDependencies,
   ChatE2eeControllerRights,
   ChatE2eeControllerScope,
 } from "./chat-e2ee-controller.types";
@@ -38,13 +37,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function fixture(
-  initialKey: StoredChatKey | null = { ...chatPair, groupKey: null },
-  policy: Pick<
-    Partial<ChatE2eeControllerDependencies>,
-    "canRespondToRequest" | "isIssuerAllowed"
-  > = {},
-) {
+function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: null }) {
   const scope: ChatE2eeControllerScope = {
     owner: { accountId: "a", instanceId: "i", organizationId: "o", projectId: "p", userUuid: "u" },
     runtimeGeneration: 1,
@@ -56,6 +49,7 @@ function fixture(
   let key = initialKey;
   let issuerAllowed = true;
   let announcerAllowed = true;
+  let requesterAllowed = true;
   let rights: ChatE2eeControllerRights = {
     canRequest: true,
     canGrant: true,
@@ -167,9 +161,9 @@ function fixture(
     storage,
     getCurrentScope: () => current,
     getRights: () => rights,
-    isIssuerAllowed: policy.isIssuerAllowed ?? (() => issuerAllowed),
-    ...(policy.canRespondToRequest ? { canRespondToRequest: policy.canRespondToRequest } : {}),
+    isIssuerAllowed: () => issuerAllowed,
     isAnnouncerAllowed: () => announcerAllowed,
+    isRequesterAllowed: () => requesterAllowed,
     sendPayload,
   });
   const request: ChatE2eeMessage<ChatKeyRequestPayload> = {
@@ -217,6 +211,9 @@ function fixture(
     setIssuerAllowed: (next: boolean) => {
       issuerAllowed = next;
     },
+    setRequesterAllowed: (next: boolean) => {
+      requesterAllowed = next;
+    },
     setAnnouncerAllowed: (next: boolean) => {
       announcerAllowed = next;
     },
@@ -224,142 +221,16 @@ function fixture(
 }
 
 describe("ChatE2eeController", () => {
-  const targetContext = { targetMessageUuid: "original-message", expectedIssuerUuid: "author" };
-
-  it("keeps pending requests and stable retries separate for each target and issuer", async () => {
+  it("reuses one durable key request across fragment envelopes in the same generation", async () => {
     const f = fixture();
     f.pending.clear();
-    let pairNumber = 0;
-    vi.mocked(f.provider.createRequestKeyPair).mockImplementation(() =>
-      Promise.resolve({
-        ok: true,
-        value: { ...devicePair, publicKey: { bytes: new Uint8Array([++pairNumber]) } },
-      }),
-    );
-    expect((await f.controller.requestKey(undefined, false, targetContext)).ok).toBe(true);
-    expect((await f.controller.requestKey(undefined, false, targetContext)).ok).toBe(true);
-    expect(
-      (
-        await f.controller.requestKey(undefined, false, {
-          ...targetContext,
-          expectedIssuerUuid: "other-author",
-        })
-      ).ok,
-    ).toBe(true);
-    expect(
-      (
-        await f.controller.requestKey(undefined, false, {
-          ...targetContext,
-          targetMessageUuid: "another-message",
-        })
-      ).ok,
-    ).toBe(true);
-    expect((await f.controller.requestKey()).ok).toBe(true);
-    expect(f.pending.size).toBe(4);
-    expect(f.provider.createRequestKeyPair).toHaveBeenCalledTimes(4);
+    expect((await f.controller.requestKey({ bytes: new Uint8Array([1]) })).ok).toBe(true);
+    expect((await f.controller.requestKey({ bytes: new Uint8Array([2]) })).ok).toBe(true);
+    expect(f.pending.size).toBe(1);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledOnce();
     expect(f.sendPayload.mock.calls[0]?.[2]).toBe(f.sendPayload.mock.calls[1]?.[2]);
-    expect(f.sendPayload.mock.calls[0]?.[0]).toMatchObject({
-      targetMessageUuid: targetContext.targetMessageUuid,
-    });
-    expect(f.sendPayload.mock.calls[4]?.[0]).not.toHaveProperty("targetMessageUuid");
-  });
-
-  it.each(["grant", "reject"] as const)(
-    "uses the specific request policy for %s instead of channel roles",
-    async (action) => {
-      let authorAllowed = true;
-      const canRespondToRequest = vi.fn(() => authorAllowed);
-      const f = fixture(chatPair, { canRespondToRequest });
-      f.setRights({ canGrant: false, canReject: false });
-      const request = {
-        ...f.request,
-        payload: { ...f.request.payload, targetMessageUuid: targetContext.targetMessageUuid },
-      };
-      expect(
-        (
-          await (action === "grant"
-            ? f.controller.grantKey(request)
-            : f.controller.rejectKey(request))
-        ).ok,
-      ).toBe(true);
-      expect(canRespondToRequest).toHaveBeenCalledWith(request, action);
-      authorAllowed = false;
-      f.setRights({ canGrant: true, canReject: true });
-      expect(
-        await (action === "grant"
-          ? f.controller.grantKey(request)
-          : f.controller.rejectKey(request)),
-      ).toEqual({ ok: false, reason: "forbidden" });
-    },
-  );
-
-  it("never grants a contextual request via legacy channel rights without a request policy", async () => {
-    const f = fixture(chatPair);
-    expect(
-      await f.controller.grantKey({
-        ...f.request,
-        payload: { ...f.request.payload, targetMessageUuid: targetContext.targetMessageUuid },
-      }),
-    ).toEqual({ ok: false, reason: "forbidden" });
-  });
-
-  it.each(["key_grant", "key_reject"] as const)(
-    "pins the expected author for durable contextual %s without loaded history",
-    async (kind) => {
-      const isIssuerAllowed = vi.fn(() => true);
-      const f = fixture(undefined, { isIssuerAllowed });
-      f.pending.set("request", { ...f.pending.get("request")!, context: targetContext });
-      const response = { ...f.grant, payload: { ...f.grant.payload, kind } };
-      expect(await f.controller.ingestKeyMessage(response)).toEqual({
-        ok: false,
-        reason: "forbidden",
-      });
-      expect(f.storage.completeGrant).not.toHaveBeenCalled();
-      expect(f.storage.completeReject).not.toHaveBeenCalled();
-      expect((await f.controller.ingestKeyMessage({ ...response, authorUuid: "author" })).ok).toBe(
-        true,
-      );
-      expect(isIssuerAllowed).toHaveBeenCalledWith("author", targetContext);
-      expect(f.pending.size).toBe(0);
-    },
-  );
-
-  it("rejects own history that tries to rebind a contextual pending request", async () => {
-    const f = fixture();
-    f.pending.set("request", {
-      ...f.pending.get("request")!,
-      requestMessageUuid: null,
-      context: targetContext,
-    });
-    expect(await f.controller.ingestKeyMessage(f.request)).toEqual({
-      ok: false,
-      reason: "invalid-message",
-    });
-    expect(f.pending.get("request")?.requestMessageUuid).toBeNull();
-    expect(
-      (
-        await f.controller.ingestKeyMessage({
-          ...f.request,
-          payload: { ...f.request.payload, targetMessageUuid: targetContext.targetMessageUuid },
-        })
-      ).ok,
-    ).toBe(true);
-  });
-
-  it("rechecks contextual author policy after grant encryption before sending", async () => {
-    let allowed = true;
-    const f = fixture(chatPair, { canRespondToRequest: () => allowed });
-    const encrypted = deferred<ChatCryptoResult<{ bytes: Uint8Array }>>();
-    vi.mocked(f.provider.encryptGroupKeyGrant).mockReturnValueOnce(encrypted.promise);
-    const operation = f.controller.grantKey({
-      ...f.request,
-      payload: { ...f.request.payload, targetMessageUuid: targetContext.targetMessageUuid },
-    });
-    await vi.waitFor(() => expect(f.provider.encryptGroupKeyGrant).toHaveBeenCalled());
-    allowed = false;
-    encrypted.resolve(ok({ bytes: new Uint8Array([5]) }));
-    expect(await operation).toEqual({ ok: false, reason: "forbidden" });
-    expect(f.sendPayload).not.toHaveBeenCalled();
+    expect(f.sendPayload.mock.calls[0]?.[0]).toEqual(f.sendPayload.mock.calls[1]?.[0]);
+    expect(f.sendPayload.mock.calls[0]?.[0]).not.toHaveProperty("target_message_uuid");
   });
 
   it.each(["missing-key", "forbidden", "stale", "wrong-generation", "deletion-race"] as const)(
@@ -865,6 +736,23 @@ describe("ChatE2eeController", () => {
       ok: false,
       reason: "missing-key",
     });
+    expect(f.sendPayload).not.toHaveBeenCalled();
+  });
+
+  it("rechecks requester membership after encrypting a grant and before rejecting", async () => {
+    const f = fixture(chatPair);
+    const encrypted = deferred<ChatCryptoResult<{ bytes: Uint8Array }>>();
+    const started = deferred<void>();
+    vi.mocked(f.provider.encryptGroupKeyGrant).mockImplementationOnce(() => {
+      started.resolve();
+      return encrypted.promise;
+    });
+    const granting = f.controller.grantKey(f.request);
+    await started.promise;
+    f.setRequesterAllowed(false);
+    encrypted.resolve(ok({ bytes: new Uint8Array([5]) }));
+    expect(await granting).toEqual({ ok: false, reason: "forbidden" });
+    expect(await f.controller.rejectKey(f.request)).toEqual({ ok: false, reason: "forbidden" });
     expect(f.sendPayload).not.toHaveBeenCalled();
   });
 

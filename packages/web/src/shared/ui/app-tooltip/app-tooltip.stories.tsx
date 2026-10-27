@@ -7,7 +7,15 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const meta = {
   title: "Shared/Overlays/AppTooltip",
   component: AppTooltip,
-  args: { children: <Button>Help</Button>, content: "Help", side: "bottom", align: "center" },
+  args: {
+    children: <Button>Help</Button>,
+    content: "Help",
+    side: "bottom",
+    align: "center",
+    size: "default",
+    textTone: "default",
+    closeDelay: 120,
+  },
   argTypes: { children: { control: false }, content: { control: false } },
   render: (args) => (
     <AppTooltip {...args} content={t("settings.statusDialogHint")}>
@@ -21,6 +29,30 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const Compact: Story = {
+  args: { size: "compact" },
+  render: (args) => (
+    <AppTooltip {...args} content="Alex Morgan">
+      <Button variant="neutral">{t("settings.help")}</Button>
+    </AppTooltip>
+  ),
+};
+export const CompactLongName: Story = {
+  ...Compact,
+  render: (args) => (
+    <AppTooltip {...args} content={"alexandra_morgan_".repeat(12)}>
+      <Button variant="neutral">{t("settings.help")}</Button>
+    </AppTooltip>
+  ),
+};
+export const PrimaryText: Story = {
+  ...Compact,
+  args: { size: "compact", textTone: "primary" },
+};
+export const ImmediateClose: Story = {
+  ...Compact,
+  args: { size: "compact", closeDelay: 0 },
+};
 export const AboveTrigger: Story = { args: { side: "top" } };
 export const LongContent: Story = {
   render: (args) => (

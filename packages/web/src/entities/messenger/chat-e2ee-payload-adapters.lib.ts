@@ -48,9 +48,6 @@ export function encodeChatE2eePayload(payload: ChatE2eePayload): WorkspaceMessen
         device_id: payload.deviceId,
         device_name: payload.deviceName,
         public_key: encodeBytes(payload.publicKey.bytes),
-        ...(payload.targetMessageUuid === undefined
-          ? {}
-          : { target_message_uuid: payload.targetMessageUuid }),
       };
     case "key_announced":
       return { kind: payload.kind, key_uuid: payload.keyUuid };

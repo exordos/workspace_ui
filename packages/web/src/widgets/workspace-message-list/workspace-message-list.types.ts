@@ -99,6 +99,7 @@ export type WorkspaceMessageListItem =
   | WorkspaceMessageListOutgoingItem;
 
 export interface WorkspaceMessageListPresentation {
+  serviceMessages?: "all" | "account";
   topicDividers?: boolean;
   topicLabels?: boolean;
   quoteRenderMode?: WorkspaceQuoteRenderMode;

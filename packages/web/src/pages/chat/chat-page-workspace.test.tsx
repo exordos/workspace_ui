@@ -1491,7 +1491,7 @@ describe("ChatPage Workspace route", () => {
         `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       );
       await waitFor(() => expect(captured.composerProps?.secretFragments?.canRotate).toBe(true));
-      const content = "Public :::secret\nprivate-one\n::: middle :::secret\nprivate-two\n::: end";
+      const content = "Public :::private-one::: middle :::private-two::: end";
       act(() => captured.composerProps?.onComposerValueChange(content));
       expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
       const onSend = captured.composerProps?.onSend;
@@ -1587,7 +1587,7 @@ describe("ChatPage Workspace route", () => {
     const onSend = captured.composerProps?.onSend;
     if (!onSend) throw new Error("Expected composer");
     await act(async () => {
-      await expect(onSend("Public :::secret\nprivate\n::: end")).rejects.toThrow();
+      await expect(onSend("Public :::private::: end")).rejects.toThrow();
     });
     expect(captured.composerProps?.attachments?.[0]?.fileName).toBe("retained.txt");
     expect(captured.composerProps?.attachments?.[0]?.status).toBe("ready");
@@ -2189,7 +2189,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.channelHeaderProps?.onOpenRightPanel).toEqual(expect.any(Function));
     expect(captured.channelHeaderProps?.onCallClick).toBeUndefined();
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
-    expect(captured.messageListProps?.presentation).toBeUndefined();
+    expect(captured.messageListProps?.presentation).toEqual({ serviceMessages: "account" });
     expect(captured.messageListProps?.resolveTopicLabel).toBeUndefined();
     expect(captured.messageListProps?.currentUserUuid).toBe(USER_UUID);
     expect(captured.messageListProps?.resolveAuthorLabel?.(USER_B_UUID)).toBe("Bob Reed");
@@ -3057,6 +3057,7 @@ describe("ChatPage Workspace route", () => {
     expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
     expect(captured.messageListProps?.conversationId).toBe(`stream:${STREAM_UUID}`);
     expect(captured.messageListProps?.presentation).toEqual({
+      serviceMessages: "account",
       topicDividers: true,
       topicLabels: true,
     });
@@ -4739,6 +4740,7 @@ describe("ChatPage Workspace route", () => {
       expect(screen.queryByTestId("old-composer-section")).not.toBeInTheDocument();
       expect(screen.getByTestId("stream-topic-prompt")).toBeInTheDocument();
       expect(captured.messageListProps?.presentation).toEqual({
+        serviceMessages: "account",
         topicDividers: true,
         topicLabels: true,
       });
@@ -6859,6 +6861,140 @@ describe("ChatPage Workspace route", () => {
       expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.selectedText).toBeUndefined();
       expect(captured.composerProps?.replyQuote?.content).toBe("workspace message");
     });
+  });
+
+  it.each([false, true])(
+    "keeps protected and ordinary reply drafts through topic overview navigation (remount=%s)",
+    async (remount) => {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+        {},
+        "chat",
+        undefined,
+        remount,
+      );
+      await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+      for (const text of ["Public :::private navigation answer::: tail", "ordinary control"]) {
+        act(() => {
+          captured.composerProps?.onComposerValueChange(text);
+          captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID);
+        });
+        const replySession = captured.composerProps?.workspaceReplySession;
+        expect(replySession?.tabs[0]?.answer).toBe(text);
+        await act(async () => {
+          await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+        });
+        expect(await screen.findByTestId("stream-topic-prompt")).toBeInTheDocument();
+        await act(async () => {
+          await navigateTo?.(
+            `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+          );
+        });
+        await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(text));
+        expect(captured.composerProps?.workspaceReplySession).toEqual(replySession);
+        act(() => captured.composerProps?.onClearReply("submit"));
+      }
+    },
+  );
+
+  it("keeps private drafts for two topics while old topic hydration completes", async () => {
+    const owner = workspaceRuntimeOwnerKey(createSession());
+    const bootstrap = createBootstrapPayload();
+    const topic = bootstrap.topics[0];
+    if (topic == null) throw new Error("Expected fixture topic");
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...bootstrap,
+      topics: [...bootstrap.topics, { ...topic, uuid: DIRECT_TOPIC_UUID, name: "second" }],
+    });
+    const hydration = createDeferred<null>();
+    const hydrate = useWorkspaceComposerDraftStore.getState().hydrateDraft;
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn((draftOwner, conversation, requested) =>
+        conversation === `topic:${STREAM_UUID}:${TOPIC_UUID}`
+          ? hydration.promise
+          : hydrate(draftOwner, conversation, requested),
+      ),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    const first = ":::private topic A:::";
+    const second = ":::private topic B:::";
+    act(() => captured.composerProps?.onComposerValueChange(first));
+    await act(async () => {
+      await navigateTo?.(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`,
+      );
+    });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+    act(() => captured.composerProps?.onComposerValueChange(second));
+    await act(async () => {
+      hydration.resolve(null);
+      await hydration.promise;
+    });
+    expect(captured.composerProps?.draftInitialValue).toBe(second);
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(first));
+    expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey).toEqual({});
+  });
+
+  it("isolates private owner drafts, rejects stale callbacks, and retains them through token refresh", async () => {
+    const firstSession = createSession();
+    const secondSession = { ...createSession(), accountId: "account-b", userUuid: USER_B_UUID };
+    const firstOwner = workspaceRuntimeOwnerKey(firstSession);
+    const secondOwner = workspaceRuntimeOwnerKey(secondSession);
+    const switchOwner = (session: WorkspaceAuthSession, generation: number) => {
+      const next = { ...session, runtimeGeneration: generation };
+      act(() => {
+        useWorkspaceAuthStore.setState({
+          sessions: [next],
+          currentAccountId: next.accountId,
+          runtimeGeneration: generation,
+        });
+        const owner = workspaceRuntimeOwnerKey(next);
+        useMessengerStore.getState().replaceBootstrapState(owner, createBootstrapPayload());
+        useWorkspaceMessageStore.getState().setOwner(owner, false);
+      });
+    };
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    const first = ":::private owner A:::";
+    const second = ":::private owner B:::";
+    act(() => captured.composerProps?.onComposerValueChange(first));
+    const staleChange = captured.composerProps?.onComposerValueChange;
+    switchOwner(secondSession, 2);
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+    act(() => captured.composerProps?.onComposerValueChange(second));
+    act(() => staleChange?.(":::stale owner callback:::"));
+    expect(captured.composerProps?.draftInitialValue).toBe(second);
+    switchOwner(firstSession, 3);
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(first));
+    switchOwner({ ...firstSession, accessToken: "refreshed" }, 4);
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(first));
+    await act(async () => {
+      useWorkspaceAuthStore.setState({
+        sessions: [],
+        currentAccountId: null,
+        runtimeGeneration: 5,
+      });
+      await useWorkspaceComposerDraftStore.getState().disposeOwner(firstOwner);
+    });
+    switchOwner(firstSession, 6);
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(""));
+    expect(
+      Object.values(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey),
+    ).toEqual([
+      expect.objectContaining({
+        ownerKey: secondOwner,
+        content: expect.objectContaining({ text: second }),
+      }),
+    ]);
   });
 
   it("keeps one draft per Workspace conversation when switching chats", async () => {

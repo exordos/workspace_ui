@@ -1701,7 +1701,7 @@ it("rejects editor-only secret fences before ordinary send or edit transport", a
   const runtimeContext = createRuntimeContext();
   const createMessage = vi.fn();
   const editMessage = vi.fn();
-  const markdown = "Public :::secret\nprivate\n:::";
+  const markdown = "Public :::private:::";
   await expect(
     sendMessengerMessage({
       runtimeContext,

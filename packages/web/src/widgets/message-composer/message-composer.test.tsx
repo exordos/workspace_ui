@@ -340,7 +340,7 @@ describe("MessageComposer async send behavior", () => {
   });
 
   it("resets the new-key choice when protected text is removed or its draft session changes", async () => {
-    const draft = "Public :::secret\nprivate\n::: suffix";
+    const draft = "Public :::private::: suffix";
     const { rerender } = renderWithProviders(
       <MessageComposer
         draftSessionKey="a"
@@ -380,7 +380,7 @@ describe("MessageComposer async send behavior", () => {
       />,
     );
     const textbox = screen.getByRole("textbox");
-    const draft = "Public :::secret\nprivate\n::: suffix";
+    const draft = "Public :::private::: suffix";
     fireEvent.change(textbox, { target: { value: draft } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Create a new key/ }));
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));

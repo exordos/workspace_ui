@@ -117,6 +117,13 @@ describe("workspace composer draft owner disposal", () => {
     const flush = useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, draft!.draftUuid);
     await waitForWriteStart();
 
+    const privateContent = {
+      text: ":::private:::",
+      replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+    };
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setPrivateDraftShadow(OWNER, CONVERSATION, privateContent);
     let disposed = false;
     const disposal = useWorkspaceComposerDraftStore
       .getState()
@@ -124,6 +131,11 @@ describe("workspace composer draft owner disposal", () => {
       .then(() => {
         disposed = true;
       });
+    expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
+    // Logout removes the session after disposal; ignore work arriving during that await too.
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setPrivateDraftShadow(OWNER, CONVERSATION, privateContent);
     await Promise.resolve();
     expect(disposed).toBe(false);
 
@@ -132,6 +144,34 @@ describe("workspace composer draft owner disposal", () => {
     await disposal;
 
     expect(disposed).toBe(true);
+    expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
+  });
+
+  it("removes only private shadows for the revoked owner and stream", async () => {
+    const store = useWorkspaceComposerDraftStore.getState();
+    const content = {
+      text: ":::private:::",
+      replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+    };
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, content);
+    store.setPrivateDraftShadow(OWNER, `stream:${STREAM}`, content);
+    store.setPrivateDraftShadow(OWNER, "topic:other-stream:topic", content);
+    store.setPrivateDraftShadow("other-owner", CONVERSATION, content);
+    await removeWorkspaceComposerDraftsForStream(OWNER, STREAM);
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, content);
+    expect(
+      Object.values(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey),
+    ).toEqual([
+      expect.objectContaining({ ownerKey: OWNER, conversationId: "topic:other-stream:topic" }),
+      expect.objectContaining({ ownerKey: "other-owner", conversationId: CONVERSATION }),
+    ]);
+    restoreWorkspaceComposerDraftsForStream(OWNER, STREAM);
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, content);
+    expect(
+      useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+        `${OWNER}:${CONVERSATION}`
+      ],
+    ).toBeDefined();
   });
 
   it("waits for pending writes and blocks stale drafts until the stream is restored", async () => {

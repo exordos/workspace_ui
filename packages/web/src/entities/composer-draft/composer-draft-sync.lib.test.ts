@@ -756,29 +756,30 @@ describe("workspace composer draft remote queue", () => {
 });
 
 describe("private composer promotion", () => {
-  it("rejects protected plaintext in both the main draft and reply snapshots", () => {
-    const store = useWorkspaceComposerDraftStore.getState();
-    expect(
-      store.setDraft(OWNER, CONVERSATION, content(":::secret\nprivate\n:::"), TARGET),
-    ).toBeNull();
-    const protectedReply = content("public");
-    protectedReply.replySession = {
-      activeTabId: "reply",
-      tabs: [
-        {
-          id: "reply",
-          messageUuid: "message",
-          senderUuid: "sender",
-          senderName: "Test",
-          createdAt: "2026-10-23T00:00:00Z",
-          quotedContent: "quoted",
-          answer: ":::secret\nprivate\n:::",
-        },
-      ],
-    };
-    expect(store.setDraft(OWNER, CONVERSATION, protectedReply, TARGET)).toBeNull();
-    expect(Object.values(store.draftsByKey)).toHaveLength(0);
-  });
+  it.each([":::", "::::::", ":::private:::", ":::private\nsecond line:::", ":::unfinished"])(
+    "rejects protected main and reply drafts: %s",
+    (text) => {
+      const store = useWorkspaceComposerDraftStore.getState();
+      expect(store.setDraft(OWNER, CONVERSATION, content(text), TARGET)).toBeNull();
+      const protectedReply = content("public");
+      protectedReply.replySession = {
+        activeTabId: "reply",
+        tabs: [
+          {
+            id: "reply",
+            messageUuid: "message",
+            senderUuid: "sender",
+            senderName: "Test",
+            createdAt: "2026-10-23T00:00:00Z",
+            quotedContent: "quoted",
+            answer: text,
+          },
+        ],
+      };
+      expect(store.setDraft(OWNER, CONVERSATION, protectedReply, TARGET)).toBeNull();
+      expect(Object.values(store.draftsByKey)).toHaveLength(0);
+    },
+  );
 
   it("scrubs queued local/remote saves when a selection becomes private", async () => {
     const draft = useWorkspaceComposerDraftStore

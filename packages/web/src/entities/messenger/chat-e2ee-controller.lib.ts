@@ -14,7 +14,6 @@ import type {
   ChatE2eePayload,
   ChatEncryptedPayload,
   ChatKeyRequestPayload,
-  ChatKeyRequestContext,
   ChatKeyResponsePayload,
 } from "./chat-e2ee.types";
 import type { PendingChatKeyRequest, StoredChatKey } from "./chat-key-storage.types";
@@ -186,17 +185,9 @@ export class ChatE2eeController {
   requestKey(
     recoveryEnvelope?: ChatCryptoEnvelope,
     allowUsableKey = false,
-    context?: ChatKeyRequestContext,
   ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
-    // Snapshot operation context before queued work can observe caller mutations.
-    const capturedContext = context ? { ...context } : undefined;
     const next = this.requestQueue.then(() =>
       this.run(async () => {
-        if (
-          capturedContext &&
-          (!capturedContext.targetMessageUuid || !capturedContext.expectedIssuerUuid)
-        )
-          return failure("invalid-message");
         const allowed = () => this.deps.getRights().canRequest;
         if (!allowed()) return failure("forbidden");
         let deletionRevision: number;
@@ -237,15 +228,13 @@ export class ChatE2eeController {
           const oldest = existing
             .filter(
               (item) =>
-                item.context?.targetMessageUuid === capturedContext?.targetMessageUuid &&
-                item.context?.expectedIssuerUuid === capturedContext?.expectedIssuerUuid &&
-                (!recovery ||
-                  (item.recovery !== undefined &&
-                    equalBytes(item.recovery.envelope.bytes, recovery.envelope.bytes) &&
-                    equalBytes(
-                      item.recovery.previousGroupKey.bytes,
-                      recovery.previousGroupKey.bytes,
-                    ))),
+                !recovery ||
+                (item.recovery !== undefined &&
+                  equalBytes(item.recovery.envelope.bytes, recovery.envelope.bytes) &&
+                  equalBytes(
+                    item.recovery.previousGroupKey.bytes,
+                    recovery.previousGroupKey.bytes,
+                  )),
             )
             .sort(
               (left, right) =>
@@ -270,7 +259,6 @@ export class ChatE2eeController {
               privateKey: pair.value.privateKey,
               createdAt: Date.now(),
               ...(recovery ? { recovery } : {}),
-              ...(capturedContext ? { context: capturedContext } : {}),
             };
             const committed = await this.deps.storage.writePendingRequest(
               this.deps.scope,
@@ -292,7 +280,6 @@ export class ChatE2eeController {
         const result = await this.send(
           {
             kind: "key_request",
-            ...(pending.context ? { targetMessageUuid: pending.context.targetMessageUuid } : {}),
             keyUuid: this.deps.scope.keyUuid,
             deviceId: this.deps.device.deviceId,
             deviceName: pending.deviceName ?? this.deps.device.deviceName,
@@ -338,14 +325,14 @@ export class ChatE2eeController {
   }
 
   private canRespond(
-    request: ChatE2eeMessage<ChatKeyRequestPayload>,
     action: "grant" | "reject",
+    request: ChatE2eeMessage<ChatKeyRequestPayload>,
   ): boolean {
-    // A contextual request must never fall back to channel administration rights.
-    if (this.deps.canRespondToRequest) return this.deps.canRespondToRequest(request, action);
-    if (request.payload.targetMessageUuid !== undefined) return false;
     const rights = this.deps.getRights();
-    return action === "grant" ? rights.canGrant : rights.canReject;
+    return (
+      (action === "grant" ? rights.canGrant : rights.canReject) &&
+      (this.deps.isRequesterAllowed?.(request.authorUuid) ?? true)
+    );
   }
 
   grantKey(
@@ -353,13 +340,13 @@ export class ChatE2eeController {
   ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     return this.run(async () => {
       if (!this.validRequest(request)) return failure("invalid-message");
-      if (!this.canRespond(request, "grant")) return failure("forbidden");
+      if (!this.canRespond("grant", request)) return failure("forbidden");
       const deletionRevision = await this.readDeletionRevision();
       if (!deletionRevision.ok) return deletionRevision;
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
-      if (!this.canRespond(request, "grant")) return failure("forbidden");
+      if (!this.canRespond("grant", request)) return failure("forbidden");
       const context = {
         streamUuid: this.deps.scope.streamUuid,
         keyUuid: this.deps.scope.keyUuid,
@@ -385,7 +372,7 @@ export class ChatE2eeController {
           recipientDeviceId: context.recipientDeviceId,
           content: envelope.value,
         },
-        () => this.canRespond(request, "grant"),
+        () => this.canRespond("grant", request),
       );
     });
   }
@@ -403,7 +390,7 @@ export class ChatE2eeController {
           senderDeviceId: this.deps.device.deviceId,
           recipientDeviceId: request.payload.deviceId,
         },
-        () => this.canRespond(request, "reject"),
+        () => this.canRespond("reject", request),
       );
     });
   }
@@ -510,12 +497,6 @@ export class ChatE2eeController {
         const matchingKeys = pending.filter((item) =>
           equalBytes(item.publicKey.bytes, request.payload.publicKey.bytes),
         );
-        if (
-          matchingKeys.some(
-            (item) => item.context?.targetMessageUuid !== request.payload.targetMessageUuid,
-          )
-        )
-          return failure("invalid-message");
         const bound = matchingKeys.filter((item) => item.requestMessageUuid === request.uuid);
         const candidates = bound.length
           ? bound
@@ -557,10 +538,7 @@ export class ChatE2eeController {
     response: ChatE2eeMessage<ChatKeyResponsePayload>,
   ): Promise<ChatE2eeControllerResult<void>> {
     if (this.processed.has(response.uuid)) return success(undefined);
-    let requestContext: ChatKeyRequestContext | undefined;
-    const allowed = () =>
-      (!requestContext || response.authorUuid === requestContext.expectedIssuerUuid) &&
-      this.deps.isIssuerAllowed(response.authorUuid, requestContext);
+    const allowed = () => this.deps.isIssuerAllowed(response.authorUuid);
     if (response.payload.recipientDeviceId !== this.deps.scope.deviceId) {
       this.waiting.delete(response.uuid);
       return failure("invalid-message");
@@ -592,7 +570,6 @@ export class ChatE2eeController {
       this.waiting.set(response.uuid, response);
       return success(undefined);
     }
-    requestContext = pending.context;
     if (!allowed()) return failure("forbidden");
     if (request) {
       const correlation = correlateChatKeyResponse({
@@ -603,7 +580,6 @@ export class ChatE2eeController {
       if (
         correlation.status !== "matched" ||
         request.authorUuid !== this.deps.scope.owner.userUuid ||
-        request.payload.targetMessageUuid !== pending.context?.targetMessageUuid ||
         !equalBytes(request.payload.publicKey.bytes, pending.publicKey.bytes)
       ) {
         this.waiting.delete(response.uuid);

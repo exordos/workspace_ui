@@ -11,10 +11,7 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
 } from "~/shared/api/messenger.types";
-import {
-  buildWorkspaceSecretUrn,
-  buildWorkspaceForwardUrn,
-} from "~/shared/lib/workspace-reference-urn.lib";
+import { buildWorkspaceSecretUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import {
   realChatCryptoProvider,
   realChatKeyStorage,
@@ -2608,23 +2605,17 @@ describe("ordinary chat shared key sessions", () => {
     expect(JSON.stringify(f.wire)).not.toContain('"second"');
   });
 
-  it("grants only as the source author, reuses received keys and opens all fragments after reload", async () => {
+  it("reuses one request across fragments and opens them after reload only from a current participant", async () => {
     const f = await setup({ encrypted: false, hasInitialKey: false });
-    const resolveMessage = (uuid: string) => {
-      const dto = f.wire.find((message) => message.uuid === uuid);
-      return Promise.resolve(dto ? adaptMessengerMessage(dto) : null);
-    };
     const author = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-      resolveMessage,
-    });
-    const recipient = await openRealChatSession({
       runtimeContext: f.admin,
       streamUuid: STREAM,
       getRuntimeContext: () => f.admin,
-      resolveMessage,
+    });
+    const recipient = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
     });
     await author.load();
     await recipient.load();
@@ -2634,20 +2625,15 @@ describe("ordinary chat shared key sessions", () => {
       ...mixedInput(["secret A", "secret B"]),
       onEncryptedFragment: (_, value) => payloads.push(value),
     });
-    const source = f.wire.at(-1)!;
     const keyUuid = payloads[0]!.keyUuid;
     await author.prepareFragmentKey(true);
-    expect(
-      await recipient.resolveSecretKeyRequestTarget(source.uuid, {
-        kind: "secret",
-        streamUuid: STREAM,
-        keyUuid,
-        envelope: payloads[0]!.content,
-      }),
-    ).toBe(source.uuid);
-    await recipient.requestEnvelopeKey(keyUuid, payloads[0]!.content, false, source.uuid);
+    await recipient.requestEnvelopeKey(keyUuid, payloads[0]!.content);
+    const firstRequest = f.wire.at(-1)!;
+    await recipient.requestEnvelopeKey(keyUuid, payloads[1]!.content);
+    expect(f.wire.at(-1)?.uuid).toBe(firstRequest.uuid);
+    expect(f.wire.at(-1)?.payload).toEqual(firstRequest.payload);
     const request = f.wire.at(-1)!;
-    expect(request.payload).toMatchObject({ target_message_uuid: source.uuid });
+    expect(request.payload).not.toHaveProperty("target_message_uuid");
     await recipient.ingest([adaptMessengerMessage(request)]);
     expect(recipient.canGrantKey(request.uuid)).toBe(false);
     await expect(recipient.grantKey(request.uuid)).rejects.toThrow("forbidden");
@@ -2656,15 +2642,14 @@ describe("ordinary chat shared key sessions", () => {
     await author.grantKey(request.uuid);
     const grant = f.wire.at(-1)!;
     const restored = await openRealChatSession({
-      runtimeContext: f.admin,
+      runtimeContext: f.member,
       streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-      resolveMessage,
+      getRuntimeContext: () => f.member,
     });
     await restored.load();
     await restored.ingest([
       adaptMessengerMessage(request),
-      adaptMessengerMessage({ ...grant, author_uuid: ADMIN }),
+      adaptMessengerMessage({ ...grant, author_uuid: crypto.randomUUID() }),
     ]);
     expect(restored.getGenerationState(keyUuid)?.access).not.toBe("ready");
     await restored.ingest([adaptMessengerMessage(grant)]);
@@ -2672,7 +2657,7 @@ describe("ordinary chat shared key sessions", () => {
     for (const [index, payload] of payloads.entries())
       expect(
         await decryptRealChatEnvelopeResult(
-          f.admin,
+          f.member,
           {
             projectId: PROJECT,
             streamUuid: STREAM,
@@ -2682,161 +2667,209 @@ describe("ordinary chat shared key sessions", () => {
           () => true,
         ),
       ).toEqual({ status: "ready", plaintext: index === 0 ? "secret A" : "secret B" });
-    expect(f.catalog(f.admin).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
   });
 
-  it("resolves nested forwarded fragments against canonical originals and rejects forged snapshots", async () => {
+  async function memberFragmentFixture() {
     const f = await setup({ encrypted: false, hasInitialKey: false });
-    const sources = new Map<string, ReturnType<typeof adaptMessengerMessage>>();
-    const resolveMessage = (uuid: string) => Promise.resolve(sources.get(uuid) ?? null);
-    const session = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-      resolveMessage,
-    });
-    await session.load();
-    await session.prepareFragmentKey();
-    let fragment: ChatEncryptedPayload | undefined;
-    await session.send({
-      ...mixedInput(["origin"]),
-      onEncryptedFragment: (_, payload) => {
-        fragment = payload;
-      },
-    });
-    const source = adaptMessengerMessage(f.wire.at(-1)!);
-    sources.set(source.uuid, source);
-    if (!fragment || source.payload.kind !== "markdown") throw new Error("missing source");
-    const reference = {
-      kind: "secret" as const,
-      streamUuid: STREAM,
-      keyUuid: fragment.keyUuid,
-      envelope: fragment.content,
-    };
-    const forwarded = {
-      ...source,
+    const third = runtime(crypto.randomUUID());
+    deviceCatalogs.set(
+      workspaceRuntimeOwnerKey(third),
+      createDeviceCatalog(third, f.stream(third.userUuid)),
+    );
+    const thirdBinding = {
+      ...memberBinding(),
       uuid: crypto.randomUUID(),
-      authorUuid: ADMIN,
-      payload: {
-        kind: "markdown" as const,
-        content: `[Forward](${buildWorkspaceForwardUrn(source.uuid, source.payload.content)})`,
-      },
+      userUuid: third.userUuid,
     };
-    const nested = {
-      ...forwarded,
-      uuid: crypto.randomUUID(),
-      payload: {
-        kind: "markdown" as const,
-        content: `[Again](${buildWorkspaceForwardUrn(forwarded.uuid, forwarded.payload.content)})`,
-      },
-    };
-    sources.set(forwarded.uuid, forwarded);
-    sources.set(nested.uuid, nested);
-    expect(await session.resolveSecretKeyRequestTarget(nested.uuid, reference)).toBe(source.uuid);
-    await expect(
-      session.requestEnvelopeKey(fragment.keyUuid, fragment.content, true, forwarded.uuid),
-    ).rejects.toThrow("invalid-message");
-    sources.set(source.uuid, { ...source, payload: { kind: "markdown", content: "No fragment" } });
-    await expect(session.resolveSecretKeyRequestTarget(nested.uuid, reference)).rejects.toThrow(
-      "invalid-message",
+    for (const account of [f.admin, f.member, third])
+      f.catalog(account)
+        .getState()
+        .upsertStreamBindings(workspaceRuntimeOwnerKey(account), [thirdBinding]);
+    const author = await openSessionFor(f.member);
+    await author.load();
+    await author.prepareFragmentKey();
+    const payloads: ChatEncryptedPayload[] = [];
+    await author.send({
+      ...mixedInput(["Member's first protected text"]),
+      onEncryptedFragment: (_, payload) => payloads.push(payload),
+    });
+    const payload = payloads[0]!;
+    return { ...f, third, thirdBinding, author, payload };
+  }
+
+  it("lets the first member author grant a fragment key and a recipient member relay it", async () => {
+    const f = await memberFragmentFixture();
+    expect(f.author.getRights()).toMatchObject({ canGrant: false, canRotate: false });
+    for (const account of [f.admin, f.third]) {
+      const recipient = await openSessionFor(account);
+      await recipient.load();
+      await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+      const request = f.wire.at(-1)!;
+      await f.author.ingest([adaptMessengerMessage(request)]);
+      expect(f.author.canRespondToKeyRequest(request.uuid)).toBe(true);
+      expect(f.author.canGrantKey(request.uuid)).toBe(true);
+      expect(f.author.canRejectKey(request.uuid)).toBe(true);
+      await f.author.grantKey(request.uuid);
+      const grant = f.wire.at(-1)!;
+      expect(grant.author_uuid).toBe(MEMBER);
+      await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+      expect(
+        await decryptRealChatEnvelopeResult(
+          account,
+          {
+            projectId: PROJECT,
+            streamUuid: STREAM,
+            keyUuid: f.payload.keyUuid,
+            envelope: f.payload.content,
+          },
+          () => true,
+        ),
+      ).toEqual({ status: "ready", plaintext: "Member's first protected text" });
+      expect(await recipient.prepareFragmentKey()).toBe(f.payload.keyUuid);
+    }
+    const holder = await openSessionFor(f.third);
+    const recipient = await openSessionFor(f.admin);
+    await holder.load();
+    await recipient.load();
+    await recipient.removeLocalKey(f.payload.keyUuid);
+    expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await holder.ingest([adaptMessengerMessage(request)]);
+    expect(holder.getRights().canGrant).toBe(false);
+    expect(holder.canGrantKey(request.uuid)).toBe(true);
+    await holder.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    expect(grant.author_uuid).toBe(f.third.userUuid);
+    await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+    expect(
+      await decryptRealChatEnvelopeResult(
+        f.admin,
+        {
+          projectId: PROJECT,
+          streamUuid: STREAM,
+          keyUuid: f.payload.keyUuid,
+          envelope: f.payload.content,
+        },
+        () => true,
+      ),
+    ).toEqual({ status: "ready", plaintext: "Member's first protected text" });
+  });
+
+  it("keeps members without the requested generation from responding and excludes departed requesters", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.third);
+    await recipient.load();
+    await recipient.prepareFragmentKey();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await recipient.ingest([adaptMessengerMessage(request)]);
+    expect(recipient.canRespondToKeyRequest(request.uuid)).toBe(false);
+    expect(recipient.canRejectKey(request.uuid)).toBe(false);
+    await expect(recipient.rejectKey(request.uuid)).rejects.toThrow("forbidden");
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    f.catalog(f.member)
+      .getState()
+      .removeStreamBinding(workspaceRuntimeOwnerKey(f.member), f.thirdBinding);
+    expect(f.author.canGrantKey(request.uuid)).toBe(false);
+    expect(f.author.canRejectKey(request.uuid)).toBe(false);
+    await expect(f.author.grantKey(request.uuid)).rejects.toThrow("forbidden");
+  });
+
+  it("does not import a grant from a departed member and retries when current membership arrives", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.admin);
+    await recipient.load();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    await f.author.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    const catalog = f.catalog(f.admin);
+    catalog.getState().removeStreamBinding(workspaceRuntimeOwnerKey(f.admin), memberBinding());
+    await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+    expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+    catalog.getState().upsertStreamBindings(workspaceRuntimeOwnerKey(f.admin), [memberBinding()]);
+    await vi.waitFor(() =>
+      expect(recipient.getGenerationState(f.payload.keyUuid)?.access).toBe("ready"),
     );
   });
 
-  it("retries transient canonical reads for an identical batch without dropping other valid requests", async () => {
-    const f = await setup({ encrypted: false, hasInitialKey: false });
-    let failNext = false;
-    const resolveMessage = (uuid: string) => {
-      if (failNext) {
-        failNext = false;
-        return Promise.reject(new Error("offline"));
-      }
-      const dto = f.wire.find((message) => message.uuid === uuid);
-      return Promise.resolve(dto ? adaptMessengerMessage(dto) : null);
-    };
-    const author = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-      resolveMessage,
-    });
-    const reader = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-      resolveMessage,
-    });
-    await author.load();
-    await reader.load();
-    await author.prepareFragmentKey();
-    let fragment: ChatEncryptedPayload | undefined;
-    await author.send({
-      ...mixedInput(["origin"]),
-      onEncryptedFragment: (_, value) => {
-        fragment = value;
+  it("rechecks member send rights after encrypting a fragment grant", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.admin);
+    await recipient.load();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    const encrypt = realChatCryptoProvider.encryptGroupKeyGrant.bind(realChatCryptoProvider);
+    const started = deferred<void>();
+    const release = deferred<void>();
+    vi.spyOn(realChatCryptoProvider, "encryptGroupKeyGrant").mockImplementationOnce(
+      async (input) => {
+        started.resolve();
+        await release.promise;
+        return encrypt(input);
       },
-    });
-    const source = f.wire.at(-1)!;
-    if (!fragment) throw new Error("missing fragment");
-    await reader.requestEnvelopeKey(fragment.keyUuid, fragment.content, false, source.uuid);
-    const first = adaptMessengerMessage(f.wire.at(-1)!);
-    const second = { ...first, uuid: crypto.randomUUID() };
-    failNext = true;
-    await expect(author.ingest([first, second])).rejects.toThrow("offline");
-    expect(author.getKeyRequests().map((request) => request.uuid)).toEqual([second.uuid]);
-    expect(author.canGrantKey(second.uuid)).toBe(true);
-    await author.ingest([first, second]);
-    expect(author.canGrantKey(first.uuid)).toBe(true);
-    const invalid = {
-      ...first,
-      uuid: crypto.randomUUID(),
-      payload:
-        first.payload.kind === "key_request"
-          ? { ...first.payload, targetMessageUuid: crypto.randomUUID() }
-          : first.payload,
-    };
-    await expect(author.ingest([invalid])).resolves.toBeUndefined();
-    expect(author.canGrantKey(invalid.uuid)).toBe(false);
+    );
+    const granting = f.author.grantKey(request.uuid);
+    const failed = expect(granting).rejects.toThrow("forbidden");
+    await started.promise;
+    f.catalog(f.member)
+      .getState()
+      .removeStreamBinding(workspaceRuntimeOwnerKey(f.member), memberBinding());
+    expect(f.author.getRights().canSend).toBe(false);
+    release.resolve();
+    await failed;
+    expect(f.wire.some((message) => message.payload.kind === "key_grant")).toBe(false);
   });
 
-  it("revokes cached response rights when the canonical target no longer contains its key", async () => {
-    const f = await setup({ encrypted: false, hasInitialKey: false });
-    const sources = new Map<string, ReturnType<typeof adaptMessengerMessage>>();
-    const resolveMessage = (uuid: string) => Promise.resolve(sources.get(uuid) ?? null);
-    const author = await openRealChatSession({
-      runtimeContext: f.member,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.member,
-      resolveMessage,
-    });
-    const reader = await openRealChatSession({
-      runtimeContext: f.admin,
-      streamUuid: STREAM,
-      getRuntimeContext: () => f.admin,
-      resolveMessage,
-    });
-    await author.load();
-    await reader.load();
-    await author.prepareFragmentKey();
-    let fragment: ChatEncryptedPayload | undefined;
-    await author.send({
-      ...mixedInput(["origin"]),
-      onEncryptedFragment: (_, value) => {
-        fragment = value;
-      },
-    });
-    const source = adaptMessengerMessage(f.wire.at(-1)!);
-    sources.set(source.uuid, source);
-    if (!fragment) throw new Error("missing fragment");
-    await reader.requestEnvelopeKey(fragment.keyUuid, fragment.content, false, source.uuid);
-    const request = adaptMessengerMessage(f.wire.at(-1)!);
-    await author.ingest([request]);
-    expect(author.canGrantKey(request.uuid)).toBe(true);
-    sources.delete(source.uuid);
-    await expect(author.grantKey(request.uuid)).rejects.toThrow("invalid-message");
-    expect(author.canGrantKey(request.uuid)).toBe(false);
-    expect(author.canRejectKey(request.uuid)).toBe(false);
-    expect(f.wire.at(-1)?.payload.kind).toBe("key_request");
-  });
+  it.each(["issuer", "recipient"] as const)(
+    "does not persist a fragment grant if its %s leaves during decryption",
+    async (departed) => {
+      const f = await memberFragmentFixture();
+      const recipient = await openSessionFor(f.third);
+      await recipient.load();
+      await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+      const request = f.wire.at(-1)!;
+      await f.author.ingest([adaptMessengerMessage(request)]);
+      await f.author.grantKey(request.uuid);
+      const grant = f.wire.at(-1)!;
+      const decrypt = realChatCryptoProvider.decryptGroupKeyGrant.bind(realChatCryptoProvider);
+      const started = deferred<void>();
+      const release = deferred<void>();
+      vi.spyOn(realChatCryptoProvider, "decryptGroupKeyGrant").mockImplementationOnce(
+        async (input) => {
+          started.resolve();
+          await release.promise;
+          return decrypt(input);
+        },
+      );
+      const receiving = recipient.ingest([
+        adaptMessengerMessage(request),
+        adaptMessengerMessage(grant),
+      ]);
+      await started.promise;
+      f.catalog(f.third)
+        .getState()
+        .removeStreamBinding(
+          workspaceRuntimeOwnerKey(f.third),
+          departed === "issuer" ? memberBinding() : f.thirdBinding,
+        );
+      release.resolve();
+      await receiving;
+      expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+      expect(
+        (
+          await realChatKeyStorage.readChatKey({
+            ...recipient.storageScope,
+            keyUuid: f.payload.keyUuid,
+          })
+        )?.groupKey,
+      ).toBeFalsy();
+    },
+  );
 
   it("retains every fragment and the canonical UUID after a lost mixed-message response", async () => {
     const f = await setup({ encrypted: false });

@@ -7,15 +7,8 @@ export interface ChatEncryptedPayload {
   readonly content: ChatCryptoEnvelope;
 }
 
-// Operation context belongs to a request, never to the reusable key.
-export interface ChatKeyRequestContext {
-  readonly targetMessageUuid: string;
-  readonly expectedIssuerUuid: string;
-}
-
 export interface ChatKeyRequestPayload {
   readonly kind: "key_request";
-  readonly targetMessageUuid?: string;
   readonly keyUuid: string;
   readonly deviceId: string;
   readonly deviceName: string;

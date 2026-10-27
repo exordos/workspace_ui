@@ -11,14 +11,6 @@ const bytes = new Uint8Array([0, 127, 128, 255]);
 const payloads: ChatE2eePayload[] = [
   { kind: "e2ee", keyUuid, content: { bytes } },
   { kind: "key_request", keyUuid, deviceId: "mac", deviceName: "MacBook", publicKey: { bytes } },
-  {
-    kind: "key_request",
-    keyUuid,
-    deviceId: "mac",
-    deviceName: "MacBook",
-    publicKey: { bytes },
-    targetMessageUuid: requestMessageUuid,
-  },
   { kind: "key_announced", keyUuid },
   {
     kind: "key_grant",
@@ -61,19 +53,6 @@ describe("E2EE payload boundaries", () => {
       });
     },
   );
-
-  it.each([null, 17, "", "not-a-uuid"])("rejects malformed request targets %j", (target) => {
-    expect(
-      isWorkspaceMessengerMessagePayloadDto({
-        kind: "key_request",
-        key_uuid: keyUuid,
-        device_id: "mac",
-        device_name: "MacBook",
-        public_key: "AA==",
-        target_message_uuid: target,
-      }),
-    ).toBe(false);
-  });
 
   it("rejects incomplete service payloads", () => {
     expect(

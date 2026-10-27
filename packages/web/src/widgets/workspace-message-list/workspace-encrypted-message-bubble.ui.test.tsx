@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
@@ -1671,10 +1672,26 @@ describe("partial encryption in ordinary messages", () => {
       />
     );
   }
-  it("uses the same historical key and drops only decrypted text when that key is removed", async () => {
+  it("lets the author reveal and hide a fragment, then drops its text when the key is removed", async () => {
+    const user = userEvent.setup();
     const { ordinary, owner, stream, runtime, device, stored } = await seedSecret();
     const { container } = render(secretList(ordinary));
+    const toggle = await screen.findByRole("button", { name: "Show spoiler" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("secret password").closest("[inert]")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await user.click(toggle);
     expect(await screen.findByText("secret password")).toBeInTheDocument();
+    expect(toggle).toHaveAccessibleName("Hide spoiler");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("secret password").closest("[inert]")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await user.keyboard(" ");
     expect(container.textContent).toContain("Public before");
     expect(container.textContent).toContain("public after");
     expect(container.querySelector("strong")).toHaveTextContent("secret password");
@@ -1700,6 +1717,7 @@ describe("partial encryption in ordinary messages", () => {
     const { container } = render(
       secretList(ordinary, { onForwardMessage: forward, onRequestSecretKey: request }),
     );
+    fireEvent.click(await screen.findByRole("button", { name: "Show spoiler" }));
     const secret = await screen.findByText("secret password");
     const range = document.createRange();
     range.selectNodeContents(secret);
@@ -1747,6 +1765,7 @@ describe("partial encryption in ordinary messages", () => {
       },
     };
     const { container } = render(secretList(forwarded));
+    fireEvent.click(await screen.findByRole("button", { name: "Show spoiler" }));
     expect(await screen.findByText("secret password")).toBeInTheDocument();
     expect(container.textContent).toContain("Public before");
     act(() => useMessengerStore.setState({ streamsById: { [destination.uuid]: destination } }));

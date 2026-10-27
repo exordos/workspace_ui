@@ -106,7 +106,6 @@ export interface WorkspaceMessengerEncryptedPayloadDto {
 export interface WorkspaceMessengerKeyRequestPayloadDto {
   kind: "key_request";
   key_uuid: WorkspaceMessengerUuid;
-  target_message_uuid?: WorkspaceMessengerUuid;
   device_id: string;
   device_name: string;
   public_key: string;
@@ -1079,8 +1078,7 @@ export function isWorkspaceMessengerMessagePayloadDto(
       return (
         typeof value.device_id === "string" &&
         typeof value.device_name === "string" &&
-        typeof value.public_key === "string" &&
-        (value.target_message_uuid === undefined || isUuid(value.target_message_uuid))
+        typeof value.public_key === "string"
       );
     case "key_announced":
       return true;

@@ -167,6 +167,16 @@ export interface WorkspaceComposerDraftStoreState {
   draftsByKey: Record<string, WorkspaceComposerDraft>;
   activeDraftUuidByConversationKey: Record<string, string>;
   completedConversationVisits: Record<string, true>;
+  /** Composer shadows never enter the persistence or server synchronization queues. */
+  privateShadowsByConversationKey: Record<
+    string,
+    { ownerKey: string; conversationId: string; content: WorkspaceComposerDraftContent }
+  >;
+  setPrivateDraftShadow: (
+    ownerKey: string,
+    conversationId: string,
+    content: WorkspaceComposerDraftContent,
+  ) => void;
 
   protectDraft: (ownerKey: string, draftUuid: string) => WorkspaceComposerDraft | null;
   setDraft: (
@@ -262,6 +272,24 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
     draftsByKey: {},
     activeDraftUuidByConversationKey: {},
     completedConversationVisits: {},
+    privateShadowsByConversationKey: {},
+
+    setPrivateDraftShadow(ownerKey, conversationId, content) {
+      if (isDraftStreamRemoved(ownerKey, conversationId.split(":")[1] ?? "")) return;
+      const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
+      set((state) => {
+        const current = state.privateShadowsByConversationKey[scopeKey];
+        const isPrivate = hasWorkspaceComposerDraftSecret(content);
+        if (current?.content === content || (current == null && !isPrivate)) return state;
+        const privateShadowsByConversationKey = { ...state.privateShadowsByConversationKey };
+        if (isPrivate) {
+          privateShadowsByConversationKey[scopeKey] = { ownerKey, conversationId, content };
+        } else {
+          delete privateShadowsByConversationKey[scopeKey];
+        }
+        return { privateShadowsByConversationKey };
+      });
+    },
 
     setDraft(ownerKey, conversationId, content, target) {
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
@@ -746,6 +774,14 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
     },
 
     async disposeOwner(ownerKey) {
+      // Drop private plaintext before awaiting any outstanding durable writes.
+      set((state) => ({
+        privateShadowsByConversationKey: Object.fromEntries(
+          Object.entries(state.privateShadowsByConversationKey).filter(
+            ([, shadow]) => shadow.ownerKey !== ownerKey,
+          ),
+        ),
+      }));
       ownerGenerations.set(ownerKey, ownerGeneration(ownerKey) + 1);
       hydratedOwners.delete(ownerKey);
       hydrationPromises.delete(ownerKey);
@@ -760,6 +796,11 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
           .filter((chain): chain is Promise<void> => chain != null),
       );
       set((state) => ({
+        privateShadowsByConversationKey: Object.fromEntries(
+          Object.entries(state.privateShadowsByConversationKey).filter(
+            ([, shadow]) => shadow.ownerKey !== ownerKey,
+          ),
+        ),
         draftsByKey: Object.fromEntries(
           Object.entries(state.draftsByKey).filter(([, draft]) => draft.ownerKey !== ownerKey),
         ),
@@ -786,6 +827,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         draftsByKey: {},
         activeDraftUuidByConversationKey: {},
         completedConversationVisits: {},
+        privateShadowsByConversationKey: {},
       });
     },
   }),
@@ -815,6 +857,7 @@ export function resetWorkspaceComposerDraftStoreForTests(): void {
     draftsByKey: {},
     activeDraftUuidByConversationKey: {},
     completedConversationVisits: {},
+    privateShadowsByConversationKey: {},
   });
 }
 
@@ -824,6 +867,14 @@ export async function removeWorkspaceComposerDraftsForStream(
 ): Promise<void> {
   removedStreamKeys.add(removedStreamKey(ownerKey, streamUuid));
   const store = useWorkspaceComposerDraftStore.getState();
+  useWorkspaceComposerDraftStore.setState({
+    privateShadowsByConversationKey: Object.fromEntries(
+      Object.entries(store.privateShadowsByConversationKey).filter(
+        ([, shadow]) =>
+          shadow.ownerKey !== ownerKey || shadow.conversationId.split(":")[1] !== streamUuid,
+      ),
+    ),
+  });
   const draftUuids = Object.values(store.draftsByKey)
     .filter((draft) => draft.ownerKey === ownerKey && draft.streamUuid === streamUuid)
     .map((draft) => draft.draftUuid);

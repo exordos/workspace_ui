@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppTooltip } from "./app-tooltip.ui";
 
-function renderTooltip() {
+function renderTooltip(closeDelay?: number) {
   return render(
-    <AppTooltip content="Files are stored without end-to-end encryption.">
+    <AppTooltip content="Files are stored without end-to-end encryption." closeDelay={closeDelay}>
       <button type="button" aria-describedby="existing-description">
         Chat information
       </button>
@@ -44,6 +44,44 @@ describe("AppTooltip", () => {
     });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     expect(button).toHaveAttribute("aria-describedby", "existing-description");
+  });
+
+  it("uses a custom close delay and cancels it when the trigger is hovered again", () => {
+    renderTooltip(500);
+    const button = screen.getByRole("button", { name: "Chat information" });
+    fireEvent.pointerEnter(button);
+    fireEvent.pointerLeave(button);
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.pointerEnter(button);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.pointerLeave(button);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("closes immediately with zero delay while preserving keyboard focus behavior", () => {
+    renderTooltip(0);
+    const button = screen.getByRole("button", { name: "Chat information" });
+    fireEvent.pointerEnter(button);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.pointerLeave(button);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => button.focus());
+    fireEvent.pointerEnter(button);
+    fireEvent.pointerLeave(button);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    act(() => button.blur());
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("opens on keyboard focus, dismisses on Escape and releases focus normally", () => {

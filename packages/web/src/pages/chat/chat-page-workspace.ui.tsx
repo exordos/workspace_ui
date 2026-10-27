@@ -78,7 +78,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatCryptoSession } from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import {
@@ -988,6 +991,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       stream?.encryption === true ? null : conversationId,
     ),
   );
+  const privateComposerDraftShadow = useWorkspaceComposerDraftStore((state) =>
+    workspaceComposerDraftScopeKey == null
+      ? null
+      : (state.privateShadowsByConversationKey[workspaceComposerDraftScopeKey]?.content ?? null),
+  );
   const composerDraftTopicsById = useMessengerStore((state) => state.topicsById);
   const composerDraftTarget = useMemo(() => {
     if (selection.status !== "conversation") return null;
@@ -1000,9 +1008,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       : { streamUuid: selection.streamUuid, topicUuid: defaultTopic.uuid };
   }, [composerDraftTopicsById, selection]);
   const workspaceComposerContent =
-    workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
+    privateComposerDraftShadow ??
+    (workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
       ? workspaceComposerDraftShadow.content
-      : (workspaceComposerDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+      : (workspaceComposerDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT));
   const isRestoredWorkspaceReplyEdit = composerEditSession?.preserveWorkspaceReplyContext === true;
   const workspaceReplySession: WorkspaceReplySession = isRestoredWorkspaceReplyEdit
     ? (restoredWorkspaceReplySession ?? EMPTY_WORKSPACE_REPLY_SESSION)
@@ -1010,17 +1019,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const workspaceComposerText = workspaceComposerContent.text;
   const setComposerDraftShadow = useCallback(
     (scopeKey: string, content: WorkspaceComposerDraftContent): void => {
-      const next = { scopeKey, content };
+      if (
+        ownerKey == null ||
+        conversationId == null ||
+        !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
+      )
+        return;
+      useWorkspaceComposerDraftStore
+        .getState()
+        .setPrivateDraftShadow(ownerKey, conversationId, content);
+      // Protected text has one owner-scoped memory source, including across page remounts.
+      const next = hasWorkspaceComposerDraftSecret(content) ? null : { scopeKey, content };
       workspaceComposerDraftShadowRef.current = next;
       setWorkspaceComposerDraftShadow(next);
     },
-    [],
+    [conversationId, getCurrentWorkspaceRuntimeContext, ownerKey, runtimeContext],
   );
   const updateWorkspaceComposerDraft = useCallback(
     (
       update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent | null,
     ): boolean => {
       if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null)
+        return false;
+      if (
+        !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
+      )
         return false;
 
       const currentDraft = selectWorkspaceComposerDraft(
@@ -1029,9 +1052,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         conversationId,
       );
       const currentContent =
-        workspaceComposerDraftShadowRef.current?.scopeKey === workspaceComposerDraftScopeKey
+        useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+          workspaceComposerDraftScopeKey
+        ]?.content ??
+        (workspaceComposerDraftShadowRef.current?.scopeKey === workspaceComposerDraftScopeKey
           ? workspaceComposerDraftShadowRef.current.content
-          : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+          : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT));
       const nextContent = update(currentContent);
       if (nextContent == null) return false;
       setComposerDraftShadow(workspaceComposerDraftScopeKey, nextContent);
@@ -1095,6 +1121,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [
       composerDraftTarget,
       conversationId,
+      getCurrentWorkspaceRuntimeContext,
       ownerKey,
       runtimeContext,
       setComposerDraftShadow,
@@ -1331,16 +1358,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     usersById,
   ]);
   const messageListPresentation = useMemo(() => {
-    if (selection.status !== "conversation" || selection.kind !== "stream") {
-      return undefined;
-    }
-
-    return { topicDividers: true, topicLabels: true } as const;
-  }, [selection]);
+    return {
+      serviceMessages: stream?.encryption === true ? "all" : "account",
+      ...(selection.status === "conversation" && selection.kind === "stream"
+        ? { topicDividers: true, topicLabels: true }
+        : {}),
+    } as const;
+  }, [selection, stream?.encryption]);
   const resolveMessageTopicLabel = useMemo<
     ((messageTopicUuid: MessengerUuid) => string | null) | undefined
   >(() => {
-    if (messageListPresentation == null) {
+    if (messageListPresentation.topicLabels !== true) {
       return undefined;
     }
 
@@ -1543,9 +1571,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           const localShadow = workspaceComposerDraftShadowRef.current;
           setComposerDraftShadow(
             workspaceComposerDraftScopeKey,
-            localShadow?.scopeKey === workspaceComposerDraftScopeKey
-              ? localShadow.content
-              : (draft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT),
+            useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+              workspaceComposerDraftScopeKey
+            ]?.content ??
+              (localShadow?.scopeKey === workspaceComposerDraftScopeKey
+                ? localShadow.content
+                : (draft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT)),
           );
           setSuccessfullyHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
           setHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
@@ -1783,18 +1814,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
       if (reference.streamUuid === streamUuid) {
         try {
-          const session = encryptedChat.session;
-          if (session == null) throw new Error("unavailable");
-          const targetMessageUuid = await session.resolveSecretKeyRequestTarget(
-            messageUuid,
-            reference,
-          );
-          if (!isCurrent()) return;
           await encryptedChat.requestEnvelopeKey(
             reference.keyUuid,
             reference.envelope,
             allowUsableKey,
-            targetMessageUuid,
           );
         } catch {
           if (isCurrent()) setActionError(t("e2ee.requestKeyFailed"));
@@ -1813,17 +1836,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
               candidate.projectId === runtimeContext.projectId,
           ),
         );
-        const targetMessageUuid = await session.resolveSecretKeyRequestTarget(
-          messageUuid,
-          reference,
-        );
         if (!isCurrent()) return;
-        await session.requestEnvelopeKey(
-          reference.keyUuid,
-          reference.envelope,
-          allowUsableKey,
-          targetMessageUuid,
-        );
+        await session.requestEnvelopeKey(reference.keyUuid, reference.envelope, allowUsableKey);
       } catch {
         if (isCurrent()) setActionError(t("e2ee.requestKeyFailed"));
       } finally {
@@ -1882,6 +1896,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         throw new Error(target.error);
       }
 
+      const privateDraftScopeKey = createWorkspaceComposerDraftKey(
+        workspaceRuntimeOwnerKey(runtimeContext),
+        conversationId,
+      );
+      const privateDraftAtSend =
+        useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+          privateDraftScopeKey
+        ]?.content;
+
       return (async () => {
         if (hasSecrets) {
           const isCurrent = captureWorkspaceChatUiAction();
@@ -1937,6 +1960,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           ...(encryption == null ? {} : { encryption }),
         });
 
+        const shouldClearPrivateComposer =
+          !hasSecrets ||
+          useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+            privateDraftScopeKey
+          ]?.content === privateDraftAtSend;
+        if (hasSecrets && shouldClearPrivateComposer) {
+          // The outbox now owns the sent snapshot; a newer draft must survive key preparation.
+          setComposerDraftShadow(sentDraftScopeKey, EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+        }
         options?.onAccepted?.();
         // Scroll right after the local row appears. A later server snapshot can
         // move it by backend created_at, but the user already sees the send happened.
@@ -2005,7 +2037,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         if (hasSecrets) {
           // Key preparation is finished and the common outbox owns delivery now.
           void delivery.catch(() => undefined);
-          return;
+          return shouldClearPrivateComposer
+            ? undefined
+            : ({ shouldClearComposer: false } satisfies MessageComposerSendResult);
         }
         return delivery;
       })();

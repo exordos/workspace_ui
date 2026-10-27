@@ -253,14 +253,9 @@ export function useChatCryptoSession(streamUuid: string | null) {
     [perform, ownerKey, streamUuid, runtime?.projectId],
   );
   const requestEnvelopeKey = useCallback(
-    (
-      keyUuid: string,
-      envelope: ChatCryptoEnvelope,
-      allowUsableKey = false,
-      targetMessageUuid?: string,
-    ) =>
+    (keyUuid: string, envelope: ChatCryptoEnvelope, allowUsableKey = false) =>
       perform(
-        (active) => active.requestEnvelopeKey(keyUuid, envelope, allowUsableKey, targetMessageUuid),
+        (active) => active.requestEnvelopeKey(keyUuid, envelope, allowUsableKey),
         t("e2ee.requestKeyFailed"),
         true,
       ),
