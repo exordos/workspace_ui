@@ -15,6 +15,7 @@ import {
 } from "~/features/theme-picker/theme-picker.model";
 import type { AvailablePalette } from "~/features/theme-picker/theme-picker.types";
 import { useTranslation } from "~/i18n/i18n";
+import { isElectronDarwin } from "~/shared/lib/electron";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
@@ -128,6 +129,8 @@ export function RightPanelUserSettings({
   const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
+  const dockBounceEnabled = useSettingsStore((s) => s.dockBounceEnabled);
+  const setDockBounceEnabled = useSettingsStore((s) => s.setDockBounceEnabled);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
   const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
@@ -159,6 +162,9 @@ export function RightPanelUserSettings({
     },
     [setLanguage],
   );
+  const toggleDockBounce = useCallback(() => {
+    setDockBounceEnabled(!dockBounceEnabled);
+  }, [dockBounceEnabled, setDockBounceEnabled]);
   const selectTimeout = useCallback(
     (timeout: AuthIdleTimeout) => {
       setAuthIdleTimeout(timeout);
@@ -207,6 +213,28 @@ export function RightPanelUserSettings({
                 />
               ))}
             </OptionSurface>
+          ) : null}
+
+          {isElectronDarwin() ? (
+            <PanelMenuRow
+              label={t("settings.dockBounce")}
+              icon="desktop_windows"
+              variant="nested"
+              role="switch"
+              aria-checked={dockBounceEnabled}
+              onClick={toggleDockBounce}
+              testId="right-panel-settings-dock-bounce"
+              right={
+                <span
+                  aria-hidden="true"
+                  className={`relative block h-5 w-9 shrink-0 rounded-full transition-colors ${dockBounceEnabled ? "bg-accent" : "bg-border-subtle"}`}
+                >
+                  <span
+                    className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${dockBounceEnabled ? "translate-x-4" : ""}`}
+                  />
+                </span>
+              }
+            />
           ) : null}
 
           <PanelMenuRow

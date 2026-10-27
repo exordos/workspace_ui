@@ -976,6 +976,7 @@
     "personalInfo": "Личная информация",
     "appVersion": "Версия приложения",
     "notificationSound": "Звуки уведомлений",
+    "dockBounce": "Прыжок значка в Dock",
     "language": "Язык",
     "authIdleTimeout": "Автовыход",
     "authIdleTimeoutHint": "После неактивности",

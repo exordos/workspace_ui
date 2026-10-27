@@ -15,6 +15,7 @@ import {
   getWorkspaceSessionStorageScopeFromAuthState,
   type WorkspaceSessionStorageScope,
 } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
@@ -62,6 +63,7 @@ function createDefaultSettings(): AppSettings {
     prioritizeUnmutedUnreadChannels: false,
     messengerSidebarSortMode: "last_message",
     notificationSound: "default",
+    dockBounceEnabled: true,
     language: resolveBrowserLanguage(),
     folderRailLayout: "vertical",
     showSystemFolders: true,
@@ -78,6 +80,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   prioritizeUnmutedUnreadChannels: false,
   messengerSidebarSortMode: "last_message",
   notificationSound: "default",
+  dockBounceEnabled: true,
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
@@ -149,6 +152,10 @@ function loadSettings(
       prioritizeUnmutedUnreadChannels,
       messengerSidebarSortMode: resolveMessengerSidebarSortMode(parsed.messengerSidebarSortMode),
       notificationSound: resolveNotificationSound(parsed.notificationSound),
+      dockBounceEnabled:
+        typeof parsed.dockBounceEnabled === "boolean"
+          ? parsed.dockBounceEnabled
+          : DEFAULT_SETTINGS.dockBounceEnabled,
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
@@ -182,6 +189,7 @@ interface SettingsState extends AppSettings {
   setPrioritizeUnmutedUnreadChannels: (enabled: boolean) => void;
   setMessengerSidebarSortMode: (sortMode: MessengerSidebarSortMode) => void;
   setNotificationSound: (sound: NotificationSound) => void;
+  setDockBounceEnabled: (enabled: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
@@ -218,6 +226,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setNotificationSound", { sound });
     set({ notificationSound: sound });
     persistSettings({ ...get(), notificationSound: sound });
+  },
+
+  setDockBounceEnabled(dockBounceEnabled) {
+    logStoreAction("settings", "setDockBounceEnabled", { dockBounceEnabled });
+    set({ dockBounceEnabled });
+    persistSettings({ ...get(), dockBounceEnabled });
   },
 
   setLanguage(language) {
@@ -265,6 +279,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     setLocale(defaults.language);
   },
 }));
+
+export function getDockBounceEnabledForOwner(ownerKey: string): boolean {
+  if (getCurrentWorkspaceSessionStorageScope().ownerKey === ownerKey) {
+    return useSettingsStore.getState().dockBounceEnabled;
+  }
+
+  const session = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((candidate) => workspaceRuntimeOwnerKey(candidate) === ownerKey);
+  return loadSettings({ ownerKey, legacyInstanceId: session?.instanceId ?? null })
+    .dockBounceEnabled;
+}
 
 if (typeof window !== "undefined") {
   let previousOwnerKey = getCurrentWorkspaceSessionStorageScope().ownerKey;

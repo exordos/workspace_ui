@@ -6,6 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.6] — 2026-10-27
+
+### Added
+
+- A macOS desktop Settings switch to disable Dock icon bouncing for incoming
+  notifications while keeping banners, sound, and unread indicators enabled.
+  The preference is saved per account and applies without restarting the app.
+
+### Fixed
+
+- Background-account notifications use the receiving account's Dock preference,
+  including when the active account changes while a notification is pending.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, and the message cache schema are unchanged.
+- Existing installations keep Dock bouncing enabled until the user switches it off.
+  Other desktop platforms retain their existing taskbar attention behavior.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.6`. No manual migration or cache reset is required.
+
 ## [0.9.5] — 2026-10-25
 
 ### Changed
