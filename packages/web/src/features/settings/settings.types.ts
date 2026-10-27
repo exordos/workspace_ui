@@ -18,6 +18,7 @@ export interface AppSettings {
   prioritizeUnmutedUnreadChannels: boolean;
   messengerSidebarSortMode: MessengerSidebarSortMode;
   notificationSound: NotificationSound;
+  dockBounceEnabled: boolean;
   language: AppLanguage;
   folderRailLayout: FolderRailLayout;
   showSystemFolders: boolean;

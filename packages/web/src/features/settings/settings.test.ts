@@ -127,6 +127,31 @@ describe("useSettingsStore", () => {
     });
   });
 
+  it("disables Dock bouncing, persists the choice, and restores it on reset", () => {
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+    useSettingsStore.getState().setDockBounceEnabled(false);
+
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
+    expect(JSON.parse(localStorage.getItem("workspace-settings")!).dockBounceEnabled).toBe(false);
+
+    useSettingsStore.getState().setDockBounceEnabled(true);
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+    useSettingsStore.getState().setDockBounceEnabled(false);
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+  });
+
+  it("keeps Dock bounce preferences separate when switching accounts", () => {
+    setWorkspaceSessionScope("account-a");
+    useSettingsStore.getState().setDockBounceEnabled(false);
+
+    useWorkspaceAuthStore.setState({ currentAccountId: "account-b" });
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+
+    useWorkspaceAuthStore.setState({ currentAccountId: "account-a" });
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
+  });
+
   describe("setLanguage", () => {
     it("changes language to Russian", () => {
       useSettingsStore.getState().setLanguage("ru");
@@ -406,6 +431,23 @@ describe("loadSettings (module reload)", () => {
     localStorage.clear();
     vi.resetModules();
   });
+
+  it.each([false, true])("restores the saved Dock bounce preference %s", async (enabled) => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ dockBounceEnabled: enabled }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().dockBounceEnabled).toBe(enabled);
+  });
+
+  it.each([undefined, "false", null])(
+    "preserves existing Dock behavior when the saved preference is %s",
+    async (dockBounceEnabled) => {
+      localStorage.setItem("workspace-settings", JSON.stringify({ dockBounceEnabled }));
+      vi.resetModules();
+      const { useSettingsStore: freshStore } = await import("./settings.model");
+      expect(freshStore.getState().dockBounceEnabled).toBe(true);
+    },
+  );
 
   it("uses defaults when localStorage has corrupt JSON", async () => {
     localStorage.setItem("workspace-settings", "not valid json {{{");

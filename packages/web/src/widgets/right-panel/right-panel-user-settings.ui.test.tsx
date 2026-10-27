@@ -10,11 +10,44 @@ vi.mock("~/shared/lib/notification-sound", () => ({
   playNotificationSound: vi.fn(),
 }));
 
+const isElectronDarwinMock = vi.hoisted(() => vi.fn(() => false));
+vi.mock("~/shared/lib/electron", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectronDarwin: isElectronDarwinMock,
+}));
+
 describe("RightPanelUserSettings", () => {
   afterEach(() => {
+    isElectronDarwinMock.mockReturnValue(false);
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "system", paletteId: "blue-cold" });
     setLocale("en");
+  });
+
+  it("lets macOS desktop users disable and re-enable Dock bouncing", () => {
+    isElectronDarwinMock.mockReturnValue(true);
+    const { unmount } = renderWithProviders(
+      <RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />,
+    );
+    const toggle = screen.getByRole("switch", { name: "Bounce Dock icon" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
+    expect(useSettingsStore.getState().notificationSound).toBe("default");
+
+    unmount();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    const restoredToggle = screen.getByRole("switch", { name: "Bounce Dock icon" });
+    expect(restoredToggle).not.toBeChecked();
+    fireEvent.click(restoredToggle);
+    expect(restoredToggle).toBeChecked();
+  });
+
+  it("hides the Dock bounce preference outside the macOS desktop app", () => {
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("switch", { name: "Bounce Dock icon" })).not.toBeInTheDocument();
   });
 
   it("navigates back and closes from the nested header", () => {

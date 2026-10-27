@@ -12,8 +12,9 @@ import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messe
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useSettingsStore } from "~/features/settings/settings.model";
+import { getDockBounceEnabledForOwner, useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { isElectronDarwin } from "~/shared/lib/electron";
 import { createLogger } from "~/shared/lib/logger";
 import {
   registerNotifiedWorkspaceMessage,
@@ -404,7 +405,11 @@ async function runNotificationEffects(options: {
     if (notificationSound !== "none") {
       playNotificationSound(notificationSound);
     }
-    osIntegration.requestAttention();
+    const attentionRequested =
+      !isElectronDarwin() || getDockBounceEnabledForOwner(candidate.ownerKey);
+    if (attentionRequested) {
+      osIntegration.requestAttention();
+    }
 
     const shown = await notificationShown;
     notificationLog.warn("candidate notification effects completed", {
@@ -413,7 +418,7 @@ async function runNotificationEffects(options: {
       trigger,
       nativeShown: shown,
       sound: notificationSound,
-      attentionRequested: true,
+      attentionRequested,
     });
     registerNotifiedWorkspaceMessage(candidate.ownerKey, messageUuid);
   } catch (error) {

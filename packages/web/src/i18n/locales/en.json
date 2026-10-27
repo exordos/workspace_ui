@@ -964,6 +964,7 @@
     "personalInfo": "Personal info",
     "appVersion": "App version",
     "notificationSound": "Notification sound",
+    "dockBounce": "Bounce Dock icon",
     "language": "Language",
     "authIdleTimeout": "Auto sign-out",
     "authIdleTimeoutHint": "After inactivity",
