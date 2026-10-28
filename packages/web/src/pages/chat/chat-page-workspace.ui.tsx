@@ -57,7 +57,10 @@ import type {
 } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { runMessengerRuntimeMutation } from "~/entities/messenger/messenger-runtime-mutation.lib";
-import { buildMessengerSecretMarkdown } from "~/entities/messenger/messenger-secret-message.lib";
+import {
+  buildMessengerSecretMarkdown,
+  restoreMessengerSecretMarkdown,
+} from "~/entities/messenger/messenger-secret-message.lib";
 import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
 import { runWorkspaceTopicDoneToggle } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { selectMessengerSidebarTopicsForStream } from "~/entities/messenger/messenger-sidebar.lib";
@@ -164,6 +167,7 @@ import {
   parseWorkspaceMessageBody,
 } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import {
+  collectWorkspaceMessageSecretReferences,
   hasWorkspaceMessageSecretContent,
   containsWorkspaceMessageSecretReference,
 } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
@@ -850,13 +854,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     };
     const unsubscribeKeys = subscribeRealChatKeyChanges((change) => {
       const source = encryptedEditSourceRef.current;
-      if (source?.payload.kind !== "e2ee") return;
+      if (source == null) return;
+      const references =
+        source.payload.kind === "e2ee"
+          ? [{ streamUuid: source.streamUuid, keyUuid: source.payload.keyUuid }]
+          : source.payload.kind === "markdown"
+            ? collectWorkspaceMessageSecretReferences(
+                parseWorkspaceMessageBody(source.payload.content),
+              )
+            : [];
       if (
         change == null ||
         (change.kind === "removed" &&
           change.ownerKey === ownerKey &&
-          change.streamUuid === source.streamUuid &&
-          change.keyUuid === source.payload.keyUuid)
+          references.some(
+            (reference) =>
+              reference.streamUuid === change.streamUuid && reference.keyUuid === change.keyUuid,
+          ))
       )
         clear();
     });
@@ -866,10 +880,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const latest = selectWorkspaceMessageById(messages, source.uuid);
       if (
         messages.ownerKey !== ownerKey ||
-        latest?.payload.kind !== "e2ee" ||
-        source.payload.kind !== "e2ee" ||
+        latest?.payload.kind !== source.payload.kind ||
+        (latest.payload.kind !== "e2ee" && latest.payload.kind !== "markdown") ||
+        (source.payload.kind !== "e2ee" && source.payload.kind !== "markdown") ||
         latest.payload.content !== source.payload.content ||
-        latest.payload.keyUuid !== source.payload.keyUuid
+        (source.payload.kind === "e2ee" &&
+          (latest.payload.kind !== "e2ee" || latest.payload.keyUuid !== source.payload.keyUuid))
       )
         clear();
     });
@@ -2307,6 +2323,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             if (session == null) throw new Error(t("e2ee.cryptoUnavailable"));
             const fragments = parseWorkspaceSecretDraft(markdown);
             await session.prepareFragmentKey();
+            if (!isUiActionCurrent() || composerEditAttemptRef.current !== editAttempt)
+              throw new Error("stale");
             return session.editMarkdown(
               message,
               {
@@ -2323,6 +2341,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             signal,
             messageUuid: message.uuid,
             markdown,
+            sourceMessage: message,
+            isCurrent: isUiActionCurrent,
           });
         });
         if (result.status !== "applied") throw new Error(t("message.editFailed"));
@@ -2397,7 +2417,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       setComposerEditSession(null);
       setComposerEditMessageUuid(null);
       setComposerEditAttachments([]);
-      encryptedEditSourceRef.current = payload.kind === "e2ee" ? message : null;
+      encryptedEditSourceRef.current =
+        payload.kind === "e2ee" ||
+        (payload.kind === "markdown" &&
+          collectWorkspaceMessageSecretReferences(parseWorkspaceMessageBody(payload.content))
+            .length > 0)
+          ? message
+          : null;
       const isCurrent = () => {
         const latestRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         const latestMessages = useWorkspaceMessageStore.getState();
@@ -2438,20 +2464,50 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
                 createIdentity: () => createWorkspaceReplyTabIdentity(),
               });
         if (result.status === "stale" || !isCurrent()) return;
-        const restoredReplySession = result.restored;
+        const restoreSecrets = (content: string) =>
+          payload.kind === "e2ee"
+            ? Promise.resolve(content)
+            : restoreMessengerSecretMarkdown(content, async (reference) => {
+                const decrypted = await decryptRealChatEnvelopeResult(
+                  runtimeContext,
+                  { projectId: message.projectId, ...reference },
+                  isCurrent,
+                );
+                return decrypted.status === "ready" ? decrypted.plaintext : null;
+              });
+        const restoredReplySession = result.restored?.session;
+        const restoredTabs =
+          restoredReplySession == null
+            ? null
+            : await Promise.all(
+                restoredReplySession.tabs.map(async (tab) => ({
+                  ...tab,
+                  answer: await restoreSecrets(tab.answer),
+                })),
+              );
+        const editableMarkdown =
+          restoredTabs == null
+            ? await restoreSecrets(editContent.markdown)
+            : (restoredTabs.find((tab) => tab.id === restoredReplySession?.activeTabId)?.answer ??
+              "");
+        if (!isCurrent()) return;
         setActionError(null);
-        setRestoredWorkspaceReplySession(restoredReplySession?.session ?? null);
+        setRestoredWorkspaceReplySession(
+          restoredReplySession != null && restoredTabs != null
+            ? { ...restoredReplySession, tabs: restoredTabs }
+            : null,
+        );
         setComposerEditMessageUuid(message.uuid);
         setComposerEditAttachments(editContent.attachments);
         setComposerEditSession({
           messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-          initialMarkdown: restoredReplySession?.activeAnswer ?? editContent.markdown,
+          initialMarkdown: editableMarkdown,
           ...(payload.kind === "e2ee" ? { sessionKey: message.uuid } : {}),
           ...(restoredReplySession == null
             ? {}
             : {
                 preserveWorkspaceReplyContext: true,
-                sessionKey: `reply:${restoredReplySession.session.activeTabId ?? ""}`,
+                sessionKey: `reply:${restoredReplySession.activeTabId ?? ""}`,
               }),
         });
       })().catch(() => {

@@ -2,6 +2,7 @@ import { createMessengerPlacementUuid } from "../packages/web/src/entities/messe
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerUpdateMessageRequestBody,
 } from "../packages/web/src/shared/api/messenger.types";
 import { test, expect } from "./fixtures";
 import { expectReadyMessageComposer } from "./helpers/message-composer";
@@ -28,6 +29,7 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   const history: WorkspaceMessengerMessageDto[] = [];
   const requests: WorkspaceMessengerCreateMessageRequestBody[] = [];
   const draftWrites: unknown[] = [];
+  const edits: WorkspaceMessengerUpdateMessageRequestBody[] = [];
   let loseNextMarkdown = false;
   const committed = new Map<string, WorkspaceMessengerMessageDto>();
   await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
@@ -63,6 +65,18 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
       return route.fulfill({ status: 503, json: { message: "Response lost after commit" } });
     }
     await route.fulfill({ status: 201, json: message });
+  });
+  await page.route(/\/messenger\/messages\/[^/?]+\/?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    const uuid = new URL(route.request().url()).pathname.split("/").filter(Boolean).at(-1);
+    const index = history.findIndex((message) => message.uuid === uuid);
+    const source = history[index];
+    if (source == null) throw new Error("Missing edited message");
+    const body = route.request().postDataJSON() as WorkspaceMessengerUpdateMessageRequestBody;
+    edits.push(body);
+    const updated = { ...source, payload: body.payload, updated_at: new Date().toISOString() };
+    history[index] = updated;
+    await route.fulfill({ json: updated });
   });
   const chatUrl = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`;
   await page.goto(chatUrl);
@@ -181,6 +195,57 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   await expect(secondReady).toContainText("second private line");
   expect(JSON.stringify(requests)).not.toContain("second private line");
   expect(requests.filter((request) => request.payload.kind === "key_announced")).toHaveLength(0);
+
+  await textarea.press("ArrowUp");
+  await expect(textarea).toHaveValue(`Second public :::${multilineSecret}:::`);
+  const editedSecret = "changed private phrase\nchanged private line";
+  await textarea.fill(
+    `Second public edited :::${editedSecret}::: and :::extra private fragment:::`,
+  );
+  await page.waitForTimeout(1_200);
+  expect(JSON.stringify(draftWrites)).not.toContain("changed private phrase");
+  expect(JSON.stringify(draftWrites)).not.toContain("extra private fragment");
+  await page.getByRole("button", { name: /^(save|сохранить)$/i }).click();
+  await expect.poll(() => edits.length).toBe(1);
+  await expect(textarea).toHaveValue("");
+  expect(JSON.stringify(edits)).not.toContain("changed private");
+  expect(JSON.stringify(edits)).not.toContain("extra private");
+  const editedReady = page
+    .locator("[data-workspace-message-bubble]")
+    .filter({ hasText: "Second public edited" })
+    .locator('[data-encrypted-secret-state="ready"]');
+  await expect(editedReady).toHaveCount(2);
+  await editedReady
+    .first()
+    .getByRole("button", { name: /show spoiler|показать спойлер/i })
+    .click();
+  await expect(editedReady.first()).toContainText("changed private line");
+  await page.screenshot({ path: testInfo.outputPath("secret-edited.png") });
+
+  await textarea.press("ArrowUp");
+  await expect(textarea).toHaveValue(
+    `Second public edited :::${editedSecret}::: and :::extra private fragment:::`,
+  );
+  await textarea.fill("Second public edited, now deliberately public");
+  await page.getByRole("button", { name: /^(save|сохранить)$/i }).click();
+  await expect.poll(() => edits.length).toBe(2);
+  expect(edits[1]?.payload).toEqual({
+    kind: "markdown",
+    content: "Second public edited, now deliberately public",
+  });
+  await expect(textarea).toHaveValue("");
+
+  await textarea.press("ArrowUp");
+  await expect(textarea).toHaveValue("Second public edited, now deliberately public");
+  await textarea.fill("Second public :::newly protected text:::");
+  await page.getByRole("button", { name: /^(save|сохранить)$/i }).click();
+  await expect.poll(() => edits.length).toBe(3);
+  await expect(textarea).toHaveValue("");
+  expect(edits[2]?.payload.kind === "markdown" ? edits[2].payload.content : "").toContain(
+    "urn:secret:v1:",
+  );
+  expect(JSON.stringify(edits[2])).not.toContain("newly protected text");
+
   await selectSecret("Third public rotated private phrase", "rotated private phrase");
   await checkbox.check();
   await textarea.press("Enter");
@@ -265,4 +330,7 @@ test("ordinary chat reuses shared keys for selected encrypted fragments and prot
   expect(JSON.stringify(draftWrites)).not.toContain(PROTECTED_TEXT);
   expect(JSON.stringify(draftWrites)).not.toContain("unfinished private phrase");
   expect(JSON.stringify(draftWrites)).not.toContain("second private line");
+  expect(JSON.stringify(draftWrites)).not.toContain("changed private phrase");
+  expect(JSON.stringify(draftWrites)).not.toContain("extra private fragment");
+  expect(JSON.stringify(draftWrites)).not.toContain("newly protected text");
 });
