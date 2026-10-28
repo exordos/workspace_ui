@@ -36,6 +36,7 @@ export interface WorkspaceApiClientOptions {
   projectId?: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
+  binaryCache?: RequestCache;
 }
 
 export type MessengerClientOptions = WorkspaceApiClientOptions;
@@ -363,7 +364,7 @@ export async function getBinaryResult(
     method: "GET",
     // File UUIDs identify immutable bytes for the client. Let the browser
     // reuse a cached response before making another authenticated request.
-    cache: "force-cache",
+    cache: options.binaryCache ?? "force-cache",
     headers: buildMessengerRequestHeaders(
       await resolveMessengerAccessToken(options),
       undefined,

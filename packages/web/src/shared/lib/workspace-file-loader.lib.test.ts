@@ -5,6 +5,7 @@ import {
   createWorkspaceFileResourceCache,
   invalidateWorkspaceFileResourceCache,
   loadWorkspaceFile,
+  subscribeWorkspaceFileResourceInvalidation,
   type WorkspaceFileLoaderOptions,
 } from "./workspace-file-loader.lib";
 
@@ -59,6 +60,41 @@ function requestSignal(): AbortSignal {
 describe("loadWorkspaceFile", () => {
   beforeEach(() => {
     downloadMock.mockReset();
+  });
+
+  it("notifies only matching owner/file subscribers and releases them independently", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const unsubscribeFirst = subscribeWorkspaceFileResourceInvalidation(
+      "owner-a",
+      FILE_UUID,
+      first,
+    );
+    const unsubscribeSecond = subscribeWorkspaceFileResourceInvalidation(
+      "owner-a",
+      FILE_UUID,
+      second,
+    );
+    invalidateWorkspaceFileResourceCache("owner-b", FILE_UUID);
+    invalidateWorkspaceFileResourceCache("owner-a", "other-file");
+    expect(first).not.toHaveBeenCalled();
+
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    unsubscribeFirst();
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
+    unsubscribeSecond();
+
+    const unsubscribeNext = subscribeWorkspaceFileResourceInvalidation("owner-a", FILE_UUID, first);
+    unsubscribeSecond();
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+    expect(first).toHaveBeenCalledTimes(2);
+    unsubscribeNext();
+    invalidateWorkspaceFileResourceCache("owner-a", FILE_UUID);
+    expect(first).toHaveBeenCalledTimes(2);
   });
 
   it("joins simultaneous requests with the same owner, runtime, and file key", async () => {
@@ -256,6 +292,27 @@ describe("loadWorkspaceFile", () => {
 
     expect(await (await resourceCache.load(options())).blob.text()).toBe("after");
     expect(downloadMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads the browser cache after invalidation until one fresh download succeeds", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const scopedOptions = options({ ownerKey: "browser-cache-policy-owner" });
+    downloadMock.mockResolvedValueOnce(result("before"));
+    await resourceCache.load(scopedOptions);
+    expect(downloadMock.mock.calls[0]?.[0].binaryCache).toBeUndefined();
+
+    invalidateWorkspaceFileResourceCache(scopedOptions.ownerKey, FILE_UUID);
+    downloadMock.mockRejectedValueOnce(new Error("still unavailable"));
+    await expect(resourceCache.load(scopedOptions)).rejects.toThrow("still unavailable");
+    expect(downloadMock.mock.calls[1]?.[0].binaryCache).toBe("reload");
+
+    downloadMock.mockResolvedValue(result("after"));
+    await resourceCache.load(scopedOptions);
+    expect(downloadMock.mock.calls[2]?.[0].binaryCache).toBe("reload");
+    resourceCache.clear();
+    await resourceCache.load(scopedOptions);
+    expect(downloadMock.mock.calls[3]?.[0].binaryCache).toBeUndefined();
+    resourceCache.clear();
   });
 
   it("does not publish an in-flight result invalidated by a realtime file mutation", async () => {
