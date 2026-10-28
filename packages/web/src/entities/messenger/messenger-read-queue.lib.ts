@@ -137,7 +137,6 @@ export function createMessengerReadQueue(initialContext: WorkspaceRuntimeContext
         return;
       if (
         message.read &&
-        !message.isOwn &&
         queue.lastApplied != null &&
         compareWorkspaceMessages(message, queue.lastApplied) <= 0
       )
