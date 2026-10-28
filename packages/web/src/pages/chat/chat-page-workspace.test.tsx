@@ -13,6 +13,7 @@ import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { notifyRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
+import * as messageLoader from "~/entities/messenger/messenger-messages-loader.lib";
 import {
   settleMessengerOutgoingMessage,
   useMessengerOutboxStore,
@@ -30,6 +31,7 @@ import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import * as conversationOpening from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import {
   clearWorkspaceReplyHandoff,
@@ -2939,6 +2941,31 @@ describe("ChatPage Workspace route", () => {
     );
     expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
     expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve a missing preview topic while a direct message route is loading", async () => {
+    const resolution = vi.spyOn(conversationOpening, "useWorkspaceTopicResolution");
+    const pending =
+      createDeferred<Awaited<ReturnType<typeof messageLoader.fetchMessengerMessageWindow>>>();
+    const fetchWindow = vi
+      .spyOn(messageLoader, "fetchMessengerMessageWindow")
+      .mockReturnValue(pending.promise);
+    useMessengerStore.setState({ topicsById: {} });
+    useWorkspaceMessageStore.getState().clear();
+    seedWorkspaceMessageBody(createMessage());
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId("workspace-location").textContent).toContain(
+        `/message/${MESSAGE_UUID}`,
+      );
+      expect(resolution.mock.calls.every(([input]) => input.topicUuid == null)).toBe(true);
+    } finally {
+      resolution.mockRestore();
+      fetchWindow.mockRestore();
+    }
   });
 
   it("keeps the current same-conversation intent active while its route catches up", async () => {

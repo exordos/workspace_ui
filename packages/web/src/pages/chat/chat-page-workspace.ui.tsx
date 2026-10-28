@@ -23,6 +23,7 @@ import {
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import { decryptRealChatMessage } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
+import { resolveMessengerTopic } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import {
   conversationIdForStream,
   conversationIdForTopic,
@@ -68,7 +69,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  workspaceRuntimeOwnerKey,
+  isWorkspaceRuntimeRequestInvalidated,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatCryptoSession } from "~/features/encrypted-chat-info/chat-crypto-session.hook";
 import {
@@ -89,7 +93,10 @@ import {
   prependWorkspaceComposerExistingAttachmentMarkdown,
   type WorkspaceComposerExistingAttachment,
 } from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
-import { useWorkspaceConversationOpening } from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
+import {
+  useWorkspaceConversationOpening,
+  useWorkspaceTopicResolution,
+} from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
 import {
   deriveWorkspaceDownloadFileName,
   startWorkspaceFileDownload,
@@ -1148,6 +1155,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
+  const handleResolvedTopic = useCallback(
+    (resolved: MessengerTopic) => {
+      if (runtimeContext == null) return;
+      const path = workspaceMessengerTopicRoute({
+        orgId: runtimeContext.organizationId,
+        projectId: runtimeContext.projectId,
+        streamUuid: resolved.streamUuid,
+        topicUuid: resolved.uuid,
+      });
+      if (path !== location.pathname)
+        void navigate(path + location.search + location.hash, { replace: true });
+    },
+    [runtimeContext, location.pathname, location.search, location.hash, navigate],
+  );
+  useWorkspaceTopicResolution({
+    runtimeContext,
+    topicUuid: route?.kind === "topic" ? route.topicUuid : null,
+    topicKnown: topic != null,
+    onResolved: handleResolvedTopic,
+  });
   const isTopicClosed =
     selection.status === "conversation" && selection.kind === "topic" && topic?.isDone === true;
   let lastMessageUuid: MessengerUuid | null = null;
@@ -3638,6 +3665,33 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
       const topic = topicsById[reference.topicUuid];
       if (topic == null) {
+        void resolveMessengerTopic({
+          runtimeContext,
+          topicUuid: reference.topicUuid,
+          getRuntimeContext: getCurrentWorkspaceRuntimeContext,
+        })
+          .then((resolved) => {
+            if (
+              resolved == null ||
+              isWorkspaceRuntimeRequestInvalidated(
+                runtimeContext,
+                getCurrentWorkspaceRuntimeContext,
+              )
+            )
+              return;
+            useMessengerStore
+              .getState()
+              .upsertTopic(workspaceRuntimeOwnerKey(runtimeContext), resolved);
+            void navigate(
+              workspaceMessengerTopicRoute({
+                orgId: runtimeContext.organizationId,
+                projectId: runtimeContext.projectId,
+                streamUuid: resolved.streamUuid,
+                topicUuid: resolved.uuid,
+              }),
+            );
+          })
+          .catch(() => undefined);
         return;
       }
       if (reference.streamUuid != null && topic.streamUuid !== reference.streamUuid) {
@@ -3653,7 +3707,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         }),
       );
     },
-    [navigate, runtimeContext, topicsById],
+    [navigate, runtimeContext, topicsById, getCurrentWorkspaceRuntimeContext],
   );
   const handleSelectStreamPromptTopic = useCallback(
     (topicUuid: MessengerUuid) => {

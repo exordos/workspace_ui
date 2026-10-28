@@ -2657,7 +2657,7 @@ export async function patchCachedMessage(
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
-      [stores.messages, stores.messageBuckets, stores.readBoundaries],
+      [stores.messages, stores.messageBuckets, stores.messageWindows, stores.readBoundaries],
       "readwrite",
     );
     const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
@@ -2666,16 +2666,36 @@ export async function patchCachedMessage(
         .index("byMessage")
         .getAll([ownerKey, message.uuid]),
     );
+    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+      transaction.objectStore(stores.messages).get(cacheRowId(ownerKey, message.uuid)),
+    );
+    const moved =
+      previous != null &&
+      (previous.message.streamUuid !== message.streamUuid ||
+        previous.message.topicUuid !== message.topicUuid);
     const targetConversationIds =
-      existingBuckets.length > 0
+      existingBuckets.length > 0 && !moved
         ? existingBuckets.map((bucket) => bucket.conversationId)
         : bucketConversationIdsForMessage(message);
     await putMessageRows(transaction, ownerKey, [message]);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
+    if (moved) {
+      for (const bucket of existingBuckets) {
+        if (!targetConversationIds.includes(bucket.conversationId)) bucketStore.delete(bucket.id);
+      }
+    }
     for (const bucketConversationId of targetConversationIds) {
       bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
     }
 
+    if (moved) {
+      for (const conversationId of new Set([
+        ...existingBuckets.map((bucket) => bucket.conversationId),
+        ...targetConversationIds,
+      ])) {
+        await retainConversationMessages(transaction, ownerKey, conversationId, 0);
+      }
+    }
     await transactionDone(transaction);
   } catch {
     return;

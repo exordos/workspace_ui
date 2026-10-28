@@ -1,10 +1,54 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { resolveMessengerTopic } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { readMessengerConversationPosition } from "~/entities/messenger/messenger-conversation-position.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
-import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerTopic, MessengerConversationId } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  workspaceRuntimeOwnerKey,
+  isWorkspaceRuntimeRequestInvalidated,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+
+/** Resolve old links and the selected topic after a realtime rekey. */
+export function useWorkspaceTopicResolution({
+  runtimeContext,
+  topicUuid,
+  topicKnown,
+  onResolved,
+}: {
+  runtimeContext: WorkspaceRuntimeContext | null;
+  topicUuid: string | null;
+  topicKnown: boolean;
+  onResolved: (topic: MessengerTopic) => void;
+}) {
+  useEffect(() => {
+    if (runtimeContext == null || topicUuid == null || topicKnown) return;
+    const controller = new AbortController();
+    void resolveMessengerTopic({
+      runtimeContext,
+      topicUuid,
+      signal: controller.signal,
+      getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+    })
+      .then((topic) => {
+        if (
+          topic == null ||
+          isWorkspaceRuntimeRequestInvalidated(
+            runtimeContext,
+            () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            controller.signal,
+          )
+        )
+          return;
+        useMessengerStore.getState().upsertTopic(workspaceRuntimeOwnerKey(runtimeContext), topic);
+        onResolved(topic);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [onResolved, runtimeContext, topicKnown, topicUuid]);
+}
 
 interface OpeningState {
   scope: string;
