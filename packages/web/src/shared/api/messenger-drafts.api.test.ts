@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDraft, deleteDraft, getDraftsPage, updateDraft } from "./messenger-drafts.api";
+import {
+  createDraft,
+  deleteDraft,
+  getDraft,
+  getDraftsPage,
+  updateDraft,
+} from "./messenger-drafts.api";
 import { type MessengerApiError } from "./messenger-transport.internal";
 
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -44,6 +50,28 @@ function call(mock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("messenger drafts API", () => {
+  it.each([
+    { headers: { ETag: '"7"' }, etag: '"7"' },
+    { headers: undefined, etag: '"3"' },
+  ])("loads one draft by UUID with ETag $etag", async ({ headers, etag }) => {
+    const mock = fetchMock(draft, 200, headers);
+    await expect(getDraft({ accessToken: "token", fetchImpl: mock }, DRAFT_UUID)).resolves.toEqual({
+      draft,
+      etag,
+    });
+    expect(call(mock)[0]).toBe(`/api/workspace/v1/messenger/drafts/${DRAFT_UUID}`);
+    expect(call(mock)[1]?.method).toBe("GET");
+  });
+
+  it("preserves a missing single draft response for caller recovery", async () => {
+    const mock = fetchMock({ message: "Draft not found" }, 404);
+    await expect(
+      getDraft({ accessToken: "token", fetchImpl: mock }, DRAFT_UUID),
+    ).rejects.toMatchObject({
+      status: 404,
+    } satisfies Partial<MessengerApiError>);
+  });
+
   it("loads the sorted paginated list and derives an ETag from revision", async () => {
     const mock = fetchMock([draft], 200, { "X-Pagination-Marker": "next" });
     await expect(

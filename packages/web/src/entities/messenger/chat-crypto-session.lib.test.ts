@@ -8,17 +8,18 @@ import type { MessengerMessage } from "./messenger.types";
 const open = vi.hoisted(() => vi.fn());
 vi.mock("./chat-crypto-runtime.lib", () => ({ openRealChatSession: open }));
 
-it("ingests a delayed foreign-source grant while leased, deduplicates route ingestion and stops after release", async () => {
-  const runtime: WorkspaceRuntimeContext = {
-    accountId: "account",
-    instanceId: "instance",
-    organizationId: "org",
-    projectId: "project",
-    userUuid: "reader",
-    organizationOrigin: "https://workspace.example",
-    accessToken: "token",
-    runtimeGeneration: 1,
-  };
+const runtime: WorkspaceRuntimeContext = {
+  accountId: "account",
+  instanceId: "instance",
+  organizationId: "org",
+  projectId: "project",
+  userUuid: "reader",
+  organizationOrigin: "https://workspace.example",
+  accessToken: "token",
+  runtimeGeneration: 1,
+};
+
+it("ingests a delayed foreign-source grant while leased, deduplicates store synchronization and stops after release", async () => {
   const active = {
     load: vi.fn().mockResolvedValue(undefined),
     ingest: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +30,7 @@ it("ingests a delayed foreign-source grant while leased, deduplicates route inge
   useWorkspaceMessageStore.getState().setOwner(owner, false);
   const lease = acquireChatCryptoSession(runtime, "11111111-1111-4111-8111-111111111111");
   await lease.promise;
-  expect(active.ingest).not.toHaveBeenCalled();
+  expect(active.ingest).toHaveBeenCalledExactlyOnceWith([]);
   const grant: MessengerMessage = {
     uuid: "33333333-3333-4333-8333-333333333333",
     conversationId: "stream:11111111-1111-4111-8111-111111111111",
@@ -64,13 +65,37 @@ it("ingests a delayed foreign-source grant while leased, deduplicates route inge
     payload: { kind: "markdown" as const, content: "Public" },
   };
   useWorkspaceMessageStore.getState().applyLiveCreatedMessage(publicMessage);
-  await lease.ingest([grant, publicMessage]);
-  expect(active.ingest).toHaveBeenCalledTimes(1);
+  await lease.sync();
+  expect(active.ingest).toHaveBeenCalledTimes(2);
   lease.release();
   useWorkspaceMessageStore
     .getState()
     .applyLiveCreatedMessage({ ...grant, uuid: "55555555-5555-4555-8555-555555555555" });
   await Promise.resolve();
-  expect(active.ingest).toHaveBeenCalledTimes(1);
+  expect(active.ingest).toHaveBeenCalledTimes(2);
   expect(active.dispose).toHaveBeenCalledOnce();
+});
+
+it("does not ingest a captured store after its owner changes during session loading", async () => {
+  let finishLoad: (() => void) | undefined;
+  const active = {
+    load: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLoad = resolve;
+        }),
+    ),
+    ingest: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+  };
+  open.mockResolvedValue(active);
+  useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtime), false);
+  const lease = acquireChatCryptoSession(runtime, "11111111-1111-4111-8111-111111111111");
+  const ingestion = lease.sync();
+  await vi.waitFor(() => expect(finishLoad).toBeDefined());
+  useWorkspaceMessageStore.getState().setOwner("another-owner", false);
+  finishLoad?.();
+  await ingestion;
+  expect(active.ingest).not.toHaveBeenCalled();
+  lease.release();
 });

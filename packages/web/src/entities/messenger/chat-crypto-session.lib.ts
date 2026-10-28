@@ -4,26 +4,32 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { openRealChatSession } from "./chat-crypto-runtime.lib";
 import type { RealChatSession } from "./chat-crypto-runtime.lib";
-import type { MessengerMessage } from "./messenger.types";
 
 interface SharedSession {
   users: number;
   abort: AbortController;
   promise: Promise<RealChatSession>;
-  lastIngest: string | null;
+  lastIngest: { signature: string; promise: Promise<void> } | null;
+  ingestionFailed: boolean;
+  listeners: Set<() => void>;
   unsubscribeMessages?: () => void;
 }
 const activeSessions = new Map<string, SharedSession>();
 
-async function ingestSessionMessages(
+function syncSessionMessages(
   key: string,
   entry: SharedSession,
   runtime: WorkspaceRuntimeContext,
   streamUuid: string,
-  messages: readonly MessengerMessage[],
 ): Promise<void> {
-  if (entry.abort.signal.aborted || activeSessions.get(key) !== entry) return;
-  const serviceMessages = messages.filter(
+  const state = useWorkspaceMessageStore.getState();
+  if (
+    entry.abort.signal.aborted ||
+    activeSessions.get(key) !== entry ||
+    state.ownerKey !== workspaceRuntimeOwnerKey(runtime)
+  )
+    return Promise.resolve();
+  const serviceMessages = Object.values(state.messagesById).filter(
     (message) =>
       message.streamUuid === streamUuid &&
       message.projectId === runtime.projectId &&
@@ -33,16 +39,34 @@ async function ingestSessionMessages(
   const signature = JSON.stringify(
     serviceMessages.map((message) => [message.uuid, message.authorUuid, message.payload]),
   );
-  if (entry.lastIngest === signature) return;
-  entry.lastIngest = signature;
-  try {
-    const session = await entry.promise;
-    if (!entry.abort.signal.aborted && activeSessions.get(key) === entry)
-      await session.ingest(serviceMessages);
-  } catch (error) {
-    if (entry.lastIngest === signature) entry.lastIngest = null;
-    throw error;
-  }
+  if (entry.lastIngest?.signature === signature) return entry.lastIngest.promise;
+  const ingestion = {
+    signature,
+    promise: entry.promise
+      .then((session) => {
+        if (
+          !entry.abort.signal.aborted &&
+          activeSessions.get(key) === entry &&
+          useWorkspaceMessageStore.getState().ownerKey === workspaceRuntimeOwnerKey(runtime)
+        )
+          return session.ingest(serviceMessages);
+      })
+      .then(
+        () => publish(false),
+        (error: unknown) => {
+          publish(true);
+          throw error;
+        },
+      ),
+  };
+  const publish = (failed: boolean) => {
+    if (entry.abort.signal.aborted || entry.lastIngest !== ingestion) return;
+    if (failed) entry.lastIngest = null;
+    entry.ingestionFailed = failed;
+    for (const listener of entry.listeners) listener();
+  };
+  entry.lastIngest = ingestion;
+  return ingestion.promise;
 }
 
 /** Page and drawer share one domain session for the same live runtime. */
@@ -65,26 +89,23 @@ export function acquireChatCryptoSession(runtime: WorkspaceRuntimeContext, strea
         throw error;
       }
     });
-    shared = { users: 0, abort, promise, lastIngest: null };
+    shared = {
+      users: 0,
+      abort,
+      promise,
+      lastIngest: null,
+      ingestionFailed: false,
+      listeners: new Set(),
+    };
     activeSessions.set(key, shared);
     const entry = shared;
     const ingestStored = () => {
-      const state = useWorkspaceMessageStore.getState();
-      if (state.ownerKey !== workspaceRuntimeOwnerKey(runtime)) return;
-      const messages = Object.values(state.messagesById);
-      if (
-        !messages.some(
-          (message) =>
-            message.streamUuid === streamUuid &&
-            message.projectId === runtime.projectId &&
-            message.payload.kind !== "markdown" &&
-            message.payload.kind !== "e2ee",
-        )
-      )
-        return;
-      void ingestSessionMessages(key, entry, runtime, streamUuid, messages).catch(() => undefined);
+      void syncSessionMessages(key, entry, runtime, streamUuid).catch(() => undefined);
     };
-    entry.unsubscribeMessages = useWorkspaceMessageStore.subscribe(ingestStored);
+    entry.unsubscribeMessages = useWorkspaceMessageStore.subscribe((state, previous) => {
+      if (state.messagesById !== previous.messagesById || state.ownerKey !== previous.ownerKey)
+        ingestStored();
+    });
     ingestStored();
   }
   const entry = shared;
@@ -92,9 +113,15 @@ export function acquireChatCryptoSession(runtime: WorkspaceRuntimeContext, strea
   let released = false;
   return {
     promise: entry.promise,
-    async ingest(messages: readonly MessengerMessage[]): Promise<void> {
-      if (released) return;
-      return ingestSessionMessages(key, entry, runtime, streamUuid, messages);
+    sync(): Promise<void> {
+      return released ? Promise.resolve() : syncSessionMessages(key, entry, runtime, streamUuid);
+    },
+    get ingestionFailed() {
+      return entry.ingestionFailed;
+    },
+    subscribeIngestion(listener: () => void) {
+      entry.listeners.add(listener);
+      return () => entry.listeners.delete(listener);
     },
     release() {
       if (released) return;

@@ -5,12 +5,7 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import {
-  createDraft,
-  deleteDraft,
-  getDraftsPage,
-  updateDraft,
-} from "~/shared/api/messenger-drafts.api";
+import { createDraft, deleteDraft, getDraft, updateDraft } from "~/shared/api/messenger-drafts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { isWorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
 import type { WorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
@@ -248,33 +243,22 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
       if (deleting.privateDeletion === true && deleting.privateCreateUncertain === true) {
         // A previous POST may have committed despite a lost response. Locate its ETag
         // without importing the old body into store/cache or repeating that plaintext POST.
-        let pageMarker: string | undefined;
-        const visited = new Set<string>();
         try {
-          do {
-            const page = await getDraftsPage(buildMessengerRequestOptions(job.runtimeContext), {
-              streamUuid: deleting.streamUuid,
-              topicUuid: deleting.topicUuid,
-              pageMarker,
+          const found = await getDraft(
+            buildMessengerRequestOptions(job.runtimeContext),
+            deleting.draftUuid,
+          );
+          if (!isJobCurrent(job)) return "failed";
+          useWorkspaceComposerDraftStore
+            .getState()
+            .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, deleting.snapshotId, {
+              etag: found.etag,
+              updatedAt: found.draft.updated_at,
             });
-            if (!isJobCurrent(job)) return "failed";
-            const found = page.items.find((item) => item.draft.uuid === deleting.draftUuid);
-            if (found != null) {
-              useWorkspaceComposerDraftStore
-                .getState()
-                .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, deleting.snapshotId, {
-                  etag: found.etag,
-                  updatedAt: found.draft.updated_at,
-                });
-              return "created";
-            }
-            pageMarker = page.nextPageMarker ?? undefined;
-            if (pageMarker != null && visited.has(pageMarker)) return "retry";
-            if (pageMarker != null) visited.add(pageMarker);
-          } while (pageMarker != null);
-          return "retry";
+          return "created";
         } catch {
-          return "retry";
+          // Even 404 cannot rule out a POST that is still committing.
+          return isJobCurrent(job) ? "retry" : "failed";
         }
       }
       useWorkspaceComposerDraftStore.getState().removeDraftByUuid(job.ownerKey, job.draftUuid);

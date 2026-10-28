@@ -1843,15 +1843,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const lease = acquireChatCryptoSession(runtimeContext, reference.streamUuid);
       try {
         const session = await lease.promise;
-        const messages = useWorkspaceMessageStore.getState();
-        if (messages.ownerKey !== workspaceRuntimeOwnerKey(runtimeContext)) return;
-        await session.ingest(
-          Object.values(messages.messagesById).filter(
-            (candidate) =>
-              candidate.streamUuid === reference.streamUuid &&
-              candidate.projectId === runtimeContext.projectId,
-          ),
-        );
+        if (
+          useWorkspaceMessageStore.getState().ownerKey !== workspaceRuntimeOwnerKey(runtimeContext)
+        )
+          return;
+        await lease.sync();
         if (!isCurrent()) return;
         await session.requestEnvelopeKey(reference.keyUuid, reference.envelope, allowUsableKey);
       } catch {

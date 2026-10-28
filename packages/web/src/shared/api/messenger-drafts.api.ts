@@ -60,6 +60,19 @@ export async function getDraftsPage(
   };
 }
 
+export async function getDraft(
+  options: MessengerClientOptions,
+  draftUuid: string,
+): Promise<WorkspaceMessengerDraftSnapshot> {
+  const { data, headers } = await messengerRequestJsonResult(
+    "GET",
+    `/drafts/${draftUuid}`,
+    options,
+  );
+  const draft = parseDto(data, isWorkspaceMessengerDraftDto, "messenger draft response");
+  return { draft, etag: draftEtag(draft, headers) };
+}
+
 export async function createDraft(
   options: MessengerClientOptions,
   body: WorkspaceMessengerCreateDraftRequestBody,

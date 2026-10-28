@@ -14,6 +14,11 @@ describe("encrypted fragment editing", () => {
   it.each([
     `Before ${link} after`,
     `**${link}**`,
+    `[Adam](urn:user:${STREAM}) :smile: ${link} [Adam](urn:user:${STREAM} "silent")`,
+    `@**Adam** :smile: ${link} &amp; \\*literal\\*`,
+    `||public|| ${link}`,
+    `\`\`\`quote\n[Adam](urn:user:${STREAM}) ${link}\n\`\`\``,
+    `\`\`\`spoiler Details\n:smile: ${link}\n\`\`\``,
     `> ${link}\n> public`,
     `- ${link}\n- public`,
     `| Public | Private |\n| --- | --- |\n| text | ${link} |`,
@@ -34,6 +39,21 @@ describe("encrypted fragment editing", () => {
     expect(decrypt).toHaveBeenCalledWith(
       expect.objectContaining({ streamUuid: STREAM, keyUuid: KEY }),
     );
+  });
+
+  it("leaves literal links and original line breaks unchanged when no secret is rendered", async () => {
+    const markdown = `\`${link}\`\r\n\r\n\`\`\`ts\r\n${link}\r\n\`\`\``;
+    const decrypt = vi.fn();
+    expect(await restoreMessengerSecretMarkdown(markdown, decrypt)).toBe(markdown);
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
+  it("fails the entire restoration when any fragment is unavailable", async () => {
+    const decrypt = vi.fn().mockResolvedValueOnce("available").mockResolvedValueOnce(null);
+    await expect(restoreMessengerSecretMarkdown(`${link} and ${link}`, decrypt)).rejects.toThrow(
+      "invalid-secret",
+    );
+    expect(decrypt).toHaveBeenCalledTimes(2);
   });
 
   it("restores multiple generations and re-encrypts every range before transport", async () => {

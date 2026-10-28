@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createDraft = vi.hoisted(() => vi.fn());
 const updateDraft = vi.hoisted(() => vi.fn());
-const getDraftsPage = vi.hoisted(() => vi.fn());
+const getDraft = vi.hoisted(() => vi.fn());
 const deleteDraft = vi.hoisted(() => vi.fn());
 const writeWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 const deleteWorkspaceComposerDraftRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/messenger-drafts.api", () => ({
   createDraft,
-  getDraftsPage,
+  getDraft,
   updateDraft,
   deleteDraft,
 }));
@@ -105,7 +105,7 @@ beforeEach(() => {
   resetWorkspaceComposerDraftStoreForTests();
   vi.clearAllMocks();
   clearLogHistory();
-  getDraftsPage.mockResolvedValue({ items: [], nextPageMarker: null, pageLimit: null });
+  getDraft.mockRejectedValue(new MessengerApiError("not found", 404, null, new Headers()));
   writeWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
   deleteWorkspaceComposerDraftRecord.mockResolvedValue(undefined);
 });
@@ -832,7 +832,7 @@ describe("private composer promotion", () => {
     ).toBe(true);
   });
 
-  it("keeps an uncertain create tombstone when the first remote list is empty", async () => {
+  it("keeps an uncertain create tombstone after 404 until its ETag becomes available", async () => {
     createDraft.mockRejectedValueOnce(new Error("Request timed out"));
     const draft = useWorkspaceComposerDraftStore
       .getState()
@@ -852,12 +852,13 @@ describe("private composer promotion", () => {
     });
     const found = snapshot("private selection", 1, "etag-late");
     found.draft.uuid = draft.draftUuid;
-    getDraftsPage.mockResolvedValueOnce({ items: [found], nextPageMarker: null, pageLimit: null });
+    getDraft.mockResolvedValueOnce(found);
     deleteDraft.mockResolvedValueOnce(undefined);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft.draftUuid, "etag-late");
     expect(Object.values(useWorkspaceComposerDraftStore.getState().draftsByKey)).toHaveLength(0);
     expect(createDraft).toHaveBeenCalledOnce();
+    expect(getDraft).toHaveBeenCalledWith(expect.anything(), draft.draftUuid);
   });
 
   it("recovers the ETag after a lost create response without resending its old body", async () => {
@@ -869,7 +870,7 @@ describe("private composer promotion", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     const found = snapshot("private selection", 1, "etag-found");
     found.draft.uuid = draft.draftUuid;
-    getDraftsPage.mockResolvedValueOnce({ items: [found], nextPageMarker: null, pageLimit: null });
+    getDraft.mockResolvedValueOnce(found);
     deleteDraft.mockResolvedValueOnce(undefined);
     protectWorkspaceComposerDraft({
       runtimeContext,
@@ -880,5 +881,40 @@ describe("private composer promotion", () => {
     expect(createDraft).toHaveBeenCalledOnce();
     expect(deleteDraft).toHaveBeenCalledWith(expect.anything(), draft.draftUuid, "etag-found");
     expect(Object.values(useWorkspaceComposerDraftStore.getState().draftsByKey)).toHaveLength(0);
+  });
+
+  it("ignores an ETag lookup completed after the runtime changes", async () => {
+    createDraft.mockRejectedValueOnce(new Error("Response lost after commit"));
+    const lookup = createDeferred<ReturnType<typeof snapshot>>();
+    getDraft.mockReturnValueOnce(lookup.promise);
+    let currentRuntime = runtimeContext;
+    const getRuntimeContext = () => currentRuntime;
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("private selection"), TARGET)!;
+    syncWorkspaceComposerDraft({ runtimeContext, getRuntimeContext, draft });
+    await vi.advanceTimersByTimeAsync(1_000);
+    protectWorkspaceComposerDraft({ runtimeContext, getRuntimeContext, draft });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(getDraft).toHaveBeenCalledOnce();
+    writeWorkspaceComposerDraftRecord.mockClear();
+
+    currentRuntime = { ...runtimeContext, runtimeGeneration: 2 };
+    const found = snapshot("private selection", 1, "etag-stale");
+    found.draft.uuid = draft.draftUuid;
+    lookup.resolve(found);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[draft.key]).toMatchObject({
+      etag: null,
+      privateDeletion: true,
+      privateCreateUncertain: true,
+      content: { text: "" },
+    });
+    expect(writeWorkspaceComposerDraftRecord).not.toHaveBeenCalled();
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect(updateDraft).not.toHaveBeenCalled();
+    expect(createDraft).toHaveBeenCalledOnce();
+    expect(getDraft).toHaveBeenCalledOnce();
   });
 });

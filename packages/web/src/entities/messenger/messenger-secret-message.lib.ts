@@ -1,7 +1,6 @@
 import { t } from "~/i18n/i18n";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
-import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
-import { collectWorkspaceMessageSecretReferences } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { createWorkspaceMarkdownLexer } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import {
   buildWorkspaceSecretUrn,
   isWorkspaceSecretUrn,
@@ -21,22 +20,32 @@ export async function restoreMessengerSecretMarkdown(
   markdown: string,
   decrypt: (reference: WorkspaceSecretUrnReference) => Promise<string | null>,
 ): Promise<string> {
-  const document = parseWorkspaceMessageBody(markdown);
-  if (collectWorkspaceMessageSecretReferences(document).length === 0) return markdown;
-  if (hasWorkspaceSecretDraft(document.sourceMarkdown)) throw new Error("invalid-secret");
+  const source = markdown.replace(/\r\n?/g, "\n");
+  const lexer = createWorkspaceMarkdownLexer();
   const leaves = (tokens: readonly Token[]): Token[] =>
     tokens.flatMap((token) => {
       let children: readonly Token[] = [];
       if (token.type === "list") children = token.items;
       else if (token.type === "table")
         children = [...token.header, ...token.rows.flat()].flatMap((cell) => cell.tokens);
+      // These legacy fences render their body as Markdown; ordinary code stays opaque.
+      else if (
+        token.type === "code" &&
+        /^(?:quote|spoiler(?:[ \t].*)?)$/i.test(token.lang?.trim() ?? "")
+      )
+        children = lexer.lexer(token.text);
       else if ("tokens" in token && token.type !== "link" && token.type !== "image")
         children = token.tokens ?? [];
       return children.length > 0 ? leaves(children) : [token];
     });
+  // Rendering rewrites mentions and other tokens, so locate ranges in lexical tokens only.
+  const tokens = leaves(lexer.lexer(source));
+  if (!tokens.some((token) => token.type === "link" && parseWorkspaceSecretUrn(token.href)))
+    return markdown;
+  if (hasWorkspaceSecretDraft(source)) throw new Error("invalid-secret");
+  const ranges: { start: number; end: number; reference: WorkspaceSecretUrnReference }[] = [];
   let offset = 0;
-  let result = "";
-  for (const token of leaves(document.markdownTokens)) {
+  for (const token of tokens) {
     // Blockquotes and lists strip line prefixes from their child tokens.
     const pattern = token.raw
       .split("\n")
@@ -48,23 +57,24 @@ export async function restoreMessengerSecretMarkdown(
           : `\n[ \t]*(?:>[ \t]?)*${line}`;
       })
       .join("");
-    const match = new RegExp(pattern).exec(document.sourceMarkdown.slice(offset));
+    const match = new RegExp(pattern).exec(source.slice(offset));
     if (match == null) throw new Error("invalid-secret");
     const start = offset + match.index;
-    const end = start + match[0].length;
-    let replacement = document.sourceMarkdown.slice(start, end);
-    if (token.type === "link" && isWorkspaceSecretUrn(token.href)) {
-      const reference = parseWorkspaceSecretUrn(token.href);
-      if (reference == null) throw new Error("invalid-secret");
-      const plaintext = await decrypt(reference);
-      if (!plaintext?.trim() || hasWorkspaceSecretDraft(plaintext))
-        throw new Error("invalid-secret");
-      replacement = `:::${plaintext}:::`;
-    }
-    result += document.sourceMarkdown.slice(offset, start) + replacement;
-    offset = end;
+    offset = start + match[0].length;
+    if (token.type !== "link" || !isWorkspaceSecretUrn(token.href)) continue;
+    const reference = parseWorkspaceSecretUrn(token.href);
+    if (reference == null) throw new Error("invalid-secret");
+    ranges.push({ start, end: offset, reference });
   }
-  return result + document.sourceMarkdown.slice(offset);
+  let result = "";
+  offset = 0;
+  for (const range of ranges) {
+    const plaintext = await decrypt(range.reference);
+    if (!plaintext?.trim() || hasWorkspaceSecretDraft(plaintext)) throw new Error("invalid-secret");
+    result += source.slice(offset, range.start) + `:::${plaintext}:::`;
+    offset = range.end;
+  }
+  return result + source.slice(offset);
 }
 
 export function buildMessengerSecretMarkdown(
