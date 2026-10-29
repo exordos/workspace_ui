@@ -358,10 +358,14 @@ vi.mock("~/shared/api/messenger-files.api", () => ({
   deleteWorkspaceFile: captured.deleteWorkspaceFile,
 }));
 
-vi.mock("~/shared/lib/workspace-file-loader.lib", () => ({
-  loadWorkspaceFile: captured.loadWorkspaceFile,
-  createWorkspaceFileResourceCache: createTestWorkspaceFileResourceCache,
-}));
+vi.mock("~/shared/lib/workspace-file-loader.lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/workspace-file-loader.lib")>();
+  return {
+    ...actual,
+    loadWorkspaceFile: captured.loadWorkspaceFile,
+    createWorkspaceFileResourceCache: createTestWorkspaceFileResourceCache,
+  };
+});
 
 vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOriginal) => {
   const actual =

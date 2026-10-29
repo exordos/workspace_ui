@@ -511,7 +511,9 @@ function applyFileRealtimeEvent(
   ownerKey: string,
   options: MessengerRealtimeActiveApplierOptions,
 ): void {
-  invalidateWorkspaceFileResourceCache(ownerKey, event.file.uuid);
+  invalidateWorkspaceFileResourceCache(ownerKey, event.file.uuid, {
+    notify: event.kind !== "file.deleted",
+  });
   if (options.onFileChanged != null) {
     void writeRealtimeCacheBestEffort(() => options.onFileChanged?.(ownerKey, event));
   }

@@ -5799,7 +5799,7 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const placeholder = await screen.findByRole("button", {
+    const placeholder = await screen.findByRole("group", {
       name: "This video cannot be played",
     });
     expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
@@ -5839,7 +5839,7 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const placeholder = await screen.findByRole("button", { name: "Failed to load video" });
+    const placeholder = await screen.findByRole("group", { name: "Failed to load video" });
     await waitFor(() => {
       expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
     });
@@ -5944,7 +5944,7 @@ describe("WorkspaceMessageList", () => {
     fireEvent.error(previewImage!);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Изображение" })).toHaveAttribute(
+      expect(screen.getByRole("group", { name: "Изображение" })).toHaveAttribute(
         "data-workspace-preview-status",
         "display-error",
       );
@@ -6332,6 +6332,46 @@ describe("WorkspaceMessageList", () => {
       }),
     );
   });
+
+  it.each(["click", "keyboard"])(
+    "retries failed media with %s without opening or downloading it",
+    async (interaction) => {
+      const user = userEvent.setup();
+      const onDownloadFile = vi.fn();
+      const onOpenWorkspaceMedia = vi.fn();
+      const onLoadWorkspaceFilePreview = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("404"))
+        .mockResolvedValue(new Blob(["image"], { type: "image/png" }));
+      render(
+        <WorkspaceMessageList
+          messages={[
+            createWorkspaceMessage({
+              uuid: "preview-retry-interaction",
+              markdown:
+                "![image.png](urn:image:66666666-6666-4666-8666-666666666666?name=image.png&content_type=image%2Fpng)",
+            }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onDownloadFile, onOpenWorkspaceMedia, onLoadWorkspaceFilePreview }}
+        />,
+      );
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      if (interaction === "keyboard") {
+        retry.focus();
+        await user.keyboard("{Enter}");
+      } else {
+        await user.click(retry);
+      }
+      await waitFor(() => expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument(),
+      );
+      expect(onDownloadFile).not.toHaveBeenCalled();
+      expect(onOpenWorkspaceMedia).not.toHaveBeenCalled();
+    },
+  );
 
   it("opens resolved Workspace mentions through UUID-only callback", () => {
     const onOpenMentionUser = vi.fn();

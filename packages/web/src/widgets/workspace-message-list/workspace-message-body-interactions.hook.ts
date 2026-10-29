@@ -519,6 +519,9 @@ export function useWorkspaceMessageBodyInteractions({
       if (!(target instanceof HTMLElement)) {
         return;
       }
+      if (target.closest("[data-workspace-preview-retry='true']") != null) {
+        return;
+      }
       if (target.closest("video[data-workspace-file-preview='true']") != null) {
         return;
       }
