@@ -14,6 +14,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const CalendarNavigation: Story = { args: { name: "calendar-next", size: 20 } };
 export const EncryptedSpoiler: Story = {
   args: { name: "encrypted_spoiler", size: 32 },
 };

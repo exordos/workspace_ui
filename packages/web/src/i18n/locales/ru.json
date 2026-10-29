@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Дата",
+    "today": "Сегодня",
+    "previousMonth": "Предыдущий месяц",
+    "nextMonth": "Следующий месяц"
+  },
+  "timePicker": {
+    "label": "Время",
+    "hours": "Часы",
+    "minutes": "Минуты",
+    "seconds": "Секунды",
+    "hoursShort": "ч.",
+    "minutesShort": "м.",
+    "secondsShort": "с.",
+    "increase": "Увеличить: {{unit}}",
+    "decrease": "Уменьшить: {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Дата и время"
+  },
+  "pickerExamples": {
+    "empty": "Значение не выбрано",
+    "selected": "Выбрано: {{value}}"
+  },
   "app": {
     "noInstance": "Нет выбранного инстанса Workspace",
     "networkError": "Сетевая ошибка",

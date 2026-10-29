@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Date",
+    "today": "Today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month"
+  },
+  "timePicker": {
+    "label": "Time",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "hoursShort": "h.",
+    "minutesShort": "m.",
+    "secondsShort": "s.",
+    "increase": "Increase {{unit}}",
+    "decrease": "Decrease {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Date and time"
+  },
+  "pickerExamples": {
+    "empty": "No value selected",
+    "selected": "Selected: {{value}}"
+  },
   "app": {
     "name": "Exordos Workspace",
     "loading": "Loading…",
