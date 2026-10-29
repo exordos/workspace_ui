@@ -41,6 +41,7 @@ import {
   editMessengerMessage,
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
+import { canPrepareMessengerEncryptedMessage } from "~/entities/messenger/messenger-message-content.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import {
   applyMessengerMessageWindow,
@@ -2397,7 +2398,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         (selection.status === "conversation" &&
           selection.kind === "topic" &&
           message.topicUuid !== selection.topicUuid) ||
-        (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee")
+        (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee") ||
+        (message.payload.kind === "e2ee" &&
+          useMessengerStore.getState().streamsById[message.streamUuid]?.encryption !== true)
       ) {
         setActionError(t("message.editUnavailable"));
         return;
@@ -3067,7 +3070,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             currentRuntime.runtimeGeneration === runtimeContext.runtimeGeneration &&
             messages.ownerKey === ownerKey &&
             messenger.ownerKey === ownerKey &&
-            messenger.streamsById[message.streamUuid]?.encryption === true &&
+            canPrepareMessengerEncryptedMessage({
+              runtime: currentRuntime,
+              message: currentMessage,
+              catalogOwner: messenger.ownerKey,
+              messageOwner: messages.ownerKey,
+              stream: messenger.streamsById[message.streamUuid],
+            }) &&
             currentMessage.projectId === message.projectId &&
             currentMessage.streamUuid === message.streamUuid &&
             currentMessage.payload.keyUuid === encryptedPayload.keyUuid &&
@@ -3453,7 +3462,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const message = routeMessages[index];
       if (
         message?.isOwn === true &&
-        (message.payload.kind === "e2ee" ||
+        ((message.payload.kind === "e2ee" && stream?.encryption === true) ||
           (message.payload.kind === "markdown" &&
             !hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))))
       ) {
@@ -3462,7 +3471,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
     }
     setActionError(t("message.editUnavailable"));
-  }, [handleEditMessage, routeMessages]);
+  }, [handleEditMessage, routeMessages, stream?.encryption]);
 
   const handleCancelEdit = useCallback(() => {
     composerEditAttemptRef.current += 1;

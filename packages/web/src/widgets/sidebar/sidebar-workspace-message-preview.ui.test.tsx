@@ -140,21 +140,34 @@ afterEach(() => {
 });
 
 describe("Workspace sidebar message preview", () => {
-  it("decrypts with the historical key and leaves both message store and durable cache encrypted", async () => {
-    const fixture = await seedPreview();
-    await writeMessengerMessageBodyCache(fixture.owner, [fixture.message]);
-    const before = useWorkspaceMessageStore.getState().messagesById;
-    const { unmount } = render(<WorkspaceSidebarMessagePreview preview={fixture.preview} />);
-    expect(await screen.findByText("Secret preview")).toBeVisible();
-    expect(screen.getByText(t("common.you"))).toBeVisible();
-    expect(useWorkspaceMessageStore.getState().messagesById).toBe(before);
-    expect(await readMessengerMessageBodyCache(fixture.owner, [fixture.message.uuid])).toEqual([
-      fixture.message,
-    ]);
-    expect(fixture.preview.text).toBe("");
-    unmount();
-    expect(screen.queryByText("Secret preview")).not.toBeInTheDocument();
-  });
+  it.each([true, false])(
+    "decrypts with the historical key without changing store/cache (encryptedChat=%s)",
+    async (encryptedChat) => {
+      const fixture = await seedPreview();
+      if (!encryptedChat) {
+        const catalog = useMessengerStore.getState();
+        const stream = catalog.streamsById[fixture.message.streamUuid];
+        if (stream == null) throw new Error("Missing preview stream");
+        catalog.upsertStream(fixture.owner, {
+          ...stream,
+          encryption: false,
+          currentEncryptionKey: null,
+        });
+      }
+      await writeMessengerMessageBodyCache(fixture.owner, [fixture.message]);
+      const before = useWorkspaceMessageStore.getState().messagesById;
+      const { unmount } = render(<WorkspaceSidebarMessagePreview preview={fixture.preview} />);
+      expect(await screen.findByText("Secret preview")).toBeVisible();
+      expect(screen.getByText(t("common.you"))).toBeVisible();
+      expect(useWorkspaceMessageStore.getState().messagesById).toBe(before);
+      expect(await readMessengerMessageBodyCache(fixture.owner, [fixture.message.uuid])).toEqual([
+        fixture.message,
+      ]);
+      expect(fixture.preview.text).toBe("");
+      unmount();
+      expect(screen.queryByText("Secret preview")).not.toBeInTheDocument();
+    },
+  );
 
   it("shows the missing-key label, refreshes when the key arrives, and hides text when it is deleted", async () => {
     const fixture = await seedPreview();

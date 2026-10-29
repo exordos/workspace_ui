@@ -5,11 +5,7 @@ import {
   resolveEncryptedChatKeyResponse,
 } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/encrypted-chat-service-message.ui";
-import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
-import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
 import { t } from "~/i18n/i18n";
-import { WorkspaceMessageBubblePresentation } from "./workspace-message-bubble-presentation.ui";
-import { createWorkspaceMessageListServerItem } from "./workspace-message-list-grouping.lib";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 
 interface WorkspaceEncryptedMessageBubbleProps extends Omit<
@@ -19,53 +15,6 @@ interface WorkspaceEncryptedMessageBubbleProps extends Omit<
   readonly message: MessengerMessage;
   readonly usersById?: WorkspaceMessageBubbleProps["usersById"];
 }
-const EMPTY_USERS = {};
-const PLACEHOLDER_STATES = {
-  ready: "locked",
-  "missing-key": "locked",
-  loading: "loading",
-  error: "error",
-} as const;
-const PLACEHOLDER_TITLES = {
-  ready: "e2ee.lockedTitle",
-  "missing-key": "e2ee.lockedTitle",
-  loading: "e2ee.messageDecrypting",
-  error: "e2ee.messageDecryptError",
-} as const;
-function EncryptedTextBubble({
-  message,
-  usersById = EMPTY_USERS,
-  ...props
-}: Readonly<WorkspaceEncryptedMessageBubbleProps>) {
-  const presentation = useRealMessagePresentation(message);
-  const plaintext = presentation.status === "ready" ? presentation.plaintext : null;
-  return (
-    <WorkspaceMessageBubblePresentation
-      {...props}
-      topicLabel={undefined}
-      authorOutside={message.authorUuid !== props.currentUserUuid}
-      usersById={usersById}
-      message={createWorkspaceMessageListServerItem(message)}
-      bodyMarkdown={plaintext ?? ""}
-      locked={plaintext == null}
-      requestMessageKeyAvailable={presentation.canRequestKey === true}
-      bodyOverride={
-        plaintext == null ? (
-          <EncryptedMessagePlaceholder
-            state={PLACEHOLDER_STATES[presentation.status]}
-            title={t(PLACEHOLDER_TITLES[presentation.status])}
-            action={
-              presentation.status === "error"
-                ? { label: t("e2ee.messageDecryptRetry"), onClick: presentation.retry }
-                : undefined
-            }
-          />
-        ) : undefined
-      }
-    />
-  );
-}
-
 type KeyResponsePayload = Extract<
   MessengerMessage["payload"],
   { kind: "key_grant" | "key_reject" }
@@ -184,14 +133,13 @@ function KeyRequestServiceMessage({
   );
 }
 
-/** Events use the centered service row; text reuses the ordinary message shell. */
+/** Key events use the centered service row. Message content belongs to the generic bubble. */
 export function WorkspaceEncryptedMessageBubble(
   props: Readonly<WorkspaceEncryptedMessageBubbleProps>,
 ) {
   const { message, actions } = props;
   const payload = message.payload;
-  if (payload.kind === "markdown") return null;
-  if (payload.kind === "e2ee") return <EncryptedTextBubble {...props} />;
+  if (payload.kind === "markdown" || payload.kind === "e2ee") return null;
   if (payload.kind === "key_grant" || payload.kind === "key_reject")
     return <KeyResponseServiceMessage {...props} response={payload} />;
   if (payload.kind === "key_request")

@@ -7,7 +7,7 @@ import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-rende
 import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
-import { useRealSecretPresentation } from "./real-message-presentation.hook";
+import { useSecretFragmentPresentation } from "./secret-fragment-presentation.hook";
 
 export interface EncryptedSecretFragmentProps {
   readonly message: MessengerMessage | null;
@@ -23,7 +23,7 @@ export function EncryptedSecretFragment({
   onRequestKey,
   requestPending,
 }: EncryptedSecretFragmentProps) {
-  const presentation = useRealSecretPresentation(message, reference);
+  const presentation = useSecretFragmentPresentation(message, reference);
   const [requestingScope, setRequestingScope] = useState<{
     reference: WorkspaceSecretUrnReference;
     message: MessengerMessage | null;

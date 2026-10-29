@@ -26,8 +26,11 @@ import {
   buildWorkspaceSecretUrn,
 } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
+import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
+import { createWorkspaceMessageListServerItem } from "./workspace-message-list-grouping.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
+import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
   return {
     uuid: "11111111-1111-4111-8111-111111111111",
@@ -140,14 +143,28 @@ async function seedRealEncryptedMessage(
   useWorkspaceMessageStore.getState().applyLiveCreatedMessage(stored);
   return { stored, owner, stream, runtime, device };
 }
+function MessageBubbleFixture({
+  message,
+  usersById = {},
+  ...props
+}: Readonly<
+  Omit<WorkspaceMessageBubbleProps, "message" | "usersById"> & {
+    message: MessengerMessage;
+    usersById?: WorkspaceMessageBubbleProps["usersById"];
+  }
+>) {
+  return (
+    <WorkspaceMessageBubble
+      {...props}
+      usersById={usersById}
+      message={createWorkspaceMessageListServerItem(message)}
+    />
+  );
+}
+
 function view(stored: MessengerMessage) {
   return (
-    <WorkspaceEncryptedMessageBubble
-      message={stored}
-      currentUserUuid="author"
-      isFirstInGroup
-      isLastInGroup
-    />
+    <MessageBubbleFixture message={stored} currentUserUuid="author" isFirstInGroup isLastInGroup />
   );
 }
 describe("key request service messages", () => {
@@ -574,6 +591,12 @@ describe("real encrypted message presentation", () => {
     expect(quoteHtml).toBeTruthy();
 
     rerender(<WorkspaceMessageList {...props} messages={[stored]} outgoingMessages={[]} />);
+    await waitFor(() =>
+      expect(container.querySelector(`[data-message-uuid='${stored.uuid}']`)).toHaveAttribute(
+        "data-message-kind",
+        "server",
+      ),
+    );
     expect(await screen.findByText("My encrypted answer")).toBeInTheDocument();
     expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
     expect(container.querySelector("[data-workspace-quote='true']")?.innerHTML).toBe(quoteHtml);
@@ -590,9 +613,13 @@ describe("real encrypted message presentation", () => {
     expect(await screen.findByText("encrypted quote")).toBeInTheDocument();
   });
 
-  it.each([undefined, "Saved selected fragment"])(
-    "uses the original historical key for a quote with selected text %s",
-    async (selectedText) => {
+  it.each([
+    { selectedText: undefined, encryptedChat: true },
+    { selectedText: "Saved selected fragment", encryptedChat: true },
+    { selectedText: undefined, encryptedChat: false },
+  ])(
+    "uses the original historical key for a quote (encryptedChat=$encryptedChat, selectedText=$selectedText)",
+    async ({ selectedText, encryptedChat }) => {
       const source = await seedRealEncryptedMessage(
         "Historical original text",
         "44444444-4444-4444-8444-444444444444",
@@ -602,6 +629,16 @@ describe("real encrypted message presentation", () => {
       const { stored } = await seedRealEncryptedMessage(
         `[Alice](urn:quote:${source.stored.uuid}${selectedQuery})\n\nReadable reply`,
       );
+      if (!encryptedChat) {
+        const catalog = useMessengerStore.getState();
+        const stream = catalog.streamsById[stored.streamUuid];
+        if (stream == null) throw new Error("Missing source stream");
+        catalog.upsertStream(source.owner, {
+          ...stream,
+          encryption: false,
+          currentEncryptionKey: null,
+        });
+      }
       const address = {
         owner: source.runtime,
         deviceId: source.device.deviceId,
@@ -794,7 +831,7 @@ describe("real encrypted message presentation", () => {
     const { stored } = await seedRealEncryptedMessage(url);
     const openCall = vi.fn();
     render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -835,7 +872,7 @@ describe("real encrypted message presentation", () => {
       isLastInGroup: true,
     };
     const { rerender } = render(
-      <WorkspaceEncryptedMessageBubble {...props} actions={{ onRequestMessageKey: request }} />,
+      <MessageBubbleFixture {...props} actions={{ onRequestMessageKey: request }} />,
     );
     const button = await screen.findByRole("button", { name: "Request key for this message" });
     expect(button).toBeVisible();
@@ -846,7 +883,7 @@ describe("real encrypted message presentation", () => {
     fireEvent.click(button);
     expect(request).toHaveBeenCalledExactlyOnceWith(stored.uuid);
     rerender(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         {...props}
         actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
       />,
@@ -888,15 +925,15 @@ describe("real encrypted message presentation", () => {
       isLastInGroup: true,
       actions: { onRequestMessageKey: request },
     };
-    const { rerender } = render(<WorkspaceEncryptedMessageBubble {...props} />);
+    const { rerender } = render(<MessageBubbleFixture {...props} />);
     expect(
       await screen.findByRole("button", { name: "Request key for this message" }),
     ).toBeInTheDocument();
-    rerender(<WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />);
+    rerender(<MessageBubbleFixture {...props} presentationMode="preview" />);
     expect(
       screen.queryByRole("button", { name: "Request key for this message" }),
     ).not.toBeInTheDocument();
-    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    rerender(<MessageBubbleFixture {...props} />);
     expect(
       screen.getByRole("button", { name: "Request key for this message" }),
     ).toBeInTheDocument();
@@ -913,7 +950,7 @@ describe("real encrypted message presentation", () => {
       .spyOn(cryptoRuntime, "decryptRealChatMessageResult")
       .mockReturnValue(new Promise(() => {}));
     render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -922,7 +959,7 @@ describe("real encrypted message presentation", () => {
       />,
     );
     await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
-    expect(screen.getByText("Decrypting message…")).toBeInTheDocument();
+    expect(screen.queryByText("Decrypting message…")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Request key for this message" }),
     ).not.toBeInTheDocument();
@@ -939,7 +976,7 @@ describe("real encrypted message presentation", () => {
       const react = vi.fn();
       const requestKey = vi.fn();
       const { container } = render(
-        <WorkspaceEncryptedMessageBubble
+        <MessageBubbleFixture
           message={stored}
           currentUserUuid={currentUserUuid}
           isFirstInGroup
@@ -1009,11 +1046,11 @@ describe("real encrypted message presentation", () => {
       },
     };
     const { container, rerender } = render(
-      <WorkspaceEncryptedMessageBubble {...props} presentationMode="preview" />,
+      <MessageBubbleFixture {...props} presentationMode="preview" />,
     );
     expect(await screen.findByText("Scoped quick actions")).toBeInTheDocument();
     expect(container.querySelector("[data-workspace-message-quick-actions]")).toBeNull();
-    rerender(<WorkspaceEncryptedMessageBubble {...props} />);
+    rerender(<MessageBubbleFixture {...props} />);
     expect(screen.getByRole("button", { name: "Reply" })).toBeInTheDocument();
     act(() => useWorkspaceMessageStore.setState({ ownerKey: "other-owner" }));
     expect(screen.queryByText("Scoped quick actions")).not.toBeInTheDocument();
@@ -1031,7 +1068,7 @@ describe("real encrypted message presentation", () => {
     };
     const onToggleMessageReaction = vi.fn();
     const renderMessage = (message: MessengerMessage) => (
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={message}
         currentUserUuid="author"
         isFirstInGroup
@@ -1156,14 +1193,14 @@ describe("real encrypted message presentation", () => {
       isLastInGroup: true,
     };
     const { rerender } = render(
-      <WorkspaceEncryptedMessageBubble {...props} actions={{ onRequestMessageKey: request }} />,
+      <MessageBubbleFixture {...props} actions={{ onRequestMessageKey: request }} />,
     );
     const button = await screen.findByRole("button", { name: "Request key for this message" });
     fireEvent.click(button);
     expect(request).toHaveBeenCalledWith(stored.uuid);
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     rerender(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         {...props}
         actions={{ onRequestMessageKey: request, requestMessageKeyPending: true }}
       />,
@@ -1204,7 +1241,7 @@ describe("real encrypted message presentation", () => {
     });
     const request = vi.fn();
     const { container } = render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -1223,7 +1260,7 @@ describe("real encrypted message presentation", () => {
   it("does not invoke a pending key request from the menu", async () => {
     const request = vi.fn();
     const { container } = render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={message("locked", { kind: "e2ee", keyUuid: "old", content: "opaque" })}
         currentUserUuid="author"
         isFirstInGroup
@@ -1276,7 +1313,7 @@ describe("real encrypted message presentation", () => {
       }),
     );
     const { container } = render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -1344,7 +1381,7 @@ describe("real encrypted message presentation", () => {
       const preview = vi.fn().mockResolvedValue(new Blob(["media"], { type: contentType }));
       const open = vi.fn();
       const { container } = render(
-        <WorkspaceEncryptedMessageBubble
+        <MessageBubbleFixture
           message={stored}
           currentUserUuid="author"
           isFirstInGroup
@@ -1408,7 +1445,7 @@ describe("real encrypted message presentation", () => {
     const download = vi.fn();
     const preview = vi.fn();
     const { container } = render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -1440,7 +1477,7 @@ describe("real encrypted message presentation", () => {
     const preview = vi.fn().mockReturnValue(pendingPreview);
     const createObjectUrl = vi.spyOn(URL, "createObjectURL");
     const { container } = render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
@@ -1524,7 +1561,7 @@ describe("real encrypted message presentation", () => {
     expect(await screen.findByText("Could not decrypt message")).toBeInTheDocument();
   });
 
-  it("shows accessible loading without exposing the envelope while decryption is pending", async () => {
+  it("withholds the bubble and envelope until message preparation finishes", async () => {
     const { stored } = await seedRealEncryptedMessage("loading fixture");
     let resolve!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
     const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((done) => {
@@ -1532,8 +1569,8 @@ describe("real encrypted message presentation", () => {
     });
     vi.spyOn(cryptoRuntime, "decryptRealChatMessageResult").mockReturnValue(pending);
     const { container } = render(view(stored));
-    expect(screen.getByText("Decrypting message…")).toHaveClass("sr-only");
-    expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector("[data-workspace-message-bubble]")).toBeNull();
+    expect(screen.queryByText("Decrypting message…")).not.toBeInTheDocument();
     expect(container.querySelector("[data-encrypted-message-placeholder] button")).toBeNull();
     expect(container.innerHTML).not.toContain(
       stored.payload.kind === "e2ee" ? stored.payload.content : "opaque",
@@ -1582,7 +1619,7 @@ describe("real encrypted message presentation", () => {
     if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
     rerender(view({ ...stored, payload: { ...stored.payload, content: "changed-envelope" } }));
     expect(screen.queryByText("stable readable fixture")).not.toBeInTheDocument();
-    expect(screen.getByText("Decrypting message…")).toBeInTheDocument();
+    expect(screen.queryByText("Decrypting message…")).not.toBeInTheDocument();
     await act(async () => {
       resolve({ status: "error" });
       await pending;
@@ -1597,7 +1634,7 @@ describe("real encrypted message presentation", () => {
       .spyOn(realChatKeyStorage, "readChatKey")
       .mockRejectedValueOnce(new Error("storage-failed"));
     render(
-      <WorkspaceEncryptedMessageBubble
+      <MessageBubbleFixture
         message={stored}
         currentUserUuid="author"
         isFirstInGroup
