@@ -6,6 +6,37 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.7] — 2026-10-29
+
+### Added
+
+- Protect selected text in ordinary native chats with encrypted spoilers. Public
+  text remains readable; each protected fragment can be revealed or hidden when
+  its shared chat key is available.
+- Edit mixed messages and preserve encrypted fragments in quotes, forwards, and
+  retries. Missing keys lock the affected fragment while keeping public text visible.
+
+### Changed
+
+- Drafts containing protected ranges stay in account-scoped memory instead of
+  local or server draft storage. Marking an ordinary draft as protected removes
+  its stored draft; these protected drafts are cleared on page reload.
+- Ordinary chats show key-service events relevant to the viewing account and
+  retain the existing shared-key request and grant flow.
+
+### Requirements and compatibility
+
+- Dependencies and messenger cache schema version 7 are unchanged. No manual
+  migration or cache reset is required.
+- Use this client version for encrypted-fragment controls. Protection uses the
+  existing native-chat keys, message payloads, and draft revision APIs.
+- Enable protection before entering private text: earlier ordinary input may
+  already have reached a server draft. Attachment bytes remain unencrypted.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.7`. Save or send protected drafts before reloading.
+
 ## [0.9.6] — 2026-10-27
 
 ### Added
