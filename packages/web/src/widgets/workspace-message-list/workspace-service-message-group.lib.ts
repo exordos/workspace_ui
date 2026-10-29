@@ -7,6 +7,36 @@ import type {
 
 export type WorkspaceServiceGroupStatus = "action-required" | "waiting" | "unavailable" | null;
 
+export function isWorkspaceMessageRelevantToAccount(
+  message: MessengerMessage,
+  currentUserUuid: MessengerUuid,
+  actions: WorkspaceMessageListActions | undefined,
+): boolean {
+  const payload = message.payload;
+  if (payload.kind === "markdown" || payload.kind === "e2ee") return true;
+  if (payload.kind === "key_announced") return false;
+  if (message.authorUuid === currentUserUuid) return true;
+  if (payload.kind === "key_request") {
+    return (
+      actions?.getKeyServiceState?.(message)?.canManageKeys === true ||
+      (actions?.getKeyRequestActions?.(message)?.length ?? 0) > 0
+    );
+  }
+  const request = actions?.resolveKeyRequestMessage?.(payload.requestMessageUuid) ?? null;
+  const { recipient } = resolveEncryptedChatKeyResponse({
+    message,
+    request,
+    currentUserUuid,
+    state: undefined,
+  });
+  // Account relevance includes other devices; action availability stays device-scoped.
+  return (
+    recipient != null &&
+    (recipient.userUuid === currentUserUuid ||
+      (request != null && isWorkspaceMessageRelevantToAccount(request, currentUserUuid, actions)))
+  );
+}
+
 function getServiceMessageStatus(
   message: MessengerMessage,
   currentUserUuid: MessengerUuid,

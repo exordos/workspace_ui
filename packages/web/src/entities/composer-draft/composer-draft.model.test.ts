@@ -71,6 +71,40 @@ afterEach(async () => {
 });
 
 describe("workspace composer drafts", () => {
+  it("keeps private shadows only in memory per owner and conversation", async () => {
+    const store = useWorkspaceComposerDraftStore.getState();
+    const first = content("Public :::private A::: tail");
+    const second = content(":::private B:::");
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, first);
+    store.setPrivateDraftShadow(OWNER, "topic:stream-b:topic-b", second);
+    store.setPrivateDraftShadow(OTHER_OWNER, CONVERSATION, second);
+    store.leaveConversation(OWNER, CONVERSATION);
+    expect(await store.hydrateDraft(OWNER, CONVERSATION)).toBeNull();
+    expect(
+      useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+        `${OWNER}:${CONVERSATION}`
+      ]?.content,
+    ).toEqual(first);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 450);
+    });
+    expect(await readWorkspaceComposerDraftRecords(OWNER)).toEqual([]);
+    expect(await readWorkspaceComposerDraftRecords(OTHER_OWNER)).toEqual([]);
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, content("now ordinary"));
+    expect(
+      useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+        `${OWNER}:${CONVERSATION}`
+      ],
+    ).toBeUndefined();
+    await store.disposeOwner(OWNER);
+    expect(
+      Object.values(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey),
+    ).toEqual([expect.objectContaining({ ownerKey: OTHER_OWNER })]);
+    resetWorkspaceComposerDraftStoreForTests();
+    expect(await store.hydrateDraft(OTHER_OWNER, CONVERSATION)).toBeNull();
+    expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
+  });
+
   it("keeps one current draft per owner and conversation and writes after debounce", async () => {
     const first = useWorkspaceComposerDraftStore
       .getState()

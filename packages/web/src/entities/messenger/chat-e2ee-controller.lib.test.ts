@@ -49,6 +49,7 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
   let key = initialKey;
   let issuerAllowed = true;
   let announcerAllowed = true;
+  let requesterAllowed = true;
   let rights: ChatE2eeControllerRights = {
     canRequest: true,
     canGrant: true,
@@ -162,6 +163,7 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
     getRights: () => rights,
     isIssuerAllowed: () => issuerAllowed,
     isAnnouncerAllowed: () => announcerAllowed,
+    isRequesterAllowed: () => requesterAllowed,
     sendPayload,
   });
   const request: ChatE2eeMessage<ChatKeyRequestPayload> = {
@@ -209,6 +211,9 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
     setIssuerAllowed: (next: boolean) => {
       issuerAllowed = next;
     },
+    setRequesterAllowed: (next: boolean) => {
+      requesterAllowed = next;
+    },
     setAnnouncerAllowed: (next: boolean) => {
       announcerAllowed = next;
     },
@@ -216,6 +221,18 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
 }
 
 describe("ChatE2eeController", () => {
+  it("reuses one durable key request across fragment envelopes in the same generation", async () => {
+    const f = fixture();
+    f.pending.clear();
+    expect((await f.controller.requestKey({ bytes: new Uint8Array([1]) })).ok).toBe(true);
+    expect((await f.controller.requestKey({ bytes: new Uint8Array([2]) })).ok).toBe(true);
+    expect(f.pending.size).toBe(1);
+    expect(f.provider.createRequestKeyPair).toHaveBeenCalledOnce();
+    expect(f.sendPayload.mock.calls[0]?.[2]).toBe(f.sendPayload.mock.calls[1]?.[2]);
+    expect(f.sendPayload.mock.calls[0]?.[0]).toEqual(f.sendPayload.mock.calls[1]?.[0]);
+    expect(f.sendPayload.mock.calls[0]?.[0]).not.toHaveProperty("target_message_uuid");
+  });
+
   it.each(["missing-key", "forbidden", "stale", "wrong-generation", "deletion-race"] as const)(
     "rechecks %s before retrying a prepared encrypted payload",
     async (condition) => {
@@ -719,6 +736,23 @@ describe("ChatE2eeController", () => {
       ok: false,
       reason: "missing-key",
     });
+    expect(f.sendPayload).not.toHaveBeenCalled();
+  });
+
+  it("rechecks requester membership after encrypting a grant and before rejecting", async () => {
+    const f = fixture(chatPair);
+    const encrypted = deferred<ChatCryptoResult<{ bytes: Uint8Array }>>();
+    const started = deferred<void>();
+    vi.mocked(f.provider.encryptGroupKeyGrant).mockImplementationOnce(() => {
+      started.resolve();
+      return encrypted.promise;
+    });
+    const granting = f.controller.grantKey(f.request);
+    await started.promise;
+    f.setRequesterAllowed(false);
+    encrypted.resolve(ok({ bytes: new Uint8Array([5]) }));
+    expect(await granting).toEqual({ ok: false, reason: "forbidden" });
+    expect(await f.controller.rejectKey(f.request)).toEqual({ ok: false, reason: "forbidden" });
     expect(f.sendPayload).not.toHaveBeenCalled();
   });
 

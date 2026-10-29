@@ -315,6 +315,86 @@ describe("MessageComposer async send behavior", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("does not clear or focus another draft with identical text after a late send completes", async () => {
+    let accept: () => void = () => {};
+    const accepted = new Promise<void>((resolve) => {
+      accept = resolve;
+    });
+    const onSend = vi.fn().mockReturnValue(accepted);
+    const draft = "Identical content";
+    const { rerender } = renderWithProviders(
+      <MessageComposer draftSessionKey="a" initialValue={draft} onSend={onSend} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+    rerender(<MessageComposer draftSessionKey="b" initialValue={draft} onSend={onSend} />);
+    const otherControl = document.createElement("button");
+    document.body.append(otherControl);
+    otherControl.focus();
+    await act(async () => {
+      accept();
+      await accepted;
+    });
+    expect(screen.getByRole("textbox")).toHaveValue(draft);
+    expect(otherControl).toHaveFocus();
+    otherControl.remove();
+  });
+
+  it("resets the new-key choice when protected text is removed or its draft session changes", async () => {
+    const draft = "Public :::private::: suffix";
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        draftSessionKey="a"
+        initialValue={draft}
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    const checkbox = () => screen.getByRole("checkbox", { name: "Create a new key" });
+    fireEvent.click(checkbox());
+    expect(checkbox()).toBeChecked();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Public only" } });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: draft } });
+    expect(checkbox()).not.toBeChecked();
+    fireEvent.click(checkbox());
+    rerender(
+      <MessageComposer
+        draftSessionKey="b"
+        initialValue={draft}
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    await waitFor(() => expect(checkbox()).not.toBeChecked());
+  });
+
+  it("waits for secret key preparation, then clears and restores focus after local acceptance", async () => {
+    let accept: () => void = () => {};
+    const accepted = new Promise<void>((resolve) => {
+      accept = resolve;
+    });
+    const onSend = vi.fn().mockReturnValue(accepted);
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        optimisticClearOnSend
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+    const draft = "Public :::private::: suffix";
+    fireEvent.change(textbox, { target: { value: draft } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Create a new key/ }));
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+    expect(onSend).toHaveBeenCalledWith(draft, "", undefined, { createNewKey: true });
+    expect(textbox).toHaveValue(draft);
+    await act(async () => {
+      accept();
+      await accepted;
+    });
+    await waitFor(() => expect(textbox).toHaveValue(""));
+    expect(textbox).toBeEnabled();
+    expect(textbox).toHaveFocus();
+  });
+
   it("keeps the composer draft until onSend resolves successfully", async () => {
     let resolveSend: () => void = () => {
       throw new Error("Expected send resolver to be assigned");

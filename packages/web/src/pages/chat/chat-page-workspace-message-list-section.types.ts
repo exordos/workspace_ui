@@ -52,6 +52,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onUnreadMessagesVisible?: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom?: (messageUuids: MessengerUuid[]) => void;
   onRequestMessageKey?: WorkspaceMessageListActions["onRequestMessageKey"];
+  onRequestSecretKey?: WorkspaceMessageListActions["onRequestSecretKey"];
   requestMessageKeyPending?: boolean;
   getKeyRequestActions?: WorkspaceMessageListActions["getKeyRequestActions"];
   getKeyServiceState?: WorkspaceMessageListActions["getKeyServiceState"];

@@ -1,6 +1,13 @@
 import { Marked, type RendererExtension, type RendererThis, type Token, type Tokens } from "marked";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import {
+  buildWorkspaceSecretUrn,
+  isWorkspaceSecretUrn,
+  parseWorkspaceSecretUrn,
+  type WorkspaceSecretUrnReference,
+} from "../workspace-reference-urn.lib";
 import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
 import {
   deriveWorkspaceImagePlaceholderLayout,
@@ -25,6 +32,7 @@ import {
   type WorkspaceMentionMarkedToken,
   type WorkspaceUnsupportedMediaMarkedToken,
 } from "./workspace-message-marked.lib";
+import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import { sanitizeWorkspaceMessageHtml } from "./workspace-message-sanitize.lib";
 import type {
@@ -381,6 +389,12 @@ function renderLinkToken(
   labelHtml: string,
   options: WorkspaceMessageRenderOptions,
 ): string {
+  if (isWorkspaceSecretUrn(token.href)) {
+    const label = escapeHtmlText(t("e2ee.secretFragment"));
+    return parseWorkspaceSecretUrn(token.href) == null
+      ? `<span class="text-text-muted">${label}</span>`
+      : `<span class="workspace-message-secret-host" data-workspace-secret-urn="${escapeHtmlText(token.href)}"><span data-workspace-secret-fallback="true">🔒 ${label}</span></span>`;
+  }
   const titleAttribute =
     token.title != null && token.title.trim().length > 0
       ? ` title="${escapeHtmlText(token.title)}"`
@@ -658,4 +672,71 @@ export function renderWorkspaceMessageBody(
     )
     .join("");
   return { html, metadata: segmented.metadata };
+}
+
+/** Collect only actual Markdown links, never code or arbitrary URN-shaped text. */
+export function collectWorkspaceMessageSecretReferences(
+  document: WorkspaceMessageDocument,
+): readonly WorkspaceSecretUrnReference[] {
+  const references: WorkspaceSecretUrnReference[] = [];
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (token.type !== "link") return;
+    const reference = parseWorkspaceSecretUrn(token.href);
+    if (reference != null) references.push(reference);
+  });
+  return references;
+}
+
+/** Snapshot selection must not serialize text revealed by a nested secret presentation. */
+export function hasWorkspaceMessageSecretContent(
+  document: WorkspaceMessageDocument,
+  depth = 0,
+): boolean {
+  let found = false;
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (found || token.type !== "link") return;
+    if (isWorkspaceSecretUrn(token.href)) {
+      found = true;
+      return;
+    }
+    const reference = parseWorkspaceReferenceUrn(token.href);
+    if (reference?.kind === "quote") {
+      // A live quote can reveal secrets from another message; keep its source reference.
+      found = true;
+    } else if (reference?.kind === "forward") {
+      found =
+        depth >= 12 ||
+        hasWorkspaceMessageSecretContent(
+          parseWorkspaceMessageBody(reference.snapshotMarkdown),
+          depth + 1,
+        );
+    }
+  });
+  return found;
+}
+
+/** Match only canonical fragment links belonging to the message or its immutable snapshots. */
+export function containsWorkspaceMessageSecretReference(
+  document: WorkspaceMessageDocument,
+  secret: WorkspaceSecretUrnReference,
+  depth = 0,
+): boolean {
+  const expected = buildWorkspaceSecretUrn(secret.streamUuid, secret.keyUuid, secret.envelope);
+  if (expected == null || depth > 12) return false;
+  let found = false;
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (found || token.type !== "link") return;
+    if (token.href === expected) {
+      found = true;
+      return;
+    }
+    const reference = parseWorkspaceReferenceUrn(token.href);
+    if (reference?.kind === "forward")
+      found = containsWorkspaceMessageSecretReference(
+        parseWorkspaceMessageBody(reference.snapshotMarkdown),
+        secret,
+        depth + 1,
+      );
+  });
+  return found;
 }

@@ -1,3 +1,4 @@
+import type { MessengerSendOptions } from "~/entities/messenger/messenger-outbox.types";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import type { WorkspaceReplySession } from "~/features/workspace-reply/workspace-reply.types";
@@ -33,6 +34,7 @@ export interface ChatPageComposerSectionProps {
     content: string,
     subjectOverride?: string,
     files?: File[],
+    options?: MessengerSendOptions,
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   optimisticClearOnSend?: boolean;
   sendDisabled?: boolean;
@@ -62,6 +64,7 @@ export interface ChatPageComposerSectionProps {
   onCancelEdit: () => void;
   // Capabilities keep the old composer visible while disabling actions without Workspace backend support.
   composerCapabilities?: MessageComposerCapabilities;
+  secretFragments?: { canRotate: boolean };
   resolveMention?: WorkspaceMessageMentionResolver;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   aiMessagesContext: AiMessageContext[];

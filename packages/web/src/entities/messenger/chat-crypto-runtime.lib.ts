@@ -18,6 +18,7 @@ import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse } from "./chat-e2ee.lib";
 import { editMessengerMessage, sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { ChatCryptoEnvelope } from "./chat-crypto-provider.types";
 import type {
   ChatE2eeControllerRights,
   ChatE2eeControllerState,
@@ -56,6 +57,15 @@ function keyMaterialChanged(before: StoredChatKey | null, after: StoredChatKey |
   );
 }
 
+export interface RealChatSecretFragmentsInput {
+  readonly secretFragments: readonly {
+    readonly text: string;
+    readonly preparedPayload?: ChatEncryptedPayload;
+  }[];
+  readonly buildMarkdown: (payloads: readonly ChatEncryptedPayload[]) => string;
+  readonly onEncryptedFragment?: (index: number, payload: ChatEncryptedPayload) => void;
+}
+
 export interface OpenRealChatSessionOptions {
   readonly runtimeContext: WorkspaceRuntimeContext;
   readonly streamUuid: string;
@@ -84,8 +94,7 @@ export async function openRealChatSession({
     return stream?.uuid === streamUuid &&
       stream.projectId === runtimeContext.projectId &&
       stream.userUuid === runtimeContext.userUuid &&
-      stream.encryption === true &&
-      !!stream.currentEncryptionKey?.keyUuid
+      (stream.encryption === true || stream.sourceName === "native")
       ? stream
       : undefined;
   };
@@ -127,13 +136,17 @@ export async function openRealChatSession({
     owner: { ...baseScope.owner },
     keyUuid,
   });
+  const currentKeyUuid = (): string | null => ownedStream()?.currentEncryptionKey?.keyUuid ?? null;
+  const isChannelEncrypted = () => ownedStream()?.encryption === true;
   const currentScope = (): ChatE2eeControllerScope => {
     assertCurrent();
-    return scopeFor(ownedStream()!.currentEncryptionKey!.keyUuid);
+    const keyUuid = isChannelEncrypted() ? currentKeyUuid() : sendingKeyUuid;
+    if (!keyUuid) throw new Error("missing-key");
+    return scopeFor(keyUuid);
   };
   const generationCurrent = (scope: ChatE2eeControllerScope) =>
-    current() && ownedStream()?.currentEncryptionKey?.keyUuid === scope.keyUuid;
-  const issuerAllowed = (author: string): boolean => {
+    current() && (!isChannelEncrypted() || currentKeyUuid() === scope.keyUuid);
+  const managerAllowed = (author: string): boolean => {
     const catalog = messengerStore.getState();
     const stream = ownedStream(catalog);
     if (!stream) return false;
@@ -156,16 +169,40 @@ export async function openRealChatSession({
       (stream.role === "owner" || stream.role === "administrator")
     );
   };
+  const participantAllowed = (author: string): boolean => {
+    const catalog = messengerStore.getState();
+    const stream = ownedStream(catalog);
+    if (!stream) return false;
+    if (stream.ownerUuid === author) return true;
+    const known = (catalog.streamBindingIdsByStreamId[streamUuid] ?? []).some((uuid) => {
+      const binding = catalog.streamBindingsById[uuid];
+      return (
+        binding?.streamUuid === streamUuid &&
+        binding.projectId === runtimeContext.projectId &&
+        binding.userUuid === author
+      );
+    });
+    return (
+      known ||
+      (catalog.streamBindingsLoadedByStreamId[streamUuid] !== true &&
+        author === runtimeContext.userUuid)
+    );
+  };
+  const issuerAllowed = (author: string): boolean =>
+    isChannelEncrypted()
+      ? managerAllowed(author)
+      : participantAllowed(runtimeContext.userUuid) && participantAllowed(author);
   const rights = (): ChatE2eeControllerRights => {
     const stream = ownedStream();
-    const member = stream !== undefined;
-    const canManage = member && issuerAllowed(runtimeContext.userUuid);
+    const member =
+      stream !== undefined && (isChannelEncrypted() || participantAllowed(runtimeContext.userUuid));
+    const canManage = member && managerAllowed(runtimeContext.userUuid);
     return {
       canRequest: member,
       canSend: member,
       canGrant: canManage,
       canReject: canManage,
-      canRotate: member && stream.ownerUuid === runtimeContext.userUuid,
+      canRotate: member && isChannelEncrypted() && stream.ownerUuid === runtimeContext.userUuid,
     };
   };
   const listeners = new Set<() => void>();
@@ -176,7 +213,7 @@ export async function openRealChatSession({
   let recoveredRotationKeyUuid: string | null = null;
   let reconciledPermissions: string | null = null;
   let committingCatalog = false;
-  let operationDispatchKeyUuid: string | null = null;
+  let operationDispatchKey: { keyUuid: string | null } | null = null;
   let sendingKeyUuid: string | null = null;
   const requests = new Map<string, ChatE2eeMessage<ChatKeyRequestPayload>>();
   const responses = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
@@ -216,10 +253,11 @@ export async function openRealChatSession({
       topicUuid?: string;
       canonicalMessageUuid?: string;
       includeStreamConversation?: boolean;
+      markdownContent?: string;
     } = {},
   ) => {
     assertCurrent();
-    const dispatchKey = { keyUuid: operationDispatchKeyUuid ?? currentScope().keyUuid };
+    const dispatchKey = operationDispatchKey ?? { keyUuid: currentKeyUuid() };
     const topicUuid =
       options.topicUuid ??
       Object.values(messengerStore.getState().topicsById).find(
@@ -239,12 +277,10 @@ export async function openRealChatSession({
       payload,
       expectedCurrentKey: dispatchKey,
       allowHistoricalKey: payload.kind === "e2ee" && payload.keyUuid === sendingKeyUuid,
-      isCurrent: () =>
-        current() &&
-        guard() &&
-        ownedStream()?.currentEncryptionKey?.keyUuid === dispatchKey.keyUuid,
+      isCurrent: () => current() && guard() && currentKeyUuid() === dispatchKey.keyUuid,
       canonicalMessageUuid: options.canonicalMessageUuid,
       includeStreamConversation: options.includeStreamConversation ?? true,
+      markdownContent: options.markdownContent,
     });
     assertCurrent();
     if (result.status !== "applied" || !result.message) throw new Error("send-failed");
@@ -261,9 +297,10 @@ export async function openRealChatSession({
         current() && (keyRevisions.get(generationScope.keyUuid) ?? 0) === revision
           ? generationScope
           : null,
-      getRights: rights,
+      getRights: () => generationRights(generationScope.keyUuid),
       isIssuerAllowed: issuerAllowed,
-      isAnnouncerAllowed: issuerAllowed,
+      isAnnouncerAllowed: managerAllowed,
+      isRequesterAllowed: (author) => isChannelEncrypted() || participantAllowed(author),
       sendPayload: async (payload, guard, canonicalMessageUuid) => {
         const result = await dispatchPayload(payload, guard, { canonicalMessageUuid });
         const mapped = domainMessage(result.message);
@@ -273,6 +310,18 @@ export async function openRealChatSession({
     });
   };
   const generationControllers = new Map<string, ChatE2eeController>();
+  const generationRights = (keyUuid: string): ChatE2eeControllerRights => {
+    const policy = rights();
+    const holder =
+      !isChannelEncrypted() &&
+      policy.canSend &&
+      generationControllers.get(keyUuid)?.getState().access === "ready";
+    return {
+      ...policy,
+      canGrant: policy.canGrant || holder,
+      canReject: policy.canReject || holder,
+    };
+  };
   const generationController = async (keyUuid: string, initializeMetadata = true) => {
     assertCurrent();
     const existing = generationControllers.get(keyUuid);
@@ -322,6 +371,13 @@ export async function openRealChatSession({
       throw new Error(result.reason);
   };
   const selectSendingKey = async (scope = currentScope()): Promise<boolean> => {
+    if (!isChannelEncrypted()) {
+      const previous = await realChatKeyStorage.readLastAvailableChatKey(baseScope);
+      assertCurrent();
+      sendingKeyUuid = previous?.keyUuid ?? null;
+      if (previous) await generationController(previous.keyUuid, false);
+      return true;
+    }
     const key = await realChatKeyStorage.readChatKey(scope);
     assertCurrent();
     if (!generationCurrent(scope)) return false;
@@ -370,6 +426,27 @@ export async function openRealChatSession({
   };
   const reconcileLocal = async (): Promise<void> => {
     for (;;) {
+      if (!isChannelEncrypted()) {
+        const permissions = permissionSnapshot();
+        if (permissions !== reconciledPermissions) {
+          for (const message of [...requests.values(), ...responses.values()])
+            await ingestKeyMessage(message);
+          if (permissionSnapshot() !== permissions) continue;
+          reconciledPermissions = permissions;
+        }
+        await selectSendingKey(scopeFor(sendingKeyUuid ?? ""));
+        reconciledKeyUuid = sendingKeyUuid;
+        reconciliationError = null;
+        bootstrapPending = false;
+        return;
+      }
+      if (!currentKeyUuid()) {
+        sendingKeyUuid = null;
+        reconciledKeyUuid = null;
+        reconciliationError = null;
+        bootstrapPending = false;
+        return;
+      }
       const scope = currentScope();
       if (
         reconciledKeyUuid !== scope.keyUuid ||
@@ -443,16 +520,54 @@ export async function openRealChatSession({
       emit();
       try {
         await reconcileLocal();
-        operationDispatchKeyUuid = currentScope().keyUuid;
+        operationDispatchKey = { keyUuid: currentKeyUuid() };
         return await operation();
       } finally {
-        operationDispatchKeyUuid = null;
+        operationDispatchKey = null;
         sessionPending--;
         emit();
       }
     });
     operationQueue = next.catch(() => undefined);
     return next;
+  };
+  const withEncryptedFragments = async <T>(
+    controller: ChatE2eeController,
+    input: RealChatSecretFragmentsInput,
+    dispatch: (markdown: string, guard: () => boolean, payload: ChatEncryptedPayload) => Promise<T>,
+  ): Promise<T> => {
+    if (!input.secretFragments.length) throw new Error("invalid-message");
+    const payloads: ChatEncryptedPayload[] = [];
+    const guards: (() => boolean)[] = [];
+    const prepare = async (index: number): Promise<T> => {
+      const fragment = input.secretFragments[index];
+      if (!fragment) throw new Error("invalid-message");
+      const plaintext = new TextEncoder().encode(fragment.text);
+      try {
+        const result = await controller.encryptMessage(
+          plaintext,
+          async (payload, guard) => {
+            guards.push(guard);
+            payloads.push(payload);
+            input.onEncryptedFragment?.(index, payload);
+            return index + 1 < input.secretFragments.length
+              ? prepare(index + 1)
+              : dispatch(
+                  input.buildMarkdown(payloads),
+                  () => guards.every((check) => check()),
+                  payload,
+                );
+          },
+          fragment.preparedPayload,
+          true,
+        );
+        if (!result.ok) throw new Error(result.reason);
+        return result.value;
+      } finally {
+        plaintext.fill(0);
+      }
+    };
+    return prepare(0);
   };
   const indexedRequestOutcomes = () => {
     if (requestOutcomes) return requestOutcomes;
@@ -487,6 +602,22 @@ export async function openRealChatSession({
     recordKeyMessage(result.value);
     return result;
   };
+  const requestGenerationKey = async (
+    keyUuid: string,
+    envelope?: ChatCryptoEnvelope,
+    allowUsableKey = false,
+  ) => {
+    const controller = await generationController(keyUuid);
+    const before = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
+    assertCurrent();
+    const result = await controller.requestKey(envelope, allowUsableKey);
+    assertCurrent();
+    const after = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
+    assertCurrent();
+    if (keyMaterialChanged(before, after)) publishKeyUpdate(keyUuid);
+    if (!result.ok) throw new Error(result.reason);
+    return result;
+  };
   let unsubscribeCatalog: (() => void) | undefined;
   let unsubscribeRuntime: (() => void) | undefined;
   let unsubscribeKeys: (() => void) | undefined;
@@ -511,16 +642,39 @@ export async function openRealChatSession({
     requestStatus: "idle",
     error: current() ? reconciliationError : "stale",
   });
+  const prepareFragmentKey = async (createNew = false) => {
+    if (isChannelEncrypted() || !rights().canSend) throw new Error("forbidden");
+    if (!createNew && sendingKeyUuid) return sendingKeyUuid;
+    const generated = await realChatCryptoProvider.createGroupKey();
+    assertCurrent();
+    if (!generated.ok) throw new Error(generated.reason);
+    const keyUuid = crypto.randomUUID();
+    const stored = await realChatKeyStorage.writeChatKey(
+      scopeFor(keyUuid),
+      { groupKey: generated.value },
+      { isCurrent: current, forSending: true },
+    );
+    assertCurrent();
+    if (!stored) throw new Error("storage-failed");
+    sendingKeyUuid = keyUuid;
+    await generationController(keyUuid, false);
+    publishKeyUpdate(keyUuid);
+    return keyUuid;
+  };
   const session = {
     get scope() {
       return currentScope();
     },
     device,
+    get storageScope() {
+      assertCurrent();
+      return { ...baseScope, owner: { ...baseScope.owner } };
+    },
     getState: () => {
       const stream = ownedStream();
-      const controller = stream?.currentEncryptionKey
-        ? generationControllers.get(stream.currentEncryptionKey.keyUuid)
-        : undefined;
+      const selectedKey =
+        stream?.encryption === true ? stream.currentEncryptionKey?.keyUuid : sendingKeyUuid;
+      const controller = selectedKey ? generationControllers.get(selectedKey) : undefined;
       const state = controller?.getState() ?? emptyState();
       return {
         ...state,
@@ -536,15 +690,30 @@ export async function openRealChatSession({
       getKeyRequestOutcomes()
         .filter((item) => item.status === "pending")
         .map((item) => item.request),
+    canRespondToKeyRequest: (uuid: string) => {
+      const request = indexedRequestOutcomes().get(uuid)?.request;
+      if (!request || (!isChannelEncrypted() && !participantAllowed(request.authorUuid)))
+        return false;
+      const policy = generationRights(request.payload.keyUuid);
+      return policy.canGrant || policy.canReject;
+    },
     canGrantKey: (uuid: string) => {
       const request = pendingRequest(uuid);
       return (
-        rights().canGrant &&
         !!request &&
+        (isChannelEncrypted() || participantAllowed(request.authorUuid)) &&
+        generationRights(request.payload.keyUuid).canGrant &&
         generationControllers.get(request.payload.keyUuid)?.getState().access === "ready"
       );
     },
-    canRejectKey: (uuid: string) => rights().canReject && !!pendingRequest(uuid),
+    canRejectKey: (uuid: string) => {
+      const request = pendingRequest(uuid);
+      return (
+        !!request &&
+        (isChannelEncrypted() || participantAllowed(request.authorUuid)) &&
+        generationRights(request.payload.keyUuid).canReject
+      );
+    },
     isIssuerAllowed: issuerAllowed,
     getGenerationState: (keyUuid: string) => generationControllers.get(keyUuid)?.getState() ?? null,
     subscribe(listener: () => void) {
@@ -605,20 +774,14 @@ export async function openRealChatSession({
             mapped.payload.keyUuid !== requestedKeyUuid)
         )
           throw new Error("invalid-message");
-        const controller = await generationController(requestedKeyUuid);
-        const beforeKey = await realChatKeyStorage.readChatKey(scopeFor(requestedKeyUuid));
-        assertCurrent();
-        const result = await controller.requestKey(
+        return requestGenerationKey(
+          requestedKeyUuid,
           mapped?.payload.kind === "e2ee" ? mapped.payload.content : undefined,
           allowUsableKey,
         );
-        assertCurrent();
-        const afterKey = await realChatKeyStorage.readChatKey(scopeFor(requestedKeyUuid));
-        assertCurrent();
-        if (keyMaterialChanged(beforeKey, afterKey)) publishKeyUpdate(requestedKeyUuid);
-        if (!result.ok) throw new Error(result.reason);
-        return result;
       }),
+    requestEnvelopeKey: (keyUuid: string, envelope: ChatCryptoEnvelope, allowUsableKey = false) =>
+      run(() => requestGenerationKey(keyUuid, envelope, allowUsableKey)),
     grantKey: (uuid: string) => run(() => grantRequest(uuid)),
     rejectKey: (uuid: string) =>
       run(async () => {
@@ -653,19 +816,19 @@ export async function openRealChatSession({
         }
         return outcomes;
       }),
+    prepareFragmentKey: (createNew = false) => run(() => prepareFragmentKey(createNew)),
     reissueKey: () =>
       run(async () => {
-        if (recoveredRotationKeyUuid === currentScope().keyUuid) {
+        if (recoveredRotationKeyUuid !== null && recoveredRotationKeyUuid === currentKeyUuid()) {
           recoveredRotationKeyUuid = null;
           return { status: "applied" as const, ownerKey: owner, message: null };
         }
         if (!rights().canRotate) throw new Error("forbidden");
-        const previousKeyUuid = currentScope().keyUuid;
+        const previousKeyUuid = currentKeyUuid();
         const allowed = () =>
           current() &&
           rights().canRotate &&
-          (currentScope().keyUuid === previousKeyUuid ||
-            currentScope().keyUuid === rotatingKeyUuid);
+          (currentKeyUuid() === previousKeyUuid || currentKeyUuid() === rotatingKeyUuid);
         const stages = await realChatKeyStorage.listStagedCreations({
           owner: runtimeContext,
           deviceId: device.deviceId,
@@ -722,7 +885,7 @@ export async function openRealChatSession({
         if (result.status !== "applied") throw new Error("send-failed");
         assertCurrent();
         const stream = ownedStream()!;
-        const liveKeyUuid = stream.currentEncryptionKey!.keyUuid;
+        const liveKeyUuid = stream.currentEncryptionKey?.keyUuid ?? null;
         if (liveKeyUuid !== previousKeyUuid && liveKeyUuid !== stage.keyUuid)
           throw new Error("stale");
         if (!rights().canRotate) throw new Error("forbidden");
@@ -754,6 +917,12 @@ export async function openRealChatSession({
       readonly expectedDeviceId?: string;
       readonly preparedPayload?: ChatEncryptedPayload;
       readonly onEncryptedPayload?: (payload: ChatEncryptedPayload) => void;
+      readonly secretFragments?: readonly {
+        readonly text: string;
+        readonly preparedPayload?: ChatEncryptedPayload;
+      }[];
+      readonly buildMarkdown?: (payloads: readonly ChatEncryptedPayload[]) => string;
+      readonly onEncryptedFragment?: (index: number, payload: ChatEncryptedPayload) => void;
     }) =>
       run(async () => {
         if (!sendingKeyUuid) throw new Error("missing-key");
@@ -763,19 +932,66 @@ export async function openRealChatSession({
         )
           throw new Error("invalid-key");
         const controller = await generationController(sendingKeyUuid);
-        const result = await controller.encryptMessage(
-          new TextEncoder().encode(input.text),
-          (payload, guard) => {
-            input.onEncryptedPayload?.(payload);
-            return dispatchPayload(payload, guard, input);
-          },
-          input.preparedPayload,
-        );
-        if (!result.ok) throw new Error(result.reason);
-        return result.value;
+        if (input.secretFragments) {
+          if (!input.buildMarkdown) throw new Error("invalid-message");
+          return withEncryptedFragments(
+            controller,
+            {
+              secretFragments: input.secretFragments,
+              buildMarkdown: input.buildMarkdown,
+              onEncryptedFragment: input.onEncryptedFragment,
+            },
+            (markdownContent, guard, payload) =>
+              dispatchPayload(payload, guard, { ...input, markdownContent }),
+          );
+        }
+        const plaintext = new TextEncoder().encode(input.text);
+        try {
+          const result = await controller.encryptMessage(
+            plaintext,
+            (payload, guard) => {
+              input.onEncryptedPayload?.(payload);
+              return dispatchPayload(payload, guard, input);
+            },
+            input.preparedPayload,
+          );
+          if (!result.ok) throw new Error(result.reason);
+          return result.value;
+        } finally {
+          plaintext.fill(0);
+        }
       }),
     decrypt: (message: MessengerMessage) =>
       decryptRealChatMessage(runtimeContext, message, current),
+    editMarkdown: (
+      message: MessengerMessage,
+      input: RealChatSecretFragmentsInput,
+      signal?: AbortSignal,
+    ) =>
+      run(async () => {
+        if (
+          message.payload.kind !== "markdown" ||
+          message.streamUuid !== streamUuid ||
+          message.projectId !== runtimeContext.projectId ||
+          !message.isOwn ||
+          message.authorUuid !== runtimeContext.userUuid
+        )
+          throw new Error("invalid-message");
+        if (!sendingKeyUuid) throw new Error("missing-key");
+        const controller = await generationController(sendingKeyUuid);
+        return withEncryptedFragments(controller, input, (markdown, guard) =>
+          editMessengerMessage({
+            runtimeContext,
+            getRuntimeContext,
+            signal,
+            messageUuid: message.uuid,
+            markdown,
+            sourceMessage: message,
+            messengerStore,
+            isCurrent: guard,
+          }),
+        );
+      }),
     edit: (message: MessengerMessage, text: string, signal?: AbortSignal) =>
       run(async () => {
         if (
@@ -913,25 +1129,48 @@ export async function decryptRealChatMessageResult(
 ): Promise<RealChatMessageDecryption> {
   if (!isCurrent() || message.projectId !== runtime.projectId || message.payload.kind !== "e2ee")
     return { status: "missing-key" };
+  const mapped = domainMessage(message);
+  if (mapped?.payload.kind !== "e2ee") return { status: "error" };
+  return decryptRealChatEnvelopeResult(
+    runtime,
+    {
+      projectId: message.projectId,
+      streamUuid: message.streamUuid,
+      keyUuid: mapped.payload.keyUuid,
+      envelope: mapped.payload.content,
+    },
+    isCurrent,
+  );
+}
+
+export async function decryptRealChatEnvelopeResult(
+  runtime: WorkspaceRuntimeContext,
+  content: {
+    readonly projectId: string;
+    readonly streamUuid: string;
+    readonly keyUuid: string;
+    readonly envelope: ChatCryptoEnvelope;
+  },
+  isCurrent: () => boolean,
+): Promise<RealChatMessageDecryption> {
+  if (!isCurrent() || content.projectId !== runtime.projectId) return { status: "missing-key" };
   try {
     const device = await realChatKeyStorage.readDeviceIdentity(runtime);
     if (!isCurrent() || !device) return { status: "missing-key" };
     const address = {
       owner: runtime,
       deviceId: device.deviceId,
-      streamUuid: message.streamUuid,
-      keyUuid: message.payload.keyUuid,
+      streamUuid: content.streamUuid,
+      keyUuid: content.keyUuid,
     };
     const deletionRevision = await realChatKeyStorage.readChatKeyDeletionRevision(address);
     if (!isCurrent()) return { status: "missing-key" };
     const key = await realChatKeyStorage.readChatKey(address);
     if (!isCurrent() || !key?.groupKey) return { status: "missing-key" };
-    const mapped = domainMessage(message);
-    if (mapped?.payload.kind !== "e2ee") return { status: "error" };
     const result = await realChatCryptoProvider.decryptMessage({
       groupKey: key.groupKey,
-      envelope: mapped.payload.content,
-      context: { streamUuid: message.streamUuid, keyUuid: message.payload.keyUuid },
+      envelope: content.envelope,
+      context: { streamUuid: content.streamUuid, keyUuid: content.keyUuid },
     });
     try {
       if (!isCurrent()) return { status: "missing-key" };

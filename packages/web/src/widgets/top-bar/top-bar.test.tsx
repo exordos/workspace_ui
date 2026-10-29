@@ -520,6 +520,52 @@ describe("TopBar", () => {
     expect(screen.getByLabelText(/online/i)).toBeInTheDocument();
   });
 
+  it.each([
+    { firstName: " Bob ", lastName: " Workspace ", expected: "Bob Workspace" },
+    { firstName: null, lastName: null, expected: "bob" },
+    { firstName: "  ", lastName: " ", expected: "bob" },
+    { firstName: "Bob", lastName: null, expected: "Bob" },
+  ])(
+    "shows the hovered account name immediately: $expected",
+    ({ firstName, lastName, expected }) => {
+      const currentSession = createWorkspaceSession();
+      const otherSession = createWorkspaceSession({
+        accountId: "account-b",
+        userUuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+        login: "bob@example.com",
+        profile: {
+          ...currentSession.profile,
+          uuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+          username: "bob",
+          firstName,
+          lastName,
+        },
+      });
+      useWorkspaceAuthStore.setState({
+        sessions: [currentSession, otherSession],
+        currentAccountId: currentSession.accountId,
+      });
+      renderWithProviders(<TopBar />);
+
+      const button = screen.getByTestId("instance-quick-account-b");
+      expect(button).not.toHaveAttribute("title");
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      fireEvent.pointerEnter(button);
+      const tooltip = screen.getByRole("tooltip");
+      expect(tooltip).toBeVisible();
+      expect(tooltip.textContent).toBe(expected);
+      expect(button).toHaveAttribute("aria-describedby", tooltip.id);
+
+      fireEvent.pointerLeave(button);
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      fireEvent.pointerEnter(button);
+      fireEvent.keyDown(button, { key: "Escape" });
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      act(() => button.focus());
+      expect(screen.getByRole("tooltip").textContent).toBe(expected);
+    },
+  );
+
   it("navigates to the next Workspace inbox after logging out from the current account", async () => {
     const firstSession = createWorkspaceSession();
     const secondSession = createWorkspaceSession({

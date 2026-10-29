@@ -1,8 +1,14 @@
+import { Marked, type Token, type Tokens, type TokensList } from "marked";
+import { t } from "~/i18n/i18n";
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
-import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
+import {
+  isWorkspaceSecretUrn,
+  parseWorkspaceReferenceUrn,
+  parseWorkspaceUrlUrn,
+} from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
 import {
   createWorkspaceMarkdownLexer,
@@ -22,7 +28,6 @@ import type {
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReferenceBlock,
 } from "./workspace-message-document.types";
-import type { Token, Tokens, TokensList } from "marked";
 
 const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
 const WHITESPACE_PATTERN = /\s+/g;
@@ -190,6 +195,16 @@ function summarizeBlocksForPreview(blocks: readonly WorkspaceMessageBlock[]): st
       })
       .join(" "),
   );
+}
+
+function safeRawTokenPreview(token: Token): string {
+  let raw = token.raw;
+  void new Marked().walkTokens([token], (child) => {
+    if (child.type === "link" && isWorkspaceSecretUrn(child.href)) {
+      raw = raw.replaceAll(child.raw, t("e2ee.secretFragment"));
+    }
+  });
+  return raw;
 }
 
 function toParagraphFromText(text: string): WorkspaceMessageBlock | null {
@@ -611,6 +626,10 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
+          // Never expose untrusted secret link labels or ciphertext in summaries.
+          if (isWorkspaceSecretUrn(link.href)) {
+            return [{ kind: "text", text: t("e2ee.secretFragment") }];
+          }
           const workspaceUrl = parseWorkspaceUrlUrn(link.href);
           if (workspaceUrl != null) {
             context.state.hasLinks = true;
@@ -929,7 +948,7 @@ function parseBlockTokens(
           (block): block is WorkspaceMessageBlock => block != null,
         );
       default:
-        return [toParagraphFromText(token.raw)].filter(
+        return [toParagraphFromText(safeRawTokenPreview(token))].filter(
           (block): block is WorkspaceMessageBlock => block != null,
         );
     }

@@ -4,6 +4,7 @@ import type {
   WorkspaceMessageMentionResolver,
   WorkspaceMessageQuoteReference,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 
 export type WorkspaceQuoteRenderMode = "full-history" | "single-message";
 
@@ -21,4 +22,11 @@ export interface WorkspaceMessageQuoteProps {
   onOpenMessage?: (messageUuid: MessengerUuid) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   loadEnabled?: boolean;
+  secretMessageUuid?: MessengerUuid;
+  onRequestSecretKey?: (
+    messageUuid: MessengerUuid,
+    reference: WorkspaceSecretUrnReference,
+    allowUsableKey?: boolean,
+  ) => void | Promise<void>;
+  requestSecretKeyPending?: boolean;
 }

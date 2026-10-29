@@ -5,11 +5,12 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { createDraft, deleteDraft, updateDraft } from "~/shared/api/messenger-drafts.api";
+import { createDraft, deleteDraft, getDraft, updateDraft } from "~/shared/api/messenger-drafts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { isWorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
 import type { WorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";
 import {
+  hasWorkspaceComposerDraftSecret,
   normalizeWorkspaceComposerDraftContent,
   normalizeWorkspaceComposerDraftRemoteText,
 } from "./composer-draft.lib";
@@ -61,6 +62,7 @@ function prepareDraftForDeletion(
 
 function isServerDraftable(draft: WorkspaceComposerDraft): boolean {
   return (
+    !hasWorkspaceComposerDraftSecret(draft.content) &&
     draft.content.text.trim().length > 0 &&
     draft.streamUuid.length > 0 &&
     draft.topicUuid.length > 0
@@ -200,6 +202,15 @@ async function saveLatestDraft(
     if (!isJobCurrent(job)) return "failed";
     if (isDraftConflict(error)) {
       const current = currentDraft(job);
+      if (job.deleteRequested && current?.privateDeletion === true) {
+        useWorkspaceComposerDraftStore
+          .getState()
+          .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, current.snapshotId, {
+            etag: error.headers.get("ETag") ?? `"${error.data.revision}"`,
+            updatedAt: error.data.updated_at,
+          });
+        return "saved";
+      }
       if (!creating && current?.content.text === error.data.payload.content) {
         useWorkspaceComposerDraftStore
           .getState()
@@ -229,6 +240,27 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
 
   if (deleting.etag == null) {
     if (!isServerDraftable(deleting)) {
+      if (deleting.privateDeletion === true && deleting.privateCreateUncertain === true) {
+        // A previous POST may have committed despite a lost response. Locate its ETag
+        // without importing the old body into store/cache or repeating that plaintext POST.
+        try {
+          const found = await getDraft(
+            buildMessengerRequestOptions(job.runtimeContext),
+            deleting.draftUuid,
+          );
+          if (!isJobCurrent(job)) return "failed";
+          useWorkspaceComposerDraftStore
+            .getState()
+            .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, deleting.snapshotId, {
+              etag: found.etag,
+              updatedAt: found.draft.updated_at,
+            });
+          return "created";
+        } catch {
+          // Even 404 cannot rule out a POST that is still committing.
+          return isJobCurrent(job) ? "retry" : "failed";
+        }
+      }
       useWorkspaceComposerDraftStore.getState().removeDraftByUuid(job.ownerKey, job.draftUuid);
       return "deleted";
     }
@@ -252,6 +284,15 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
       return "deleted";
     }
     if (isDraftConflict(error)) {
+      if (deleting.privateDeletion === true) {
+        useWorkspaceComposerDraftStore
+          .getState()
+          .applyDraftSyncSuccess(job.ownerKey, job.draftUuid, deleting.snapshotId, {
+            etag: error.headers.get("ETag") ?? `"${error.data.revision}"`,
+            updatedAt: error.data.updated_at,
+          });
+        return "created";
+      }
       if (reconcileMatchingDeleteConflict(job, error)) return "created";
       markConflict(job, error);
       return "failed";
@@ -290,7 +331,7 @@ async function runJob(job: RemoteDraftJob): Promise<void> {
         }
         const outcome = await deleteLatestDraft(job);
         if (outcome === "retry" && remoteJobs.get(job.key) === job) {
-          scheduleJob(job, REMOTE_DRAFT_DEBOUNCE_MS);
+          scheduleJob(job, draft.privateDeletion === true ? 30_000 : REMOTE_DRAFT_DEBOUNCE_MS);
           return;
         }
         if (outcome === "failed" || remoteJobs.get(job.key) !== job) {
@@ -417,6 +458,19 @@ export function deleteWorkspaceComposerDraftFromServer(params: {
     });
   }
   return true;
+}
+
+/** Scrub queued content before deleting a draft that has become private. */
+export function protectWorkspaceComposerDraft(params: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  draft: WorkspaceComposerDraft;
+}): void {
+  if (isWorkspaceRuntimeRequestInvalidated(params.runtimeContext, params.getRuntimeContext)) return;
+  const draft = useWorkspaceComposerDraftStore
+    .getState()
+    .protectDraft(params.draft.ownerKey, params.draft.draftUuid);
+  if (draft != null) deleteWorkspaceComposerDraftFromServer({ ...params, draft });
 }
 
 // Bootstrap resumes durable local operations without another drafts read. Chat

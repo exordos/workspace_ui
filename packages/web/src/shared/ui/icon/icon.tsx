@@ -32,6 +32,7 @@ import DownloadIcon from "~/shared/assets/icons/download.svg?react";
 import DraftsIcon from "~/shared/assets/icons/drafts.svg?react";
 import DraftsCompactIcon from "~/shared/assets/icons/drafts_compact.svg?react";
 import DrawIcon from "~/shared/assets/icons/draw.svg?react";
+import EncryptedSpoilerIcon from "~/shared/assets/icons/encrypted_spoiler.svg?react";
 import FilesIcon from "~/shared/assets/icons/files.svg?react";
 import FlagIcon from "~/shared/assets/icons/flag.svg?react";
 import FolderIcon from "~/shared/assets/icons/folder.svg?react";
@@ -173,6 +174,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
   chatLock: ChatLockIcon,
+  encrypted_spoiler: EncryptedSpoilerIcon,
   calendar: CalendarIcon,
   calendar_month: CalendarMonthIcon,
   celebration: CelebrationIcon,

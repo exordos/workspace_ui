@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import type { ChatCryptoEnvelope } from "~/entities/messenger/chat-crypto-provider.types";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
 import type { ChatE2eeControllerState } from "~/entities/messenger/chat-e2ee-controller.types";
@@ -13,8 +14,6 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import { t } from "~/i18n/i18n";
 import { toast } from "~/shared/lib/toast/toast";
 
-const emptyMessages: Record<string, MessengerMessage> = {};
-
 const emptyState: ChatE2eeControllerState = {
   access: "missing",
   pending: false,
@@ -24,7 +23,6 @@ const emptyState: ChatE2eeControllerState = {
 interface SessionView {
   scopeKey: string;
   session: RealChatSession | null;
-  lease?: ReturnType<typeof acquireChatCryptoSession>;
   state: ChatE2eeControllerState;
   sendKeyUuid?: string | null;
   loading: boolean;
@@ -45,7 +43,8 @@ export function useChatCryptoSession(streamUuid: string | null) {
   const stream = useMessengerStore((state) =>
     state.ownerKey === ownerKey && streamUuid !== null ? state.streamsById[streamUuid] : undefined,
   );
-  const enabled = stream?.encryption === true && runtime !== null;
+  const enabled =
+    !!stream && (stream.encryption === true || stream.sourceName === "native") && runtime !== null;
   const scopeKey = enabled ? `${ownerKey}:${runtime.runtimeGeneration}:${streamUuid}` : "";
   const keyUuid = stream?.currentEncryptionKey?.keyUuid;
   const runtimeRef = useRef(runtime);
@@ -72,26 +71,12 @@ export function useChatCryptoSession(streamUuid: string | null) {
         latest.runtimeGeneration === runtime?.runtimeGeneration &&
         catalog.ownerKey === ownerKey &&
         streamUuid !== null &&
-        catalog.streamsById[streamUuid]?.encryption === true
+        (catalog.streamsById[streamUuid]?.encryption === true ||
+          catalog.streamsById[streamUuid]?.sourceName === "native")
       );
     },
     [ownerKey, runtime?.runtimeGeneration, streamUuid],
   );
-  const messagesById = useWorkspaceMessageStore((state) =>
-    enabled && state.ownerKey === ownerKey ? state.messagesById : emptyMessages,
-  );
-  const messages = useMemo(
-    () =>
-      Object.values(messagesById).filter(
-        (message) =>
-          message.streamUuid === streamUuid &&
-          message.projectId === runtime?.projectId &&
-          message.payload.kind !== "e2ee" &&
-          message.payload.kind !== "markdown",
-      ),
-    [messagesById, runtime?.projectId, streamUuid],
-  );
-
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!enabled || runtime === null || streamUuid === null) return;
@@ -107,7 +92,8 @@ export function useChatCryptoSession(streamUuid: string | null) {
         workspaceRuntimeOwnerKey(live) === ownerKey &&
         live.runtimeGeneration === runtime.runtimeGeneration &&
         catalog.ownerKey === ownerKey &&
-        catalog.streamsById[streamUuid]?.encryption === true
+        (catalog.streamsById[streamUuid]?.encryption === true ||
+          catalog.streamsById[streamUuid]?.sourceName === "native")
       );
     };
     setView({ scopeKey, session: null, state: emptyState, loading: true, error: false });
@@ -120,17 +106,23 @@ export function useChatCryptoSession(streamUuid: string | null) {
               ...(previous?.scopeKey === scopeKey && previous.session === opened ? previous : {}),
               scopeKey,
               session: opened,
-              lease: shared,
               state: opened.getState(),
               sendKeyUuid: opened.getState().sendKeyUuid,
               loading: false,
               error:
-                previous?.scopeKey === scopeKey && previous.session === opened
-                  ? previous.error
-                  : false,
+                shared.ingestionFailed ||
+                (previous?.scopeKey === scopeKey &&
+                  previous.session === opened &&
+                  previous.errorMessage !== undefined &&
+                  previous.error),
             }));
         };
-        unsubscribe = opened.subscribe(publish);
+        const unsubscribeState = opened.subscribe(publish);
+        const unsubscribeIngestion = shared.subscribeIngestion(publish);
+        unsubscribe = () => {
+          unsubscribeState();
+          unsubscribeIngestion();
+        };
         publish();
       })
       .catch(() => {
@@ -143,36 +135,6 @@ export function useChatCryptoSession(streamUuid: string | null) {
       shared.release();
     };
   }, [enabled, ownerKey, scopeKey, streamUuid]);
-
-  useEffect(() => {
-    const active = current?.session;
-    if (active === null || active === undefined) return;
-    let disposed = false;
-    void current?.lease?.ingest(messages).then(
-      () => {
-        if (disposed) return;
-        setView((previous) =>
-          previous?.scopeKey === scopeKey &&
-          previous.session === active &&
-          previous.error &&
-          previous.errorMessage === undefined
-            ? { ...previous, error: false }
-            : previous,
-        );
-      },
-      () => {
-        if (disposed) return;
-        setView((previous) =>
-          previous?.scopeKey === scopeKey && previous.session === active
-            ? { ...previous, error: true }
-            : previous,
-        );
-      },
-    );
-    return () => {
-      disposed = true;
-    };
-  }, [current?.session, current?.lease, messages, scopeKey]);
 
   const clearActionError = useCallback(
     (active: RealChatSession) => {
@@ -247,6 +209,15 @@ export function useChatCryptoSession(streamUuid: string | null) {
         true,
       ),
     [perform, ownerKey, streamUuid, runtime?.projectId],
+  );
+  const requestEnvelopeKey = useCallback(
+    (keyUuid: string, envelope: ChatCryptoEnvelope, allowUsableKey = false) =>
+      perform(
+        (active) => active.requestEnvelopeKey(keyUuid, envelope, allowUsableKey),
+        t("e2ee.requestKeyFailed"),
+        true,
+      ),
+    [perform],
   );
   const requestOutcomes = useCallback(
     (active: RealChatSession, results: Awaited<ReturnType<RealChatSession["grantAllKeys"]>>) => {
@@ -333,6 +304,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
     removeLocalKey,
     grantAllKeys,
     requestKey,
+    requestEnvelopeKey,
     grantKey,
     rejectKey,
   };

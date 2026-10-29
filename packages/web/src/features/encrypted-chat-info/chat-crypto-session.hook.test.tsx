@@ -538,8 +538,8 @@ describe("shared domain session leases", () => {
     open.mockResolvedValue(active);
     const first = acquire();
     const second = acquire();
-    const ingestion = first.ingest([]);
-    await second.ingest([]);
+    const ingestion = first.sync();
+    expect(second.sync()).toBe(ingestion);
     first.release();
     first.release();
     await waitFor(() => expect(complete).toBeDefined());
@@ -556,7 +556,7 @@ describe("shared domain session leases", () => {
     const active = session();
     open.mockResolvedValue(active);
     const lease = acquire();
-    const ingestion = lease.ingest([]);
+    const ingestion = lease.sync();
     lease.release();
     await ingestion;
     expect(active.ingest).not.toHaveBeenCalled();
@@ -570,8 +570,8 @@ describe("shared domain session leases", () => {
     open.mockResolvedValue(active);
     const first = acquire();
     const second = acquire();
-    await expect(first.ingest([])).rejects.toThrow("offline");
-    await second.ingest([]);
+    await expect(first.sync()).rejects.toThrow("offline");
+    await second.sync();
     expect(active.ingest).toHaveBeenCalledTimes(2);
     first.release();
     second.release();

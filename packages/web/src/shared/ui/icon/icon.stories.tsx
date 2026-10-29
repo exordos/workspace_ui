@@ -14,6 +14,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const EncryptedSpoiler: Story = {
+  args: { name: "encrypted_spoiler", size: 32 },
+};
 export const Gallery: Story = {
   render: () => (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">

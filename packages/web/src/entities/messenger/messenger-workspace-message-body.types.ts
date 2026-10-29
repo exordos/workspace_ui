@@ -4,6 +4,7 @@ import type {
   WorkspaceMessageBodyQuoteSegment,
   WorkspaceMessageBodySegment,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 import type React from "react";
 
 export interface WorkspaceMessageBodyProps {
@@ -11,6 +12,7 @@ export interface WorkspaceMessageBodyProps {
   fileReferences?: readonly WorkspaceMessageFileReference[];
   segments?: readonly WorkspaceMessageBodySegment[];
   renderQuote?: (segment: WorkspaceMessageBodyQuoteSegment, index: number) => React.ReactNode;
+  renderSecret?: (reference: WorkspaceSecretUrnReference) => React.ReactNode;
   metadata: WorkspaceMessageBodyMetadata;
   useInlineMeta: boolean;
   bodyRef?: React.Ref<HTMLDivElement>;

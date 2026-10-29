@@ -61,7 +61,7 @@ export interface StagedChatCreation extends StoredChatKey {
   // Rotation retries reuse both announcement UUIDs and never overwrite an old secret.
   readonly rotation?: {
     readonly streamUuid: string;
-    readonly previousKeyUuid: string;
+    readonly previousKeyUuid: string | null;
     readonly topicUuid: string;
   };
 }

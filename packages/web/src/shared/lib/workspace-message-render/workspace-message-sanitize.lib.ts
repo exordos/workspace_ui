@@ -40,6 +40,8 @@ export const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "start",
   "class",
   "type",
+  "data-workspace-secret-urn",
+  "data-workspace-secret-fallback",
   "data-workspace-mention",
   "data-workspace-user-uuid",
   "data-workspace-message-link",

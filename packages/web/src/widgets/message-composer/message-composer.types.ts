@@ -1,6 +1,7 @@
 /**
  * Types for the message composer widget.
  */
+import type { MessengerSendOptions } from "~/entities/messenger/messenger-outbox.types";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import type {
@@ -112,6 +113,7 @@ export interface MessageComposerProps {
     content: string,
     subject?: string,
     files?: File[],
+    options?: MessengerSendOptions,
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   /** Clears the composer after a send has been accepted locally, before the request settles. */
   optimisticClearOnSend?: boolean;
@@ -169,6 +171,8 @@ export interface MessageComposerProps {
   /** Active message edit session routed from chat page. */
   editSession?: ComposerEditSession | null;
   capabilities?: MessageComposerCapabilities;
+  /** Uses the chat key lifecycle; omitted where partial encryption is unavailable. */
+  secretFragments?: { canRotate: boolean };
   /** Workspace-native mention resolver used by local preview render. */
   resolveMention?: WorkspaceMessageMentionResolver;
   /** Workspace-native file preview loader used by local preview render. */
@@ -194,6 +198,7 @@ export interface FormattingToolbarProps {
   scheduleTrigger?: ReactNode;
   snippetsTrigger?: ReactNode;
   aiTrigger?: ReactNode;
+  secretFragmentsEnabled?: boolean;
 }
 
 export type ComposerMode = "write" | "preview";

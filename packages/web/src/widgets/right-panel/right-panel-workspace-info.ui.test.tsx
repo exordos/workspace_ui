@@ -247,6 +247,41 @@ function seedOwnerChannel(overrides: Partial<MessengerStream> = {}): void {
 }
 
 describe("RightPanelWorkspaceInfo", () => {
+  it.each(["native", "zulip"] as const)(
+    "offers shared key management to ordinary native members only (source=%s)",
+    async (sourceName) => {
+      seedWorkspaceAuth();
+      seedOwnerChannel({
+        encryption: false,
+        sourceName,
+        role: "member",
+        ownerUuid: ALICE_USER_UUID,
+      });
+      const onChatScreenChange = vi.fn();
+      const { rerender } = renderWithProviders(
+        <RightPanelWorkspaceInfo info={createInfo()} onChatScreenChange={onChatScreenChange} />,
+      );
+      const entry = screen.queryByRole("button", { name: t("e2ee.keyTitle") });
+      if (sourceName !== "native") {
+        expect(entry).toBeNull();
+        return;
+      }
+      expect(entry).toBeInTheDocument();
+      if (entry == null) throw new Error("Missing key manager entry");
+      fireEvent.click(entry);
+      expect(onChatScreenChange).toHaveBeenCalledWith("key");
+      rerender(
+        <RightPanelWorkspaceInfo
+          info={createInfo()}
+          onChatScreenChange={onChatScreenChange}
+          chatScreen="key"
+        />,
+      );
+      expect(screen.getByRole("region", { name: t("e2ee.keyTitle") })).toBeInTheDocument();
+      expect(await screen.findByText(t("e2ee.cryptoUnavailable"))).toBeInTheDocument();
+    },
+  );
+
   it("shows real encrypted metadata, unavailable key actions, and closes through the drawer owner", async () => {
     seedWorkspaceAuth();
     act(() => {
@@ -1256,6 +1291,7 @@ describe("RightPanelWorkspaceInfo", () => {
       removeLocalKey: vi.fn(() => Promise.resolve(false)),
       grantAllKeys: vi.fn(() => Promise.resolve(false)),
       requestKey: vi.fn(() => Promise.resolve(false)),
+      requestEnvelopeKey: vi.fn(() => Promise.resolve(false)),
       grantKey: vi.fn(() => Promise.resolve()),
       rejectKey: vi.fn(() => Promise.resolve()),
     });

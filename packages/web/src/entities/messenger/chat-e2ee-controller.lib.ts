@@ -324,18 +324,29 @@ export class ChatE2eeController {
     );
   }
 
+  private canRespond(
+    action: "grant" | "reject",
+    request: ChatE2eeMessage<ChatKeyRequestPayload>,
+  ): boolean {
+    const rights = this.deps.getRights();
+    return (
+      (action === "grant" ? rights.canGrant : rights.canReject) &&
+      (this.deps.isRequesterAllowed?.(request.authorUuid) ?? true)
+    );
+  }
+
   grantKey(
     request: ChatE2eeMessage<ChatKeyRequestPayload>,
   ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     return this.run(async () => {
       if (!this.validRequest(request)) return failure("invalid-message");
-      if (!this.deps.getRights().canGrant) return failure("forbidden");
+      if (!this.canRespond("grant", request)) return failure("forbidden");
       const deletionRevision = await this.readDeletionRevision();
       if (!deletionRevision.ok) return deletionRevision;
       const stored = await this.readKey();
       if (!stored.ok) return stored;
       if (stored.value?.groupKey == null) return failure("missing-key");
-      if (!this.deps.getRights().canGrant) return failure("forbidden");
+      if (!this.canRespond("grant", request)) return failure("forbidden");
       const context = {
         streamUuid: this.deps.scope.streamUuid,
         keyUuid: this.deps.scope.keyUuid,
@@ -361,7 +372,7 @@ export class ChatE2eeController {
           recipientDeviceId: context.recipientDeviceId,
           content: envelope.value,
         },
-        () => this.deps.getRights().canGrant,
+        () => this.canRespond("grant", request),
       );
     });
   }
@@ -379,7 +390,7 @@ export class ChatE2eeController {
           senderDeviceId: this.deps.device.deviceId,
           recipientDeviceId: request.payload.deviceId,
         },
-        () => this.deps.getRights().canReject,
+        () => this.canRespond("reject", request),
       );
     });
   }
@@ -388,6 +399,7 @@ export class ChatE2eeController {
     plaintext: Uint8Array,
     dispatch: (payload: ChatEncryptedPayload, isCurrent: () => boolean) => Promise<T>,
     preparedPayload?: ChatEncryptedPayload,
+    verifyPreparedPlaintext = false,
   ): Promise<ChatE2eeControllerResult<T>> {
     return this.run(async () => {
       if (!this.deps.getRights().canSend) return failure("forbidden");
@@ -398,6 +410,27 @@ export class ChatE2eeController {
       if (stored.value?.groupKey == null) return failure("missing-key");
       if (preparedPayload != null && preparedPayload.keyUuid !== this.deps.scope.keyUuid)
         return failure("invalid-key");
+      if (preparedPayload && verifyPreparedPlaintext) {
+        const verified = await this.deps.provider.decryptMessage({
+          groupKey: stored.value.groupKey,
+          envelope: preparedPayload.content,
+          context: this.deps.scope,
+        });
+        if (!this.isCurrent()) {
+          if (verified.ok) verified.value.fill(0);
+          return failure("stale");
+        }
+        if (!verified.ok) return failure("invalid-key");
+        try {
+          if (
+            verified.value.length !== plaintext.length ||
+            verified.value.some((value, index) => value !== plaintext[index])
+          )
+            return failure("invalid-key");
+        } finally {
+          verified.value.fill(0);
+        }
+      }
       // An ambiguous POST retries the same envelope and UUID, after all local key checks.
       const encrypted =
         preparedPayload == null
@@ -506,7 +539,6 @@ export class ChatE2eeController {
   ): Promise<ChatE2eeControllerResult<void>> {
     if (this.processed.has(response.uuid)) return success(undefined);
     const allowed = () => this.deps.isIssuerAllowed(response.authorUuid);
-    if (!allowed()) return failure("forbidden");
     if (response.payload.recipientDeviceId !== this.deps.scope.deviceId) {
       this.waiting.delete(response.uuid);
       return failure("invalid-message");
@@ -538,6 +570,7 @@ export class ChatE2eeController {
       this.waiting.set(response.uuid, response);
       return success(undefined);
     }
+    if (!allowed()) return failure("forbidden");
     if (request) {
       const correlation = correlateChatKeyResponse({
         request,

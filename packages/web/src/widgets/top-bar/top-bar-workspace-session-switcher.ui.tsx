@@ -15,6 +15,7 @@ import {
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
 } from "~/shared/lib/organization-branding";
+import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
@@ -91,6 +92,7 @@ const OrganizationLogo = React.memo(function OrganizationLogo({
 const InstanceQuickButton = React.memo(function InstanceQuickButton({
   instanceId,
   label,
+  displayName,
   isActive,
   unreadCount,
   logoUrl,
@@ -99,6 +101,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
 }: {
   instanceId: string;
   label: string;
+  displayName: string;
   isActive: boolean;
   unreadCount: number;
   logoUrl?: string;
@@ -106,33 +109,45 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
   onSelect: (id: string) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(instanceId)}
-      data-testid={`instance-quick-${instanceId}`}
-      className={`focus-visible:ring-accent/40 relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 ${
-        isActive
-          ? "bg-card-bg-active text-text-primary"
-          : "bg-transparent text-text-muted hover:bg-card-bg-active hover:text-text-primary"
-      }`}
-      aria-label={isActive ? `${t("auth.currentServer")}: ${label}` : label}
-      title={label}
+    <AppTooltip
+      content={displayName}
+      side="bottom"
+      align="center"
+      size="compact"
+      textTone="primary"
+      closeDelay={0}
     >
-      <span
-        data-testid={`instance-frame-${instanceId}`}
-        className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-bg ${
-          isActive ? "ring-2 ring-inset ring-border-subtle" : ""
+      <button
+        type="button"
+        onClick={() => onSelect(instanceId)}
+        data-testid={`instance-quick-${instanceId}`}
+        className={`focus-visible:ring-accent/40 relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+          isActive
+            ? "bg-card-bg-active text-text-primary"
+            : "bg-transparent text-text-muted hover:bg-card-bg-active hover:text-text-primary"
         }`}
+        aria-label={isActive ? `${t("auth.currentServer")}: ${label}` : label}
       >
-        <OrganizationLogo logoUrl={logoUrl} baseUrl={baseUrl} className="h-9 w-9 object-contain" />
-      </span>
-      {unreadCount > 0 && (
         <span
-          className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
-          aria-hidden="true"
-        />
-      )}
-    </button>
+          data-testid={`instance-frame-${instanceId}`}
+          className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-bg ${
+            isActive ? "ring-2 ring-inset ring-border-subtle" : ""
+          }`}
+        >
+          <OrganizationLogo
+            logoUrl={logoUrl}
+            baseUrl={baseUrl}
+            className="h-9 w-9 object-contain"
+          />
+        </span>
+        {unreadCount > 0 && (
+          <span
+            className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
+            aria-hidden="true"
+          />
+        )}
+      </button>
+    </AppTooltip>
   );
 });
 
@@ -288,6 +303,10 @@ export const InstanceSwitcher: React.FC = () => {
     <div className="flex items-center gap-1.5" role="group" aria-label={t("auth.selectServer")}>
       {visibleWorkspaceSessions.map((session) => {
         const title = getWorkspaceSessionTitle(session);
+        const displayName =
+          [session.profile.firstName?.trim(), session.profile.lastName?.trim()]
+            .filter(Boolean)
+            .join(" ") || session.profile.username.trim();
         const unreadCount = getBackgroundProjectionUnreadCount(
           backgroundProjectionsByOwnerKey[getWorkspaceSessionOwnerKey(session)],
         );
@@ -296,6 +315,7 @@ export const InstanceSwitcher: React.FC = () => {
             key={session.accountId}
             instanceId={session.accountId}
             label={title}
+            displayName={displayName}
             isActive={session.accountId === currentWorkspaceAccountId}
             unreadCount={unreadCount}
             baseUrl={session.organizationOrigin}

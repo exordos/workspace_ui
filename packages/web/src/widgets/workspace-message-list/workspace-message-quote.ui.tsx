@@ -17,6 +17,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
+import { EncryptedSecretFragment } from "~/features/encrypted-chat-message/encrypted-secret-fragment.ui";
 import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
@@ -24,6 +25,7 @@ import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-me
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBodySegments } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame";
 import {
   DEFAULT_WORKSPACE_QUOTE_MAX_DEPTH,
@@ -101,6 +103,7 @@ function resolveQuotePresentation(options: {
   renderedHtml: string;
   visibleSegments: ReturnType<typeof renderWorkspaceMessageBodySegments>["segments"];
   renderNestedQuote: (segment: WorkspaceMessageBodyQuoteSegment) => React.ReactNode;
+  renderSecret?: (reference: WorkspaceSecretUrnReference) => React.ReactNode;
   decryption: ReturnType<typeof useRealMessagePresentation> | null;
 }): { headerLabel: string; messageContent: React.ReactNode } {
   if (!options.isForwardSnapshot && options.resolvedStatus === "unavailable") {
@@ -145,6 +148,7 @@ function resolveQuotePresentation(options: {
           html={options.renderedHtml}
           segments={options.visibleSegments}
           renderQuote={options.renderNestedQuote}
+          renderSecret={options.renderSecret}
           metadata={options.renderedSource.metadata}
           useInlineMeta={false}
         />
@@ -165,6 +169,9 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   onOpenMessage,
   onLoadWorkspaceFilePreview,
   loadEnabled = true,
+  secretMessageUuid,
+  onRequestSecretKey,
+  requestSecretKeyPending,
 }: WorkspaceMessageQuoteProps): React.ReactElement {
   const isForwardSnapshot = reference.snapshotMarkdown != null;
   const resolved = useResolvedMessengerQuoteMessage(
@@ -280,6 +287,9 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
         onOpenMessage={onOpenMessage}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         loadEnabled={loadEnabled}
+        secretMessageUuid={sourceMessage?.uuid ?? secretMessageUuid}
+        onRequestSecretKey={onRequestSecretKey}
+        requestSecretKeyPending={requestSecretKeyPending}
       />
     ),
     [
@@ -292,6 +302,10 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
       onLoadWorkspaceFilePreview,
       onOpenMessage,
       resolveMention,
+      sourceMessage,
+      secretMessageUuid,
+      onRequestSecretKey,
+      requestSecretKeyPending,
     ],
   );
   const openMessage = useCallback(() => {
@@ -339,6 +353,26 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     },
     [onOpenMessage, openMessage],
   );
+  const renderSecret = useCallback(
+    (secret: WorkspaceSecretUrnReference) => (
+      <EncryptedSecretFragment
+        message={sourceMessage}
+        reference={secret}
+        requestPending={requestSecretKeyPending}
+        onRequestKey={
+          onRequestSecretKey == null || (sourceMessage?.uuid ?? secretMessageUuid) == null
+            ? undefined
+            : (allowUsableKey) =>
+                onRequestSecretKey(
+                  sourceMessage?.uuid ?? secretMessageUuid!,
+                  secret,
+                  allowUsableKey,
+                )
+        }
+      />
+    ),
+    [sourceMessage, secretMessageUuid, onRequestSecretKey, requestSecretKeyPending],
+  );
   const { headerLabel, messageContent } = resolveQuotePresentation({
     isForwardSnapshot,
     resolvedStatus: resolved.status,
@@ -348,6 +382,7 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
     renderedHtml,
     visibleSegments,
     renderNestedQuote,
+    renderSecret: loadEnabled ? renderSecret : undefined,
     decryption: encryptedSource == null ? null : decryption,
   });
 
