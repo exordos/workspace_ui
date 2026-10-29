@@ -231,7 +231,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         key: "quick-reactions",
         render: () => (
           <div className="flex w-60 max-w-[calc(100vw-2rem)] items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-            <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
               <div className="flex w-max items-center gap-0.5">
                 {quickReactions.map((reaction) => (
                   <button
