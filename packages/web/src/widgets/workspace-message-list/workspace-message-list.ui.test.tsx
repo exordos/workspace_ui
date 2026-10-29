@@ -1056,7 +1056,8 @@ describe("WorkspaceMessageList", () => {
 
     expect(container.querySelectorAll("[data-workspace-peer-avatar='true']")).toHaveLength(1);
     expect(container.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
-      "relative",
+      "sticky",
+      "bottom-2",
       "z-[1]",
     );
     expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
@@ -4174,9 +4175,11 @@ describe("WorkspaceMessageList", () => {
     expect(peerGroup).not.toHaveClass("gap-2");
     expect(
       peerGroup?.querySelector("[data-workspace-peer-avatar='true']")?.parentElement,
-    ).toHaveClass("pointer-events-none", "absolute", "left-0", "w-12");
+    ).toHaveClass("pointer-events-none", "absolute", "inset-y-0", "left-0", "w-12");
     expect(peerGroup?.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
       "pointer-events-auto",
+      "sticky",
+      "bottom-2",
     );
     const ownOuterRail = ownArticle?.querySelector(
       "[data-workspace-message-selection-outer-rail='true']",

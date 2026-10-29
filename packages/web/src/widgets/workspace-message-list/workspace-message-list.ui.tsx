@@ -678,17 +678,18 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-message-owner={groupOwner}
     >
       {groupOwner === "peer" && !serviceGroup ? (
+        // The rail must span the group so bottom-sticky can follow the viewport within it.
         <div
           className={
             selectionMode
-              ? "pointer-events-none absolute bottom-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
+              ? "pointer-events-none absolute inset-y-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
               : "flex w-12 flex-shrink-0 flex-col justify-end pb-2"
           }
         >
           <button
             type="button"
             onClick={handleAuthorClick}
-            className={`${selectionMode ? "pointer-events-auto" : ""} group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
+            className={`${selectionMode ? "pointer-events-auto" : ""} group sticky bottom-2 z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
