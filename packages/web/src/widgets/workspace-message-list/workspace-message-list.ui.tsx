@@ -693,7 +693,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           <button
             type="button"
             onClick={handleAuthorClick}
-            className={`${selectionMode ? "pointer-events-auto" : ""} group sticky bottom-2 z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
+            className={`${selectionMode ? "pointer-events-auto" : ""} group/avatar sticky bottom-2 z-[1] rounded-full focus-visible:outline-none`}
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >

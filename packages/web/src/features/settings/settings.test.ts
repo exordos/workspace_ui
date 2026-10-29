@@ -75,6 +75,7 @@ describe("useSettingsStore", () => {
       expect(state.folderRailLayout).toBe("vertical");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.chatClickAction).toBe("general");
       expect(state.composerToolbarExpanded).toBe(false);
       expect(state.authIdleTimeout).toBe("3d");
     });
@@ -113,6 +114,19 @@ describe("useSettingsStore", () => {
       const raw = localStorage.getItem("workspace-settings");
       expect(JSON.parse(raw!).messengerSidebarSortMode).toBe("unread_first");
     });
+  });
+
+  it("persists the chat click mode per account and restores the default on reset", () => {
+    setWorkspaceSessionScope("account-a");
+    useSettingsStore.getState().setChatClickAction("latestTopic");
+
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
+    expect(useSettingsStore.getState().chatClickAction).toBe("latestTopic");
+
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
   });
 
   describe("setNotificationSound", () => {
@@ -430,6 +444,17 @@ describe("loadSettings (module reload)", () => {
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
     vi.resetModules();
+  });
+
+  it.each([
+    ["latestTopic", "latestTopic"],
+    [undefined, "general"],
+    ["unknown", "general"],
+  ])("loads chat click mode %s as %s", async (saved, expected) => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ chatClickAction: saved }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().chatClickAction).toBe(expected);
   });
 
   it.each([false, true])("restores the saved Dock bounce preference %s", async (enabled) => {

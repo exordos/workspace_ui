@@ -50,20 +50,22 @@ describe("Avatar", () => {
     expect(el?.className).toContain("h-16");
   });
 
-  it("adds group-hover ring and pointer cursor only when interactive is enabled", () => {
+  it("adds scoped hover/focus feedback only when interactive is enabled", () => {
     const { container, rerender } = render(<Avatar>A</Avatar>);
     const staticAvatar = container.firstElementChild;
 
-    expect(staticAvatar?.className).not.toContain("group-hover:ring-2");
+    expect(staticAvatar).not.toHaveClass("group-hover/avatar:outline-accent");
+    expect(staticAvatar).not.toHaveClass("group-focus-visible/avatar:outline-accent");
     expect(staticAvatar?.className).not.toContain("cursor-pointer");
 
     rerender(<Avatar interactive>A</Avatar>);
     const interactiveAvatar = container.firstElementChild;
 
-    expect(interactiveAvatar?.className).toContain("group-hover:ring-2");
-    expect(interactiveAvatar?.className).toContain("group-hover:ring-accent-soft");
-    // interactive = кликабельный аватар (профиль и т.п.) → курсор «пальчик»
-    expect(interactiveAvatar?.className).toContain("cursor-pointer");
+    expect(interactiveAvatar).toHaveClass(
+      "group-hover/avatar:outline-accent",
+      "group-focus-visible/avatar:outline-accent",
+      "cursor-pointer",
+    );
   });
 
   it("places the same orange away badge on avatars of different sizes", () => {

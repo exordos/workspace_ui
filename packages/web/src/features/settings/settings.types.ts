@@ -11,6 +11,7 @@ export type NotificationSound = "default" | "subtle" | "digital" | "glass" | "pu
 export type AppLanguage = "en" | "ru";
 export type FolderRailLayout = "vertical" | "horizontal";
 export type ChatListDensity = "standard" | "compact";
+export type ChatClickAction = "general" | "latestTopic";
 export type AuthIdleTimeout = "6h" | "12h" | "24h" | "3d" | "7d" | "never";
 
 export interface AppSettings {
@@ -23,6 +24,7 @@ export interface AppSettings {
   folderRailLayout: FolderRailLayout;
   showSystemFolders: boolean;
   chatListDensity: ChatListDensity;
+  chatClickAction: ChatClickAction;
   composerToolbarExpanded: boolean;
   authIdleTimeout: AuthIdleTimeout;
 }

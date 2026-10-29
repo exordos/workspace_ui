@@ -212,8 +212,8 @@ export const docsContent: Readonly<Record<string, ComponentDocsContent>> = {
         "Нативная подсказка загрузки изображения: lazy или eager.",
       ),
       interactive: text(
-        "Adds a pointer cursor and a hover ring through a parent group; it does not create a click handler.",
-        "Добавляет курсор pointer и кольцо при наведении на родительскую group; обработчик нажатия не создаёт.",
+        "Adds a pointer cursor and an outline on hover or keyboard focus of a group/avatar parent. Defaults to false; the parent owns click and keyboard behavior.",
+        "Добавляет курсор pointer и обводку при наведении или фокусе с клавиатуры на родителе group/avatar. По умолчанию false; родитель управляет нажатием и клавиатурой.",
       ),
       presence: text(
         "Presence badge; omit or pass null to hide it. Offline still displays a badge.",

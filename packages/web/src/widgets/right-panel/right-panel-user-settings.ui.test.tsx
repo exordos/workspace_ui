@@ -50,6 +50,20 @@ describe("RightPanelUserSettings", () => {
     expect(screen.queryByRole("switch", { name: "Bounce Dock icon" })).not.toBeInTheDocument();
   });
 
+  it("selects either named chat click mode", () => {
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("right-panel-settings-chat-click-trigger"));
+    const general = screen.getByRole("button", { name: "General chat and topic list" });
+    const latest = screen.getByRole("button", { name: "Topic of the latest message" });
+    expect(general).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(latest);
+    expect(useSettingsStore.getState().chatClickAction).toBe("latestTopic");
+    expect(latest).toHaveAttribute("aria-pressed", "true");
+    expect(general).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(general);
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
+  });
+
   it("navigates back and closes from the nested header", () => {
     const onBack = vi.fn();
     const onClose = vi.fn();

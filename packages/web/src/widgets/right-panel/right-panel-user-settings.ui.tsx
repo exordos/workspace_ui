@@ -109,12 +109,13 @@ function SettingsOptionRow({
   );
 }
 
-type SettingsSection = "sound" | "language" | "timeout";
+type SettingsSection = "sound" | "language" | "timeout" | "chatClick";
 
 const DEFAULT_SETTINGS_SECTIONS: Record<SettingsSection, boolean> = {
   sound: false,
   language: false,
   timeout: false,
+  chatClick: false,
 };
 
 export function RightPanelUserSettings({
@@ -134,6 +135,8 @@ export function RightPanelUserSettings({
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
   const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
+  const chatClickAction = useSettingsStore((s) => s.chatClickAction);
+  const setChatClickAction = useSettingsStore((s) => s.setChatClickAction);
   const [expandedSections, setExpandedSections] =
     useState<Record<SettingsSection, boolean>>(DEFAULT_SETTINGS_SECTIONS);
 
@@ -182,6 +185,39 @@ export function RightPanelUserSettings({
       ) : null}
       <ScrollArea className="min-h-0 flex-1 pb-5 pt-3">
         <div className="space-y-0 px-2">
+          <PanelMenuRow
+            label={t("settings.chatClickAction")}
+            subtitle={t("settings.chatClickActionHint")}
+            icon="chatBubble"
+            variant="nested"
+            onClick={() => toggleSection("chatClick")}
+            id="right-panel-settings-chat-click-trigger"
+            testId="right-panel-settings-chat-click-trigger"
+            aria-expanded={expandedSections.chatClick}
+            aria-controls="right-panel-settings-chat-click-options"
+            right={
+              <Icon name={expandedSections.chatClick ? "chevron-up" : "chevron-right"} size={16} />
+            }
+          />
+          {expandedSections.chatClick ? (
+            <OptionSurface
+              panelId="right-panel-settings-chat-click-options"
+              testId="right-panel-settings-chat-click-options"
+              triggerId="right-panel-settings-chat-click-trigger"
+            >
+              <SettingsOptionRow
+                label={t("settings.chatClickActionGeneral")}
+                active={chatClickAction === "general"}
+                onClick={() => setChatClickAction("general")}
+              />
+              <SettingsOptionRow
+                label={t("settings.chatClickActionLatestTopic")}
+                active={chatClickAction === "latestTopic"}
+                onClick={() => setChatClickAction("latestTopic")}
+              />
+            </OptionSurface>
+          ) : null}
+
           <PanelMenuRow
             label={t("settings.notificationSound")}
             icon="volumeUp"
