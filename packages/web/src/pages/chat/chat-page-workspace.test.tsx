@@ -131,6 +131,7 @@ const captured = vi.hoisted(() => ({
 }));
 
 vi.mock("~/entities/messenger/chat-crypto-runtime.lib", () => ({
+  commitPreparedPlaintextWindow: vi.fn(),
   openRealChatSession: captured.openRealChatSession,
   decryptRealChatMessage: vi.fn().mockResolvedValue(null),
   decryptRealChatEnvelopeResult: vi.fn().mockResolvedValue({ status: "missing-key" }),
@@ -2295,6 +2296,30 @@ describe("ChatPage Workspace route", () => {
     );
     expect(captured.openRealChatSession).toHaveBeenCalledOnce();
     expect(active.dispose).not.toHaveBeenCalled();
+  });
+
+  it("shows a disabled encrypted composer while the key loads, then enables it", async () => {
+    const { send } = seedEncryptedReplyComposer();
+    const session = await captured.openRealChatSession();
+    const opening = createDeferred<typeof session>();
+    captured.openRealChatSession.mockReturnValue(opening.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toBeDisabled();
+    expect(screen.getByRole("button", { name: t("chat.sendPlaceholder") })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(t("e2ee.loading"));
+    expect(send).not.toHaveBeenCalled();
+
+    await act(async () => {
+      opening.resolve(session);
+      await opening.promise;
+    });
+    await waitFor(() => expect(textbox).toBeEnabled());
+    expect(screen.getByRole("textbox")).toBe(textbox);
+    expect(screen.queryByText(t("e2ee.loading"))).not.toBeInTheDocument();
   });
 
   it("blocks the plaintext composer for an encrypted stream while retaining its history", async () => {
@@ -4999,7 +5024,7 @@ describe("ChatPage Workspace route", () => {
       const view = renderWorkspaceChatPageWithShellContexts(
         `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       );
-      await screen.findByRole("textbox");
+      await waitFor(() => expect(screen.getByRole("textbox")).toBeEnabled());
       const sidebarCall = useChatDmCallBridgeStore.getState().activeChatCall;
       expect(sidebarCall).toMatchObject({ ownerKey: owner, streamUuid: STREAM_UUID });
       act(() => {
