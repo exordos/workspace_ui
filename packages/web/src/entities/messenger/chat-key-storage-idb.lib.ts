@@ -294,6 +294,31 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
     if (row?.value.groupKey === null && row.deletionRevision !== undefined) return null;
     return row?.value ?? null;
   }
+  async readChatKeySnapshots(addresses: readonly ChatKeyStorageAddress[]) {
+    const ids = addresses.map(keyAddress);
+    const db = await this.open();
+    return new Promise<readonly { key: StoredChatKey | null; deletionRevision: number }[]>(
+      (resolve, reject) => {
+        const tx = db.transaction("keys", "readonly");
+        const store = tx.objectStore("keys");
+        const requests = ids.map(
+          (id) => store.get(id) as IDBRequest<Row<StoredChatKey> | undefined>,
+        );
+        tx.oncomplete = () =>
+          resolve(
+            requests.map((request) => {
+              const row = request.result;
+              return {
+                key: row?.value.groupKey == null ? null : copyRecord(row.value),
+                deletionRevision: row?.deletionRevision ?? 0,
+              };
+            }),
+          );
+        tx.onabort = () => reject(tx.error ?? new ChatKeyStorageError("unavailable"));
+        tx.onerror = () => undefined;
+      },
+    );
+  }
   async readChatKeyDeletionRevision(address: ChatKeyStorageAddress): Promise<number> {
     const row = await this.readRow<StoredChatKey>("keys", keyAddress(address));
     return row?.deletionRevision ?? 0;

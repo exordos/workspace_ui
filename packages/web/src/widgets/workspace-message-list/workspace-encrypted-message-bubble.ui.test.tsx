@@ -1585,7 +1585,9 @@ describe("real encrypted message presentation", () => {
 
   it("keeps absent keys compact and retries automatically when key material changes", async () => {
     const { stored } = await seedRealEncryptedMessage("newly available fixture");
-    vi.spyOn(realChatKeyStorage, "readChatKey").mockResolvedValueOnce(null);
+    vi.spyOn(realChatKeyStorage, "readChatKeySnapshots").mockResolvedValueOnce([
+      { key: null, deletionRevision: 0 },
+    ]);
     const { container } = render(view(stored));
     expect(await screen.findByText("Key required")).toHaveClass("sr-only");
     expect(container.querySelector("[data-encrypted-message-placeholder]")).toHaveAttribute(
@@ -1631,7 +1633,7 @@ describe("real encrypted message presentation", () => {
   it("retries a transient storage failure for the same message without replacing the stored ciphertext", async () => {
     const { stored } = await seedRealEncryptedMessage("retry fixture");
     const readKey = vi
-      .spyOn(realChatKeyStorage, "readChatKey")
+      .spyOn(realChatKeyStorage, "readChatKeySnapshots")
       .mockRejectedValueOnce(new Error("storage-failed"));
     render(
       <MessageBubbleFixture
@@ -1649,7 +1651,7 @@ describe("real encrypted message presentation", () => {
     expect(screen.getByRole("alert")).toHaveAttribute("aria-busy", "false");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("retry fixture")).toBeInTheDocument();
-    expect(readKey).toHaveBeenCalledTimes(2);
+    expect(readKey).toHaveBeenCalledTimes(3);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload).toEqual(
       stored.payload,

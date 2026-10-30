@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { webcrypto } from "node:crypto";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
@@ -192,6 +193,171 @@ describe("WorkspaceMessageList encrypted preparation", () => {
     },
   );
 
+  it("waits for durable key validation before revealing cached text after remount", async () => {
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockRestore();
+    vi.stubGlobal("crypto", webcrypto);
+    try {
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readDeviceIdentity").mockResolvedValue({
+        deviceId: "device",
+        deviceName: "Device",
+      });
+      let block = false;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readChatKeySnapshots").mockImplementation(
+        async (addresses) => {
+          if (block) await gate;
+          return addresses.map(() => ({
+            key: { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+            deletionRevision: 0,
+          }));
+        },
+      );
+      const decrypt = vi
+        .spyOn(cryptoResources.realChatCryptoProvider, "decryptMessage")
+        .mockResolvedValue({ ok: true, value: new TextEncoder().encode("Cached text") });
+      const messages = [encryptedMessage(1, "AQ==")];
+      const first = render(view(messages));
+      expect(await screen.findByText("Cached text")).toBeInTheDocument();
+      first.unmount();
+      block = true;
+      const second = render(view(messages));
+      expect(second.container.querySelector("[data-message-uuid]")).toBeNull();
+      await act(async () => {
+        release();
+        await gate;
+      });
+      expect(await screen.findByText("Cached text")).toBeInTheDocument();
+      expect(decrypt).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retains exactly the latest prepared list window across shrink, pagination, and remount", async () => {
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockRestore();
+    vi.stubGlobal("crypto", webcrypto);
+    try {
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readDeviceIdentity").mockResolvedValue({
+        deviceId: "device",
+        deviceName: "Device",
+      });
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readChatKeySnapshots").mockImplementation(
+        (addresses) =>
+          Promise.resolve(
+            addresses.map(() => ({
+              key: { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+              deletionRevision: 0,
+            })),
+          ),
+      );
+      const decrypt = vi
+        .spyOn(cryptoResources.realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(() =>
+          Promise.resolve({
+            ok: true,
+            value: new TextEncoder().encode("Window text"),
+          }),
+        );
+      const a = encryptedMessage(1, "AQ==");
+      const b = encryptedMessage(2, "Ag==");
+      const c = encryptedMessage(3, "Aw==");
+      const first = render(view([a, b]));
+      await waitFor(() => expect(screen.getAllByText("Window text")).toHaveLength(2));
+      expect(decrypt).toHaveBeenCalledTimes(2);
+      first.rerender(view([a]));
+      await waitFor(() => expect(screen.getAllByText("Window text")).toHaveLength(1));
+      first.unmount();
+      const second = render(view([a, b]));
+      await waitFor(() => expect(screen.getAllByText("Window text")).toHaveLength(2));
+      expect(decrypt).toHaveBeenCalledTimes(3);
+      second.rerender(view([a, b, c]));
+      await waitFor(() => expect(screen.getAllByText("Window text")).toHaveLength(3));
+      expect(decrypt).toHaveBeenCalledTimes(4);
+      second.unmount();
+      render(view([a, b, c]));
+      await waitFor(() => expect(screen.getAllByText("Window text")).toHaveLength(3));
+      expect(decrypt).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not restore a revoked window after a pending addition and metadata update", async () => {
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockRestore();
+    vi.stubGlobal("crypto", webcrypto);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let keyPresent = true;
+    try {
+      const owner = useWorkspaceMessageStore.getState().ownerKey;
+      if (owner == null) throw new Error("Missing owner");
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readDeviceIdentity").mockResolvedValue({
+        deviceId: "device",
+        deviceName: "Device",
+      });
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readChatKeySnapshots").mockImplementation(
+        (addresses) =>
+          Promise.resolve(
+            addresses.map(() => ({
+              key: keyPresent ? { groupKey: { bytes: new Uint8Array(32).fill(1) } } : null,
+              deletionRevision: keyPresent ? 0 : 1,
+            })),
+          ),
+      );
+      let calls = 0;
+      const decrypt = vi
+        .spyOn(cryptoResources.realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(async () => {
+          if (++calls === 2) await gate;
+          return { ok: true, value: new TextEncoder().encode("Private window text") };
+        });
+      const a = encryptedMessage(1, "AQ==");
+      const b = encryptedMessage(2, "Ag==");
+      const first = render(view([a]));
+      expect(await screen.findByText("Private window text")).toBeInTheDocument();
+      first.rerender(view([a, b]));
+      await waitFor(() => expect(decrypt).toHaveBeenCalledTimes(2));
+      keyPresent = false;
+      await flushPresentation(() =>
+        notifyRealChatKeyChanges({
+          kind: "removed",
+          ownerKey: owner,
+          deviceId: "device",
+          streamUuid: STREAM_UUID,
+          keyUuid: KEY_UUID,
+        }),
+      );
+      first.rerender(view([{ ...a, read: true }, b]));
+      await act(async () => {
+        release();
+        await gate;
+      });
+      await waitFor(() =>
+        expect(
+          first.container.querySelectorAll("[data-encrypted-message-state='locked']"),
+        ).toHaveLength(2),
+      );
+      expect(screen.queryByText("Private window text")).not.toBeInTheDocument();
+      first.unmount();
+      const second = render(view([a, b]));
+      await waitFor(() =>
+        expect(
+          second.container.querySelectorAll("[data-encrypted-message-state='locked']"),
+        ).toHaveLength(2),
+      );
+      expect(screen.queryByText("Private window text")).not.toBeInTheDocument();
+      expect(decrypt).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reuses window preparation in bubbles and quotes without local key subscriptions", async () => {
     const subscribe = vi.spyOn(cryptoResources, "subscribeRealChatKeyChanges");
     const original = encryptedMessage(1);
@@ -235,6 +401,146 @@ describe("WorkspaceMessageList encrypted preparation", () => {
     fireEvent.click(request);
     expect(requestKey).toHaveBeenCalledWith(encrypted.uuid);
     expect(cryptoRuntime.decryptRealChatMessageResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an updated initial window hidden until every key is revalidated", async () => {
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockRestore();
+    vi.stubGlobal("crypto", webcrypto);
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const secondKey = "44444444-4444-4444-8444-444444444444";
+    let firstPresent = true;
+    try {
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readDeviceIdentity").mockResolvedValue({
+        deviceId: "device",
+        deviceName: "Device",
+      });
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readChatKeySnapshots").mockImplementation(
+        (addresses) =>
+          Promise.resolve(
+            addresses.map((address) => ({
+              key:
+                address.keyUuid === KEY_UUID && !firstPresent
+                  ? null
+                  : { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+              deletionRevision: address.keyUuid === KEY_UUID && !firstPresent ? 1 : 0,
+            })),
+          ),
+      );
+      const decrypt = vi
+        .spyOn(cryptoResources.realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(async ({ context }) => {
+          if (context.keyUuid === KEY_UUID) await firstGate;
+          else await secondGate;
+          return {
+            ok: true,
+            value: new TextEncoder().encode(
+              context.keyUuid === KEY_UUID ? "First text" : "Second text",
+            ),
+          };
+        });
+      const first = encryptedMessage(1, "AQ==");
+      const second = {
+        ...encryptedMessage(2, "Ag=="),
+        payload: { kind: "e2ee" as const, keyUuid: secondKey, content: "Ag==" },
+      };
+      const malformed = encryptedMessage(0, "invalid-base64!");
+      const { container, rerender } = render(view([malformed, first]));
+      await waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+      rerender(view([malformed, first, second]));
+      await act(async () => {
+        releaseFirst();
+        await firstGate;
+      });
+      await waitFor(() => expect(decrypt).toHaveBeenCalledTimes(2));
+      expect(container.querySelector("[data-message-uuid]")).toBeNull();
+      firstPresent = false;
+      await act(async () => {
+        releaseSecond();
+        await secondGate;
+      });
+      expect(await screen.findByText("Second text")).toBeInTheDocument();
+      expect(screen.queryByText("First text")).not.toBeInTheDocument();
+      expect(
+        container.querySelector(
+          `[data-message-uuid='${first.uuid}'] [data-encrypted-message-state='locked']`,
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reuses in-flight content on server metadata changes and prepares later rows during retry", async () => {
+    vi.mocked(cryptoRuntime.decryptRealChatMessageResult).mockRestore();
+    vi.stubGlobal("crypto", webcrypto);
+    let releaseInitial!: () => void;
+    let releaseRetry!: () => void;
+    const initialGate = new Promise<void>((resolve) => {
+      releaseInitial = resolve;
+    });
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    try {
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readDeviceIdentity").mockResolvedValue({
+        deviceId: "device",
+        deviceName: "Device",
+      });
+      vi.spyOn(cryptoResources.realChatKeyStorage, "readChatKeySnapshots").mockImplementation(
+        (addresses) =>
+          Promise.resolve(
+            addresses.map(() => ({
+              key: { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+              deletionRevision: 0,
+            })),
+          ),
+      );
+      let calls = 0;
+      const decrypt = vi
+        .spyOn(cryptoResources.realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(async () => {
+          calls++;
+          if (calls === 1) {
+            await initialGate;
+            return { ok: false, reason: "invalid-ciphertext" };
+          }
+          if (calls === 2) {
+            await retryGate;
+            return { ok: true, value: new TextEncoder().encode("Retried text") };
+          }
+          return { ok: true, value: new TextEncoder().encode("Later text") };
+        });
+      const first = encryptedMessage(1, "AQ==");
+      const { rerender } = render(view([first]));
+      await waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+      rerender(view([{ ...first, read: true, pinned: true }]));
+      expect(decrypt).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        releaseInitial();
+        await initialGate;
+      });
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      fireEvent.click(retry);
+      await waitFor(() => expect(decrypt).toHaveBeenCalledTimes(2));
+      rerender(view([{ ...first, read: true, pinned: true }, encryptedMessage(2, "Ag==")]));
+      expect(await screen.findByText("Later text")).toBeInTheDocument();
+      expect(retry).toBeDisabled();
+      await act(async () => {
+        releaseRetry();
+        await retryGate;
+      });
+      expect(await screen.findByText("Retried text")).toBeInTheDocument();
+      expect(decrypt).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps existing rows and publishes an appended message while another retry is pending", async () => {

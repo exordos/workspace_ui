@@ -3,6 +3,10 @@ import { useShallow } from "zustand/react/shallow";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
+  commitPreparedPlaintextWindow,
+  type PreparedPlaintextRecord,
+} from "~/entities/messenger/chat-crypto-runtime.lib";
+import {
   canPrepareMessengerEncryptedMessage,
   getImmediateMessengerMessageContent,
   getMessengerMessageContentKey,
@@ -36,13 +40,27 @@ interface PreparedMessage {
   readonly message: MessengerMessage;
   value?: MessengerMessageContent;
   phase: "queued" | "running" | "settled";
+  cacheRecord?: PreparedPlaintextRecord;
 }
 
+let nextPreparationId = 0;
 class MessagePreparation {
+  readonly batchId = `presentation-${++nextPreparationId}`;
+  hasSettled = false;
+  hasSeenMessages = false;
+  nextBatch = 0;
   readonly entries = new Map<string, PreparedMessage>();
   active = false;
 
   constructor(readonly scope: string) {}
+
+  createBatchId() {
+    return `${this.batchId}-${++this.nextBatch}`;
+  }
+
+  markSeen() {
+    this.hasSeenMessages = true;
+  }
 
   start() {
     this.active = true;
@@ -61,6 +79,7 @@ const getRuntime = () => useWorkspaceAuthStore.getState().getCurrentRuntimeConte
 export function useMessagePresentations(
   messages: readonly MessengerMessage[],
   consumerScope: string,
+  cacheWindow = false,
 ) {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -151,9 +170,11 @@ export function useMessagePresentations(
       if (!activeKeys.has(key)) preparation.entries.delete(key);
     }
     const requestContext = captureWorkspaceRuntimeRequestContext(getRuntime);
+    const waveId = preparation.createBatchId();
     for (const { key, message, allowed } of requests) {
       if (!allowed || runtime == null) continue;
       let entry = preparation.entries.get(key);
+      const isNew = entry == null;
       if (entry == null) {
         entry = { message, phase: "queued" };
         preparation.entries.set(key, entry);
@@ -177,14 +198,51 @@ export function useMessagePresentations(
       };
       currentEntry.phase = "running";
       // Each task belongs to its entry; metadata renders do not restart or cancel it.
-      void prepareMessengerMessageContent(runtime, message, isCurrent).then((value) => {
+      const batchId = !preparation.hasSettled
+        ? preparation.batchId
+        : isNew
+          ? waveId
+          : preparation.createBatchId();
+      void prepareMessengerMessageContent(
+        runtime,
+        message,
+        isCurrent,
+        batchId,
+        cacheWindow
+          ? {
+              id: consumerScope,
+              onPrepared: (record) => {
+                if (isCurrent()) currentEntry.cacheRecord = record;
+              },
+            }
+          : undefined,
+      ).then((value) => {
         if (!isCurrent()) return;
         currentEntry.value = value;
         currentEntry.phase = "settled";
+        if (!preparation.hasSettled)
+          preparation.hasSettled = [...preparation.entries.values()].every(
+            (candidate) => candidate.phase === "settled",
+          );
         publish();
       });
     }
-  }, [requests, runtime, preparation, revision]);
+    if (messages.length > 0) preparation.markSeen();
+    if (
+      cacheWindow &&
+      runtime &&
+      preparation.hasSeenMessages &&
+      requests.every(
+        ({ key, allowed }) => !allowed || preparation.entries.get(key)?.phase === "settled",
+      )
+    ) {
+      const records = requests.flatMap(({ key, allowed }) => {
+        const entry = allowed ? preparation.entries.get(key) : undefined;
+        return entry?.value?.status === "ready" && entry.cacheRecord ? [entry.cacheRecord] : [];
+      });
+      commitPreparedPlaintextWindow(runtime, consumerScope, records);
+    }
+  }, [requests, runtime, preparation, revision, cacheWindow, consumerScope, messages.length]);
 
   const presentations = new Map<string, MessagePresentation>();
   const pendingMessageUuids = new Set<string>();
@@ -227,7 +285,7 @@ export function usePreparedMessagePresentation(
 /** Mount only in a fallback component when no prepared encrypted result exists. */
 export function useMessagePresentation(message: MessengerMessage | null): MessagePresentation {
   const messages = useMemo(() => (message == null ? [] : [message]), [message]);
-  const local = useMessagePresentations(messages, "single-message");
+  const local = useMessagePresentations(messages, "single-message", false);
   return (
     (message == null
       ? undefined

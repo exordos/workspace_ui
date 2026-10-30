@@ -732,7 +732,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
 });
 
 export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = (props) => {
-  const prepared = useMessagePresentations(props.messages, props.conversationId);
+  const prepared = useMessagePresentations(props.messages, props.conversationId, true);
   const pendingUuids = prepared.pendingMessageUuids;
   const preparing = pendingUuids.size > 0;
   const messages = useMemo(

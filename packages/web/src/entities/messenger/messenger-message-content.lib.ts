@@ -1,6 +1,9 @@
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { decryptRealChatMessageResult } from "./chat-crypto-runtime.lib";
+import {
+  decryptRealChatMessageResult,
+  type PlaintextWindowRequest,
+} from "./chat-crypto-runtime.lib";
 import type { MessengerMessage, MessengerStream } from "./messenger.types";
 
 export type MessengerMessageContent =
@@ -67,12 +70,17 @@ export async function prepareMessengerMessageContent(
   runtime: WorkspaceRuntimeContext,
   message: MessengerMessage,
   isCurrent: () => boolean,
+  batchId?: string,
+  window?: PlaintextWindowRequest,
 ): Promise<MessengerMessageContent> {
   const immediate = getImmediateMessengerMessageContent(message);
   if (immediate != null) return immediate;
   if (!isCurrent()) return { status: "missing-key" };
   try {
-    const result = await decryptRealChatMessageResult(runtime, message, isCurrent);
+    const result =
+      batchId === undefined
+        ? await decryptRealChatMessageResult(runtime, message, isCurrent)
+        : await decryptRealChatMessageResult(runtime, message, isCurrent, batchId, window);
     if (!isCurrent()) return { status: "missing-key" };
     return result.status === "ready"
       ? { status: "ready", kind: "markdown", markdown: result.plaintext }

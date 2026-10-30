@@ -79,6 +79,9 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
     readDeviceIdentity: vi.fn(() => Promise.resolve(null)),
     writeDeviceIdentity: vi.fn(() => Promise.resolve(true)),
     readChatKey: vi.fn(() => Promise.resolve(key)),
+    readChatKeySnapshots: vi.fn((addresses) =>
+      Promise.resolve(addresses.map(() => ({ key, deletionRevision: 0 }))),
+    ),
     writeChatKey: vi.fn((_address, next, options) => {
       if (options?.isCurrent?.() === false) return Promise.resolve(false);
       key = { ...next, groupKey: next.groupKey ?? key?.groupKey ?? null };
