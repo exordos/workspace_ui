@@ -215,6 +215,11 @@ export function RightPanelUserSettings({
                 active={chatClickAction === "latestTopic"}
                 onClick={() => setChatClickAction("latestTopic")}
               />
+              {chatClickAction === "latestTopic" ? (
+                <li className="px-3 pb-2 text-xs text-text-secondary">
+                  {t("settings.chatClickActionAvatarHint")}
+                </li>
+              ) : null}
             </OptionSurface>
           ) : null}
 

@@ -80,7 +80,7 @@ test.describe("Sidebar", () => {
     await page.getByTestId("user-menu-settings-row").click();
     await page.getByTestId("right-panel-settings-chat-click-trigger").click();
     await page
-      .getByRole("button", { name: /Топик последнего сообщения|Topic of the latest message/ })
+      .getByRole("button", { name: /Последний топик|Latest topic/ })
       .click();
     await page.screenshot({ path: testInfo.outputPath("chat-click-settings.png") });
     await page.reload();
