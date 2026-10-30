@@ -655,6 +655,7 @@
     "loadError": "Could not refresh drafts"
   },
   "message": {
+    "globalTimeHint": "Everyone sees this in their own time zone. Your time zone for this date: {{zone}}.",
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
     "fileUploadUnsupported": "File uploads are no longer available in this legacy chat path.",
     "views": "Views",
@@ -1414,6 +1415,9 @@
     "retryLoad": "Try again"
   },
   "composer": {
+    "insertTime": "Insert date and time",
+    "insertTimeConfirm": "Insert",
+    "insertTimeHint": "Choose a time in your time zone: {{zone}}. Everyone will see it in their own time zone.",
     "bold": "Bold",
     "italic": "Italic",
     "strikethrough": "Strikethrough",

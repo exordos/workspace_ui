@@ -1182,3 +1182,40 @@ textarea,
 select {
   font-size: max(16px, 1em);
 }
+
+/* A global time keeps the instant in UTC and presents it in the reader's zone. */
+.message-body .workspace-message-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.35em;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: inherit;
+  vertical-align: baseline;
+  white-space: normal;
+}
+
+.message-body .workspace-message-time__icon {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.85em;
+  height: 0.85em;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.message-body .workspace-message-time__icon::before {
+  content: "";
+  position: absolute;
+  top: 17%;
+  left: 43%;
+  width: 30%;
+  height: 38%;
+  border-bottom: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+}

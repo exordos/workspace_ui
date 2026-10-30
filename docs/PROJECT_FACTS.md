@@ -39,6 +39,8 @@ User references use `[Name](urn:user:UUID)`. The exact Markdown title `"silent"`
 
 Quote and forward content enable the same user profile links when the enclosing message exposes its UUID profile callback, including nested snapshots. Without that callback they remain text. Opening a user profile does not activate the quote's message navigation.
 
+Global message times use `<urn:time:2026-10-13T10:02:00Z>` as an explicit Markdown extension. The composer clock action opens the shared DateTimePicker and inserts UTC ISO 8601 (`Z`) at the current selection. Reading also accepts ISO values with an explicit numeric offset; zone-less dates and invalid calendar values stay literal. Rendering, previews and compact summaries display the instant in the reader's local time zone and application locale. Code literals and escaped syntax stay literal. The original Markdown retains the instant through editing, quoting and forwarding. The time chip's tooltip describes the reader's zone for that date, including its daylight-saving offset. [Interactive example](../packages/web/src/widgets/message-composer/message-composer-time.stories.tsx).
+
 ## Backend contracts
 
 Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.

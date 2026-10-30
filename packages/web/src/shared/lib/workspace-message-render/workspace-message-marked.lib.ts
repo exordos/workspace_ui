@@ -3,6 +3,7 @@ import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
+import { parseWorkspaceMessageTime } from "../workspace-message-time.lib";
 import { parseWorkspaceReferenceUrn } from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
 import type {
@@ -12,6 +13,13 @@ import type {
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReference,
 } from "./workspace-message-document.types";
+
+export const WORKSPACE_TIME_TOKEN_TYPE = "workspace_time";
+export interface WorkspaceTimeMarkedToken extends Tokens.Generic {
+  type: typeof WORKSPACE_TIME_TOKEN_TYPE;
+  utc: string | null;
+  text: string;
+}
 
 export const WORKSPACE_MENTION_TOKEN_TYPE = "workspace_mention";
 export const WORKSPACE_EMOJI_TOKEN_TYPE = "workspace_emoji";
@@ -429,7 +437,32 @@ function prepareCodeBlockToken(
 }
 
 export function createWorkspaceMarkdownLexer(): Marked {
-  return new Marked({ gfm: true, breaks: true });
+  return new Marked({
+    gfm: true,
+    breaks: true,
+    extensions: [
+      {
+        name: WORKSPACE_TIME_TOKEN_TYPE,
+        level: "inline",
+        start(source) {
+          return source.search(/\\?<urn:time:/i);
+        },
+        tokenizer(source) {
+          const match = /^(\\)?<urn:time:([^<>\n]*)>/i.exec(source);
+          if (match == null) return;
+          const escaped = match[1] != null;
+          const utc = escaped ? null : parseWorkspaceMessageTime(match[2] ?? "");
+          // Keep invalid URNs opaque so :time: cannot turn into an emoji.
+          return {
+            type: WORKSPACE_TIME_TOKEN_TYPE,
+            raw: match[0],
+            utc,
+            text: escaped ? match[0].slice(1) : match[0],
+          } satisfies WorkspaceTimeMarkedToken;
+        },
+      },
+    ],
+  });
 }
 
 export function prepareWorkspaceMarkdownTokens(
@@ -571,6 +604,9 @@ function inspectTokens(tokens: readonly Token[], facts: WorkspaceMarkdownFacts):
       case WORKSPACE_MENTION_TOKEN_TYPE:
         facts.hasInlineRich = true;
         facts.hasMentions = true;
+        break;
+      case WORKSPACE_TIME_TOKEN_TYPE:
+        facts.hasInlineRich ||= (token as WorkspaceTimeMarkedToken).utc != null;
         break;
       case WORKSPACE_EMOJI_TOKEN_TYPE:
       case WORKSPACE_INLINE_SPOILER_TOKEN_TYPE:

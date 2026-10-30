@@ -23,7 +23,7 @@ describe("FormattingToolbar", () => {
     const textStyleGroup = screen.getByTestId("composer-text-style-group");
     expect(textStyleGroup).toHaveClass("gap-0");
     expect(textStyleGroup.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(4);
-    expect(toolbar.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(10);
+    expect(toolbar.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(11);
     for (const button of toolbar.querySelectorAll("button.composer-toolbar-btn")) {
       expect(button).toHaveClass("h-8", "w-8");
     }
@@ -31,6 +31,7 @@ describe("FormattingToolbar", () => {
     expect(separators).toHaveLength(4);
 
     const expectedDimensions = {
+      "insert-time": ["24", "24", "0 0 24 24"],
       "add-link": ["24", "14.769", "0 0 24 14.769"],
       bold: ["10.93", "16.667", "0 0 10.93 16.667"],
       italic: ["15.448", "16.747", "0 0 15.448 16.747"],
